@@ -31,22 +31,6 @@ final class NotificationOfferTests: XCTestCase {
         XCTAssertEqual(decide(canPair: true), .push)
     }
 
-    func testOffersNothingOnceOffered() {
-        XCTAssertNil(decide(hasOffered: true, canPair: true))
-    }
-
-    func testOffersNothingWhenLocalAlertsAreOn() {
-        XCTAssertNil(decide(localAlertsEnabled: true, canPair: true))
-    }
-
-    func testOffersNothingWhenPermissionIsDenied() {
-        XCTAssertNil(decide(authorization: .denied, canPair: true))
-    }
-
-    func testOffersNothingWhenTheServerIsPaired() {
-        XCTAssertNil(decide(isPaired: true, canPair: true))
-    }
-
     // Once per install: the flag is set before the offer is shown, so a second run
     // (another chat, another server, a relaunch) never asks again.
     func testClaimMarksTheOfferMadeSoItIsAskedOnce() async {

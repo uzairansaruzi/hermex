@@ -156,6 +156,13 @@ struct MarkdownMathFormatter {
                 return index
             }
 
+            // A live `$` that cannot close ends the candidate, as hermes-webui's `[^$]`
+            // span does; scanning past it would pair with a later `$` and swallow prose.
+            if delimiter == .dollar, characters[index] == "$", !protected[index],
+               !MarkdownMathProtection.isEscaped(characters, at: index) {
+                return nil
+            }
+
             index += 1
         }
         return nil
@@ -254,6 +261,11 @@ private enum InlineDelimiter: CaseIterable {
             guard matches("$", in: characters, at: index, protected: protected) else { return false }
             if index > 0, characters[index - 1] == "$" { return false }
             if index + 1 < characters.count, characters[index + 1] == "$" { return false }
+            // `$` followed by a digit or whitespace is currency or prose, not math:
+            // mirrors hermes-webui's inline-math boundary guard, so amounts like
+            // "$250" or "$5 and $10" never open a span that swallows the text
+            // between them and the next `$` on the line.
+            if index + 1 < characters.count, characters[index + 1].isNumber || characters[index + 1].isWhitespace { return false }
             return !MarkdownMathProtection.isEscaped(characters, at: index)
         case .parens:
             return matches(#"\("#, in: characters, at: index, protected: protected)
@@ -267,6 +279,9 @@ private enum InlineDelimiter: CaseIterable {
             guard matches("$", in: characters, at: index, protected: protected) else { return false }
             if index > 0, characters[index - 1] == "$" { return false }
             if index + 1 < characters.count, characters[index + 1] == "$" { return false }
+            // Whitespace directly before a `$` reads as a prose boundary, not math:
+            // matches hermes-webui, KaTeX auto-render, and markdown-it-katex.
+            if index > 0, characters[index - 1].isWhitespace { return false }
             return !MarkdownMathProtection.isEscaped(characters, at: index)
         case .parens:
             return matches(#"\)"#, in: characters, at: index, protected: protected)

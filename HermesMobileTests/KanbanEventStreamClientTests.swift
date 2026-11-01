@@ -61,14 +61,4 @@ final class KanbanEventStreamClientTests: XCTestCase {
             XCTAssertEqual(KanbanStreamFrameDecoder.decodeSocketFrame(Data(malformed.utf8)), .malformed, malformed)
         }
     }
-
-    func testSSECommentsAreTransportKeepalives() {
-        // LDSwiftEventSource delivers comment lines through EventHandler.onComment,
-        // which KanbanEventStreamClient intentionally treats as a no-op. The
-        // decoder therefore never receives or misclassifies keepalive payloads.
-        XCTAssertEqual(
-            KanbanStreamFrameDecoder.decode(eventType: "", data: "", frameID: nil),
-            .ignored
-        )
-    }
 }

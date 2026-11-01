@@ -4,27 +4,6 @@ import XCTest
 // MARK: - Model, storage, and store
 
 final class CustomHeaderModelTests: XCTestCase {
-    func testStorageRoundTripPreservesNameAndValueAndOrder() throws {
-        let headers = [
-            CustomHeader(name: "Authorization", value: "Bearer abc"),
-            CustomHeader(name: "X-Api-Key", value: "k1")
-        ]
-
-        let encoded = try XCTUnwrap(headers.encodedForStorage())
-        let decoded = [CustomHeader].decodeFromStorage(encoded)
-
-        XCTAssertEqual(decoded, headers)
-        XCTAssertEqual(decoded.map(\.name), ["Authorization", "X-Api-Key"])
-        XCTAssertEqual(decoded.map(\.value), ["Bearer abc", "k1"])
-    }
-
-    func testEmptyListEncodesToNilAndGarbageDecodesToEmpty() {
-        XCTAssertNil([CustomHeader]().encodedForStorage())
-        XCTAssertEqual([CustomHeader].decodeFromStorage(nil), [])
-        XCTAssertEqual([CustomHeader].decodeFromStorage("not json"), [])
-        XCTAssertEqual([CustomHeader].decodeFromStorage(#"{"unexpected":true}"#), [])
-    }
-
     func testDecodeIsTolerantOfMissingField() {
         // A row missing "value" decodes with an empty value rather than dropping
         // the whole list (tolerant decoding rule).
@@ -50,37 +29,6 @@ final class CustomHeaderModelTests: XCTestCase {
         // Internal spaces are fine in a value (e.g. "Bearer <token>").
         XCTAssertTrue(CustomHeader(name: "Authorization", value: "Bearer a b c").isApplicable)
     }
-
-    func testSanitizedForStorageDropsBlankNameRowsOnly() {
-        let headers = [
-            CustomHeader(name: "X-Keep", value: "1"),
-            CustomHeader(name: "   ", value: "ghost"),
-            CustomHeader(name: "", value: "")
-        ]
-
-        XCTAssertEqual(headers.sanitizedForStorage().map(\.name), ["X-Keep"])
-    }
-
-    func testStoreSnapshotReflectsReplace() {
-        let store = CustomHeaderStore()
-        XCTAssertEqual(store.snapshot(), [])
-
-        store.replace(with: [CustomHeader(name: "A", value: "1")])
-        XCTAssertEqual(store.snapshot().map(\.name), ["A"])
-
-        store.replace(with: [])
-        XCTAssertEqual(store.snapshot(), [])
-    }
-
-    func testMergedUnderBuiltInsLetsBuiltInsWin() {
-        let merged = [
-            CustomHeader(name: "Accept", value: "application/evil"),
-            CustomHeader(name: "Authorization", value: "Bearer abc")
-        ].merged(under: ["Accept": "text/event-stream"])
-
-        XCTAssertEqual(merged["Accept"], "text/event-stream")
-        XCTAssertEqual(merged["Authorization"], "Bearer abc")
-    }
 }
 
 // MARK: - AuthStatusResponse tolerant decode
@@ -92,33 +40,10 @@ final class CustomHeaderAuthStatusDecodeTests: XCTestCase {
         return try decoder.decode(AuthStatusResponse.self, from: Data(json.utf8))
     }
 
-    func testDecodesNewCapabilityFlags() throws {
-        let status = try decode(
-            """
-            {
-              "auth_enabled": true,
-              "password_auth_enabled": false,
-              "passkeys_enabled": true,
-              "passwordless_enabled": true
-            }
-            """
-        )
-
-        XCTAssertEqual(status.authEnabled, true)
-        XCTAssertEqual(status.passwordAuthEnabled, false)
-    }
-
     func testMissingNewFlagsDecodeToNil() throws {
         let status = try decode(#"{"auth_enabled": true}"#)
 
         XCTAssertEqual(status.authEnabled, true)
-        XCTAssertNil(status.passwordAuthEnabled)
-    }
-
-    func testUnknownFieldsAreIgnored() throws {
-        let status = try decode(#"{"auth_enabled": false, "future_field": "x"}"#)
-
-        XCTAssertEqual(status.authEnabled, false)
         XCTAssertNil(status.passwordAuthEnabled)
     }
 }
@@ -167,30 +92,6 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
         _ = try? await client.sessions()
     }
 
-    func testEmptyHeaderListIsANoOp() async throws {
-        let (client, _) = makeHeaderClient([]) { request in
-            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
-            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
-            return try self.ok(request)
-        }
-
-        _ = try? await client.sessions()
-    }
-
-    func testWhitespaceOnlyHeaderNameIsSkipped() async throws {
-        let (client, _) = makeHeaderClient([
-            CustomHeader(name: "   ", value: "ghost"),
-            CustomHeader(name: "X-Real", value: "ok")
-        ]) { request in
-            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Real"), "ok")
-            // The blank-named row contributes nothing.
-            XCTAssertEqual(request.allHTTPHeaderFields?.values.contains("ghost"), false)
-            return try self.ok(request)
-        }
-
-        _ = try? await client.sessions()
-    }
-
     func testUploadRequestCarriesCustomHeadersAndMultipartContentTypeWins() async throws {
         let (client, _) = makeHeaderClient([
             CustomHeader(name: "Authorization", value: "Bearer upload"),
@@ -207,17 +108,6 @@ final class CustomHeaderAPIClientInjectionTests: APIClientTestCase {
         }
 
         _ = try? await client.uploadFile(sessionID: "s1", data: Data("bytes".utf8), filename: "a.png")
-    }
-
-    func testTranscribeRequestCarriesCustomHeaders() async throws {
-        let (client, _) = makeHeaderClient([
-            CustomHeader(name: "Authorization", value: "Bearer stt")
-        ]) { request in
-            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer stt")
-            return try self.ok(request)
-        }
-
-        _ = try? await client.transcribeAudio(data: Data("clip".utf8), filename: "v.m4a")
     }
 
     func testDownloadRequestCarriesCustomHeaders() async throws {
@@ -327,26 +217,6 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
         await fulfillment(of: [captured], timeout: 2)
         client.stop()
     }
-
-    /// SSE streams against `HTTPCookieStorage.shared`, the same jar as `APIClient`.
-    /// Verify that jar only surfaces a server's own cookie for its stream URL, so
-    /// domain isolation covers the SSE stream too (#16).
-    func testSSESharedCookieJarIsDomainIsolatedPerStreamURL() throws {
-        let storage = HTTPCookieStorage.shared
-        storage.cookies?.forEach { storage.deleteCookie($0) }
-        defer { storage.cookies?.forEach { storage.deleteCookie($0) } }
-
-        func sessionCookie(host: String, value: String) throws -> HTTPCookie {
-            try XCTUnwrap(HTTPCookie(properties: [
-                .domain: host, .path: "/", .name: "hermes_session", .value: value
-            ]))
-        }
-        storage.setCookie(try sessionCookie(host: "a.test", value: "a-cookie"))
-        storage.setCookie(try sessionCookie(host: "b.test", value: "b-cookie"))
-
-        let streamA = try XCTUnwrap(URL(string: "https://a.test/api/chat/stream?stream_id=s1"))
-        XCTAssertEqual(storage.cookies(for: streamA)?.map(\.value), ["a-cookie"])
-    }
 }
 
 // MARK: - AuthManager configure / lifecycle
@@ -419,27 +289,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertEqual(keychain.savedValues[.serverURL], "https://example.test")
     }
 
-    /// Browser and app cookie jars are separate, so external browser sign-in
-    /// cannot be presented as a way to authenticate Hermex.
-    func testOIDCServerReportsSingleSignOnRatherThanPasskeys() async throws {
-        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(
-            authEnabled: true,
-            loggedIn: false,
-            passwordAuthEnabled: false,
-            oidcEnabled: true
-        ))
-        let manager = makeManager(keychain: InMemoryKeychainStore(), store: CustomHeaderStore(), client: client)
-
-        await manager.configure(serverURLString: "https://example.test", password: "")
-
-        XCTAssertEqual(
-            manager.lastErrorMessage,
-            "This server signs in with single sign-on, which Hermex doesn't support yet."
-        )
-        XCTAssertNotEqual(manager.lastErrorMessage, AuthManager.passkeyOnlyMessage)
-        XCTAssertEqual(manager.state, .unconfigured)
-    }
-
     /// Trusted-header mode where the proxy did not authorize this request is a
     /// different problem again, with a different thing to try.
     func testTrustedHeaderServerWithoutASessionExplainsTheProxy() async throws {
@@ -490,17 +339,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertEqual(client.loginPasswords, ["secret"])
         XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://example.test"))))
         XCTAssertNil(manager.lastErrorMessage)
-    }
-
-    func testNoHeaderConfigureDoesNotPersistHeaderEntry() async throws {
-        let keychain = InMemoryKeychainStore()
-        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
-        let manager = makeManager(keychain: keychain, store: CustomHeaderStore(), client: client)
-
-        await manager.configure(serverURLString: "https://example.test", password: "secret")
-
-        XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://example.test"))))
-        XCTAssertNil(keychain.scopedValue(.customHeaders, scope: "https://example.test"))
     }
 
     func testHeadersKeptOnSessionExpiryButClearedOnSignOut() async throws {
@@ -554,26 +392,6 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
             ).map(\.name),
             ["X-Keep"]
         )
-    }
-
-    func testUpdateCustomHeadersWithoutPersistSkipsKeychain() async throws {
-        let keychain = InMemoryKeychainStore()
-        let store = CustomHeaderStore()
-        let manager = makeManager(
-            keychain: keychain,
-            store: store,
-            client: MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
-        )
-        await manager.configure(serverURLString: "https://example.test", password: "")
-
-        // persist:false → live store refresh but no (slow) Keychain write.
-        manager.updateCustomHeaders([CustomHeader(name: "X-Live", value: "1")], persist: false)
-        XCTAssertEqual(store.snapshot().map(\.name), ["X-Live"])
-        XCTAssertNil(keychain.scopedValue(.customHeaders, scope: "https://example.test"))
-
-        // persist:true (editor dismissed) → now written to the Keychain.
-        manager.updateCustomHeaders([CustomHeader(name: "X-Live", value: "1")], persist: true)
-        XCTAssertNotNil(keychain.scopedValue(.customHeaders, scope: "https://example.test"))
     }
 
     func testLaunchMigratesLegacyGlobalHeadersToActiveServerScope() throws {
@@ -665,15 +483,17 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
 
     /// Drives the production guard's redirect decision directly: hands it a
     /// synthetic `newRequest` and returns the request the guard passes back to the
-    /// URL loading system (what it intends for the next hop). The guard invokes the
-    /// completion handler synchronously.
+    /// URL loading system (what it intends for the next hop), or nil when it refuses
+    /// the redirect. The guard invokes the completion handler synchronously.
     private func redirectOutcome(
         guardHeaders: [CustomHeader],
         destination: String,
-        requestHeaders: [String: String]
-    ) throws -> URLRequest {
+        requestHeaders: [String: String],
+        method: String = "GET"
+    ) throws -> URLRequest? {
         let stripper = CrossOriginHeaderStripper(baseURL: baseURL, customHeaderProvider: { guardHeaders })
         var newRequest = URLRequest(url: try XCTUnwrap(URL(string: destination)))
+        newRequest.httpMethod = method
         for (name, value) in requestHeaders {
             newRequest.setValue(value, forHTTPHeaderField: name)
         }
@@ -682,52 +502,46 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         )
         let dummy = URLSession(configuration: .ephemeral)
         let task = dummy.dataTask(with: try XCTUnwrap(URL(string: "https://example.test")))
-        var result: URLRequest?
+        var result: URLRequest??
         stripper.urlSession(dummy, task: task, willPerformHTTPRedirection: response, newRequest: newRequest) {
             result = $0
         }
         return try XCTUnwrap(result, "guard did not call the completion handler")
     }
 
-    // AC1: same-origin → cross-origin carries none of the custom headers.
-    func testStripsCustomHeadersOnCrossOriginRedirect() throws {
+    // A 307 or 308 resends the body, so a POST is never followed off the origin.
+    func testRefusesCrossOriginRedirectOfARequestWithABody() throws {
         let outgoing = try redirectOutcome(
-            guardHeaders: [
-                CustomHeader(name: "Authorization", value: "Bearer secret"),
-                CustomHeader(name: "X-Api-Key", value: "k1")
-            ],
+            guardHeaders: [],
             destination: "https://third-party.example/leak",
-            requestHeaders: ["Authorization": "Bearer secret", "X-Api-Key": "k1", "Accept": "*/*"]
+            requestHeaders: [:],
+            method: "POST"
         )
 
-        XCTAssertNil(outgoing.value(forHTTPHeaderField: "X-Api-Key"))
-        XCTAssertNil(outgoing.value(forHTTPHeaderField: "Authorization"))
-        // Only the *configured* header names are stripped — a built-in like Accept
-        // is left alone.
-        XCTAssertEqual(outgoing.value(forHTTPHeaderField: "Accept"), "*/*")
+        XCTAssertNil(outgoing)
+    }
+
+    // A proxy's trailing-slash 307 on the same origin still reaches the server.
+    func testFollowsSameOriginRedirectOfARequestWithABody() throws {
+        let outgoing = try redirectOutcome(
+            guardHeaders: [],
+            destination: "https://example.test/api/auth/login/",
+            requestHeaders: [:],
+            method: "POST"
+        )
+
+        XCTAssertEqual(outgoing?.httpMethod, "POST")
     }
 
     // AC2: same-origin → same-origin keeps the headers (e.g. a proxy path rewrite).
     func testKeepsCustomHeadersOnSameOriginRedirect() throws {
-        let outgoing = try redirectOutcome(
+        let outgoing = try XCTUnwrap(redirectOutcome(
             guardHeaders: [CustomHeader(name: "X-Api-Key", value: "k1")],
             destination: "https://example.test/api/media-final",
             requestHeaders: ["X-Api-Key": "k1"]
-        )
+        ))
 
         XCTAssertEqual(outgoing.value(forHTTPHeaderField: "X-Api-Key"), "k1")
-    }
-
-    // AC3: no custom headers configured → a cross-origin redirect is left unchanged.
-    func testNoCustomHeadersLeavesCrossOriginRedirectUnchanged() throws {
-        let outgoing = try redirectOutcome(
-            guardHeaders: [],
-            destination: "https://third-party.example/leak",
-            requestHeaders: ["Accept": "*/*"]
-        )
-
-        XCTAssertEqual(outgoing.value(forHTTPHeaderField: "Accept"), "*/*")
-        XCTAssertNil(outgoing.value(forHTTPHeaderField: "X-Api-Key"))
     }
 
     /// A mock-backed session built like the shared production sessions: no

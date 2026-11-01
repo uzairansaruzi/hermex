@@ -175,10 +175,11 @@ extension MessageAttachment {
         guard content.contains("@file:") || content.contains("[The user attached an image: ")
                 || content.contains(" Context ---") || content.contains("--- Context Warnings ---")
         else { return (content, []) }
-        // Hermes's text-mode image line pair, whose first line names the stored file, and an
-        // `@file:` token as `file.attach` quotes it: backticks, double or single quotes, or bare.
+        // Hermes's text-mode image line pair, whose first line names the stored file and second
+        // its POSIX or Windows path (`BotAttachmentUpload.isHostAbsolute`), and an `@file:`
+        // token as `file.attach` quotes it: backticks, double or single quotes, or bare.
         let imageReference =
-            /\[The user attached an image: ([^\n]*)\]\n\[Examine it with the vision_analyze tool using image_url: (\/[^\n]*)\]/
+            /\[The user attached an image: ([^\n]*)\]\n\[Examine it with the vision_analyze tool using image_url: ((?:\/|[A-Za-z]:[\\\/])[^\n]*)\]/
         let fileReference = /@file:(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/
         var text = content
         let footer = text.firstRange(of: /(?:^|\n)--- (?:Context Warnings|Attached Context) ---[ \t]*(?:\n|$)/)
@@ -188,17 +189,10 @@ extension MessageAttachment {
         for block in text.components(separatedBy: "\n\n") {
             let line = block.trimmingCharacters(in: .whitespacesAndNewlines)
             if let image = line.wholeMatch(of: imageReference) {
-                attachments.append(MessageAttachment(
-                    name: String(image.1).replacing(/^dashboard_\d{8}_\d{6}_[0-9a-f]{8}_/, with: ""),
-                    path: String(image.2), isImage: true
-                ))
+                attachments.append(MessageAttachment(name: hermesImageName(image.1), path: String(image.2), isImage: true))
             } else if let file = line.wholeMatch(of: fileReference),
                       let path = file.1 ?? file.2 ?? file.3 ?? file.4 {
-                let name = URL(fileURLWithPath: String(path)).lastPathComponent
-                attachments.append(MessageAttachment(
-                    name: name.replacing(/^[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}-/, with: ""),
-                    path: String(path), isImage: false
-                ))
+                attachments.append(MessageAttachment(name: hermesFileName(path), path: String(path), isImage: false))
             } else {
                 kept.append(block)
             }
@@ -207,6 +201,61 @@ extension MessageAttachment {
         var shown = Substring(kept.joined(separator: "\n\n"))
         while shown.last?.isWhitespace == true { shown = shown.dropLast() }
         return (String(shown), attachments)
+    }
+
+    /// A Hermes session's title or `preview` as a session row and the chat header show it
+    /// (#1046). The reference lines a Hermex send appends (`hermesReferences`) are dropped, as
+    /// saved or flattened onto one line as `preview` has them, and so is one the host cut off
+    /// at the end of a short title (48 characters and `…`) or a `preview` (60 and `...`). With
+    /// no typed text left, the first attachment's name stands in; nil when there is none,
+    /// such as a reference cut before its name, so the caller falls back. Display only:
+    /// nothing is written to the host, and text without a reference comes back as it is.
+    static func hermesTitle(_ text: String?) -> String? {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        // Every reference, and every cut one, opens with `[` or `@`.
+        guard text.contains("[") || text.contains("@") else { return text }
+        let saved = hermesReferences(in: text)
+        var names = saved.attachments.compactMap(\.name)
+        var line = saved.text.replacing(/\s+/, with: " ")
+        let cut = ["...", "…"].first { line.hasSuffix($0) }
+        if let cut { line.removeLast(cut.count) }
+        let reference = /\[The user attached an image: ([^\]]*)\]|\[Examine it with the vision_analyze tool using image_url: [^\]]*\]|@file:(?:`([^`]+)`|"([^"]+)"|'([^']+)'|(\S+))/
+        let matches = line.matches(of: reference)
+        // A token that runs into the cut is not whole, so neither is its name.
+        var cutInsideReference = cut != nil && matches.last?.range.upperBound == line.endIndex
+        for match in matches where !(cutInsideReference && match.range == matches.last?.range) {
+            if let image = match.output.1 {
+                names.append(hermesImageName(image))
+            } else if let path = match.output.2 ?? match.output.3 ?? match.output.4 ?? match.output.5 {
+                names.append(hermesFileName(path))
+            }
+        }
+        for match in matches.reversed() { line.removeSubrange(match.range) }
+        // A reference the cut ended inside its opening words, or before its closing bracket.
+        if cut != nil, let start = line.lastIndex(where: { $0 == "[" || $0 == "@" }) {
+            let tail = String(line[start...])
+            let markers = ["[The user attached an image: ", "[Examine it with the vision_analyze tool using image_url: ", "@file:"]
+            if markers.contains(where: { $0.hasPrefix(tail) || tail.hasPrefix($0) }) {
+                line.removeSubrange(start...)
+                cutInsideReference = true
+            }
+        }
+        guard !matches.isEmpty || cutInsideReference || !saved.attachments.isEmpty || saved.text != text else { return text }
+        let typed = line.replacing(/\s+/, with: " ").trimmingCharacters(in: .whitespaces)
+        if !typed.isEmpty { return typed + (cutInsideReference ? "" : cut ?? "") }
+        return names.first
+    }
+
+    /// An image reference's file name without the `dashboard_<date>_<time>_<hex>_` prefix the
+    /// host's upload gave it.
+    private static func hermesImageName(_ name: Substring) -> String {
+        String(name).replacing(/^dashboard_\d{8}_\d{6}_[0-9a-f]{8}_/, with: "")
+    }
+
+    /// An `@file:` path's file name without the UUID prefix `file.attach` gave it.
+    private static func hermesFileName(_ path: Substring) -> String {
+        URL(fileURLWithPath: String(path)).lastPathComponent
+            .replacing(/^[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}-/, with: "")
     }
 
     private static func displayName(for reference: String) -> String {

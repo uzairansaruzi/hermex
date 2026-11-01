@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 @testable import HermesMobile
 
@@ -61,6 +62,7 @@ import XCTest
         await creator.create()
 
         XCTAssertEqual(wire.calls.map(\.0), ["profiles.create", "profiles.configure", "session.list", "session.create", "session.title"])
+        XCTAssertEqual(wire.platformNotes, ["home-hunter after session.list"], "The new bot's note is kept before its chat is made (#1278)")
         let create = wire.calls[0].1
         XCTAssertEqual(create["name"], .string("home-hunter"))
         XCTAssertEqual(create["description"], .string("Finds apartments"))
@@ -72,13 +74,18 @@ import XCTest
         let look = wire.calls[1].1
         XCTAssertEqual(look["name"], .string("home-hunter"))
         XCTAssertEqual(look["ui_meta_expected_revisions"], .object(["hermes-bots": .number(0)]))
-        XCTAssertEqual(look["ui_meta"]?["hermes-bots"].fields, [
-            "title": .string("Home Hunter"), "shape": .string("hexagon"), "color": .string("#f97316"),
-            "expression": .string("happy"), "custom": .bool(true), "imageKind": .string("shape")
-        ])
-        XCTAssertEqual(wire.calls[3].1, ["profile": .string("home-hunter"), "title": .string("Bot Chat"),
-                                         "hidden": .bool(true), "follow_profile_config": .bool(true)])
-        XCTAssertEqual(wire.calls[4].1, ["session_id": .string("runtime-1"), "title": .string("Bot Chat")])
+        let meta = look["ui_meta"]?["hermes-bots"]
+        XCTAssertEqual(meta?["title"], .string("Home Hunter"))
+        XCTAssertEqual(meta?["shape"], .string("hexagon"))
+        XCTAssertEqual(meta?["color"], .string("#f97316"))
+        XCTAssertEqual(meta?["expression"], .string("happy"))
+        let chat = wire.calls[3].1
+        XCTAssertEqual(chat["profile"], .string("home-hunter"))
+        XCTAssertEqual(chat["title"], .string("Bot Chat"))
+        XCTAssertEqual(chat["hidden"], .bool(true))
+        XCTAssertEqual(chat["follow_profile_config"], .bool(true))
+        XCTAssertEqual(wire.calls[4].1["session_id"], .string("runtime-1"))
+        XCTAssertEqual(wire.calls[4].1["title"], .string("Bot Chat"))
         XCTAssertEqual(creator.phase, .created)
         XCTAssertEqual(created, ["home-hunter"])
         XCTAssertNil(creator.note)
@@ -297,15 +304,42 @@ import XCTest
         await inbox.open()
         let triage = inbox.profiles[0]
         XCTAssertTrue(inbox.mayDelete(triage))
+        inbox.selection.profile = triage
 
         await inbox.delete(triage)
 
+        XCTAssertNil(inbox.selection.profile, "The deleted bot's open chat closes")
         XCTAssertEqual(wire.deleted, ["triage"])
         XCTAssertEqual(purged.map(\.1), ["triage"])
         XCTAssertEqual(purged.first?.0, inbox.connection?.id)
         XCTAssertEqual(inbox.profiles.map(\.id), ["keep"])
         XCTAssertNil(inbox.notice)
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id).keys.sorted(), ["keep"])
+    }
+
+    /// A deleted bot's Bot Chat leaves the offline cache, so a bot made again under its name
+    /// never shows it; the other bots' stay.
+    func testDeleteDropsTheBotsCachedBotChat() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("keep")])
+        wire.delete = { _ in wire.roster = [self.row("keep")] }
+        let inbox = try makeInbox(wires: [wire]) { _, _ in }
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        inbox.offlineCache = context
+        await inbox.open()
+        let connection = try XCTUnwrap(inbox.connection?.id)
+        for profile in ["triage", "keep"] {
+            try CacheStore.cacheHermesMessages([ChatMessage(role: "user", content: "Hi", timestamp: 1, messageId: "1", rowID: 1)],
+                                               newestCoverage: .all, serverURL: server,
+                                               scope: CacheStore.hermesBotChatScope(connectionID: connection, profile: profile, root: "root"),
+                                               in: context)
+        }
+
+        await inbox.delete(inbox.profiles[0])
+
+        XCTAssertNil(try CacheStore.cachedHermesBotChatRoot(serverURL: server, connectionID: connection, profile: "triage", in: context))
+        XCTAssertEqual(try CacheStore.cachedHermesBotChatRoot(serverURL: server, connectionID: connection, profile: "keep", in: context),
+                       "root")
     }
 
     func testDefaultProfileCannotBeDeleted() async throws {
@@ -423,6 +457,9 @@ import XCTest
     var sessionCreate: (([String: BotJSON]) throws -> BotJSON)?
     var title: (([String: BotJSON]) throws -> BotJSON)?
     var calls: [(String, [String: BotJSON])] = []
+    /// Each `keepPlatformNote`'s Profile, with the last call sent before it.
+    var platformNotes: [String] = []
+    func keepPlatformNote(profile: String) async { platformNotes.append("\(profile) after \(calls.last?.0 ?? "nothing")") }
     var onCall: ((String) -> Void)?
     var holdsCreate = false
     private var held: [CheckedContinuation<Void, Never>] = []

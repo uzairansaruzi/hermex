@@ -123,6 +123,8 @@
 	<string>Hermex needs permission to save exported workspace images to Photos.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Hermex uses speech recognition to turn dictated audio into editable draft text.</string>
 	<key>UIApplicationSceneManifest</key>

@@ -124,11 +124,14 @@ struct BotWorkingSchedule: TimelineSchedule, Equatable {
     }
 }
 
-/// When Bot Chat's title face starts a working beat. A beat starts only when the turn
+/// A bot's chat turn as its title face reads it (`HermesChatTurnCoordinator.botTurn`):
+/// `.unknown` while not connected, so a reconnect inside a turn starts no new beat.
+enum BotTurnState { case unknown, idle, running, needsAttention, interrupted }
+
+/// When a bot's chat title face starts a working beat. A beat starts only when the turn
 /// enters work after being seen not working (a new prompt, an answered approval) or
-/// after the chat opened or came back to the foreground. The host reconciles through
-/// `.unknown` on many stream events and on a same-turn reconnect; those, an arriving
-/// approval and `.running` to `.stopping` never start one, so a long turn settles.
+/// after the chat opened or came back to the foreground. A same-turn reconnect passes
+/// through `.unknown`; that and an arriving approval never start one, so a long turn settles.
 struct BotWorkingBeat: Equatable {
     /// `.distantPast` until the first beat, so a face that never saw work start holds the lean.
     private(set) var start = Date.distantPast
@@ -137,12 +140,11 @@ struct BotWorkingBeat: Equatable {
     /// Called when the chat returns to the foreground; the next entry into work starts a beat.
     mutating func rearm() { armed = true }
 
-    mutating func observe(_ turn: BotConversation.TurnState, at date: Date) {
+    mutating func observe(_ turn: BotTurnState, at date: Date) {
         switch turn {
-        case .running, .stopping:
-            if armed { start = date; armed = false }
-        case .unknown, .uncertain: break
-        case .idle, .submitting, .needsAttention, .interrupted: armed = true
+        case .running: if armed { start = date; armed = false }
+        case .unknown: break
+        case .idle, .needsAttention, .interrupted: armed = true
         }
     }
 }

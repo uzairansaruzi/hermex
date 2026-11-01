@@ -83,22 +83,17 @@ struct HermesMobileApp: App {
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
 
     init() {
+        LaunchSignpost.begin()
         // Record installation age even before a server has been configured.
         _ = RatingPromptState.shared
+        ChatTranscriptDisplaySettings.migrateThinkingAndToolCards()
         NetworkPathMonitor.shared.start()
     }
 
     var body: some Scene {
         WindowGroup {
             #if DEBUG
-            // Launch argument hook so the Streaming Lab can be opened without
-            // UI navigation (agent-driven simulator diagnosis, issue #234):
-            // `xcrun simctl launch <udid> com.uzairansar.hermesmobile --streaming-lab`
-            if ProcessInfo.processInfo.arguments.contains("--streaming-lab") {
-                NavigationStack {
-                    StreamingLabView()
-                }
-            } else if ProcessInfo.processInfo.arguments.contains("--hermex-overlay-lab") {
+            if ProcessInfo.processInfo.arguments.contains("--hermex-overlay-lab") {
                 // Launch argument hook so the unadopted custom overlay components (Dialog and
                 // Popover Menu) can be exercised in a signed simulator build without a
                 // production call site (issue #607): `xcrun simctl launch <udid>

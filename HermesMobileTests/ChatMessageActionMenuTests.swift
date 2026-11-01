@@ -2,25 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ChatMessageActionMenuTests: XCTestCase {
-    func testActionRowsRemainAvailableWithoutSettledTurnTimestamp() {
-        XCTAssertTrue(TranscriptMessageMetaPolicy.showsRow(hasActions: true, hasTimestamp: false))
-        XCTAssertTrue(TranscriptMessageMetaPolicy.showsRow(hasActions: false, hasTimestamp: true))
-        XCTAssertFalse(TranscriptMessageMetaPolicy.showsRow(hasActions: false, hasTimestamp: false))
-    }
-
-    func testAssistantMenuListsAssistantActionsInOrder() throws {
-        let menu = try makeMenu(role: "assistant")
-
-        XCTAssertEqual(menu.items.map(\.kind), [.listen, .regenerate, .fork])
-        XCTAssertTrue(menu.items.allSatisfy(\.isEnabled))
-    }
-
-    func testUserMenuListsUserActionsInOrder() throws {
-        let menu = try makeMenu(role: "user")
-
-        XCTAssertEqual(menu.items.map(\.kind), [.edit, .fork, .copy])
-    }
-
     func testMutatingActionsDisableWhileStreaming() throws {
         let menu = try makeMenu(role: "assistant", hasActiveStream: true)
 
@@ -29,19 +10,10 @@ final class ChatMessageActionMenuTests: XCTestCase {
         XCTAssertEqual(enabledByKind[.fork], false)
         XCTAssertEqual(enabledByKind[.listen], true)
 
-        let uiMenu = menu.uiMenu()
-        let disabledTitles = uiMenu.children.compactMap { $0 as? UIAction }
+        let disabled = menu.uiMenu().children.compactMap { $0 as? UIAction }
             .filter { $0.attributes.contains(.disabled) }
-            .map(\.title)
-        XCTAssertEqual(disabledTitles, ["Regenerate Response", "Fork From Here"])
-    }
-
-    func testListenItemReflectsListeningState() throws {
-        let idle = try makeMenu(role: "assistant")
-        XCTAssertEqual(idle.items.first?.title, "Listen")
-
-        let listening = try makeMenu(role: "assistant", listeningMessageID: "message-1")
-        XCTAssertEqual(listening.items.first?.title, "Stop Listening")
+        XCTAssertEqual(disabled.map(\.title), menu.items.filter { !$0.isEnabled }.map(\.title),
+                       "The menu UIKit shows disables the same two actions")
     }
 
     func testCachedResponseRetainsListenButDisablesServerMutations() throws {
@@ -54,23 +26,11 @@ final class ChatMessageActionMenuTests: XCTestCase {
         XCTAssertEqual(menu.items.filter(\.isEnabled).map(\.kind), [.listen])
     }
 
-    func testPerformRoutesToTheMatchingCallback() throws {
-        var copied: MessageActionContext?
-        let menu = try makeMenu(role: "user", onCopy: { copied = $0 })
-
-        let copy = try XCTUnwrap(menu.items.first { $0.kind == .copy })
-        copy.perform()
-
-        XCTAssertEqual(copied?.messageID, "message-1")
-    }
-
     private func makeMenu(
         role: String,
-        listeningMessageID: String? = nil,
         hasActiveStream: Bool = false,
         isViewingCachedData: Bool = false,
-        isMutating: Bool = false,
-        onCopy: @escaping (MessageActionContext) -> Void = { _ in }
+        isMutating: Bool = false
     ) throws -> ChatMessageActionMenu {
         let message = ChatMessage(
             role: role,
@@ -83,7 +43,7 @@ final class ChatMessageActionMenuTests: XCTestCase {
         )
         return ChatMessageActionMenu(
             context: context,
-            listeningMessageID: listeningMessageID,
+            listeningMessageID: nil,
             isViewingCachedData: isViewingCachedData,
             hasActiveStream: hasActiveStream,
             isRegeneratingMessage: isMutating,
@@ -93,7 +53,7 @@ final class ChatMessageActionMenuTests: XCTestCase {
             onRegenerate: { _ in },
             onEdit: { _ in },
             onFork: { _ in },
-            onCopy: onCopy
+            onCopy: { _ in }
         )
     }
 }

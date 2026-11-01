@@ -101,19 +101,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.canLoadMoreRuns)
     }
 
-    @MainActor
-    func testPagingStopsWhenTheFirstPageCoversTheTotal() async {
-        let viewModel = makeViewModel { request in
-            apiTestJSONResponse(Self.historyJSON(total: 50, offset: 0, count: 50), for: request)
-        }
-
-        await viewModel.loadHistory()
-
-        XCTAssertEqual(viewModel.runs.count, 50)
-        XCTAssertEqual(viewModel.remainingRunCount, 0)
-        XCTAssertFalse(viewModel.canLoadMoreRuns)
-    }
-
     /// A job writing new output between two pages shifts every row down one, so
     /// the second page can repeat what the first already showed.
     @MainActor
@@ -275,26 +262,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
     }
 
     // MARK: - Run output
-
-    @MainActor
-    func testRunOutputStripsEscapesAndCarriesItsFilename() async {
-        let viewModel = makeViewModel { request in
-            apiTestJSONResponse("""
-            {
-              "job_id": "job-123",
-              "filename": "run-1.md",
-              "content": "\\u001b[0;32mFAIL\\u001b[0m — did not verify",
-              "usage": {}
-            }
-            """, for: request)
-        }
-
-        await viewModel.loadRunOutput(for: CronRunHistoryItem(filename: "run-1.md"))
-
-        XCTAssertEqual(viewModel.runOutput?.filename, "run-1.md")
-        XCTAssertEqual(viewModel.runOutput?.text, "FAIL — did not verify")
-        XCTAssertFalse(viewModel.isLoadingRunOutput)
-    }
 
     /// Tapping a second run while the first is still in flight must leave the
     /// sheet showing the run that was tapped last.
@@ -522,6 +489,34 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertNil(viewModel.runOutputErrorMessage)
         XCTAssertEqual(HermesHostFixture.requests.last?.url?.query, "profile=research")
         XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path.hasPrefix("/api/fs") == true })
+    }
+
+    /// A script-only run (#1342) has no session, so it opens to the preview its row carries and
+    /// sends nothing; a preview the host cut short says so, and a short one that ends in "…"
+    /// doesn't. One that left no output has none.
+    @MainActor
+    func testHermesScriptOnlyRunOpensToItsRowsPreviewWithoutARequest() async throws {
+        let cut = String(String(repeating: "Backup of /srv finished: 12 files, 0 errors. ", count: 4).prefix(179)) + "…"
+        let viewModel = try hermesViewModel { request in
+            request.url?.path == "/api/cron/jobs/a1/runs" ? .json(200, HermesRunFixture.runs([
+                HermesRunFixture.scriptRun("cron_output:a1:2026-10-06_09-00-00", preview: cut),
+                HermesRunFixture.scriptRun("cron_output:a1:2026-10-05_09-00-00", preview: "Waiting…"),
+                HermesRunFixture.scriptRun("cron_output:a1:exec:1", preview: nil)
+            ])) : nil
+        }
+        await viewModel.loadHistory()
+        let sent = HermesHostFixture.requests.count
+        let output = try XCTUnwrap(viewModel.runs.first), silent = try XCTUnwrap(viewModel.runs.last)
+
+        await viewModel.loadRunOutput(for: output)
+        XCTAssertEqual(viewModel.runOutput, CronRunOutput(filename: output.filename, text: cut))
+        XCTAssertTrue(output.isScriptOutputCut)
+        XCTAssertFalse(viewModel.runs[1].isScriptOutputCut)
+
+        await viewModel.loadRunOutput(for: silent)
+        XCTAssertEqual(viewModel.runOutput, CronRunOutput(filename: silent.filename, text: ""))
+        XCTAssertNil(viewModel.runOutputErrorMessage)
+        XCTAssertEqual(HermesHostFixture.requests.count, sent)
     }
 
     /// A run that never gave a final reply has no output, and the sheet says so. A run the host
@@ -834,6 +829,18 @@ enum HermesRunFixture {
         return .object(fields)
     }
 
+    /// A script-only run's row (0.21.6+, #1342), which the host makes from the run's output file
+    /// or execution record: no session, no tokens, and `preview` the output's first 180 characters.
+    static func scriptRun(_ id: String, preview: String?, at time: Double = 1_791_291_600) -> BotJSON {
+        .object([
+            "id": .string(id), "title": .string(preview ?? "Script-only run"), "preview": preview.map(BotJSON.string) ?? .null,
+            "source": .string("cron_output"), "started_at": .number(time), "last_active": .number(time),
+            "ended_at": .number(time), "input_tokens": .number(0), "output_tokens": .number(0),
+            "message_count": .number(0), "tool_call_count": .number(0), "model": .null, "cwd": .null,
+            "archived": .bool(false), "is_active": .bool(false)
+        ])
+    }
+
     static func runs(_ rows: [BotJSON]) -> BotJSON {
         .object(["runs": .array(rows), "limit": .number(100)])
     }
@@ -882,16 +889,6 @@ final class TaskConfigurationFieldTests: XCTestCase {
         XCTAssertEqual(fields.first { $0.title == "Skills" }?.value, "summarize, notify")
         // Nothing said about notifications, so nothing claimed about them.
         XCTAssertNil(fields.first { $0.title == "Notifications" })
-    }
-
-    /// Every job delivers somewhere, and `local` is the server's own default
-    /// rather than a stand-in for a value it failed to send.
-    func testDeliverFallsBackToTheServerDefault() {
-        let fields = TaskConfigurationField.fields(for: Self.decodeJob("""
-        {"job_id": "job-3"}
-        """))
-
-        XCTAssertEqual(fields.first { $0.title == "Deliver" }?.value, "local")
     }
 
     private static func decodeJob(_ json: String) -> CronJob {

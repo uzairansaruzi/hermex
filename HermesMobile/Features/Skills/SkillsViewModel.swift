@@ -1,6 +1,8 @@
 import Foundation
 import Observation
 
+/// The Skills list on one server: a webui server's skills, or one Profile's on a Hermes host
+/// (#1069), whichever `client` reads.
 @MainActor
 @Observable
 final class SkillsViewModel {
@@ -9,14 +11,12 @@ final class SkillsViewModel {
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
     private(set) var togglingSkillNames: Set<String> = []
+    /// Why the last toggle failed, such as a Hermes host's refusal, until it is dismissed.
+    private(set) var toggleErrorMessage: String?
 
-    private let client: APIClient
+    let client: any SkillsDataClient
 
-    init(server: URL) {
-        client = APIClient(baseURL: server)
-    }
-
-    init(client: APIClient) {
+    init(client: any SkillsDataClient) {
         self.client = client
     }
 
@@ -61,7 +61,7 @@ final class SkillsViewModel {
         guard togglingSkillNames.insert(name).inserted else { return }
 
         lastError = nil
-        errorMessage = nil
+        toggleErrorMessage = nil
         updateSkill(named: name, disabled: !enabled)
         defer { togglingSkillNames.remove(name) }
 
@@ -71,8 +71,12 @@ final class SkillsViewModel {
         } catch {
             updateSkill(named: name, disabled: enabled)
             lastError = error
-            errorMessage = error.localizedDescription
+            toggleErrorMessage = error.localizedDescription
         }
+    }
+
+    func clearToggleError() {
+        toggleErrorMessage = nil
     }
 
     static func groupedSkills(for skills: [SkillSummary]) -> [(category: String, skills: [SkillSummary])] {

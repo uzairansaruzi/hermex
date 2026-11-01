@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 
 /// A workspace file on the review surface: line gutter, optional wrap, syntax colour
-/// for the rows on screen, tap-to-select with Copy, and an initial line placed 30 %
-/// down the viewport and highlighted.
+/// for the rows on screen, tap-to-select with Copy (and Comment… when the host has a
+/// chat draft), and an initial line placed 30 % down the viewport and highlighted.
 struct SourceFileSurface: View {
     static let wrapsLinesKey = "workspace.sourceViewer.wrapsLines"
 
@@ -11,9 +11,15 @@ struct SourceFileSurface: View {
     let targetLine: Int?
     let isRefreshing: Bool
     let onRefresh: () -> Void
+    /// Appends a comment and its quoted lines to the chat draft. Nil hides Comment….
+    let onAddToPrompt: ((String) -> Void)?
+    /// Closes back to the chat once a comment was added; nil where ordinary back
+    /// navigation does that.
+    let onReturnToChat: (() -> Void)?
 
+    private let path: String
+    private let serverLanguage: String?
     @State private var viewModel: SourceFileViewModel
-    @State private var selection = ReviewDiffSelection()
     @State private var scrollTarget: ReviewDiffScrollTarget?
     @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -25,16 +31,22 @@ struct SourceFileSurface: View {
         serverLanguage: String?,
         targetLine: Int? = nil,
         isRefreshing: Bool = false,
-        onRefresh: @escaping () -> Void = {}
+        onRefresh: @escaping () -> Void = {},
+        onAddToPrompt: ((String) -> Void)? = nil,
+        onReturnToChat: (() -> Void)? = nil
     ) {
         self.content = content
         self.targetLine = targetLine
         self.isRefreshing = isRefreshing
         self.onRefresh = onRefresh
+        self.onAddToPrompt = onAddToPrompt
+        self.onReturnToChat = onReturnToChat
+        self.path = path
+        self.serverLanguage = serverLanguage
         _viewModel = State(initialValue: SourceFileViewModel(path: path, serverLanguage: serverLanguage))
     }
 
-    private var selectedRowIDs: Set<String> { selection.selectedRowIDs(in: viewModel.rows) }
+    private var selectedRowIDs: Set<String> { viewModel.selection.selectedRowIDs(in: viewModel.rows) }
 
     var body: some View {
         ReviewDiffSurface(
@@ -60,7 +72,18 @@ struct SourceFileSurface: View {
         }
         .safeAreaInset(edge: .bottom) {
             let selected = selectedRowIDs
-            if !selected.isEmpty { selectionBar(count: selected.count) }
+            if !selected.isEmpty {
+                selectionBar(count: selected.count)
+            } else if viewModel.commentComposer.addedCount > 0 {
+                ReviewCommentStatusBar(addedCount: viewModel.commentComposer.addedCount, onReturnToChat: onReturnToChat)
+            }
+        }
+        .sheet(item: $viewModel.commentComposer.context) { context in
+            ReviewCommentSheet(context: context, onAdd: addComment)
+        }
+        // A refresh may renumber the lines (the model drops them again when new rows land).
+        .onChange(of: isRefreshing) {
+            if isRefreshing { viewModel.dropSelection() }
         }
         .task(id: content) {
             await viewModel.load(content: content)
@@ -91,16 +114,21 @@ struct SourceFileSurface: View {
                 .font(AppFont.footnote(weight: .semibold))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            Button("Clear") { selection.clear() }
+            Button("Clear") { viewModel.selection.clear() }
                 .font(AppFont.footnote())
-            // A label-coloured pill needs a background-coloured title, or dark mode
-            // draws white on white.
-            Button(action: copySelection) {
-                Text("Copy")
-                    .font(AppFont.footnote(weight: .semibold))
-                    .foregroundStyle(Color(.systemBackground))
+            if onAddToPrompt != nil {
+                Button(action: copySelection) {
+                    Text("Copy")
+                        .font(AppFont.footnote(weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                prominentButton("Comment…") {
+                    let language = SourceHighlightLanguage.resolve(path: path, serverLanguage: serverLanguage)
+                    viewModel.commentComposer.context = viewModel.selection.sourceCommentContext(in: viewModel.rows, path: path, language: language)
+                }
+            } else {
+                prominentButton("Copy", action: copySelection)
             }
-            .buttonStyle(.borderedProminent)
         }
         .tint(.primary)
         .padding(.horizontal, 16)
@@ -109,29 +137,47 @@ struct SourceFileSurface: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// A label-coloured pill needs a background-coloured title, or dark mode draws
+    /// white on white.
+    private func prominentButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(AppFont.footnote(weight: .semibold))
+                .foregroundStyle(Color(.systemBackground))
+        }
+        .buttonStyle(.borderedProminent)
+    }
+
     /// The requested line is selected and scrolled to once, when the rows first exist.
     private func seedTargetLineIfNeeded() {
-        guard let targetLine, scrollTarget == nil, selection.isEmpty,
+        guard let targetLine, scrollTarget == nil, viewModel.selection.isEmpty,
               targetLine >= 1, targetLine <= viewModel.rows.count else { return }
         let rowID = SourceFileRows.rowID(forLineIndex: targetLine - 1)
-        selection.tap(rowID: rowID, fileID: SourceFileRows.fileID)
+        viewModel.selection.tap(rowID: rowID, fileID: SourceFileRows.fileID)
         scrollTarget = ReviewDiffScrollTarget(anchor: .row(rowID), token: UUID())
     }
 
     private func handleLinePress(_ press: ReviewDiffLinePress) {
         switch press.gesture {
-        case .tap: selection.tap(rowID: press.rowID, fileID: press.fileID)
-        case .longPress: selection.longPress(rowID: press.rowID, fileID: press.fileID)
+        case .tap: viewModel.selection.tap(rowID: press.rowID, fileID: press.fileID)
+        case .longPress: viewModel.selection.longPress(rowID: press.rowID, fileID: press.fileID)
         }
         ChatHaptics.diffLineSelected(isEnabled: isHapticsEnabled)
     }
 
+    private func addComment(_ comment: String) {
+        guard let markdown = viewModel.commentComposer.add(comment: comment) else { return }
+        onAddToPrompt?(markdown)
+        ChatHaptics.addedToPrompt(isEnabled: isHapticsEnabled)
+        viewModel.selection.clear()
+    }
+
     /// Copies the selected lines, blank ones included, so a selection always answers.
     private func copySelection() {
-        let selected = selection.selectedRows(in: viewModel.rows)
+        let selected = viewModel.selection.selectedRows(in: viewModel.rows)
         guard !selected.isEmpty else { return }
         UIPasteboard.general.string = selected.compactMap { $0.line?.content }.joined(separator: "\n")
         ChatHaptics.copied(isEnabled: isHapticsEnabled)
-        selection.clear()
+        viewModel.selection.clear()
     }
 }

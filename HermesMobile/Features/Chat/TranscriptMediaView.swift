@@ -21,10 +21,21 @@ extension EnvironmentValues {
         get { self[ChatWorkspaceRootKey.self] }
         set { self[ChatWorkspaceRootKey.self] = newValue }
     }
+
+    /// Hermes sessions opt into document previews without changing the webui
+    /// transcript's download-only file rows.
+    var previewsHermesDocuments: Bool {
+        get { self[HermesDocumentPreviewKey.self] }
+        set { self[HermesDocumentPreviewKey.self] = newValue }
+    }
 }
 
 private struct ChatWorkspaceRootKey: EnvironmentKey {
     static let defaultValue: String? = nil
+}
+
+private struct HermesDocumentPreviewKey: EnvironmentKey {
+    static let defaultValue = false
 }
 
 struct TranscriptMediaContentView: View {
@@ -34,6 +45,7 @@ struct TranscriptMediaContentView: View {
     let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
+    @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
 
     init(
         segments: [TranscriptMediaSegment],
@@ -60,17 +72,22 @@ struct TranscriptMediaContentView: View {
                         MarkdownRenderer(content: text, isStreaming: isStreaming)
                     }
                 case let .media(reference):
-                    TranscriptMediaThumbnailView(
+                    let thumbnail = TranscriptMediaThumbnailView(
                         reference: reference,
                         cacheNamespace: cacheNamespace,
                         loadMediaImage: loadMediaImage,
                         loadMediaData: loadMediaData,
                         onPreviewMedia: onPreviewMedia
                     )
-                    // Pin the image container LTR so media keeps its leading-edge
-                    // anchor inside an RTL message (#259); the text segments above
-                    // still follow the chat direction.
-                    .forcedLeftToRight()
+                    // Pin other media LTR so it keeps its leading-edge anchor inside an RTL
+                    // message (#259); the text segments above still follow the chat
+                    // direction, and so does a Hermes document's preview row.
+                    if previewsHermesDocuments && reference.isHermesDocumentCandidate
+                        && onPreviewMedia != nil && loadMediaData != nil {
+                        thumbnail
+                    } else {
+                        thumbnail.forcedLeftToRight()
+                    }
                 }
             }
         }
@@ -83,9 +100,11 @@ private struct TranscriptMediaThumbnailView: View {
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
+    @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
 
     @State private var image: UIImage?
     @State private var didAttemptLoad = false
+    @State private var admittedImageKey: TranscriptMediaImageCacheKey?
 
     private let thumbnailWidth: CGFloat = 210
     private let thumbnailHeight: CGFloat = 132
@@ -111,8 +130,9 @@ private struct TranscriptMediaThumbnailView: View {
             }
             .buttonStyle(.chatTactile(.thumbnail))
             .accessibilityLabel(imageButtonAccessibilityLabel)
-            .task(id: imageCacheKey) {
-                guard let loadMediaImage else { return }
+            .loadsOnceVisible(id: imageCacheKey) { admittedImageKey = $0 }
+            .task(id: admittedImageKey) {
+                guard let loadMediaImage, admittedImageKey == imageCacheKey else { return }
                 image = nil
                 didAttemptLoad = false
                 let reference = reference
@@ -152,7 +172,9 @@ private struct TranscriptMediaThumbnailView: View {
                     reference: reference,
                     loadMediaData: {
                         await loadMediaData(reference)
-                    }
+                    },
+                    onPreview: previewsHermesDocuments && reference.isHermesDocumentCandidate
+                        ? onPreviewMedia.map { preview in { preview(reference) } } : nil
                 )
             } else {
                 TranscriptMediaUnavailableChip(reference: reference)
@@ -212,6 +234,7 @@ private struct TranscriptMediaResolvedRemoteView: View {
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
 
     @State private var resolvedMedia: ResolvedMedia?
+    @State private var admittedReferenceID: String?
 
     var body: some View {
         Group {
@@ -254,7 +277,9 @@ private struct TranscriptMediaResolvedRemoteView: View {
                     }
             }
         }
-        .task(id: reference.id) {
+        .loadsOnceVisible(id: reference.id) { admittedReferenceID = $0 }
+        .task(id: admittedReferenceID) {
+            guard admittedReferenceID == reference.id else { return }
             resolvedMedia = nil
             guard let data = await loadMediaData(reference) else {
                 guard !Task.isCancelled else { return }
@@ -399,9 +424,13 @@ private struct TranscriptMediaAudioExportView: View {
     }
 }
 
+/// A MEDIA file's row: its download button exports the whole file. With `onPreview` (a
+/// Hermes document, #145) the rest of the row opens the capped native preview instead, so a
+/// file over the preview cap still saves and shares from here.
 private struct TranscriptMediaFileExportView: View {
     let reference: TranscriptMediaReference
     let loadMediaData: () async -> Data?
+    let onPreview: (() -> Void)?
 
     @State private var cachedData: Data?
     @State private var exportDocument = ExportedFileDocument(data: Data())
@@ -414,35 +443,32 @@ private struct TranscriptMediaFileExportView: View {
     init(
         reference: TranscriptMediaReference,
         initialData: Data? = nil,
-        loadMediaData: @escaping () async -> Data?
+        loadMediaData: @escaping () async -> Data?,
+        onPreview: (() -> Void)? = nil
     ) {
         self.reference = reference
         self.loadMediaData = loadMediaData
+        self.onPreview = onPreview
         _cachedData = State(initialValue: initialData)
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "doc")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(.secondaryLabel))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(.label))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-
-                Text(isExporting
-                     ? String(localized: "Loading…")
-                     : String(localized: "Tap to download"))
-                    .font(.caption2)
-                    .foregroundStyle(Color(.secondaryLabel))
-                    .lineLimit(1)
+            if let onPreview {
+                Button(action: onPreview) {
+                    HStack(spacing: 8) {
+                        fileLabel
+                        Image(systemName: "chevron.forward")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.chatTactile(.thumbnail))
+                .accessibilityLabel(String(localized: "Preview \(reference.displayName)"))
+            } else {
+                fileLabel
             }
-
-            Spacer(minLength: 8)
 
             Button {
                 Task { await exportFile() }
@@ -490,6 +516,31 @@ private struct TranscriptMediaFileExportView: View {
             }
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    private var fileLabel: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "doc")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(.secondaryLabel))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(reference.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                Text(isExporting
+                     ? String(localized: "Loading…")
+                     : onPreview == nil ? String(localized: "Tap to download") : String(localized: "Tap to preview"))
+                    .font(.caption2)
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
         }
     }
 
@@ -641,7 +692,7 @@ struct TranscriptMediaPreviewView: View {
 
     init(
         server: URL,
-        sessionID: String?,
+        files: (any WorkspaceFileClient)?,
         item: TranscriptMediaPreviewItem,
         onAPIError: @escaping (Error) -> Void
     ) {
@@ -650,7 +701,7 @@ struct TranscriptMediaPreviewView: View {
         _viewModel = State(
             initialValue: TranscriptMediaPreviewViewModel(
                 server: server,
-                sessionID: sessionID,
+                files: files,
                 reference: item.reference
             )
         )

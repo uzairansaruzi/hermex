@@ -39,13 +39,14 @@ struct CronRunHistoryResponse: Decodable, Equatable {
 
 /// One run: enough to render a row, and the `filename` handle the run-detail
 /// endpoint needs. A Hermes host's run (#1042) is its session, mapped onto the
-/// same row in `HermesCronClient`.
+/// same row in `HermesCronClient`; a script-only run (#1342) is only its row.
 struct CronRunHistoryItem: Decodable, Equatable, Identifiable {
     var id: String { filename }
 
     /// Unique within a job's output directory, which is what makes it a safe
     /// list identity as well as the detail request's key. On a Hermes host,
-    /// the run's session id (`cron_<job>_<time>`).
+    /// the run's session id (`cron_<job>_<time>`), or a script-only run's
+    /// `cron_output:` id, which no route opens.
     let filename: String
     /// Bytes on disk. `nil` when the server sent something unusable rather
     /// than a number.
@@ -57,12 +58,23 @@ struct CronRunHistoryItem: Decodable, Equatable, Identifiable {
     /// A Hermes host's run still in progress. A webui run is listed only once it
     /// has finished.
     var isRunning = false
+    /// A Hermes host's script-only run (#1342), which has no session to read: its row's
+    /// preview, the start of its output or, for a run whose output is gone, its error;
+    /// "" when it has neither. Nil for every other run.
+    var scriptOutput: String?
     /// Parsed out of the run's markdown front matter, and frequently empty.
     let usage: CronRunUsage
 
     /// When the row says the run happened: a Hermes run's start, else the
     /// webui file's finish.
     var date: Date? { startedAt ?? modified }
+
+    /// Whether the host cut `scriptOutput` short. It collapses the output's whitespace and
+    /// cuts anything longer than 180 characters to 179, trailing space dropped, plus "…".
+    var isScriptOutputCut: Bool {
+        guard let scriptOutput, scriptOutput.hasSuffix("…") else { return false }
+        return (179...180).contains(scriptOutput.unicodeScalars.count)
+    }
 
     enum CodingKeys: String, CodingKey {
         case filename

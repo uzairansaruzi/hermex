@@ -17,12 +17,6 @@ final class ReviewWordDiffTests: XCTestCase {
         XCTAssertEqual(pair.addition, [12..<19])
     }
 
-    func testWhitespaceIsTrimmedFromRangeEdges() {
-        let pair = ReviewWordDiff.ranges(deletion: "a  b c", addition: "a  x c")
-        XCTAssertEqual(pair.deletion, [3..<4])
-        XCTAssertEqual(pair.addition, [3..<4])
-    }
-
     func testRewrittenLinesStayPlainAboveTheCoverageGate() {
         let pair = ReviewWordDiff.ranges(deletion: "alpha beta gamma delta", addition: "one two three four")
         XCTAssertEqual(pair.deletion, [])

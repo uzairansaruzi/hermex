@@ -1,23 +1,31 @@
 import SwiftUI
 
 /// The Usage screen: a window picker, one hero figure with a chart under it, the
-/// window totals, and the per-model breakdown. Every figure comes from
-/// `GET /api/insights`, or from local session metadata when that call fails.
+/// window totals, and the per-model breakdown. On a webui server every figure comes from
+/// `GET /api/insights`, or from local session metadata when that call fails. On a Hermes host
+/// (#1074) they are one Profile's analytics, which the title names (`HermesInsightsClient`).
 struct InsightsView: View {
-    let server: URL
     let onAPIError: (Error) -> Void
+    private let profile: String?
 
     @State private var viewModel: InsightsViewModel
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
-        self.server = server
+        self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
+    }
+
+    /// The usage `client` reads: on a Hermes host, `profile`'s, whose limits also go to the Limits
+    /// widget under `limitsScope` (#1409).
+    init(client: any InsightsDataClient, profile: String? = nil, limitsScope: ProviderLimitsPublisher.Scope? = nil,
+         onAPIError: @escaping (Error) -> Void) {
         self.onAPIError = onAPIError
-        _viewModel = State(initialValue: InsightsViewModel(server: server))
+        self.profile = profile
+        _viewModel = State(initialValue: InsightsViewModel(client: client, publishesLimits: limitsScope))
     }
 
     var body: some View {
         content
-            .navigationTitle("Usage")
+            .modifier(UsageTitle(profile: profile))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -52,9 +60,29 @@ struct InsightsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.isLoading && !viewModel.hasLoadedAnalytics {
+        if viewModel.hasLoadedAnalytics {
+            loadedContent
+        } else if viewModel.features.fallsBackToSessions {
+            placeholder
+        } else {
+            // Without a sessions fallback (Hermes) a failed window replaces the figures, so the
+            // picker stays above the placeholder, where it sits once loaded, to leave that window.
+            VStack(spacing: 0) {
+                windowPicker
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                placeholder
+                    .frame(maxHeight: .infinity)
+            }
+        }
+    }
+
+    /// What stands in for the figures before any have loaded: progress, the error, or no data.
+    @ViewBuilder
+    private var placeholder: some View {
+        if viewModel.isLoading {
             ProgressView("Loading usage...")
-        } else if let errorMessage = viewModel.errorMessage, !viewModel.hasLoadedAnalytics {
+        } else if let errorMessage = viewModel.errorMessage {
             ContentUnavailableView {
                 Label("Could Not Load Usage", systemImage: "exclamationmark.triangle")
             } description: {
@@ -64,15 +92,22 @@ struct InsightsView: View {
                     Task { await loadInsights() }
                 }
             }
-        } else if !viewModel.hasLoadedAnalytics {
+        } else {
             ContentUnavailableView {
                 Label("No Data", systemImage: "chart.bar")
             } description: {
                 Text("Session usage data will appear here once you have conversations.")
             }
-        } else {
-            loadedContent
         }
+    }
+
+    private var windowPicker: some View {
+        Picker("Window", selection: $viewModel.selectedTimeframe) {
+            ForEach(viewModel.timeframes) { timeframe in
+                Text(timeframe.title).tag(timeframe)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 
     private var loadedContent: some View {
@@ -81,16 +116,12 @@ struct InsightsView: View {
                 if viewModel.showsLimits {
                     ProviderLimitsSection(
                         cards: viewModel.limitCards,
-                        isLoading: viewModel.isLoadingLimits
+                        isLoading: viewModel.isLoadingLimits,
+                        refreshFailed: !viewModel.staleLimitIDs.isEmpty
                     )
                 }
 
-                Picker("Window", selection: $viewModel.selectedTimeframe) {
-                    ForEach(AnalyticsTimeframe.allCases) { timeframe in
-                        Text(timeframe.title).tag(timeframe)
-                    }
-                }
-                .pickerStyle(.segmented)
+                windowPicker
 
                 if viewModel.dataSource != .server {
                     SectionCard {
@@ -154,6 +185,24 @@ struct InsightsView: View {
 
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
+        }
+    }
+}
+
+/// Titles the Usage screen. On a Hermes host it also names the Profile the figures are for:
+/// under the title on iOS 26, and after it before that.
+private struct UsageTitle: ViewModifier {
+    let profile: String?
+
+    func body(content: Content) -> some View {
+        if let profile {
+            if #available(iOS 26, *) {
+                content.navigationTitle("Usage").navigationSubtitle(profile)
+            } else {
+                content.navigationTitle(Text(verbatim: "\(String(localized: "Usage")) · \(profile)"))
+            }
+        } else {
+            content.navigationTitle("Usage")
         }
     }
 }

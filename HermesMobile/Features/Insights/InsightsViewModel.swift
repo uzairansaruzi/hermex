@@ -2,15 +2,38 @@ import Foundation
 import Observation
 
 /// Sendable because quota probes run concurrently in a task group: the client
-/// is handed to child tasks off the main actor.
+/// is handed to child tasks off the main actor. A webui server's is its `APIClient`;
+/// a Hermes host's is `HermesInsightsClient` (#1074).
 protocol InsightsDataClient: Sendable {
+    /// What this server's insights report, which decides what the Usage screen offers.
+    var insightsFeatures: InsightsFeatures { get }
     func sessions() async throws -> SessionsResponse
     func insights(days: Int) async throws -> InsightsResponse
     func providers() async throws -> ProvidersResponse
     func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse
 }
 
-extension APIClient: InsightsDataClient {}
+extension APIClient: InsightsDataClient {
+    nonisolated var insightsFeatures: InsightsFeatures { .webui }
+}
+
+/// What one server's insights can report.
+struct InsightsFeatures: Equatable, Sendable {
+    /// The windows the picker offers. Today is the only hourly one.
+    let timeframes: [AnalyticsTimeframe]
+    /// Message counts cover only part of the window, so the totals mark them "≈".
+    let approximatesMessages: Bool
+    /// A failed insights read is rebuilt from `/api/sessions`, which is also the only source of
+    /// top sessions. Without it, the failure is the screen's error.
+    let fallsBackToSessions: Bool
+
+    static let webui = InsightsFeatures(timeframes: AnalyticsTimeframe.allCases, approximatesMessages: false,
+                                        fallsBackToSessions: true)
+    /// A Hermes host (#1074) reports no hours, counts messages over at most its newest 500 visible
+    /// sessions (`insights.get`), and has no sessions list here.
+    static let hermes = InsightsFeatures(timeframes: [.last7Days, .last30Days, .last90Days], approximatesMessages: true,
+                                         fallsBackToSessions: false)
+}
 
 /// The windows the Usage screen offers. Each maps to a `days` value the insights
 /// handler clamps to 1-365, and to a matching local filter for the session
@@ -129,13 +152,17 @@ final class InsightsViewModel {
     private(set) var dataSource: InsightsDataSource = .local
     private(set) var fallbackReason: String?
     /// The provider quota cards above the window picker (#415). Empty until a
-    /// provider qualifies, and empty again the moment one stops qualifying.
+    /// provider qualifies. A card leaves once its provider leaves the selection
+    /// or the server says it no longer qualifies; a failed probe keeps it (#1408).
     private(set) var limitCards: [ProviderLimitCard] = []
     /// True only while quota probes for at least one candidate provider are in
     /// flight. It exists so the Limits slot can be reserved before the answers
     /// arrive instead of popping in and shoving the analytics down (#415), so a
     /// server with no keyed provider must never set it.
     private(set) var isLoadingLimits = false
+    /// The ids of the `limitCards` the latest refresh failed to update, so they
+    /// still show the last values loaded (#1408). Drives the Limits notice.
+    private(set) var staleLimitIDs: Set<String> = []
     private var activeLoadID: UUID?
     /// Same generation guard as `ProvidersViewModel`: quota has three
     /// overlapping entry points (`.task`, `.refreshable`, the toolbar button),
@@ -143,13 +170,15 @@ final class InsightsViewModel {
     private var limitsGeneration = 0
 
     private let client: any InsightsDataClient
+    /// The Hermes Usage screen whose cards the Limits widget shows (#1409); nil publishes nothing.
+    private let limitsScope: ProviderLimitsPublisher.Scope?
+    private let limitsPublisher: ProviderLimitsPublisher?
 
-    init(server: URL) {
-        client = APIClient(baseURL: server)
-    }
-
-    init(client: any InsightsDataClient) {
+    init(client: any InsightsDataClient, publishesLimits limitsScope: ProviderLimitsPublisher.Scope? = nil,
+         publisher: ProviderLimitsPublisher? = nil) {
         self.client = client
+        self.limitsScope = limitsScope
+        limitsPublisher = limitsScope == nil ? nil : publisher ?? .shared
     }
 
     func load() async {
@@ -180,6 +209,14 @@ final class InsightsViewModel {
         } catch {
             guard activeLoadID == loadID, !Task.isCancelled else { return }
             lastError = error
+            guard features.fallsBackToSessions else {
+                // Nothing to rebuild the window from, and what is on screen is another window or
+                // unconfirmed: the failure replaces it.
+                serverInsights = nil
+                dataSource = .local
+                errorMessage = error.localizedDescription
+                return
+            }
             fallbackReason = error.localizedDescription
 
             do {
@@ -209,16 +246,22 @@ final class InsightsViewModel {
     /// account-limits probe can take several seconds upstream, and the chart
     /// must never wait on it.
     ///
-    /// Every failure here is silent. Quota is a bonus panel, so a 404 on an
-    /// older server, a decode failure, or a dead provider hides the group
-    /// rather than putting an error over the analytics the user came for —
-    /// which is why this never touches `errorMessage` or `lastError`.
+    /// Failures never reach `errorMessage` or `lastError`: quota is a bonus
+    /// panel, and must not put an error over the analytics the user came for.
+    /// A failure with nothing on screen stays silent. One with cards showing
+    /// keeps them as they were and marks them in `staleLimitIDs` (#1408), so a
+    /// network blip does not look like a vanished subscription.
     ///
     /// `refresh` bypasses the server's 45 s probe cache and belongs only to the
     /// toolbar button and pull-to-refresh.
+    ///
+    /// Each load that settles the cards hands them to the Limits widget, with a ticket taken
+    /// before the first read so a server switch meanwhile drops them (#1409). A failed providers
+    /// read publishes nothing.
     func loadLimits(refresh: Bool = false) async {
         limitsGeneration += 1
         let generation = limitsGeneration
+        let ticket = limitsScope.flatMap { limitsPublisher?.ticket(for: $0) }
         // The newest generation owns `isLoadingLimits`, and clears it on every
         // way out — including the silent failures below. A superseded load
         // leaves it alone so it cannot cancel the placeholder of the load that
@@ -233,44 +276,78 @@ final class InsightsViewModel {
         do {
             selection = providerQuotaSelection(from: try await client.providers())
         } catch {
-            // Nothing to correct the cards with — leave whatever is on screen.
+            // Nothing to correct the cards with: keep them, but say they may be old.
+            guard generation == limitsGeneration, !Task.isCancelled else { return }
+            staleLimitIDs = Set(limitCards.map(\.id))
             return
         }
 
         guard generation == limitsGeneration, !Task.isCancelled else { return }
         guard !selection.isEmpty else {
             limitCards = []
+            staleLimitIDs = []
+            publishLimits(with: ticket)
             return
         }
 
         isLoadingLimits = true
 
         let fetchedAt = Date()
-        let cards = await withTaskGroup(of: (Int, ProviderLimitCard?).self) { group in
+        let probes = await withTaskGroup(of: (Int, LimitProbe).self) { group in
             for (index, provider) in selection.enumerated() {
                 group.addTask { [client] in
-                    guard let response = try? await client.providerQuota(provider: provider, refresh: refresh) else {
-                        return (index, nil)
+                    do {
+                        let response = try await client.providerQuota(provider: provider, refresh: refresh)
+                        return (index, LimitProbe(provider: provider, response: response, fetchedAt: fetchedAt))
+                    } catch {
+                        return (index, .failed)
                     }
-
-                    return (index, ProviderLimitCard(provider: provider, response: response, fetchedAt: fetchedAt))
-                }
-            }
-
-            var collected: [(Int, ProviderLimitCard)] = []
-            for await (index, card) in group {
-                if let card {
-                    collected.append((index, card))
                 }
             }
 
             // Selection order, not completion order: cards must not reshuffle
             // because one provider answered faster this time.
-            return collected.sorted { $0.0 < $1.0 }.map(\.1)
+            var probes = Array(repeating: LimitProbe.failed, count: selection.count)
+            for await (index, probe) in group {
+                probes[index] = probe
+            }
+            return probes
         }
 
         guard generation == limitsGeneration, !Task.isCancelled else { return }
+        var cards: [ProviderLimitCard] = []
+        var stale: Set<String> = []
+        for (provider, probe) in zip(selection, probes) {
+            switch probe {
+            case .card(let card):
+                cards.append(card)
+            case .gone:
+                break
+            case .failed:
+                if let previous = limitCards.first(where: { $0.id == provider }) {
+                    cards.append(previous)
+                    stale.insert(provider)
+                }
+            }
+        }
         limitCards = cards
+        staleLimitIDs = stale
+        publishLimits(with: ticket)
+    }
+
+    private func publishLimits(with ticket: ProviderLimitsPublisher.Ticket?) {
+        guard let ticket else { return }
+        limitsPublisher?.publish(limitCards, stale: staleLimitIDs, with: ticket)
+    }
+
+    /// What this server's insights report.
+    var features: InsightsFeatures {
+        client.insightsFeatures
+    }
+
+    /// The windows the picker offers.
+    var timeframes: [AnalyticsTimeframe] {
+        features.timeframes
     }
 
     // MARK: - Aggregates
@@ -520,7 +597,7 @@ final class InsightsViewModel {
         cells.append(UsageTotalsCell(
             id: "messages",
             label: String(localized: "Messages"),
-            value: usageFormattedTokens(totalMessages),
+            value: (features.approximatesMessages ? "≈" : "") + usageFormattedTokens(totalMessages),
             detail: String(localized: "across \(String(localized: "\(sessionCount) sessions"))")
         ))
 
@@ -581,5 +658,31 @@ struct UsageTotalsCell: Identifiable, Equatable {
 private extension SessionSummary {
     var analyticsTimestamp: Double? {
         lastMessageAt ?? updatedAt ?? createdAt
+    }
+}
+
+/// What one refresh learned about one provider's limits (#1408). Only a status
+/// saying the server can't report this provider removes its card: `unsupported`
+/// (hermex-push and webui), `no_key` or `invalid_key` (webui). Anything else
+/// that is not a usable card is a failure and keeps the last one: a thrown
+/// request, an unknown status or empty payload, and `unavailable`, which both
+/// servers also answer when the provider's own API can't be reached.
+private enum LimitProbe {
+    case card(ProviderLimitCard)
+    case gone
+    case failed
+
+    init(provider: String, response: ProviderQuotaResponse, fetchedAt: Date) {
+        if let card = ProviderLimitCard(provider: provider, response: response, fetchedAt: fetchedAt) {
+            self = .card(card)
+            return
+        }
+
+        switch response.status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "unsupported", "no_key", "invalid_key":
+            self = .gone
+        default:
+            self = .failed
+        }
     }
 }

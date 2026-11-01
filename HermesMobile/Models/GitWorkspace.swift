@@ -7,6 +7,8 @@ import Foundation
 // `.convertFromSnakeCase`, so snake_case JSON keys (`is_git`, `old_path`, `too_large`, …)
 // map onto these camelCase properties automatically.
 //
+// A Hermes chat's repository maps into the same models in `HermesGitClient` (#1114).
+//
 // Endpoint contract (verified against `.codex-tmp/hermes-webui/api/workspace_git.py`):
 // - GET /api/git-info  → { "git": {...} | null }
 // - GET /api/git/status → { "git": {...} }   (non-repo: is_git=false, HTTP 200)
@@ -136,6 +138,25 @@ struct GitFile: Decodable, Equatable, Identifiable {
 }
 
 extension GitFile {
+    /// A changed file a client assembles itself, as `HermesGitClient` does from a Hermes host's
+    /// rows (#1114), keyed by its path.
+    init(path: String, status: String?, staged: Bool?, unstaged: Bool?, untracked: Bool?, conflict: Bool?,
+         additions: Int?, deletions: Int?) {
+        id = path.isEmpty ? UUID().uuidString : path
+        self.path = path
+        oldPath = nil
+        workspacePath = nil
+        self.status = status
+        self.staged = staged
+        self.unstaged = unstaged
+        self.untracked = untracked
+        ignored = nil
+        self.conflict = conflict
+        self.additions = additions
+        self.deletions = deletions
+        binary = nil
+    }
+
     /// A normalized change kind derived from the booleans first (the reliable signal),
     /// falling back to the raw `status` code. UI maps this to a localized chip + colour.
     enum ChangeKind: Equatable {
@@ -191,6 +212,51 @@ extension GitFile {
     var isIgnoredFile: Bool {
         ignored == true || (status ?? "").caseInsensitiveCompare("Ignored") == .orderedSame
     }
+}
+
+// MARK: - Review scope (#1386)
+
+/// Which changes a review reads: the working tree's uncommitted ones, what the branch committed
+/// since it left its base (a Hermes host's `scope=branch`), or a Hermes turn's range since the HEAD
+/// its send read (`scope=lastTurn&base=`, #1392). The Changes sheet offers only the first two; the
+/// latest turn's card and its diff read the third.
+enum GitReviewScope: Hashable {
+    case uncommitted
+    case branch
+    case since(base: String)
+}
+
+/// The HEAD a Hermes chat's direct send read just before its prompt went out (#1392), bound to the
+/// turn that send started. `turn` is the chat's count of turns started, so no other turn, folder,
+/// Profile, session or server shares it.
+struct GitTurnBase: Hashable {
+    let sha: String
+    let workspace: HermesWorkspaceContext
+    let turn: Int
+}
+
+/// What the latest turn's card has read of its range since a `GitTurnBase`.
+enum GitTurnReview: Equatable {
+    case reading
+    /// The range's rows; an untracked file's carries `untracked`, the rest claim no kind.
+    case read([GitFile])
+    /// The read failed, or the host had no range: the card shows uncommitted changes instead.
+    case failed
+}
+
+/// A Hermes branch's committed changes, against the merge-base the host picked itself.
+struct GitBranchReview: Equatable {
+    /// Root-relative rows with their counts. The host marks every row `M`, added and deleted files
+    /// too, so none claims a kind (`changeKind` is `.unknown`) or a worktree flag.
+    let files: [GitFile]
+    /// The merge-base commit; nil when the host found no base branch.
+    let base: String?
+    /// Nil on a detached HEAD.
+    let branch: String?
+    let detached: Bool
+
+    var totalAdditions: Int { files.reduce(0) { $0 + ($1.additions ?? 0) } }
+    var totalDeletions: Int { files.reduce(0) { $0 + ($1.deletions ?? 0) } }
 }
 
 // MARK: - git/branches (decoded + tested now; interactive picker is Slice B)
@@ -288,6 +354,13 @@ struct GitCommitResponse: Decodable, Equatable {
     let paths: [String]?
     let status: GitStatus?
     let git: GitStatus?
+    /// Set by a Hermes Commit Selected (#1115) whose commit landed but which couldn't stage the
+    /// other staged files again. Never decoded.
+    var stagingNotRestored = false
+
+    enum CodingKeys: String, CodingKey {
+        case ok, commit, paths, status, git
+    }
 
     var resolvedStatus: GitStatus? { status ?? git }
     /// Short SHA produced by the commit, trimmed for display.
@@ -322,4 +395,22 @@ struct GitDiff: Decodable, Equatable {
     let deletions: Int?
     /// Unified diff text. Empty for binary or too-large diffs.
     let diff: String?
+}
+
+// MARK: - Pull request (Hermes `git/review/ship-info`, #1391)
+
+/// The checked-out branch's pull request, as the host's `gh pr view` names it: only a number, a
+/// web link and a state, with no title or draft flag.
+struct GitPullRequest: Equatable, Sendable {
+    enum State: String, Sendable {
+        case open = "OPEN"
+        case merged = "MERGED"
+        case closed = "CLOSED"
+    }
+
+    let number: Int
+    /// Always a web page `InAppBrowserPolicy.opensInApp` accepts.
+    let url: URL
+    /// Nil for a state `gh` names that isn't one of these.
+    let state: State?
 }

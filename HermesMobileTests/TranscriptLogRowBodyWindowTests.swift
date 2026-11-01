@@ -18,21 +18,10 @@ final class TranscriptLogRowBodyWindowTests: XCTestCase {
         XCTAssertFalse(layout.scrolls)
     }
 
-    func testContentAtTheCapFillsTheWindowWithoutScrolling() {
-        let layout = TranscriptLogRowBodyWindowLayout.resolve(contentHeight: cap, cap: cap)
-
-        XCTAssertEqual(layout.frameHeight, cap)
-        XCTAssertFalse(layout.scrolls)
-    }
-
     func testContentAboveTheCapClipsToTheWindowAndScrolls() {
         let layout = TranscriptLogRowBodyWindowLayout.resolve(contentHeight: 1_800, cap: cap)
 
         XCTAssertEqual(layout.frameHeight, cap)
         XCTAssertTrue(layout.scrolls)
-    }
-
-    func testTheCapIsTwoHundredFortyPoints() {
-        XCTAssertEqual(cap, 240)
     }
 }

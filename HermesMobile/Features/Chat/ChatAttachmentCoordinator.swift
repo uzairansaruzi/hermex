@@ -50,6 +50,11 @@ final class ChatAttachmentCoordinator {
     private let draftStore: ChatDraftStore?
     private let attachmentLease: ChatDraftAttachmentLease?
     private var reservedUploadFilenames: Set<String> = []
+    /// Names held by pasted text still staging, so a paste that starts before the
+    /// last one lands takes the next name (#1381).
+    private var stagingPasteNames: Set<String> = []
+    /// Long pastes still staging, so `cancelPastedTextStaging()` can stop them.
+    private var pasteTasks: [UUID: Task<PendingAttachment?, Never>] = [:]
     /// A Hermes session (#1012): staging keeps only the local copy, under Bot Chat's
     /// limits and image conversion, and Send or Queue uploads it
     /// (`HermesChatTurnCoordinator`). A webui session uploads each file as it is staged.
@@ -130,6 +135,44 @@ final class ChatAttachmentCoordinator {
         return attachment
     }
 
+    /// Starts staging a long paste as a text file under the next free `pasted-text`
+    /// name (#1381). The name is held before the task starts, against the strip and
+    /// every paste still staging, and the paste counts as an upload while the text is
+    /// encoded, so Send waits for it. The chat stops it with `cancelPastedTextStaging()`
+    /// as it goes away.
+    @discardableResult
+    func stagePastedText(_ text: String) -> Task<PendingAttachment?, Never> {
+        let filename = ComposerLargePaste.filename(avoiding: stagingPasteNames.union(pendingAttachments.map(\.name)))
+        stagingPasteNames.insert(filename)
+        activeUploadCount += 1
+        let id = UUID()
+        let limit = uploadsOnSend ? BotAttachmentUpload.maximumFileBytes : PendingAttachment.maximumUploadBytes
+        let task = Task { () -> PendingAttachment? in
+            defer {
+                stagingPasteNames.remove(filename)
+                pasteTasks[id] = nil
+            }
+            // Measured before encoding, so a paste over the file limit never copies its text.
+            let data = await Task.detached { text.utf8.count <= limit ? Data(text.utf8) : nil }.value
+            activeUploadCount = max(activeUploadCount - 1, 0)
+            guard !Task.isCancelled else { return nil }
+            guard let data else {
+                uploadAttachmentErrorMessage = uploadsOnSend
+                    ? BotAttachmentFailure.limit.localizedDescription
+                    : PendingAttachment.uploadTooLargeMessage(filename: filename)
+                return nil
+            }
+            return await uploadAttachment(data: data, filename: filename)
+        }
+        pasteTasks[id] = task
+        return task
+    }
+
+    /// Stops every long paste still staging, so none lands after its chat is gone.
+    func cancelPastedTextStaging() {
+        pasteTasks.values.forEach { $0.cancel() }
+    }
+
     /// Re-uploads a restored draft attachment from its durable local copy,
     /// preserving the draft record's identity so the restored pending
     /// attachment reconciles with the persisted draft instead of duplicating
@@ -167,7 +210,7 @@ final class ChatAttachmentCoordinator {
 
     /// Keeps a durable local copy for a Hermes send to upload, under Bot Chat's rules:
     /// eight files, 25 MB each and 50 MB in all; images re-encoded as JPEG, or PNG with
-    /// transparency (`BotAttachmentDraft.prepare`). Counts as an upload while it runs, so
+    /// transparency (`BotAttachmentUpload.prepare`). Counts as an upload while it runs, so
     /// the composer waits for it as it waits for a webui upload.
     private func stageForSend(data: Data, filename: String) async -> PendingAttachment? {
         let stagingID = UUID()
@@ -184,11 +227,11 @@ final class ChatAttachmentCoordinator {
         let prepared: (data: Data, name: String, mime: String, image: Bool)
         do {
             guard pendingAttachments.count + stagingIDs.count <= HermexAttachmentPickerPolicy.maximumBotAttachments,
-                  !data.isEmpty, data.count <= BotAttachmentDraft.maximumFileBytes
+                  !data.isEmpty, data.count <= BotAttachmentUpload.maximumFileBytes
             else { throw BotAttachmentFailure.limit }
-            prepared = try await Task.detached { try BotAttachmentDraft.prepare(data: data, filename: filename) }.value
-            let staged = pendingAttachments.reduce(stagingBytes) { $0 + ($1.size ?? BotAttachmentDraft.maximumFileBytes) }
-            guard staged + prepared.data.count <= BotAttachmentDraft.maximumTotalBytes else { throw BotAttachmentFailure.limit }
+            prepared = try await Task.detached { try BotAttachmentUpload.prepare(data: data, filename: filename) }.value
+            let staged = pendingAttachments.reduce(stagingBytes) { $0 + ($1.size ?? BotAttachmentUpload.maximumFileBytes) }
+            guard staged + prepared.data.count <= BotAttachmentUpload.maximumTotalBytes else { throw BotAttachmentFailure.limit }
         } catch {
             uploadAttachmentErrorMessage = error.localizedDescription
             return nil
@@ -196,7 +239,12 @@ final class ChatAttachmentCoordinator {
         stagingBytes += prepared.data.count
         defer { stagingBytes -= prepared.data.count }
         guard let file = await saveDraftCopy(prepared.data, filename: prepared.name, attachmentID: stagingID,
-                                             maximumBytes: BotAttachmentDraft.maximumFileBytes) else { return nil }
+                                             maximumBytes: BotAttachmentUpload.maximumFileBytes) else { return nil }
+        // A cancelled import (a paste whose chat went away) keeps no copy and no tile.
+        guard !Task.isCancelled else {
+            await deleteDraftCopy(named: file, attachmentID: stagingID)
+            return nil
+        }
         let attachment = PendingAttachment(
             id: stagingID, name: prepared.name, path: "", mime: prepared.mime, size: prepared.data.count,
             isImage: prepared.image, thumbnailData: prepared.image ? await Self.thumbnail(of: prepared.data) : nil,
@@ -250,7 +298,7 @@ final class ChatAttachmentCoordinator {
             ) { [draftAttachmentStore] in
                 guard let file = attachment.draftFileName else { throw BotAttachmentFailure.unreadable }
                 let data = try await draftAttachmentStore.data(named: file)
-                guard !data.isEmpty, data.count <= BotAttachmentDraft.maximumFileBytes else { throw BotAttachmentFailure.limit }
+                guard !data.isEmpty, data.count <= BotAttachmentUpload.maximumFileBytes else { throw BotAttachmentFailure.limit }
                 return data
             }
         }
@@ -479,7 +527,8 @@ final class ChatAttachmentCoordinator {
     func restorePendingAttachments(_ attachments: [PendingAttachment]) {
         protectRestoringAttachments(attachments.map(ChatDraftAttachment.init(pending:)))
         guard !attachments.isEmpty else { return }
-        pendingAttachments = attachments + pendingAttachments
+        let existingIDs = Set(pendingAttachments.map(\.id))
+        pendingAttachments = attachments.filter { !existingIDs.contains($0.id) } + pendingAttachments
         refreshAttachmentSlots()
     }
 

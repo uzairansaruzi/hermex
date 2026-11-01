@@ -8,11 +8,14 @@ struct GitBranchPickerButton: View {
     let isLoading: Bool
     let isSwitching: Bool
     let isDisabled: Bool
+    /// Offers New Branch; a Hermes chat's picker only switches (#1116).
+    var allowsCreate = true
     let onSelect: (GitCheckoutTarget) -> Void
     let onCreate: (GitCheckoutTarget) -> Void
     let onRefresh: () -> Void
-
-    @State private var showsPicker = false
+    /// Owned by the host so it can keep this button on screen while the popover
+    /// (and its New Branch alert, which takes the keyboard) is up.
+    @Binding var showsPicker: Bool
 
     var body: some View {
         Button {
@@ -46,6 +49,7 @@ struct GitBranchPickerButton: View {
                 currentBranch: currentBranch,
                 isLoading: isLoading,
                 isSwitching: isSwitching,
+                allowsCreate: allowsCreate,
                 onSelect: { target in
                     showsPicker = false
                     onSelect(target)
@@ -67,6 +71,7 @@ private struct GitBranchPickerSheet: View {
     let currentBranch: String
     let isLoading: Bool
     let isSwitching: Bool
+    let allowsCreate: Bool
     let onSelect: (GitCheckoutTarget) -> Void
     let onCreate: (GitCheckoutTarget) -> Void
     let onRefresh: () -> Void
@@ -105,13 +110,15 @@ private struct GitBranchPickerSheet: View {
                 }
 
                 Section {
-                    Button {
-                        newBranchName = ""
-                        showsCreatePrompt = true
-                    } label: {
-                        Label("New branch...", systemImage: "plus")
+                    if allowsCreate {
+                        Button {
+                            newBranchName = ""
+                            showsCreatePrompt = true
+                        } label: {
+                            Label("New branch...", systemImage: "plus")
+                        }
+                        .disabled(isSwitching)
                     }
-                    .disabled(isSwitching)
 
                     Button(action: onRefresh) {
                         Label(

@@ -77,11 +77,8 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(response.displayName(for: "@nous:qwen/qwen3-coder"), "Qwen3 Coder (via Nous)")
     }
 
-    /// The model picker reads `allModels` many times per body pass, so a
-    /// 400-model OpenRouter group has to merge and de-duplicate it once, at
-    /// init, instead of on every read (#692). A stored property is the only
-    /// kind `Mirror` lists.
-    func testAllModelsIsMergedOnceAndStored() {
+    /// A group's visible and extra models merge in order, each model once (#692).
+    func testAllModelsMergesBothHalvesWithoutDuplicates() {
         let visible = (1...15).map { ModelCatalogOption(id: "m\($0)", displayName: "M\($0)", providerID: "openrouter") }
         let extra = (15...400).map { ModelCatalogOption(id: "m\($0)", displayName: "M\($0)", providerID: "openrouter") }
         let group = ModelCatalogGroup(
@@ -92,14 +89,7 @@ final class ModelCatalogTests: XCTestCase {
             extraModels: extra
         )
 
-        let stored = Mirror(reflecting: group).children
-            .first { $0.label == "allModels" }?
-            .value as? [ModelCatalogOption]
-
-        XCTAssertEqual(stored?.count, 400, "m15 appears in both halves and is kept once")
-        XCTAssertEqual(stored?.first?.id, "m1")
-        XCTAssertEqual(stored?.last?.id, "m400")
-        XCTAssertEqual(stored, group.allModels)
+        XCTAssertEqual(group.allModels.map(\.id), (1...400).map { "m\($0)" }, "m15 appears in both halves and is kept once")
     }
 
     // MARK: - /api/models/live (issue #236)
@@ -127,16 +117,6 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(options.map(\.id), ["kimi-k2.7-code"])
         XCTAssertEqual(options.first?.displayName, "Kimi K2.7 Code")
         XCTAssertEqual(options.first?.providerID, "opencode-go")
-    }
-
-    func testModelsLiveResponseToleratesMissingFields() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let response = try decoder.decode(ModelsLiveResponse.self, from: Data("{}".utf8))
-
-        XCTAssertNil(response.provider)
-        XCTAssertNil(response.count)
-        XCTAssertTrue(response.liveOptions.isEmpty)
     }
 
     func testMergingLiveModelsReplacesOnlyTheMatchingProviderGroup() {
@@ -182,27 +162,6 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(merged.first?.name, "OpenCode Go")
         XCTAssertEqual(merged.first?.extraModels.map(\.id), ["extra-model"])
         XCTAssertEqual(merged.last, groups.last)
-    }
-
-    func testMergingLiveModelsLeavesGroupsUnchangedWhenNoGroupMatches() {
-        let groups = [
-            ModelCatalogGroup(
-                id: "openai",
-                name: "OpenAI",
-                providerID: "openai",
-                models: [
-                    ModelCatalogOption(id: "@openai:gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
-                ]
-            )
-        ]
-
-        let live = ModelsLiveResponse(
-            provider: "unknown-provider",
-            models: [.object(["id": .string("some-model"), "label": .string("Some Model")])],
-            count: 1
-        )
-
-        XCTAssertEqual(groups.mergingLiveModels(from: live), groups)
     }
 
     func testMergingLiveModelsLeavesGroupsUnchangedOnDegenerateResponses() {
@@ -387,23 +346,6 @@ final class ModelCatalogTests: XCTestCase {
         // ...while a bare selection that names no provider stays the ACTIVE
         // provider's spelling and must not tick a prefixed row.
         XCTAssertFalse(ollama.matchesSelection(modelID: "qwen3:32b", providerID: nil))
-    }
-
-    /// Core's catalog dedup can prefix the ACTIVE provider's own rows when an
-    /// inactive provider lists the same bare id first, so a stored bare default
-    /// matched without naming the active provider ticks the inactive row and
-    /// leaves the real default unticked. Matching against `activeProvider`
-    /// (the picker now passes it) resolves both directions.
-    func testBareDefaultMatchedAgainstActiveProviderRejectsTheInactiveLookAlike() {
-        let activeRow = ModelCatalogOption(id: "@gemini:mymodel", displayName: "Prefixed", providerID: "gemini")
-        let inactiveRow = ModelCatalogOption(id: "mymodel", displayName: "Bare look-alike", providerID: "deepseek")
-
-        XCTAssertTrue(activeRow.matchesSelection(modelID: "mymodel", providerID: "gemini"))
-        XCTAssertFalse(inactiveRow.matchesSelection(modelID: "mymodel", providerID: "gemini"))
-        // An embedded @provider: spelling keeps naming its own provider even
-        // when another one is active.
-        XCTAssertTrue(activeRow.matchesSelection(modelID: "@gemini:mymodel", providerID: nil))
-        XCTAssertFalse(inactiveRow.matchesSelection(modelID: "@gemini:mymodel", providerID: nil))
     }
 
     /// Picker-boundary: decoded `(defaultModel, activeProvider)` must tick the

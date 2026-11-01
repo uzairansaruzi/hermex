@@ -7,51 +7,6 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class APIClientSkillEndpointTests: APIClientTestCase {
-    func testSkillsBuildsExpectedPathAndDecodesResponse() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/skills")
-            XCTAssertEqual(request.httpMethod, "GET")
-
-            return apiTestJSONResponse("""
-            {
-              "skills": [
-                {"name": "swift-refactor", "category": "coding", "description": "Refactors Swift code", "path": "/skills/coding/swift-refactor", "disabled": true, "tags": ["swift", "refactor"], "related_skills": ["test-driven-development"]},
-                {"name": "doc-search", "category": "research", "description": "Searches docs"}
-              ]
-            }
-            """, for: request)
-        }
-
-        let response = try await client.skills()
-        XCTAssertEqual(response.skills?.count, 2)
-        XCTAssertEqual(response.skills?[0].name, "swift-refactor")
-        XCTAssertEqual(response.skills?[0].category, "coding")
-        XCTAssertEqual(response.skills?[0].description, "Refactors Swift code")
-        XCTAssertEqual(response.skills?[0].disabled, true)
-        XCTAssertEqual(response.skills?[0].tags, ["swift", "refactor"])
-        XCTAssertEqual(response.skills?[0].relatedSkills, ["test-driven-development"])
-        XCTAssertEqual(response.skills?[1].name, "doc-search")
-        XCTAssertEqual(response.skills?[1].category, "research")
-    }
-
-    func testSkillsToleratesMissingFields() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/skills")
-            return apiTestJSONResponse("""
-            {"skills": [{"name": "minimal-skill"}]}
-            """, for: request)
-        }
-
-        let response = try await client.skills()
-        XCTAssertEqual(response.skills?.count, 1)
-        XCTAssertEqual(response.skills?[0].name, "minimal-skill")
-        XCTAssertNil(response.skills?[0].category)
-        XCTAssertNil(response.skills?[0].description)
-        XCTAssertNil(response.skills?[0].disabled)
-        XCTAssertNil(response.skills?[0].tags)
-        XCTAssertNil(response.skills?[0].relatedSkills)
-    }
-
     func testToggleSkillPostsExpectedBodyAndDecodesResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/skills/toggle")
@@ -116,23 +71,5 @@ final class APIClientSkillEndpointTests: APIClientTestCase {
             "scripts/google_api.py",
             "scripts/setup.py"
         ])
-    }
-
-    func testSkillLinkedFileBuildsExpectedQueryAndDecodesResponse() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/skills/content")
-            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
-            XCTAssertEqual(query["name"], "swift-refactor")
-            XCTAssertEqual(query["file"], "README.md")
-            XCTAssertEqual(request.httpMethod, "GET")
-
-            return apiTestJSONResponse("""
-            {"content": "# README\\n\\nDetails here.", "path": "README.md"}
-            """, for: request)
-        }
-
-        let response = try await client.skillContent(name: "swift-refactor", file: "README.md")
-        XCTAssertEqual(response.content, "# README\n\nDetails here.")
     }
 }

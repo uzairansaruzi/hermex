@@ -223,6 +223,8 @@ struct DiffCodeBlockText: View {
     /// tint still reaches the block's trailing edge.
     var minRowWidth: CGFloat = 0
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private static let theme = ReviewDiffTheme()
 
     var body: some View {
@@ -238,7 +240,7 @@ struct DiffCodeBlockText: View {
                     .accessibilityLabel(Self.accessibilityLabel(for: line))
             }
         }
-        .font(.system(size: 13, weight: .regular, design: .monospaced))
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
     }
 
     @ViewBuilder

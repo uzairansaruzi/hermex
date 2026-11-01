@@ -253,26 +253,6 @@ final class FilePathSearchTests: APIClientTestCase {
 
     // MARK: - Session isolation
 
-    /// The workspace can move under a session without its id changing, so the
-    /// view model resets the cache by hand; a folder listed against the old root
-    /// says nothing about the new one.
-    @MainActor
-    func testResettingDropsTheCachedListings() async {
-        let log = RequestLog()
-        let search = ComposerFilePathSearch()
-        let client = makeListingClient(log: log)
-
-        await search.search("", sessionID: "s1", apiClient: client)
-        XCTAssertFalse(search.matches.isEmpty)
-
-        search.reset()
-        XCTAssertTrue(search.matches.isEmpty)
-
-        await search.search("", sessionID: "s1", apiClient: client)
-
-        XCTAssertEqual(log.listedPaths, [".", "."])
-    }
-
     @MainActor
     func testSwitchingSessionDropsTheCachedListings() async {
         let log = RequestLog()

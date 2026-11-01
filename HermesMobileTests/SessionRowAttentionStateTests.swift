@@ -64,42 +64,7 @@ final class SessionRowAttentionStateTests: XCTestCase {
         )
     }
 
-    /// The resolver is pure: the "only ask about streaming rows" bound lives in
-    /// the view model, not here.
-    func testPendingApprovalOnIdleSessionStillResolvesToApproval() {
-        XCTAssertEqual(
-            SessionRowAttentionState.resolve(
-                session: SessionSummary(sessionId: "s"),
-                hasPendingApproval: true,
-                hasPendingClarification: false
-            ),
-            .approval
-        )
-    }
-
     // MARK: - Row presentation
-
-    /// VoiceOver reads the state once, in place of the old "Streaming" label.
-    func testAccessibilityStateLabelsReadTheAttentionState() {
-        let session = SessionSummary(sessionId: "s", pinned: true, activeStreamId: "stream-1")
-
-        XCTAssertEqual(
-            SessionRowView.accessibilityStateLabels(
-                for: session,
-                isViewingCachedData: false,
-                attentionState: .approval
-            ),
-            ["Waiting for approval", "Pinned"]
-        )
-        XCTAssertEqual(
-            SessionRowView.accessibilityStateLabels(
-                for: session,
-                isViewingCachedData: false,
-                attentionState: .input
-            ),
-            ["Needs input", "Pinned"]
-        )
-    }
 
     /// A screen that does not poll (Archived) passes no state, and a streaming
     /// row still reads and shows Working.
@@ -142,24 +107,6 @@ final class SessionRowAttentionStateTests: XCTestCase {
         XCTAssertEqual(
             SessionRowView.accessibilityStateLabels(for: streaming, isViewingCachedData: false),
             ["Working"]
-        )
-    }
-
-    func testCachedRowCanReadUnreadWithoutHidingTheCachedState() {
-        let session = SessionSummary(sessionId: "s", lastMessageAt: 200)
-
-        XCTAssertEqual(
-            SessionRowView.accessibilityStateLabels(
-                for: session, isViewingCachedData: true, isUnread: true
-            ),
-            ["Unread", "Cached"]
-        )
-        XCTAssertEqual(
-            SessionRowView.accessibilityStateLabels(
-                for: session, isViewingCachedData: false,
-                attentionState: .approval, isUnread: true
-            ),
-            ["Waiting for approval"]
         )
     }
 

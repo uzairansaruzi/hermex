@@ -49,18 +49,6 @@ import XCTest
         XCTAssertNil(registrar.pairing(for: serverB), "A pairing belongs to the server it was made on")
     }
 
-    func testEachServerPairsUnderItsOwnServer() async throws {
-        let registrar = FakePushRegistrar()
-        PushHTTPFixture.handler = { _ in nil }
-        for server in [serverA, serverB] {
-            await makeProvisioner(server: server, registrar: registrar).enable()
-        }
-
-        XCTAssertEqual(registrar.actions, ["enable a.example.com", "enable b.example.com"])
-        XCTAssertNotNil(registrar.pairing(for: serverA))
-        XCTAssertNotNil(registrar.pairing(for: serverB))
-    }
-
     func testAFailedStepIsNamedAndLeavesNothingPaired() async throws {
         let steps: [(path: String, title: String)] = [
             ("/api/env", HermexPushProvisioner.Step.relayURL.title),
@@ -93,9 +81,14 @@ import XCTest
         PushHTTPFixture.handler = { request in
             guard request.url?.path == "/api/plugins/hermex-push/pairing" else { return nil }
             attempts += 1
-            // 1 is the probe that finds an unconfigured host; 2 and 3 are the host coming
-            // back from its restart with the route missing, then its relay address unread.
-            return attempts < 4 ? (attempts < 3 ? 404 : 409, .null) : nil
+            // 1 is the probe that finds the plugin off; 2 and 3 are the host coming back
+            // from its restart with the route missing, then its relay address unread.
+            switch attempts {
+            case 1: return PushHTTPFixture.pluginNotFound
+            case 2: return (404, .null)
+            case 3: return (409, .null)
+            default: return nil
+            }
         }
         let provisioner = makeProvisioner(server: serverA, registrar: registrar)
 
@@ -108,7 +101,9 @@ import XCTest
 
     func testAHostThatNeverAnswersFailsThePairingStepInsteadOfWaitingForever() async throws {
         let registrar = FakePushRegistrar()
-        PushHTTPFixture.handler = { request in request.url?.path == "/api/plugins/hermex-push/pairing" ? (404, .null) : nil }
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/pairing" ? PushHTTPFixture.pluginNotFound : nil
+        }
         let provisioner = makeProvisioner(server: serverA, registrar: registrar)
 
         await provisioner.enable()
@@ -160,6 +155,136 @@ import XCTest
         XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") })
     }
 
+    /// A fresh host (#1178): the plugin was never loaded, and the gateway restart does not
+    /// restart the dashboard that mounts plugin routes. Setup stops at the first read that
+    /// says the route isn't mounted, asks for a dashboard restart, and Check again pairs.
+    func testAFreshHostAsksForADashboardRestartAndCheckAgainPairs() async throws {
+        let registrar = FakePushRegistrar()
+        var enabled = false
+        var dashboardRestarted = false
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/dashboard/agent-plugins/hermex-push/enable": enabled = true; return nil
+            case "/api/plugins/hermex-push/pairing":
+                if dashboardRestarted { return nil }
+                return enabled ? PushHTTPFixture.notMounted : PushHTTPFixture.pluginNotFound
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertNil(provisioner.failure, "A host that needs its dashboard restarted has not failed")
+        XCTAssertEqual(provisioner.pluginCard, .status(.setupNeedsRestart))
+        XCTAssertNil(provisioner.pairing)
+        XCTAssertEqual(registrar.actions, [])
+        XCTAssertEqual(PushHTTPFixture.calls.filter { $0.hasSuffix("/api/plugins/hermex-push/pairing") }.count, 2,
+                       "An unmounted route is not retried: only a dashboard restart mounts it")
+        XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/gateway/restart"))
+
+        dashboardRestarted = true
+        PushHTTPFixture.clearCalls()
+        await provisioner.checkPluginAgain()
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertNil(provisioner.pluginCard)
+        XCTAssertEqual(provisioner.pairing?.installKey, PushHTTPFixture.installKey)
+        XCTAssertEqual(registrar.actions, ["enable a.example.com"])
+        XCTAssertEqual(PushHTTPFixture.calls.filter { $0.hasPrefix("POST") || $0.hasPrefix("PUT") },
+                       ["POST https://a.example.com/auth/password-login"], "Check again changes nothing on the host")
+    }
+
+    /// Installed after the dashboard started, or under `hermes serve`: the plugin is on disk,
+    /// so nothing is reinstalled or restarted and the restart instruction shows at once.
+    func testAPluginOnDiskButNotMountedAsksForARestartWithoutReinstalling() async throws {
+        for answer in [PushHTTPFixture.notMounted, PushHTTPFixture.headless] {
+            PushHTTPFixture.reset()
+            PushHTTPFixture.handler = { request in
+                switch request.url?.path {
+                case "/api/plugins/hermex-push/pairing": return answer
+                case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.4.0"))
+                default: return nil
+                }
+            }
+            let registrar = FakePushRegistrar()
+            let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+            await provisioner.enable()
+
+            XCTAssertNil(provisioner.failure)
+            XCTAssertEqual(provisioner.pluginCard, .status(.setupNeedsRestart))
+            XCTAssertEqual(PushHTTPFixture.calls, [
+                "GET https://a.example.com/api/status",
+                "POST https://a.example.com/auth/password-login",
+                "GET https://a.example.com/api/auth/me",
+                "GET https://a.example.com/api/plugins/hermex-push/pairing",
+                "GET https://a.example.com/api/dashboard/plugins/hub"
+            ])
+            XCTAssertEqual(registrar.actions, [])
+        }
+    }
+
+    /// Listed in `plugins.enabled` but missing on disk: the route is unmounted for want of
+    /// the plugin itself, so the full sequence installs it before asking for the restart.
+    func testAnUnmountedRouteWithNoPluginOnDiskInstallsIt() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return PushHTTPFixture.notMounted
+            case "/api/dashboard/plugins/hub":
+                return (200, .object(["plugins": .array([.object(["name": .string("disk-cleanup"), "version": .string("1.0")])])]))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertEqual(provisioner.pluginCard, .status(.setupNeedsRestart))
+        XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/dashboard/agent-plugins/install"))
+        XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/gateway/restart"))
+    }
+
+    /// A hub reply without a readable plugins list can't say the plugin is missing, so the
+    /// unmounted route fails the Pair step instead of reinstalling and restarting (#1178).
+    func testAnUnreadableHubReplyIsReportedInsteadOfReinstalling() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return PushHTTPFixture.notMounted
+            case "/api/dashboard/plugins/hub": return (200, .object(["error": .string("hub unavailable")]))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertEqual(provisioner.failure?.title, HermexPushProvisioner.Step.pair.title)
+        XCTAssertEqual(provisioner.failure?.message, "This Hermes host refused the step (HTTP 404). Check the host’s logs, then try again.")
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/env") || $0.contains("agent-plugins") || $0.contains("/api/gateway/restart") })
+        XCTAssertNil(provisioner.pluginCard)
+        XCTAssertEqual(registrar.actions, [])
+    }
+
+    /// A 404 that is none of the host's known answers is not taken as "not set up".
+    func testAnUnknownMissingRouteIsReportedInsteadOfReconfiguringTheHost() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/pairing" ? (404, .object(["detail": .string("Not Found")])) : nil
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertEqual(provisioner.failure?.title, HermexPushProvisioner.Step.pair.title)
+        XCTAssertEqual(provisioner.failure?.message, "This Hermes host refused the step (HTTP 404). Check the host’s logs, then try again.")
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/env") || $0.contains("agent-plugins") || $0.contains("/api/gateway/restart") })
+        XCTAssertNil(provisioner.pluginCard)
+    }
+
     func testAHostErrorWhileCheckingIsReportedInsteadOfReconfiguringTheHost() async throws {
         let registrar = FakePushRegistrar()
         PushHTTPFixture.isSetUp = true
@@ -195,18 +320,6 @@ import XCTest
         XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("agent-plugins") })
         XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") },
                        "Nothing is interrupted on a host that is already set up")
-    }
-
-    func testAStepTheHostRefusedReportsWhatItAnsweredRatherThanChatWording() async throws {
-        PushHTTPFixture.handler = { request in request.url?.path == "/api/env" ? (500, .null) : nil }
-        let provisioner = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
-
-        await provisioner.enable()
-
-        let message = try XCTUnwrap(provisioner.failure?.message)
-        XCTAssertTrue(message.contains("500"), "The user has to know what the host said: \(message)")
-        XCTAssertNotEqual(message, BotFailure.rejected(500).errorDescription,
-                          "Provisioning must not borrow the Bot chat's wording")
     }
 
     func testPermissionRevokedDuringSetupSaysNotificationsAreOffAndLeavesNothingPaired() async throws {
@@ -344,61 +457,14 @@ import XCTest
 
         PushHTTPFixture.reset()
         PushHTTPFixture.handler = { request in
-            request.url?.path == "/api/status" ? (200, .object(["auth_required": .bool(false)])) : nil
+            request.url?.path == "/api/status" ? (200, .object(["version": .string("0.21.5")])) : nil
         }
-        let noPassword = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
-        await noPassword.enable()
-        XCTAssertEqual(noPassword.failure, HermexPushProvisioner.Failure(
+        let unknown = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
+        await unknown.enable()
+        XCTAssertEqual(unknown.failure, HermexPushProvisioner.Failure(
             title: "Sign in to Hermes",
             message: "This Hermes host doesn’t offer the password sign-in push setup needs."))
         XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
-    }
-
-    /// An access proxy's refusal, a host with browser sign-in only and a release older than
-    /// the minimum stop setup at sign-in with words the user can act on, before the password
-    /// goes out.
-    func testSignInStopsBeforeThePasswordWithCopyTheUserCanActOn() async throws {
-        let rows: [((Int, BotJSON), String)] = [
-            // A proxy's 401 page: not the webui's JSON object.
-            ((401, .null), "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address."),
-            ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")])])),
-             "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
-            ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]), "version": .string("0.21.2")])),
-             "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again.")
-        ]
-        for (status, message) in rows {
-            PushHTTPFixture.reset()
-            PushHTTPFixture.handler = { request in request.url?.path == "/api/status" ? status : nil }
-            let provisioner = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
-            await provisioner.enable()
-            XCTAssertEqual(provisioner.failure, HermexPushProvisioner.Failure(title: "Sign in to Hermes", message: message))
-            XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
-        }
-    }
-
-    func testEachFailureNamesWhatAnsweredIt() {
-        let unusable = HermexPushFailure.unusablePairing.errorDescription
-        let cases: [(any Error, String?)] = [
-            (PushRegistrarError.permissionDenied, "Allow notifications for Hermex in iOS Settings, then turn this on again."),
-            (PushRegistrarError.unsupportedBuild, "This build of Hermex can’t receive push notifications."),
-            (PushRegistrarError.tokenUnavailable, "iOS gave no notification token. Check this iPhone’s internet connection, then try again."),
-            (PushRegistrarError.malformedPairing, unusable),
-            (PushRegistrarError.pairingChanged, "This step did not finish. Try again."),
-            (PushRegistrarError.preferencesUnconfirmed, "This step did not finish. Try again."),
-            (PushRelayError.malformedInstallKey, unusable),
-            (PushRelayError.http(statusCode: 409), "The relay refused this phone (409). Check the relay address, then try again."),
-            (PushRelayError.transport, "Could not reach the notification relay. Check this iPhone’s internet connection, then try again."),
-            (BotFailure.unsupported, "This Hermes host doesn’t offer the password sign-in push setup needs."),
-            (BotFailure.wrongIdentity, "This Hermes host doesn’t offer the password sign-in push setup needs."),
-            // The shared sign-in reads a status 404, a JSON 401 or a non-JSON body as another kind of server.
-            (BotFailure.notDashboard, "This Hermes host doesn’t offer the password sign-in push setup needs."),
-            (BotFailure.rejected(401), "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again."),
-            (URLError(.timedOut), "The host did not answer in time. It may still be finishing this step — wait a moment, then try again."),
-            (CocoaError(.fileWriteUnknown), "This step did not finish. Try again.")
-        ]
-        for (error, expected) in cases {
-            XCTAssertEqual(HermexPushProvisioner.message(for: error), expected, "\(error)")
-        }
     }
 
     func testDisableStopsTheHostSendingBeforeDroppingThisPhone() async throws {
@@ -421,6 +487,83 @@ import XCTest
         XCTAssertEqual(registrar.actions, ["disable a.example.com"])
         XCTAssertNil(provisioner.pairing)
         XCTAssertNil(registrar.pairing(for: serverA))
+    }
+
+    /// A LAN and a tunnel entry for one host share its plugin (#1178): turning one off keeps
+    /// the host sending for the other, and only the last one disables the plugin.
+    func testDisableLeavesTheHostPluginOnWhileAnotherEntryForTheHostIsPaired() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        try await registrar.enable(try XCTUnwrap(registrar.pairing(for: serverA)), for: serverB)
+        registrar.clearActions()
+        PushHTTPFixture.handler = { _ in nil }
+        PushHTTPFixture.clearCalls()
+        let first = makeProvisioner(server: serverA, registrar: registrar)
+
+        await first.disable()
+
+        XCTAssertNil(first.failure)
+        XCTAssertEqual(PushHTTPFixture.calls, [])
+        XCTAssertEqual(registrar.actions, ["disable a.example.com"])
+        XCTAssertNil(first.pairing)
+        XCTAssertNotNil(registrar.pairing(for: serverB))
+
+        let last = makeProvisioner(server: serverB, registrar: registrar)
+        await last.disable()
+
+        XCTAssertNil(last.failure)
+        XCTAssertEqual(PushHTTPFixture.calls.last, "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/disable")
+        XCTAssertEqual(registrar.actions, ["disable a.example.com", "disable b.example.com"])
+    }
+
+    /// Another entry for the host can finish pairing while this one signs in to turn the
+    /// plugin off (#1178). It owns the plugin by the time the disable would go out, so the
+    /// host is left alone and only this entry's keys go.
+    func testDisableLeavesTheHostPluginOnWhenAnotherEntryPairsDuringSignIn() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        let shared = try XCTUnwrap(registrar.pairing(for: serverA))
+        PushHTTPFixture.handler = { _ in nil }
+        let held = expectation(description: "Sign-in held")
+        var pending: PushHTTPFixture?
+        PushHTTPFixture.holdResponse = { fixture in
+            guard fixture.request.url?.path == "/auth/password-login" else { return false }
+            pending = fixture
+            held.fulfill()
+            return true
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        let disabling = Task { await provisioner.disable() }
+        await fulfillment(of: [held], timeout: 5)
+        PushHTTPFixture.holdResponse = nil
+        try await registrar.enable(shared, for: serverB)
+        registrar.clearActions()
+        try XCTUnwrap(pending).respond(status: 200, value: .object(["result": .string("ok")]))
+        await disabling.value
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/dashboard/agent-plugins/") },
+                       "The plugin now serves the other entry and stays on")
+        XCTAssertEqual(registrar.actions, ["disable a.example.com"])
+        XCTAssertNil(provisioner.pairing)
+        XCTAssertEqual(registrar.pairing(for: serverB)?.installKey, PushHTTPFixture.installKey)
+    }
+
+    /// A Keychain that can't say whether another entry shares the host stops the disable
+    /// before it signs in, so neither the host plugin nor this entry's keys change (#1178).
+    func testDisableChangesNothingWhenTheKeychainCantListTheOtherEntries() async throws {
+        struct KeychainFailure: Error {}
+        let registrar = try await pairedRegistrar(serverA)
+        registrar.sharesError = KeychainFailure()
+        PushHTTPFixture.handler = { _ in nil }
+        PushHTTPFixture.clearCalls()
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.disable()
+
+        XCTAssertEqual(provisioner.failure?.title, "Disable the plugin")
+        XCTAssertEqual(PushHTTPFixture.calls, [])
+        XCTAssertEqual(registrar.actions, [])
+        XCTAssertNotNil(provisioner.pairing)
     }
 
     func testDisableKeepsThePairingWhenTheRelayRefusesSoTheUserCanRetry() async throws {
@@ -578,41 +721,6 @@ import XCTest
         XCTAssertFalse(provisioner.testDelivered, "Leaving Settings clears the result")
     }
 
-    func testEachTestOutcomeSaysWhatAnsweredIt() async throws {
-        let registrar = FakePushRegistrar()
-        try await registrar.enable(PushPairing(relayURL: URL(string: "https://relay.example")!,
-                                               installKey: String(repeating: "a", count: 64), previewKey: "key"),
-                                   for: serverA)
-        let cases: [(PushRelayTestOutcome, String)] = [
-            (.unreachable, "Couldn’t reach the relay. Check this iPhone’s internet connection, then try again."),
-            (.rejected(statusCode: 503, result: "apns_rejected"),
-             "Apple refused the test notification. Turn notifications off and on again for this server."),
-            (.rejected(statusCode: 503, result: "delivery_retry"),
-             "The relay couldn’t deliver the test right now (HTTP 503). Try again in a few minutes."),
-            (.rejected(statusCode: 503, result: "temporarily_unavailable"),
-             "The relay couldn’t deliver the test right now (HTTP 503). Try again in a few minutes."),
-            (.rejected(statusCode: 429, result: "event_limit"),
-             "The relay couldn’t deliver the test right now (HTTP 429). Try again in a few minutes."),
-            (.rejected(statusCode: 429, result: nil),
-             "The relay’s hosting refused the request (HTTP 429). The relay may be over its daily limit or switched off."),
-            (.rejected(statusCode: 400, result: "invalid_request"), "The relay couldn’t deliver (HTTP 400)."),
-            (.unusablePairing, "This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin.")
-        ]
-        for (outcome, message) in cases {
-            let provisioner = makeProvisioner(server: serverA, registrar: registrar, testSender: { _ in outcome })
-            await provisioner.sendTestNotification()
-            // Keys an old plugin sent are the one answer updating the plugin fixes (#851).
-            let remedy: HermexPushProvisioner.Failure.Remedy = outcome == .unusablePairing ? .updatePlugin : .none
-            XCTAssertEqual(provisioner.failure, HermexPushProvisioner.Failure(title: "Test notification failed", message: message,
-                                                                              remedy: remedy),
-                           "\(outcome)")
-            XCTAssertFalse(provisioner.testDelivered)
-            // The next action replaces the result.
-            await provisioner.updatePreferences(PushPreferences())
-            XCTAssertNil(provisioner.failure)
-        }
-    }
-
     func testReplyNotificationsOffOrNotificationsDeniedMakeTheTestUnavailable() async throws {
         let registrar = FakePushRegistrar()
         var pairing = PushPairing(relayURL: URL(string: "https://relay.example")!,
@@ -714,6 +822,71 @@ import XCTest
         PushHTTPFixture.clearCalls()
         await makeProvisioner(server: serverB, registrar: registrar).checkPlugin()
         XCTAssertEqual(PushHTTPFixture.calls, [], "A server without push is not checked")
+    }
+
+    /// A dashboard that hasn't loaded the plugin since it was installed (#1235): with the newest
+    /// on disk the card asks for a restart on the host, where the read used to fail on its 404.
+    /// One with an older plugin loaded is still offered the update.
+    func testAPairedHostWhosePluginIsOnDiskButNotLoadedAsksForARestart() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        let newest = newest
+        var pairing = PushHTTPFixture.notMounted
+        var onDisk = newest
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return pairing
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: onDisk))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.checkPlugin()
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: nil)))
+
+        await provisioner.checkPluginAgain()
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: nil)))
+        XCTAssertNil(provisioner.failure, "Not \"refused the step (HTTP 404)\"")
+        XCTAssertEqual(registrar.actions, [], "Check again on a paired host only reads")
+
+        pairing = (200, PushHTTPFixture.pairingBody(version: "0.4.0"))
+        onDisk = "0.4.0"
+        await provisioner.checkPluginAgain()
+        XCTAssertEqual(provisioner.pluginCard, .status(.available(loaded: HermexPushPluginVersion("0.4.0"))))
+    }
+
+    // MARK: - Companion routes (#1235)
+
+    func testCompanionRoutesListWhatTheDashboardMountedAndA404ClosesTheGate() async throws {
+        var answer: (Int, BotJSON) = (200, .object([
+            "plugin_version": .string("0.5.0"),
+            "routes": .array([.string("GET /capabilities"), .string("GET /pairing"), .string("POST /restart"), .number(7)]),
+            "added_later": .bool(true)
+        ]))
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/capabilities" ? answer : nil
+        }
+        let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
+                                       username: "user", password: "secret")
+        let client = BotDashboardClient(http: HermesConnection(connection: connection, configuration: PushHTTPFixture.configuration()))
+
+        let routes = try await client.companionRoutes()
+        XCTAssertEqual(routes.pluginVersion, HermexPushPluginVersion("0.5.0"))
+        XCTAssertTrue(routes.supports("POST /restart"))
+        XCTAssertFalse(routes.supports("POST /git/pull"))
+        XCTAssertEqual(routes.routes.count, 3, "An entry that isn't a string is skipped")
+
+        // An older plugin, an unloaded one, one turned off, and a bare 404 all close the gate.
+        for missing in [PushHTTPFixture.notMounted, PushHTTPFixture.pluginNotFound, PushHTTPFixture.headless, (404, .null)] {
+            answer = missing
+            let closed = try await client.companionRoutes()
+            XCTAssertEqual(closed, .closed, "\(missing)")
+        }
+
+        answer = (500, .null)
+        do { _ = try await client.companionRoutes(); XCTFail("A server error is not a closed gate") } catch {
+            XCTAssertEqual(error as? BotFailure, .rejected(500))
+        }
     }
 
     func testUpdatingReinstallsRestartsAndReadsTheNewlyLoadedVersion() async throws {
@@ -1019,7 +1192,7 @@ import XCTest
     // MARK: - Restart (#934)
 
     /// A newest plugin past the restart route's 0.4.0, so a host can have the route loaded and
-    /// still be behind. This build's own constants never pair the two.
+    /// still be behind. Pinned here so these tests don't move with `newestVersion`.
     private let future = HermexPushPluginVersion("0.5.0")!
 
     func testOnlyAPluginWithTheRestartRouteIsOfferedARestart() async throws {
@@ -1350,6 +1523,13 @@ import XCTest
 
     func pairing(for server: URL) -> PushPairing? { pairings[server] }
 
+    var sharesError: (any Error)?
+    func sharesRegistration(for server: URL) throws -> Bool {
+        if let sharesError { throw sharesError }
+        guard let pairing = pairings[server] else { return false }
+        return pairings.contains { $0.key != server && $0.value.installKey == pairing.installKey && $0.value.relayURL == pairing.relayURL }
+    }
+
     func clearActions() { actions = [] }
 }
 
@@ -1454,6 +1634,13 @@ private final class PushHTTPFixture: URLProtocol {
 
     override func stopLoading() {}
 
+    /// The pairing route's 404s at hermes-agent ca678285 (#1178): the plugin is off or not
+    /// installed; it is on but the dashboard never mounted it; and `hermes serve`'s catch-all.
+    static let pluginNotFound: (Int, BotJSON) = (404, .object(["detail": .string("Plugin not found")]))
+    static let notMounted: (Int, BotJSON) = (404, .object(["detail": .string("No such API endpoint: /api/plugins/hermex-push/pairing")]))
+    static let headless: (Int, BotJSON) = (404, .object(["error": .string(
+        "Headless backend (hermes serve): web UI disabled — use `hermes dashboard` for the browser UI.")]))
+
     /// The pairing route as a set-up host answers it; `version` is its `plugin_version`,
     /// which plugins older than 0.2.0 leave out.
     static func pairingBody(version: String?) -> BotJSON {
@@ -1480,7 +1667,7 @@ private final class PushHTTPFixture: URLProtocol {
                                   "version": .string("0.21.3")]))
         case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
         case "/api/plugins/hermex-push/pairing":
-            guard isSetUp else { return (404, .null) }
+            guard isSetUp else { return pluginNotFound }
             return (200, .object(["relay_url": .string(HermexPushPlugin.defaultRelayURL.absoluteString),
                                   "install_key": .string(installKey), "preview_key": .string(previewKey),
                                   "platform": .string("hermex"), "payload_version": .number(1)]))

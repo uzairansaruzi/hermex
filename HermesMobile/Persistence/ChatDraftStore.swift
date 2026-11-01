@@ -78,9 +78,26 @@ struct ChatDraft: Equatable, Sendable {
     // loss must survive relaunch (#508).
     var botSubmissionUncertain = false
     var lastUsedAt: Date?
+    /// The shares (`SharedImportReservation.occurrenceID`s) already moved into this draft,
+    /// so a retried or replayed share isn't added twice (#1181, #1197). Rides along with the content; never
+    /// keeps a draft alive on its own.
+    var sharedImportIDs: Set<String> = []
+    /// Where added text came from, a Shortcut (#1402) or Troubleshoot with Hermes (#1476): the
+    /// composer shows its review notice until the user dismisses it or sends. Rides along with the
+    /// content; never keeps a draft alive on its own.
+    var textOrigin: ImportedTextOrigin?
+    /// A Hermes chat's plain-text Send waiting for the chat to reconnect (#1407), kept on disk until
+    /// the host answers it. A reopen or relaunch puts it back in `text`; it never sends on its own.
+    var waitingSend: WaitingSend?
+
+    struct WaitingSend: Equatable, Sendable {
+        var text: String
+        var createdAt: Date
+    }
 
     var isEmpty: Bool {
         text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true) && !botSubmissionUncertain
+            && waitingSend == nil
     }
 }
 
@@ -397,6 +414,12 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         var connectionID: UUID?
         var profile: String?
         var botSubmissionUncertain: Bool?
+        var sharedImportIDs: [String]?
+        /// Written before #1476, which records `textOrigin` instead; true reads as a Shortcut's.
+        var fromShortcut: Bool?
+        var textOrigin: String?
+        var waitingSendText: String?
+        var waitingSendCreatedAt: Date?
 
         let lastUsedAt: Date?
 
@@ -407,7 +430,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case text
             case quotes
             case attachments
-            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt
+            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut, textOrigin
+            case waitingSendText, waitingSendCreatedAt
         }
 
         init(key: ChatDraftKey, draft: ChatDraft) {
@@ -436,6 +460,10 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             quotes = draft.quotes.map { FailableQuote(value: QuoteRecord($0)) }
             attachments = draft.attachments.map { FailableAttachment(value: AttachmentRecord($0)) }
             settings = draft.settings.map { SettingsRecord($0) }
+            sharedImportIDs = draft.sharedImportIDs.isEmpty ? nil : draft.sharedImportIDs.sorted()
+            textOrigin = draft.textOrigin?.rawValue
+            waitingSendText = draft.waitingSend?.text
+            waitingSendCreatedAt = draft.waitingSend?.createdAt
         }
 
         init(from decoder: Decoder) throws {
@@ -455,6 +483,11 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             quotes = (try? container.decodeIfPresent([FailableQuote].self, forKey: .quotes)) ?? nil
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
             settings = (try? container.decodeIfPresent(SettingsRecord.self, forKey: .settings)) ?? nil
+            sharedImportIDs = (try? container.decodeIfPresent([String].self, forKey: .sharedImportIDs)) ?? nil
+            fromShortcut = (try? container.decodeIfPresent(Bool.self, forKey: .fromShortcut)) ?? nil
+            textOrigin = (try? container.decodeIfPresent(String.self, forKey: .textOrigin)) ?? nil
+            waitingSendText = (try? container.decodeIfPresent(String.self, forKey: .waitingSendText)) ?? nil
+            waitingSendCreatedAt = (try? container.decodeIfPresent(Date.self, forKey: .waitingSendCreatedAt)) ?? nil
         }
 
         var draft: (key: ChatDraftKey, draft: ChatDraft)? {
@@ -496,7 +529,11 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 attachments: (attachments ?? []).compactMap(\.value?.attachment),
                 settings: settings?.settings,
                 botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
-                lastUsedAt: lastUsedAt
+                lastUsedAt: lastUsedAt,
+                sharedImportIDs: Set(sharedImportIDs ?? []),
+                textOrigin: textOrigin.flatMap(ImportedTextOrigin.init(rawValue:)) ?? (fromShortcut == true ? .shortcut : nil),
+                // Without its time it reads as expired, which only returns it to the composer.
+                waitingSend: waitingSendText.flatMap { $0.isEmpty ? nil : .init(text: $0, createdAt: waitingSendCreatedAt ?? .distantPast) }
             )
             guard !draft.isEmpty else { return nil }
             return (key, draft)
@@ -647,6 +684,35 @@ final class ChatDraftStore {
         updateDraft(for: key) { $0.botSubmissionUncertain = uncertain }
     }
 
+    /// Holds `send` as the draft's waiting send (#1407), and takes `submitted`, the composer text it
+    /// came from, out of the draft's text in the same write, so the text is never in both or neither.
+    func holdWaitingSend(_ send: ChatDraft.WaitingSend, replacing submitted: String, for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.waitingSend = send
+            if draft.text == submitted { draft.text = "" }
+        }
+    }
+
+    /// The host took the draft's waiting send (#1407): only it goes.
+    func removeWaitingSend(for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { $0.waitingSend = nil }
+    }
+
+    /// Puts the draft's waiting send (#1407) back in its text, ahead of anything typed since, and
+    /// returns the draft. Nothing is sent.
+    @discardableResult
+    func returnWaitingSend(for key: ChatDraftKey) -> ChatDraft? {
+        guard let waiting = drafts[key]?.waitingSend else { return drafts[key] }
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.text = [waiting.text, draft.text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            draft.waitingSend = nil
+        }
+        return drafts[key]
+    }
+
     /// Drops Bot Chat and Hermes session drafts for a server, one connection, or one
     /// deleted bot on it.
     func discardBotDrafts(server: URL, connectionID: UUID? = nil, profile: String? = nil) async {
@@ -679,10 +745,21 @@ final class ChatDraftStore {
     }
 
     /// Replaces the draft's staged-attachment records without disturbing its
-    /// text or settings.
-    func setAttachments(_ attachments: [ChatDraftAttachment], for key: ChatDraftKey) {
+    /// text or settings. A composer passes the records it last synced as
+    /// `previous`: records it never saw, such as a share moved in meanwhile
+    /// (#1181), stay after its own. Nil replaces every record.
+    func setAttachments(
+        _ attachments: [ChatDraftAttachment], replacing previous: [ChatDraftAttachment]? = nil, for key: ChatDraftKey
+    ) {
         markChangedBeforeLoad(key)
-        updateDraft(for: key) { $0.attachments = attachments }
+        updateDraft(for: key) { draft in
+            var unseen: [ChatDraftAttachment] = []
+            if let previous {
+                let seen = Set((previous + attachments).map(\.id))
+                unseen = draft.attachments.filter { !seen.contains($0.id) }
+            }
+            draft.attachments = attachments + unseen
+        }
     }
 
     /// Parks the messages queued behind a run in the chat's draft, in one
@@ -704,6 +781,99 @@ final class ChatDraftStore {
         )
         updateDraft(for: key) { $0 = merged }
         return drafts[key]
+    }
+
+    /// Adds share `shareID` to `key`'s draft (#1181): `text` after any unsent
+    /// text and `files` after any staged ones, so an earlier share waiting there
+    /// is kept. Each file gets its durable copy first; the records, text and
+    /// `shareID` then land in one change that is on disk, and still in the
+    /// draft, before this returns, so the caller can let go of the share. A
+    /// share already there (a retry, or a replay after the app quit before
+    /// letting go) adds nothing and returns once it is on disk. `fits` vets the
+    /// draft's records with the share's files added, in the same step that adds
+    /// them, and throws if they don't fit. A throw (cancellation, storage, a limit,
+    /// a record or the text dropped meanwhile) takes back only what this share
+    /// added, on disk before its copies go, so the share can be moved again.
+    /// Text with an `origin` (#1402, #1476) leaves the unsent text exactly as it is and
+    /// turns on the draft's review notice for that origin.
+    func appendShare(
+        _ shareID: String, text: String, files: [(data: Data, name: String, mime: String, image: Bool)],
+        to key: ChatDraftKey, maximumFileBytes: Int, origin: ImportedTextOrigin? = nil,
+        admitting fits: ([ChatDraftAttachment]) throws -> Void = { _ in }
+    ) async throws {
+        await loadIfNeeded()
+        func isHere() -> Bool { drafts[key]?.sharedImportIDs.contains(shareID) == true }
+        let lease = makeAttachmentLease(key: key)
+        var records: [ChatDraftAttachment] = []
+        func deleteCopies() async {
+            for file in records.compactMap(\.file) {
+                lease.files.remove(file)
+                await deleteAttachmentIfUnreferenced(file)
+            }
+        }
+        do {
+            for file in files where !isHere() {
+                let id = UUID()
+                let copy = try await stageAttachment(
+                    data: file.data, filename: file.name, lease: lease, attachmentID: id, maximumFileBytes: maximumFileBytes
+                )
+                records.append(ChatDraftAttachment(id: id, name: file.name, mime: file.mime, size: file.data.count,
+                                                   isImage: file.image, file: copy))
+            }
+            if !isHere() { try Task.checkCancellation() }
+        } catch {
+            await deleteCopies()
+            throw error
+        }
+        guard !isHere() else {
+            await deleteCopies()
+            try await flush()
+            guard isHere() else { throw ChatDraftStorageError.unavailable }
+            return
+        }
+        if !records.isEmpty {
+            // Checked in the step that commits, so files a composer added meanwhile count.
+            do { try fits((drafts[key]?.attachments ?? []) + records) } catch {
+                await deleteCopies()
+                throw error
+            }
+        }
+        let unsent = drafts[key]?.text ?? ""
+        let earlierOrigin = drafts[key]?.textOrigin
+        updateDraft(for: key) { draft in
+            let earlier = origin != nil ? draft.text : draft.text.trimmingCharacters(in: .newlines)
+            if !text.isEmpty { draft.text = earlier.isEmpty ? text : earlier + "\n\n" + text }
+            draft.attachments += records
+            draft.sharedImportIDs.insert(shareID)
+            if let origin { draft.textOrigin = origin }
+        }
+        let merged = drafts[key]?.text
+        let ids = Set(records.map(\.id))
+        do {
+            try await flush()
+            // A composer's send, snapshot or typing during the write may have dropped a record or the text.
+            guard isHere(), ids.isSubset(of: Set(drafts[key]?.attachments.map(\.id) ?? [])),
+                  text.isEmpty || drafts[key]?.text.contains(text) == true else {
+                throw ChatDraftStorageError.unavailable
+            }
+        } catch {
+            updateDraft(for: key) { draft in
+                draft.sharedImportIDs.remove(shareID)
+                draft.attachments.removeAll { ids.contains($0.id) }
+                if draft.text == merged { draft.text = unsent }
+                if origin != nil { draft.textOrigin = earlierOrigin }
+            }
+            // A replay after a quit must not find the share here. Unsaved, the copies stay.
+            if (try? await flush()) != nil { await deleteCopies() }
+            throw error
+        }
+    }
+
+    /// Turns the draft's review notice off (nil) once the user dismisses it or sends, or back on
+    /// when Undo restores text a removal emptied (#1402). A draft with nothing else stays gone.
+    func setTextOrigin(_ origin: ImportedTextOrigin?, for key: ChatDraftKey) {
+        guard drafts[key]?.textOrigin != origin else { return }
+        updateDraft(for: key) { $0.textOrigin = origin }
     }
 
     /// Replaces the draft's settings snapshot without disturbing its text or
@@ -739,13 +909,36 @@ final class ChatDraftStore {
         setContent(.empty, for: key)
     }
 
+    /// Retains a rejected send's captured files even if its view already left.
+    /// Merge by identity so newer composer records are never replaced.
+    func retainRejectedAttachments(_ attachments: [ChatDraftAttachment], for key: ChatDraftKey) {
+        guard !attachments.isEmpty, !deletedSessionKeys.contains(key) else { return }
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            let existingIDs = Set(draft.attachments.map(\.id))
+            draft.attachments += attachments.filter { !existingIDs.contains($0.id) }
+        }
+    }
+
     func resolveSubmission(
         submitted: ComposerDraftContent,
         current: ComposerDraftContent,
         didStart: Bool,
         draftWasEdited: Bool,
+        preserveRejectedSubmission: Bool = false,
         for key: ChatDraftKey
     ) -> ComposerDraftContent {
+        if !didStart, preserveRejectedSubmission {
+            // A sealed session definitively rejected this content. Keep both
+            // pieces of unsent work, without automatically replaying either.
+            let text = current.text.isEmpty || current.text == submitted.text
+                ? submitted.text
+                : [submitted.text, current.text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            let quotes = submitted.quotes + current.quotes.filter { !submitted.quotes.contains($0) }
+            let recovered = ComposerDraftContent(text: text, quotes: quotes)
+            setContent(recovered, for: key)
+            return recovered
+        }
         if didStart {
             // A started send consumed any staged attachments, even when the
             // user kept editing the composer during the request.
@@ -794,8 +987,15 @@ final class ChatDraftStore {
         submitted: ComposerDraftContent,
         current: ComposerDraftContent,
         draftWasEdited: Bool,
+        preserveRejectedSubmission: Bool = false,
         for key: ChatDraftKey
     ) -> ComposerDraftContent {
+        if preserveRejectedSubmission {
+            return resolveSubmission(
+                submitted: submitted, current: current, didStart: false,
+                draftWasEdited: draftWasEdited, preserveRejectedSubmission: true, for: key
+            )
+        }
         guard !draftWasEdited, current == submitted else { return current }
         clearDraft(for: key)
         return .empty
@@ -835,6 +1035,56 @@ final class ChatDraftStore {
         }
         schedulePersist()
         return movedDraft
+    }
+
+    /// Move to Hermes's draft step (#1214): moves `source`'s unsent text, quotes and attachment
+    /// records to `destination` without overwriting either side. Settings stay behind: they name
+    /// the old server's models and folders, and an existing session never restores them.
+    ///
+    /// The copy is on disk before the source goes, so a quit between the two leaves the same
+    /// draft in both places, which the next call finishes as `.alreadyMoved`. A destination
+    /// holding a different draft is `.conflict`, and both stay untouched. A failed save puts back
+    /// what this call changed and throws, so neither draft is lost. Attachment files stay where
+    /// they are; only their records move.
+    func transferDraft(from source: ChatDraftKey, to destination: ChatDraftKey) async throws -> ChatDraftTransfer {
+        await loadIfNeeded()
+        guard var moved = drafts[source] else { return .nothingToMove }
+        moved.settings = nil
+        moved.botSubmissionUncertain = false
+        guard !moved.isEmpty else { return .nothingToMove }
+        func holdsMoved(_ key: ChatDraftKey) -> Bool { drafts[key].map { Self.sameContent($0, moved) } ?? false }
+
+        var copied = false
+        if let existing = drafts[destination], !existing.isEmpty {
+            guard holdsMoved(destination) else { return .conflict }
+        } else {
+            updateDraft(for: destination) { $0 = moved }
+            do {
+                try await flush()
+            } catch {
+                if holdsMoved(destination) { updateDraft(for: destination) { $0 = ChatDraft() } }
+                try? await flush()
+                throw error
+            }
+            // Typing in either chat while the copy saved makes them two drafts: keep both.
+            guard holdsMoved(destination) else { return .conflict }
+            copied = true
+        }
+        guard holdsMoved(source), let original = drafts[source] else { return .conflict }
+        updateDraft(for: source) { $0 = ChatDraft() }
+        do {
+            try await flush()
+        } catch {
+            if drafts[source] == nil { drafts[source] = original }
+            try? await flush()
+            throw error
+        }
+        return copied ? .moved : .alreadyMoved
+    }
+
+    /// Whether two drafts hold the same unsent work: text, quotes and attachment records.
+    private static func sameContent(_ lhs: ChatDraft, _ rhs: ChatDraft) -> Bool {
+        lhs.text == rhs.text && lhs.quotes == rhs.quotes && lhs.attachments == rhs.attachments
     }
 
     @discardableResult
@@ -1121,6 +1371,16 @@ final class ChatDraftAttachmentLease {
 
 private struct WeakDraftAttachmentLease {
     weak var value: ChatDraftAttachmentLease?
+}
+
+/// What `ChatDraftStore.transferDraft` did with a draft.
+enum ChatDraftTransfer: Equatable, Sendable {
+    case moved
+    /// The destination already held this draft, so only the source was removed.
+    case alreadyMoved
+    case nothingToMove
+    /// The destination holds a different draft, or one side changed during the move: both stay.
+    case conflict
 }
 
 enum ChatDraftStorageError: Error, LocalizedError {

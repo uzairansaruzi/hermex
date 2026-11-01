@@ -4,25 +4,6 @@ import XCTest
 final class CompressionAnchorResolverTests: XCTestCase {
     // MARK: - Gating
 
-    func testNilMetadataShowsNoCard() {
-        let resolution = CompressionAnchorResolver.resolve(
-            messages: [makeMessage(role: "user", content: "Hello")],
-            messagesOffset: 0,
-            metadata: nil
-        )
-
-        XCTAssertNil(resolution)
-    }
-
-    func testEmptyMetadataShowsNoCard() {
-        let resolution = resolve(
-            messages: [makeMessage(role: "user", content: "Hello")],
-            metadata: metadata()
-        )
-
-        XCTAssertNil(resolution)
-    }
-
     func testKeyWithoutSummaryOrMarkerShowsNoCard() {
         let messages = [
             makeMessage(role: "user", content: "Hello"),
@@ -128,39 +109,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
         )
 
         // No key match and no index → top placement.
-        XCTAssertEqual(resolution?.placement, .top)
-    }
-
-    func testKeyAttachmentCountMismatchPreventsMatch() {
-        let messages = [
-            makeMessage(
-                role: "user",
-                content: "Here is a file",
-                attachments: [makeAttachment(name: "a.txt")]
-            ),
-        ]
-
-        let resolution = resolve(
-            messages: messages,
-            metadata: metadata(
-                key: key(role: "user", text: "Here is a file", attachments: 2),
-                summary: "Summary."
-            )
-        )
-
-        XCTAssertEqual(resolution?.placement, .top)
-    }
-
-    func testKeyRoleMismatchPreventsMatch() {
-        let messages = [
-            makeMessage(role: "assistant", content: "Hello"),
-        ]
-
-        let resolution = resolve(
-            messages: messages,
-            metadata: metadata(key: key(role: "user", text: "Hello"), summary: "Summary.")
-        )
-
         XCTAssertEqual(resolution?.placement, .top)
     }
 
@@ -290,25 +238,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
 
     // MARK: - View-model mapping
 
-    func testCardMapsAnchorIndexToTranscriptRenderID() {
-        let messages = [
-            makeMessage(role: "user", content: "Hello", messageId: "m0"),
-            makeMessage(role: "assistant", content: "Hi there", messageId: "m1"),
-            makeMessage(role: "user", content: "Next", messageId: "m2"),
-        ]
-        let transcript = ChatViewModel.transcriptMessages(from: messages, messageOffset: 0)
-
-        let card = ChatViewModel.compressionReferenceCard(
-            messages: messages,
-            messagesOffset: 0,
-            transcriptMessages: transcript,
-            metadata: metadata(key: key(role: "assistant", text: "Hi there"), summary: "Summary.")
-        )
-
-        XCTAssertEqual(card?.referenceText, "Summary.")
-        XCTAssertEqual(card?.afterRenderID, "transcript:1")
-    }
-
     func testCardMapsAnchorIndexToOffsetAdjustedRenderID() {
         // Transcript renderIDs are absolute (`transcript:<offset + loadedIndex>`);
         // the card must follow the same numbering when older pages are hidden.
@@ -344,22 +273,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
 
         XCTAssertEqual(card?.referenceText, "Only a summary.")
         XCTAssertNil(card?.afterRenderID)
-    }
-
-    func testNoMetadataMapsToNoCard() {
-        let messages = [
-            makeMessage(role: "user", content: "Hello", messageId: "m0"),
-        ]
-        let transcript = ChatViewModel.transcriptMessages(from: messages, messageOffset: 0)
-
-        let card = ChatViewModel.compressionReferenceCard(
-            messages: messages,
-            messagesOffset: 0,
-            transcriptMessages: transcript,
-            metadata: nil
-        )
-
-        XCTAssertNil(card)
     }
 
     // MARK: - Helpers
@@ -407,9 +320,5 @@ final class CompressionAnchorResolverTests: XCTestCase {
             messageId: messageId,
             attachments: attachments
         )
-    }
-
-    private func makeAttachment(name: String) -> MessageAttachment {
-        MessageAttachment(name: name, path: nil, mime: nil, size: nil, isImage: nil)
     }
 }

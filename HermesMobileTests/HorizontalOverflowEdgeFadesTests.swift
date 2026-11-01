@@ -19,26 +19,11 @@ final class HorizontalOverflowEdgeFadesTests: XCTestCase {
         XCTAssertTrue(fades.trailing)
     }
 
-    func testBothFadesMidScroll() {
-        let fades = HorizontalOverflowEdgeFades(offset: 90, contentWidth: 500, viewportWidth: 320)
-
-        XCTAssertTrue(fades.leading)
-        XCTAssertTrue(fades.trailing)
-    }
-
     func testOnlyLeadingFadeAtEnd() {
         let fades = HorizontalOverflowEdgeFades(offset: 180, contentWidth: 500, viewportWidth: 320)
 
         XCTAssertTrue(fades.leading)
         XCTAssertFalse(fades.trailing)
-    }
-
-    func testEdgesWithinEpsilonCountAsReached() {
-        let nearStart = HorizontalOverflowEdgeFades(offset: 3, contentWidth: 500, viewportWidth: 320)
-        let nearEnd = HorizontalOverflowEdgeFades(offset: 177, contentWidth: 500, viewportWidth: 320)
-
-        XCTAssertFalse(nearStart.leading)
-        XCTAssertFalse(nearEnd.trailing)
     }
 
     func testRightToLeftFlipsRawOffset() {

@@ -23,8 +23,13 @@ struct BotRoomAction: Equatable, Identifiable {
            let task = id.task, BotRoomRPC.validID(task), let generation = id.generation, generation > 0,
            let request = id.request, BotRoomRPC.validID(request), var body = value["approval"].fields {
             body["request_id"] = .string(request)
-            let choices = body["choices"]?.list?.filter { $0 == .string("once") || $0 == .string("deny") }
-            body["choices"] = .array(choices ?? [.string("once"), .string("deny")])
+            // Rooms offer only once/deny. An absent list is an older host's default; a present
+            // value that is not a list is malformed and keeps BotApprovalRequest's Deny-only rule.
+            if let present = body["choices"] {
+                if let list = present.list { body["choices"] = .array(list.filter { $0 == .string("once") || $0 == .string("deny") }) }
+            } else {
+                body["choices"] = .array([.string("once"), .string("deny")])
+            }
             approval = BotApprovalRequest(.object(body))
         } else { approval = nil }
     }

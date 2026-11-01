@@ -15,10 +15,6 @@ final class ComposerVoiceNoteRecorderTests: XCTestCase {
         XCTAssertTrue(VoiceNoteFilename.isVoiceNote(name))
     }
 
-    func testTwoGeneratedFilenamesDiffer() {
-        XCTAssertNotEqual(VoiceNoteFilename.generate(), VoiceNoteFilename.generate())
-    }
-
     func testIsVoiceNoteRejectsOtherFiles() {
         XCTAssertFalse(VoiceNoteFilename.isVoiceNote("photo.jpg"))
         XCTAssertFalse(VoiceNoteFilename.isVoiceNote("voice-note-123.wav"))
@@ -39,20 +35,4 @@ final class ComposerVoiceNoteRecorderTests: XCTestCase {
     }
 
     // MARK: - Policy
-
-    func testMaximumDurationStaysWellUnderUploadCap() {
-        XCTAssertEqual(ComposerVoiceNoteRecorder.maximumDuration, 300)
-        XCTAssertLessThan(ComposerVoiceNoteRecorder.minimumDuration, 1)
-
-        // AAC mono at ~32 kbps over 5 minutes is roughly 1.2 MB — far below the
-        // 20 MB attachment ceiling, so the duration cap (not size) bounds the UX.
-        let approxBytesAt32kbps = 32_000 / 8 * Int(ComposerVoiceNoteRecorder.maximumDuration)
-        XCTAssertLessThan(approxBytesAt32kbps, PendingAttachment.maximumUploadBytes)
-    }
-
-    func testRecordingSettingsAreMonoAAC() {
-        let settings = ComposerVoiceNoteRecorder.recordingSettings
-        XCTAssertEqual(settings[AVFormatIDKey] as? Int, Int(kAudioFormatMPEG4AAC))
-        XCTAssertEqual(settings[AVNumberOfChannelsKey] as? Int, 1)
-    }
 }

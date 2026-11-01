@@ -1,6 +1,6 @@
 # Development
 
-This app is developed against a self-hosted `hermes-webui` server exposed over real HTTPS. See [`README.md`](README.md) for the product overview and [`AGENTS.md`](AGENTS.md) for the working rules.
+This app is developed against a self-hosted Hermes host, the default server kind, and keeps legacy support for `hermes-webui` servers, both exposed over real HTTPS. See [`README.md`](README.md) for the product overview and [`AGENTS.md`](AGENTS.md) for the working rules.
 
 > Sections covering TestFlight and App Store Connect are **maintainer-only ops** — they require the maintainer's Apple Developer account and App Store Connect access. Contributors never need them to build, test, or run the app.
 
@@ -19,6 +19,30 @@ Before debugging the app, verify the server is reachable:
 ```zsh
 curl https://<your-server>/health
 ```
+
+## Compression continuation recovery
+
+When a WebUI chat send is rejected with HTTP 409 and `code: "session_rotated"`,
+the server supplies `continuation_session_id` for the compressed conversation's
+continuation. Hermex loads that session on the same server, verifies the Profile,
+and opens it only after restoring the rejected composer submission. The draft
+and retained attachments move together; the message is **not automatically
+resent**. If the user edits while recovery is pending, the rejected text and
+quotes are retained alongside those edits for review before explicit resend.
+The same retention applies to rejected `/queue` and `/steer` fallbacks, before
+slash-command result handling can consume the composer.
+A late rejection still rolls back its optimistic message and retains its files,
+even if the view has left. After a successful handoff the covered parent composer
+is cleared, and that sealed parent cannot start another POST on Back.
+An invalid target, failed load, stale view, or existing nonempty draft at the
+destination keeps the original draft in place rather than overwriting it.
+Other HTTP 409 responses retain their own recovery behavior.
+
+Focused coverage lives in `APIClientAuthAndErrorTests` and
+`ChatViewModelSendTests`. For a manual simulator check, open a sealed compressed
+parent, send a draft with an attachment, and verify that its continuation opens
+with the draft intact and no new agent run until Send is tapped again. Also
+check leaving the parent during recovery and a destination with an existing draft.
 
 ## Upstream Contract Pin
 
@@ -45,6 +69,10 @@ cd hermes-webui
 
 For simulator-only testing, `http://localhost:8787` can work when the server is running on the same Mac. For physical-device testing, use HTTPS, a local network address (a private IP, `.local` or single-label name), or a Tailscale IP or `ts.net` name; the app's ATS policy allows plain HTTP to exactly those (`HermesMobile/Resources/Info.plist`).
 
+## Hermes Host Setup
+
+A Hermes host (`hermes dashboard`, default port 9119) should have basic auth: off loopback, or with a non-loopback `dashboard.public_url`, it refuses to run without its sign-in gate. One bound to loopback without `dashboard.public_url` runs with no sign-in (`"auth_required": false`); the app connects to it through a proxy to loopback and warns that it is open (`docs/agents/hermes-server.md` § No sign-in). In the host's `config.yaml`, set `dashboard.basic_auth.username` and a `password_hash` (from `plugins.dashboard_auth.basic.hash_password`). Also set `dashboard.basic_auth.secret` to 32 or more random bytes: without it the signing key is per process, so every restart signs the app out. Set `dashboard.public_url` to the exact address the app uses, or the dashboard answers `400 Invalid Host header`. `curl https://<your-host>/api/status` should then report `"auth_required": true`. Onboarding's Hermes prompt (`OnboardingFlowPolicy.hermesSetupPrompt`) walks an agent through the same steps.
+
 ## Example Server Setup (macOS + launchd)
 
 One proven way to run the server natively on macOS is through launchd, for contributors who want a local reference (this is not the maintainer's setup, which runs on a different Mac):
@@ -61,13 +89,13 @@ launchctl kickstart -k gui/$(id -u)/com.hermes.webui
 
 ## Xcode version
 
-Local work, PR CI, and release builds all use **Xcode 27.0 (27A266a)**, so a
+Local work, PR CI, and release builds all use **Xcode 27.1 (27A9275)**, so a
 change that compiles on this Mac compiles on CI. CI and release builds run on
 GitHub's `xcode-27` runner image with `DEVELOPER_DIR` pinned in
 `.github/workflows/pr-ci.yml` and `.github/workflows/release-candidate-testflight.yml`.
 Check yours with `xcodebuild -version`. With several Xcodes installed, select
-27.0 for one shell with `export DEVELOPER_DIR=<path to Xcode 27.0>.app/Contents/Developer`,
-or for the whole Mac with `sudo xcode-select -s <path to Xcode 27.0>.app`.
+27.1 for one shell with `export DEVELOPER_DIR=<path to Xcode 27.1>.app/Contents/Developer`,
+or for the whole Mac with `sudo xcode-select -s <path to Xcode 27.1>.app`.
 Move the local Xcode and both workflow pins together.
 
 ## Local XCTest
@@ -82,13 +110,29 @@ main checkout normally uses **iPhone 17**. Resolve its UDID with
 are ambiguous, so pass the UDID. The runner never chooses another device or
 creates one, and refuses to boot a fifth simulator.
 
+A run that boots its simulator shuts it down again once the tests finish, pass
+or fail, so a session's device doesn't keep holding gigabytes of memory after
+the session ends. A simulator that was already booted stays booted. Pass
+`--keep-booted` to leave a device the run booted running, for manual testing or
+a quick fix-and-rerun loop. After a timeout, a setup failure, or a test runner
+that hung twice, the device stays up for `scripts/sim-doctor`. On a 16 GB Mac
+the run always shuts its simulator down unless `--keep-booted` is passed, even
+one that was already booted or that timed out: one leftover simulator pages the
+host enough to break every other runner's boots.
+
+The tests run inside the installed app, so a test can change its real Keychain,
+cookies and defaults. `HermesMobileTests/TestHostStateGuard.swift` snapshots
+them when the test bundle starts and restores them when it finishes. A simulator
+signed in with `scripts/sim-login` stays signed in after a run. A run killed
+before it finishes can still sign it out.
+
 ```zsh
 # Focused tests; repeat --only for multiple classes or individual test methods.
 scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests
 
-# Stress a flaky test: up to 20 iterations in one build and launch, stopping at
+# Stress a flaky test: up to 10 iterations in one build and launch, stopping at
 # the first failure. Use this rather than calling the runner in a loop.
-scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests --repeat 20
+scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests --repeat 10
 
 # Full suite (also builds): use the same assigned UDID throughout the session.
 scripts/test-sim <simulator-udid>
@@ -104,8 +148,11 @@ that device (an app left attached by a build-and-run makes the test runner hang
 before connecting, `0 tests executed`; set `HERMEX_BUNDLE_ID` if
 `Config/Local.xcconfig` changes the bundle ID), then holds locks on the simulator
 and checkout until testing finishes. A competing runner reports the current
-owner immediately; different checkout/device pairs run independently. These
-locks coordinate this runner only: keep other build/install tools on their
+owner immediately; different checkout/device pairs run independently, except
+on a Mac with 16 GB of RAM or less, where they wait their turn on one host build
+lock (up to an hour) because two simulators building at once page memory.
+hermex-flow's `run-sim.sh` takes the same lock. Otherwise these locks
+coordinate this runner only: keep other build/install tools on their
 session's assigned device, and do not run them during its test run.
 
 Before each test attempt, a bounded `get_app_container` check skips termination
@@ -127,15 +174,21 @@ startup and test counts/failures at completion; `command.json`, `test.log`,
 
 Wait on the runner using the longest supported tool wait; avoid separate log
 polls or status commands. It checks readiness with bounded commands (120 seconds
-for boot operations) and allows 30 minutes for build and tests.
+for boot operations) and allows 30 minutes for build and tests. Each test gets
+three minutes (`-default-test-execution-time-allowance`), so a deadlocked test
+fails on its own instead of spending the whole run.
 `--boot-timeout` and `--test-timeout` override those limits in seconds when a
 known workload requires it.
 
 It retries in one case only. Xcode sometimes fails with `The test runner hung
 before establishing connection` before any test runs: the app launches, but
 XCTest inside it never hears that the simulator's `testmanagerd` is ready, and
-xcodebuild gives up after 300 seconds. On that failure, and only when no test
-passed, the runner reboots that simulator (its own UDID only), stops the app,
+xcodebuild gives up after several minutes. The runner doesn't wait for that:
+once the build is done and the log has then been silent for 150 seconds before
+any suite started, it stops the attempt and treats it as the same hang. It
+tells the build is done from the `IDESchemeActionSDKRecord` line xcodebuild
+logs as the test action starts; without that line it waits for xcodebuild. On that failure, and only when no
+test passed, the runner reboots that simulator (its own UDID only), stops the app,
 and reruns once within the same test time limit, printing `RETRY:`. The retry
 writes `test-retry.log`, `summary-retry.json`, and `Tests-retry.xcresult` next
 to the first attempt's files. Every other failure is reported without a retry.
@@ -144,12 +197,34 @@ Exit codes: **0** passed; **1** build/test failure; **2** busy device, setup, or
 result-verification failure; **124** timeout; **130** interrupted. On a busy
 device or infrastructure failure, report the blocker and log path; stop rather
 than rebooting, erasing devices, clearing caches, or rerunning unchanged tests.
+Each run also saves the Mac's swap use at start in `memory.log`.
 For actual test failures, inspect the recorded failure and follow the repo's
 baseline-check procedure where applicable. On timeout or interruption, the runner
 terminates the isolated process group it spawned, including remaining descendants,
 and leaves other jobs and the simulator itself alone.
 
 Runner checks: `python3 -m unittest discover -s scripts/tests -v`.
+
+### Stuck simulators
+
+`scripts/sim-doctor [udid]` says why a simulator is stuck and prints the one
+command that clears it. Every probe has a 20-second limit, so it is safe to run
+while things hang. Exit 0 means nothing needs clearing; 1 prints a `FIX:` line.
+
+- `SERVICE`: CoreSimulator itself stopped answering. Only the owner restarts it,
+  because that stops every booted simulator.
+- `MEMORY`: the device doesn't respond while the Mac is paging. On a 16 GB Mac,
+  simulator processes then sit in uninterruptible waits, and boots and launches
+  stall. Free memory first; booting another simulator makes it worse. Heavy swap
+  alone only warns.
+- `DEVICE`: one simulator stopped answering while CoreSimulator still does. The
+  session that owns it shuts it down and boots it by UDID.
+- `ZOMBIE_APP`: Hermex is a zombie the simulator still lists as running, so
+  `launch` and `terminate` never return. A debugger that detached, or was
+  killed, while the app was stopped leaves this. Restart that simulator. To get
+  a backtrace without causing it, end lldb with `kill`:
+  `lldb -p <pid> --batch -o continue -k "thread backtrace all" -k kill`, and
+  don't `simctl terminate` the app while lldb holds it.
 
 ## Design System Catalog
 
@@ -338,7 +413,6 @@ Debug builds read these launch arguments; Release builds compile none of them in
 
 | Argument | What it does |
 |---|---|
-| `--streaming-lab` | Opens the Streaming Lab as the root screen: a canned markdown reply replayed through the real streaming renderer, with the fade knobs exposed (#234). No server needed. |
 | `--rating-prompt-eligible` | Makes this launch eligible for the App Store rating prompt, so its real navigation and stream guards can be exercised. It rewrites the stored rating and tip-jar counters. |
 | `--stale-runtime-send` | Fails the first chat send of this launch with hermes-webui's `agent_runtime_stale` 409 instead of sending it, so the composer's restart banner and **Copy fix prompt** can be checked without updating Hermes on a server (#955). Later sends go to the server as usual. |
 | `--hitch-meter` | Shows a frame-hitch readout in the top-leading corner, such as `12.4 ms/s · 3 hitches · 60 Hz`: late-frame milliseconds per second, hitch count, and the refresh rate the display link reports, over the last second. It takes no touches, VoiceOver skips it, and it updates at most twice a second. |
@@ -351,14 +425,16 @@ The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_P
 
 ### Recording signposts
 
-`HermesMobile/Config/PerformanceSignposts.swift` marks six intervals in every build, under the bundle ID as subsystem (`com.uzairansar.hermesmobile`, or `com.uzairansar.hermesmobile.branch` for Hermex Branch) and category `Performance`. Metadata is counts only; never add text, titles, paths, URLs, or IDs.
+`HermesMobile/Config/PerformanceSignposts.swift` marks eight intervals in every build, under the bundle ID as subsystem (`com.uzairansar.hermesmobile`, or `com.uzairansar.hermesmobile.branch` for Hermex Branch) and category `Performance`. Metadata is counts only; never add text, titles, paths, URLs, or IDs.
 
 | Interval | Measures | Metadata |
 |---|---|---|
-| `Session Open` | A session-list open (tap or keyboard) to the first transcript frame, or to the empty state when the transcript is empty | `messages` |
+| `Launch` | The app's `init` to the first frame after a home list (webui or Hermes) holds session rows, cached or read; rows in a collapsed group count | `rows` |
+| `Session Open` | A session-list open (tap or keyboard, or a Hermes list pushing its chat) to the first transcript frame, or to the empty state when the transcript is empty | `messages` |
+| `Load Earlier` | Load earlier (button or pull) to the layout of the prepended rows | `messages` |
 | `Transcript Apply` | Painting the cached transcript, or applying a reloaded one | `messages` |
 | `Markdown Parse` | Parsing one markdown block | `chars` |
-| `Stream Batch Apply` | Applying one batch of streamed tokens | `mutated` (0 or 1) |
+| `Stream Batch Apply` | Applying one batch of streamed tokens and reasoning: each reveal tick of a stream (`forced=0`), or a flush on completion, cancel, error, interim reply or snapshot (`forced=1`; completion can flush more than once) | `mutated` (0 or 1), `forced` (0 or 1) |
 | `Cache Read` | A SwiftData read of cached sessions or messages | `rows` |
 | `Cache Write` | A SwiftData write of cached sessions or messages | `rows` |
 
@@ -373,9 +449,13 @@ xcrun xctrace export --input /tmp/hermex.trace \
   --xpath '/trace-toc/run[@number="1"]/data/table[@schema="OSSignpostIntervals"][1]'
 ```
 
+### Counting transcript renders
+
+Debug builds count the body evaluations of the transcript's heavy views in memory (`HermesMobile/Config/RenderProbe.swift`): `ChatTranscriptMessageBlock` (also per row `renderID`), `MessageBubbleView`, `MarkdownRenderer`, `ToolActivityGroupView`, `ReasoningBlockView`, and `ResponseTextSelection`'s host updates. `ChatTranscriptMessageBlock.compared` counts every row equality check and `ChatTranscriptMessageBlock.unequal` the ones that failed, which tells a row whose inputs changed apart from an equal row SwiftUI re-ran anyway, and both apart from rows SwiftUI never compared. Release builds compile the probe to an empty function. `ChatTranscriptRenderBudgetTests` uses it to check that a stream's text-only ticks re-render no settled row. To read it by hand, pause a Debug build in lldb, run `expr RenderProbe.reset()`, continue through a stream, pause again and run `po RenderProbe.snapshot`. Only the named totals may leave the process; never log row identities.
+
 ### Watching the Bot connection log
 
-`HermesConnection` logs Bot sign-ins and the gateway socket's lifecycle under the bundle ID as subsystem and the category `HermesConnection` (`docs/agents/bots.md`). In Console.app, select a cabled iPhone, start streaming, and filter `subsystem:com.uzairansar.hermesmobile category:HermesConnection` (`com.uzairansar.hermesmobile.branch` for Hermex Branch). Check it on a device: the simulator's `log show` doesn't show these lines.
+`HermesConnection` logs Bot sign-ins and the gateway socket's lifecycle under the bundle ID as subsystem and the category `HermesConnection` (`docs/agents/hermes-server.md`). In Console.app, select a cabled iPhone, start streaming, and filter `subsystem:com.uzairansar.hermesmobile category:HermesConnection` (`com.uzairansar.hermesmobile.branch` for Hermex Branch). Check it on a device: the simulator's `log show` doesn't show these lines.
 
 ## Swift File-Size Policy
 

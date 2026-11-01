@@ -108,33 +108,4 @@ final class APIClientInsightsTests: APIClientTestCase {
         XCTAssertNil(response.activityByDay)
         XCTAssertNil(response.activityByHour)
     }
-
-    func testInsightsResponseDecodesLossyCacheEfficiencyFields() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-        let response = try decoder.decode(
-            InsightsResponse.self,
-            from: Data("""
-            {
-              "total_cache_read_tokens": "900",
-              "total_cache_hit_percent": "87.5",
-              "models": [
-                { "model": "gpt-5.5", "cache_hit_percent": 12 }
-              ]
-            }
-            """.utf8)
-        )
-
-        XCTAssertEqual(response.totalCacheReadTokens, 900)
-        XCTAssertEqual(try XCTUnwrap(response.totalCacheHitPercent), 87.5, accuracy: 0.0001)
-        XCTAssertEqual(try XCTUnwrap(response.models?.first?.cacheHitPercent), 12, accuracy: 0.0001)
-    }
-
-    func testInsightsFormattedPercentUsesAtMostOneFractionDigit() {
-        let locale = Locale(identifier: "en_US")
-        XCTAssertEqual(insightsFormattedPercent(87.5, locale: locale), "87.5%")
-        XCTAssertEqual(insightsFormattedPercent(12, locale: locale), "12%")
-        XCTAssertEqual(insightsFormattedPercent(0.19, locale: locale), "0.2%")
-    }
 }

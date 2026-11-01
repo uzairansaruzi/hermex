@@ -49,9 +49,15 @@ struct FilePathAutocompleteView: View {
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
         .frame(height: panelHeight)
-        .task(id: query) {
+        .task(id: LoadKey(query: query, scope: search.scopeRevision)) {
             await load(query)
         }
+    }
+
+    /// What one load answers: the query, in the folder a reloading reset last moved the search to.
+    private struct LoadKey: Equatable {
+        let query: String
+        let scope: Int
     }
 
     /// A listing that failed reads as "nothing matched": the panel is a

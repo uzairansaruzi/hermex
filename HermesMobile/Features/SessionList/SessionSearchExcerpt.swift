@@ -10,10 +10,43 @@ import Foundation
 struct SessionSearchExcerpt: Equatable {
     let text: String
     let query: String
+    /// The excerpt with the host's own matches bolded, when it marked them (a Hermes snippet).
+    private let marked: AttributedString?
 
     init(text: String, query: String) {
         self.text = Self.displayText(text)
         self.query = query
+        marked = nil
+    }
+
+    /// A Hermes search snippet (#1053): the host's FTS `snippet()` text, with `>>>` before and
+    /// `<<<` after each match. The marked spans are bolded and the marks never show, so
+    /// `text`, which VoiceOver reads, is plain. A snippet without marks (the host's substring
+    /// search, for scripts FTS can't split) bolds the query instead, as a webui excerpt does.
+    init(hermesSnippet snippet: String, query: String) {
+        var text = ""
+        var marked = AttributedString()
+        var isMatch = false
+        var hasMarks = false
+        var rest = Self.displayText(snippet)[...]
+        while !rest.isEmpty {
+            let open = rest.range(of: ">>>")
+            let close = rest.range(of: "<<<")
+            let mark = [open, close].compactMap { $0 }.min { $0.lowerBound < $1.lowerBound }
+            let piece = String(rest[..<(mark?.lowerBound ?? rest.endIndex)])
+            text += piece
+            var run = AttributedString(piece)
+            if isMatch { run.inlinePresentationIntent = .stronglyEmphasized }
+            marked += run
+            guard let mark else { break }
+            // A stray mark only ends or starts the bolding; it is never shown either.
+            isMatch = mark == open
+            hasMarks = true
+            rest = rest[mark.upperBound...]
+        }
+        self.text = text
+        self.query = query
+        self.marked = hasMarks ? marked : nil
     }
 
     /// The server previews the raw stored message text, so an excerpt taken
@@ -35,7 +68,7 @@ struct SessionSearchExcerpt: Equatable {
         return text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// The excerpt with every occurrence of the query bolded.
+    /// The excerpt with every occurrence of the query bolded, or a Hermes snippet's marked matches.
     ///
     /// Matching is case-insensitive and runs over `String` ranges, so composed
     /// and decomposed spellings of the same characters match each other and the
@@ -45,6 +78,7 @@ struct SessionSearchExcerpt: Equatable {
     /// redaction has replaced the match, nothing is bolded and the plain
     /// excerpt still shows.
     var highlighted: AttributedString {
+        if let marked { return marked }
         guard !query.isEmpty else { return AttributedString(text) }
 
         var result = AttributedString()

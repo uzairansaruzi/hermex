@@ -77,12 +77,17 @@ struct SessionListArchiveToastRoute: Equatable {
         host = chosen
         return chosen
     }
+
+    /// Moves the toast to the session screen in front for a toast that isn't an
+    /// archive's, such as a failed action (#1410): Scheduled while it shows,
+    /// otherwise the list. An earlier archive's host may no longer be on screen.
+    mutating func noticeShown(destination: SessionNavigationDestination?) {
+        host = destination == .utility(.scheduled) ? .scheduled : .list
+    }
 }
 
 @MainActor
 struct SessionListView: View {
-    private static let searchChromeIconVisualSize: CGFloat = 36
-    private static let searchChromeIconHitTarget: CGFloat = 44
 
     @Bindable var authManager: AuthManager
     let server: URL
@@ -116,7 +121,6 @@ struct SessionListView: View {
     @State private var sessionPendingRename: SessionSummary?
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingProjectCreation: SessionSummary?
-    @State private var sessionOpenErrorMessage: String?
     @State private var sessionOpenTask: Task<Void, Never>?
     @State private var sessionExportShareItem: SessionExportShareItem?
     @State private var isPresentingProjectCreation = false
@@ -267,10 +271,11 @@ struct SessionListView: View {
                         )
                     }
             }
-            .sheet(item: $sessionPendingRename) { session in
+            .sheet(item: $sessionPendingRename, onDismiss: { viewModel.clearRenameError() }) { session in
                 SessionRenameSheet(
                     initialTitle: SessionRowView.displayTitle(for: session),
-                    isSaving: viewModel.isRenamingSession
+                    isSaving: viewModel.isRenamingSession,
+                    errorMessage: viewModel.renameErrorMessage
                 ) {
                     sessionPendingRename = nil
                 } onSave: { title in
@@ -285,18 +290,14 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.height(180), .medium])
             }
-            .alert("Session Action Failed", isPresented: sessionOpenErrorIsPresented) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(sessionOpenErrorMessage ?? "")
-            }
-            .sheet(item: $sessionPendingProjectCreation) { session in
+            .sheet(item: $sessionPendingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) { session in
                 ProjectCreationSheet(
                     existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession
+                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     sessionPendingProjectCreation = nil
-                } onSave: { name, color in
+                } onSave: { name, color, _ in
                     Task {
                         let didMove = await viewModel.createProject(
                             named: name,
@@ -313,13 +314,14 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .sheet(isPresented: $isPresentingProjectCreation) {
+            .sheet(isPresented: $isPresentingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) {
                 ProjectCreationSheet(
                     existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject
+                    isSaving: viewModel.isCreatingProject,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     isPresentingProjectCreation = false
-                } onSave: { name, color in
+                } onSave: { name, color, _ in
                     Task {
                         let didCreate = await viewModel.createEmptyProject(
                             named: name,
@@ -335,10 +337,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .sheet(item: $projectPendingRename) { project in
+            .sheet(item: $projectPendingRename, onDismiss: { viewModel.clearProjectSheetError() }) { project in
                 ProjectRenameSheet(
                     project: project,
-                    isSaving: viewModel.isRenamingProject
+                    isSaving: viewModel.isRenamingProject,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     projectPendingRename = nil
                 } onSave: { name, color in
@@ -416,6 +419,7 @@ struct SessionListView: View {
             .onChange(of: viewModel.isLoading) {
                 refreshAfterForegroundReturnIfReady()
             }
+            .onChange(of: viewModel.sessions.count, initial: true) { LaunchSignpost.end(rows: viewModel.sessions.count) }
             .onChange(of: didCompleteInitialLoad) {
                 refreshAfterForegroundReturnIfReady()
             }
@@ -458,6 +462,10 @@ struct SessionListView: View {
             .modifier(
                 SessionActionConfirmations(
                     viewModel: viewModel,
+                    showFailure: { message in
+                        archiveToastRoute.noticeShown(destination: navigationState.destination)
+                        actionToast.show(.failure(message))
+                    },
                     sessionPendingDeletion: $sessionPendingDeletion,
                     projectPendingDeletion: $projectPendingDeletion,
                     deleteSession: { session in
@@ -492,7 +500,7 @@ struct SessionListView: View {
             && sessionPendingProjectCreation == nil && sessionPendingDeletion == nil
             && projectPendingRename == nil && projectPendingDeletion == nil
             && !isPresentingProjectCreation && !isPresentingAddServer
-            && sessionOpenErrorMessage == nil && !viewModel.isCreatingSession
+            && !viewModel.isCreatingSession
     }
 
     private var waitingSharedImportBanner: some View {
@@ -538,11 +546,11 @@ struct SessionListView: View {
     /// Opens Settings → Notifications for a chat's one-time offer (#863). On compact
     /// width a fork or a chat under Settings → Archived Sessions can sit above the
     /// destination, and retargeting the destination leaves it on top. So compact pops
-    /// to the list first, and the list opens Settings once it is back on screen.
+    /// to the list first, and the list opens Notifications once it is back on screen.
     /// Regular width pops the detail column on every root selection already.
     private func showNotificationSettings() {
         guard horizontalSizeClass != .regular, navigationState.destination != nil else {
-            selectDestination(.settings(.notifications))
+            selectDestination(.notificationSettings)
             return
         }
         opensNotificationSettingsOnReturn = true
@@ -580,7 +588,7 @@ struct SessionListView: View {
                         // The pop `showNotificationSettings` started has landed.
                         guard opensNotificationSettingsOnReturn else { return }
                         opensNotificationSettingsOnReturn = false
-                        selectDestination(.settings(.notifications))
+                        selectDestination(.notificationSettings)
                     }
             }
         }
@@ -609,6 +617,9 @@ struct SessionListView: View {
             }
             .padding(.horizontal, 24)
         }
+        // The Move question waits for this list: hidden under a pushed chat or a closed sidebar.
+        .onAppear { MoveToHermesNotices.shared.noteChatList(of: server.absoluteString, onScreen: true) }
+        .onDisappear { MoveToHermesNotices.shared.noteChatList(of: server.absoluteString, onScreen: false) }
     }
 
     @ViewBuilder
@@ -642,6 +653,7 @@ struct SessionListView: View {
             PendingNewChatView(
                 initialDraft: route.initialDraft,
                 initialAttachments: route.initialAttachments,
+                shareNotice: route.shareNotice,
                 autoStartsVoiceInput: route.autoStartsVoiceInput,
                 profileName: route.profileName,
                 projectID: route.projectID,
@@ -661,13 +673,14 @@ struct SessionListView: View {
     private func utilityDestination(_ destination: SessionListUtilityDestination) -> some View {
         Group {
             switch destination {
-            case .settings(let scrollTo):
+            case .settings:
                 SettingsView(
                     authManager: authManager,
                     server: server,
-                    initialScrollTarget: scrollTo,
                     onDefaultProfileSelected: viewModel.adoptDefaultProfileSelection
                 )
+            case .notificationSettings:
+                SettingsNotificationsPage(server: server)
             case .bots:
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination)
             case .tasks:
@@ -725,6 +738,8 @@ struct SessionListView: View {
                 TipJarCard()
                     .sessionsScreenListRow()
             }
+
+            MoveToHermesBanner(serverID: server.absoluteString)
 
             if viewModel.isViewingCachedData {
                 OfflineCacheBanner()
@@ -820,151 +835,25 @@ struct SessionListView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: searchChromeIsExpanded ? 0 : 16) {
-            HermesHeaderLogo(selectedColor: selectedHeaderLogoColor)
-                .frame(width: searchChromeIsExpanded ? 0 : 160, alignment: .leading)
-                .opacity(searchChromeIsExpanded ? 0 : 1)
-                .clipped()
-                .accessibilityHidden(searchChromeIsExpanded)
-
-            searchChrome
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
-        .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: searchChromeIsExpanded)
-        .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsSearchClearButton)
+        SessionsHeader(
+            logoColor: selectedHeaderLogoColor,
+            avatar: SessionsHeader.Avatar(
+                initials: settingsInitials,
+                color: selectedHeaderLogoColor,
+                foreground: initialsAvatarForegroundColor,
+                servers: AvatarServerSwitcherModel(servers: authManager.servers, activeServerID: authManager.activeServerID),
+                openSettings: { selectDestination(.settings) },
+                switchToServer: { account in authManager.switchActiveServer(to: account) },
+                addServer: { isPresentingAddServer = true },
+                manageServers: { selectDestination(.settings) }
+            ),
+            field: SessionsHeader.Field(
+                isExpanded: searchChromeIsExpanded, text: $searchText, isFocused: $searchFieldIsFocused, close: closeSearch
+            ),
+            openSearch: openSearch
+        )
         .onChange(of: searchFieldIsFocused) { _, newValue in
             handleSearchFieldFocusChange(newValue)
-        }
-    }
-
-    private var searchChrome: some View {
-        HStack(spacing: searchChromeIsExpanded ? 8 : 4) {
-            HapticButton {
-                if searchChromeIsExpanded {
-                    searchFieldIsFocused = true
-                } else {
-                    openSearch()
-                }
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(searchChromeIsExpanded ? .secondary : .primary)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(searchChromeIsExpanded ? "Focus session search" : "Search sessions")
-            .accessibilityHint("Shows the session search field.")
-            .accessibilityHidden(searchChromeIsExpanded)
-
-            searchTextField
-
-            if showsSearchClearButton {
-                searchClearButton
-                    .transition(.scale.combined(with: .opacity))
-            }
-
-            searchTrailingButton
-        }
-        .padding(.vertical, 2)
-        .frame(maxWidth: searchChromeIsExpanded ? .infinity : nil, alignment: .trailing)
-        .sessionsChromeGlass(
-            isInteractive: true,
-            in: Capsule()
-        )
-        .clipShape(Capsule())
-        .contentShape(Capsule())
-    }
-
-    private var searchTextField: some View {
-        TextField("Search sessions", text: $searchText)
-            .font(AppFont.subheadline())
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .focused($searchFieldIsFocused)
-            .submitLabel(.done)
-            .lineLimit(1)
-            .layoutPriority(1)
-            .frame(maxWidth: searchChromeIsExpanded ? .infinity : 0)
-            .opacity(searchChromeIsExpanded ? 1 : 0)
-            .clipped()
-            .accessibilityHidden(!searchChromeIsExpanded)
-    }
-
-    private var searchClearButton: some View {
-        Button {
-            searchText = ""
-            searchFieldIsFocused = true
-        } label: {
-            Image(systemName: "xmark.circle.fill")
-                .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
-                .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Clear search")
-    }
-
-    private var searchTrailingButton: some View {
-        HapticButton(feedbackStyle: .medium) {
-            if searchChromeIsExpanded {
-                closeSearch()
-            } else {
-                selectDestination(.settings(nil))
-            }
-        } label: {
-            ZStack {
-                Text(settingsInitials)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(initialsAvatarForegroundColor)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .background(selectedHeaderLogoColor, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
-                    .opacity(searchChromeIsExpanded ? 0 : 1)
-                    .scaleEffect(searchChromeIsExpanded ? 0.72 : 1)
-                    .rotationEffect(.degrees(searchChromeIsExpanded ? -18 : 0))
-
-                Image(systemName: "xmark")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .opacity(searchChromeIsExpanded ? 1 : 0)
-                    .scaleEffect(searchChromeIsExpanded ? 1 : 0.72)
-                    .rotationEffect(.degrees(searchChromeIsExpanded ? 0 : 18))
-            }
-            .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(searchChromeIsExpanded ? "Close search" : "Settings")
-        .accessibilityHint(
-            searchChromeIsExpanded
-                ? "Closes search and clears the current query."
-                : "Opens Settings. Long press to switch servers."
-        )
-        // Long-press the avatar to switch the active server, reusing #17's
-        // switch/add actions. Suppressed while search is expanded so the
-        // "close search" tap state is untouched (#283). The plain tap above is
-        // preserved — `contextMenu` adds long-press without stealing the tap.
-        .contextMenu {
-            if !searchChromeIsExpanded {
-                AvatarServerSwitcherMenu(
-                    model: AvatarServerSwitcherModel(
-                        servers: authManager.servers,
-                        activeServerID: authManager.activeServerID
-                    ),
-                    switchToServer: { account in
-                        authManager.switchActiveServer(to: account)
-                    },
-                    addServer: { isPresentingAddServer = true },
-                    manageServers: { selectDestination(.settings(.servers)) }
-                )
-            }
         }
     }
 
@@ -1102,10 +991,6 @@ struct SessionListView: View {
 
     private var hasActiveSessionFilter: Bool {
         selectedProjectID != nil || !normalizedSearchText.isEmpty
-    }
-
-    private var showsSearchClearButton: Bool {
-        searchChromeIsExpanded && !searchText.isEmpty
     }
 
     private func isActiveProfile(_ profile: ProfileSummary) -> Bool {
@@ -1480,7 +1365,7 @@ struct SessionListView: View {
     }
 
     /// Restores the session in place. It does not reopen a chat the archive
-    /// closed; a failure shows the "Session Action Failed" alert.
+    /// closed; a failure shows as a failure toast.
     private func undoArchive(_ session: SessionSummary) async {
         let didUnarchive = await viewModel.unarchive(
             session,
@@ -1587,7 +1472,8 @@ struct SessionListView: View {
         selectDestination(
             PendingNewChatRoute(
                 initialDraft: draft,
-                initialAttachments: sharedImport.attachments
+                initialAttachments: sharedImport.attachments,
+                shareNotice: SharedSkipsNotice(sharedImport.skipped)
             )
         )
         didRoutePendingSharedImport(reservation)
@@ -1704,11 +1590,8 @@ struct SessionListView: View {
 
     private func openSession(_ session: SessionSummary) async {
         let sessionToOpen = await viewModel.sessionForOpening(session, modelContext: modelContext)
+        // A failed open leaves `actionErrorMessage` set, which shows as a failure toast.
         guard !Task.isCancelled else { return }
-
-        if let message = viewModel.actionErrorMessage {
-            sessionOpenErrorMessage = message
-        }
 
         if let sessionToOpen {
             selectSession(sessionToOpen)
@@ -1717,15 +1600,6 @@ struct SessionListView: View {
             // the newer `begin` instead.
             SessionOpenSignpost.end(sessionID: session.sessionId, messages: nil)
         }
-    }
-
-    private var sessionOpenErrorIsPresented: Binding<Bool> {
-        Binding(
-            get: { sessionOpenErrorMessage != nil },
-            set: { isPresented in
-                if !isPresented { sessionOpenErrorMessage = nil }
-            }
-        )
     }
 
     private func rememberCreatedSession(_ session: SessionSummary) {
@@ -1894,6 +1768,8 @@ struct PendingNewChatRoute: Identifiable, Hashable {
     let id = UUID()
     let initialDraft: String
     let initialAttachments: [SharedAttachmentImport]
+    /// What the share this chat opened for left out, which its composer says once (#1401).
+    let shareNotice: SharedSkipsNotice?
     /// When true, the composer auto-starts voice dictation on appear (#338).
     let autoStartsVoiceInput: Bool
     /// When set, the new session is created pinned to this profile (#339).
@@ -1904,12 +1780,14 @@ struct PendingNewChatRoute: Identifiable, Hashable {
     init(
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
+        shareNotice: SharedSkipsNotice? = nil,
         autoStartsVoiceInput: Bool = false,
         profileName: String? = nil,
         projectID: String? = nil
     ) {
         self.initialDraft = initialDraft
         self.initialAttachments = initialAttachments
+        self.shareNotice = shareNotice
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
         self.projectID = projectID
@@ -1925,10 +1803,9 @@ struct PendingNewChatRoute: Identifiable, Hashable {
 }
 
 enum SessionListUtilityDestination: Hashable, Identifiable {
-    /// Optional section to scroll to when Settings opens — "Manage Servers"
-    /// passes `.servers`, a plain avatar tap passes `nil` (#283), and the chat's
-    /// notification offer passes `.notifications` (#863).
-    case settings(SettingsScrollAnchor?)
+    case settings
+    /// Settings → Notifications on its own, for the chat's one-time offer (#863).
+    case notificationSettings
     /// The direct-Hermes Bots inbox, shown while Bot Mode (beta) is on.
     case bots
     case tasks
@@ -2000,6 +1877,7 @@ private struct PendingNewChatView: View {
     let onAPIError: (Error) -> Void
     let onSessionCreated: (SessionSummary) -> Void
     let initialAttachments: [SharedAttachmentImport]
+    let shareNotice: SharedSkipsNotice?
     let autoStartsVoiceInput: Bool
     let profileName: String?
     let projectID: String?
@@ -2018,6 +1896,7 @@ private struct PendingNewChatView: View {
     init(
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
+        shareNotice: SharedSkipsNotice? = nil,
         autoStartsVoiceInput: Bool = false,
         profileName: String? = nil,
         projectID: String? = nil,
@@ -2032,6 +1911,7 @@ private struct PendingNewChatView: View {
         self.onAPIError = onAPIError
         self.onSessionCreated = onSessionCreated
         self.initialAttachments = initialAttachments
+        self.shareNotice = shareNotice
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
         self.projectID = projectID
@@ -2049,6 +1929,7 @@ private struct PendingNewChatView: View {
                     initialDraft: draftMessage,
                     initialQuotes: draftQuotes,
                     initialAttachments: initialAttachments,
+                    shareNotice: shareNotice,
                     loadsInitialMessages: false,
                     autoStartsVoiceInput: autoStartsVoiceInput,
                     draftStore: draftStore,

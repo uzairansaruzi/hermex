@@ -1,13 +1,21 @@
 import SwiftUI
 
+/// A server's archived sessions, with Unarchive (#17). On a Hermes server (#1048) they are one
+/// Profile's, hidden Bot Chats included, paged 100 at a time, with Delete as well. A Bot Chat row
+/// opens in its bot on the Bots tab (#1146).
 struct ArchivedSessionsView: View {
     let server: URL
     /// Forwarded to `ChatView` and used for load/unarchive failures so a 401
     /// here triggers the same re-login flow as everywhere else.
     let onAPIError: (Error) -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ArchivedSessionsViewModel
     @State private var openedSession: SessionSummary?
+    /// The Hermes session a row opened.
+    @State private var openedHermesChat: HermesSessionChat?
+    @State private var sessionPendingDeletion: SessionSummary?
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -16,6 +24,13 @@ struct ArchivedSessionsView: View {
         self.server = server
         self.onAPIError = onAPIError
         _viewModel = State(initialValue: ArchivedSessionsViewModel(server: server))
+    }
+
+    /// A Hermes server's Archived screen (#1048), from its Sessions list or Settings.
+    init(server: URL, hermes: HermesArchiveSource) {
+        self.server = server
+        onAPIError = { _ in }
+        _viewModel = State(initialValue: ArchivedSessionsViewModel(server: server, hermes: hermes))
     }
 
     var body: some View {
@@ -27,11 +42,46 @@ struct ArchivedSessionsView: View {
                 // no special-casing on the chat side (issue #17).
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
+            .navigationDestination(item: $openedHermesChat) { chat in
+                ChatView(hermesSession: chat).id(chat.id)
+            }
             .task {
                 await load()
             }
             .refreshable {
                 await load()
+            }
+            .onDisappear {
+                // A pushed chat keeps the screen's client; leaving for good ends it.
+                if viewModel.isHermes, openedHermesChat == nil { viewModel.close() }
+            }
+            .onChange(of: scenePhase) {
+                // The background closes a Hermes server's socket; the screen reads again on return.
+                guard viewModel.isHermes else { return }
+                switch scenePhase {
+                case .background: viewModel.close()
+                case .active where openedHermesChat == nil && !viewModel.isConnected: Task { await load() }
+                default: break
+                }
+            }
+            .onChange(of: openedHermesChat == nil) { _, closed in
+                // Back from a chat the background closed this screen's client under.
+                if closed, viewModel.isHermes, !viewModel.isConnected { Task { await load() } }
+            }
+            .alert(
+                "Delete Session?",
+                isPresented: Binding(
+                    get: { sessionPendingDeletion != nil },
+                    set: { if !$0 { sessionPendingDeletion = nil } }
+                )
+            ) {
+                Button("Cancel", role: .cancel) { sessionPendingDeletion = nil }
+                Button("Delete", role: .destructive) {
+                    if let session = sessionPendingDeletion { delete(session) }
+                    sessionPendingDeletion = nil
+                }
+            } message: {
+                Text("This deletes the session and its messages from the Hermes host. It can't be undone.")
             }
             .alert(
                 "Action Failed",
@@ -75,7 +125,7 @@ struct ArchivedSessionsView: View {
                         .foregroundStyle(.primary)
                     }
                     .padding(.horizontal, 24)
-                } else if viewModel.sessions.isEmpty {
+                } else if viewModel.sessions.isEmpty && !viewModel.hasMore {
                     ArchivedStatusRow(title: String(localized: "No archived sessions"), systemImage: "archivebox")
                         .padding(.horizontal, 24)
                 } else {
@@ -85,6 +135,8 @@ struct ArchivedSessionsView: View {
                         }
                     }
                     .padding(.horizontal, 12)
+
+                    if viewModel.hasMore { loadMoreRow }
                 }
             }
             .padding(.top, 28)
@@ -92,10 +144,27 @@ struct ArchivedSessionsView: View {
         }
     }
 
+    /// The end of a Hermes server's archived rows: the next page loads as it comes into view,
+    /// and a tap tries again after a failed one.
+    private var loadMoreRow: some View {
+        Button("Load more") { Task { await viewModel.loadMore() } }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .disabled(viewModel.isLoadingMore)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .onAppear { Task { await viewModel.loadMore() } }
+    }
+
     private func archivedSessionRow(for session: SessionSummary) -> some View {
         HStack(spacing: 0) {
             Button {
-                openedSession = session
+                if let bot = viewModel.hermesBot(for: session) {
+                    AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
+                } else if viewModel.isHermes {
+                    openedHermesChat = viewModel.hermesChat(for: session)
+                } else {
+                    openedSession = session
+                }
             } label: {
                 SessionRowView(
                     session: session,
@@ -113,7 +182,16 @@ struct ArchivedSessionsView: View {
             } label: {
                 Label("Unarchive", systemImage: "arrow.up.bin")
             }
-            .disabled(viewModel.isUnarchiving(session))
+            .disabled(viewModel.isChanging(session))
+
+            if viewModel.isHermes {
+                Button(role: .destructive) {
+                    sessionPendingDeletion = session
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .disabled(viewModel.isChanging(session))
+            }
         }
     }
 
@@ -137,7 +215,7 @@ struct ArchivedSessionsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(viewModel.isUnarchiving(session))
+        .disabled(viewModel.isChanging(session))
         .accessibilityLabel("Unarchive")
     }
 
@@ -147,6 +225,14 @@ struct ArchivedSessionsView: View {
             handleLastError()
             if didUnarchive {
                 SessionHaptics.archiveStateChanged(isEnabled: isHapticsEnabled)
+            }
+        }
+    }
+
+    private func delete(_ session: SessionSummary) {
+        Task {
+            if await viewModel.delete(session, modelContext: modelContext) {
+                SessionHaptics.sessionDeleted(isEnabled: isHapticsEnabled)
             }
         }
     }

@@ -17,6 +17,22 @@ private enum GitChatAlert: Identifiable {
     }
 }
 
+/// The Git toasts at the top of the chat (#1410): a busy toast names the branch under the
+/// operation's static glyph, and its result adds the commit and any partial-failure detail.
+private extension ActionToast {
+    static func gitProgress(_ title: String, systemImage: String, branch: String?) -> ActionToast {
+        ActionToast(message: title, systemImage: systemImage, accessibilityLabel: title, tone: .busy, edge: .top,
+                    detailLines: [branch].compactMap { $0 }.filter { !$0.isEmpty })
+    }
+
+    static func gitResult(_ title: String, succeeded: Bool, branch: String?, detailLines: [String]) -> ActionToast {
+        ActionToast(message: title,
+                    systemImage: succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                    accessibilityLabel: title, tone: succeeded ? .success : .failure, edge: .top,
+                    detailLines: [branch].compactMap { $0 }.filter { !$0.isEmpty } + detailLines)
+    }
+}
+
 private enum ActiveGitSheet: Identifiable {
     case changes
     case commit
@@ -24,15 +40,32 @@ private enum ActiveGitSheet: Identifiable {
     var id: Self { self }
 }
 
+/// `ChatView.turnReviewKey`: one range read per base and availability model.
+private struct TurnReviewKey: Hashable {
+    let git: GitWorkspaceAvailabilityViewModel
+    let base: GitTurnBase?
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.git === rhs.git && lhs.base == rhs.base }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(git))
+        hasher.combine(base)
+    }
+}
+
 /// What the per-turn diff sheet shows (issue #316): every changed file in the turn,
-/// opened at one of them for a recap-card row tap.
+/// opened at one of them for a recap-card row tap, read in the range the card counted (#1392).
 private enum TurnDiffPresentation: Identifiable {
-    case turnFiles([GitFile], initial: GitFile?)
+    case turnFiles([GitFile], initial: GitFile?, scope: GitReviewScope)
+
+    init?(_ summary: TurnFileChangeSummary?, initial: GitFile? = nil) {
+        guard let summary, !summary.diffFiles.isEmpty else { return nil }
+        self = .turnFiles(summary.diffFiles, initial: initial, scope: summary.scope ?? .uncommitted)
+    }
 
     var id: String {
         switch self {
-        case .turnFiles(let files, let initial):
-            return "turn:" + files.map(\.id).joined(separator: "|") + ":" + (initial?.id ?? "")
+        case .turnFiles(let files, let initial, let scope):
+            return "turn:\(scope):" + files.map(\.id).joined(separator: "|") + ":" + (initial?.id ?? "")
         }
     }
 }
@@ -265,6 +298,7 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.hermesUpdateSignIn) private var updateHermesSignIn
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
     @AppStorage(SessionChatPreferences.dismissKeyboardKey) private var dismissKeyboardAfterSend = false
@@ -272,7 +306,7 @@ struct ChatView: View {
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
-    @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
+    @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
@@ -297,9 +331,24 @@ struct ChatView: View {
     /// A Hermes session's chat (#1010): webui-only controls are hidden and its turns run
     /// on the gateway socket.
     let isHermesSession: Bool
+    /// The parent the row this Hermes chat opened from named, which its "Forked from" row
+    /// checks (#1051).
+    let hermesParentKey: String?
+    /// A scheduled task's run (#1413): its prompt row shows as a `CronRunPromptCard`.
+    let isCronRun: Bool
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
     /// sent (#1015). Nil pushes it on top instead.
     let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
+    /// Another Shortcut text waits behind the one this chat shows (#1402).
+    private let waitingShortcut: WaitingShortcutText?
+    /// A Hermes session's dictation goes to its host for its Profile (#1071).
+    private let hermesTranscriber: ComposerTranscriber?
+    /// Matches a Hermes chat's `Session Open` signpost to the list push that began it.
+    private let hermesSessionChatID: String?
+    /// Returns to the Sessions list under this Hermes chat, in the entry's Profile (this chat's)
+    /// and searching the query `/sessions` or `/resume` named (#1053). Nil pushes a list on top
+    /// instead.
+    let onOpenHermesSessions: ((HermesSessionListEntry) -> Void)?
 
     /// The composer's draft. Never read it in `body` or wrap it in a get/set
     /// binding for the composer: either re-runs this whole screen on every
@@ -329,7 +378,10 @@ struct ChatView: View {
     @State private var pushedSession: SessionSummary?
     /// A new Hermes chat in another Profile, pushed on top so Back returns here (#1015).
     @State private var pushedHermesSession: HermesSessionChat?
-    /// Set when this chat is a fork; draws the "Forked from" row.
+    /// The Sessions list `/sessions` or `/resume` pushed when no list is under this chat (#1053).
+    @State private var pushedHermesSessionList: HermesSessionListEntry?
+    /// Set when this webui chat is a fork; draws the "Forked from" row. A Hermes chat's is
+    /// its view model's (`shownForkOrigin`).
     @State private var forkOrigin: ForkOrigin?
     @State private var isOpeningForkParent = false
     @State private var editContext: MessageActionContext?
@@ -340,10 +392,12 @@ struct ChatView: View {
     @State private var showRegenerateDiscardConfirmation = false
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
-    @State private var transcriptMediaImageItem: TranscriptMediaPreviewItem?
-    @State private var attachmentImageItem: ChatAttachmentPreviewItem?
-    /// A Hermes session's sent file, previewed from its host (#1030).
-    @State private var hermesAttachmentItem: HermesAttachmentPreviewItem?
+    /// A reply's images in the lightbox, opened at the tapped one.
+    @State private var transcriptImageGallery: ImageLightboxGallery<TranscriptMediaPreviewItem>?
+    /// A message's or the composer's image attachments in the lightbox.
+    @State private var attachmentImageGallery: ImageLightboxGallery<ChatAttachmentPreviewItem>?
+    /// A Hermes sent file or MEDIA document in the shared native artifact preview.
+    @State private var hermesFilePreviewItem: HermesFilePreviewItem?
     /// A workspace file a chat link named; presented on the source viewer at its line.
     @State private var openedFileReference: FileReference?
     @State private var pendingProfileSelection: ProfileSummary?
@@ -356,9 +410,10 @@ struct ChatView: View {
     @State private var showsGoalSheet = false
     @State private var activeGitSheet: ActiveGitSheet?
     @State private var turnDiffPresentation: TurnDiffPresentation?
+    /// Folds and viewed marks the Changes sheet and turn diffs share for as long as this chat is open.
+    @State private var reviewProgress = ReviewProgressStore()
     @State private var viewModel: ChatViewModel
     @State private var gitAvailabilityViewModel: GitWorkspaceAvailabilityViewModel
-    @State private var gitToastState = GitActionToastState()
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
     /// Measured height of the collapsed clarification bar, the request's only
@@ -371,6 +426,23 @@ struct ChatView: View {
     /// Measured height of the run-status pill, which wraps at accessibility
     /// text sizes. Seeded with its one-line height at the default size.
     @State private var activeRunStatusHeight: CGFloat = 28
+    /// Measured height of a Hermes chat's pinned plan line (#1139); its open list overlays
+    /// the transcript instead.
+    @State private var planStripHeight: CGFloat = 30
+    /// Measured height of a Hermes chat's Update sign-in pill (#942), which wraps at
+    /// accessibility text sizes.
+    @State private var updateSignInPillHeight: CGFloat = 36
+    /// Where the draft's added text came from, until the user dismisses its notice or sends it
+    /// (#1402, #1476).
+    @State private var textOrigin: ImportedTextOrigin?
+    /// The draft as it was before Remove Hidden Characters, and its origin, until the next edit.
+    @State private var textBeforeHiddenRemoval: (text: String, origin: ImportedTextOrigin)?
+    /// Measured height of the Shortcuts notice, which wraps with Dynamic Type.
+    @State private var shortcutNoticeHeight: CGFloat = 0
+    /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
+    @State private var showsDelegatedWork = false
+    /// A bot's chat's pill opened the bot's profile (#1145).
+    @State private var showsBotProfileEditor = false
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -410,6 +482,11 @@ struct ChatView: View {
     @State private var initialAttachments: [SharedAttachmentImport]
     @State private var didUploadInitialAttachments = false
     @State private var showsStopConfirmation = false
+    /// What the share this new chat opened for left out (#1401), shown once over the composer.
+    private let shareNotice: SharedSkipsNotice?
+    /// The chat's one toast (#1410): Git progress and results at the top, near the Git controls,
+    /// and over the composer the share's skips or a waiting send that expired (#1407).
+    @State private var toastState = ActionToastState()
 
     init(
         session: SessionSummary,
@@ -418,6 +495,7 @@ struct ChatView: View {
         initialDraft: String = "",
         initialQuotes: [ComposerQuote] = [],
         initialAttachments: [SharedAttachmentImport] = [],
+        shareNotice: SharedSkipsNotice? = nil,
         loadsInitialMessages: Bool = true,
         autoStartsVoiceInput: Bool = false,
         draftStore: ChatDraftStore? = nil,
@@ -425,7 +503,10 @@ struct ChatView: View {
         restoresDraftSettings: Bool = false,
         onConversationStarted: @escaping () -> Void = {},
         hermesSession: HermesSessionChat? = nil,
-        onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil
+        onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil,
+        onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil,
+        onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil,
+        waitingShortcut: WaitingShortcutText? = nil
     ) {
         self.session = session
         self.server = server
@@ -438,11 +519,18 @@ struct ChatView: View {
         self.restoresDraftSettings = restoresDraftSettings
         self.onConversationStarted = onConversationStarted
         isHermesSession = hermesSession != nil
+        hermesSessionChatID = hermesSession?.id.uuidString
+        hermesParentKey = hermesSession?.parentKey
+        isCronRun = hermesSession?.isCronRun == true
         self.onReplaceHermesSession = onReplaceHermesSession
+        hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
+        self.onOpenHermesSessions = onOpenHermesSessions
+        self.waitingShortcut = waitingShortcut
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
-        _viewModel = State(initialValue: ChatViewModel(
+        self.shareNotice = shareNotice
+        let model = ChatViewModel(
             session: session,
             server: server,
             showsLiveActivityResponseExcerpts: UserDefaults.standard.bool(
@@ -450,10 +538,12 @@ struct ChatView: View {
             ),
             draftAttachmentStore: resolvedDraftAttachmentStore,
             draftStore: self.draftStore,
-            backend: hermesSession.map {
-                .hermes(HermesChatTurnCoordinator(server: $0.server, connection: $0.connection, target: $0.target))
-            } ?? .webui
-        ))
+            backend: hermesSession.map { .hermes(HermesChatTurnCoordinator($0)) } ?? .webui
+        )
+        model.hermesBotChatRoot = hermesSession?.botChatRoot
+        model.hermesLineageRoot = hermesSession?.lineageRoot
+        model.onHermesDraftKeyChange = onHermesDraftKeyChange
+        _viewModel = State(initialValue: model)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
@@ -461,14 +551,24 @@ struct ChatView: View {
     }
 
     /// A Hermes session on its Profile (#1010). It has no webui session, so nothing here
-    /// reaches the webui API; connection errors show in the chat itself.
-    init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil) {
+    /// reaches the webui API; connection errors show in the chat itself. A bot's Bot Chat
+    /// (#1145) shows the bot's pill in place of the title and keeps Bot Chat's rules
+    /// (`HermesChatPolicy`). Update sign-in goes through the environment's
+    /// `HermesUpdateSignInAction`. New Chat with Voice's chat (#1180) starts dictation.
+    init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil,
+         onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil,
+         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
             onAPIError: { _ in },
+            shareNotice: hermesSession.shareNotice,
+            autoStartsVoiceInput: hermesSession.autoStartsVoiceInput,
             hermesSession: hermesSession,
-            onReplaceHermesSession: onReplace
+            onReplaceHermesSession: onReplace,
+            onOpenHermesSessions: onOpenSessions,
+            onHermesDraftKeyChange: onDraftKeyChange,
+            waitingShortcut: waitingShortcut
         )
     }
 
@@ -486,12 +586,20 @@ struct ChatView: View {
                     composerIsFocused = value
                 }
             ),
-            // A Hermes prompt whose answer was lost holds Send until the chat reattaches (#508).
-            isSending: viewModel.isStartingChat || viewModel.isSendingVoiceNote || viewModel.isHermesSubmissionUncertain,
+            // A Hermes prompt whose answer was lost holds Send until the chat reattaches (#508), and
+            // a request card's answer holds it while out, so Steer and Queue send no competing
+            // Continue (#1141). So does a cached transcript shown while the chat connects.
+            isSending: viewModel.isStartingChat || viewModel.isSendingVoiceNote || viewModel.isHermesSubmissionUncertain
+                || viewModel.isUndoingExchange || viewModel.hermesRequests?.answeringRequestID != nil
+                || viewModel.isCachedCopyProvisional,
             isCompressingSession: viewModel.isCompressingSession,
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,
-            readOnlyMessage: composerReadOnlyMessage,
+            // Offline the draft stays editable and Send waits for the reconnect (#1375); a Hermes
+            // chat's plain-text Send waits as the transcript's waiting bubble (#1407).
+            access: ChatComposerAccess(session: session, isViewingCachedData: viewModel.showsOfflineCache,
+                                       offersWaitingSend: viewModel.offersWaitingSend,
+                                       hasWaitingSend: viewModel.waitingSend != nil),
             errorMessage: viewModel.sendErrorMessage,
             errorFixPrompt: viewModel.sendErrorRuntimeStale?.fixPrompt,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage
@@ -505,7 +613,8 @@ struct ChatView: View {
             workspaceRoots: viewModel.workspaceRoots,
             selectedWorkspacePath: viewModel.selectedWorkspacePath,
             workspaceSuggestions: viewModel.workspaceSuggestions,
-            workspaceManagementServer: server,
+            // A Hermes host has no workspace registry to manage (#1117).
+            workspaceManagementServer: isHermesSession ? nil : server,
             personalitySuggestions: viewModel.personalitySuggestions,
             skillSuggestions: viewModel.composerSkillSuggestions,
             hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
@@ -519,7 +628,7 @@ struct ChatView: View {
             supportsReasoningEffort: viewModel.supportsReasoningEffort,
             showsReasoningControl: viewModel.showsReasoningEffortControl,
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration
-                || viewModel.hermesSettings?.controls.isApplying == true,
+                || viewModel.hermesSettings?.controls.isApplying == true || viewModel.pendingHermesFolder != nil,
             pendingAttachments: viewModel.pendingAttachments,
             // An in-flight draft restore counts as an upload in progress: until
             // it finishes, the composer does not yet hold the attachments the
@@ -531,7 +640,10 @@ struct ChatView: View {
             autoStartsVoiceInput: autoStartsVoiceInput,
             apiClient: viewModel.client,
             sessionID: session.sessionId,
+            searchFilePaths: viewModel.offersFilePathSearch ? { await viewModel.searchFilePaths($0) } : nil,
             chipFilePaths: viewModel.fileChipPaths,
+            botMentions: viewModel.hermesBotChat?.mentions,
+            mentionAvatars: viewModel.hermesBotChat?.settings.avatars ?? [:],
             filePathSearch: viewModel.filePathSearch,
             uploadAttachmentErrorMessage: viewModel.uploadAttachmentErrorMessage,
             steerFailure: viewModel.steerFailureMessage.map { message in
@@ -540,10 +652,7 @@ struct ChatView: View {
                 }
             },
             streamingSendBehavior: StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue),
-            onSend: {
-                Task { await sendDraftMessage() }
-            },
-            onSendWithBehavior: { behavior in
+            onSend: { behavior in
                 Task { await sendDraftMessage(behavior: behavior) }
             },
             onSendVoiceNote: { data, filename in
@@ -624,7 +733,11 @@ struct ChatView: View {
                 }
             },
             onPreviewAttachment: { attachment in
-                presentAttachmentPreview(ChatAttachmentPreviewItem(pending: attachment))
+                let pending = viewModel.pendingAttachments
+                guard let index = pending.firstIndex(where: { $0.id == attachment.id }) else {
+                    return presentAttachmentPreview([ChatAttachmentPreviewItem(pending: attachment)], at: 0)
+                }
+                presentAttachmentPreview(pending.map(ChatAttachmentPreviewItem.init(pending:)), at: index)
             },
             onDismissUploadAttachmentError: {
                 viewModel.setUploadAttachmentError(nil)
@@ -637,6 +750,9 @@ struct ChatView: View {
             },
             onDraftEdit: persistDraftEdit,
             recallLastSentText: { viewModel.lastSentText },
+            onPasteLargeText: isHermesSession ? { text in
+                viewModel.stagePastedText(text)
+            } : nil,
             onOpenFileReference: { path in
                 openedFileReference = FileReference(path: path, line: nil, column: nil)
             },
@@ -658,8 +774,18 @@ struct ChatView: View {
             showsModelAndProfileControls: isHermesSession,
             configurationNotice: viewModel.composerConfigurationNotice,
             sentReasoningEffort: viewModel.composerSentReasoningEffort,
+            fastMode: viewModel.composerFastMode,
+            mayChangeFastMode: viewModel.composerMayChangeFastMode,
+            onSelectFastMode: { enabled in
+                Task {
+                    if await viewModel.selectFastMode(enabled) {
+                        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+                    }
+                }
+            },
             uploadsAttachmentsOnSend: isHermesSession,
-            onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil
+            onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
+            hermesTranscriber: hermesTranscriber
         )
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.
@@ -671,85 +797,115 @@ struct ChatView: View {
         )
     }
 
-    private var composerReadOnlyMessage: String? {
-        Self.composerReadOnlyMessage(
-            for: session,
-            isViewingCachedData: viewModel.isViewingCachedData
-        )
-    }
-
-    static func composerReadOnlyMessage(
-        for session: SessionSummary,
-        isViewingCachedData: Bool
-    ) -> String? {
-        if isViewingCachedData {
-            return String(localized: "Reconnect to send messages.")
-        }
-        if session.isSessionReadOnly {
-            return String(localized: "Read-only")
-        }
-        return nil
-    }
-
-    /// An image is known to be an image before it is fetched, so it opens in the
-    /// full-bleed lightbox. Everything else keeps the preview sheet, which still has to
+    /// Hermes documents share BotArtifactPreview. An image is known to be an image
+    /// before it is fetched, so it opens in the full-bleed lightbox, paging through the
+    /// reply's other images. Everything else keeps the preview sheet, which still has to
     /// decide between audio, video, and an unsupported file once the bytes arrive.
-    private func presentTranscriptMediaPreview(_ reference: TranscriptMediaReference) {
+    private func presentTranscriptMediaPreview(
+        _ reference: TranscriptMediaReference,
+        in replyMedia: [TranscriptMediaReference]
+    ) {
         presentPreviewRestoringComposerFocusIfNeeded {
-            let item = TranscriptMediaPreviewItem(reference: reference)
-            if reference.isRasterImageCandidate, !reference.isExtensionlessRemoteMediaCandidate {
-                transcriptMediaImageItem = item
+            if isHermesSession, reference.isHermesDocumentCandidate {
+                hermesFilePreviewItem = HermesFilePreviewItem(reference: reference)
+                return
+            }
+            if reference.opensInImageLightbox {
+                transcriptImageGallery = ImageLightboxGallery(tapped: reference, in: replyMedia)
             } else {
-                transcriptMediaPreviewItem = item
+                transcriptMediaPreviewItem = TranscriptMediaPreviewItem(reference: reference)
             }
         }
     }
 
     /// A Hermes chip with a host path opens from the host with Save to Files and Share
     /// (#1030); every other chip, a Hermes one still sending included, opens its local
-    /// copy or the webui file.
-    private func presentSentAttachmentPreview(_ attachment: MessageAttachment, localData: Data?) {
+    /// copy or the webui file. An image pages through the message's images that open
+    /// the same way.
+    private func presentSentAttachmentPreview(
+        _ tapped: MessageAttachmentPreview,
+        among siblings: [MessageAttachmentPreview]
+    ) {
+        let attachment = tapped.attachment
         guard isHermesSession, let path = attachment.path, !path.isEmpty else {
-            return presentAttachmentPreview(ChatAttachmentPreviewItem(message: attachment, localData: localData))
+            let pageable = siblings.filter { !isHermesSession || $0.attachment.path?.isEmpty != false }
+            guard let index = pageable.firstIndex(where: { $0.attachment == attachment }) else {
+                let item = ChatAttachmentPreviewItem(message: attachment, localData: tapped.localData)
+                return presentAttachmentPreview([item], at: 0)
+            }
+            let items = pageable.map { ChatAttachmentPreviewItem(message: $0.attachment, localData: $0.localData) }
+            return presentAttachmentPreview(items, at: index)
         }
         presentPreviewRestoringComposerFocusIfNeeded {
-            hermesAttachmentItem = HermesAttachmentPreviewItem(path: path, name: attachment.name)
+            hermesFilePreviewItem = HermesFilePreviewItem(
+                reference: TranscriptMediaReference(rawReference: path), name: attachment.name,
+                isSentAttachment: true
+            )
         }
     }
 
-    private func presentAttachmentPreview(_ item: ChatAttachmentPreviewItem) {
+    /// Opens `items[index]`: an image in the lightbox, paging through the image items;
+    /// anything else in the preview sheet.
+    private func presentAttachmentPreview(_ items: [ChatAttachmentPreviewItem], at index: Int) {
+        let item = items[index]
         presentPreviewRestoringComposerFocusIfNeeded {
             if item.inferredIsImage {
-                attachmentImageItem = item
+                attachmentImageGallery = ImageLightboxGallery(tapped: item, siblings: items, isImage: \.inferredIsImage)
             } else {
                 attachmentPreviewItem = item
             }
         }
     }
 
-    private func transcriptMediaImageLightbox(for item: TranscriptMediaPreviewItem) -> some View {
-        TranscriptMediaImageLightbox(
-            server: server,
-            sessionID: transcriptMediaSessionID,
-            item: item,
-            onAPIError: onAPIError
-        )
+    private func transcriptImageLightbox(
+        for gallery: ImageLightboxGallery<TranscriptMediaPreviewItem>
+    ) -> some View {
+        ImageLightboxPager(gallery: gallery) { item, page in
+            TranscriptMediaImageLightbox(
+                server: server,
+                files: transcriptMediaFiles,
+                item: item,
+                page: page,
+                onAPIError: onAPIError
+            )
+        }
     }
 
     private func transcriptMediaPreviewView(for item: TranscriptMediaPreviewItem) -> some View {
         TranscriptMediaPreviewView(
             server: server,
-            sessionID: transcriptMediaSessionID,
+            files: transcriptMediaFiles,
             item: item,
             onAPIError: onAPIError
         )
     }
 
+    /// The capped preview download behind `hermesFilePreviewItem`. A sent chip and a MEDIA
+    /// document's host path download from this chat's attach, as the card's export does, so a
+    /// result that lands after a reattach is dropped (#1030). A remote MEDIA document is a
+    /// public, cookie-less fetch with neither server's credentials. The whole file, past the
+    /// cap included, exports from the card's own download button.
+    private func hermesFilePreviewData(for item: HermesFilePreviewItem) async throws -> Data {
+        if item.isSentAttachment { return try await viewModel.hermesAttachmentData(path: item.reference.rawReference) }
+        switch item.reference.source {
+        case let .localPath(path):
+            return try await viewModel.hermesAttachmentData(path: path)
+        case let .remoteURL(url):
+            // A refusal there is not Hermes's sign-in, which `BotFailure.rejected` would say.
+            do {
+                return try await BotArtifactDownload.data(session: APIClient.sharedPublicMediaSession,
+                                                          request: URLRequest(url: url))
+            } catch is BotFailure { throw BotArtifactFailure.unavailable }
+        }
+    }
+
     /// A chat link that names a workspace file opens the source viewer at its line; every
     /// other link returns nil for `transcriptLinks` to open. The viewer's own error state
-    /// covers a path the server no longer has, so the tap never waits on a fetch.
+    /// covers a path the server no longer has, so the tap never waits on a fetch. A Hermes
+    /// chat's root is its folder, only while Files can read it.
     private func handleTranscriptLink(_ url: URL) -> OpenURLAction.Result? {
-        guard let reference = FileReference.parse(url.absoluteString, workspaceRoot: session.workspace) else {
+        let root = isHermesSession ? browsableHermesWorkspace?.cwd : session.workspace
+        guard let reference = FileReference.parse(url.absoluteString, workspaceRoot: root) else {
             return nil
         }
         openedFileReference = reference
@@ -759,12 +915,14 @@ struct ChatView: View {
     private func fileReferenceSheet(for reference: FileReference) -> some View {
         NavigationStack {
             FilePreviewView(
-                session: session,
-                server: server,
+                files: workspaceFiles,
                 entry: WorkspaceEntry(name: reference.name, path: reference.path),
                 initialLine: reference.line,
-                onAPIError: onAPIError
+                onAPIError: onAPIError,
+                onAddToPrompt: reviewCommentHook,
+                onReturnToChat: { openedFileReference = nil }
             )
+            .id(reference)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { openedFileReference = nil }
@@ -780,6 +938,26 @@ struct ChatView: View {
             return nil
         }
         return sessionID
+    }
+
+    /// A Hermes chat's folder while Files and Git can read it: `session.info` has named it, on a
+    /// `local` terminal backend (#1112, #1114). Nil on any other backend, and before.
+    private var browsableHermesWorkspace: HermesWorkspaceContext? {
+        viewModel.hermesWorkspace.flatMap { $0.isLocal ? $0 : nil }
+    }
+
+    /// What Files, its previews and transcript file links read: the webui session's
+    /// workspace, or a Hermes chat's folder while `browsableHermesWorkspace` has one.
+    private var workspaceFiles: (any WorkspaceFileClient)? {
+        guard isHermesSession else { return WebUIWorkspaceFileClient(session: session, server: server) }
+        return browsableHermesWorkspace == nil ? nil : viewModel.hermesWorkspaceFiles
+    }
+
+    /// What a MEDIA reference downloads through: the webui session, or a Hermes chat's host,
+    /// whatever its backend, since the host resolves the path against the session.
+    private var transcriptMediaFiles: (any WorkspaceFileClient)? {
+        if isHermesSession { return viewModel.hermesWorkspaceFiles }
+        return transcriptMediaSessionID.map { WebUIWorkspaceFileClient(sessionID: $0, workspace: session.workspace, server: server) }
     }
 
     private var transcriptMediaCacheNamespace: String {
@@ -844,7 +1022,8 @@ struct ChatView: View {
                         ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
                     }
                 }
-            }
+            },
+            summary: requests.summaryPresentation(for: approval, workingDirectory: viewModel.hermesWorkspace?.cwd)
         )
         .zIndex(10)
     }
@@ -862,7 +1041,7 @@ struct ChatView: View {
 
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
-                    if viewModel.isViewingCachedData {
+                    if viewModel.showsOfflineCache {
                         ChatOfflineCacheBanner()
                     }
 
@@ -884,14 +1063,24 @@ struct ChatView: View {
                 messageComposer
                     .frame(maxWidth: composerMaximumWidth)
 
+                ActionToastView(state: toastState)
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, composerHeight + 8)
+                    .zIndex(9)
+
                 approvalOverlay
             }
         }
         .overlay(alignment: .top) {
-            GitActionToastOverlay(state: gitToastState)
+            ActionToastView(state: toastState, edge: .top)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
         }
-        .navigationTitle(displayTitle)
+        .navigationTitle(viewModel.hermesBotChat?.botProfile?.name ?? displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // A bot's pill names the chat; its title stays only for Back on screens pushed over it.
+        .toolbar(removing: viewModel.hermesBotChat == nil ? nil : .title)
         .modifier(ChatNavigationBackground(reduceTransparency: reduceTransparency))
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .pushPresence(viewModel.pushPresence)
@@ -902,6 +1091,10 @@ struct ChatView: View {
         chatScaffold
             .task(id: didCompleteInitialAppearance) {
                 await handleInitialAppearanceTask()
+            }
+            .task {
+                guard let skipped = shareNotice?.take(), let toast = ActionToast(sharedSkips: skipped) else { return }
+                toastState.show(toast)
             }
             .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)
@@ -940,22 +1133,36 @@ struct ChatView: View {
             }
             .onDisappear {
                 isOnScreen = false
+                toastState.dismiss()
                 composerFocusRevision += 1
                 completionScrollPolicy.readerDidInteract()
                 hydratedCompletionStreamID = nil
                 parkQueuedMessages()
+                // A waiting send never sends from a chat that left; its text goes back to the draft (#1407).
+                viewModel.leaveWaitingSend()
                 flushDraftsBestEffort()
                 appearanceTask?.cancel()
                 appearanceTask = nil
                 activeStreamStatusRefreshTask?.cancel()
                 activeStreamStatusRefreshTask = nil
+                viewModel.cancelPastedTextStaging()
                 viewModel.stopListening()
                 viewModel.suspendStreamForNavigation()
                 viewModel.cleanupPollingTasks()
+                gitAvailabilityViewModel.suspendPullRequestReads()
             }
             .onAppear {
                 viewModel.protectDraftAttachments(for: draftKey)
                 isOnScreen = true
+                // Holds only the composer's text and the toast, never this view (#1407).
+                viewModel.onWaitingSendReturned = { [composerText = $draftMessage, toast = toastState] text, reason in
+                    composerText.wrappedValue = text
+                    if reason == .expired {
+                        let notice = String(localized: "Not sent after 10 minutes offline. Your message is back in the composer.")
+                        toast.show(ActionToast(message: notice, systemImage: "clock", accessibilityLabel: notice))
+                    }
+                }
+                gitAvailabilityViewModel.resumePullRequestReads()
                 appearanceTask?.cancel()
                 appearanceTask = Task {
                     await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
@@ -989,25 +1196,37 @@ struct ChatView: View {
     private var chatContent: some View {
         chatLifecycle
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    ChatToolbarTitleLabel(
-                        title: displayTitle,
-                        subtitle: headerSubtitle
-                    )
+                // A bot's chat swaps the title for the bot's pill (#1145).
+                if let botChat = viewModel.hermesBotChat {
+                    ToolbarItem(placement: .topBarLeading) {
+                        HermesBotChatPill(turn: botChat) { showsBotProfileEditor = true }
+                    }
+                } else {
+                    ToolbarItem(placement: .principal) {
+                        ChatToolbarTitleLabel(
+                            title: displayTitle,
+                            subtitle: headerSubtitle
+                        )
+                    }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     ChatToolbarActionCluster {
-                        if viewModel.hasActivatedGoalCommand {
+                        if viewModel.showsGoalControls {
                             ChatToolbarActionSlot {
                                 goalControlMenu
                             }
                         }
 
-                        if showsFilesButton, !isHermesSession {
+                        if showsFilesButton, !isHermesSession || browsableHermesWorkspace != nil {
                             ChatToolbarActionSlot {
                                 NavigationLink {
-                                    FileBrowserView(session: session, server: server, onAPIError: onAPIError)
+                                    FileBrowserView(
+                                        files: workspaceFiles,
+                                        search: viewModel.workspaceFileSearch,
+                                        onAPIError: onAPIError,
+                                        onAddToPrompt: reviewCommentHook
+                                    )
                                 } label: {
                                     Label("Files", systemImage: "folder")
                                 }
@@ -1016,19 +1235,29 @@ struct ChatView: View {
                             }
                         }
 
-                        if showsGitControls, !isHermesSession, gitAvailabilityViewModel.hasRepository {
+                        if showsGitControls, gitAvailabilityViewModel.hasRepository {
                             ChatToolbarActionSlot {
                                 gitActionsMenu
                             }
                         }
                     }
                 }
+
+                delegatedWorkToolbarItem
             }
             .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
             .navigationDestination(item: $pushedHermesSession) { chat in
-                ChatView(hermesSession: chat) { pushedHermesSession = $0 }.id(chat.id)
+                ChatView(hermesSession: chat, onReplace: { pushedHermesSession = $0 }, onOpenSessions: onOpenHermesSessions)
+                    .id(chat.id)
+            }
+            .navigationDestination(item: $pushedHermesSessionList) { entry in
+                HermesSessionListView(entry: entry).id(entry.id)
+            }
+            .navigationDestination(isPresented: $showsBotProfileEditor) { botProfileEditor }
+            .onChange(of: showsBotProfileEditor) { _, isShown in
+                if !isShown, let botChat = viewModel.hermesBotChat { Task { await botChat.settings.refreshProfiles() } }
             }
             .sheet(item: $attachmentPreviewItem) { item in
                 ChatAttachmentPreviewView(
@@ -1044,31 +1273,34 @@ struct ChatView: View {
                 }
             }
             .sheet(item: $transcriptMediaPreviewItem, content: transcriptMediaPreviewView)
-            .fullScreenCover(item: $attachmentImageItem) { item in
-                ChatAttachmentImageLightbox(
-                    session: session,
-                    server: server,
-                    item: item,
-                    onAPIError: onAPIError
-                )
+            .fullScreenCover(item: $attachmentImageGallery) { gallery in
+                ImageLightboxPager(gallery: gallery) { item, page in
+                    ChatAttachmentImageLightbox(
+                        session: session,
+                        server: server,
+                        item: item,
+                        page: page,
+                        onAPIError: onAPIError
+                    )
+                }
             }
-            .onChange(of: attachmentImageItem == nil) { _, isDismissed in
+            .onChange(of: attachmentImageGallery == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
             }
-            .sheet(item: $hermesAttachmentItem) { item in
-                BotArtifactPreview(reference: TranscriptMediaReference(rawReference: item.path), title: item.name) {
-                    try await viewModel.hermesAttachmentData(path: item.path)
+            .sheet(item: $hermesFilePreviewItem) { item in
+                BotArtifactPreview(reference: item.reference, title: item.name) {
+                    try await hermesFilePreviewData(for: item)
                 }
             }
-            .onChange(of: hermesAttachmentItem == nil) { _, isDismissed in
+            .onChange(of: hermesFilePreviewItem == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
             }
-            .fullScreenCover(item: $transcriptMediaImageItem, content: transcriptMediaImageLightbox)
-            .onChange(of: transcriptMediaImageItem == nil) { _, isDismissed in
+            .fullScreenCover(item: $transcriptImageGallery, content: transcriptImageLightbox)
+            .onChange(of: transcriptImageGallery == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
@@ -1079,12 +1311,42 @@ struct ChatView: View {
                 }
             }
             .sheet(item: $openedFileReference, content: fileReferenceSheet)
+            // A file link or Git sheet opened in a Hermes chat's old folder reads through the old
+            // client: close it, and read the new folder's repository (#1114). A Git action still
+            // running there, and its toast or alert, belong to the old repository (#1115).
+            .onChange(of: viewModel.hermesWorkspace) {
+                openedFileReference = nil
+                activeGitSheet = nil
+                turnDiffPresentation = nil
+                gitAvailabilityViewModel.retire()
+                if let gitToastID = toastState.toast(at: .top)?.id { toastState.dismiss(gitToastID) }
+                gitAlert = nil
+                Task { await loadInitialGitAvailability() }
+            }
             .sheet(item: $activeGitSheet, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
+            // These sheets come from the chat, not the composer, so the composer reads their
+            // transition as a navigation one and keeps its focus intent. A focused composer
+            // would then take the keyboard back over a field on top, such as Comment…'s.
+            .onChange(of: presentsWorkspaceSheet) { _, isPresented in
+                if isPresented {
+                    shouldRestoreComposerFocusAfterPreview = composerIsFocused
+                    composerIsFocused = false
+                } else {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
             .alert(item: $gitAlert, content: gitAlertPresentation)
             .fullScreenCover(isPresented: $showsBtwFullScreen) { btwFullScreen }
             .onChange(of: viewModel.hermesSideTasks?.btw == nil) { _, isClosed in
                 if isClosed { showsBtwFullScreen = false }
+            }
+            .sheet(isPresented: $showsDelegatedWork) {
+                if let work = viewModel.hermesActivity?.delegatedWork {
+                    HermesDelegatedWorkView(work: work)
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                }
             }
             .sheet(isPresented: $showsGoalSheet) {
                 GoalSubmissionSheet(
@@ -1173,6 +1435,24 @@ struct ChatView: View {
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
             ))
+            // A Hermes chat's folder change asks first, in Move to Project's words (#1117).
+            .alert(
+                Text(verbatim: viewModel.pendingHermesFolder.map { String(localized: "Move to \($0.lastPathComponentFallback)?") } ?? ""),
+                isPresented: Binding(get: { viewModel.pendingHermesFolder != nil },
+                                     set: { if !$0 { viewModel.cancelHermesFolderMove() } }),
+                presenting: viewModel.pendingHermesFolder
+            ) { folder in
+                Button("Cancel", role: .cancel) {}
+                Button("Move") {
+                    Task {
+                        if await viewModel.confirmHermesFolderMove(folder) {
+                            ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+                        }
+                    }
+                }
+            } message: { folder in
+                Text(verbatim: String(localized: "Hermes will work in \(folder) from now on. Files aren't moved."))
+            }
             .modifier(StopConfirmationModifier(isPresented: $showsStopConfirmation) {
                 Task { await stopStream() }
             })
@@ -1226,7 +1506,8 @@ struct ChatView: View {
     private var gitWriteAvailability: GitWriteAvailability {
         GitWriteAvailability(
             isStreaming: viewModel.activeStreamID != nil,
-            isViewingCachedData: viewModel.isViewingCachedData
+            isViewingCachedData: viewModel.isViewingCachedData,
+            hidesSync: !gitAvailabilityViewModel.supportsSync
         )
     }
 
@@ -1235,15 +1516,15 @@ struct ChatView: View {
         switch sheet {
         case .changes:
             GitWorkspaceView(
-                session: session,
-                server: server,
+                git: gitAvailabilityViewModel.git,
+                progress: reviewProgress,
                 onAPIError: onAPIError,
-                onAddToPrompt: addDiffSelectionToDraft
+                onAddToPrompt: reviewCommentHook,
+                onReturnToChat: closeGitPresentation
             )
         case .commit:
             GitCommitView(
-                session: session,
-                server: server,
+                git: gitAvailabilityViewModel.git,
                 writesDisabled: gitWriteAvailability.writesDisabled,
                 onAPIError: onAPIError,
                 onCommitted: {
@@ -1256,23 +1537,38 @@ struct ChatView: View {
     @ViewBuilder
     private func turnDiffSheet(_ presentation: TurnDiffPresentation) -> some View {
         switch presentation {
-        case .turnFiles(let files, let initial):
+        case .turnFiles(let files, let initial, let scope):
             GitDiffView(
-                session: session,
-                server: server,
+                git: gitAvailabilityViewModel.git,
                 files: files,
                 initialFile: initial,
+                scope: scope,
+                progress: reviewProgress,
                 onAPIError: onAPIError,
-                onAddToPrompt: addDiffSelectionToDraft
+                onAddToPrompt: reviewCommentHook,
+                onReturnToChat: closeGitPresentation
             )
         }
     }
 
-    /// Drops a diff selection from a Git sheet into the composer and closes the sheet.
-    private func addDiffSelectionToDraft(_ snippet: String) {
-        let separator = draftMessage.isEmpty ? "" : (draftMessage.hasSuffix("\n") ? "\n" : "\n\n")
-        draftMessage += separator + snippet + "\n"
-        persistDraftEdit(draftMessage)
+    /// Where Comment… on a diff or source surface appends: the draft, persisted at once and
+    /// never sent, so the sheet stays open for the next comment. Nil, hiding Comment…, while
+    /// the session is read-only and its editor locked.
+    private var reviewCommentHook: ((String) -> Void)? {
+        guard !session.isSessionReadOnly else { return nil }
+        return { markdown in
+            draftMessage = ReviewCommentComposer.appending(markdown, to: draftMessage)
+            persistDraftEdit(draftMessage)
+        }
+    }
+
+    /// A Git, turn diff, or file reference sheet is up over the chat.
+    private var presentsWorkspaceSheet: Bool {
+        activeGitSheet != nil || turnDiffPresentation != nil || openedFileReference != nil
+    }
+
+    /// Back to Chat from a Git sheet: closes the Changes sheet or turn diff and any diff on top.
+    private func closeGitPresentation() {
         activeGitSheet = nil
         turnDiffPresentation = nil
     }
@@ -1289,10 +1585,15 @@ struct ChatView: View {
             isEnabled: !viewModel.isViewingCachedData,
             fetchDisabled: gitWriteAvailability.fetchDisabled,
             writesDisabled: gitWriteAvailability.writesDisabled,
+            hidesSync: gitWriteAvailability.hidesSync,
+            pullRequest: gitAvailabilityViewModel.pullRequest,
             isRunningAction: gitAvailabilityViewModel.isRunningGitAction,
             onTap: {
                 HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
+                gitAvailabilityViewModel.refreshPullRequest()
             },
+            onOpenPullRequest: { SafariView.present($0) },
+            onCopyPullRequestLink: { UIPasteboard.general.string = $0.absoluteString },
             onChanges: {
                 activeGitSheet = .changes
             },
@@ -1324,6 +1625,7 @@ struct ChatView: View {
         guard ChatGitControlsVisibilityPolicy.showsInlineCommitButton(
             showsGitControls: showsGitControls,
             hasRepository: gitAvailabilityViewModel.hasRepository,
+            supportsWrites: gitAvailabilityViewModel.supportsWrites,
             isStreaming: viewModel.activeStreamID != nil,
             latestMessageRole: latestTranscriptMessageRole,
             hasCommittableChanges: gitAvailabilityViewModel.hasCommittableChanges,
@@ -1331,50 +1633,62 @@ struct ChatView: View {
         ) else { return nil }
         return ChatInlineCommitContext(
             runningPhase: gitAvailabilityViewModel.commitPhase,
-            isDisabled: gitWriteAvailability.writesDisabled
+            isDisabled: gitWriteAvailability.writesDisabled || gitAvailabilityViewModel.isWriteLocked
         )
     }
 
     /// Turn-end "File changes" recap card for the latest assistant turn (#316). Only for git
     /// workspaces once the response finishes (status has refreshed) and the latest turn
-    /// actually changed files.
+    /// actually changed files. A Hermes turn whose direct send read HEAD first joins its range
+    /// since then (#1392), waiting for that read; any other joins the uncommitted status, and a
+    /// Hermes card names which.
     private var turnChangesRecapSummary: TurnFileChangeSummary? {
         guard ChatGitControlsVisibilityPolicy.showsTurnChangesRecap(
             showsGitControls: showsGitControls,
             hasRepository: gitAvailabilityViewModel.hasRepository,
             isStreaming: viewModel.activeStreamID != nil,
             latestMessageRole: latestTranscriptMessageRole
-        ) else { return nil }
+        ), let rows = gitAvailabilityViewModel.turnChangeRows(since: viewModel.hermesTurnBase) else { return nil }
+        let git = gitAvailabilityViewModel.git
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: viewModel.latestTurnToolCalls,
-            status: gitAvailabilityViewModel.status
+            files: rows.files,
+            scope: git?.isHermes == true ? rows.scope : nil,
+            rowPath: { git?.rowPath(forToolPath: $0) ?? $0 }
         )
         return summary.hasChanges ? summary : nil
     }
 
-    /// Present the per-turn diff sheet for every changed file the turn has a status match
-    /// for. No-op when there is nothing diffable yet (e.g. status still refreshing).
-    private func presentTurnDiff(for summary: TurnFileChangeSummary?) {
-        let files = summary?.diffFiles ?? []
-        guard !files.isEmpty else { return }
-        turnDiffPresentation = .turnFiles(files, initial: nil)
+    /// What the latest turn's range read follows (#1392): the base an idle chat's latest turn holds,
+    /// on the repository the chat shows. Keyed on that, not on the stream ending, so a turn that
+    /// starts and ends within one update still reads, and a chat opened after its turn reads too.
+    private var turnReviewKey: TurnReviewKey {
+        TurnReviewKey(git: gitAvailabilityViewModel, base: viewModel.activeStreamID == nil ? viewModel.hermesTurnBase : nil)
     }
 
+    /// Present the per-turn diff sheet for every changed file the turn has a row for. No-op when
+    /// there is nothing diffable yet (e.g. status still refreshing).
+    private func presentTurnDiff(for summary: TurnFileChangeSummary?) {
+        guard let presentation = TurnDiffPresentation(summary) else { return }
+        turnDiffPresentation = presentation
+    }
+
+    /// Runs on the repository it started in: a folder change retires that one, and its outcome is
+    /// then `.retired`, with nothing to show.
     @MainActor
     private func performQuickCommit(push: Bool) async {
-        guard !gitAvailabilityViewModel.isCommitting else { return }
+        let git = gitAvailabilityViewModel
+        guard !git.isCommitting, !git.isWriteLocked else { return }
 
-        let branch = gitAvailabilityViewModel.currentBranchName
-        gitToastState.showProgress(GitActionProgress(
-            title: GitCommitPhase.generatingMessage.progressTitle,
-            subtitle: branch
-        ))
+        // Every path below resolves only this toast, so a commit that ends after a newer toast,
+        // a swipe, or the chat closing leaves that state alone.
+        let toastID = toastState.show(.gitProgress(GitCommitPhase.generatingMessage.progressTitle,
+                                                   systemImage: GitCommitPhase.generatingMessage.systemImage,
+                                                   branch: git.currentBranchName))
 
-        let outcome = await gitAvailabilityViewModel.quickCommit(push: push) { phase in
-            gitToastState.showProgress(GitActionProgress(
-                title: phase.progressTitle,
-                subtitle: gitAvailabilityViewModel.currentBranchName
-            ))
+        let outcome = await git.quickCommit(push: push) { phase in
+            toastState.update(toastID, to: .gitProgress(phase.progressTitle, systemImage: phase.systemImage,
+                                                        branch: git.currentBranchName))
         }
 
         switch outcome {
@@ -1387,16 +1701,17 @@ struct ChatView: View {
                 // so the user knows the local commit is safe and only the push needs retrying.
                 detailLines.append(String(localized: "Push failed: \(pushError)"))
             }
-            gitToastState.showSuccess(GitActionSuccess(
-                title: result.pushFailureMessage != nil
+            toastState.update(toastID, to: .gitResult(
+                result.pushFailureMessage != nil
                     ? String(localized: "Committed — push failed")
                     : (result.didPush ? String(localized: "Commit & push complete") : String(localized: "Commit complete")),
-                subtitle: result.branch,
+                succeeded: result.pushFailureMessage == nil,
+                branch: result.branch,
                 detailLines: detailLines
             ))
             ChatHaptics.gitActionFinished(succeeded: result.pushFailureMessage == nil, isEnabled: isHapticsEnabled)
         case .nothingToCommit:
-            gitToastState.dismissProgress()
+            toastState.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             gitAlert = .error(String(localized: "There are no changes to commit."))
         case .tooManyChanges:
@@ -1406,25 +1721,34 @@ struct ChatView: View {
             // blocked commit with no feedback would be the very silent failure this guards
             // against. (Kept separate from .failure, which intentionally stays quiet when its
             // busy/no-session guard returns with no message.) No success toast/SHA.
-            gitToastState.dismissProgress()
+            toastState.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
-            gitAlert = .error(gitAvailabilityViewModel.actionErrorMessage
+            gitAlert = .error(git.actionErrorMessage
                 ?? String(localized: "Too many changes to quick-commit. Commit in smaller batches, or use git directly."))
         case .failure:
-            gitToastState.dismissProgress()
+            toastState.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
-            if let message = gitAvailabilityViewModel.actionErrorMessage {
+            if let message = git.actionErrorMessage {
                 gitAlert = .error(message)
             }
+        case .retired:
+            toastState.dismiss(toastID)
         }
     }
 
+    /// Runs on the repository it started in, and shows nothing once a folder change retired it.
+    /// A Hermes switch with uncommitted changes fails with "Commit or discard first." (#1116);
+    /// only webui offers the stash.
     @MainActor
     private func performGitCheckout(_ target: GitCheckoutTarget, stashingChanges: Bool = false) async {
-        let outcome = await gitAvailabilityViewModel.checkout(target, stashingChanges: stashingChanges)
-        if outcome == .requiresStash {
+        let git = gitAvailabilityViewModel
+        let outcome = await git.checkout(target, stashingChanges: stashingChanges)
+        // A model retired while its switch ran belongs to the folder the chat left.
+        if outcome == .retired || git.isRetired {
+            return
+        } else if outcome == .requiresStash {
             gitAlert = .dirtyCheckout(target)
-        } else if let message = gitAvailabilityViewModel.actionErrorMessage {
+        } else if let message = git.actionErrorMessage {
             // Surface real failures and partial successes (branch switched but the
             // stashed changes could not be restored) — the view model sets
             // actionErrorMessage in both cases and clears it on every new checkout.
@@ -1432,29 +1756,45 @@ struct ChatView: View {
         }
     }
 
+    /// Runs on the repository it started in, and shows nothing once a folder change retired it.
     @MainActor
     private func performGitRemoteAction(_ action: GitRemoteAction) async {
-        gitToastState.showProgress(GitActionProgress(
-            title: action.progressTitle,
-            subtitle: gitAvailabilityViewModel.currentBranchName
-        ))
+        let git = gitAvailabilityViewModel
+        let toastID = toastState.show(.gitProgress(action.progressTitle, systemImage: action.systemImage,
+                                                   branch: git.currentBranchName))
 
-        if await gitAvailabilityViewModel.performRemoteAction(action) {
-            gitToastState.showSuccess(GitActionSuccess(
-                title: action.successTitle,
-                subtitle: gitAvailabilityViewModel.currentBranchName,
-                detailLines: [gitAvailabilityViewModel.lastActionMessage]
+        let succeeded = await git.performRemoteAction(action)
+        guard !git.isRetired else {
+            toastState.dismiss(toastID)
+            return
+        }
+        if succeeded {
+            toastState.update(toastID, to: .gitResult(
+                action.successTitle,
+                succeeded: true,
+                branch: git.currentBranchName,
+                detailLines: [git.lastActionMessage]
                     .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
             ))
             ChatHaptics.gitActionFinished(succeeded: true, isEnabled: isHapticsEnabled)
         } else {
-            gitToastState.dismissProgress()
+            toastState.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
-            if let message = gitAvailabilityViewModel.actionErrorMessage {
+            if let message = git.actionErrorMessage {
                 gitAlert = .error(message)
             }
         }
+    }
+
+    /// webui pushes to the configured upstream. A Hermes host pushes there too, or to origin as
+    /// the branch's new upstream when it has none (#1115), so its copy names the branch and both.
+    private var pushConfirmationMessage: String {
+        guard gitAvailabilityViewModel.git?.isHermes == true else {
+            return String(localized: "Push the current branch to its configured upstream remote?")
+        }
+        let branch = gitAvailabilityViewModel.currentBranchName
+        return String(localized: "Push \(branch) to its upstream remote, or to origin as a new upstream branch if it has none?")
     }
 
     private func gitAlertPresentation(_ alert: GitChatAlert) -> Alert {
@@ -1463,8 +1803,8 @@ struct ChatView: View {
             return Alert(
                 title: Text(action == .pull ? "Pull Remote Changes?" : "Push Local Commits?"),
                 message: Text(action == .pull
-                    ? "Pull uses fast-forward only and will not create a merge commit."
-                    : "Push the current branch to its configured upstream remote?"),
+                    ? String(localized: "Pull uses fast-forward only and will not create a merge commit.")
+                    : pushConfirmationMessage),
                 primaryButton: .default(Text(action == .pull ? "Pull" : "Push")) {
                     Task { await performGitRemoteAction(action) }
                 },
@@ -1596,7 +1936,8 @@ struct ChatView: View {
         )?.kind
     }
 
-    /// A Hermes session's question, or sudo or secret prompt, in the clarification's slot (#1011).
+    /// A Hermes session's question, sudo or secret prompt, Desktop task or connection operation,
+    /// in the clarification's slot (#1011, #1141).
     private func hermesRequestInset(
         _ request: BotPendingRequest,
         requests: HermesChatRequests,
@@ -1609,6 +1950,7 @@ struct ChatView: View {
             isEnabled: requests.mayAnswer,
             isAnswering: requests.answeringRequestID != nil,
             isStopping: viewModel.isCancellingStream,
+            resolution: requests.onScreenResolution,
             isHapticsEnabled: isHapticsEnabled,
             onAnswer: { answers in
                 guard let action = requests.prepareAnswer() else { return }
@@ -1627,6 +1969,11 @@ struct ChatView: View {
                 guard let action = requests.prepareAnswer() else { return }
                 Task { await requests.answerCredential(action, value: value) }
             },
+            onConnection: { answer in
+                // Typed setup values go straight from the row to the dispatch.
+                guard let action = requests.prepareAnswer() else { return }
+                Task { await requests.respondToConnection(action, answer) }
+            },
             onStop: {
                 Task { await cancelStream() }
             },
@@ -1641,8 +1988,8 @@ struct ChatView: View {
         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
-    /// The Hermes request the clarification slot shows: a question, or a sudo or secret
-    /// prompt. An approval takes the overlay instead.
+    /// The Hermes request the clarification slot shows: a question, a sudo or secret prompt, a
+    /// Desktop task or a connection operation. An approval takes the overlay instead.
     private var hermesInsetRequest: BotPendingRequest? {
         guard let request = viewModel.hermesRequests?.onScreen else { return nil }
         if case .approval = request { return nil }
@@ -1684,6 +2031,37 @@ struct ChatView: View {
                     approvalBypassStatusPill
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
+
+                // Nearest the composer and its request card, under the run-status pill (#1139).
+                if let pinnedPlan {
+                    HermesPlanStrip(plan: pinnedPlan) { height in
+                        planStripHeight = height
+                    }
+                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
+
+                // Bot Chat's pill in Reconnect's slot (#942): the composer's error line still
+                // says why, and the chat never signs in again on its own while it shows.
+                if viewModel.hermesNeedsSignIn {
+                    BotComposerPillView(pill: .updateSignIn, onUpdateSignIn: { updateHermesSignIn() })
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            updateSignInPillHeight = height
+                        }
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
+
+                // Nearest the composer: it is about the text in it (#1402).
+                if showsShortcutNotice {
+                    shortcutNotice
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            shortcutNoticeHeight = height
+                        }
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
             }
             .padding(.horizontal)
             .frame(maxWidth: composerMaximumWidth)
@@ -1693,7 +2071,99 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
         }
+    }
+
+    private var showsShortcutNotice: Bool { showsShortcutProvenance || waitingShortcut != nil }
+
+    /// Where the draft's added text came from while its notice shows: the draft holds that text,
+    /// or a removal of its hidden characters can still be undone, even one that took all of it.
+    private var shownTextOrigin: ImportedTextOrigin? {
+        textBeforeHiddenRemoval?.origin ?? (draftMessage.isEmpty ? nil : textOrigin)
+    }
+
+    private var showsShortcutProvenance: Bool { shownTextOrigin != nil }
+
+    private var shortcutNotice: some View {
+        ShortcutTextNotice(
+            origin: shownTextOrigin,
+            hasHiddenCharacters: HiddenPromptCharacters.contains(in: draftMessage),
+            canUndoRemoval: textBeforeHiddenRemoval != nil,
+            removeHiddenCharacters: {
+                guard let origin = shownTextOrigin else { return }
+                let before = draftMessage
+                persistDraftEdit(HiddenPromptCharacters.removing(from: before))
+                draftMessage = HiddenPromptCharacters.removing(from: before)
+                textBeforeHiddenRemoval = (before, origin)
+            },
+            undoRemoval: {
+                guard let before = textBeforeHiddenRemoval else { return }
+                persistDraftEdit(before.text)
+                draftMessage = before.text
+                // A removal that emptied the draft ended its provenance.
+                textOrigin = before.origin
+                draftStore.setTextOrigin(before.origin, for: draftKey)
+            },
+            waiting: waitingShortcut,
+            dismiss: dismissShortcutNotice
+        )
+    }
+
+    /// The user dismissed the added text's notice, deleted its text, or sent it.
+    private func dismissShortcutNotice() {
+        textOrigin = nil
+        textBeforeHiddenRemoval = nil
+        draftStore.setTextOrigin(nil, for: draftKey)
+    }
+
+    /// The bot's profile, from its pill (#1145). Closing it reads the roster again, so the pill
+    /// and the `@` roster show what was saved.
+    @ViewBuilder private var botProfileEditor: some View {
+        if let botChat = viewModel.hermesBotChat, let profile = botChat.botProfile {
+            let connection = botChat.engine.connection
+            BotProfileEditorView(server: botChat.engine.server, connection: connection, profile: profile,
+                                 avatar: botChat.settings.avatars[profile.id])
+                .id(connection.id.uuidString + profile.id)
+        }
+    }
+
+    /// A Hermes chat's workers button (#1140), its own glass beside the cluster while any
+    /// worker is active. Hidden on the offline cache's copy, which lists no workers.
+    @ToolbarContentBuilder
+    private var delegatedWorkToolbarItem: some ToolbarContent {
+        if !viewModel.isViewingCachedData, let work = viewModel.hermesActivity?.delegatedWork, work.activeCount > 0 {
+            if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+            ToolbarItem(placement: .topBarTrailing) {
+                HermesDelegatedWorkButton(count: work.activeCount) {
+                    showsDelegatedWork = true
+                    Task { await work.refresh() }
+                }
+            }
+        }
+    }
+
+    /// A Hermes chat's running plan, pinned above the composer while it has an open step
+    /// (#1139). Hidden on the offline cache's copy.
+    private var pinnedPlan: HermesPlan? {
+        viewModel.isViewingCachedData ? nil : viewModel.hermesActivity?.pinnedPlan
+    }
+
+    /// The prompt row a Hermes chat's settled plan follows (#1139).
+    private var settledPlanAfterRenderID: String? {
+        viewModel.hermesActivity?.settledPlan?.afterRenderID(in: displayedTranscriptMessages)
+    }
+
+    /// How a Hermes chat's last turn ended, under it (#1139): the failure with Retry and the
+    /// billing page, or the host's warning.
+    private var hermesTurnOutcome: HermesTurnOutcomeRow? {
+        guard let activity = viewModel.hermesActivity, activity.failure != nil || activity.notice?.warning != nil else { return nil }
+        return HermesTurnOutcomeRow(
+            failure: activity.failure, notice: activity.notice,
+            offersRetry: activity.retryTarget != nil, mayRetry: viewModel.mayRetryHermesTurn,
+            onRetry: { Task { await viewModel.retryHermesFailedTurn() } }
+        )
     }
 
     /// Reports the bypass; on a Hermes session it also turns off the session's own flag
@@ -1733,7 +2203,7 @@ struct ChatView: View {
             activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
             clarificationPromptID: requestInsetID,
             hidesRunStatusAccessibility: activeRunStatusPresentation != nil,
-            showsThinkingAndToolCards: showsThinkingAndToolCards,
+            showsThinkingAndToolCards: thinkingAndToolCards.showsCards,
             workingRowStartedAt: workingRowStartedAt,
             requestWithdrawal: viewModel.hermesRequests?.withdrawal,
             showsScrollToBottomButton: showsScrollToBottomButton,
@@ -1760,9 +2230,11 @@ struct ChatView: View {
             loadAttachmentImage: { path in
                 await viewModel.attachmentImageData(path: path)
             },
-            loadAttachmentData: isHermesSession ? nil : { path in
-                await viewModel.attachmentRawData(path: path)
-            },
+            attachmentAudio: AttachmentAudioSource(
+                load: { path in await viewModel.attachmentRawData(path: path) },
+                isHost: isHermesSession,
+                loadKey: viewModel.attachmentLoadKey
+            ),
             loadTranscriptMediaImage: { reference in
                 await viewModel.transcriptMediaThumbnailData(for: reference)
             },
@@ -1796,9 +2268,7 @@ struct ChatView: View {
                 scrollToLatestContent(proxy, animated: animated)
             },
             onPreviewAttachment: presentSentAttachmentPreview,
-            onPreviewTranscriptMedia: { reference in
-                presentTranscriptMediaPreview(reference)
-            },
+            onPreviewTranscriptMedia: presentTranscriptMediaPreview,
             onAskHermex: addSelectedPassageToDraft,
             onToggleListening: { context in
                 viewModel.toggleListening(to: context)
@@ -1821,17 +2291,31 @@ struct ChatView: View {
                 presentTurnDiff(for: turnChangesRecapSummary)
             },
             onOpenTurnFileDiff: { file in
-                turnDiffPresentation = .turnFiles(turnChangesRecapSummary?.diffFiles ?? [file], initial: file)
+                turnDiffPresentation = TurnDiffPresentation(turnChangesRecapSummary, initial: file)
             },
-            forkOrigin: forkOrigin,
-            onOpenForkParent: openForkParent
+            forkOrigin: shownForkOrigin,
+            onOpenForkParent: openForkParent,
+            settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
+            settledPlanAfterRenderID: settledPlanAfterRenderID,
+            turnOutcome: hermesTurnOutcome,
+            queuedPrompt: viewModel.queuedPromptMessage,
+            isCronRun: isCronRun,
+            onCopyQueuedPrompt: { text in
+                UIPasteboard.general.string = text
+                ChatHaptics.copied(isEnabled: isHapticsEnabled)
+            },
+            waitingSend: viewModel.waitingSendMessage,
+            onCancelWaitingSend: viewModel.cancelWaitingSend
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
         }
         .task(id: session.sessionId) {
-            resolveForkOrigin()
+            await resolveForkOrigin()
+        }
+        .task(id: turnReviewKey) { [turnReviewKey] in
+            await turnReviewKey.git.loadTurnReview(since: turnReviewKey.base)
         }
         .onChange(of: viewModel.messages.isEmpty, initial: true) { _, isEmpty in
             if !isEmpty { endSessionOpenSignpost() }
@@ -1839,6 +2323,7 @@ struct ChatView: View {
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .transcriptLinks(perform: handleTranscriptLink)
         .environment(\.chatWorkspaceRoot, session.workspace)
+        .environment(\.previewsHermesDocuments, isHermesSession)
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }
@@ -1853,15 +2338,17 @@ struct ChatView: View {
     /// file, or whenever the answers already given have been thrown away: the
     /// transcript grew, was swapped for the server's copy (which can rewrite a
     /// message in the middle without changing the count or the last id), or the
-    /// workspace moved. The composer asks for a scan when the draft gains or
-    /// loses a finished `@…`.
+    /// workspace moved. Leaving the offline cache also changes it, so a draft
+    /// typed offline is confirmed on reconnect. The composer asks for a scan
+    /// when the draft gains or loses a finished `@…`.
     ///
     /// Everything here is O(1), because it runs on every transcript update,
     /// including each token of a live stream. The scan of the transcript itself
     /// is the view model's, and it skips candidates the server has already
     /// answered for.
     private var transcriptFileChipScanToken: [Int] {
-        [viewModel.messages.count, viewModel.transcriptRevision, viewModel.fileChipScopeRevision]
+        [viewModel.messages.count, viewModel.transcriptRevision, viewModel.fileChipScopeRevision,
+         viewModel.showsOfflineCache ? 1 : 0]
     }
 
     /// How many sent messages look like they name a skill.
@@ -1870,9 +2357,11 @@ struct ChatView: View {
     /// transcript that swaps in the server's messages still warms the list when
     /// the count of messages did not change but their text did. Zero once the
     /// list has loaded or this chat has already asked, which is what keeps the
-    /// scan off the streaming path.
+    /// scan off the streaming path. Zero while offline too, so the ask waits
+    /// for the reconnect.
     private var transcriptSkillReferenceCount: Int {
-        guard !hasRequestedSkillsForTranscriptChips, !viewModel.hasLoadedSkillSlashSuggestions else {
+        guard !hasRequestedSkillsForTranscriptChips, !viewModel.hasLoadedSkillSlashSuggestions,
+              !viewModel.showsOfflineCache else {
             return 0
         }
 
@@ -1992,6 +2481,15 @@ struct ChatView: View {
         if showsApprovalBypassStatus {
             height += approvalBypassStatusSpacerHeight
         }
+        if pinnedPlan != nil {
+            height += planStripHeight
+        }
+        if viewModel.hermesNeedsSignIn {
+            height += updateSignInPillHeight
+        }
+        if showsShortcutNotice {
+            height += shortcutNoticeHeight
+        }
 
         let visibleItemCount = composerAccessoryVisibleItemCount
         if visibleItemCount > 1 {
@@ -2009,6 +2507,15 @@ struct ChatView: View {
             count += 1
         }
         if showsApprovalBypassStatus {
+            count += 1
+        }
+        if pinnedPlan != nil {
+            count += 1
+        }
+        if viewModel.hermesNeedsSignIn {
+            count += 1
+        }
+        if showsShortcutNotice {
             count += 1
         }
         return count
@@ -2047,7 +2554,7 @@ struct ChatView: View {
     private func turnFolds(reasoningGroups: [ReasoningGroup]) -> TranscriptTurnFolds {
         guard foldsSettledTurns else { return .none }
 
-        let activityAnchorIDs: Set<String> = showsThinkingAndToolCards
+        let activityAnchorIDs: Set<String> = thinkingAndToolCards.showsCards
             ? Set(reasoningGroups.compactMap(\.anchorMessageID))
                 .union(viewModel.completedToolCallGroups.compactMap(\.anchorMessageID))
             : []
@@ -2160,15 +2667,22 @@ struct ChatView: View {
     /// Ends this session's `Session Open` interval on the next main-queue turn, so
     /// it includes the layout of the first transcript frame (or the empty state).
     private func endSessionOpenSignpost() {
-        let sessionID = session.sessionId
+        let sessionID = hermesSessionChatID ?? session.sessionId
         let messages = viewModel.messages.count
         DispatchQueue.main.async {
             SessionOpenSignpost.end(sessionID: sessionID, messages: messages)
         }
     }
 
+    /// A fresh Git state for the chat's repository: webui's session, or a Hermes chat's folder
+    /// while Files can read it (#1114), which syncs only through hermex-push (#1236). Without one,
+    /// Git stays hidden.
     private func loadInitialGitAvailability() async {
-        let availabilityViewModel = GitWorkspaceAvailabilityViewModel(session: session, server: server)
+        let availabilityViewModel = if isHermesSession {
+            GitWorkspaceAvailabilityViewModel(git: browsableHermesWorkspace == nil ? nil : viewModel.hermesWorkspaceGit)
+        } else {
+            GitWorkspaceAvailabilityViewModel(session: session, server: server)
+        }
         gitAvailabilityViewModel = availabilityViewModel
         await availabilityViewModel.loadIfNeeded()
     }
@@ -2187,8 +2701,20 @@ struct ChatView: View {
             },
             onSubmitCommand: { command in
                 Task { await submitGoalCommand(command) }
-            }
+            },
+            automations: viewModel.hermesSideTasks?.automations ?? [],
+            // Pause and Resume show only where the host takes `session.control` (#508).
+            allowsAutomationChanges: viewModel.hermesSideTasks?.controlsAutomations == true,
+            isAutomationDisabled: viewModel.isViewingCachedData || viewModel.hermesSideTasks?.isChangingAutomation == true
+                || viewModel.hermesSideTasks?.canChangeAutomations == false,
+            onChangeAutomation: { viewModel.hermesSideTasks?.ask($0) }
         )
+        // On the menu, so the iPad popover points at the Goal button.
+        .modifier(HermesAutomationConfirmationModifier(
+            sideTasks: viewModel.hermesSideTasks, onConfirm: { control in
+                Task { await viewModel.confirmHermesAutomation(control) }
+            }
+        ))
     }
 
     private var isGoalActionDisabled: Bool {
@@ -2210,7 +2736,13 @@ struct ChatView: View {
     private func loadOlderMessages() async -> Bool {
         followLatch.isFollowing = false
 
+        let signpost = performanceSignposter.beginInterval("Load Earlier")
         let didLoad = await viewModel.loadOlderMessages(modelContext: modelContext)
+        let messages = viewModel.messages.count
+        // The next main-queue turn, so the interval includes the prepended rows' layout.
+        DispatchQueue.main.async {
+            performanceSignposter.endInterval("Load Earlier", signpost, "messages=\(messages, privacy: .public)")
+        }
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
         }
@@ -2267,9 +2799,10 @@ struct ChatView: View {
     }
 
     /// Sends the composer's draft. A send during a run uses `behavior`, or the
-    /// Send While Responding setting when it is nil: a long-press on Send picks
-    /// one for this message, and Retry after a refused steer forces `.steer`.
-    private func sendDraftMessage(behavior: StreamingSendBehavior? = nil) async {
+    /// Send While Responding setting when it is nil (a run that started after the
+    /// composer last drew Send): Send passes the behavior it shows, a long-press
+    /// picks one for this message, and Retry after a refused steer forces `.steer`.
+    private func sendDraftMessage(behavior: StreamingSendBehavior?) async {
         viewModel.clearSteerFailure()
         let submittedContent = ComposerDraftContent(text: draftMessage, quotes: draftQuotes)
         let submittedDraft = submittedContent.text
@@ -2337,6 +2870,9 @@ struct ChatView: View {
             )
 
             if result != .sendAsMessage {
+                if !result.isSuccessfulSubmission {
+                    await openCompressionContinuationIfNeeded()
+                }
                 if result.isSuccessfulSubmission {
                     switch parsedCommand?.handler {
                     case .serverSide(.queue), .serverSide(.steer), .serverSide(.interrupt):
@@ -2352,10 +2888,12 @@ struct ChatView: View {
             }
         }
 
-        let didStart: Bool
+        let outcome: ChatSendOutcome
         if viewModel.activeStreamID != nil {
-            prepareTranscriptForExplicitSend()
             let behavior = behavior ?? StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue)
+            if ChatScrollPolicy.streamingSendReArmsFollow(behavior) {
+                prepareTranscriptForExplicitSend()
+            }
             let result = await viewModel.submitStreamingMessage(outboundMessage, behavior: behavior)
             handleSlashExecutionResult(
                 result,
@@ -2365,17 +2903,22 @@ struct ChatView: View {
                 submittedDraftRevision: submittedDraftRevision,
                 consumesDraft: result.isSuccessfulSubmission
             )
-            didStart = result.isSuccessfulSubmission
+            outcome = result.isSuccessfulSubmission ? .started : .kept
         } else {
-            didStart = await sendStandardMessage(
+            outcome = await sendStandardMessage(
                 submittedContent,
                 outboundMessage: outboundMessage,
                 submittedDraftRevision: submittedDraftRevision
             )
         }
 
-        if didStart {
+        switch outcome {
+        case .kept:
+            await openCompressionContinuationIfNeeded()
+        case .started:
             ChatHaptics.messageSent(isEnabled: isHapticsEnabled)
+            applySubmissionFocus()
+        case .waiting:
             applySubmissionFocus()
         }
 
@@ -2404,18 +2947,22 @@ struct ChatView: View {
         }
     }
 
+    /// Sends the composer's content when no response runs. Plain text in a Hermes chat may wait for
+    /// the reconnect (#1407): the composer clears as for a send, but nothing claims the host took it.
     private func sendStandardMessage(
         _ submittedContent: ComposerDraftContent,
         outboundMessage: String,
         submittedDraftRevision: Int
-    ) async -> Bool {
+    ) async -> ChatSendOutcome {
         // Attachment-only sends (empty text and quotes) flow through; the view
         // model synthesizes their message text. Clearing the captured composer
         // content below is the correct end state after sending.
         let hasStagedAttachments = !viewModel.pendingAttachments.isEmpty
-        guard !outboundMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasStagedAttachments else {
-            return false
+        let trimmedMessage = outboundMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty || hasStagedAttachments else {
+            return .kept
         }
+        let isPlainText = submittedContent.quotes.isEmpty && !hasStagedAttachments && !trimmedMessage.hasPrefix("/")
 
         prepareTranscriptForExplicitSend()
 
@@ -2431,16 +2978,20 @@ struct ChatView: View {
         draftMessage = ""
         draftQuotes = []
 
-        let didStart = await viewModel.sendMessage(outboundMessage, modelContext: modelContext)
+        let outcome = await viewModel.send(outboundMessage, isPlainText: isPlainText, modelContext: modelContext)
+        // A waiting send left the composer as a sent one does; the view model holds its text.
+        let didStart = outcome != .kept
+        if outcome == .started { onConversationStarted() }
         if didStart {
-            onConversationStarted()
             draftAttachmentsPendingRetry = sendReconciliation.retained
+            if textOrigin != nil { dismissShortcutNotice() }
         }
         let resolvedContent = draftStore.resolveSubmission(
             submitted: submittedContent,
             current: ComposerDraftContent(text: draftMessage, quotes: draftQuotes),
             didStart: didStart,
             draftWasEdited: draftRevision != submittedDraftRevision,
+            preserveRejectedSubmission: viewModel.isCompressionRotated,
             for: draftKey
         )
         draftMessage = resolvedContent.text
@@ -2451,10 +3002,33 @@ struct ChatView: View {
             // open. Deterministic here rather than waiting on the observation
             // sync that the emptied composer strip will also trigger.
             syncDraftAttachments()
-            offerNotificationsIfNeeded()
+            if outcome == .started { offerNotificationsIfNeeded() }
         }
 
-        return didStart
+        return outcome
+    }
+
+    private func openCompressionContinuationIfNeeded() async {
+        guard isOnScreen, !Task.isCancelled else { return }
+        draftStore.setContent(ComposerDraftContent(text: draftMessage, quotes: draftQuotes), for: draftKey)
+        syncDraftAttachments()
+        if let continuation = await viewModel.compressionContinuationForNavigation(
+            from: draftKey, isCurrent: { isOnScreen },
+            prepareDraftForHandoff: {
+                draftStore.setContent(ComposerDraftContent(text: draftMessage, quotes: draftQuotes), for: draftKey)
+                syncDraftAttachments()
+            }
+        ) {
+            // The destination owns the retained work now; don't show a second
+            // unsent copy when the user returns to the sealed parent.
+            if textOrigin != nil { dismissShortcutNotice() }
+            draftMessage = ""
+            draftQuotes = []
+            draftAttachmentsPendingRetry = []
+            lastSyncedDraftAttachments = []
+            viewModel.clearPendingAttachments()
+            pushedSession = continuation
+        }
     }
 
     /// Asks once per install, right after a normal send or voice note started a run, whether
@@ -2513,6 +3087,23 @@ struct ChatView: View {
                     submittedDraftRevision: submittedDraftRevision
                 )
             }
+        case .replacedHermesSession(let chat):
+            // The command leaves this chat's draft first; anything else in it stays here.
+            if consumesDraft {
+                reconcileConsumedDraft(
+                    ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
+                    submittedDraftRevision: submittedDraftRevision
+                )
+            }
+            if let onReplaceHermesSession { onReplaceHermesSession(chat) } else { pushedHermesSession = chat }
+        case .openedHermesSessionList(let entry):
+            if consumesDraft {
+                reconcileConsumedDraft(
+                    ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
+                    submittedDraftRevision: submittedDraftRevision
+                )
+            }
+            if let onOpenHermesSessions { onOpenHermesSessions(entry) } else { pushedHermesSessionList = entry }
         case .prefill(let text):
             // Unless the user typed on meanwhile: their edit wins.
             if draftRevision == submittedDraftRevision {
@@ -2524,7 +3115,8 @@ struct ChatView: View {
             if consumesDraft {
                 reconcileConsumedDraft(
                     ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
-                    submittedDraftRevision: submittedDraftRevision
+                    submittedDraftRevision: submittedDraftRevision,
+                    preserveRejectedSubmission: viewModel.isCompressionRotated
                 )
             }
         case .needsSubArg:
@@ -2571,6 +3163,8 @@ struct ChatView: View {
     /// user's (clearing on send, restoring, hydrating) skip it.
     private func persistDraftEdit(_ text: String) {
         viewModel.clearSteerFailure()
+        textBeforeHiddenRemoval = nil
+        if text.isEmpty, textOrigin != nil { dismissShortcutNotice() }
         draftRevision &+= 1
         draftStore.setContent(
             ComposerDraftContent(text: text, quotes: draftQuotes),
@@ -2595,10 +3189,11 @@ struct ChatView: View {
     private func hydrateDraftIfNeeded() async {
         viewModel.protectDraftAttachments(for: draftKey)
         guard !didHydrateDraft else { return }
+        await viewModel.adoptHermesSegmentDraft()
         await draftStore.markUsed(draftKey)
         let textBeforeHydration = draftMessage
         let quotesBeforeHydration = draftQuotes
-        let persistedDraft = await draftStore.draft(for: draftKey)
+        var persistedDraft = await draftStore.draft(for: draftKey)
         viewModel.protectDraftAttachments(for: draftKey, restoring: persistedDraft?.attachments ?? [])
         viewModel.restoreSubmissionMark(persistedDraft?.botSubmissionUncertain == true)
         guard !Task.isCancelled,
@@ -2606,12 +3201,16 @@ struct ChatView: View {
               draftQuotes == quotesBeforeHydration
         else { return }
 
+        // A send still waiting when the app quit comes back for a deliberate Send, never on its own (#1407).
+        let returnedWaitingSend = viewModel.waitingSend == nil ? persistedDraft?.waitingSend?.text : nil
+        if returnedWaitingSend != nil { persistedDraft = draftStore.returnWaitingSend(for: draftKey) }
         if textBeforeHydration.isEmpty {
             if let persistedDraft, !persistedDraft.text.isEmpty {
                 draftMessage = persistedDraft.text
             }
         } else {
-            draftStore.setDraft(textBeforeHydration, for: draftKey)
+            if let returnedWaitingSend { draftMessage = returnedWaitingSend + "\n\n" + textBeforeHydration }
+            draftStore.setDraft(draftMessage, for: draftKey)
         }
         if quotesBeforeHydration.isEmpty {
             draftQuotes = persistedDraft?.quotes ?? []
@@ -2619,6 +3218,7 @@ struct ChatView: View {
             draftStore.setQuotes(quotesBeforeHydration, for: draftKey)
         }
         didHydrateDraft = true
+        textOrigin = persistedDraft?.textOrigin
 
         restoredDraftSettings = persistedDraft?.settings
         lastSyncedDraftAttachments = persistedDraft?.attachments ?? []
@@ -2722,7 +3322,8 @@ struct ChatView: View {
     /// Restored records whose re-upload failed are unioned back in so a
     /// mid-restore or post-restore sync can't silently drop them. Gated during
     /// hydration/restore so an empty or partial composer never overwrites the
-    /// persisted set.
+    /// persisted set. Records this composer never saw (a share moved in, #1181)
+    /// stay in the draft.
     private func syncDraftAttachments() {
         guard didHydrateDraft, !isRestoringDraftAttachments else { return }
         // Only records backed by a durable copy are persisted. Without one the
@@ -2735,8 +3336,8 @@ struct ChatView: View {
             !pendingRecords.contains(where: { $0.id == retry.id })
         }
         let records = pendingRecords + retryRecords
+        draftStore.setAttachments(records, replacing: lastSyncedDraftAttachments, for: draftKey)
         lastSyncedDraftAttachments = records
-        draftStore.setAttachments(records, for: draftKey)
     }
 
     /// Snapshots the effective composer settings into the draft whenever they
@@ -2778,12 +3379,15 @@ struct ChatView: View {
 
     private func reconcileConsumedDraft(
         _ submittedContent: ComposerDraftContent,
-        submittedDraftRevision: Int
+        submittedDraftRevision: Int,
+        preserveRejectedSubmission: Bool = false
     ) {
+        if textOrigin != nil { dismissShortcutNotice() }
         let resolvedContent = draftStore.resolveConsumedInput(
             submitted: submittedContent,
             current: ComposerDraftContent(text: draftMessage, quotes: draftQuotes),
             draftWasEdited: draftRevision != submittedDraftRevision,
+            preserveRejectedSubmission: preserveRejectedSubmission,
             for: draftKey
         )
         draftMessage = resolvedContent.text
@@ -2810,6 +3414,8 @@ struct ChatView: View {
         // Not the user's edit, but a send still in flight must not clear it.
         draftRevision &+= 1
         draftMessage = parked.text
+        // The composer now knows the parked files, so removing one sticks.
+        lastSyncedDraftAttachments = parked.attachments
         viewModel.appendPendingAttachments(queued.flatMap(\.attachments))
     }
 
@@ -2841,6 +3447,10 @@ struct ChatView: View {
     }
 
     private func forkFromMessage(_ context: MessageActionContext) async {
+        if isHermesSession {
+            if let branch = await viewModel.forkHermesSession(from: context) { pushedHermesSession = branch }
+            return
+        }
         let session = await viewModel.forkFromMessage(context, modelContext: modelContext)
 
         if let lastError = viewModel.lastError {
@@ -2852,9 +3462,20 @@ struct ChatView: View {
         }
     }
 
+    /// The "Forked from" row this chat draws. A Hermes branch's comes from its host, which the
+    /// view model asks again on a later connect when the first attach failed (#1051).
+    private var shownForkOrigin: ForkOrigin? {
+        isHermesSession ? viewModel.hermesForkOrigin : forkOrigin
+    }
+
     /// Reads the parent's title from the active server's session cache, which
-    /// the session list writes on every load. Only forks do the lookup.
-    private func resolveForkOrigin() {
+    /// the session list writes on every load. Only forks do the lookup. A Hermes
+    /// branch asks its host instead (#1051).
+    private func resolveForkOrigin() async {
+        if isHermesSession {
+            await viewModel.checkHermesForkParent(hermesParentKey)
+            return
+        }
         guard let parentID = ForkOrigin.parentSessionID(of: session) else {
             forkOrigin = nil
             return
@@ -2866,7 +3487,11 @@ struct ChatView: View {
     /// Pushes the fork's parent: the cached one at once, otherwise after
     /// fetching it. A failed fetch shows the message-action error and stays here.
     private func openForkParent() {
-        guard let forkOrigin, !isOpeningForkParent else { return }
+        guard let forkOrigin = shownForkOrigin, !isOpeningForkParent else { return }
+        if isHermesSession {
+            pushedHermesSession = forkOrigin.parent.flatMap(viewModel.hermesChat(opening:))
+            return
+        }
         if let parent = forkOrigin.parent {
             pushedSession = parent
             return
@@ -3117,7 +3742,7 @@ struct ChatView: View {
     private func validateAttachmentSize(for url: URL) throws {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         guard let size = values.fileSize,
-              size > (isHermesSession ? BotAttachmentDraft.maximumFileBytes : PendingAttachment.maximumUploadBytes)
+              size > (isHermesSession ? BotAttachmentUpload.maximumFileBytes : PendingAttachment.maximumUploadBytes)
         else {
             return
         }
@@ -3299,6 +3924,7 @@ struct ChatView: View {
         let outcome = viewModel.runEndOutcome
         let runEndTrigger = viewModel.runEndTrigger
         let completion = viewModel.successfulResponseCompletion
+        let hermesLink = viewModel.hermesSessionLink
 
         Task { @MainActor in
             if outcome == .completed, completion?.needsTranscriptRefresh == true {
@@ -3312,7 +3938,8 @@ struct ChatView: View {
             }
             await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
                 outcome,
-                sessionID: session.sessionId,
+                sessionID: hermesLink?.key ?? session.sessionId,
+                hermesProfile: hermesLink?.profile,
                 title: viewModel.displayTitle,
                 server: server,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,
@@ -3401,7 +4028,9 @@ struct ChatView: View {
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
-        guard !viewModel.messages.isEmpty else { return }
+        // An empty chat still draws the transcript for a queued prompt (#1379) or a waiting send (#1407).
+        guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil
+            || viewModel.waitingSendMessage != nil else { return }
 
         scheduleFollowScroll(
             proxy,
@@ -3443,14 +4072,10 @@ struct ChatView: View {
             // taller server transcript replacing the cached one doesn't animate a jump
             // (#289). Evaluated at fire time so it's robust to onChange ordering.
             let isCacheFirstSnapWindow = cacheFirstSnapUntil.map { Date() < $0 } ?? false
-            if animated, !isCacheFirstSnapWindow {
-                // While streaming, follow with the short cadence-synced curve so
-                // back-to-back triggers retarget smoothly; otherwise keep the
-                // regular follow-scroll feel.
-                let animation = viewModel.activeStreamID != nil
-                    ? ChatMotion.streamingFollow(reduceMotion: reduceMotion)
-                    : ChatMotion.scrollToLatest(reduceMotion: reduceMotion)
-                withAnimation(animation) {
+            // Following a live stream snaps too: updates land every ~48 ms, so
+            // an animated follow is cut off by the next one and never settles.
+            if animated, !isCacheFirstSnapWindow, viewModel.activeStreamID == nil {
+                withAnimation(ChatMotion.scrollToLatest(reduceMotion: reduceMotion)) {
                     proxy.scrollTo(targetID, anchor: anchor)
                 }
             } else {
@@ -3602,6 +4227,10 @@ struct ChatView: View {
         if success {
             editDraft = ""
         }
+        if let unsent = viewModel.takeUnsentHermesEdit() {
+            restoreUnsentEdit(unsent)
+            editDraft = ""
+        }
 
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
@@ -3629,16 +4258,30 @@ struct ChatView: View {
         }
     }
 
+    /// Puts a Hermes edit that did not go through back in the composer (#1049), after any draft
+    /// already there, so neither is lost.
+    private func restoreUnsentEdit(_ text: String) {
+        let draft = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : "\(draftMessage)\n\n\(text)"
+        draftMessage = draft
+        persistDraftEdit(draft)
+    }
+
     private var editDiscardWarningMessage: String {
         guard let context = editContext else { return "" }
         let messagesAfter = transcriptMessagesAfter(context)
-        return String(localized: "Editing this message will discard \(messagesAfter) later messages.")
+        return withHermesCutNote(String(localized: "Editing this message will discard \(messagesAfter) later messages."))
     }
 
     private var regenerateDiscardWarningMessage: String {
         guard let context = regenerateContext else { return "" }
         let messagesAfter = transcriptMessagesAfter(context)
-        return String(localized: "Regenerating this response will discard \(messagesAfter) later messages.")
+        return withHermesCutNote(String(localized: "Regenerating this response will discard \(messagesAfter) later messages."))
+    }
+
+    /// A Hermes host's cut is permanent and every app sees it (#1049), so its warning says so.
+    private func withHermesCutNote(_ warning: String) -> String {
+        guard isHermesSession else { return warning }
+        return warning + "\n\n" + String(localized: "The Hermes host removes them for every app. It can't be undone.")
     }
 
     private var profileSwitchWarningMessage: String {
@@ -3650,11 +4293,7 @@ struct ChatView: View {
     }
 
     private func transcriptMessagesAfter(_ context: MessageActionContext) -> Int {
-        guard let index = transcriptMessages.firstIndex(where: { $0.id == context.messageID }) else {
-            return 0
-        }
-
-        return max(0, transcriptMessages.count - 1 - index)
+        viewModel.transcriptMessagesAfter(context)
     }
 }
 
@@ -3707,7 +4346,6 @@ struct ChatToolbarActionCluster<Content: View>: View {
         HStack(spacing: 4) {
             content
         }
-        .padding(.horizontal, 4)
         .frame(minHeight: 44)
         .modifier(LegacyToolbarClusterStyle())
         .accessibilityElement(children: .contain)
@@ -3716,8 +4354,9 @@ struct ChatToolbarActionCluster<Content: View>: View {
 
 /// On iOS 26+ the navigation toolbar already renders this trailing item inside a
 /// Liquid Glass pill, so styling the cluster ourselves stacked a second capsule
-/// and produced the double border reported in #333. Below iOS 26 the system
-/// supplies no pill, so we keep the original material capsule there.
+/// and produced the double border reported in #333. Its padding is ours too: on iOS 26 it
+/// stretched a lone 44pt button's round glass into an oval beside the round back button.
+/// Below iOS 26 the system supplies no pill, so we keep the original material capsule there.
 private struct LegacyToolbarClusterStyle: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -3727,6 +4366,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
             content
         } else {
             content
+                .padding(.horizontal, 4)
                 .background(
                     Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.24 : 0.42),
                     in: Capsule()
@@ -3865,7 +4505,7 @@ private enum PastedFileError: LocalizedError {
 private extension SlashCommandExecutionResult {
     var isSuccessfulSubmission: Bool {
         switch self {
-        case .executed, .openedSession, .openedHermesSession:
+        case .executed, .openedSession, .openedHermesSession, .replacedHermesSession, .openedHermesSessionList:
             true
         case .sendAsMessage, .unsupported, .needsSubArg, .notDelivered, .prefill:
             false
@@ -3937,6 +4577,28 @@ private struct HermesModelConfirmationModifier: ViewModifier {
     }
 }
 
+/// The one confirmation a Hermes session's loop or heartbeat Pause or Resume asks in the goal
+/// menu (#1142), in Bot Chat's words. A reattach drops it unsent.
+private struct HermesAutomationConfirmationModifier: ViewModifier {
+    let sideTasks: HermesChatSideTasks?
+    let onConfirm: (BotSessionControl) -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Change session control?", isPresented: Binding(
+            get: { sideTasks?.pendingAutomation != nil },
+            set: { if !$0 { sideTasks?.cancelAutomation() } }
+        ), titleVisibility: .visible) {
+            // Dismissing clears the ask, so the button carries its control.
+            if let control = sideTasks?.pendingAutomation {
+                Button(control.actionTitle) { onConfirm(control) }
+            }
+            Button("Cancel", role: .cancel) { sideTasks?.cancelAutomation() }
+        } message: {
+            if let control = sideTasks?.pendingAutomation { Text(control.consequence) }
+        }
+    }
+}
+
 /// The Profile-wide question a Hermes session's `/personality <name>` asks first (#1016): the
 /// host has no session-only personality, so the change reaches every new chat in the Profile.
 private struct HermesPersonalityConfirmationModifier: ViewModifier {
@@ -3972,10 +4634,11 @@ private struct HermesPersonalityConfirmationModifier: ViewModifier {
     }
 }
 
-/// A Hermes session's sent file to preview: the host path its chip keeps, never shown,
-/// and the chip's name for the title.
-private struct HermesAttachmentPreviewItem: Identifiable {
+/// One Hermes native preview presentation, for a sent chip or a MEDIA document. A sent chip's
+/// path downloads from the host even when it is a URL (`BotArtifactReference`).
+private struct HermesFilePreviewItem: Identifiable {
     let id = UUID()
-    let path: String
-    let name: String?
+    let reference: TranscriptMediaReference
+    var name: String? = nil
+    var isSentAttachment = false
 }

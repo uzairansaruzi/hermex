@@ -46,15 +46,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertEqual(message.steerText, "hello")
     }
 
-    func testMissingDisplayKindDecodesAsNil() throws {
-        let message = try JSONDecoder().decode(
-            ChatMessage.self,
-            from: Data(#"{"role":"user","content":"hello"}"#.utf8)
-        )
-        XCTAssertNil(message.displayKind)
-        XCTAssertFalse(message.isSteerMessage)
-    }
-
     // MARK: - Marker stripping
 
     func testStrippedSteerText() {
@@ -76,18 +67,6 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertNil(ChatMessage.strippedSteerText(
             from: "[OUT-OF-BAND USER MESSAGE\nuse shorter sentences\n\(Self.steerCloseLine)"
         ))
-    }
-
-    func testIsSteerMessageViaDisplayKindWithoutMarker() {
-        let message = ChatMessage(
-            role: "user",
-            content: "use shorter sentences",
-            timestamp: nil,
-            messageId: "m1",
-            displayKind: "steer"
-        )
-        XCTAssertTrue(message.isSteerMessage)
-        XCTAssertEqual(message.steerText, "use shorter sentences")
     }
 
     func testIsSteerMessageViaMarkerWithoutDisplayKind() {
@@ -165,47 +144,40 @@ final class SteerMessageTests: XCTestCase {
         XCTAssertEqual(restored.first?.steerText, "use shorter sentences")
     }
 
-    // MARK: - Bot projection
+    // MARK: - Hermes projection
 
-    func testBotProjectionCarriesDisplayKind() {
-        let history: [BotJSON] = [
-            .object(["role": .string("user"), "text": .string("Clear the inbox")]),
-            .object([
-                "role": .string("user"),
-                "text": .string(Self.wrapped("archive first")),
-                "display_kind": .string("steer"),
-            ]),
-        ]
-        let projected = BotTranscriptProjection.project(history: history, root: "root")
-        XCTAssertEqual(projected.messages.count, 2)
-        let steer = projected.messages[1]
-        XCTAssertEqual(steer.displayKind, "steer")
-        XCTAssertTrue(steer.isSteerMessage)
-        XCTAssertEqual(steer.steerText, "archive first")
-        XCTAssertFalse(projected.messages[0].isSteerMessage)
-    }
-
-    /// Steers in bot history get the same mention-note stripping as ordinary
-    /// user rows: the hidden agent-profile annotation must not leak profile
-    /// IDs into the cached transcript.
-    func testBotProjectionStripsMentionAnnotationFromSteers() throws {
+    /// Steers in a Hermes session's history get the same mention-note stripping as ordinary
+    /// user rows: the hidden agent-profile annotation must not leak profile IDs into the
+    /// transcript or its cache.
+    func testHermesProjectionStripsMentionAnnotationFromSteers() throws {
         let profile = try XCTUnwrap(BotProfile(.object(["name": .string("analyst")])))
         let mentions = BotMentions(roster: [profile], excluding: "other")
         let steerText = "@analyst dig deeper"
         let annotated = steerText + mentions.annotation(for: steerText)
         XCTAssertNotEqual(annotated, steerText)
 
-        let history: [BotJSON] = [
+        let rows: [BotJSON] = [
             .object([
+                "id": .number(1),
                 "role": .string("user"),
-                "text": .string(Self.wrapped(annotated)),
+                "content": .string(Self.wrapped(annotated)),
                 "display_kind": .string("steer"),
             ]),
         ]
-        let projected = BotTranscriptProjection.project(history: history, root: "root")
+        let projected = HermesTranscriptProjection.project(rows, root: "root")
         XCTAssertEqual(projected.messages.count, 1)
         XCTAssertTrue(projected.messages[0].isSteerMessage)
         XCTAssertEqual(projected.messages[0].steerText, steerText)
+    }
+
+    /// A prompt and a delegation delivery open a turn; a steer rides inside one.
+    func testOnlyPromptsAndDelegationDeliveriesOpenATurn() {
+        let prompt = ChatMessage(role: "user", content: "Clear the inbox", timestamp: nil, messageId: "1")
+        let steer = ChatMessage(role: "user", content: "archive first", timestamp: nil, messageId: "2",
+                                displayKind: ChatMessage.steerDisplayKind)
+        let delivery = ChatMessage(role: "delegation_completion", content: "Report", timestamp: nil, messageId: "3")
+        let reply = ChatMessage(role: "assistant", content: "Done", timestamp: nil, messageId: "4")
+        XCTAssertEqual([prompt, steer, delivery, reply].map(HermesTranscriptProjection.isTurnBoundary), [true, false, true, false])
     }
 
     // MARK: - Regenerate

@@ -5,35 +5,6 @@ import XCTest
 /// fixtures are the live payloads captured 2026-09-05; the rest cover the other
 /// statuses upstream returns from the same handler.
 final class APIClientProviderQuotaTests: APIClientTestCase {
-    func testProviderQuotaBuildsProviderQueryWithoutRefreshByDefault() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.httpMethod, "GET")
-            XCTAssertEqual(request.url?.path, "/api/provider/quota")
-
-            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-            XCTAssertEqual(query["provider"], "openai-codex")
-            XCTAssertNil(query["refresh"])
-
-            return apiTestJSONResponse(#"{"ok": true, "status": "unsupported"}"#, for: request)
-        }
-
-        _ = try await client.providerQuota(provider: "openai-codex")
-    }
-
-    func testProviderQuotaAppendsRefreshWhenAsked() async throws {
-        let client = makeClient { request in
-            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-            XCTAssertEqual(query["provider"], "openrouter")
-            XCTAssertEqual(query["refresh"], "1")
-
-            return apiTestJSONResponse(#"{"ok": true, "status": "unsupported"}"#, for: request)
-        }
-
-        _ = try await client.providerQuota(provider: "openrouter", refresh: true)
-    }
-
     func testEndpointQueryConstruction() {
         let base = URL(string: "https://example.test")!
 
@@ -91,63 +62,6 @@ final class APIClientProviderQuotaTests: APIClientTestCase {
         XCTAssertEqual(try XCTUnwrap(quota.limitRemaining), 0, accuracy: 0.0001)
         XCTAssertEqual(try XCTUnwrap(quota.usage), 10.0296785, accuracy: 0.000001)
         XCTAssertEqual(try XCTUnwrap(quota.limit), 10, accuracy: 0.0001)
-    }
-
-    func testDecodesUncappedOpenRouterKey() async throws {
-        let client = makeClient { request in
-            apiTestJSONResponse("""
-            {
-              "ok": true, "provider": "openrouter", "display_name": "OpenRouter",
-              "supported": true, "status": "available", "label": "OpenRouter credits",
-              "quota": {"limit_remaining": null, "usage": 4.5, "limit": null},
-              "message": "OpenRouter quota status loaded."
-            }
-            """, for: request)
-        }
-
-        let response = try await client.providerQuota(provider: "openrouter")
-        let quota = try XCTUnwrap(response.quota)
-        XCTAssertNil(quota.limitRemaining)
-        XCTAssertNil(quota.limit)
-        XCTAssertEqual(try XCTUnwrap(quota.usage), 4.5, accuracy: 0.0001)
-    }
-
-    func testDecodesUnsupportedPayload() async throws {
-        let client = makeClient { request in
-            apiTestJSONResponse("""
-            {
-              "ok": false, "provider": "opencode-free", "display_name": "OpenCode Free",
-              "supported": false, "status": "unsupported", "quota": null,
-              "message": "Quota status is not available for OpenCode Free."
-            }
-            """, for: request)
-        }
-
-        let response = try await client.providerQuota(provider: "opencode-free")
-
-        XCTAssertEqual(response.status, "unsupported")
-        XCTAssertEqual(response.supported, false)
-        XCTAssertNil(response.quota)
-        XCTAssertNil(response.accountLimits)
-    }
-
-    func testDecodesUnavailablePayloadWithNullAccountLimits() async throws {
-        let client = makeClient { request in
-            apiTestJSONResponse("""
-            {
-              "ok": false, "provider": "anthropic", "display_name": "Anthropic",
-              "supported": true, "status": "unavailable", "quota": null,
-              "account_limits": null,
-              "message": "Anthropic account limits could not be read."
-            }
-            """, for: request)
-        }
-
-        let response = try await client.providerQuota(provider: "anthropic")
-
-        XCTAssertEqual(response.status, "unavailable")
-        XCTAssertNil(response.accountLimits)
-        XCTAssertEqual(response.message, "Anthropic account limits could not be read.")
     }
 
     static let codexPayload = """

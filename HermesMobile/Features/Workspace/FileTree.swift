@@ -127,7 +127,8 @@ struct FileTree: Equatable {
         return (1..<parts.count).map { parts[..<$0].joined(separator: "/") }
     }
 
-    /// The top-level directories that open on first visit: every one except hidden dot-folders.
+    /// The top-level directories a webui workspace opens on first visit: every one except hidden
+    /// dot-folders.
     static func defaultExpandedPaths(in rootNodes: [FileTreeNode]) -> Set<String> {
         Set(rootNodes.filter { $0.isDirectory && !$0.name.hasPrefix(".") }.map(\.path))
     }

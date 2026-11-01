@@ -41,6 +41,10 @@ enum ClientSideAction: String, Equatable, Sendable {
     case stop
     case new
     case help
+    /// A Hermes chat's Sessions list (#1053).
+    case sessions
+    /// A Hermes chat's `/resume [name]`: a session by its title, else the Sessions list (#1053).
+    case resume
 }
 
 enum ServerSideAction: String, Equatable, Sendable {

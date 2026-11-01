@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 enum OnboardingConnectField: Hashable {
@@ -12,6 +13,7 @@ struct OnboardingConnectPage: View {
     @FocusState.Binding var focusedField: OnboardingConnectField?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @State private var isShowingAdvanced = false
     @State private var isConfirmingReplace = false
 
@@ -20,7 +22,7 @@ struct OnboardingConnectPage: View {
 
     private func submitConnection() {
         guard viewModel.canSubmit, !viewModel.isConnectionLocked else { return }
-        Task { await viewModel.connect(authManager: authManager) }
+        Task { await viewModel.connect(authManager: authManager, browser: .init(webAuthenticationSession)) }
     }
 
     var body: some View {
@@ -82,7 +84,7 @@ struct OnboardingConnectPage: View {
 
                     statusMessages
 
-                    if viewModel.showsHermesSignIn {
+                    if viewModel.showsHermesCredentials {
                         savedSignInRows
 
                         OnboardingField(systemImage: "person.fill", title: String(localized: "Username")) {
@@ -149,7 +151,10 @@ struct OnboardingConnectPage: View {
         }
         .confirmationDialog("Replace the webui server?", isPresented: $isConfirmingReplace, titleVisibility: .visible) {
             Button("Replace", role: .destructive) {
-                Task { await viewModel.connect(authManager: authManager, replacingWebuiServer: true) }
+                Task {
+                    await viewModel.connect(authManager: authManager, replacingWebuiServer: true,
+                                            browser: .init(webAuthenticationSession))
+                }
             }
         } message: {
             Text("Its sign-in, cached chats and drafts are removed from this iPhone. Conversations on the host stay.")
@@ -166,42 +171,16 @@ struct OnboardingConnectPage: View {
                 tint: .white.opacity(0.7),
                 showsProgress: true
             )
+        } else if viewModel.showsHermesSignIn, viewModel.signInMethod == .open {
+            OnboardingStatusBanner(text: HermesSignInMethod.openWarning, systemImage: "exclamationmark.triangle.fill",
+                                   tint: .orange)
         } else if viewModel.showsHermesSignIn {
             OnboardingStatusBanner(
-                text: String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."),
+                text: viewModel.signInMethod == .browser
+                    ? String(localized: "Hermes dashboard found. It signs in through your browser.")
+                    : String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."),
                 systemImage: "checkmark.circle.fill",
                 tint: success
-            )
-        }
-
-        if viewModel.needsBotModeOptIn {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Hermes dashboard found")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                    Text("Adding one needs Bot Mode (beta), which is off. Bot Mode is unfinished, and you can turn it off again in Settings.")
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .accessibilityElement(children: .combine)
-
-                Button {
-                    viewModel.enableBotMode()
-                    focusedField = .username
-                } label: {
-                    Text("Turn on Bot Mode (beta) and continue")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(OnboardingSecondaryButtonStyle())
-                .disabled(viewModel.isConnectionLocked)
-            }
-            .padding(12)
-            .background(accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(accent.opacity(0.2), lineWidth: 1)
             )
         }
 
@@ -215,6 +194,13 @@ struct OnboardingConnectPage: View {
                 systemImage: "exclamationmark.triangle.fill",
                 tint: Color(red: 1.0, green: 0.47, blue: 0.34)
             )
+        }
+
+        if let attempt = viewModel.failedAttempt {
+            ConnectionAttemptDetails(attempt: attempt)
+                .foregroundStyle(.white)
+                .tint(accent)
+                .padding(.horizontal, 12)
         }
 
         if viewModel.offersWebuiReplace {

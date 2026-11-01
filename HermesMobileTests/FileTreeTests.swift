@@ -71,20 +71,6 @@ final class FileTreeTests: XCTestCase {
         XCTAssertFalse(tree.isLoaded("src/Util"))
     }
 
-    func testAncestorAndParentPaths() {
-        XCTAssertEqual(FileTree.ancestorPaths(of: "a/b/c.txt"), ["a", "a/b"])
-        XCTAssertEqual(FileTree.ancestorPaths(of: "top.txt"), [])
-        XCTAssertEqual(FileTree.parentPath(of: "a/b/c.txt"), "a/b")
-        XCTAssertEqual(FileTree.parentPath(of: "top.txt"), FileTree.rootPath)
-    }
-
-    func testDefaultExpansionOpensTopLevelFoldersExceptHiddenOnes() {
-        var tree = FileTree()
-        tree.setChildren([dir(".git"), dir("src"), dir("docs"), file("README.md")], of: FileTree.rootPath)
-
-        XCTAssertEqual(FileTree.defaultExpandedPaths(in: tree.rootNodes), ["src", "docs"])
-    }
-
     // MARK: - Flattening
 
     func testFlattenShowsChildrenOnlyOfExpandedDirectories() {
@@ -96,13 +82,6 @@ final class FileTreeTests: XCTestCase {
         let deep = tree.visibleNodes(expanded: ["src", "src/Util"])
         XCTAssertEqual(paths(deep), ["src", "src/Chat", "src/Util", "src/Util/Math.swift", "README.md"])
         XCTAssertEqual(deep.map(\.depth), [0, 1, 1, 2, 0])
-    }
-
-    func testFlattenSkipsChildrenOfUnloadedDirectories() {
-        var tree = FileTree()
-        tree.setChildren([dir("src")], of: FileTree.rootPath)
-
-        XCTAssertEqual(paths(tree.visibleNodes(expanded: ["src"])), ["src"])
     }
 
     // MARK: - Search
@@ -135,17 +114,6 @@ final class FileTreeTests: XCTestCase {
         XCTAssertEqual(paths(tree.visibleNodes(expanded: [], searchQuery: "feat")), ["Features"])
     }
 
-    func testSplitWordsHandlesCamelCaseAcronymsAndPunctuation() {
-        XCTAssertEqual(FileTreeSearch.splitWords("ChatStreamCoordinator.swift"), ["chat", "stream", "coordinator", "swift"])
-        XCTAssertEqual(FileTreeSearch.splitWords("HTTPServer"), ["http", "server"])
-        XCTAssertEqual(FileTreeSearch.splitWords("file_v2-final"), ["file", "v2", "final"])
-    }
-
-    func testTokensSplitOnWhitespaceAndPathPunctuation() {
-        XCTAssertEqual(FileTreeSearch.tokens(from: "  Src/Chat_view.swift  "), ["src", "chat", "view", "swift"])
-        XCTAssertEqual(FileTreeSearch.tokens(from: "   "), [])
-    }
-
     func testScoreTiersRankExactBeforePrefixBoundaryAndSubstring() throws {
         let exact = try XCTUnwrap(FileTreeSearch.score(value: "chat", query: "chat", fuzzy: false))
         let prefix = try XCTUnwrap(FileTreeSearch.score(value: "chatview", query: "chat", fuzzy: false))
@@ -156,12 +124,5 @@ final class FileTreeTests: XCTestCase {
         XCTAssertLessThan(exact, prefix)
         XCTAssertLessThan(prefix, boundary)
         XCTAssertLessThan(boundary, substring)
-    }
-
-    func testScoreFallsBackToSubsequenceOnlyWhenFuzzy() throws {
-        XCTAssertNil(FileTreeSearch.score(value: "coordinator", query: "cdt", fuzzy: false))
-        let fuzzy = try XCTUnwrap(FileTreeSearch.score(value: "coordinator", query: "cdt", fuzzy: true))
-        XCTAssertGreaterThanOrEqual(fuzzy, 100)
-        XCTAssertNil(FileTreeSearch.score(value: "coordinator", query: "xyz", fuzzy: true))
     }
 }

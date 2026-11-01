@@ -78,8 +78,8 @@ legacy Card patch alias, or unsupported task attachments.
 A Hermes server's Kanban (#1043) is the host's bundled Kanban plugin, read and written
 (#1044) by `HermesKanbanClient` over the server's shared `HermesConnection` (its sign-in,
 cookie jar and connection headers), and kept live over the Board's Kanban socket
-(`KanbanWebSocketEventClient`, #1045). Until #709 gives it a home, the Hermes inbox's + menu
-offers it in DEBUG builds and Hermex Branch only.
+(`KanbanWebSocketEventClient`, #1045). On a Hermes server it is a row on the home's Sessions
+side (#709), as on webui's session list.
 
 Read at the pin (`ca678285`, 0.21.5; `plugins/kanban/dashboard/plugin_api.py`) and checked
 against `scripts/local-hermes`. Every route is under `/api/plugins/kanban`, and every Card

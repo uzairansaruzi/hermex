@@ -170,15 +170,16 @@ final class TaskDetailViewModel {
     }
 
     /// A Hermes host's latest output (#1042): the reply of `latestRun`, the run the Task's
-    /// last outcome describes. It is read only when that run failed, the one time the detail
-    /// shows it, and a failed read leaves none. A newer history load supersedes it.
+    /// last outcome describes, or a script-only run's preview (#1342). It is read only when
+    /// that run failed, the one time the detail shows it, and a failed read leaves none. A
+    /// newer history load supersedes it.
     private func loadLatestReply(_ jobID: String, generation: Int) async {
         guard client.cronFeatures.runsAreSessions, generation == historyGeneration else { return }
         guard job.hasFailedRun, let run = latestRun else {
             outputs = []
             return
         }
-        let reply = try? await client.cronRunDetail(jobID: jobID, profile: job.profile, filename: run.filename)
+        let reply = try? await client.cronRunDetail(jobID: jobID, profile: job.profile, run: run)
         guard generation == historyGeneration else { return }
         outputs = [CronOutputItem(filename: run.filename, content: reply?.content)]
     }
@@ -299,7 +300,7 @@ final class TaskDetailViewModel {
         isLoadingRunOutput = true
 
         do {
-            let response = try await client.cronRunDetail(jobID: jobID, profile: job.profile, filename: run.filename)
+            let response = try await client.cronRunDetail(jobID: jobID, profile: job.profile, run: run)
             guard token == runOutputToken else { return }
             isLoadingRunOutput = false
             runOutput = CronRunOutput(

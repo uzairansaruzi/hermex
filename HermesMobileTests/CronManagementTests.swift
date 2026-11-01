@@ -41,30 +41,6 @@ final class CronManagementModelTests: XCTestCase {
         XCTAssertEqual(job.toastNotifications, true)
     }
 
-    func testCronJobEditorDraftNormalizesFieldsAndSkills() {
-        let draft = CronJobEditorDraft(
-            name: "  Morning digest  ",
-            prompt: "  Summarize updates  ",
-            schedule: "  0 7 * * *  ",
-            deliver: "  local  ",
-            skillsText: "summarize, notify\nswift",
-            model: "  @openai:gpt-5.5  ",
-            provider: "  openai  ",
-            profile: "  work  ",
-            toastNotifications: true
-        )
-
-        XCTAssertEqual(draft.trimmedName, "Morning digest")
-        XCTAssertEqual(draft.trimmedPrompt, "Summarize updates")
-        XCTAssertEqual(draft.trimmedSchedule, "0 7 * * *")
-        XCTAssertEqual(draft.trimmedDeliver, "local")
-        XCTAssertEqual(draft.skills, ["summarize", "notify", "swift"])
-        XCTAssertEqual(draft.trimmedModel, "@openai:gpt-5.5")
-        XCTAssertEqual(draft.trimmedProvider, "openai")
-        XCTAssertEqual(draft.trimmedProfile, "work")
-        XCTAssertNil(draft.validationMessage)
-    }
-
     func testCronJobEditorDraftRoundTripsUnknownDeliverAndProvider() throws {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

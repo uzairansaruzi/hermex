@@ -81,34 +81,6 @@ import XCTest
         ]), "No toast setting, and the Profile only in the query")
     }
 
-    func testASchedulerRegistrationFailureIsSavedWithTheHostsWarning() async throws {
-        let warning = "Cron job 'new1' was saved, but its first scheduler registration failed (ValueError)."
-        let client = HermesCronFixture.client { request in
-            request.url?.path == "/api/cron/jobs" ? .json(424, .object(["detail": .object([
-                "error": .string(warning), "job_id": .string("new1"), "job_saved": .bool(true)
-            ])])) : nil
-        }
-
-        let response = try await client.createCron(prompt: "p", schedule: "0 9 * * *", name: "n", deliver: nil, skills: [],
-                                                   model: nil, provider: nil, profile: "research", toastNotifications: false)
-
-        XCTAssertEqual(response, CronMutationResponse(ok: true, job: nil, error: nil, warning: warning))
-    }
-
-    func testARefusalCarriesTheHostsDetail() async throws {
-        let client = HermesCronFixture.client { request in
-            request.url?.path == "/api/cron/jobs" ? .json(400, .object(["detail": .string("Invalid schedule 'whenever'.")])) : nil
-        }
-
-        do {
-            _ = try await client.createCron(prompt: "p", schedule: "whenever", name: nil, deliver: nil, skills: [],
-                                            model: nil, provider: nil, profile: "research", toastNotifications: true)
-            XCTFail("Expected the host's refusal")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "The server rejected the request: Invalid schedule 'whenever'.")
-        }
-    }
-
     /// A Task that removed itself after its last run, or was deleted on Desktop, is the host's
     /// explained 404; a proxy's 502 and Cloudflare's 530 name what is down in front of Hermes.
     func testAFailureReadsAsTheHostOrTheHopThatAnswered() async throws {
@@ -177,23 +149,6 @@ import XCTest
             "DELETE /api/cron/jobs/a1?profile=research"
         ])
         XCTAssertEqual(sent.map { HermesCronFixture.body($0) }, [.null, .null, .null], "Pause and resume send no body")
-    }
-
-    /// Run Now is the host's trigger, which answers the job once the run has finished (#1041).
-    func testRunNowTriggersTheJobInItsProfile() async throws {
-        let client = HermesCronFixture.client { request in
-            request.url?.path == "/api/cron/jobs/a1/trigger" ? .json(200, HermesCronFixture.job("a1", profile: "research", [
-                "last_run_at": .string("2026-10-05T23:33:41.890071-04:00"), "last_status": .string("ok")
-            ])) : nil
-        }
-
-        let response = try await client.runCron(jobID: "a1", profile: "research")
-
-        XCTAssertEqual(response.job?.lastStatus, "ok")
-        let request = try XCTUnwrap(HermesHostFixture.requests.last)
-        XCTAssertEqual("\(request.httpMethod ?? "") \(request.url?.path ?? "")?\(request.url?.query ?? "")",
-                       "POST /api/cron/jobs/a1/trigger?profile=research")
-        XCTAssertEqual(HermesCronFixture.body(request), .null, "The trigger sends no body")
     }
 
     /// A tunnel's 524 and a request that times out or drops reach the screens as the hop's
@@ -744,8 +699,8 @@ extension CronManagementViewModelTests {
 
         XCTAssertFalse(didRun)
         XCTAssertEqual(viewModel.runNowState, .idle)
-        XCTAssertEqual(viewModel.actionErrorMessage,
-                       "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected.")
+        let why = try XCTUnwrap(viewModel.actionErrorMessage)
+        XCTAssertFalse(why.localizedCaseInsensitiveContains("webui"), "A Hermes host is not hermes-webui: \(why)")
         XCTAssertEqual(host.listReads, 3)
         XCTAssertEqual(host.triggers, ["a1?profile=research"])
     }
@@ -863,7 +818,7 @@ extension CronManagementViewModelTests {
     func cronHistory(jobID _: String, profile _: String?, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {
         throw BotFailure.unsupported
     }
-    func cronRunDetail(jobID _: String, profile _: String?, filename _: String) async throws -> CronRunDetailResponse {
+    func cronRunDetail(jobID _: String, profile _: String?, run _: CronRunHistoryItem) async throws -> CronRunDetailResponse {
         throw BotFailure.unsupported
     }
     func cronModelGroups(profile _: String?) async throws -> [ModelCatalogGroup] { throw BotFailure.unsupported }

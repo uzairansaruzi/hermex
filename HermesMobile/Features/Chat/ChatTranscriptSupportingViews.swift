@@ -110,6 +110,9 @@ struct ChatScrollObserver: UIViewRepresentable {
         var onFollowEvent: @MainActor (ChatScrollPolicy.FollowEvent) -> Void
 
         private weak var scrollView: UIScrollView?
+        /// The observer view itself: it backs the transcript content, so its
+        /// origin is the content's origin in the scroll view.
+        private weak var contentView: UIView?
         private weak var observedPanGesture: UIPanGestureRecognizer?
         private var observations: [NSKeyValueObservation] = []
         private var metricContext: MetricContext
@@ -131,7 +134,7 @@ struct ChatScrollObserver: UIViewRepresentable {
                 guard oldValue !== scrollPositionController else { return }
                 oldValue?.detach()
                 if let scrollView {
-                    scrollPositionController?.attach(to: scrollView)
+                    scrollPositionController?.attach(to: scrollView, contentView: contentView)
                 }
             }
         }
@@ -157,9 +160,10 @@ struct ChatScrollObserver: UIViewRepresentable {
 
         func attachIfNeeded(from view: UIView, delivery: MetricDelivery) {
             guard let scrollView = enclosingScrollView(for: view) else { return }
+            contentView = view
 
             guard scrollView !== self.scrollView else {
-                scrollPositionController?.attach(to: scrollView)
+                scrollPositionController?.attach(to: scrollView, contentView: view)
                 reportMetrics(delivery: delivery)
                 return
             }
@@ -169,7 +173,7 @@ struct ChatScrollObserver: UIViewRepresentable {
             deliveredGeometry = nil
             endUserScrollSessionSilently()
             self.scrollView = scrollView
-            scrollPositionController?.attach(to: scrollView)
+            scrollPositionController?.attach(to: scrollView, contentView: view)
 
             observedPanGesture?.removeTarget(self, action: nil)
             scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanGesture(_:)))
@@ -384,6 +388,14 @@ struct ChatScrollObserver: UIViewRepresentable {
 ///   shows up as an offset change in the same run-loop turn as a size change
 ///   and is put back. Any other offset change is someone scrolling on purpose
 ///   (VoiceOver, a hardware keyboard, a follow scroll) and releases the hold.
+/// - **Reflow.** The column width or text size changed, so every row rewraps
+///   and the raw offset lands on another passage (#1414). Rows, and the plan
+///   and compression card between them, report their frames
+///   (`rowFrameChanged`) under the layout they were measured in; the
+///   first frame of a new layout captures the reader's place from the old
+///   layout's frames, and the anchor row's new frames put it back. A reader
+///   following the live edge or at the top is left alone, as is any prepend
+///   or hold already in flight. Ends like a hold, without its resync.
 ///
 /// The controller snapshots the UIKit scroll geometry, then corrects during
 /// the following layout passes for a bounded window. Corrections are
@@ -396,9 +408,21 @@ final class ChatScrollPositionController {
         case prepend
         /// Offset stays put; SwiftUI-driven offset changes are reverted.
         case hold
+        /// Offset keeps `reflowAnchor` at the reading line; otherwise like `hold`.
+        case reflow
+    }
+
+    /// What a row's wrapping depends on: the capped column width and the text
+    /// size. A change to either is a reflow.
+    struct Layout: Equatable {
+        let contentWidth: CGFloat
+        let dynamicTypeSize: DynamicTypeSize
     }
 
     private weak var scrollView: UIScrollView?
+    /// The transcript content's view, for converting row frames (measured in the
+    /// content's coordinate space) to UIKit scroll content coordinates.
+    private weak var contentView: UIView?
     private var mode = Mode.prepend
     /// Set by `capture()`, cleared by anything that replaces the baseline, so
     /// a hold armed while the older-message request is in flight cannot be
@@ -423,15 +447,76 @@ final class ChatScrollPositionController {
     /// makes from inside the content-size setter, before that callback runs.
     private var contentSizeChangedThisTurn = false
     private var lastObservedContentHeight: CGFloat?
+    /// Row frames in the content's coordinate space, under `rowFramesLayout`.
+    /// Plain storage, written only when a row's frame changes; never per scroll.
+    private var rowFrames: [String: CGRect] = [:]
+    private var rowFramesLayout: Layout?
+    private var reflowAnchor: ChatScrollPolicy.ReflowAnchor?
 
     var isHoldingPosition: Bool {
         mode == .hold && baselineOffsetY != nil
     }
 
-    func attach(to scrollView: UIScrollView) {
+    func attach(to scrollView: UIScrollView, contentView: UIView? = nil) {
+        self.contentView = contentView ?? self.contentView
         guard scrollView !== self.scrollView else { return }
         cancelPreservation()
         self.scrollView = scrollView
+    }
+
+    /// A row's frame changed; `id` is its `renderID`, or a stable key for a
+    /// block drawn between rows (a plan, a compression card). The first frame
+    /// under a new `layout` arms a reflow from the frames still stored for the
+    /// old one; a reflow already running keeps its anchor through further
+    /// layouts (a second rotation).
+    func rowFrameChanged(id: String, frame: CGRect, layout: Layout, isFollowing: Bool) {
+        if let previous = rowFramesLayout, previous != layout {
+            if mode == .reflow, reflowAnchor != nil {
+                scheduleQuietRelease()
+            } else {
+                armReflow(isFollowing: isFollowing)
+            }
+        }
+        rowFramesLayout = layout
+        rowFrames[id] = frame
+        if mode == .reflow, reflowAnchor?.id == id {
+            applyCompensation()
+            scheduleQuietRelease()
+        }
+    }
+
+    /// A row left the transcript.
+    func forgetRow(id: String) {
+        rowFrames[id] = nil
+    }
+
+    private func armReflow(isFollowing: Bool) {
+        guard !isFollowing,
+              baselineOffsetY == nil,
+              let scrollView,
+              !scrollView.isDragging,
+              !scrollView.isTracking,
+              !scrollView.isDecelerating
+        else { return }
+
+        let topInset = scrollView.adjustedContentInset.top
+        let readingLineY = scrollView.contentOffset.y + topInset - contentOriginY(in: scrollView)
+        guard let anchor = ChatScrollPolicy.reflowAnchor(
+            readingLineY: readingLineY,
+            isAtTop: scrollView.contentOffset.y <= -topInset + 0.5,
+            rowFrames: rowFrames
+        ) else { return }
+
+        reflowAnchor = anchor
+        baselineContentHeight = scrollView.contentSize.height
+        baselineOffsetY = scrollView.contentOffset.y
+        lastObservedContentHeight = scrollView.contentSize.height
+        beginPreservation(mode: .reflow, scrollView: scrollView, window: ChatScrollPolicy.disclosureHoldMaximum)
+        scheduleQuietRelease()
+    }
+
+    private func contentOriginY(in scrollView: UIScrollView) -> CGFloat {
+        contentView.map { $0.convert(CGPoint.zero, to: scrollView).y } ?? 0
     }
 
     func detach() {
@@ -498,8 +583,8 @@ final class ChatScrollPositionController {
         scheduleQuietRelease()
     }
 
-    /// Hold ran to completion (quiet or capped): let go, then resync SwiftUI
-    /// if the hold had to fight it. A hold ended by a gesture or a deliberate
+    /// Hold or reflow ran to completion (quiet or capped): let go, then resync
+    /// SwiftUI if a hold had to fight it. A hold ended by a gesture or a deliberate
     /// scroll needs no resync; that scroll does it.
     private func finishHold() {
         applyCompensation()
@@ -525,11 +610,11 @@ final class ChatScrollPositionController {
         return heldOffsetY <= minimumOffsetY + 0.5
     }
 
-    /// Ends a disclosure pin early: the transcript is about to scroll on
-    /// purpose (follow, scroll-to-bottom, keyboard). A prepend preservation is
-    /// left alone.
+    /// Ends a disclosure pin or reflow early: the transcript is about to scroll
+    /// on purpose (follow, scroll-to-bottom, keyboard). A prepend preservation
+    /// is left alone.
     func releaseHold() {
-        guard mode == .hold else { return }
+        guard mode != .prepend else { return }
         cancelPreservation()
     }
 
@@ -556,7 +641,7 @@ final class ChatScrollPositionController {
         completionTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(window))
             guard !Task.isCancelled, let self else { return }
-            if mode == .hold {
+            if mode != .prepend {
                 self.finishHold()
             } else {
                 self.applyCompensation()
@@ -580,6 +665,7 @@ final class ChatScrollPositionController {
         lastObservedContentHeight = nil
         baselineContentHeight = nil
         baselineOffsetY = nil
+        reflowAnchor = nil
         isApplyingCompensation = false
     }
 
@@ -607,7 +693,7 @@ final class ChatScrollPositionController {
         guard scrollView === self.scrollView else { return }
 
         applyCompensation()
-        if mode == .hold {
+        if mode != .prepend {
             contentSizeChangedThisTurn = true
             lastObservedContentHeight = scrollView.contentSize.height
             DispatchQueue.main.async { [weak self] in
@@ -638,16 +724,19 @@ final class ChatScrollPositionController {
         }
     }
 
-    /// User movement releases the preservation. In hold mode an offset change
-    /// riding on a size change is SwiftUI re-anchoring and is put back; any
-    /// other offset change is a deliberate scroll and releases the hold.
+    /// User movement releases the preservation. In hold and reflow modes an
+    /// offset change UIKit makes inside the content-size setter is put back. A
+    /// hold also puts back one riding on a size change in the same turn: SwiftUI
+    /// re-applying a default anchor. Reflow runs only where no size-change
+    /// anchor applies, so there that change is the reader's. Any other offset
+    /// change is a deliberate scroll and releases it.
     private func handleOffsetChange(_ scrollView: UIScrollView) {
         guard !isApplyingCompensation, scrollView === self.scrollView else { return }
 
         if scrollView.isDragging || scrollView.isTracking || scrollView.isDecelerating {
             cancelPreservation()
-        } else if mode == .hold {
-            let sizeIsChanging = contentSizeChangedThisTurn
+        } else if mode != .prepend {
+            let sizeIsChanging = (mode == .hold && contentSizeChangedThisTurn)
                 || scrollView.contentSize.height != lastObservedContentHeight
             if sizeIsChanging {
                 applyCompensation()
@@ -659,8 +748,13 @@ final class ChatScrollPositionController {
     }
 
     private func compensatedOffsetY(in scrollView: UIScrollView) -> CGFloat? {
-        guard let baselineContentHeight, let baselineOffsetY else { return nil }
+        guard let baselineContentHeight, var baselineOffsetY else { return nil }
 
+        if mode == .reflow {
+            guard let reflowAnchor, let frame = rowFrames[reflowAnchor.id] else { return nil }
+            baselineOffsetY = ChatScrollPolicy.reflowReadingLineY(anchor: reflowAnchor, newFrame: frame)
+                + contentOriginY(in: scrollView) - scrollView.adjustedContentInset.top
+        }
         return Self.compensatedOffsetY(
             baselineOffsetY: baselineOffsetY,
             contentHeightDelta: mode == .prepend ? scrollView.contentSize.height - baselineContentHeight : 0,
@@ -715,22 +809,74 @@ final class ChatScrollPositionController {
 /// guide closures return the unmodified values, so it is a no-op.
 private struct ForcedLeftToRightModifier: ViewModifier {
     @Environment(\.layoutDirection) private var parentDirection
+    let isForced: Bool
 
     func body(content: Content) -> some View {
+        let flips = isForced && parentDirection == .rightToLeft
         content
-            .environment(\.layoutDirection, .leftToRight)
+            .environment(\.layoutDirection, isForced ? .leftToRight : parentDirection)
             .alignmentGuide(.leading) { dimensions in
-                parentDirection == .rightToLeft ? dimensions[.trailing] : dimensions[.leading]
+                flips ? dimensions[.trailing] : dimensions[.leading]
             }
             .alignmentGuide(.trailing) { dimensions in
-                parentDirection == .rightToLeft ? dimensions[.leading] : dimensions[.trailing]
+                flips ? dimensions[.leading] : dimensions[.trailing]
             }
     }
 }
 
 extension View {
-    func forcedLeftToRight() -> some View {
-        modifier(ForcedLeftToRightModifier())
+    /// Lays the view out left to right inside an RTL transcript, keeping its
+    /// leading edge where the transcript's is. `false` leaves the direction alone.
+    func forcedLeftToRight(_ isForced: Bool = true) -> some View {
+        modifier(ForcedLeftToRightModifier(isForced: isForced))
+    }
+
+    /// Calls `admit` with `id` the first time this media leaf is on screen, so opening
+    /// a chat loads only the media the user can see: the transcript is an eager stack,
+    /// so every row mounts at open. The leaf keeps the admitted id in its own `@State`
+    /// and keys its load `.task` by it.
+    ///
+    /// Admission latches per `id`. Scrolling away never withdraws it, so a load in
+    /// flight keeps running; a new `id` waits until the leaf is on screen again.
+    func loadsOnceVisible<ID: Equatable>(id: ID, admit: @escaping (ID) -> Void) -> some View {
+        modifier(LoadsOnceVisibleModifier(id: id, admit: admit))
+    }
+}
+
+private struct LoadsOnceVisibleModifier<ID: Equatable>: ViewModifier {
+    let id: ID
+    let admit: (ID) -> Void
+    @Environment(\.responseSelectionScope) private var selectionScope
+    @State private var placement = Placement.unmeasured
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: Placement.self) { geometry in
+                guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else {
+                    return .outsideScrollView
+                }
+                return .inScrollView(isVisible: viewport.intersects(CGRect(origin: .zero, size: geometry.size)))
+            } action: { placement = $0 }
+            .onChange(of: isVisible ? Optional(id) : nil, initial: true) { _, visibleID in
+                if let visibleID { admit(visibleID) }
+            }
+    }
+
+    /// A settled reply's selection host is a separate SwiftUI graph that can't see the
+    /// transcript's scroll view, so its media follows the whole reply's visibility.
+    /// Anywhere else without a scroll view, such as a preview sheet, counts as visible.
+    private var isVisible: Bool {
+        switch placement {
+        case .unmeasured: false
+        case .outsideScrollView: selectionScope?.collectsGlyphs ?? true
+        case let .inScrollView(isVisible): isVisible
+        }
+    }
+
+    private enum Placement: Equatable {
+        case unmeasured
+        case outsideScrollView
+        case inScrollView(isVisible: Bool)
     }
 }
 
@@ -1213,5 +1359,133 @@ struct PinnedLocalNoticeStack: View {
         notice.split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.hasPrefix("```") }
             .joined(separator: "\n")
+    }
+}
+
+/// Characters that can hide or reorder what a prompt says to the agent without showing in the
+/// composer (#1402): bidi embeddings, overrides and isolates, zero-width space, word joiner,
+/// byte-order mark and Unicode tags. Joiners and marks text needs to read right (emoji ZWJ,
+/// ZWNJ, LRM/RLM) are not among them.
+enum HiddenPromptCharacters {
+    static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x202A...0x202E, 0x2066...0x2069, 0x200B, 0x2060, 0xFEFF, 0xE0000...0xE007F: true
+        default: false
+        }
+    }
+
+    static func contains(in text: String) -> Bool {
+        text.unicodeScalars.contains(where: isHidden)
+    }
+
+    /// `text` without them, every other character as it was.
+    static func removing(from text: String) -> String {
+        var kept = String.UnicodeScalarView()
+        kept.append(contentsOf: text.unicodeScalars.lazy.filter { !isHidden($0) })
+        return String(kept)
+    }
+}
+
+extension ImportedTextOrigin {
+    /// The title of the alert for a queued text that can't open where it was bound.
+    var cantOpenTitle: Text {
+        switch self {
+        case .shortcut: Text("Shortcut Can’t Open")
+        case .troubleshooting: Text("Troubleshooting Can’t Open")
+        }
+    }
+}
+
+/// Another queued text waiting behind the one a chat shows (#1402): Open Next opens it in that
+/// chat's place, Discard deletes it unopened.
+struct WaitingShortcutText {
+    let openNext: () -> Void
+    let discard: () -> Void
+}
+
+/// The composer's note that its text came from Shortcuts (#1402) or Troubleshoot with Hermes
+/// (#1476), above it until the user dismisses it or sends. Hidden characters make it a warning
+/// with Remove Hidden Characters; after a removal it offers Undo until the next edit. While another
+/// queued text waits, it offers Open Next and Discard, which stay after the note itself is
+/// dismissed or sent.
+struct ShortcutTextNotice: View {
+    /// Where the composer's added text came from; nil once its note is dismissed or sent.
+    let origin: ImportedTextOrigin?
+    let hasHiddenCharacters: Bool
+    let canUndoRemoval: Bool
+    let removeHiddenCharacters: () -> Void
+    let undoRemoval: () -> Void
+    let waiting: WaitingShortcutText?
+    let dismiss: () -> Void
+
+    private var isWarning: Bool { origin != nil && hasHiddenCharacters }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(isWarning ? Color.orange : Color.secondary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if let origin {
+                    Group {
+                        switch (origin, hasHiddenCharacters) {
+                        case (.shortcut, true):
+                            Text("Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending.")
+                        case (.shortcut, false):
+                            Text("Added from Shortcuts. Review before sending.")
+                        case (.troubleshooting, true):
+                            Text("Added from Troubleshooting with hidden characters. They can change how the text reads to the agent. Review before sending.")
+                        case (.troubleshooting, false):
+                            Text("Added from Troubleshooting. Review before sending.")
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    if hasHiddenCharacters {
+                        Button("Remove Hidden Characters", action: removeHiddenCharacters)
+                            .font(.footnote.weight(.semibold))
+                    } else if canUndoRemoval {
+                        Button("Undo", action: undoRemoval)
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+                if let waiting {
+                    Text("Another text is waiting.")
+                        .font(.footnote)
+                        .foregroundStyle(origin != nil ? .secondary : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 16) {
+                        Button("Open Next", action: waiting.openNext)
+                        Button("Discard", role: .destructive, action: waiting.discard)
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if origin != nil {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 28, minHeight: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
+                .stroke(Color(.separator).opacity(0.45), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+        .accessibilityElement(children: .contain)
     }
 }

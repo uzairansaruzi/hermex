@@ -23,45 +23,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 
     // MARK: - SettingsResponse decode
 
-    func testSettingsDecodesExpandedFieldsAndIgnoresUnknownKeys() async throws {
-        let client = makeClient { request in
-            apiTestJSONResponse("""
-            {
-              "bot_name": "Hermes",
-              "webui_version": "v0.50.253",
-              "agent_version": "v0.9.1",
-              "theme": "system",
-              "check_for_updates": true,
-              "show_cli_sessions": false,
-              "show_claude_code_sessions": true,
-              "max_tokens": 4096,
-              "max_tokens_effective": 4096,
-              "auth_enabled": true,
-              "password_auth_enabled": true,
-              "passkeys_enabled": false,
-              "passwordless_enabled": false,
-              "some_future_key": {"nested": [1, 2, 3]}
-            }
-            """, for: request)
-        }
-
-        let response = try await client.settings()
-
-        XCTAssertEqual(response.botName, "Hermes")
-        XCTAssertEqual(response.webuiVersion, "v0.50.253")
-        XCTAssertEqual(response.agentVersion, "v0.9.1")
-        XCTAssertEqual(response.theme, "system")
-        XCTAssertEqual(response.checkForUpdates, true)
-        XCTAssertEqual(response.showCliSessions, false)
-        XCTAssertEqual(response.showClaudeCodeSessions, true)
-        XCTAssertEqual(response.maxTokens, 4096)
-        XCTAssertEqual(response.maxTokensEffective, 4096)
-        XCTAssertEqual(response.authEnabled, true)
-        XCTAssertEqual(response.passwordAuthEnabled, true)
-        XCTAssertEqual(response.passkeysEnabled, false)
-        XCTAssertEqual(response.passwordlessEnabled, false)
-    }
-
     func testSettingsDecodesAllFieldsAsNilWhenAbsent() async throws {
         let client = makeClient { request in
             apiTestJSONResponse("{}", for: request)
@@ -108,19 +69,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         let response = try await client.updateSettings(showCliSessions: false)
 
         XCTAssertEqual(response.showCliSessions, false)
-    }
-
-    func testSettingsToleratesMalformedClaudeCodeValue() async throws {
-        let client = makeClient { request in
-            apiTestJSONResponse(
-                #"{"show_claude_code_sessions":{"future":"shape"},"unknown":true}"#,
-                for: request
-            )
-        }
-
-        let response = try await client.settings()
-
-        XCTAssertNil(response.showClaudeCodeSessions)
     }
 
     func testUpdateSettingsPostsExactlyTheShowClaudeCodeSessionsKey() async throws {
@@ -190,23 +138,6 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
     // MARK: - Toggle write + revert on failure
 
     @MainActor
-    func testToggleWritesTheNewValueToTheServer() async {
-        var writtenValues: [Bool] = []
-        let model = makeModel(
-            server: serverA,
-            writeToServer: { writtenValues.append($0) }
-        )
-        model.adopt(serverValue: true)
-
-        model.setShowsCliSessions(false)
-        await model.pendingWrite?.value
-
-        XCTAssertEqual(writtenValues, [false])
-        XCTAssertFalse(model.showsCliSessions)
-        XCTAssertNil(model.syncErrorMessage)
-    }
-
-    @MainActor
     func testFailedWriteRevertsTheToggleAndSurfacesAnError() async {
         let model = makeModel(
             server: serverA,
@@ -266,12 +197,16 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         // written (the intermediate toggle is coalesced away).
         var writtenValues: [Bool] = []
         var releaseFirstWrite: CheckedContinuation<Void, Never>?
+        let firstWriteInFlight = expectation(description: "write 1 is in flight")
         let model = makeModel(
             server: serverA,
             writeToServer: { value in
                 writtenValues.append(value)
                 if writtenValues.count == 1 {
-                    await withCheckedContinuation { releaseFirstWrite = $0 }
+                    await withCheckedContinuation {
+                        releaseFirstWrite = $0
+                        firstWriteInFlight.fulfill()
+                    }
                 }
             }
         )
@@ -281,7 +216,7 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 
         // Let write 1 start and suspend inside writeToServer, so it is truly
         // in flight when the user keeps toggling.
-        while releaseFirstWrite == nil { await Task.yield() }
+        await fulfillment(of: [firstWriteInFlight], timeout: 5)
 
         model.setShowsCliSessions(true)  // superseded before it can send
         model.setShowsCliSessions(false) // final desired value

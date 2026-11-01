@@ -174,19 +174,36 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     /// Set when a bot owns this activity: the tap target and the avatar. Nil for a
     /// webui session, and for an activity persisted by a build older than #489.
     var bot: AgentRunActivityBot?
-    /// The configured server a webui run belongs to, so its relay registration finds
-    /// that server's push pairing (#566). Nil for a bot, whose destination names the
-    /// server, and for an activity persisted by an older build.
+    /// The configured server a webui run or a Hermes session belongs to, so its relay
+    /// registration finds that server's push pairing (#566). Nil for a bot, whose
+    /// destination names the server, and for an activity persisted by an older build.
     var server: URL?
+    /// A Hermes session's tap target (#1179): its session link, precomputed by the app
+    /// (`HermesDeepLink.sessionURL(for:)`). Nil for a webui run, a bot, and an activity
+    /// persisted by an older build.
+    var destinationURL: URL?
+    /// The stored session key a Hermes session's relay pushes come under when the activity
+    /// started (#1179). A legacy compression can move it mid-turn; the app then registers
+    /// the token under the new key. Nil for a webui run and a bot, and for an older build's.
+    var pushSessionID: String?
+    /// True when the activity asked ActivityKit for a push token: only then can the relay
+    /// drive it after a relaunch, so a Hermes session's activity started before its server
+    /// paired is settled against the host instead (#1179). Nil otherwise, and for an older
+    /// build's; a bot's always asks.
+    var requestedPush: Bool?
 
     init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date,
-         bot: AgentRunActivityBot? = nil, server: URL? = nil) {
+         bot: AgentRunActivityBot? = nil, server: URL? = nil, destinationURL: URL? = nil,
+         pushSessionID: String? = nil, requestedPush: Bool? = nil) {
         self.sessionID = sessionID
         self.sessionTitle = AgentRunActivitySanitizer.sessionTitle(sessionTitle)
         self.streamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
         self.startedAt = startedAt
         self.bot = bot
         self.server = server
+        self.destinationURL = destinationURL
+        self.pushSessionID = pushSessionID
+        self.requestedPush = requestedPush
     }
 }
 
@@ -280,35 +297,25 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
             String(localized: "Cancelled")
         }
     }
+}
 
-    var compactTitle: String {
-        switch self {
-        case .starting:
-            String(localized: "Start")
-        case .thinking:
-            String(localized: "Think")
-        case .usingTool:
-            String(localized: "Tool")
-        case .searchingFiles:
-            String(localized: "Search")
-        case .readingFiles:
-            String(localized: "Files")
-        case .runningCommand:
-            String(localized: "Cmd")
-        case .responding:
-            String(localized: "Reply")
-        case .waiting:
-            "…"
-        case .waitingForApproval:
-            String(localized: "Approve")
-        case .waitingForClarification:
-            String(localized: "Clarify")
-        case .complete:
-            String(localized: "Done")
-        case .failed:
-            String(localized: "Fail")
-        case .cancelled:
-            String(localized: "Stop")
+/// What the Dynamic Island's compact trailing side shows (#1398). Working says
+/// nothing: the leading glyph already names the phase. Asks and outcomes are
+/// decided before staleness, so a stale approval still asks; only stale work
+/// reads as the latest status.
+enum AgentRunCompactPresentation: Equatable {
+    case working, approval, clarification, waiting, complete, failed, cancelled, staleWork
+
+    init(state: AgentRunActivityAttributes.ContentState) {
+        switch state.status {
+        case .waitingForApproval: self = .approval
+        case .waitingForClarification: self = .clarification
+        case .waiting: self = .waiting
+        case .complete: self = .complete
+        case .failed: self = .failed
+        case .cancelled: self = .cancelled
+        case .starting, .thinking, .usingTool, .searchingFiles, .readingFiles, .runningCommand, .responding:
+            self = state.isStale ? .staleWork : .working
         }
     }
 }

@@ -28,20 +28,39 @@ enum ProjectCreationPalette {
     }
 }
 
+/// The folder a Hermes project is made on (#1052): its primary, where the sessions it holds
+/// work. The field offers the host's own folders as the user types.
+struct ProjectFolderField {
+    /// What the field starts with, such as the working folder of the session being moved.
+    var initialPath: String
+    /// The host's folders that complete a typed path, each ending in `/`, and whether to ask
+    /// for more of the name.
+    var complete: (String) async -> HermesFolderCompletion.Suggestions
+}
+
 struct ProjectCreationSheet: View {
     let isSaving: Bool
+    let folder: ProjectFolderField?
+    let errorMessage: String?
     let onCancel: () -> Void
-    let onSave: (String, String) -> Void
+    /// The name, the color and, with a `folder` field, the folder.
+    let onSave: (String, String, String?) -> Void
 
     private let initialColor: ProjectColorOption
 
+    /// `folder` adds the required folder field a Hermes project needs; `errorMessage` is the
+    /// server's reason for refusing the last save.
     init(
         existingProjectCount: Int,
         isSaving: Bool,
+        folder: ProjectFolderField? = nil,
+        errorMessage: String? = nil,
         onCancel: @escaping () -> Void,
-        onSave: @escaping (String, String) -> Void
+        onSave: @escaping (String, String, String?) -> Void
     ) {
         self.isSaving = isSaving
+        self.folder = folder
+        self.errorMessage = errorMessage
         self.onCancel = onCancel
         self.onSave = onSave
         initialColor = ProjectCreationPalette.defaultColor(existingProjectCount: existingProjectCount)
@@ -52,10 +71,12 @@ struct ProjectCreationSheet: View {
             title: String(localized: "New Project"),
             initialName: "",
             initialColorHex: initialColor.hex,
+            folder: folder,
+            errorMessage: errorMessage,
             isSaving: isSaving,
             onCancel: onCancel
-        ) { name, color in
-            onSave(name, color ?? initialColor.hex)
+        ) { name, color, folder in
+            onSave(name, color ?? initialColor.hex, folder)
         }
     }
 }
@@ -63,6 +84,8 @@ struct ProjectCreationSheet: View {
 struct ProjectRenameSheet: View {
     let project: ProjectSummary
     let isSaving: Bool
+    /// The server's reason for refusing the last save.
+    var errorMessage: String?
     let onCancel: () -> Void
     let onSave: (String, String?) -> Void
 
@@ -71,37 +94,53 @@ struct ProjectRenameSheet: View {
             title: String(localized: "Rename Project"),
             initialName: project.name ?? "",
             initialColorHex: project.color,
+            folder: nil,
+            errorMessage: errorMessage,
             isSaving: isSaving,
-            onCancel: onCancel,
-            onSave: onSave
-        )
+            onCancel: onCancel
+        ) { name, color, _ in
+            onSave(name, color)
+        }
     }
 }
 
 private struct ProjectFormSheet: View {
+    /// The most host folders the folder field offers at once.
+    private static let folderSuggestionLimit = 8
+
     let title: String
+    let folder: ProjectFolderField?
+    let errorMessage: String?
     let isSaving: Bool
     let onCancel: () -> Void
-    let onSave: (String, String?) -> Void
+    let onSave: (String, String?, String?) -> Void
 
     @State private var projectName: String
     @State private var selectedColorHex: String?
+    @State private var folderPath: String
+    @State private var folderSuggestions: [String] = []
+    @State private var folderNeedsMoreTyping = false
     @FocusState private var nameIsFocused: Bool
 
     init(
         title: String,
         initialName: String,
         initialColorHex: String?,
+        folder: ProjectFolderField?,
+        errorMessage: String?,
         isSaving: Bool,
         onCancel: @escaping () -> Void,
-        onSave: @escaping (String, String?) -> Void
+        onSave: @escaping (String, String?, String?) -> Void
     ) {
         self.title = title
+        self.folder = folder
+        self.errorMessage = errorMessage
         self.isSaving = isSaving
         self.onCancel = onCancel
         self.onSave = onSave
         _projectName = State(initialValue: initialName)
         _selectedColorHex = State(initialValue: initialColorHex)
+        _folderPath = State(initialValue: folder?.initialPath ?? "")
     }
 
     var body: some View {
@@ -112,6 +151,18 @@ private struct ProjectFormSheet: View {
                         .textInputAutocapitalization(.words)
                         .focused($nameIsFocused)
                         .disabled(isSaving)
+                }
+
+                if let folder {
+                    folderSection(folder)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 Section("Color") {
@@ -133,7 +184,7 @@ private struct ProjectFormSheet: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        onSave(trimmedProjectName, selectedColorHex)
+                        onSave(trimmedProjectName, selectedColorHex, folder == nil ? nil : trimmedFolderPath)
                     } label: {
                         if isSaving {
                             ProgressView()
@@ -142,9 +193,10 @@ private struct ProjectFormSheet: View {
                             Text("Save")
                         }
                     }
-                    .disabled(trimmedProjectName.isEmpty || isSaving)
+                    .disabled(trimmedProjectName.isEmpty || (folder != nil && trimmedFolderPath.isEmpty) || isSaving)
                 }
             }
+            .interactiveDismissDisabled(isSaving)
             .onAppear {
                 nameIsFocused = true
             }
@@ -154,6 +206,59 @@ private struct ProjectFormSheet: View {
 
     private var trimmedProjectName: String {
         projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedFolderPath: String {
+        folderPath.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The folder field and, under it, the host's folders that complete what is typed, or a hint
+    /// to type more when the host's listing ran out before any folder. A pick fills the field and
+    /// lists that folder's own folders next.
+    private func folderSection(_ folder: ProjectFolderField) -> some View {
+        Section {
+            TextField(text: $folderPath, prompt: Text(verbatim: "~/Projects/app")) {
+                Text("Folder")
+            }
+            .font(.body.monospaced())
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .disabled(isSaving)
+
+            ForEach(folderSuggestions, id: \.self) { suggestion in
+                Button {
+                    folderPath = suggestion
+                } label: {
+                    // A host folder's name is the user's own text, never a catalog key.
+                    Label {
+                        Text(verbatim: suggestion.split(separator: "/").last.map(String.init) ?? suggestion)
+                    } icon: {
+                        Image(systemName: "folder")
+                    }
+                    .lineLimit(1)
+                }
+                .disabled(isSaving)
+                .accessibilityLabel(Text(verbatim: suggestion))
+            }
+
+            if folderNeedsMoreTyping {
+                Text("Type more of the folder name.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Folder")
+        } footer: {
+            Text("Sessions working in this folder belong to the project.")
+        }
+        .task(id: folderPath) {
+            // Waits for a pause in typing, and a newer path cancels this one.
+            guard (try? await Task.sleep(for: .milliseconds(250))) != nil else { return }
+            let suggestions = await folder.complete(trimmedFolderPath)
+            guard !Task.isCancelled else { return }
+            folderSuggestions = Array(suggestions.folders.filter { $0 != trimmedFolderPath }.prefix(Self.folderSuggestionLimit))
+            folderNeedsMoreTyping = suggestions.needsMoreTyping
+        }
     }
 
     private var colorColumns: [GridItem] {

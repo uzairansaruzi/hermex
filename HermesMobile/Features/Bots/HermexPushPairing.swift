@@ -17,7 +17,7 @@ enum HermexPushPlugin {
     /// The newest plugin this build knows (#851). A host that has anything older loaded is
     /// offered an update in Settings → Notifications. Bump it in the app release that
     /// follows a plugin release (TESTFLIGHT.md's release gates).
-    static let newestVersion = HermexPushPluginVersion("0.4.0")!
+    static let newestVersion = HermexPushPluginVersion("0.7.0")!
     /// The first plugin with `POST /api/plugins/hermex-push/restart` (#934). Settings offers
     /// "Restart Hermes…" only while a plugin this new is loaded: an older one has no route to
     /// call, so its card keeps asking for a restart on the host.
@@ -36,10 +36,28 @@ enum HermexPushPlugin {
         body["plugin_version"].text.flatMap(HermexPushPluginVersion.init)
     }
 
+    /// Whether the plugins hub lists hermex-push, i.e. it is on the host's disk. Nil for a
+    /// reply without a plugins list, which says nothing either way.
+    static func isOnDisk(hub body: BotJSON) -> Bool? {
+        body["plugins"].list?.contains { $0["name"].text == name }
+    }
+
     /// The version on the host's disk: `plugin.yaml`'s, as `GET /api/dashboard/plugins/hub`
     /// lists it per plugin. Nil when the plugin is not listed or its version doesn't parse.
     static func installedVersion(hub body: BotJSON) -> HermexPushPluginVersion? {
         body["plugins"].list?.first { $0["name"].text == name }?["version"].text.flatMap(HermexPushPluginVersion.init)
+    }
+
+    /// Why the pairing route answered 404, from the body the dashboard sent (hermes-agent
+    /// ca678285, #1178). Its auth middleware answers "Plugin not found" for a plugin that is
+    /// off or not installed. The SPA catch-all answers "No such API endpoint" for a plugin
+    /// that is on but whose routes the dashboard never mounted, since it mounts them only at
+    /// startup; `hermes serve`'s headless catch-all means the same. Nil for any other body.
+    static func missingRoute(_ body: BotJSON) -> HermexPushRouteMissing? {
+        if body["detail"].text == "Plugin not found" { return .pluginOff }
+        if body["detail"].text?.hasPrefix("No such API endpoint") == true
+            || body["error"].text?.hasPrefix("Headless backend") == true { return .notMounted }
+        return nil
     }
 
     /// Decodes `GET /api/plugins/hermex-push/pairing`. Fields the plugin may add later
@@ -95,6 +113,37 @@ enum HermexPushFailure: Error, Equatable, LocalizedError {
         }
     }
 }
+
+/// What the hermex-push routes the dashboard has mounted, from
+/// `GET /api/plugins/hermex-push/capabilities` (plugin 0.5.0, #1235). Each route is a method
+/// and the path below the plugin's mount, as in `"GET /pairing"`. A feature that needs a
+/// plugin route shows only where `supports` says the route is mounted, since a POST can't be
+/// probed without running it. `closed` supports nothing: an older plugin, or one the
+/// dashboard hasn't loaded since it was installed. Read per screen, never cached, so one
+/// server's answer can't gate another's.
+struct HermexCompanionRoutes: Equatable, Sendable {
+    static let closed = HermexCompanionRoutes(pluginVersion: nil, routes: [])
+
+    let pluginVersion: HermexPushPluginVersion?
+    let routes: Set<String>
+
+    /// Fields the plugin may add later are ignored, and an entry that isn't a string is skipped.
+    init(_ body: BotJSON) {
+        self.init(pluginVersion: HermexPushPlugin.loadedVersion(body),
+                  routes: Set(body["routes"].list?.compactMap(\.text) ?? []))
+    }
+
+    init(pluginVersion: HermexPushPluginVersion?, routes: Set<String>) {
+        self.pluginVersion = pluginVersion
+        self.routes = routes
+    }
+
+    func supports(_ route: String) -> Bool { routes.contains(route) }
+}
+
+/// The pairing route's 404s that say what the host lacks (`HermexPushPlugin.missingRoute`).
+/// `notMounted` never clears without a dashboard restart on the host.
+enum HermexPushRouteMissing: Error, Equatable { case pluginOff, notMounted }
 
 /// A hermex-push version, compared number by number so 0.10.0 is newer than 0.9.0, and
 /// 0.3 equals 0.3.0. Only dot-separated whole numbers parse.

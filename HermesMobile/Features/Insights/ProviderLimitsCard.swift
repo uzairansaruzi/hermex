@@ -3,13 +3,16 @@ import SwiftUI
 /// The "Limits" group at the top of the Usage screen (#415): one card per
 /// provider that reported a usable quota, or a placeholder card while the first
 /// probes are still running. The caller omits the group entirely when there are
-/// no cards and nothing is loading, which is how every failed or unsupported
-/// probe disappears.
+/// no cards and nothing is loading, which is how a provider with nothing to
+/// show stays out of sight.
 struct ProviderLimitsSection: View {
     let cards: [ProviderLimitCard]
     /// Drives the placeholder, and only while `cards` is empty: a refresh with
     /// cards already on screen keeps them rather than blanking the group.
     let isLoading: Bool
+    /// The last refresh failed for at least one card, which still shows the
+    /// values loaded before it (#1408). Each card's own footer says how old.
+    let refreshFailed: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -21,6 +24,10 @@ struct ProviderLimitsSection: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
 
+            if refreshFailed, !cards.isEmpty {
+                refreshFailureNotice
+            }
+
             if !cards.isEmpty {
                 ForEach(cards) { card in
                     ProviderLimitsCard(card: card)
@@ -30,6 +37,30 @@ struct ProviderLimitsSection: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: cards)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: refreshFailed)
+    }
+
+    /// Styled as `ProvidersView`'s refresh-failure banner, so the app says this
+    /// one way.
+    private var refreshFailureNotice: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(AppFont.caption())
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+
+            Text("Couldn't refresh limits. Showing the last values loaded.")
+                .font(AppFont.footnote(weight: .medium))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.14))
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 

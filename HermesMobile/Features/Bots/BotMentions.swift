@@ -12,7 +12,12 @@ struct BotMentions {
     private let candidates: [Completion]
     private let byForm: [String: BotProfile]
     private static let reserved: Set<String> = ["all", "everyone", "user", "default", "hermes"]
-    private static let tokens = try! NSRegularExpression(pattern: #"(^|\s)@([a-z0-9][a-z0-9_-]*)"#, options: .caseInsensitive)
+    /// A handle runs possessively to its end and is not a mention when a path
+    /// continues it (`@docs/plan.md`, `@docs.md`), so the composer's file
+    /// references never resolve as a bot; trailing punctuation still does.
+    private static let tokens = try! NSRegularExpression(
+        pattern: #"(^|\s)@([a-z0-9][a-z0-9_-]*+)(?![/\\]|\.[a-z0-9_-])"#, options: .caseInsensitive
+    )
     private static let fences = try! NSRegularExpression(pattern: #"```[\s\S]*?```"#)
     private static let inlineCode = try! NSRegularExpression(pattern: #"`[^`\n]*`"#)
     private static let notePrefix = "\n\n[@mentions resolved from the Bot Mode roster — the user is referring to: "

@@ -34,6 +34,8 @@ struct ApprovalRequestOverlay: View {
     let errorMessage: String?
     let onChoice: (ApprovalChoice) -> Void
     let onSkipAll: () -> Void
+    var summary: ApprovalSummaryPresentation? = nil
+    @AppStorage(ApprovalSummaries.enabledKey) private var explainsApprovals = ApprovalSummaries.enabledByDefault
 
     var body: some View {
         ZStack {
@@ -103,6 +105,10 @@ struct ApprovalRequestOverlay: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+            }
+
+            if explainsApprovals, let summary {
+                ApprovalSummaryLine(presentation: summary)
             }
 
             if let scope = content.scopeLine {

@@ -4,7 +4,8 @@ import SwiftUI
 /// transcript. Only chats made by Fork From Here or `/branch` count: upstream
 /// stamps those `session_source: "fork"` with a `parent_session_id`. Agent
 /// child sessions (subagents, cron, CLI `/new`) share `parent_session_id`
-/// but are not forks, so they get no row.
+/// but are not forks, so they get no row. A Hermes branch is marked in its own
+/// row instead, and its chat reads it from the host (`HermesBranchParent`, #1051).
 struct ForkOrigin: Equatable {
     let parentSessionID: String
     /// The parent as the session list cached it; nil means a tap fetches it.

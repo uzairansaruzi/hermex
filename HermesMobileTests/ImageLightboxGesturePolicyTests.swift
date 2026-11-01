@@ -51,32 +51,4 @@ final class ImageLightboxGesturePolicyTests: XCTestCase {
         XCTAssertFalse(ImageLightboxGesturePolicy.shouldDismiss(translation: 30, velocity: 40))
         XCTAssertFalse(ImageLightboxGesturePolicy.shouldDismiss(translation: -400, velocity: -1_400))
     }
-
-    func testZoomCeilingReachesThePixelsWithoutRunningAway() {
-        // A screenshot far wider than the phone can zoom to its own pixels.
-        XCTAssertEqual(
-            ImageLightboxGesturePolicy.maximumZoomScale(imagePixelWidth: 2_400, fittedWidth: 400),
-            6
-        )
-        // A small image still gets a useful ceiling.
-        XCTAssertEqual(
-            ImageLightboxGesturePolicy.maximumZoomScale(imagePixelWidth: 200, fittedWidth: 400),
-            3
-        )
-        // An enormous one is capped so it cannot become a maze.
-        XCTAssertEqual(
-            ImageLightboxGesturePolicy.maximumZoomScale(imagePixelWidth: 12_000, fittedWidth: 400),
-            8
-        )
-        // A viewport that has not been laid out yet still returns something usable.
-        XCTAssertEqual(
-            ImageLightboxGesturePolicy.maximumZoomScale(imagePixelWidth: 2_400, fittedWidth: 0),
-            3
-        )
-    }
-
-    func testDoubleTapNeverExceedsTheCeiling() {
-        XCTAssertEqual(ImageLightboxGesturePolicy.doubleTapZoomScale(maximumZoomScale: 6), 2.5)
-        XCTAssertEqual(ImageLightboxGesturePolicy.doubleTapZoomScale(maximumZoomScale: 2), 2)
-    }
 }

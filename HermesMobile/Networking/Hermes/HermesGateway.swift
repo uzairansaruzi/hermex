@@ -25,12 +25,18 @@ import OSLog
 /// attached screen's part, and each hears it once; anything later from that socket is
 /// dropped by its generation. `retire()` does the same with `.stale` when the
 /// connection's server or configuration is replaced, and refuses reconnects.
+///
+/// A Wi-Fi to cellular handover can leave the socket open but dead. `probe()` checks it when
+/// the network path changes: no frame within `probeDeadline` is a lost socket (#1372).
 @MainActor final class HermesGateway {
     /// Tests shorten the deadlines and script the socket; production takes the defaults.
     struct Options {
         var rpcDeadline: Duration = .seconds(30)
         /// The `gateway.ping` cadence.
         var heartbeatInterval: Duration = .seconds(15)
+        /// How long `probe()` waits for any frame before it calls the socket lost. One deadline
+        /// for every route; slow tunnels' false positives get recorded before any per-route policy.
+        var probeDeadline: Duration = .seconds(8)
         /// Gets the finished gateway upgrade; nil opens a native socket on the connection's session.
         var socketFactory: ((URLRequest) -> any BotSocket)?
     }
@@ -42,8 +48,14 @@ import OSLog
     private var socket: (any BotSocket)?
     /// The open attempt every connecting screen waits on; nil once the socket is open.
     private var opening: Task<Void, Error>?
+    /// The connection's attempt record the opening socket's handshake reports to, once its
+    /// upgrade is in hand (#1395); nil otherwise.
+    private var handshakeAttempt: Int?
     private var reader: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
+    /// The socket the probe in flight checks, its deadline, and every `probe()` waiting on it.
+    private var probing: (generation: Int, deadline: Task<Void, Never>)?
+    private var probeWaiters: [CheckedContinuation<Void, Never>] = []
     /// Numbers sockets. A frame, failure or deadline from an older one is ignored.
     private var generation = 0
     private var isRetired = false
@@ -132,6 +144,56 @@ import OSLog
         end(nil)
     }
 
+    /// Ends the socket as lost after the dashboard restarted (#1075), whose old socket can
+    /// linger half-open behind a tunnel: attached screens hear `.transport` once and reconnect
+    /// on their own, as after any drop. Nothing happens while no socket is open or opening.
+    func dropSocket() {
+        guard socket != nil || opening != nil else { return }
+        let label = socketLabel(generation)
+        HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, dashboard restarted")
+        end(BotFailure.transport)
+    }
+
+    /// Checks the open socket after the network path changed (#1372): a `gateway.ping` goes
+    /// out, and any frame from the socket within `probeDeadline` proves it alive. Silence
+    /// ends it as lost, so attached screens hear `.transport` once and reconnect onto one
+    /// replacement. A send that never returns still meets the deadline. Calls made while one
+    /// probe runs wait on it. Nothing happens while no socket is open, or while it opens.
+    /// Returns once the probe settles; a leave, background, retirement or fault ends it early.
+    func probe() async {
+        if probing == nil {
+            guard let socket, opening == nil, !isRetired else { return }
+            let owner = generation, deadline = options.probeDeadline
+            let watchdog = Task { [weak self] in
+                do { try await Task.sleep(for: deadline) } catch { return }
+                self?.settleProbe(alive: false, generation: owner)
+            }
+            probing = (owner, watchdog)
+            // Sent beside the deadline rather than before it, so a blocked send can't hold it off.
+            Task { [weak self] in
+                do { try await socket.send(.string(#"{"jsonrpc":"2.0","id":"probe","method":"gateway.ping","params":{}}"#)) }
+                catch { self?.fail(error, generation: owner) }
+            }
+        }
+        await withCheckedContinuation { probeWaiters.append($0) }
+    }
+
+    /// Settles the probe on socket `owner`: alive for any frame from it, or once it ended
+    /// for another reason; not alive at the deadline, which ends it as lost.
+    private func settleProbe(alive: Bool, generation owner: Int) {
+        guard let probe = probing, probe.generation == owner else { return }
+        probing = nil
+        probe.deadline.cancel()
+        let waiters = probeWaiters
+        probeWaiters = []
+        if !alive {
+            let label = socketLabel(owner), seconds = options.probeDeadline.components.seconds
+            HermesConnectionLog.logger.error("\(label, privacy: .public): no frame \(seconds, privacy: .public) s after the network changed; closing")
+            end(BotFailure.transport)
+        }
+        for waiter in waiters { waiter.resume() }
+    }
+
     /// Ends the socket for good because the connection was replaced. Attached screens hear
     /// `.stale` once, and every later `join` throws it.
     func retire() {
@@ -159,7 +221,7 @@ import OSLog
         } else { text = String(decoding: try JSONEncoder().encode(frame), as: UTF8.self) }
         let timesOutLocally = call.timesOutLocally, cancellationSafe = call.isCancellationSafe
         let rejection = call.rejection, rpcDeadline = call.deadline(options.rpcDeadline), method = call.method
-        return try await withTaskCancellationHandler {
+        let reply: BotJSON = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let deadline = Task { [weak self] in
                     do { try await Task.sleep(for: rpcDeadline) } catch { return }
@@ -186,6 +248,14 @@ import OSLog
         } onCancel: {
             Task { @MainActor [weak self] in self?.cancel(id, generation: owner, safely: cancellationSafe) }
         }
+        switch call {
+        // A branch's reply names the runtime the host made for it (#1051).
+        case .sessionResume, .sessionBranch:
+            if let runtime = reply["session_id"].text, !runtime.isEmpty { http.noteAttached(runtime) }
+        case .sessionClose(let runtime): http.noteClosed(runtime)
+        default: break
+        }
+        return reply
     }
 
     /// A cancelled read discards its late reply. Any other cancelled call may have reached
@@ -221,18 +291,26 @@ import OSLog
         entry.continuation.resume(throwing: error)
     }
 
+    /// Opens the socket, and reports its handshake to the connection's attempt record (#1395)
+    /// once the upgrade is in hand: a failed sign-in or ticket is the connection's to record.
+    /// A socket lost mid-handshake reports from `end`, which ends this attempt first.
     private func open() -> Task<Void, Error> {
         let owner = generation
         let attempt = Task {
             do {
-                try await handshake(generation: owner)
+                let upgrade = try await http.gatewayUpgrade()
+                if owner == generation { handshakeAttempt = http.attemptCount }
+                try await handshake(upgrade, generation: owner)
                 opening = nil
                 for index in consumers.indices { consumers[index].attached = true }
+                if let record = handshakeAttempt { http.noteLiveHandshake(nil, attempt: record) }
+                handshakeAttempt = nil
             } catch {
                 // An attempt a leave, fault or retirement already ended has nothing left to end.
                 if owner == generation {
                     let label = socketLabel(owner), reason = HermesConnectionLog.reason(error)
                     HermesConnectionLog.logger.error("\(label, privacy: .public) failed to open: \(reason, privacy: .public)")
+                    if let record = handshakeAttempt { http.noteLiveHandshake(error, attempt: record) }
                     end(nil)
                 }
                 throw error
@@ -242,13 +320,12 @@ import OSLog
         return attempt
     }
 
-    /// Signs in unless the connection already is, mints a fresh ticket, opens the socket
-    /// and completes the handshake. No screen sends anything until it returns.
-    private func handshake(generation owner: Int) async throws {
+    /// Opens the socket with `upgrade`, the connection's fresh ticket or page token, and
+    /// completes the handshake. No screen sends anything until it returns.
+    private func handshake(_ upgrade: URLRequest, generation owner: Int) async throws {
         func check() throws {
             guard owner == generation else { throw BotFailure.stale }
         }
-        let upgrade = try await http.gatewayUpgrade()
         try check()
         let label = socketLabel(owner)
         let socket: any BotSocket
@@ -265,6 +342,9 @@ import OSLog
         guard ready["method"].text == "event", ready["params"]["type"].text == "gateway.ready",
               let epoch = ready["params"]["payload"]["replay_epoch"].text, !epoch.isEmpty
         else { throw BotFailure.unsupported }
+        // A gateway's own listener (0.22.1+) owns its sessions under a protocol Hermex doesn't speak
+        // yet (#1341): signed in, every chat would fail.
+        if ready["params"]["payload"]["session_authority"].flag == true { throw BotFailure.gatewayListener }
         replayEpoch = epoch
         startReader(socket, generation: owner)
         // Without this the host treats the socket as a build that predates
@@ -286,6 +366,7 @@ import OSLog
                 while !Task.isCancelled {
                     let frame = try await Self.receive(socket, label: label)
                     guard let self, self.generation == owner else { return }
+                    self.settleProbe(alive: true, generation: owner)
                     self.consume(frame, generation: owner)
                 }
             } catch {
@@ -396,6 +477,12 @@ import OSLog
     /// waiters get the error from `join`), and the caller logs why.
     private func end(_ error: Error?) {
         let label = socketLabel(generation), wasLive = socket != nil || opening != nil
+        // A socket lost or timed out mid-handshake failed it; a silent close or retirement didn't.
+        if let record = handshakeAttempt, let error, (error as? BotFailure) != .stale {
+            http.noteLiveHandshake(error, attempt: record)
+        }
+        handshakeAttempt = nil
+        settleProbe(alive: true, generation: generation)
         generation += 1
         opening = nil
         reader?.cancel(); reader = nil
@@ -432,39 +519,59 @@ private extension HermesCall {
     /// because its outcome is unknown.
     var isCancellationSafe: Bool {
         switch self {
-        case .fileAttach, .completePath, .completeSlash, .subagentList, .subagentTail, .sessionActiveList,
-             .profileModelOptions: return true
+        case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
+             .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
+             .commitMessage, .approvalSummary: return true
         default: return false
         }
     }
 
     /// Optional reads, and slash commands, whose timeout fails only that request: a slow
-    /// command must never end its chat's connection. Any other call that times out ends its
-    /// screen's connection; the socket stays for the others.
+    /// command must never end its chat's connection, nor a Hermes chat's slow `@` lookup
+    /// (#1113) or commit message (#1115). Any other call that times out ends its screen's
+    /// connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
-        case .subagentList, .subagentTail, .sessionActiveList, .completeSlash, .slashExec, .profileModelOptions: return true
+        case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
+             .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
+             .approvalSummary: return true
+        case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }
     }
 
     /// How long a reply may take. A slash command may run in the host's slash worker, which
-    /// allows it 45 s, so `slash.exec` waits twice the usual deadline.
+    /// allows it 45 s, so `slash.exec` waits twice the usual deadline. A compaction asks the
+    /// model for its summary, so `session.compress` (#1050) waits as long as Desktop does
+    /// (`SESSION_COMPRESS_TIMEOUT_MS`), past the host's own 630 s cap. A commit message (#1115)
+    /// waits the two minutes webui's does: the host gives its model call 60 s, on a cold tunnel.
+    /// An approval summary is optional, so it gives up after 20 s at most.
     func deadline(_ standard: Duration) -> Duration {
-        if case .slashExec = self { return standard * 2 }
-        return standard
+        switch self {
+        case .slashExec: return standard * 2
+        case .approvalSummary: return min(standard, .seconds(20))
+        case .commitMessage: return .seconds(120)
+        case .sessionCompress: return .seconds(660)
+        default: return standard
+        }
     }
 
     /// Room rejections carry the host's reason as `BotRoomFailure`; setting rejections
     /// carry its message as `BotSettingFailure`. So do a refused `/goal`, whose 4004 message
-    /// says what was wrong with it (#1013), and a refused slash command (#1036).
+    /// says what was wrong with it (#1013), a refused slash command (#1036), a refused
+    /// `/title`, whose 4022 message names the session already using it (#1048), a refused
+    /// rewind or `/undo`, whose 5008 message says why the host could not write the cut (#1049),
+    /// a refused `/compress`, whose 5005 message says why the compaction failed (#1050), a
+    /// refused project change or move, such as 5063 naming the project that has the folder (#1052),
+    /// and a refused branch, whose 5008 message names the session using its name (#1051).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         switch self {
         case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .profileModelOptions,
              .sessionControlRead: return .setting
         case .commandDispatch(let name, _, _) where name == "goal": return .setting
-        case .slashExec: return .setting
+        case .slashExec, .sessionRename, .promptRewind, .sessionUndo, .sessionCompress, .sessionWorkspaceMove,
+             .projectsCreate, .projectsUpdate, .projectsDelete, .sessionBranch: return .setting
         default: return .plain
         }
     }

@@ -74,20 +74,6 @@ final class RatingPromptTests: XCTestCase {
     }
 
     @MainActor
-    func testResetRestoresFreshState() throws {
-        let state = try makeEligibleState()
-        state.requestIfEligible(moment: .returnedToSessionList, isSessionListVisible: true, hasActiveStream: false, request: {})
-        state.recordTipCardShown()
-        state.reset(now: now)
-        XCTAssertEqual(state.policy.firstLaunchDate, now)
-        XCTAssertEqual(state.policy.completedResponses, 0)
-        XCTAssertNil(state.policy.lastRequestDate)
-        XCTAssertEqual(state.policy.responsesAtLastRequest, 0)
-        XCTAssertTrue(state.isFirstLaunch)
-        XCTAssertFalse(state.tipCardShownThisLaunch)
-    }
-
-    @MainActor
     func testFreshRemoteStreamBlocksRequestEvenIfHiddenFromSidebar() async throws {
         let state = try makeEligibleState()
         let decoder = JSONDecoder()

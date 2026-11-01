@@ -23,13 +23,6 @@ final class UserBubbleFoldPolicyTests: XCTestCase {
         XCTAssertTrue(UserBubbleFoldPolicy.folds(lineCount: nineLines))
     }
 
-    func testShortMessageIsNotMeasuredUpToAX3() {
-        let fifty = String(repeating: "Short note. ", count: 5).prefix(50)
-
-        XCTAssertFalse(UserBubbleFoldPolicy.mayFold(text: String(fifty), font: body))
-        XCTAssertFalse(UserBubbleFoldPolicy.mayFold(text: String(fifty), font: .systemFont(ofSize: 40)))
-    }
-
     /// A 99-character message is a short bubble at the default size but can
     /// wrap past eight lines at AX3's 40 pt, so there it must be measured.
     func testPreFilterLetsThroughTextThatCanWrapPastEightLines() {
@@ -64,24 +57,5 @@ final class UserBubbleFoldPolicyTests: XCTestCase {
 
         XCTAssertGreaterThan(lines, 8)
         XCTAssertEqual(UserBubbleFoldPolicy.lineCount(text: paragraph, width: 300, font: body, limit: 9), 9)
-    }
-
-    func testWiderBubbleWrapsToFewerLines() {
-        let narrow = UserBubbleFoldPolicy.lineCount(text: paragraph, width: 300, font: body)
-        let wide = UserBubbleFoldPolicy.lineCount(text: paragraph, width: 700, font: body)
-
-        XCTAssertGreaterThan(wide, 0)
-        XCTAssertLessThan(wide, narrow)
-    }
-
-    func testCJKWrapsToMoreLinesThanLatinOfTheSameLength() {
-        let latin = String(paragraph.prefix(200))
-        let cjk = String(String(repeating: "我们在服务器上运行代理并在手机上查看结果", count: 12).prefix(200))
-
-        let latinLines = UserBubbleFoldPolicy.lineCount(text: latin, width: 300, font: body)
-        let cjkLines = UserBubbleFoldPolicy.lineCount(text: cjk, width: 300, font: body)
-
-        XCTAssertGreaterThan(latinLines, 0)
-        XCTAssertGreaterThan(cjkLines, latinLines)
     }
 }

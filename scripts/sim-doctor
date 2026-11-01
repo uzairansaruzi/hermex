@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Say why a simulator is stuck and print the one command that clears it.
+
+Usage: scripts/sim-doctor [simulator-udid]
+
+Every probe is bounded, so this never hangs on a wedged simulator. Exit 0
+means nothing needs clearing, 1 means it found a problem and printed the fix.
+"""
+
+from contextlib import suppress
+from dataclasses import dataclass
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+
+
+APP_BUNDLE_ID = os.environ.get("HERMEX_BUNDLE_ID", "com.uzairansar.hermesmobile")
+PROBE_TIMEOUT = 20
+# Swap past half of RAM, or this many simulator processes stuck in
+# uninterruptible waits, came with every boot and launch stalling on
+# 2026-10-14. One day's evidence, so on its own it only warns.
+HEAVY_SWAP_RATIO = 0.5
+STALLED_LIMIT = 5
+
+
+@dataclass
+class Facts:
+    swap_used_mb: float
+    ram_mb: float
+    stalled: int
+    service_answers: bool
+    state: str = None  # None when no UDID was given
+    spawn_answers: bool = True
+    zombie_pid: int = None
+
+
+def probe(command, timeout=PROBE_TIMEOUT):
+    """Return stdout, or None when the command hangs or fails. xcrun runs simctl
+    as a child, so a timeout stops the whole process group, not just xcrun."""
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                               text=True, start_new_session=True)
+    try:
+        output, _ = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        # A child in an uninterruptible wait can't die yet and keeps the pipe
+        # open, so give up on it rather than wait.
+        with suppress(subprocess.TimeoutExpired):
+            process.communicate(timeout=2)
+        process.stdout.close()
+        process.poll()
+        return None
+    return output if process.returncode == 0 else None
+
+
+def memory():
+    ram = int(probe(["sysctl", "-n", "hw.memsize"]) or 0) / 2**20
+    swap = re.search(r"used = ([\d.]+)M", probe(["sysctl", "-n", "vm.swapusage"]) or "")
+    return float(swap.group(1)) if swap else 0.0, ram
+
+
+def stalled_simulator_processes():
+    """Simulator processes in uninterruptible wait (ps state U): paging or disk."""
+    rows = (probe(["ps", "-axo", "stat=,command="]) or "").splitlines()
+    return sum(1 for row in rows
+               if row.lstrip().startswith("U")
+               and ("xpcproxy_sim" in row or "/CoreSimulator/" in row))
+
+
+def zombie_app(jobs):
+    """The app's PID when the simulator's `launchctl list` output still shows it
+    running but the host process is a zombie, the state a killed or detached
+    debugger leaves."""
+    for line in jobs.splitlines():
+        fields = line.split()
+        if len(fields) == 3 and fields[0].isdigit() and "UIKitApplication:" + APP_BUNDLE_ID in fields[2]:
+            state = probe(["ps", "-o", "stat=", "-p", fields[0]]) or ""
+            if state.strip().startswith("Z"):
+                return int(fields[0])
+    return None
+
+
+def gather(udid):
+    swap, ram = memory()
+    listing = probe(["xcrun", "simctl", "list", "devices", "-j"])
+    facts = Facts(swap, ram, stalled_simulator_processes(), listing is not None)
+    if listing is None or udid is None:
+        return facts
+    devices = [d for entries in json.loads(listing)["devices"].values() for d in entries]
+    match = next((d for d in devices if d["udid"].upper() == udid.upper()), None)
+    facts.state = match["state"] if match else "missing"
+    # Booting and Shutting Down can hang too, so only Shutdown skips the probe.
+    if facts.state not in ("Shutdown", "missing"):
+        jobs = probe(["xcrun", "simctl", "spawn", udid, "launchctl", "list"])
+        facts.spawn_answers = jobs is not None
+        if jobs:
+            facts.zombie_pid = zombie_app(jobs)
+    return facts
+
+
+def diagnose(facts, udid):
+    """Return (verdict, explanation, fix). fix is None when nothing needs doing."""
+    heavy = (facts.ram_mb and facts.swap_used_mb >= facts.ram_mb * HEAVY_SWAP_RATIO) \
+        or facts.stalled >= STALLED_LIMIT
+    pressure = "The Mac is short on memory ({:.1f} GB swap used, {} simulator processes stuck waiting)." \
+        .format(facts.swap_used_mb / 1024, facts.stalled)
+    free_memory = ("Owner: quit memory-heavy apps (browser tabs, Teams) or shut down an idle "
+                   "simulator by UDID. Do not boot another simulator until swap drops.")
+    if not facts.service_answers:
+        return ("SERVICE", "CoreSimulator is not answering `simctl list`, so every simulator is stuck."
+                + (" " + pressure if heavy else ""),
+                "Owner only, stops every booted simulator: "
+                "killall -9 com.apple.CoreSimulator.CoreSimulatorService "
+                "(if it is still stuck after that, reboot the Mac)")
+    if facts.state == "missing":
+        return ("MISSING", "No simulator has UDID {}.".format(udid), "Check the UDID with xcrun simctl list devices")
+    if facts.state == "Shutdown":
+        return ("NOT_BOOTED", "The simulator is shut down; nothing on it is stuck.", None)
+    restart = "The session that owns it may run: xcrun simctl shutdown {0} && xcrun simctl boot {0}".format(udid)
+    if not facts.spawn_answers:
+        if heavy:
+            return ("MEMORY", "The simulator does not answer because the Mac is paging. " + pressure, free_memory)
+        return ("DEVICE", "This simulator ({}) does not answer but CoreSimulator does.".format(facts.state), restart)
+    if facts.zombie_pid:
+        return ("ZOMBIE_APP",
+                "Hermex (PID {}) is a zombie the simulator still counts as running, so launch and "
+                "terminate wait forever. A debugger killed or detached mid-session leaves this.".format(facts.zombie_pid),
+                restart)
+    answers = "CoreSimulator answers" + (" and the simulator answers." if udid else ".")
+    if heavy:
+        answers += " Warning: " + pressure + " Booting another simulator may stall."
+    return ("OK", answers, None)
+
+
+def main(argv):
+    if len(argv) > 2 or (len(argv) == 2 and argv[1].startswith("-")):
+        print(__doc__.strip())
+        return 2
+    udid = argv[1] if len(argv) == 2 else None
+    verdict, explanation, fix = diagnose(gather(udid), udid)
+    print("{}: {}".format(verdict, explanation))
+    if fix:
+        print("FIX: " + fix)
+    return 1 if fix else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

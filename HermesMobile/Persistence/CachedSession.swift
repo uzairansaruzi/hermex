@@ -44,12 +44,21 @@ final class CachedSession {
     var relationshipType: String?
     var readOnly: Bool?
     var isReadOnly: Bool?
+    /// A Hermes row's identity across a legacy compression chain (#1054), which `sessionID`'s
+    /// tip opens. Nil on a webui row. These three were added after the initial schema, so
+    /// SwiftData migrates them as nullable columns on existing stores.
+    var lineageRoot: String?
+    /// The Hermes host's read mark.
+    var unread: Bool?
+    /// The first prompt, as an untitled Hermes row shows it.
+    var preview: String?
     var cachedAt: Date
     var expiresAt: Date
 
-    init(serverURLString: String, session: SessionSummary, cachedAt: Date = Date()) {
+    /// `cacheKey` is a Hermes row's (`CacheStore.hermesSessionKey`); a webui row's is derived.
+    init(serverURLString: String, session: SessionSummary, cacheKey: String? = nil, cachedAt: Date = Date()) {
         let sessionID = session.sessionId ?? session.id
-        self.cacheKey = Self.cacheKey(serverURLString: serverURLString, sessionID: sessionID)
+        self.cacheKey = cacheKey ?? Self.cacheKey(serverURLString: serverURLString, sessionID: sessionID)
         self.serverURLString = serverURLString
         self.sessionID = sessionID
         self.cachedAt = cachedAt
@@ -62,6 +71,8 @@ final class CachedSession {
     }
 
     func apply(_ session: SessionSummary, cachedAt: Date = Date()) {
+        // A Hermes row keeps its key, its lineage root, while its tip can move.
+        if let tip = session.sessionId { sessionID = tip }
         title = session.title
         workspace = session.workspace
         model = session.model
@@ -92,6 +103,9 @@ final class CachedSession {
         relationshipType = session.relationshipType
         readOnly = session.readOnly
         isReadOnly = session.isReadOnly
+        lineageRoot = session.hermes?.lineageRoot
+        unread = session.hermes?.unread
+        preview = session.hermes?.preview
         self.cachedAt = cachedAt
         expiresAt = cachedAt.addingTimeInterval(CachePolicy.ttl)
     }

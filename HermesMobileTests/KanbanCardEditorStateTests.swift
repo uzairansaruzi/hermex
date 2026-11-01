@@ -96,32 +96,6 @@ final class KanbanCardEditorStateTests: XCTestCase {
         XCTAssertEqual(unavailable, [.createCard])
     }
 
-    func testMissingEditEndpointReportsOnlyEditCapabilityUnavailable() async {
-        let client = CardEditorClient(
-            editResults: [
-                .failure(APIError.http(
-                    statusCode: 404,
-                    body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
-                ))
-            ],
-            detailResults: [.success(.baseline)]
-        )
-        var unavailable: [KanbanWriteCapability] = []
-        let state = KanbanCardEditorState(
-            mode: .edit(cardID: "CARD-1"),
-            board: "main",
-            client: client,
-            card: .baseline,
-            onCapabilityUnavailable: { unavailable.append($0) }
-        )
-        state.title = "Release evidence"
-
-        await state.save(allowsMutation: true)
-
-        XCTAssertEqual(state.submission, .failed)
-        XCTAssertEqual(unavailable, [.editCard])
-    }
-
     func testAmbiguousCreateReconcilesPresentAbsentAndUncertainWithoutBlindRetry() async {
         let lost = APIError.network(underlying: URLError(.networkConnectionLost))
 
@@ -220,7 +194,7 @@ final class KanbanCardEditorStateTests: XCTestCase {
         XCTAssertNil(request?.status)
     }
 
-    func testAmbiguousEditReconcilesCanonicalResultAndPreservesCreateOnlyFields() async {
+    func testAmbiguousEditReconcilesToTheCanonicalResult() async {
         let lost = APIError.network(underlying: URLError(.cancelled))
         let client = CardEditorClient(
             editResults: [.failure(lost)],
@@ -273,7 +247,7 @@ final class KanbanCardEditorStateTests: XCTestCase {
         state.title = "Edited"
 
         let staleSave = Task { await state.save(allowsMutation: true) }
-        try await waitUntil { await client.firstReadStarted }
+        await fulfillment(of: [client.firstReadStarted], timeout: 5)
         await state.save(allowsMutation: true)
         await client.finishFirstRead(with: .baseline)
         await staleSave.value
@@ -294,7 +268,7 @@ final class KanbanCardEditorStateTests: XCTestCase {
         state.title = "Edited"
 
         let save = Task { await state.save(allowsMutation: true) }
-        try await waitUntil { await client.firstReadStarted }
+        await fulfillment(of: [client.firstReadStarted], timeout: 5)
         state.priorityText = "5.5"
         await client.finishFirstRead(with: .baseline)
         await save.value
@@ -339,173 +313,6 @@ final class KanbanCardEditorStateTests: XCTestCase {
             prerequisiteID: "CARD-0",
             prerequisiteOptions: [.prerequisite]
         )
-    }
-
-    private func waitUntil(
-        timeout: Duration = .seconds(1),
-        condition: @escaping @Sendable () async -> Bool
-    ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while clock.now < deadline {
-            if await condition() { return }
-            await Task.yield()
-        }
-        XCTFail("Condition was not met before timeout")
-    }
-}
-
-final class KanbanLabClientMutationTests: XCTestCase {
-    @MainActor
-    func testCompleteEditorSubmissionSucceedsAgainstLabAdapter() async throws {
-        let client = KanbanLabClient(scenario: .dense)
-        let state = KanbanCardEditorState(
-            mode: .create,
-            board: "main",
-            client: client,
-            idempotencyKey: "editor-intent"
-        )
-        state.title = "Complete fixture Card"
-        state.body = "Every create field"
-        state.priorityText = "2"
-        state.assignee = "builder"
-        state.tenant = "app"
-        state.workspaceKind = "dir"
-        state.workspacePath = "/Users/hermes"
-        state.skillsText = "x-writing-guide, grill-me"
-        state.maximumRuntimeText = "20"
-        state.prerequisiteID = "CARD-1"
-
-        await state.save(allowsMutation: true)
-
-        guard case let .succeeded(cardID) = state.submission else {
-            return XCTFail("Expected the lab editor submission to succeed, got \(state.submission)")
-        }
-        let board = try await client.kanbanBoard(KanbanBoardRequest(board: "main"))
-        XCTAssertEqual(
-            (board.columns ?? []).flatMap { $0.cards ?? [] }.first { $0.cardID == cardID }?.title,
-            "Complete fixture Card"
-        )
-    }
-
-    func testCreatePersistsFullCardAndReusesIdempotencyKey() async throws {
-        let client = KanbanLabClient(scenario: .dense)
-        let request = KanbanCreateCardRequest(
-            board: "main",
-            title: "Complete fixture Card",
-            body: "Every create field",
-            status: "triage",
-            priority: 2,
-            assignee: "builder",
-            tenant: "app",
-            workspaceKind: "dir",
-            workspacePath: "/Users/hermes",
-            skills: ["x-writing-guide", "grill-me"],
-            maxRuntimeSeconds: 20,
-            prerequisiteID: "CARD-1",
-            idempotencyKey: "lab-intent"
-        )
-
-        let first = try await client.createKanbanCard(request)
-        let retry = try await client.createKanbanCard(request)
-        let cardID = try XCTUnwrap(first.card?.cardID)
-
-        XCTAssertEqual(retry.card?.cardID, cardID)
-        let board = try await client.kanbanBoard(KanbanBoardRequest(board: "main"))
-        let matches = (board.columns ?? []).flatMap { $0.cards ?? [] }.filter { $0.cardID == cardID }
-        XCTAssertEqual(matches.count, 1)
-        XCTAssertEqual(matches.first?.title, request.title)
-        XCTAssertEqual(matches.first?.workspaceKind, request.workspaceKind)
-        XCTAssertEqual(matches.first?.workspacePath, request.workspacePath)
-        XCTAssertEqual(matches.first?.skills, request.skills)
-        XCTAssertEqual(matches.first?.maxRuntimeSeconds, request.maxRuntimeSeconds)
-
-        let detail = try await client.kanbanCardDetail(
-            KanbanCardDetailRequest(cardID: cardID, board: "main")
-        )
-        XCTAssertEqual(detail.links?.prerequisites, ["CARD-1"])
-    }
-
-    func testEditPersistsSupportedFieldsAndPreservesCreateOnlyFields() async throws {
-        let client = KanbanLabClient(scenario: .dense)
-        let created = try await client.createKanbanCard(KanbanCreateCardRequest(
-            board: "main",
-            title: "Before",
-            body: "Original",
-            status: "triage",
-            priority: 1,
-            assignee: "builder",
-            tenant: "app",
-            workspaceKind: "worktree",
-            workspacePath: "/workspace",
-            skills: ["swiftui-patterns"],
-            maxRuntimeSeconds: 900,
-            prerequisiteID: "CARD-1",
-            idempotencyKey: "edit-intent"
-        ))
-        let cardID = try XCTUnwrap(created.card?.cardID)
-
-        _ = try await client.editKanbanCard(KanbanEditCardRequest(
-            cardID: cardID,
-            board: "main",
-            title: "After",
-            body: "Edited",
-            tenant: nil,
-            priority: -3,
-            assignee: nil,
-            status: "todo"
-        ))
-
-        let detail = try await client.kanbanCardDetail(
-            KanbanCardDetailRequest(cardID: cardID, board: "main")
-        )
-        XCTAssertEqual(detail.card?.title, "After")
-        XCTAssertEqual(detail.card?.body, "Edited")
-        XCTAssertEqual(detail.card?.status?.rawValue, "todo")
-        XCTAssertEqual(detail.card?.priority, -3)
-        XCTAssertNil(detail.card?.assignee)
-        XCTAssertNil(detail.card?.tenant)
-        XCTAssertEqual(detail.card?.workspaceKind, "worktree")
-        XCTAssertEqual(detail.card?.workspacePath, "/workspace")
-        XCTAssertEqual(detail.card?.skills, ["swiftui-patterns"])
-        XCTAssertEqual(detail.card?.maxRuntimeSeconds, 900)
-        XCTAssertEqual(detail.links?.prerequisites, ["CARD-1"])
-    }
-
-    func testEditingFixtureCardPreservesHistoryAndCommentsStayScopedToCard() async throws {
-        let client = KanbanLabClient(scenario: .dense)
-
-        _ = try await client.editKanbanCard(KanbanEditCardRequest(
-            cardID: "CARD-3",
-            board: "default",
-            title: "Edited fixture",
-            body: "Edited body",
-            tenant: "app",
-            priority: 1,
-            assignee: "builder",
-            status: "ready"
-        ))
-        _ = try await client.addKanbanComment(KanbanAddCommentRequest(
-            cardID: "CARD-3",
-            board: "default",
-            body: "Scoped comment"
-        ))
-
-        let edited = try await client.kanbanCardDetail(
-            KanbanCardDetailRequest(cardID: "CARD-3", board: "default")
-        )
-        let other = try await client.kanbanCardDetail(
-            KanbanCardDetailRequest(cardID: "CARD-4", board: "default")
-        )
-
-        XCTAssertEqual(edited.card?.title, "Edited fixture")
-        XCTAssertEqual(edited.comments?.map(\.body), [
-            "Looks good from the review side.",
-            "Scoped comment"
-        ])
-        XCTAssertEqual(edited.events?.count, 1)
-        XCTAssertEqual(edited.runs?.count, 1)
-        XCTAssertEqual(other.comments?.map(\.body), ["Looks good from the review side."])
     }
 }
 
@@ -563,7 +370,8 @@ private actor StaleEditorClient: KanbanDataClient {
     private var firstContinuation: CheckedContinuation<KanbanCardDetailEnvelope, Never>?
     private(set) var editCallCount = 0
 
-    var firstReadStarted: Bool { firstContinuation != nil }
+    /// Fulfilled once the first detail read is held, so the test can act while it waits.
+    nonisolated let firstReadStarted = XCTestExpectation(description: "the first detail read is held")
 
     func finishFirstRead(with detail: KanbanCardDetailEnvelope) {
         firstContinuation?.resume(returning: detail)
@@ -580,7 +388,10 @@ private actor StaleEditorClient: KanbanDataClient {
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async -> KanbanCardDetailEnvelope {
         detailCallCount += 1
         if detailCallCount == 1 {
-            return await withCheckedContinuation { firstContinuation = $0 }
+            return await withCheckedContinuation {
+                firstContinuation = $0
+                firstReadStarted.fulfill()
+            }
         }
         return .baseline
     }

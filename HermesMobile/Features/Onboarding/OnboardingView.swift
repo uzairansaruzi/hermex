@@ -1,14 +1,22 @@
+import AuthenticationServices
 import SwiftUI
 
 struct OnboardingView: View {
+    /// Height of the fade the bottom bar paints over the pager. Pages that end in a control
+    /// pad their scroll content past it so the control can scroll clear of the fade.
+    static let bottomFadeHeight: CGFloat = 50
+
     @Bindable var authManager: AuthManager
     @State private var viewModel: OnboardingViewModel
     @State private var currentPage: Int
-    @State private var hasCopiedAgentPrompt = false
-    @State private var hasBypassedCopyReminder = false
+    @State private var shownSetupPrompt = OnboardingFlowPolicy.initialSetupPrompt
+    @State private var copiedSetupPrompts: Set<OnboardingSetupPrompt> = []
+    /// The prompts whose copy reminder Continue Anyway skipped.
+    @State private var bypassedSetupPrompts: Set<OnboardingSetupPrompt> = []
     @State private var isShowingCopyReminder = false
     @FocusState private var focusedField: OnboardingConnectField?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     init(authManager: AuthManager, savedServer: URL? = nil) {
         self.authManager = authManager
@@ -48,7 +56,10 @@ struct OnboardingView: View {
                     OnboardingFeaturesPage()
                         .tag(1)
 
-                    OnboardingAgentPromptPage(hasCopiedAgentPrompt: $hasCopiedAgentPrompt)
+                    OnboardingAgentPromptPage(
+                        shownPrompt: $shownSetupPrompt,
+                        copiedPrompts: $copiedSetupPrompts
+                    )
                         .tag(2)
 
                     OnboardingTailscalePage()
@@ -80,11 +91,11 @@ struct OnboardingView: View {
         .alert("Copy the setup prompt first", isPresented: $isShowingCopyReminder) {
             Button("Stay Here", role: .cancel) {}
             Button("Continue Anyway") {
-                hasBypassedCopyReminder = true
+                bypassedSetupPrompts.insert(shownSetupPrompt)
                 advanceToNextPage()
             }
         } message: {
-            Text("Copy the agent setup prompt on your desktop before continuing so Hermes Web UI and Tailscale are configured correctly.")
+            Text(shownSetupPrompt.copyReminderMessage)
         }
     }
 
@@ -136,8 +147,10 @@ struct OnboardingView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 50)
-            .offset(y: -50),
+            .frame(height: Self.bottomFadeHeight)
+            .offset(y: -Self.bottomFadeHeight)
+            // The fade overlaps the page above it; let taps reach the page's controls.
+            .allowsHitTesting(false),
             alignment: .top
         )
     }
@@ -178,10 +191,16 @@ struct OnboardingView: View {
 
     private var connectButton: some View {
         Button {
-            Task { await viewModel.connect(authManager: authManager) }
+            Task { await viewModel.connect(authManager: authManager, browser: .init(webAuthenticationSession)) }
         } label: {
-            Label("Connect", systemImage: "checkmark.circle.fill")
-                .frame(maxWidth: .infinity)
+            Group {
+                if viewModel.signInMethod == .browser {
+                    Label("Sign In with Browser", systemImage: "safari")
+                } else {
+                    Label("Connect", systemImage: "checkmark.circle.fill")
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(OnboardingPrimaryButtonStyle())
         .disabled(viewModel.isWorking || !viewModel.canSubmit)
@@ -190,8 +209,9 @@ struct OnboardingView: View {
     private func handlePrimaryAction() {
         if OnboardingFlowPolicy.shouldShowCopyReminder(
             page: currentPage,
-            hasCopiedAgentPrompt: hasCopiedAgentPrompt,
-            hasBypassedCopyReminder: hasBypassedCopyReminder
+            shownPrompt: shownSetupPrompt,
+            copiedPrompts: copiedSetupPrompts,
+            bypassedPrompts: bypassedSetupPrompts
         ) {
             isShowingCopyReminder = true
             return
@@ -210,8 +230,9 @@ struct OnboardingView: View {
         guard OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
             from: oldPage,
             to: newPage,
-            hasCopiedAgentPrompt: hasCopiedAgentPrompt,
-            hasBypassedCopyReminder: hasBypassedCopyReminder
+            shownPrompt: shownSetupPrompt,
+            copiedPrompts: copiedSetupPrompts,
+            bypassedPrompts: bypassedSetupPrompts
         ) else {
             return
         }

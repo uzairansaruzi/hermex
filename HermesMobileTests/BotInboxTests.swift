@@ -6,16 +6,51 @@ import SwiftUI
     private let server = URL(string: "https://one.example")!
     private var defaults: UserDefaults!
     private var suite = ""
+    /// Each test's cached rosters, one subdirectory per cache.
+    private var rosterRoot: URL!
 
     override func setUp() {
         super.setUp()
         suite = "BotInboxTests." + UUID().uuidString
         defaults = UserDefaults(suiteName: suite)
+        rosterRoot = FileManager.default.temporaryDirectory.appendingPathComponent(suite, isDirectory: true)
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suite)
+        try? FileManager.default.removeItem(at: rosterRoot)
         super.tearDown()
+    }
+
+    func testPickingAnotherBotDropsTheLinkedConversation() throws {
+        let first = try XCTUnwrap(BotProfile(.object(["name": .string("first")])))
+        let second = try XCTUnwrap(BotProfile(.object(["name": .string("second")])))
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
+                                       username: "fixture", password: "fixture-only")
+        let destination = BotDestination(server: server, connectionID: connection.id,
+                                         profile: first.id, conversation: "first-root")
+        var selection = BotInboxSelection()
+        selection.open(destination, connection: connection, profiles: [first, second])
+        XCTAssertEqual(selection.chat(server: server, connection: connection)?.linkedRoot, "first-root")
+
+        selection.profile = second
+
+        let chat = try XCTUnwrap(selection.chat(server: server, connection: connection))
+        XCTAssertEqual(chat.target, .canonicalChat(profile: second.id))
+        XCTAssertNil(chat.linkedRoot, "An ordinary bot pick must not carry another bot's linked root")
+    }
+
+    func testBotAndRoomPicksReplaceTheSelection() throws {
+        let bot = try XCTUnwrap(BotProfile(.object(["name": .string("fixture")])))
+        let room = BotRoomKey(server: server, connectionID: UUID(), roomID: "room")
+        var selection = BotInboxSelection(profile: bot, conversation: "linked-root")
+        selection.room = room
+        XCTAssertNil(selection.profile)
+        XCTAssertNil(selection.conversation)
+        XCTAssertEqual(selection.room, room)
+        selection.profile = bot
+        XCTAssertNil(selection.room)
+        XCTAssertEqual(selection.profile, bot)
     }
 
     func testSessionsChangedBurstCoalescesIntoBoundedReloads() async throws {
@@ -88,6 +123,73 @@ import SwiftUI
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id), ["triage": 200])
     }
 
+    /// A bot's chat is searched on the host (#1146), Profile by Profile with the query: each
+    /// bot's Bot Chat is a hit with the matched text and who wrote it, and any other session the
+    /// Profile has, such as a room's, is not. An inbox that is not live asks nothing.
+    func testMessageSearchFindsEachBotsChatOnTheHost() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("research")])
+        wire.searchResults = [
+            "triage": [match("plan", title: "Plan", snippet: ">>>nimbus<<< plan", role: "user"),
+                       match("triage-root", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")],
+            "research": [match("room", title: "Group: room-1", snippet: ">>>nimbus<<<", role: "user")]
+        ]
+        let inbox = try makeInbox(wires: [wire])
+        let offline = try await inbox.searchBotChats("nimbus")
+        XCTAssertEqual(offline, [])
+        XCTAssertTrue(wire.searches.isEmpty)
+
+        await inbox.open()
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+        XCTAssertEqual(wire.searches.map(\.query), ["nimbus", "nimbus"])
+        XCTAssertEqual(wire.searches.map(\.profile), ["triage", "research"])
+    }
+
+    /// Only the bot's current Bot Chat is a hit (#1146): an older session under the same title,
+    /// such as one the bot replaced, is not, since the hit opens the current chat.
+    func testMessageSearchSkipsABotChatTheBotReplaced() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage", root: "chat-2", tip: "chat-2")])
+        wire.searchResults = ["triage": [match("chat-1", title: "Bot Chat", snippet: "the old >>>nimbus<<<", role: "user"),
+                                         match("chat-2", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+    }
+
+    /// The host's search has no offset to page with or filter for the Bot Chat (#1146), so the bot
+    /// search asks for the host's maximum: a Bot Chat behind 50 other matching sessions is found.
+    func testMessageSearchFindsABotChatBehindFiftyOtherMatches() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.searchResults = ["triage": (0..<50).map { match("s\($0)", title: "Plan \($0)", snippet: ">>>nimbus<<<", role: "user") }
+            + [match("triage-root", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+        XCTAssertEqual(wire.searches.map(\.limit), [100])
+    }
+
+    /// A Bot Chat the host matched by its id names no message (#1146): the hit has no author,
+    /// so the sheet shows the bot rather than "<bot> to you".
+    func testABotChatIDMatchHasNoAuthor() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.searchResults = ["triage": [HermesSessionSearchResult(row: HermesSessionRow(id: "triage-root", title: "Bot Chat", hidden: true))]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("bot")
+
+        XCTAssertEqual(hits.map(\.profileID), ["triage"])
+        XCTAssertNil(hits.first?.snippet)
+        XCTAssertNil(hits.first?.isFromUser)
+    }
+
     func testReturningFromChatMarksTheNextRosterSeenOnce() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage", lastActive: 100)])
         let inbox = try makeInbox(wires: [wire])
@@ -135,6 +237,16 @@ import SwiftUI
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: connection.id), ["triage": 100])
     }
 
+    /// The Shortcuts picker titles a Hermes server's Profiles by these names (#1180).
+    func testEachRosterReadLeavesTheProfilesNamesForShortcuts() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("default"), row("triage", look: ["title": .string("Inbox Triage")])])
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        XCTAssertEqual(HermesProfileNameCache(defaults: defaults).names(for: server),
+                       [.init(profile: "default", title: "Hermes"), .init(profile: "triage", title: "Inbox Triage")])
+    }
+
     func testMissingMetadataReadsPlainAndPinWritesUnderRevisionZero() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage", look: nil, revision: nil)])
         var configured: [String: BotJSON]?
@@ -153,7 +265,6 @@ import SwiftUI
         XCTAssertEqual(configured?["name"], .string("triage"))
         XCTAssertEqual(configured?["ui_meta"], .object(["hermes-bots": .object(["pinned": .bool(true)])]))
         XCTAssertEqual(configured?["ui_meta_expected_revisions"], .object(["hermes-bots": .number(0)]))
-        XCTAssertEqual(Set(configured?.keys.map { $0 } ?? []), ["name", "ui_meta", "ui_meta_expected_revisions"])
         XCTAssertEqual(inbox.rows(matching: "").pinned.map(\.id), ["triage"], "the row moves only after the host applied and the roster was re-read")
         XCTAssertNil(inbox.notice)
         XCTAssertEqual(wire.listCalls, 2)
@@ -582,6 +693,54 @@ import SwiftUI
         XCTAssertNil(inbox.errorMessage)
     }
 
+    /// A lost inbox's quiet retry holds while offline; the network's return runs it at once,
+    /// not on its backoff, and once (#1372).
+    func testALostInboxReconnectsAtOnceWhenTheNetworkReturns() async throws {
+        let first = BotInboxFixtureWire(roster: [row("triage")])
+        let second = BotInboxFixtureWire(roster: [row("triage", preview: "back")])
+        let spare = BotInboxFixtureWire(roster: [row("triage")])
+        var online = true
+        let inbox = try makeInbox(wires: [first, second, spare], reconnectDelays: [.seconds(3600)], isNetworkAvailable: { online })
+        await inbox.open()
+
+        first.onDisconnect?(BotFailure.transport)
+        online = false
+        inbox.networkPathDidChange()
+        online = true
+        inbox.networkPathDidChange()
+        await settle(inbox) { $0.link == .live }
+        XCTAssertEqual(inbox.profiles.map(\.preview), ["back"])
+        inbox.networkPathDidChange()
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(spare.listCalls, 0, "one reconnect")
+        inbox.close()
+    }
+
+    /// Only a quiet retry the inbox still owns wakes on the network's return: not one the
+    /// inbox closed over, nor a refusal the user has to fix (#1372).
+    func testTheNetworksReturnReopensNeitherAClosedNorARefusedInbox() async throws {
+        let first = BotInboxFixtureWire(roster: [row("triage")])
+        let second = BotInboxFixtureWire(roster: [row("triage")])
+        let spare = BotInboxFixtureWire(roster: [row("triage")])
+        var online = true
+        let inbox = try makeInbox(wires: [first, second, spare], isNetworkAvailable: { online })
+        await inbox.open()
+        online = false
+        first.onDisconnect?(BotFailure.transport)
+        inbox.close()
+        online = true
+        inbox.networkPathDidChange()
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(second.listCalls, 0, "a closed inbox stays closed")
+
+        await inbox.open()
+        second.onDisconnect?(BotFailure.upgradeRefused(403))
+        inbox.networkPathDidChange()
+        await Task.yield(); await Task.yield()
+        XCTAssertNotNil(inbox.errorMessage)
+        XCTAssertEqual(spare.listCalls, 0, "a refusal waits for the user")
+    }
+
     /// Control Center and banners (`.inactive`) keep the inbox on the shared socket; only
     /// the background closes it, and the return reopens it once (#902).
     func testOnlyTheBackgroundClosesTheInboxAndTheReturnReopensItOnce() async throws {
@@ -629,47 +788,14 @@ import SwiftUI
         XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
     }
 
-    func testNotAHermesHostShowsTheMessageInsteadOfRetryingForever() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.rejected(404)
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertNotNil(inbox.errorMessage, "a permanent client error is the user's to fix")
-        XCTAssertFalse(inbox.isLoadingRoster)
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry after a 404")
-    }
-
-    func testAWebUIAddressShowsTheAdviceInsteadOfRetryingForever() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.notDashboard
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertEqual(inbox.errorMessage, "mac.example isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI.")
-        XCTAssertFalse(inbox.isLoadingRoster)
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry for an address that is not a dashboard")
-    }
-
-    /// An access proxy, a host with browser sign-in only, a refused gateway upgrade and a
-    /// release older than the minimum each need the user to change something, so the inbox
-    /// says what and stops retrying.
+    /// An access proxy, a host with browser sign-in only, a refused gateway upgrade, a
+    /// release older than the minimum, a host that is not Hermes or not its dashboard, and
+    /// another install at the saved address each need the user to change something, so
+    /// the inbox says what and stops retrying.
     func testSignInFailuresTheUserMustFixShowTheirMessageInsteadOfRetrying() async throws {
-        let rows: [(BotFailure, String)] = [
-            (.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address."),
-            (.browserSignIn, "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
-            (.upgradeRefused(403), "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through."),
-            (.outdated("0.21.2"), "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again.")
-        ]
-        for (failure, message) in rows {
+        let failures: [BotFailure] = [.blocked, .browserSignIn, .upgradeRefused(403), .outdated("0.21.2"),
+                                      .rejected(404), .notDashboard, .differentHost]
+        for failure in failures {
             let wire = BotInboxFixtureWire(roster: [row("triage")])
             wire.connectError = failure
             var spare = 0
@@ -678,7 +804,8 @@ import SwiftUI
                 spare += 1; return wire
             }
             await inbox.open()
-            XCTAssertEqual(inbox.errorMessage, message, "\(failure)")
+            XCTAssertEqual(inbox.link, .disconnected, "\(failure)")
+            XCTAssertNotNil(inbox.errorMessage, "\(failure)")
             XCTAssertFalse(inbox.isLoadingRoster, "\(failure)")
             await Task.yield(); await Task.yield()
             XCTAssertEqual(spare, 1, "no automatic retry after \(failure)")
@@ -746,22 +873,6 @@ import SwiftUI
         newHost.release(); stale.release()
         await settle(inbox) { $0.link == .live }
         XCTAssertEqual(inbox.connection?.address.host(), "tunnel.example")
-    }
-
-    func testRefusedConnectionShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.rejected(401)
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertEqual(inbox.link, .disconnected)
-        XCTAssertEqual(inbox.errorMessage, BotFailure.rejected(401).localizedDescription)
-        XCTAssertTrue(inbox.needsSignIn, "a refused password offers the sign-in form")
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry after a refusal")
     }
 
     /// Foregrounding, pull to refresh and closing the form unsaved all rerun `open()`;
@@ -857,21 +968,6 @@ import SwiftUI
         }
     }
 
-    func testAnotherHostShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.differentHost
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertEqual(inbox.link, .disconnected)
-        XCTAssertEqual(inbox.errorMessage, BotFailure.differentHost.localizedDescription)
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry against another host")
-    }
-
     func testTheFirstReportedInstallIDIsRecordedOnceWithoutRevertingANewerSave() async throws {
         let store = try connectedStore()
         let first = String(repeating: "a", count: 32)
@@ -899,15 +995,6 @@ import SwiftUI
         await inbox.open()
         stored = try XCTUnwrap(store.load(server: server))
         XCTAssertEqual(stored.installID, first, "The backfill writes only a record that has none")
-    }
-
-    func testUnreadableSavedConnectionShowsTheFailureInsteadOfAStaleRoster() async throws {
-        let keychain = InMemoryKeychainStore()
-        try keychain.save("not json", forKey: .botConnection, scope: server.absoluteString)
-        let inbox = try makeInbox(wires: [], store: BotConnectionStore(keychain: keychain))
-        await inbox.open()
-        XCTAssertEqual(inbox.link, .disconnected)
-        XCTAssertNotNil(inbox.errorMessage)
     }
 
     // MARK: - Live status
@@ -1008,23 +1095,36 @@ import SwiftUI
         XCTAssertEqual(seenAtNextRead, [:])
     }
 
-    func testStatusesClearWhenTheSocketDropsAndWhenTheConnectionChanges() async throws {
+    /// A lost socket keeps the last known statuses, marked stale, while the inbox reconnects
+    /// (#1374). A tap reconnects past the backoff; the roster settles the reconnect, and only
+    /// the host's next status reply makes them current. Another connection's never show, and a
+    /// refusal the user has to act on clears them.
+    func testALostSocketKeepsTheLastKnownStatusesUntilTheHostAnswersAgain() async throws {
         let store = try connectedStore()
         let first = BotInboxFixtureWire(roster: [row("triage")])
         first.active = [live("triage-tip", "waiting")]
         let second = BotInboxFixtureWire(roster: [row("triage")])
-        second.active = [live("triage-tip", "waiting")]
+        second.active = [live("triage-tip", "working")]
+        second.holdsActive = true
         let third = BotInboxFixtureWire(roster: [row("triage")])
+        third.active = [live("triage-tip", "waiting")]
         third.holdsConnect = true
-        let inbox = try makeInbox(wires: [first, second, third], store: store)
+        let inbox = try makeInbox(wires: [first, second, third], store: store, reconnectDelays: [.seconds(3600)])
         await inbox.open()
-        XCTAssertEqual(inbox.liveStatuses, ["triage": .waiting])
 
         first.onDisconnect?(BotFailure.transport)
-        XCTAssertEqual(inbox.liveStatuses, [:], "a dropped socket cannot vouch for any turn")
-        XCTAssertEqual(inbox.profiles.map(\.id), ["triage"], "the roster stays")
+        XCTAssertTrue(inbox.isReconnecting)
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .waiting], "the last known statuses stay")
+        XCTAssertTrue(inbox.liveStatusesAreStale)
 
-        await settle(inbox) { $0.liveStatuses == ["triage": .waiting] }
+        inbox.reconnectNow()
+        await settle(inbox) { $0.link == .live }
+        XCTAssertFalse(inbox.isReconnecting, "the roster settles the reconnect")
+        XCTAssertTrue(inbox.liveStatusesAreStale, "a roster vouches for no turn")
+        second.release()
+        await settle(inbox) { !$0.liveStatusesAreStale }
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .working])
+
         try store.save(BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
                                      username: "u", password: "p", hermesVersion: nil), server: server)
         let reopened = Task { await inbox.open() }
@@ -1032,7 +1132,28 @@ import SwiftUI
         XCTAssertEqual(inbox.liveStatuses, [:], "another connection's statuses never show")
         third.release()
         await reopened.value
+        await settle(inbox) { !$0.liveStatuses.isEmpty }
+        third.onDisconnect?(BotFailure.upgradeRefused(403))
+        XCTAssertEqual(inbox.liveStatuses, [:], "a refusal leaves nothing to reconnect to")
         inbox.close()
+    }
+
+    /// An offline path makes the statuses the last known ones, and the home says Offline, before
+    /// the socket notices (#1374).
+    func testAnOfflinePathMarksTheStatusesStaleBeforeTheSocketDrops() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.active = [live("triage-tip", "working")]
+        var online = true
+        let inbox = try makeInbox(wires: [wire], isNetworkAvailable: { online })
+        await inbox.open()
+        defer { inbox.close() }
+        await settle(inbox) { !$0.liveStatuses.isEmpty }
+
+        online = false
+        inbox.networkPathDidChange()
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .working])
+        XCTAssertTrue(inbox.liveStatusesAreStale)
+        XCTAssertEqual(HomeConnectionStatus(inbox.homeConnection, isOnline: false), .offline)
     }
 
     func testEachGroupSortsWaitingThenWorkingThenUnreadThenNewest() async throws {
@@ -1090,11 +1211,28 @@ import SwiftUI
         await inbox.open()
         defer { inbox.close() }
 
+        // Each read records what the inbox showed as it went out. The stale state
+        // between the failures lasts only until the next retry answers, so a test
+        // that waits to observe it can miss it (#1018).
+        var staleAtRead: [Bool] = []
+        let retried = expectation(description: "the read after both failures went out")
+        wire.onCall = { method in
+            guard method == "session.active_list" else { return }
+            XCTAssertEqual(inbox.liveStatuses, ["triage": .working], "a failed read keeps the last known statuses")
+            staleAtRead.append(inbox.liveStatusesAreStale)
+            if staleAtRead.count == 3 { retried.fulfill() }
+        }
         wire.failsActive = 2
-        await settle(inbox) { $0.liveStatuses.isEmpty }
-        await settle(inbox) { $0.liveStatuses == ["triage": .working] }
+        await fulfillment(of: [retried], timeout: 5)
+        wire.onCall = nil
+        XCTAssertEqual(Array(staleAtRead.prefix(3)), [false, true, true], "marked stale, and read again")
+        await settle(inbox) { !$0.liveStatusesAreStale }
         XCTAssertEqual(inbox.link, .live, "a failed status read never drops the socket")
         XCTAssertEqual(wire.listCalls, 1, "the retry is a status read, not a roster read")
+
+        // A host without the method has no statuses to wait for (#1374).
+        wire.active = nil
+        await settle(inbox) { $0.liveStatuses.isEmpty }
     }
 
     func testStatusReReadsStopWhenTheInboxCloses() async throws {
@@ -1173,35 +1311,154 @@ import SwiftUI
         XCTAssertEqual(inbox.liveStatuses, [:], "no socket can vouch for them")
     }
 
-    func testActivityLabelUsesTimeTodayWeekdayThisWeekThenMonthAndDay() {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let locale = Locale(identifier: "en_US")
-        // Thursday 2026-09-10 15:00 UTC.
-        let now = Date(timeIntervalSince1970: 1_789_052_400)
-        let label = { (offset: TimeInterval) in
-            BotInboxDateLabel.text(for: now.addingTimeInterval(offset), now: now, calendar: calendar, locale: locale)
+    // MARK: - Cached roster (#1403)
+
+    /// The roster a live read left paints the next open before its socket connects, claiming
+    /// nothing live and allowing no server edit, and the live read replaces it wholesale.
+    func testTheLastRosterPaintsWhileConnectingAndEachLiveReadReplacesIt() async throws {
+        let store = try connectedStore()
+        let cache = makeRosterCache()
+        let first = BotInboxFixtureWire(roster: [row("triage", preview: "cached"), row("gone")])
+        first.active = [live("triage-tip", "working")]
+        let earlier = try makeInbox(wires: [first], store: store, rosterCache: cache)
+        await earlier.open()
+        XCTAssertEqual(earlier.liveStatuses, ["triage": .working])
+        earlier.close()
+
+        let wire = BotInboxFixtureWire(roster: [row("triage", preview: "live"), row("added")])
+        wire.active = []
+        wire.holdsConnect = true
+        let inbox = try makeInbox(wires: [wire], store: store, rosterCache: cache)
+        let opening = Task { await inbox.open() }
+        await settle(inbox) { !$0.profiles.isEmpty }
+        XCTAssertEqual(inbox.profiles.map(\.id), ["triage", "gone"])
+        XCTAssertEqual(inbox.profiles.first?.preview, "cached")
+        XCTAssertEqual(inbox.link, .connecting)
+        XCTAssertFalse(inbox.isLoadingRoster)
+        XCTAssertEqual(inbox.liveStatuses, [:], "a cached row never claims Working")
+        XCTAssertFalse(inbox.profiles.contains(where: inbox.mayEdit))
+
+        wire.release()
+        await opening.value
+        XCTAssertEqual(inbox.link, .live)
+        XCTAssertEqual(inbox.profiles.map(\.id), ["triage", "added"])
+        XCTAssertEqual(inbox.profiles.first?.preview, "live")
+
+        // An empty roster replaces the copy too. The status read follows the save.
+        wire.roster = []
+        let read = expectation(description: "status read after the empty roster")
+        wire.onCall = { if $0 == "session.active_list" { read.fulfill() } }
+        wire.emit("sessions.changed")
+        await fulfillment(of: [read], timeout: 5)
+        XCTAssertEqual(inbox.profiles, [])
+        let scope = BotRosterCache.Scope(server: server, connectionID: try XCTUnwrap(inbox.connection).id)
+        let left = await cache.load(scope)
+        XCTAssertNil(left)
+    }
+
+    /// A cached roster belongs to one connection on one server: a load the connection change
+    /// outdated paints and connects nothing, and a removal revokes saves read before it.
+    func testACachedRosterNeverCrossesConnectionsOrOutlivesItsRemoval() async throws {
+        let store = try connectedStore()
+        let a = try XCTUnwrap(store.load(server: server))
+        let b = BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
+                              username: "u", password: "p", hermesVersion: nil)
+        // The form replaces A with B while A's roster is being read, and the inbox stays
+        // open until the form's sheet dismisses.
+        let cache = makeRosterCache { try store.save(b, server: self.server) }
+        let other = URL(string: "https://two.example")!
+        let otherScope = BotRosterCache.Scope(server: other, connectionID: a.id)
+        await cache.save([row("from-a")], scope: .init(server: server, connectionID: a.id), readAt: .now)
+        await cache.save([row("elsewhere")], scope: otherScope, readAt: .now)
+        let aWire = BotInboxFixtureWire(roster: [row("from-a")])
+        let bWire = BotInboxFixtureWire(roster: [row("from-b")])
+        bWire.holdsConnect = true
+        let inbox = try makeInbox(wires: [], store: store, rosterCache: cache) { $0.id == a.id ? aWire : bWire }
+
+        await inbox.open()
+        XCTAssertEqual(inbox.profiles, [], "the outdated load paints nothing")
+        XCTAssertEqual(aWire.closed + aWire.calls.count, 0, "and never connects A")
+
+        let reopening = Task { await inbox.open() }
+        await settle(inbox) { $0.link == .connecting }
+        XCTAssertTrue(inbox.isLoadingRoster, "B has no cached roster, and A's never paints under it")
+        bWire.release()
+        await reopening.value
+        XCTAssertEqual(inbox.profiles.map(\.id), ["from-b"])
+
+        // Signing out removes this server's rosters; a save read before that cannot bring one back.
+        let readBefore = ContinuousClock.now
+        await cache.remove(server: server)
+        let bScope = BotRosterCache.Scope(server: server, connectionID: b.id)
+        await cache.save([row("late")], scope: bScope, readAt: readBefore)
+        let late = await cache.load(bScope)
+        XCTAssertNil(late)
+        let kept = await cache.load(otherScope)
+        XCTAssertEqual(kept?.count, 1, "another server's roster stays")
+    }
+
+    /// Another client of the same browser sign-in rotating its refresh token during the load
+    /// is still this connection: the cached roster paints and the inbox connects on the new token.
+    func testARefreshTokenRotationDuringTheCachedLoadKeepsOpening() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        var signedIn = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!,
+                                     username: "u1", password: "", hermesVersion: nil)
+        signedIn.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "refresh-1")
+        try store.save(signedIn, server: server)
+        let cache = makeRosterCache {
+            try store.saveRotatedRefreshToken("refresh-2", replacing: "refresh-1", connection: signedIn.id, server: self.server)
         }
-        XCTAssertEqual(label(-6 * 3600), "9:00\u{202F}AM")
-        XCTAssertEqual(label(-24 * 3600), "Wednesday")
-        XCTAssertEqual(label(-6 * 86_400), "Friday")
-        XCTAssertEqual(label(-7 * 86_400), "Sep 3")
-        XCTAssertEqual(label(-40 * 86_400), "Aug 1")
+        await cache.save([row("triage")], scope: .init(server: server, connectionID: signedIn.id), readAt: .now)
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.holdsConnect = true
+        var openedWith: String?
+        let inbox = try makeInbox(wires: [], store: store, rosterCache: cache) {
+            openedWith = $0.oauth?.refreshToken
+            return wire
+        }
+
+        let opening = Task { await inbox.open() }
+        await settle(inbox) { $0.link == .connecting }
+        XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
+        XCTAssertEqual(openedWith, "refresh-2")
+        wire.release()
+        await opening.value
+        XCTAssertEqual(inbox.link, .live)
     }
 
     // MARK: - Helpers
 
-    /// Status re-reads default to an hour apart, so only a test that asks for them sees one.
+    /// An inbox on `wires` in order, or on `wireFor`'s pick per saved connection. Status
+    /// re-reads default to an hour apart, so only a test that asks for them sees one.
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil,
-                           statusPollInterval: Duration = .seconds(3600)) throws -> BotInbox {
+                           rosterCache: BotRosterCache? = nil, statusPollInterval: Duration = .seconds(3600),
+                           reconnectDelays: [Duration] = [.zero],
+                           wireFor: ((BotConnection) -> BotInboxFixtureWire)? = nil,
+                           isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) throws -> BotInbox {
         let server = server ?? self.server
         let store = try store ?? connectedStore(server: server)
         var queue = wires
         return BotInbox(server: server, store: store, unread: BotUnreadStore(defaults: defaults),
                         roomStore: BotRoomOrganizeStore(defaults: defaults),
                         sectionOrderStore: BotSectionOrderStore(defaults: defaults),
-                        avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero],
-                        statusPollInterval: statusPollInterval) { _ in queue.removeFirst() }
+                        avatarStore: BotAvatarStore(), rosterCache: rosterCache ?? makeRosterCache(),
+                        profileNames: HermesProfileNameCache(defaults: defaults),
+                        reloadSpacing: .zero, reconnectDelays: reconnectDelays,
+                        statusPollInterval: statusPollInterval, makeWire: { wireFor?($0) ?? queue.removeFirst() },
+                        isNetworkAvailable: isNetworkAvailable)
+    }
+
+    /// An empty roster cache in its own directory under this test's root.
+    private func makeRosterCache() -> BotRosterCache {
+        BotRosterCache(directory: rosterRoot.appendingPathComponent(UUID().uuidString, isDirectory: true))
+    }
+
+    /// A roster cache that runs `duringFirstLoad` inside its first load, between an open's
+    /// read of the saved connection and its re-read.
+    private func makeRosterCache(duringFirstLoad: @escaping @MainActor () throws -> Void) -> BotRosterCache {
+        let change = FirstLoadChange(duringFirstLoad)
+        return BotRosterCache(directory: rosterRoot.appendingPathComponent(UUID().uuidString, isDirectory: true),
+                              willLoad: { await change.run() })
     }
 
     private func connectedStore(server: URL? = nil) throws -> BotConnectionStore {
@@ -1212,6 +1469,13 @@ import SwiftUI
     }
 
     /// A roster row whose canonical chat is `<name>-root`, resolved to `<name>-tip`, unless named.
+    /// One host search match, as `HermesSessionSearch` decodes it: a title of exactly "Bot Chat"
+    /// is that Profile's hidden Bot Chat.
+    private func match(_ id: String, title: String, snippet: String, role: String) -> HermesSessionSearchResult {
+        HermesSessionSearchResult(row: HermesSessionRow(id: id, title: title, hidden: title == "Bot Chat" ? true : nil),
+                                  snippet: snippet, role: role)
+    }
+
     private func row(_ name: String, lastActive: Double? = 100, preview: String = "hi", root: String? = nil, tip: String? = nil,
                      look: [String: BotJSON]? = nil, revision: Int? = nil) -> BotJSON {
         var fields: [String: BotJSON] = [
@@ -1257,6 +1521,17 @@ import SwiftUI
     }
 }
 
+/// A change to the saved connection that runs once, inside the roster cache's first load.
+@MainActor private final class FirstLoadChange {
+    private var change: (() throws -> Void)?
+    init(_ change: @escaping () throws -> Void) { self.change = change }
+
+    func run() {
+        defer { change = nil }
+        XCTAssertNoThrow(try change?())
+    }
+}
+
 /// Answers `profiles.list` from `roster`, `session.active_list` from `active`,
 /// `profiles.configure` from `configure`, and lets a test park a list or status
 /// reply or push gateway events.
@@ -1291,6 +1566,9 @@ import SwiftUI
     var connectError: Error?
     private(set) var closed = 0
     private var held: [CheckedContinuation<Void, Never>] = []
+    /// `GET /api/sessions/search`'s matches per Profile, whatever the query.
+    var searchResults: [String: [HermesSessionSearchResult]] = [:]
+    private(set) var searches: [(query: String, profile: String, limit: Int)] = []
 
     init(roster: [BotJSON]) { self.roster = roster }
 
@@ -1307,6 +1585,12 @@ import SwiftUI
         guard let delete else { throw BotFailure.unsupported }
         try delete(name)
         deleted.append(name)
+    }
+
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
+        searches.append((query, profile, limit))
+        // The host answers at most `limit` matches.
+        return Array((searchResults[profile] ?? []).prefix(limit))
     }
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {

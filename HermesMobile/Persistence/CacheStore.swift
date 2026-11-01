@@ -226,9 +226,10 @@ enum CacheStore {
     /// leaving every other configured server's offline data intact (#18). Backs
     /// the Settings "Clear Offline Cache" action (active server) and the purge
     /// of a server's cache when it is removed, so a removed/reset server never
-    /// leaves orphaned rows behind.
+    /// leaves orphaned rows behind. A Hermes chat's write already under way can't put them back.
     @MainActor
     static func clearCache(for serverURL: URL, in context: ModelContext) throws {
+        revokeHermesWriters(serverURL: serverURL)
         let serverURLString = serverURL.absoluteString
 
         let sessionDescriptor = FetchDescriptor<CachedSession>(
@@ -256,9 +257,10 @@ enum CacheStore {
     /// is saved first so the store-side delete and count below see exactly what
     /// the context holds: a row this write just refreshed is no longer expired in
     /// the store either. Maintenance never loads rows unless some must go: the
-    /// expiry delete runs in the store and eviction starts from a COUNT.
+    /// expiry delete runs in the store and eviction starts from a COUNT. Hermes
+    /// writes (`CacheStore+Hermes.swift`) end here too.
     @MainActor
-    private static func saveAndTrim(_ context: ModelContext, now: Date) throws {
+    static func saveAndTrim(_ context: ModelContext, now: Date) throws {
         try context.save()
         try context.delete(model: CachedSession.self, where: #Predicate { $0.expiresAt <= now })
         try context.delete(model: CachedMessage.self, where: #Predicate { $0.expiresAt <= now })
@@ -300,7 +302,9 @@ enum CacheStore {
     }
 }
 
-private extension SessionSummary {
+extension SessionSummary {
+    /// A cached row as the list shows it; a Hermes row (one with a `lineageRoot`) keeps its
+    /// identity, read mark and preview (#1054). A cached Bot Chat is never written.
     init(cachedSession: CachedSession) {
         sessionId = cachedSession.sessionID
         title = cachedSession.title
@@ -335,10 +339,13 @@ private extension SessionSummary {
         isReadOnly = cachedSession.isReadOnly
         matchType = nil
         matchPreview = nil
+        hermes = cachedSession.lineageRoot.map {
+            Hermes(lineageRoot: $0, unread: cachedSession.unread == true, preview: cachedSession.preview)
+        }
     }
 }
 
-private extension ChatMessage {
+extension ChatMessage {
     init(cachedMessage: CachedMessage) {
         let attachments: [MessageAttachment]?
         if let data = cachedMessage.attachmentsData {
@@ -358,6 +365,9 @@ private extension ChatMessage {
         } else {
             contentParts = nil
         }
+        let displayMetadata = cachedMessage.displayMetadataData.flatMap {
+            try? JSONDecoder().decode([String: JSONValue].self, from: $0)
+        }
         self.init(
             role: cachedMessage.role,
             content: cachedMessage.content,
@@ -371,8 +381,10 @@ private extension ChatMessage {
             reasoning: cachedMessage.reasoning,
             attachments: attachments,
             displayKind: cachedMessage.displayKind,
+            displayMetadata: displayMetadata,
             turnTps: cachedMessage.turnTps,
-            turnDuration: cachedMessage.turnDuration
+            turnDuration: cachedMessage.turnDuration,
+            rowID: cachedMessage.rowID
         )
     }
 }

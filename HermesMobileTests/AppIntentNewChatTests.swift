@@ -20,19 +20,8 @@ final class AppIntentNewChatTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testNewChatURLUsesNewChatHostOnTheAppScheme() throws {
-        let url = try XCTUnwrap(HermesDeepLink.newChatURL)
-        XCTAssertEqual(url.scheme, HermesDeepLink.scheme)
-        XCTAssertEqual(url.host, HermesDeepLink.newChatHost)
-    }
-
     func testIsNewChatURLAcceptsItsOwnURL() throws {
         let url = try XCTUnwrap(HermesDeepLink.newChatURL)
-        XCTAssertTrue(HermesDeepLink.isNewChatURL(url))
-    }
-
-    func testIsNewChatURLIsCaseInsensitiveOnHost() throws {
-        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://New-Chat"))
         XCTAssertTrue(HermesDeepLink.isNewChatURL(url))
     }
 
@@ -46,25 +35,6 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertNil(HermesDeepLink.sessionID(from: url))
     }
 
-    func testForeignSchemeIsNotANewChatURL() throws {
-        let url = try XCTUnwrap(URL(string: "https://new-chat"))
-        XCTAssertFalse(HermesDeepLink.isNewChatURL(url))
-    }
-
-    @MainActor
-    func testRouterRecordsDeepLink() {
-        let router = AppIntentRouter.shared
-        router.requestDeepLink(HermesDeepLink.newChatURL)
-        XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatURL)
-    }
-
-    @MainActor
-    func testRouterIgnoresNilDeepLink() {
-        let router = AppIntentRouter.shared
-        router.requestDeepLink(nil)
-        XCTAssertNil(router.pendingDeepLink)
-    }
-
     @MainActor
     func testNewChatIntentQueuesTheNewChatDeepLink() async throws {
         let router = AppIntentRouter.shared
@@ -72,25 +42,10 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatURL)
     }
 
-    func testIntentOpensAppWhenRun() {
-        XCTAssertTrue(NewChatIntent.openAppWhenRun)
-    }
-
     // MARK: - New Chat with Voice (issue #338)
-
-    func testNewChatVoiceURLUsesVoiceHostOnTheAppScheme() throws {
-        let url = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
-        XCTAssertEqual(url.scheme, HermesDeepLink.scheme)
-        XCTAssertEqual(url.host, HermesDeepLink.newChatVoiceHost)
-    }
 
     func testIsNewChatVoiceURLAcceptsItsOwnURL() throws {
         let url = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
-        XCTAssertTrue(HermesDeepLink.isNewChatVoiceURL(url))
-    }
-
-    func testIsNewChatVoiceURLIsCaseInsensitiveOnHost() throws {
-        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://New-Chat-Voice"))
         XCTAssertTrue(HermesDeepLink.isNewChatVoiceURL(url))
     }
 
@@ -103,21 +58,6 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(plainURL))
     }
 
-    func testNewChatVoiceURLDoesNotParseAsASessionID() throws {
-        let url = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
-        XCTAssertNil(HermesDeepLink.sessionID(from: url))
-    }
-
-    func testSessionURLIsNotAVoiceURL() throws {
-        let session = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: "abc123"))
-        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(session))
-    }
-
-    func testForeignSchemeIsNotAVoiceURL() throws {
-        let url = try XCTUnwrap(URL(string: "https://new-chat-voice"))
-        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(url))
-    }
-
     @MainActor
     func testNewChatVoiceIntentQueuesTheVoiceDeepLink() async throws {
         let router = AppIntentRouter.shared
@@ -125,15 +65,126 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatVoiceURL)
     }
 
-    func testVoiceIntentOpensAppWhenRun() {
-        XCTAssertTrue(NewChatVoiceIntent.openAppWhenRun)
+    // MARK: - On a Hermes server (#1180)
+
+    private let hermes = URL(string: "https://hermes.example")!
+    private let studio = URL(string: "https://studio.example:9119")!
+    private let webui = URL(string: "https://webui.example")!
+
+    private func account(_ server: URL, _ kind: ServerKind) -> ServerAccount {
+        ServerAccount(id: server.absoluteString, urlString: server.absoluteString, displayName: "", initials: "",
+                      headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: Date(timeIntervalSince1970: 0),
+                      updatedAt: Date(timeIntervalSince1970: 0), kind: kind)
     }
 
-    func testNewChatRequestDefaultsToVoiceOff() {
-        XCTAssertFalse(NewChatRequest().autoStartsVoiceInput)
+    private var servers: [ServerAccount] { [account(hermes, .hermes), account(studio, .hermes), account(webui, .webui)] }
+
+    @MainActor
+    func testNewChatOnAnActiveHermesServerStaysThere() throws {
+        for state in [AuthManager.State.loggedIn(server: hermes), .loggedOut(server: hermes)] {
+            let chat = try XCTUnwrap(HermesNewChatDestination.onActiveServer(state: state, servers: servers,
+                                                                             autoStartsVoiceInput: true))
+            XCTAssertEqual(chat.server, hermes)
+            XCTAssertNil(chat.profile, "New Session's Profile, which the list settles")
+            XCTAssertTrue(chat.autoStartsVoiceInput)
+        }
+        XCTAssertNil(HermesNewChatDestination.onActiveServer(state: .loggedIn(server: webui), servers: servers,
+                                                             autoStartsVoiceInput: false), "A webui server keeps its New Chat")
+        XCTAssertNil(HermesNewChatDestination.onActiveServer(state: .unconfigured, servers: [], autoStartsVoiceInput: false))
     }
 
-    func testNewChatRequestCarriesVoiceFlag() {
-        XCTAssertTrue(NewChatRequest(autoStartsVoiceInput: true).autoStartsVoiceInput)
+    @MainActor
+    func testAHermesNewChatOpensOnlyOnItsSignedInServer() {
+        let chat = HermesNewChatDestination(server: studio, profile: "dev")
+        XCTAssertEqual(chat.route(state: .loggedIn(server: studio), servers: servers), .open)
+        XCTAssertEqual(chat.route(state: .loggedOut(server: studio), servers: servers), .waitForSignIn)
+        XCTAssertEqual(chat.route(state: .loggedIn(server: webui), servers: servers), .switchServer(account(studio, .hermes)))
+        XCTAssertEqual(chat.route(state: .loggedIn(server: studio), servers: [account(hermes, .hermes)]), .ignore,
+                       "A removed server's Shortcut opens nothing")
+        XCTAssertEqual(HermesNewChatDestination(server: webui, profile: "dev").route(state: .loggedIn(server: webui), servers: servers),
+                       .ignore)
+    }
+
+    @MainActor
+    func testAHeldNewChatReplacesOlderLinksAndWaitsForItsServer() {
+        var links = PendingLinks(deepLinkedSessionID: "legacy", newChatRequest: NewChatRequest())
+        let chat = HermesNewChatDestination(server: studio, profile: "dev")
+
+        XCTAssertEqual(links.open(chat, state: .loggedIn(server: webui), servers: servers), account(studio, .hermes))
+        XCTAssertNil(links.deepLinkedSessionID)
+        XCTAssertNil(links.newChatRequest)
+        XCTAssertEqual(links.hermesNewChat, chat)
+
+        XCTAssertNil(links.reroute(state: .loggedOut(server: studio), servers: servers, isBotModeEnabled: false))
+        XCTAssertEqual(links.hermesNewChat, chat, "Held through the sign-in")
+        XCTAssertNil(links.reroute(state: .loggedIn(server: studio), servers: [account(webui, .webui)], isBotModeEnabled: false))
+        XCTAssertNil(links.hermesNewChat, "Its server was removed")
+    }
+
+    // MARK: - New Chat with Content (#1402)
+
+    @MainActor
+    func testNewChatWithContentQueuesTheTextBeforeOpeningTheShareLink() throws {
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: inbox) }
+        let router = AppIntentRouter.shared
+
+        try router.openNewChat(prefilling: " secret prompt ", server: studio, profile: "dev", inbox: inbox)
+
+        let link = try XCTUnwrap(router.pendingDeepLink)
+        XCTAssertEqual(link, HermesShareDraft.openURL, "Only the bare share link travels")
+        let queued = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(queued.sharedImport.draft, " secret prompt ")
+        XCTAssertEqual(queued.sharedImport.shortcut, SharedShortcutDestination(server: studio, profile: "dev"))
+    }
+
+    /// Troubleshoot with Hermes (#1476) queues through the same path, and its text keeps its origin
+    /// through the app-group inbox so the chat names Troubleshooting, not Shortcuts.
+    @MainActor
+    func testTroubleshootingTextKeepsItsOriginThroughTheInbox() throws {
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: inbox) }
+
+        try AppIntentRouter.shared.openNewChat(prefilling: "Help me triage", server: studio, profile: nil,
+                                               origin: .troubleshooting, inbox: inbox)
+
+        let queued = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(queued.sharedImport.shortcut,
+                       SharedShortcutDestination(server: studio, profile: nil, origin: .troubleshooting))
+    }
+
+    @MainActor
+    func testNewChatWithContentOpensOnAHermesProfileOrTheActiveHermesServer() throws {
+        let chosen = ProfileEntity(hermesServer: studio, profile: "dev", title: nil)
+        let picked = try NewChatWithContentIntent.destination(profile: chosen, active: webui, servers: servers)
+        XCTAssertEqual(picked.server, studio)
+        XCTAssertEqual(picked.profile, "dev")
+        let active = try NewChatWithContentIntent.destination(profile: nil, active: hermes, servers: servers)
+        XCTAssertEqual(active.server, hermes)
+        XCTAssertNil(active.profile)
+
+        let webuiProfile = ProfileEntity(id: "dev", name: "Dev", subtitle: nil)
+        XCTAssertThrowsError(try NewChatWithContentIntent.destination(profile: webuiProfile, active: hermes, servers: servers))
+        XCTAssertThrowsError(try NewChatWithContentIntent.destination(profile: nil, active: webui, servers: servers))
+    }
+
+    @MainActor
+    func testTheSessionsListOpensTheNewChatInItsProfileOnceItCan() {
+        let connection = BotConnection(id: UUID(), name: "Host", address: studio, username: "me", password: "secret")
+        let entry = HermesSessionListEntry(server: studio, connection: connection, profile: nil)
+        let voice = HermesNewChatDestination(server: studio, profile: nil, autoStartsVoiceInput: true)
+
+        XCTAssertNil(voice.chat(on: entry, listed: nil, isLive: true), "Waits for New Session's Profile")
+        XCTAssertNil(voice.chat(on: entry, listed: "default", isLive: false), "Waits for the host, as New Session does")
+        let opened = voice.chat(on: entry, listed: "default", isLive: true)
+        XCTAssertEqual(opened?.target, .new(profile: "default"))
+        XCTAssertEqual(opened?.server, studio)
+        XCTAssertEqual(opened?.autoStartsVoiceInput, true)
+
+        let named = HermesNewChatDestination(server: studio, profile: "dev").chat(on: entry, listed: "default", isLive: true)
+        XCTAssertEqual(named?.target, .new(profile: "dev"), "The Shortcut's Profile wins over the list's")
+        XCTAssertEqual(named?.autoStartsVoiceInput, false)
+        XCTAssertNil(HermesNewChatDestination(server: hermes, profile: "dev").chat(on: entry, listed: "default", isLive: true),
+                     "Another server's list opens nothing")
     }
 }

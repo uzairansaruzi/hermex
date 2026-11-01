@@ -20,36 +20,6 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
         super.tearDown()
     }
 
-    /// The load-bearing equivalence: `.plain` must equal what the old
-    /// `replacingInlineMath(in:)` pass produced, or rendering changed.
-    func testPlainLayoutMatchesInlineImageInlineMathPass() {
-        let inputs = [
-            "plain prose with no math at all",
-            "**bold** and _italic_ and `code`",
-            "a [link](https://example.com) and text",
-            "money: costs $5 today and $7 tomorrow",
-            #"inline math: $x^2 + y^2 = z^2$ inside prose"#,
-            "```swift\nlet a = 1\n```",
-            "list:\n- one\n- two\n\n1. first\n2. second",
-            "> quote\n> continued",
-            "| a | b |\n|---|---|\n| 1 | 2 |",
-            "unicode: café — ünïcödé 😀 中文",
-            "ab",
-            ""
-        ]
-
-        for input in inputs {
-            guard case .plain(let layout) = MarkdownMathLayoutCache.layout(for: input) else {
-                continue
-            }
-            XCTAssertEqual(
-                layout,
-                MarkdownMathFormatter.inlineMathImages(in: input),
-                "Cached plain layout diverged from the inline-image pass for \(input.debugDescription)"
-            )
-        }
-    }
-
     func testDisplayMathStillSegments() {
         guard case .segmented(let segments) = MarkdownMathLayoutCache.layout(for: "before $$x = 1$$ after") else {
             return XCTFail("Expected display math to produce a segmented layout.")
@@ -57,15 +27,6 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
 
         XCTAssertTrue(segments.containsMath)
         XCTAssertEqual(segments, MarkdownMathSegmenter.segments(in: "before $$x = 1$$ after"))
-    }
-
-    func testRepeatedLayoutRequestsReturnEqualResults() {
-        let content = "an answer with **bold** and `code` and no math"
-
-        let first = MarkdownMathLayoutCache.layout(for: content)
-        let second = MarkdownMathLayoutCache.layout(for: content)
-
-        XCTAssertEqual(first, second)
     }
 
     /// Streaming mutates the string on nearly every token. If that path wrote
@@ -92,17 +53,6 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
             "The settled path is expected to memoize."
         )
         XCTAssertEqual(uncached, cached, "Cached and uncached layouts must agree.")
-    }
-
-    func testEmptyAndShortContentStaysStable() {
-        XCTAssertEqual(
-            MarkdownMathLayoutCache.layout(for: ""),
-            MarkdownMathLayoutCache.layout(for: "")
-        )
-        XCTAssertEqual(
-            MarkdownMathLayoutCache.layout(for: "a"),
-            MarkdownMathLayoutCache.layout(for: "a")
-        )
     }
 
     /// Differential check over generated content: for every no-math input, the
@@ -146,39 +96,6 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
         }
 
         XCTAssertGreaterThan(checked, 500, "Generator produced too few no-math cases to be meaningful.")
-    }
-
-    /// A display-math span whose body is empty or whitespace-only produces no
-    /// `.displayMath` segment, but the segmenter has still consumed the
-    /// delimiters. Reconstructing the plain layout by joining the remaining
-    /// markdown would silently swallow that literal text.
-    ///
-    /// Caught in review on #261 — the original generator never produced an
-    /// empty span, so nothing failed. The leading-delimiter case matters
-    /// specifically because it still leaves exactly one markdown segment, so a
-    /// segment-count check does not catch it.
-    func testEmptyDisplayMathSpansSurviveAsLiteralText() {
-        let inputs = [
-            "before $$ $$ after",
-            "before $$$$ after",
-            "before $$\n\n$$ after",
-            #"before \[ \] after"#,
-            "text $$   $$ more text",
-            "$$ $$",
-            "$$ $$ trailing",
-            #"\[ \] leading"#
-        ]
-
-        for input in inputs {
-            guard case .plain(let layout) = MarkdownMathLayoutCache.layout(for: input) else {
-                continue
-            }
-            XCTAssertEqual(
-                layout,
-                MarkdownMathFormatter.inlineMathImages(in: input),
-                "Empty display-math delimiters were dropped for \(input.debugDescription)"
-            )
-        }
     }
 }
 

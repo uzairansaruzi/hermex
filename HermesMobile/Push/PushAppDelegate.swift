@@ -1,3 +1,4 @@
+import MetricKit
 import UIKit
 import UserNotifications
 
@@ -5,8 +6,11 @@ import UserNotifications
 /// notification taps, so this delegate hands tokens to `PushRegistrar`, relay taps to
 /// `PushNotificationRouter`, and local run alert taps to
 /// `ResponseCompletionNotificationRequest`. It also gives the scene `AppLockSceneDelegate`.
-/// It also supplies the recording-only iPhone orientation policy.
+/// It also supplies the recording-only iPhone orientation policy, and retains the MetricKit
+/// subscriber that keeps crash and hang reports for About → Diagnostics (#1397).
 final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    private let diagnosticsLog = DiagnosticsLog()
+
     func application(_ application: UIApplication,
                      supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         ComposerDictationLease.supportedOrientations(for: window)
@@ -18,6 +22,7 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
     ) -> Bool {
         // Set before launch finishes, or the tap that cold-started the app is lost.
         UNUserNotificationCenter.current().delegate = self
+        MXMetricManager.shared.add(diagnosticsLog)
         MainActor.assumeIsolated { PushRegistrar.shared?.refreshOnLaunch() }
         return true
     }
@@ -78,17 +83,14 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         // The system does not promise a thread here, so hop rather than assume.
         Task { @MainActor in
             let activeServer = ServerRegistry.shared.activeServerID.flatMap(URL.init(string:))
-            if let destination = ResponseCompletionNotificationRequest.destination(
-                userInfo: userInfo, servers: ServerRegistry.shared.servers.compactMap { URL(string: $0.id) }) {
-                AppIntentRouter.shared.requestDeepLink(destination.url)
-            } else if let pairings = Self.configuredPairings() {
-                if let destination = PushNotificationRouter.webuiDestination(
-                    userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
-                    AppIntentRouter.shared.requestDeepLink(destination.url)
-                } else if let destination = PushNotificationRouter.botDestination(
-                    userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
-                    AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: destination))
-                }
+            if let destination = PushNotificationRouter.localAlertLink(userInfo: userInfo,
+                                                                       servers: ServerRegistry.shared.servers) {
+                AppIntentRouter.shared.requestDeepLink(destination)
+            } else if let pairings = Self.configuredPairings(),
+                      let link = PushNotificationRouter.link(userInfo: userInfo, pairings: pairings,
+                                                             servers: ServerRegistry.shared.servers,
+                                                             activeServer: activeServer) {
+                AppIntentRouter.shared.requestDeepLink(link)
             }
             completionHandler()
         }

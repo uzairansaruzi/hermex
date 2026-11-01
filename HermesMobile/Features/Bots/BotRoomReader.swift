@@ -4,6 +4,8 @@ import Observation
 
 /// One visible room owns one socket. Closing invalidates replies before
 /// cancelling transport; backgrounding keeps the loaded window but stops all reads.
+/// A lost connection reconnects on its own a few times on backoff, at once when the network
+/// returns, and never while offline (#1372); it never resends a message or command.
 @MainActor @Observable final class BotRoomReader {
     enum Link: Equatable { case idle, connecting, live, stopped }
     let key: BotRoomKey
@@ -76,18 +78,23 @@ import Observation
     @ObservationIgnored private let onExpired: () -> Void
     @ObservationIgnored private let onChanged: (BotGroupRoom) -> Void
     @ObservationIgnored private let onDisbanded: () -> Void
+    @ObservationIgnored private let reconnect: BotReconnectSchedule
 
     init(key: BotRoomKey, connection: BotConnection, room: BotGroupRoom,
          cache: BotHistoryCache = .shared, initialSequence: Int? = nil,
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          onExpired: @escaping () -> Void = {},
          onChanged: @escaping (BotGroupRoom) -> Void = { _ in },
-         onDisbanded: @escaping () -> Void = {}) {
+         onDisbanded: @escaping () -> Void = {},
+         reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.key = key; self.connection = connection; self.room = room
         self.cache = cache; self.initialSequence = initialSequence
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: key.server) }; self.onExpired = onExpired
-        if case .room(let recent)? = cache.recent.snapshot(for: .room(key)) {
+        reconnect = BotReconnectSchedule(delays: reconnectDelays, limit: reconnectDelays.count,
+                                         isNetworkAvailable: isNetworkAvailable)
+        if let recent = cache.recent.log(for: .init(key)) {
             log = recent; publishLog()
             hasRecentLog = true
         }
@@ -103,13 +110,13 @@ import Observation
         suspend()
         if preservingLoadedHistory && !log.events.isEmpty {
             hasRecentLog = true
-        } else if case .room(let recent)? = cache.recent.snapshot(for: .room(key)) {
+        } else if let recent = cache.recent.log(for: .init(key)) {
             log = recent; publishLog()
             hasRecentLog = true
         } else {
             log = BotRoomLog(); events = []; threads = []; hasEarlier = false; hasRecentLog = false
         }
-        recentOwner = cache.recent.begin(.room(key))
+        recentOwner = cache.recent.begin(.init(key))
         // Checked before `makeWire`, which can retire a newer shared connection.
         if needsSignIn {
             await historyRemoval?.value
@@ -158,6 +165,7 @@ import Observation
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
             link = .live; didOpen = true; hasRecentLog = true
+            reconnect.succeeded()
             saveRecentTranscript()
             pollTask = Task { [weak self] in
                 while let self, self.wire === client, !Task.isCancelled {
@@ -202,7 +210,13 @@ import Observation
         viewOwner = nil
     }
 
+    /// The device's network path changed: a reconnect waiting on its backoff runs now if the
+    /// network is back, or holds until it is. The room's screens call it while on screen.
+    func networkPathDidChange() { reconnect.networkPathDidChange() }
+
     func suspend() {
+        reconnect.cancel()
+        ApprovalSummaries.shared.leave(summaryScope)
         saveRecentTranscript()
         if busy && dispatched {
             if let sending { uncertainSends[sending.contextThreadID ?? ""] = sending }
@@ -242,8 +256,11 @@ import Observation
         allows("groups.send") && !busy && uncertainSend(in: threadID) != nil
     }
     private func allows(_ method: String) -> Bool { canParticipate && capabilities.methods.contains(method) }
-    func mayAct(_ action: BotRoomAction) -> Bool {
-        !busy && action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
+    func mayAct(_ action: BotRoomAction) -> Bool { !busy && isPendingAndAnswerable(action) }
+
+    /// Pending ownership outlives the temporary command lock on the room's buttons.
+    private func isPendingAndAnswerable(_ action: BotRoomAction) -> Bool {
+        action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
             && allows(action.isRetry ? "groups.retry" : "groups.approve")
     }
 
@@ -324,14 +341,38 @@ import Observation
         })
     }
 
+    private var summaryScope: ApprovalSummaries.Scope {
+        .init(server: key.server, connectionID: connection.id, conversation: .room(id: key.roomID, epoch: room.epoch))
+    }
+
+    func summaryPresentation(for action: BotRoomAction) -> ApprovalSummaryPresentation? {
+        guard isPendingAndAnswerable(action), let client = wire, let approval = action.approval,
+              let profile = room.members.first(where: { $0.id == action.id.member })?.profile, !profile.isEmpty,
+              let input = ApprovalSummaries.input(description: approval.consequence, command: approval.command,
+                                                  cwd: approval.workingDirectory) else { return nil }
+        let key = ApprovalSummaries.Key(scope: summaryScope, request: .room(action.id))
+        return ApprovalSummaryPresentation(key: key) { [weak self] in
+            guard let self else { throw BotFailure.stale }
+            let reply = try await client.call(.approvalSummary(input: input, language: ApprovalSummaries.language(), sessionID: nil, profile: profile), validateDispatch: {
+                guard self.wire === client, self.summaryScope == key.scope, self.isPendingAndAnswerable(action) else { throw BotFailure.stale }
+            })
+            guard let text = reply["text"].text else { throw BotFailure.unsupported }
+            return text
+        }
+    }
+
     func act(_ action: BotRoomAction, choice: BotApprovalRequest.Choice? = nil) async {
         guard mayAct(action), let call = action.call(roomID: key.roomID, choice: choice) else { return }
+        let summaryKey = ApprovalSummaries.Key(scope: summaryScope, request: .room(action.id))
         await command(call, validate: {
             guard self.status.actions.contains(action), !self.inactiveActions.contains(action.id) else { throw BotFailure.stale }
             self.inactiveActions.insert(action.id)
         }, accept: { result in
             guard result[action.isRetry ? "retried" : "approved"].flag == true else { throw BotFailure.unsupported }
-            if !action.isRetry, let choice { self.feedback = BotFeedback(.approved(choice), after: self.feedback) }
+            if !action.isRetry, let choice {
+                ApprovalSummaries.shared.remove(summaryKey)
+                self.feedback = BotFeedback(.approved(choice), after: self.feedback)
+            }
         })
     }
 
@@ -389,8 +430,14 @@ import Observation
         guard let updated = BotGroupRoom(value["room"]), updated.id == key.roomID else { throw BotFailure.unsupported }
         guard revision == stateRevision else { return room.latestSeq }
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
+        let previousSummaryScope = summaryScope
         if !renaming && room != updated { room = updated; onChanged(updated) }
+        if previousSummaryScope != summaryScope { ApprovalSummaries.shared.retain([], in: previousSummaryScope) }
         let nextStatus = BotRoomStatus(value["driver_status"])
+        let pendingSummaries = nextStatus.actions.filter { $0.approval != nil }.map {
+            ApprovalSummaries.Key(scope: summaryScope, request: .room($0.id))
+        }
+        ApprovalSummaries.shared.retain(Set(pendingSummaries), in: summaryScope)
         if status != nextStatus { status = nextStatus }
         if !busy && nextStatus.stopping == 0 { awaitingStop = false }
         let pendingIDs = Set(nextStatus.actions.map(\.id))
@@ -465,12 +512,12 @@ import Observation
     private func saveRecentTranscript() {
         // Pending send bubbles stay private until their acknowledgment is known.
         guard link == .live, !busy, !uncertainDisband, let recentOwner else { return }
-        cache.recent.save(.room(log.recentWindow()), for: .room(key), owner: recentOwner)
+        cache.recent.save(log.recentWindow(), for: .init(key), owner: recentOwner)
     }
 
     private func discardHistory() {
         let cache = cache, key = key
-        cache.recent.remove { $0 == .room(key) }
+        cache.recent.remove { $0 == .init(key) }
         recentOwner = nil
         // Deletion intentionally outlives the screen; it never mutates view state.
         historyRemoval = Task { try? await cache.removeRoom(key) }
@@ -482,5 +529,17 @@ import Observation
         errorMessage = error.localizedDescription
         needsSignIn = error as? BotFailure == .rejected(401)
         if let failure = error as? BotRoomFailure, failure.expired { discardHistory(); close(); onExpired() }
+        // Only a lost connection or a passing refusal (a tunnel's 502, a rate limit) heals on
+        // its own; the screen that owns the room reopens it, keeping the loaded history.
+        let heals = switch error as? BotFailure {
+        case .transport: true
+        case .rejected: BotConnectionAdvice.isRetryable(error)
+        default: error is URLError
+        }
+        guard let owner = viewOwner, heals else { return }
+        reconnect.schedule { [weak self] in
+            guard let self, self.viewOwner == owner, self.link == .stopped else { return }
+            await self.open(owner: owner, preservingLoadedHistory: true)
+        }
     }
 }

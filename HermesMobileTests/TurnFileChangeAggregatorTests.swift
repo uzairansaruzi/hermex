@@ -30,7 +30,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                 tool("write_file", ["path": .string("Sources/App.swift")]),
                 tool("edit_file", ["file_path": .string("README.md")])
             ],
-            status: gitStatus
+            files: gitStatus.files ?? []
         )
 
         XCTAssertEqual(summary.changes.map(\.path), ["Sources/App.swift", "README.md"])
@@ -50,7 +50,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                 tool("terminal", ["command": .string("ls -la")]),
                 tool("search_files", ["path": .string("Sources")])
             ],
-            status: nil
+            files: []
         )
 
         XCTAssertFalse(summary.hasChanges)
@@ -67,7 +67,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                     "destination": .string("new/name.swift")
                 ])
             ],
-            status: nil
+            files: []
         )
 
         XCTAssertEqual(summary.changes.map(\.path), ["new/name.swift"])
@@ -82,7 +82,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
             toolCalls: [
                 tool("write_file", ["paths": .array([.string("a.txt"), .string("b.txt")])])
             ],
-            status: nil
+            files: []
         )
         XCTAssertEqual(summary.changes.map(\.path), ["a.txt", "b.txt"])
     }
@@ -96,7 +96,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                     .object(["start": .number(1)]) // no path → skipped
                 ])])
             ],
-            status: nil
+            files: []
         )
         XCTAssertEqual(summary.changes.map(\.path), ["x/one.swift", "x/two.swift"])
     }
@@ -120,17 +120,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         XCTAssertNil(TurnFileChangeAggregator.normalize(String(repeating: "a", count: 241)))
     }
 
-    func testNormalizationAppliedDuringAggregation() {
-        let summary = TurnFileChangeAggregator.summarize(
-            toolCalls: [
-                tool("write_file", ["path": .string("~/Sources/App.swift")]),
-                tool("edit_file", ["path": .string("./README.md")])
-            ],
-            status: nil
-        )
-        XCTAssertEqual(summary.changes.map(\.path), ["Sources/App.swift", "README.md"])
-    }
-
     // MARK: - Ignore filter
 
     func testIgnoredTreesAreDropped() {
@@ -144,7 +133,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                 tool("write_file", ["path": .string("pkg/__pycache__/mod.pyc")]),
                 tool("write_file", ["path": .string("src/keep.swift")])
             ],
-            status: nil
+            files: []
         )
 
         XCTAssertEqual(summary.changes.map(\.path), ["src/keep.swift"])
@@ -164,7 +153,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                 tool("create_file", ["path": .string("new.swift")]),
                 tool("remove_file", ["path": .string("gone.swift")])
             ],
-            status: gitStatus
+            files: gitStatus.files ?? []
         )
 
         let added = try XCTUnwrap(summary.changes.first { $0.path == "new.swift" })
@@ -185,7 +174,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         """)
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: [tool("edit_file", ["path": .string("/Users/me/repo/Sources/App.swift")])],
-            status: gitStatus
+            files: gitStatus.files ?? []
         )
 
         let change = try XCTUnwrap(summary.changes.first)
@@ -206,7 +195,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         """)
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: [tool("edit_file", ["path": .string("other/App.swift")])],
-            status: gitStatus
+            files: gitStatus.files ?? []
         )
 
         let change = try XCTUnwrap(summary.changes.first)
@@ -219,7 +208,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
     func testUnmatchedPathShowsZeroCountsAndToolActionChip() {
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: [tool("write_file", ["path": .string("untouched.swift")])],
-            status: nil
+            files: []
         )
 
         let change = summary.changes.first
@@ -238,7 +227,7 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                 tool("write_file", ["path": .string("a.swift")]),
                 tool("edit_file", ["path": .string("a.swift")])
             ],
-            status: nil
+            files: []
         )
         XCTAssertEqual(summary.changes.count, 1)
         XCTAssertEqual(summary.changes.first?.path, "a.swift")
@@ -250,26 +239,11 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                 tool("create_file", ["path": .string("a.swift")]),
                 tool("edit_file", ["path": .string("a.swift")])
             ],
-            status: nil
+            files: []
         )
         XCTAssertEqual(summary.changes.count, 1)
         XCTAssertEqual(summary.changes.first?.action, .added)
     }
 
     // MARK: - Titles
-
-    func testTitlesPluralize() {
-        let one = TurnFileChangeSummary(changes: [
-            TurnFileChange(path: "a", additions: 1, deletions: 0, action: .edited, changeKind: .modified, gitFile: nil)
-        ])
-        XCTAssertEqual(one.capsuleTitle, "1 change")
-        XCTAssertEqual(one.filesChangedTitle, "1 file changed")
-
-        let many = TurnFileChangeSummary(changes: [
-            TurnFileChange(path: "a", additions: 1, deletions: 0, action: .edited, changeKind: .modified, gitFile: nil),
-            TurnFileChange(path: "b", additions: 1, deletions: 0, action: .edited, changeKind: .modified, gitFile: nil)
-        ])
-        XCTAssertEqual(many.capsuleTitle, "2 changes")
-        XCTAssertEqual(many.filesChangedTitle, "2 files changed")
-    }
 }

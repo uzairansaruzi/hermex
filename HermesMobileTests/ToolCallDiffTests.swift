@@ -220,22 +220,30 @@ final class ToolCallDiffTests: XCTestCase {
         XCTAssertNil(ToolCallDiff.resolve(for: failed), "the requested change never landed")
     }
 
-    // MARK: - Bots and the opened body
+    // MARK: - Live results and the opened body
 
-    func testBotToolCompleteCarriesTheFullResultDiff() throws {
+    /// A Hermes chat's `tool.complete` result reaches the row as `toolResultPreview`, whose
+    /// re-encoded envelope keeps the full diff.
+    func testToolCompleteResultCarriesTheFullDiff() throws {
         let longDiff = unifiedDiff + String(repeating: "+added line\n", count: 400)
         let fullDiff = longDiff.replacingOccurrences(of: "@@ -9,4 +9,6 @@", with: "@@ -9,4 +9,406 @@")
-        var activity = BotTurnActivity()
-        activity.apply(type: "tool.complete", payload: .object([
-            "tool_id": .string("t1"),
-            "name": .string("patch"),
-            "args": .object(["path": .string("HermesMobile/App.swift"), "old_string": .string("x"), "new_string": .string("y")]),
-            "result": .object(["success": .bool(true), "diff": .string(fullDiff)])
-        ]))
+        let result = BotJSON.object(["success": .bool(true), "diff": .string(fullDiff)])
+        let patch = call("patch", preview: result.toolResultPreview,
+                         args: ["path": .string("HermesMobile/App.swift"), "old_string": .string("x"), "new_string": .string("y")])
 
-        let diff = try XCTUnwrap(ToolCallDiff.resolve(for: activity.toolCalls[0]))
+        let diff = try XCTUnwrap(ToolCallDiff.resolve(for: patch))
         XCTAssertEqual(diff.source, .resultDiff)
         XCTAssertEqual(diff.counts, ToolCallDiff.Counts(additions: 403, deletions: 1))
+    }
+
+    /// An error envelope keeps its fields through `toolResultPreview`, so the row reads as a
+    /// failure; a string result stays plain text.
+    func testErrorEnvelopeReadsAsFailureAndStringResultsStayText() {
+        let failed = call("read_file", preview: BotJSON.object(["error": .string("No such file")]).toolResultPreview, args: [:])
+        XCTAssertEqual(ToolCallSummaryFormatter.row(for: failed, isLive: false)?.status, .failure)
+        XCTAssertEqual(BotJSON.string("plain text result").toolResultPreview, "plain text result")
+        XCTAssertNil(BotJSON.string("").toolResultPreview)
+        XCTAssertNil(BotJSON.null.toolResultPreview)
     }
 
     func testOpenedContentReplacesTheArgumentsAndResultTheDiffCameFrom() throws {

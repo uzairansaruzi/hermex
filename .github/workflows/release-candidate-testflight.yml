@@ -35,7 +35,7 @@ jobs:
 
     env:
       # The same Xcode as PR CI and local work (DEVELOPMENT.md § Xcode version).
-      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
       APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
@@ -140,7 +140,7 @@ jobs:
           echo "Marketing version: ${MARKETING_VERSION}"
           echo "Build number: ${BUILD_NUMBER}"
           echo "Export options: ${EXPORT_OPTIONS_PLIST}"
-          echo "This workflow uploads only; external group assignment, Beta App Review, and App Review submission remain manual."
+          echo "This workflow uploads only; use scripts/app-store for owner-authorized distribution and review submission (TESTFLIGHT.md)."
 
       - name: Show Xcode version
         run: xcodebuild -version

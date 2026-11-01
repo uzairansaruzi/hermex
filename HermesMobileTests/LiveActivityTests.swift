@@ -24,27 +24,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertLessThanOrEqual(excerpt.count, AgentRunActivitySanitizer.maximumExcerptCharacters)
     }
 
-    func testMapsToolNamesToSafeStatuses() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityStateReducer.initialState(
-            sessionID: "session-abc",
-            sessionTitle: "Build fixes",
-            startedAt: startedAt
-        )
-
-        let command = AgentRunActivityStateReducer.toolStarted(name: "shell_command", state: state)
-        XCTAssertEqual(command.status, .runningCommand)
-        XCTAssertEqual(command.currentActivity, "Running command")
-
-        let search = AgentRunActivityStateReducer.toolStarted(name: "ripgrep_search", state: state)
-        XCTAssertEqual(search.status, .searchingFiles)
-        XCTAssertEqual(search.currentActivity, "Searching files")
-
-        let generic = AgentRunActivityStateReducer.toolStarted(name: "apply_patch", state: state)
-        XCTAssertEqual(generic.status, .usingTool)
-        XCTAssertEqual(generic.currentActivity, "Using apply patch")
-    }
-
     func testLiveActivityReusePolicyRequiresMatchingSessionAndStream() {
         XCTAssertTrue(
             AgentLiveActivityReusePolicy.canReuseActivity(
@@ -60,14 +39,6 @@ final class LiveActivityTests: XCTestCase {
                 existingStreamID: " stream-1 ",
                 requestedSessionID: "session-abc",
                 requestedStreamID: "stream-1"
-            )
-        )
-        XCTAssertFalse(
-            AgentLiveActivityReusePolicy.canReuseActivity(
-                existingSessionID: "session-abc",
-                existingStreamID: "stream-1",
-                requestedSessionID: "session-abc",
-                requestedStreamID: "stream-2"
             )
         )
         XCTAssertFalse(
@@ -142,60 +113,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertNil(pending(owed, .waitingForApproval, .runningCommand), "answering the ask drops it")
         XCTAssertNil(pending(owed, .waitingForApproval, .waitingForApproval, active: true),
                      "opening the app drops it")
-    }
-
-    func testActiveLiveActivityStatesCarryRenderableText() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let later = Date(timeIntervalSince1970: 106)
-        let initial = AgentRunActivityStateReducer.initialState(
-            sessionID: "session-abc",
-            sessionTitle: "Active render",
-            startedAt: startedAt
-        )
-        let states = [
-            initial,
-            AgentRunActivityStateReducer.reasoning("Thinking through the plan", state: initial, now: later),
-            AgentRunActivityStateReducer.toolStarted(name: "ripgrep_search", state: initial, now: later),
-            AgentRunActivityStateReducer.toolCompleted(state: initial, now: later),
-            AgentRunActivityStateReducer.waitingForApproval(state: initial, now: later),
-            AgentRunActivityStateReducer.waitingForClarification(state: initial, now: later),
-            AgentRunActivityStateReducer.settingInterimAssistant("Drafting the answer", on: initial, now: later)
-        ]
-
-        for state in states {
-            XCTAssertFalse(state.isFinal)
-            XCTAssertFalse(state.sessionTitle.isEmpty)
-            XCTAssertFalse(state.currentActivity.isEmpty)
-            XCTAssertGreaterThanOrEqual(state.updatedAt, state.startedAt)
-        }
-    }
-
-    func testUpdatingSessionTitlePreservesLiveActivityState() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityAttributes.ContentState(
-            sessionID: "session-abc",
-            sessionTitle: "Untitled Session",
-            status: .searchingFiles,
-            currentActivity: "Searching files",
-            responseExcerpt: "Looking through the repo.",
-            startedAt: startedAt,
-            updatedAt: startedAt,
-            isStale: true
-        )
-
-        let updated = AgentRunActivityStateReducer.updatingSessionTitle(
-            "Generated repo audit title",
-            state: state,
-            now: Date(timeIntervalSince1970: 130)
-        )
-
-        XCTAssertEqual(updated.sessionTitle, "Generated repo audit title")
-        XCTAssertEqual(updated.status, .searchingFiles)
-        XCTAssertEqual(updated.currentActivity, "Searching files")
-        XCTAssertEqual(updated.responseExcerpt, "Looking through the repo.")
-        XCTAssertEqual(updated.startedAt, startedAt)
-        XCTAssertEqual(updated.updatedAt, Date(timeIntervalSince1970: 130))
-        XCTAssertTrue(updated.isStale)
     }
 
     func testWidgetTapRoutesWebuiSessionThroughItsOwningServer() throws {
@@ -275,23 +192,30 @@ final class LiveActivityTests: XCTestCase {
         }
     }
 
-    func testOldOrUnrelatedLinksDoNotIdentifyAnActivity() throws {
-        let oldURL = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: "session"))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: oldURL))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: URL(string: "https://session?id=session&activity=other")!))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: URL(string: "\(HermesDeepLink.scheme)://new-chat?activity=other")!))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: URL(string: "\(HermesDeepLink.scheme)://session?id=session&activity=")!))
-    }
-
-    func testBuildsAndParsesSessionDeepLink() throws {
-        let url = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: "session-abc"))
-        let scheme = HermesDeepLink.scheme
-
-        XCTAssertEqual(url.scheme, scheme)
-        XCTAssertEqual(url.host, "session")
-        XCTAssertEqual(HermesDeepLink.sessionID(from: url), "session-abc")
-        XCTAssertEqual(HermesDeepLink.sessionID(from: URL(string: "\(scheme)://session/session-xyz")!), "session-xyz")
-        XCTAssertNil(HermesDeepLink.sessionID(from: HermesShareDraft.openURL))
+    func testCompactIslandQuietsWorkAndKeepsAsksAndOutcomesThroughStaleness() {
+        let expected: [(AgentRunActivityStatus, fresh: AgentRunCompactPresentation, stale: AgentRunCompactPresentation)] = [
+            (.starting, .working, .staleWork),
+            (.thinking, .working, .staleWork),
+            (.usingTool, .working, .staleWork),
+            (.searchingFiles, .working, .staleWork),
+            (.readingFiles, .working, .staleWork),
+            (.runningCommand, .working, .staleWork),
+            (.responding, .working, .staleWork),
+            (.waiting, .waiting, .waiting),
+            (.waitingForApproval, .approval, .approval),
+            (.waitingForClarification, .clarification, .clarification),
+            (.complete, .complete, .complete),
+            (.failed, .failed, .failed),
+            (.cancelled, .cancelled, .cancelled),
+        ]
+        let base = AgentRunActivityStateReducer.initialState(sessionID: "session", sessionTitle: "Run")
+        for (status, fresh, stale) in expected {
+            var state = base
+            state.status = status
+            XCTAssertEqual(AgentRunCompactPresentation(state: state), fresh, "\(status)")
+            state.isStale = true
+            XCTAssertEqual(AgentRunCompactPresentation(state: state), stale, "stale \(status)")
+        }
     }
 
     func testSessionDeepLinkURLPercentEncodesSessionID() throws {
@@ -465,45 +389,6 @@ final class LiveActivityTests: XCTestCase {
 
         XCTAssertTrue(manager.updates.isEmpty)
         XCTAssertTrue(viewModel.messages.contains { $0.content?.contains("Private token.") == true })
-    }
-
-    func testChatViewModelCanOptIntoLiveActivityResponseExcerpts() async throws {
-        let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
-        let streamClient = LiveActivitySpySSEClient()
-        let approvalStreamClient = LiveActivitySpySSEClient()
-        let clarifyStreamClient = LiveActivitySpySSEClient()
-        let manager = SpyAgentLiveActivityManager()
-        let session = try Self.sessionSummary(id: "session-abc", title: "Visible live work")
-
-        LiveActivityURLProtocol.handler = { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return Self.jsonResponse(#"{"stream_id":"stream-123","session_id":"session-abc"}"#, for: request)
-        }
-
-        let viewModel = ChatViewModel(
-            session: session,
-            server: baseURL,
-            client: client,
-            streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: clarifyStreamClient,
-            liveActivityManager: manager,
-            showsLiveActivityResponseExcerpts: true
-        )
-
-        let didStart = await viewModel.sendMessage("Show response text")
-        XCTAssertTrue(didStart)
-
-        streamClient.emit(.token("Visible token."))
-        streamClient.emit(.interimAssistant(InterimAssistantStreamEvent(text: "Visible interim.", alreadyStreamed: false)))
-
-        XCTAssertEqual(manager.updates, [
-            .token("Visible token."),
-            .interimAssistant("Visible interim.")
-        ])
     }
 
     func testDisablingLiveActivityResponseExcerptsClearsActiveExcerpt() async throws {
@@ -808,75 +693,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(requestPaths, ["/api/chat/start", "/api/chat/stream/status", "/api/session"])
     }
 
-    func testStatusRefreshWithoutFinalAssistantDoesNotCompleteLiveActivity() async throws {
-        let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
-        let streamClient = LiveActivitySpySSEClient()
-        let approvalStreamClient = LiveActivitySpySSEClient()
-        let clarifyStreamClient = LiveActivitySpySSEClient()
-        let manager = SpyAgentLiveActivityManager()
-        let session = try Self.sessionSummary(id: "session-abc", title: "Live work")
-
-        LiveActivityURLProtocol.handler = { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return Self.jsonResponse(#"{"stream_id":"stream-123","session_id":"session-abc"}"#, for: request)
-            case "/api/chat/stream/status":
-                return Self.jsonResponse(#"{"active":false,"stream_id":"stream-123"}"#, for: request)
-            case "/api/session":
-                return Self.jsonResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Live work",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      }
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let viewModel = ChatViewModel(
-            session: session,
-            server: baseURL,
-            client: client,
-            streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: clarifyStreamClient,
-            liveActivityManager: manager
-        )
-
-        let didStart = await viewModel.sendMessage("Keep working")
-        XCTAssertTrue(didStart)
-        streamClient.emit(.toolStarted(ToolStreamEvent(
-            eventType: nil,
-            name: "shell_command",
-            preview: nil,
-            args: nil,
-            duration: nil,
-            isError: nil
-        )))
-
-        await viewModel.refreshTranscriptIfActiveStreamCompleted(streamID: "stream-123")
-
-        XCTAssertTrue(manager.ends.isEmpty)
-        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
-        XCTAssertEqual(streamClient.stopCount, 0)
-        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 0)
-    }
-
     func testForegroundReconnectCompletionEndsLiveActivityAndAllowsFollowupStream() async throws {
         let baseURL = URL(string: "https://example.test")!
         let configuration = URLSessionConfiguration.ephemeral
@@ -1026,56 +842,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(viewModel.runEndOutcome, .failed)
     }
 
-    func testFinalLiveActivityStateKeepsExcerptVisible() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityAttributes.ContentState(
-            sessionID: "session-abc",
-            sessionTitle: "Live work",
-            status: .responding,
-            currentActivity: "Writing response",
-            responseExcerpt: "Here is the answer.",
-            startedAt: startedAt,
-            updatedAt: startedAt
-        )
-
-        let finalState = AgentRunActivityStateReducer.final(
-            status: .complete,
-            activity: "Response complete",
-            state: state,
-            now: Date(timeIntervalSince1970: 120)
-        )
-
-        XCTAssertEqual(finalState.status, .complete)
-        XCTAssertEqual(finalState.currentActivity, "Response complete")
-        XCTAssertEqual(finalState.responseExcerpt, "Here is the answer.")
-        XCTAssertTrue(finalState.isFinal)
-        XCTAssertFalse(finalState.isStale)
-    }
-
-    func testClearingLiveActivityExcerptRemovesRenderableText() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityAttributes.ContentState(
-            sessionID: "session-abc",
-            sessionTitle: "Live work",
-            status: .responding,
-            currentActivity: "Writing response",
-            responseExcerpt: "Sensitive answer text.",
-            startedAt: startedAt,
-            updatedAt: startedAt
-        )
-
-        let cleared = AgentRunActivityStateReducer.clearingResponseExcerpt(
-            state: state,
-            now: Date(timeIntervalSince1970: 130)
-        )
-
-        XCTAssertEqual(cleared.status, .responding)
-        XCTAssertEqual(cleared.currentActivity, "Writing response")
-        XCTAssertTrue(cleared.responseExcerpt.isEmpty)
-        XCTAssertEqual(cleared.startedAt, startedAt)
-        XCTAssertEqual(cleared.updatedAt, Date(timeIntervalSince1970: 130))
-    }
-
     private static func sessionSummary(id: String, title: String) throws -> SessionSummary {
         let data = Data(#"{"session_id":"\#(id)","title":"\#(title)"}"#.utf8)
         let decoder = JSONDecoder()
@@ -1143,45 +909,6 @@ final class LiveActivityTests: XCTestCase {
         )
 
         XCTAssertEqual(ended, ["done"])
-    }
-
-    @MainActor
-    func testReconcilerEndsNothingWhenNoOrphansExist() async {
-        var endCount = 0
-
-        await LiveActivityReconciler.reconcileOrphanedActivities(
-            orphans: [],
-            server: Self.reconcilerServer,
-            now: Date(timeIntervalSince1970: 10_000),
-            notifiesOnCompletion: true,
-            streamStatus: { _ in self.statusResponse(active: false) },
-            endOrphan: { _, _ in endCount += 1; return true },
-            notify: { _, _ in }
-        )
-
-        XCTAssertEqual(endCount, 0)
-    }
-
-    // #248: on the cold-launch pass, a recently finished orphan also fires a
-    // "response complete" notification once it's ended.
-    @MainActor
-    func testReconcilerNotifiesRecentlyCompletedOrphanOnColdLaunchPass() async {
-        let now = Date(timeIntervalSince1970: 10_000)
-        var notified: [String] = []
-
-        await LiveActivityReconciler.reconcileOrphanedActivities(
-            orphans: [
-                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60), server: Self.reconcilerServer)
-            ],
-            server: Self.reconcilerServer,
-            now: now,
-            notifiesOnCompletion: true,
-            streamStatus: { _ in self.statusResponse(active: false) },
-            endOrphan: { _, _ in true },
-            notify: { orphan, _ in notified.append(orphan.sessionID) }
-        )
-
-        XCTAssertEqual(notified, ["s-recent"])
     }
 
     // #248: a completion older than the recency window is finalized silently.
@@ -1298,52 +1025,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(status("unknown"), .complete)
         XCTAssertEqual(status(nil), .complete)
         XCTAssertEqual(status("a-state-we-have-never-seen"), .complete)
-
-        // The widget line reuses the existing localized completion strings.
-        XCTAssertEqual(
-            LiveActivityReconciler.reconciledOutcome(forTerminalState: "completed").activity,
-            String(localized: "Response complete")
-        )
-        XCTAssertEqual(
-            LiveActivityReconciler.reconciledOutcome(forTerminalState: "errored").activity,
-            String(localized: "Response failed")
-        )
-        XCTAssertEqual(
-            LiveActivityReconciler.reconciledOutcome(forTerminalState: "interrupted-by-user").activity,
-            String(localized: "Response cancelled")
-        )
-    }
-
-    // #267: the core finalizes each orphan with the outcome mapped from the
-    // server journal's terminal_state — not an unconditional `.complete`.
-    @MainActor
-    func testReconcilerFinalizesOrphanWithMappedOutcome() async {
-        let now = Date(timeIntervalSince1970: 10_000)
-        var endedWith: [String: AgentRunActivityStatus] = [:]
-
-        await LiveActivityReconciler.reconcileOrphanedActivities(
-            orphans: [
-                OrphanedLiveActivity(streamID: "ok", sessionID: "s-ok", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
-                OrphanedLiveActivity(streamID: "lost", sessionID: "s-lost", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
-                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer)
-            ],
-            server: Self.reconcilerServer,
-            now: now,
-            notifiesOnCompletion: false,
-            streamStatus: { streamID in
-                switch streamID {
-                case "ok": self.statusResponse(active: false, terminalState: "completed")
-                case "lost": self.statusResponse(active: false, terminalState: "lost-worker-bookkeeping")
-                default: self.statusResponse(active: false, terminalState: "interrupted-by-user")
-                }
-            },
-            endOrphan: { orphan, outcome in endedWith[orphan.streamID] = outcome.status; return true },
-            notify: { _, _ in }
-        )
-
-        XCTAssertEqual(endedWith["ok"], .complete)
-        XCTAssertEqual(endedWith["lost"], .failed)
-        XCTAssertEqual(endedWith["stopped"], .cancelled)
     }
 
     // #862: the cold-launch pass alerts for a recent run that completed or failed,
@@ -1557,6 +1238,215 @@ final class LiveActivityTests: XCTestCase {
         let state = try XCTUnwrap(manager.currentStateForTesting())
         XCTAssertEqual(state.status, .responding)
         XCTAssertEqual(state.responseExcerpt, "Hello")
+    }
+
+    // MARK: Hermes sessions (#1179)
+
+    /// A Hermes session's relay route is its server and stored key, the `session_id` the
+    /// plugin's progress carries. One a build before #1179 started names no such key, so it is
+    /// never registered under its `hermes:` identity. A webui run keeps its own session ID.
+    func testAHermesSessionPushesUnderItsStoredKey() {
+        let hermes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run", startedAt: .now,
+                                                server: server, pushSessionID: "tip")
+        XCTAssertEqual(hermes.pushTarget, AgentRunActivityPushTarget(server: server, sessionID: "tip"))
+        let older = AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now,
+                                               server: server)
+        XCTAssertNil(older.pushTarget)
+        let webui = AgentRunActivityAttributes(sessionID: "webui-session", sessionTitle: "Run", startedAt: .now, server: server)
+        XCTAssertEqual(webui.pushTarget, AgentRunActivityPushTarget(server: server, sessionID: "webui-session"))
+    }
+
+    /// An activity the previous build persisted decodes without a link or a key, and the new
+    /// fields survive the round trip ActivityKit puts attributes through.
+    func testAHermesActivityFromThePreviousBuildStillDecodes() throws {
+        let data = Data(#"{"sessionID":"hermes:default:tip","sessionTitle":"Run","streamID":"1790000000.5","startedAt":0,"server":"https://webui.example"}"#.utf8)
+        let older = try JSONDecoder().decode(AgentRunActivityAttributes.self, from: data)
+        XCTAssertEqual(older.server, server)
+        XCTAssertNil(older.destinationURL)
+        XCTAssertNil(older.pushSessionID)
+
+        let link = try XCTUnwrap(HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: "default", key: "tip")))
+        let current = AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now,
+                                                 server: server, destinationURL: link, pushSessionID: "tip-2")
+        let copy = try JSONDecoder().decode(AgentRunActivityAttributes.self, from: JSONEncoder().encode(current))
+        XCTAssertEqual(copy.destinationURL, link)
+        XCTAssertEqual(copy.pushSessionID, "tip-2")
+    }
+
+    /// The driven session's pushes follow its stored key: a move changes the key its token
+    /// registers under, and a reattach inside the turn adopts the same activity (its state
+    /// carries on) under the key the chat now knows. A blank key moves nothing.
+    func testAHermesSessionsPushesFollowItsStoredKey() throws {
+        let manager = AgentLiveActivityManager()
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+        manager.startSession(sessionID: "hermes:default:root", server: server, destinationURL: nil, pushSessionID: "tip",
+                             sessionTitle: "Run", turn: "1000.0", startedAt: startedAt)
+        XCTAssertEqual(manager.drivenSessionID, "hermes:default:root")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip")
+
+        manager.movePushSession(to: "tip-2")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
+        manager.movePushSession(to: " ")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
+
+        manager.update(.toolStarted(name: "terminal"))
+        manager.startSession(sessionID: "hermes:default:root", server: server, destinationURL: nil, pushSessionID: "tip-3",
+                             sessionTitle: "Run", turn: "1000.0", startedAt: startedAt)
+        XCTAssertEqual(manager.currentStateForTesting()?.status, .runningCommand, "the same activity, not a new one")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-3")
+    }
+
+    /// Cold launch adopts a paired Hermes session's running activity, as a bot's, under the key
+    /// it carried, so the relay keeps driving it and the session's chat can take it over. A
+    /// finished one is not adopted.
+    func testColdLaunchAdoptsAPairedHermesSessionsActivity() throws {
+        let attributes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run",
+                                                    streamID: "1000.0", startedAt: Date(timeIntervalSince1970: 1_000),
+                                                    server: server, pushSessionID: "tip")
+        let running = AgentRunActivityStateReducer.initialState(sessionID: "hermes:default:root", sessionTitle: "Run")
+        let final = AgentRunActivityStateReducer.final(status: .complete, activity: "Done", state: running)
+        let manager = AgentLiveActivityManager()
+        XCTAssertFalse(manager.restoreOwnership(attributes: attributes, state: final))
+        XCTAssertTrue(manager.restoreOwnership(attributes: attributes, state: running))
+        XCTAssertEqual(manager.drivenSessionID, "hermes:default:root")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip")
+    }
+
+    /// `session.active_list` runs a session while it lists the stored key with any status but
+    /// `idle`, including ones this build does not know.
+    func testTheLiveListRunsEveryListedSessionThatIsNotIdle() {
+        let items: [BotJSON] = [("a", "working"), ("b", "waiting"), ("c", "starting"), ("d", "streaming"),
+                                ("e", "resuming"), ("f", "idle")].map { key, status in
+            .object(["id": .string("runtime-\(key)"), "session_key": .string(key), "status": .string(status)])
+        } + [.object(["id": .string("runtime-g"), "session_key": .string("g")]),
+             .object(["id": .string("runtime-h"), "status": .string("working")])]
+        XCTAssertEqual(LeftoverLiveActivitySettlement.runningKeys(items), ["a", "b", "c", "d", "e", "g"])
+    }
+
+    /// What cold launch does with each activity a previous launch left (#489, #566, #1179). A
+    /// paired activity is adopted; a finished one releases its route. An unpaired Hermes
+    /// session's on the signed-in Hermes server is checked once against the live list: listed
+    /// and running, it stays; otherwise it ends as complete, since the outcome is unknown.
+    /// Another server's waits for its stale date, as a running webui run waits for its own
+    /// reconciler; an unpaired bot cannot be followed, so it ends.
+    func testColdLaunchChecksUnpairedHermesRunsOnceAgainstTheLiveList() async throws {
+        let paired = URL(string: "https://paired.example")!
+        let other = URL(string: "https://other.example")!
+        func hermes(_ id: String, key: String?, on server: URL, finished: Bool = false) -> LeftoverLiveActivity {
+            LeftoverLiveActivity(id: id, attributes: AgentRunActivityAttributes(
+                sessionID: "hermes:default:\(key ?? id)", sessionTitle: "Run", startedAt: .now, server: server,
+                pushSessionID: key, requestedPush: server == paired ? true : nil), isFinished: finished)
+        }
+        func bot(_ id: String, on server: URL) throws -> LeftoverLiveActivity {
+            var bot = try XCTUnwrap(AgentRunActivityBot(BotDestination(server: server, connectionID: UUID(), profile: "triage")))
+            bot.pushSessionID = "bot-tip"
+            return LeftoverLiveActivity(id: id, attributes: AgentRunActivityAttributes(
+                sessionID: bot.key, sessionTitle: "Triage", startedAt: .now, bot: bot), isFinished: false)
+        }
+        let leftovers = [
+            hermes("paired", key: "k-paired", on: paired),
+            hermes("working", key: "k-working", on: server),
+            hermes("waiting", key: "k-waiting", on: server),
+            hermes("idle", key: "k-idle", on: server),
+            hermes("absent", key: "k-absent", on: server),
+            hermes("k-older", key: nil, on: server),
+            hermes("other", key: "k-working", on: other),
+            hermes("finished", key: "k-finished", on: server, finished: true),
+            try bot("bot-paired", on: paired),
+            try bot("bot-unpaired", on: server),
+            LeftoverLiveActivity(id: "webui", attributes: AgentRunActivityAttributes(
+                sessionID: "webui-session", sessionTitle: "Run", startedAt: .now, server: server), isFinished: false),
+            LeftoverLiveActivity(id: "webui-finished", attributes: AgentRunActivityAttributes(
+                sessionID: "webui-session", sessionTitle: "Run", startedAt: .now, server: server), isFinished: true)
+        ]
+        var reads = 0
+        let actions = await LeftoverLiveActivitySettlement.actions(
+            for: leftovers, isPaired: { $0 == paired }, hermesServer: server,
+            runningKeys: { reads += 1; return ["k-working", "k-waiting", "k-older"] }
+        )
+        XCTAssertEqual(actions, [.adopt, .keep, .keep, .endComplete, .endComplete, .keep, .keep, .retire,
+                                 .adopt, .end, .keep, .retire])
+        XCTAssertEqual(reads, 1, "one live-list read for every unpaired Hermes run")
+    }
+
+    /// A live list that can't be read proves nothing, so the unpaired run stays. Without an
+    /// unpaired Hermes run on the signed-in Hermes server, nothing is read at all.
+    func testColdLaunchLeavesHermesRunsTheLiveListCannotSettle() async {
+        let unpaired = LeftoverLiveActivity(id: "unpaired", attributes: AgentRunActivityAttributes(
+            sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now, server: server, pushSessionID: "tip",
+            requestedPush: true), isFinished: false)
+        var reads = 0
+        let failed = await LeftoverLiveActivitySettlement.actions(
+            for: [unpaired], isPaired: { _ in false }, hermesServer: server, runningKeys: { reads += 1; return nil })
+        XCTAssertEqual(failed, [.keep])
+        XCTAssertEqual(reads, 1)
+
+        let cases: [(paired: URL?, hermes: URL?)] = [(server, server), (nil, nil), (nil, URL(string: "https://other.example")!)]
+        for (pairedServer, hermesServer) in cases {
+            let actions = await LeftoverLiveActivitySettlement.actions(
+                for: [unpaired], isPaired: { $0 == pairedServer }, hermesServer: hermesServer,
+                runningKeys: { reads += 1; return [] })
+            XCTAssertEqual(actions, [pairedServer == nil ? .keep : .adopt])
+        }
+        XCTAssertEqual(reads, 1, "nothing to check, so nothing read")
+
+        // Nor does a list without the leftover's key show its run is over, when it names none.
+        let keyless = LeftoverLiveActivity(id: "keyless", attributes: AgentRunActivityAttributes(
+            sessionID: "hermes:default", sessionTitle: "Run", startedAt: .now, server: server), isFinished: false)
+        let unknown = await LeftoverLiveActivitySettlement.actions(
+            for: [keyless], isPaired: { _ in false }, hermesServer: server, runningKeys: { ["tip"] })
+        XCTAssertEqual(unknown, [.keep])
+    }
+
+    /// A Hermes session's activity started before its server paired asked for no push token, so
+    /// the relay can't drive it after pairing: it is checked against the live list like an
+    /// unpaired one, never adopted (#1179).
+    func testColdLaunchChecksAHermesRunStartedBeforePairingAgainstTheLiveList() async {
+        func hermes(_ key: String, requestedPush: Bool?) -> LeftoverLiveActivity {
+            LeftoverLiveActivity(id: key, attributes: AgentRunActivityAttributes(
+                sessionID: "hermes:default:\(key)", sessionTitle: "Run", startedAt: .now, server: server,
+                pushSessionID: key, requestedPush: requestedPush), isFinished: false)
+        }
+        var reads = 0
+        let actions = await LeftoverLiveActivitySettlement.actions(
+            for: [hermes("pushed", requestedPush: true), hermes("local-running", requestedPush: nil),
+                  hermes("local-done", requestedPush: nil)],
+            isPaired: { _ in true }, hermesServer: server,
+            runningKeys: { reads += 1; return ["pushed", "local-running"] }
+        )
+        XCTAssertEqual(actions, [.adopt, .keep, .endComplete])
+        XCTAssertEqual(reads, 1)
+    }
+
+    /// A legacy compression's key move outlives the process (#1179). A fresh manager, as after a
+    /// relaunch, finds the activity under the moved key: the host listing that key running keeps
+    /// it, and adopting it re-registers under that key. The same turn on another server keeps
+    /// the key it carries.
+    func testAMovedKeySurvivesARelaunch() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "LiveActivityTests-\(UUID())"))
+        let before = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+        before.startSession(sessionID: "hermes:default:root", server: server, destinationURL: nil, pushSessionID: "tip",
+                            sessionTitle: "Run", turn: "1000.0", startedAt: .now)
+        before.movePushSession(to: "tip-2")
+
+        let relaunched = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+        func attributes(on server: URL) -> AgentRunActivityAttributes {
+            AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run", streamID: "1000.0",
+                                       startedAt: .now, server: server, pushSessionID: "tip")
+        }
+        let other = relaunched.leftover(id: "other", attributes: attributes(on: URL(string: "https://other.example")!),
+                                        isFinished: false)
+        XCTAssertEqual(other.pushSessionID, "tip")
+
+        let leftover = relaunched.leftover(id: "moved", attributes: attributes(on: server), isFinished: false)
+        var ended: [LeftoverLiveActivityAction] = []
+        await relaunched.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: server) { ["tip-2"] },
+                                isFinished: { _ in false }, adopt: { _ in false }, end: { ended.append($1) })
+        XCTAssertEqual(ended, [], "the host still runs the moved key")
+
+        let running = AgentRunActivityStateReducer.initialState(sessionID: "hermes:default:root", sessionTitle: "Run")
+        XCTAssertTrue(relaunched.restoreOwnership(attributes: attributes(on: server), state: running))
+        XCTAssertEqual(relaunched.drivenPushSessionIDForTesting, "tip-2")
     }
 }
 

@@ -479,10 +479,11 @@ struct ClarificationRequestCard: View {
     }
 }
 
-/// A Hermes session's question, or sudo or secret prompt, pinned above the composer in the
-/// webui clarification's slot (#1011). The clarification bar is its footprint; the expanded
-/// card is the Bot request card, which already answers each of them: batch questions keyed
-/// by `qid`, masked credential fields, Skip. The card stays mounted while collapsed, so a
+/// A Hermes session's question, sudo or secret prompt, Desktop task or connection operation,
+/// pinned above the composer in the webui clarification's slot (#1011, #1141). The
+/// clarification bar is its footprint; the expanded card is the Bot request card, which
+/// already answers each of them: batch questions keyed by `qid`, masked credential fields,
+/// Skip, a connection's rows and Continue without, and a Desktop task's Stop. The card stays mounted while collapsed, so a
 /// half-typed answer survives, and slides through the bar's clip window like the webui card.
 /// Taller than the space above the composer, it scrolls. With no room for even a line of it,
 /// it falls back to the bar like the webui card, and expanding then puts the keyboard away.
@@ -494,11 +495,16 @@ struct HermesRequestInset: View {
     let isEnabled: Bool
     let isAnswering: Bool
     let isStopping: Bool
+    /// The connection card's verdict: inert after the host lost the operation, or a warning.
+    let resolution: BotRequestResolution?
     let isHapticsEnabled: Bool
     let onAnswer: ([BotQuestionAnswer]) -> Void
     let onSkip: () -> Void
     /// Sends a credential prompt's typed value. Empty is the host's skip.
     let onCredential: (String) -> Void
+    /// One row's answer, or Continue without, for a connection operation.
+    let onConnection: (BotConnectionOperation.Answer) -> Void
+    /// The chat's Stop, from the bar and a Desktop task's card.
     let onStop: () -> Void
     let onDismissKeyboard: () -> Void
     /// The bar's height, the only part of this view that takes layout space.
@@ -553,10 +559,10 @@ struct HermesRequestInset: View {
             collapseButton
             ScrollView {
                 BotPendingRequestCard(
-                    request: request, identity: identity, isEnabled: isEnabled, canStop: false,
-                    isAnswering: isAnswering, resolution: nil,
+                    request: request, identity: identity, isEnabled: isEnabled, canStop: !isStopping,
+                    isAnswering: isAnswering, resolution: resolution,
                     onApprove: { _ in }, onAnswer: onAnswer, onSkip: onSkip, onCredential: onCredential,
-                    onStop: {}, onConnection: { _ in }
+                    onStop: onStop, onConnection: onConnection, subject: .hermes
                 )
                 .onGeometryChange(for: CGFloat.self) { proxy in
                     proxy.size.height
@@ -584,12 +590,15 @@ struct HermesRequestInset: View {
         .accessibilityLabel("Collapse clarification")
     }
 
-    /// What the bar says is asked: the first question, or the credential prompt's title.
+    /// What the bar says is asked: the first question, the credential prompt's title, what
+    /// Desktop is doing, or the apps to connect.
     private var summary: String {
         switch request {
         case .question(let question): return ClarificationRequestBar.summary(for: question.questions.first?.prompt ?? "")
         case .credential(let credential): return credential.title
-        case .approval, .desktopTask, .connection: return ""
+        case .desktopTask(let task): return task.kind.title(.hermes)
+        case .connection: return String(localized: "Connect apps")
+        case .approval: return ""
         }
     }
 

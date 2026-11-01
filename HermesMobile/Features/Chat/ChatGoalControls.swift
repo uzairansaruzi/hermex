@@ -9,6 +9,13 @@ struct GoalControlsMenu: View {
     let isActionDisabled: Bool
     let onSetGoal: () -> Void
     let onSubmitCommand: (String) -> Void
+    /// A Hermes session's loop and heartbeat (#1142), a section each below the goal's commands.
+    let automations: [BotSessionControl]
+    /// Whether the host takes Pause and Resume for them; without it they only show their state.
+    let allowsAutomationChanges: Bool
+    let isAutomationDisabled: Bool
+    /// Asks for one's Pause or Resume, which the chat confirms before sending.
+    let onChangeAutomation: (BotSessionControl) -> Void
 
     var body: some View {
         Menu {
@@ -36,6 +43,10 @@ struct GoalControlsMenu: View {
                 Label("Stop", systemImage: "stop.circle")
             }
             .disabled(isActionDisabled)
+
+            ForEach(automations) { control in
+                automationSection(control)
+            }
         } label: {
             Label("Goal", systemImage: goalIconName)
         }
@@ -55,6 +66,32 @@ struct GoalControlsMenu: View {
             return "xmark.circle"
         default:
             return "target"
+        }
+    }
+
+    /// "Loop · Active" over its Pause, or the state alone when nothing can change it.
+    @ViewBuilder
+    private func automationSection(_ control: BotSessionControl) -> some View {
+        let status = switch control.status {
+        case "active": String(localized: "Active")
+        case "paused": String(localized: "Paused")
+        default: control.status
+        }
+        // Both halves are localized already; the separator is not words.
+        let title = Text(verbatim: "\(control.kind.title) · \(status)")
+        if allowsAutomationChanges, control.action != nil {
+            Section {
+                Button {
+                    onChangeAutomation(control)
+                } label: {
+                    Label(control.actionTitle, systemImage: control.status == "paused" ? "play.circle" : "pause.circle")
+                }
+                .disabled(isAutomationDisabled)
+            } header: {
+                title
+            }
+        } else {
+            Section { title }
         }
     }
 

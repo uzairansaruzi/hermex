@@ -22,14 +22,6 @@ enum ChatMotion {
         reduceMotion ? nil : .easeOut(duration: 0.20)
     }
 
-    /// Bottom-follow scrolling and active-row height growth while a response
-    /// streams in. Short enough to keep up with the ~48ms word-reveal cadence;
-    /// each new flush retargets the previous animation so the streaming edge
-    /// glides instead of stepping per flush.
-    static func streamingFollow(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .easeOut(duration: 0.15)
-    }
-
     /// Expanding or collapsing the clarification card above the composer. The
     /// card slides its own height past the bar's bottom edge on one ease-out
     /// clock, sized like the keyboard's; Reduce Motion snaps.

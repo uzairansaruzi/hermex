@@ -2,6 +2,9 @@ import SwiftUI
 
 struct SessionRenameSheet: View {
     let isSaving: Bool
+    /// Why the server refused the last title, shown under the field so the sheet stays open
+    /// with it; a Hermes host's own message (#1048).
+    let errorMessage: String?
     let onCancel: () -> Void
     let onSave: (String) -> Void
 
@@ -11,10 +14,12 @@ struct SessionRenameSheet: View {
     init(
         initialTitle: String,
         isSaving: Bool,
+        errorMessage: String? = nil,
         onCancel: @escaping () -> Void,
         onSave: @escaping (String) -> Void
     ) {
         self.isSaving = isSaving
+        self.errorMessage = errorMessage
         self.onCancel = onCancel
         self.onSave = onSave
         _sessionTitle = State(initialValue: initialTitle)
@@ -28,6 +33,11 @@ struct SessionRenameSheet: View {
                         .textInputAutocapitalization(.sentences)
                         .focused($titleIsFocused)
                         .disabled(isSaving)
+                } footer: {
+                    if let errorMessage {
+                        Text(verbatim: errorMessage)
+                            .foregroundStyle(.red)
+                    }
                 }
             }
             .navigationTitle("Rename Session")
@@ -55,6 +65,9 @@ struct SessionRenameSheet: View {
             .interactiveDismissDisabled(isSaving)
             .onAppear {
                 titleIsFocused = true
+            }
+            .onChange(of: errorMessage) {
+                if let errorMessage { AccessibilityNotification.Announcement(errorMessage).post() }
             }
         }
         .adaptiveFormPresentation()

@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 @testable import HermesMobile
 
 /// A scripted, multi-connection mock of `SSEStreamingClient` for driving full
@@ -17,7 +18,9 @@ import Foundation
 /// - `stop()` tears down delivery: scripted events played after `stop()` are
 ///   dropped, not delivered, and counted in `droppedEventCount` so a
 ///   mis-scripted test cannot pass silently.
-@MainActor
+///
+/// Observable, so a test can wait for a reconnect's `start` instead of polling.
+@MainActor @Observable
 final class ScriptedSSEStreamingClient: SSEStreamingClient {
     struct ScriptedEvent {
         let event: SSEEvent

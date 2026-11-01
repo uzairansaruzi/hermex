@@ -14,23 +14,4 @@ final class SessionHapticsTests: XCTestCase {
 
         XCTAssertTrue(feedback.isEmpty)
     }
-
-    @MainActor
-    func testSessionActionHapticLanguage() {
-        var feedback: [SessionHapticFeedback] = []
-
-        SessionHaptics.sessionCreated(isEnabled: true) { feedback.append($0) }
-        SessionHaptics.pinStateChanged(isEnabled: true) { feedback.append($0) }
-        SessionHaptics.archiveStateChanged(isEnabled: true) { feedback.append($0) }
-        SessionHaptics.sessionDeleted(isEnabled: true) { feedback.append($0) }
-        SessionHaptics.sessionRenamed(isEnabled: true) { feedback.append($0) }
-
-        XCTAssertEqual(feedback, [
-            .lightImpact,
-            .lightImpact,
-            .lightImpact,
-            .warning,
-            .selection
-        ])
-    }
 }

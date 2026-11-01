@@ -21,6 +21,9 @@ struct ToolCallLogRow: Equatable {
     let status: Status
     /// An edit's "+N −M", shown before the chevron once the call succeeds.
     let diffCounts: ToolCallDiff.Counts?
+    /// An answered `clarify` call's questions, which the row opens to instead
+    /// of its arguments and raw result.
+    var clarify: ClarifyResult?
 
     var isFailure: Bool { status == .failure }
 
@@ -74,6 +77,18 @@ enum ToolCallSummaryFormatter {
         let toolKind = kind(forToolNamed: name)
         let resultText = resultText(for: toolCall)
         let rowStatus = status(for: toolCall, kind: toolKind, resultText: resultText, isLive: isLive)
+
+        if let clarify = ClarifyResult(toolCall: toolCall), let first = clarify.exchanges.first {
+            return ToolCallLogRow(
+                icon: "questionmark.bubble",
+                summary: String(localized: "Asked \(clarify.exchanges.count) questions"),
+                detail: compacted("\(first.question) · \(first.answerText ?? String(localized: "No answer"))"),
+                status: rowStatus,
+                diffCounts: nil,
+                clarify: clarify
+            )
+        }
+
         let detail = targetDetail(kind: toolKind, name: name, args: toolCall.args)
             ?? resultText.flatMap(firstLine)
 
@@ -92,17 +107,23 @@ enum ToolCallSummaryFormatter {
     }
 
     /// Everything a long-press puts on the pasteboard: the row line, then the
-    /// same arguments and result the expanded body shows.
+    /// same questions and answers, or arguments and result, the expanded body shows.
     static func copyText(for toolCall: ToolCall) -> String {
+        let row = row(for: toolCall, isLive: false)
         var lines: [String] = []
-        if let row = row(for: toolCall, isLive: false) {
+        if let row {
             lines.append([row.summary, row.detail].compactMap { $0 }.joined(separator: " "))
         }
 
-        let content = ToolCallDisplayFormatter.content(for: toolCall)
-        lines += content.argumentRows.map { "\($0.key): \($0.value)" }
-        if let result = content.result {
-            lines.append(result.text)
+        if let clarify = row?.clarify {
+            lines += clarify.exchanges.map(\.spokenText)
+            lines += [clarify.note].compactMap { $0 }
+        } else {
+            let content = ToolCallDisplayFormatter.content(for: toolCall)
+            lines += content.argumentRows.map { "\($0.key): \($0.value)" }
+            if let result = content.result {
+                lines.append(result.text)
+            }
         }
 
         return lines.joined(separator: "\n")
@@ -206,9 +227,7 @@ enum ToolCallSummaryFormatter {
         case .memory:
             return firstString(in: args, keys: ["target", "name", "action"]).flatMap(compacted)
         case .read:
-            guard let path = firstString(in: args, keys: ["path", "file_path", "file", "target", "name"]) else {
-                return nil
-            }
+            guard let path = readPath(args: args) else { return nil }
             let fileName = basename(path)
             if normalizedName(name) == "read_file", let range = readRange(args: args) {
                 return compacted("\(range) · \(fileName)")
@@ -237,9 +256,23 @@ enum ToolCallSummaryFormatter {
         return overflow ? nil : "L\(offset)-\(end)"
     }
 
-    /// First changed file plus `+N more`, from the same path arguments the
-    /// per-turn file recap reads (`path`, `paths[]`, `edits[].path`, …).
+    /// The file a read call names, as given.
+    static func readPath(args: [String: JSONValue]) -> String? {
+        firstString(in: args, keys: ["path", "file_path", "file", "target", "name"])
+    }
+
+    /// First changed file plus `+N more`, from `changedPaths(args:)`.
     static func changedFilesPreview(args: [String: JSONValue]) -> String? {
+        let paths = changedPaths(args: args)
+        guard let first = paths.first else { return nil }
+        let remaining = paths.count - 1
+        guard remaining > 0 else { return compacted(basename(first)) }
+        return compacted("\(basename(first)) \(String(localized: "+\(remaining) more"))")
+    }
+
+    /// A write call's unique full paths in argument order, from the same
+    /// arguments the per-turn file recap reads (`path`, `paths[]`, `edits[].path`, …).
+    static func changedPaths(args: [String: JSONValue]) -> [String] {
         var paths: [String] = []
         func append(_ value: JSONValue?) {
             if let string = string(value), !paths.contains(string) {
@@ -260,11 +293,7 @@ enum ToolCallSummaryFormatter {
                 }
             }
         }
-
-        guard let first = paths.first else { return nil }
-        let remaining = paths.count - 1
-        guard remaining > 0 else { return compacted(basename(first)) }
-        return compacted("\(basename(first)) \(String(localized: "+\(remaining) more"))")
+        return paths
     }
 
     /// `bash -lc "git status"`, `pwsh -Command "…"`, and `cmd /c …` read as the

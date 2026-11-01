@@ -1,14 +1,12 @@
 import SwiftUI
 
-/// Advanced staging & commit sheet (issue #315, Slice C, surface C).
+/// Advanced staging & commit sheet (issue #315, Slice C, surface C; Hermes #1115).
 ///
 /// Lets the user select changed files, stage / unstage / discard them, generate or write
 /// a commit message, and commit (all staged) or commit only the selected paths — with an
 /// optional push afterwards. All write actions are disabled while the chat is streaming or
 /// viewing cached data; "Suggest message" stays available because it is a read-only call.
 struct GitCommitView: View {
-    private let session: SessionSummary
-    private let server: URL
     let writesDisabled: Bool
     let onAPIError: (Error) -> Void
     /// Called after every successful commit so the host can refresh the toolbar badge.
@@ -20,19 +18,17 @@ struct GitCommitView: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.dismiss) private var dismiss
 
+    /// `git` is the chat's repository client, as its Git menu reads it.
     init(
-        session: SessionSummary,
-        server: URL,
+        git: (any GitDataClient)?,
         writesDisabled: Bool,
         onAPIError: @escaping (Error) -> Void,
         onCommitted: @escaping () -> Void
     ) {
-        self.session = session
-        self.server = server
         self.writesDisabled = writesDisabled
         self.onAPIError = onAPIError
         self.onCommitted = onCommitted
-        _viewModel = State(initialValue: GitCommitViewModel(session: session, server: server))
+        _viewModel = State(initialValue: GitCommitViewModel(git: git))
     }
 
     var body: some View {
@@ -94,6 +90,15 @@ struct GitCommitView: View {
                 Label("Changes Committed", systemImage: "exclamationmark.icloud")
             } description: {
                 Text(error)
+            }
+        } else if let sha = viewModel.shownCommitSHA {
+            ContentUnavailableView {
+                Label("No Changes", systemImage: "checkmark.circle")
+            } description: {
+                VStack {
+                    Text("Your working tree is clean.")
+                    Text("Commit \(sha)")
+                }
             }
         } else {
             ContentUnavailableView(
@@ -184,6 +189,10 @@ struct GitCommitView: View {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(AppFont.caption())
                     .foregroundStyle(.orange)
+            } else if let sha = viewModel.shownCommitSHA {
+                Label("Commit \(sha)", systemImage: "checkmark.seal")
+                    .font(AppFont.caption())
+                    .foregroundStyle(.secondary)
             }
 
             HStack(alignment: .top, spacing: 8) {

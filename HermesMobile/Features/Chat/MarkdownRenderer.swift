@@ -16,36 +16,19 @@ struct MarkdownRenderer: View {
         self.isStreaming = isStreaming
     }
 
-    /// Keeps the streaming renderer mounted briefly after streaming ends so
-    /// the reveal queue's in-flight glyph cascade can finish instead of
-    /// snapping to the solid static rendering mid-fade.
-    @State private var lingersAfterStreaming = false
-
     var body: some View {
-        Group {
-            if isStreaming || lingersAfterStreaming {
-                StreamingMarkdownRenderer(content: content)
-            } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(verbatim: " ")
-            } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
-                PlainMarkdownFallbackView(
-                    content: content,
-                    reason: fallbackReason
-                )
-            } else {
-                markdownContent
-            }
-        }
-        .onChange(of: isStreaming) { wasStreaming, nowStreaming in
-            if wasStreaming, !nowStreaming {
-                lingersAfterStreaming = true
-            }
-        }
-        .task(id: isStreaming) {
-            guard !isStreaming else { return }
-            try? await Task.sleep(for: .seconds(StreamingTextFadeDefaults.framePauseDelay))
-            guard !Task.isCancelled else { return }
-            lingersAfterStreaming = false
+        let _ = RenderProbe.hit(.markdownRenderer)
+        if isStreaming {
+            StreamingMarkdownRenderer(content: content)
+        } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(verbatim: " ")
+        } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
+            PlainMarkdownFallbackView(
+                content: content,
+                reason: fallbackReason
+            )
+        } else {
+            markdownContent
         }
     }
 
@@ -164,13 +147,6 @@ private struct StreamingMarkdownDisplayedContentView: View, Equatable {
 
 }
 
-/// Lets a surface keep the streaming renderer's cost savings without its
-/// reveal fade. Bot Chat sets it false: its text arrives in coalesced
-/// snapshots, and a whole snapshot fading in leaves the latest edge blank.
-struct AllowsStreamedTextAnimationKey: EnvironmentKey {
-    static let defaultValue = true
-}
-
 /// The background a wide markdown table fades its hidden edges into. Defaults
 /// to the transcript background. Grouped lists set their row colour; a host
 /// on a translucent fill sets nil, which turns the fade off.
@@ -179,11 +155,6 @@ struct MarkdownTableEdgeFadeColorKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    var allowsStreamedTextAnimation: Bool {
-        get { self[AllowsStreamedTextAnimationKey.self] }
-        set { self[AllowsStreamedTextAnimationKey.self] = newValue }
-    }
-
     var markdownTableEdgeFadeColor: SwiftUI.Color? {
         get { self[MarkdownTableEdgeFadeColorKey.self] }
         set { self[MarkdownTableEdgeFadeColorKey.self] = newValue }
@@ -194,40 +165,8 @@ private struct StreamingMarkdownChunkedView: View {
     let content: String
     let colorScheme: ColorScheme
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.allowsStreamedTextAnimation) private var allowsStreamedTextAnimation
-    @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
-
-    /// First block ordinal still in the fade window. Starts at `Int.max`
-    /// (everything solid) until `onAppear` anchors it at the current block,
-    /// so text already on screen when the view mounts never fades.
-    @State private var firstFadeOrdinal = Int.max
-    /// Ordinal of the current block at mount; only blocks created after it
-    /// arm their stores (pre-existing blocks take the solid baseline).
-    @State private var mountBoundaryCount = Int.max
-    @State private var lastBoundaryCount = 0
-    @State private var lastTouchedAt: [Int: TimeInterval] = [:]
-    @State private var fadesActive = false
-    /// One reveal cursor for all fade blocks of this view, so consecutive
-    /// blocks (paragraphs, list items) appear in reading order even when a
-    /// fast stream backlogs a block's queue toward `maxStampLead`.
-    @State private var chain = StreamingTextFadeStampChain()
-    /// The active tail as of the last fade-window update, so an append can be
-    /// told apart from a replacement without re-splitting the old content.
-    @State private var lastActiveMarkdown = ""
-
     var body: some View {
-        // The one whole-reply split per update; the fade-window callbacks
-        // below reuse it.
         let segments = StreamingMarkdownBlockSplitter.split(content)
-        let blockSplit = StreamingTextFadeTailSplitter.split(
-            segments.activeMarkdown,
-            firstFadeOrdinal: StreamedTextAnimationSettings.effectiveFirstFadeOrdinal(
-                firstFadeOrdinal,
-                reduceMotion: reduceMotion,
-                isEnabled: isStreamedTextAnimationEnabled && allowsStreamedTextAnimation
-            )
-        )
 
         VStack(alignment: .leading, spacing: 0) {
             ForEach(segments.stableChunks) { chunk in
@@ -238,177 +177,12 @@ private struct StreamingMarkdownChunkedView: View {
                 )
             }
 
-            if !blockSplit.head.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if !segments.activeMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ChatMarkdownView(
-                    content: blockSplit.head,
+                    content: segments.activeMarkdown,
                     colorScheme: colorScheme,
                     isStreaming: true
                 )
-            }
-
-            if !blockSplit.blocks.isEmpty {
-                // One shared frame clock for every fade block. Per frame only
-                // the renderer's clock input changes; each block's markdown
-                // inputs are untouched, so their bodies (and text layout) are
-                // not re-evaluated.
-                TimelineView(.animation(minimumInterval: nil, paused: !fadesActive)) { context in
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(blockSplit.blocks, id: \.ordinal) { block in
-                            StreamingFadeBlockView(
-                                text: block.text,
-                                colorScheme: colorScheme,
-                                fadeEnabled: block.fadeEnabled,
-                                armOnAppear: block.ordinal > mountBoundaryCount,
-                                clock: context.date.timeIntervalSinceReferenceDate,
-                                chain: chain
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        .onAppear {
-            anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
-        }
-        .onChange(of: content) { _, newContent in
-            // This closure comes from the body pass that split `newContent`;
-            // re-split only if SwiftUI hands over some other value.
-            let newActive = newContent == content
-                ? segments.activeMarkdown
-                : StreamingMarkdownBlockSplitter.split(newContent).activeMarkdown
-            advanceFadeWindow(to: newActive)
-        }
-        .onChange(of: isStreamedTextAnimationEnabled) { _, isEnabled in
-            if isEnabled {
-                anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
-            }
-        }
-        .onChange(of: reduceMotion) { _, reduceMotion in
-            if !reduceMotion {
-                anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
-            }
-        }
-        .task(id: content) {
-            // Let queued reveals and the newest fade finish, then pause frame
-            // updates until more content arrives (e.g. the stream stalls on
-            // tool use). A new change cancels this task and restarts it.
-            try? await Task.sleep(for: .seconds(StreamingTextFadeDefaults.framePauseDelay))
-            guard !Task.isCancelled else { return }
-            fadesActive = false
-        }
-    }
-
-    /// Anchors the fade window at the current block: everything visible now
-    /// takes the solid baseline, only text streamed afterwards fades. Used at
-    /// mount, and again whenever fading becomes active mid-stream (animation
-    /// setting flipped on, Reduce Motion turned off) — the window bookkeeping
-    /// keeps advancing while fades route to the head, so without re-anchoring
-    /// the reopened window would arm blocks the user is already reading and
-    /// visibly re-fade them.
-    private func anchorFadeWindowAtCurrentBlock(_ activeMarkdown: String) {
-        let split = StreamingTextFadeTailSplitter.split(activeMarkdown, firstFadeOrdinal: 0)
-        firstFadeOrdinal = split.boundaryCount
-        mountBoundaryCount = split.boundaryCount
-        lastBoundaryCount = split.boundaryCount
-        lastTouchedAt = [:]
-        lastActiveMarkdown = activeMarkdown
-    }
-
-    /// Advances the fade window to the new active tail. Called once per
-    /// content change with the tail the body already split.
-    private func advanceFadeWindow(to newActive: String) {
-        let now = Date().timeIntervalSinceReferenceDate
-        let oldActive = lastActiveMarkdown
-        lastActiveMarkdown = newActive
-        let split = StreamingTextFadeTailSplitter.split(newActive, firstFadeOrdinal: firstFadeOrdinal)
-
-        if !newActive.hasPrefix(oldActive) {
-            // Replaced content or a sealed stable chunk shifted the active
-            // window: ordinals no longer line up, so restart the fade window
-            // at the current block (renders solid, then new text fades).
-            lastTouchedAt = [:]
-            firstFadeOrdinal = split.boundaryCount
-            lastBoundaryCount = split.boundaryCount
-            chain.reset()
-            fadesActive = true
-            return
-        }
-
-        // Only the current block and any blocks newly created by this append
-        // were touched; everything earlier is frozen text aging toward
-        // absorption. min() also covers an item boundary vanishing when its
-        // nested child arrives (the merged block is current again).
-        for block in split.blocks where block.ordinal >= min(lastBoundaryCount, split.boundaryCount) {
-            lastTouchedAt[block.ordinal] = now
-        }
-        lastBoundaryCount = split.boundaryCount
-
-        firstFadeOrdinal = StreamingTextFadeWindow.advanceStart(
-            current: min(firstFadeOrdinal, split.boundaryCount),
-            boundaryCount: split.boundaryCount,
-            lastTouchedAt: lastTouchedAt,
-            now: now
-        )
-        lastTouchedAt = lastTouchedAt.filter { $0.key >= firstFadeOrdinal }
-        fadesActive = true
-    }
-}
-
-/// One block of the streaming fade window, drawn through
-/// `StreamingTextFadeRenderer` with its own stamp store so neighbouring
-/// blocks' character offsets never collide. The block keeps fading after it
-/// completes — it only leaves the window (and joins the solid head) once its
-/// cascade is provably finished, which is what prevents end-of-block snaps.
-private struct StreamingFadeBlockView: View {
-    let text: String
-    let colorScheme: ColorScheme
-    let fadeEnabled: Bool
-    let armOnAppear: Bool
-    let clock: TimeInterval
-
-    @State private var store: StreamingTextFadeStampStore<Text.Layout.CharacterIndex>
-
-    init(
-        text: String,
-        colorScheme: ColorScheme,
-        fadeEnabled: Bool,
-        armOnAppear: Bool,
-        clock: TimeInterval,
-        chain: StreamingTextFadeStampChain
-    ) {
-        self.text = text
-        self.colorScheme = colorScheme
-        self.fadeEnabled = fadeEnabled
-        self.armOnAppear = armOnAppear
-        self.clock = clock
-        _store = State(initialValue: StreamingTextFadeStampStore(chain: chain))
-    }
-
-    var body: some View {
-        Group {
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                if fadeEnabled {
-                    ChatMarkdownView(
-                        content: text,
-                        colorScheme: colorScheme,
-                        isStreaming: true
-                    )
-                    .textRenderer(StreamingTextFadeRenderer(clock: clock, store: store))
-                } else {
-                    ChatMarkdownView(
-                        content: text,
-                        colorScheme: colorScheme,
-                        isStreaming: true
-                    )
-                }
-            }
-        }
-        .onAppear {
-            // Blocks appearing after the view mounted are newly streamed text
-            // and must fade from their first glyph; blocks present at mount
-            // are pre-existing text and take the solid baseline instead.
-            if armOnAppear {
-                store.rolloverReset()
             }
         }
     }
@@ -419,6 +193,8 @@ private struct ChatMarkdownView: View {
     let colorScheme: ColorScheme
     let isStreaming: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         // Parsed here rather than inside `Markdown(_: String)` so the parse alone is timed.
         let signpost = performanceSignposter.beginInterval("Markdown Parse")
@@ -426,24 +202,18 @@ private struct ChatMarkdownView: View {
         performanceSignposter.endInterval("Markdown Parse", signpost, "chars=\(content.count, privacy: .public)")
 
         return Markdown(parsedContent)
-            .environment(\.containsInlineMath, content.contains(InlineMathSource.marker))
-            .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming))
+            .environment(\.containsInlineMath, content.contains(InlineMathSource.marker)
+                || MarkdownContentRenderingPolicy.hasTooManyInlineElements(content))
+            .markdownTheme(MarkdownUI.Theme.chat(
+                colorScheme: colorScheme,
+                isStreaming: isStreaming,
+                bodySize: ChatTypography(dynamicTypeSize: dynamicTypeSize).bodySize
+            ))
             .markdownTextStyle {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
             }
-            .markdownTextStyle(\.code) {
-                FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88))
-                BackgroundColor(SwiftUI.Color(.tertiarySystemGroupedBackground))
-            }
             .markdownCodeSyntaxHighlighter(.plainText)
-            .markdownBlockStyle(\.paragraph) { configuration in
-                configuration.label
-                    .fixedSize(horizontal: false, vertical: true)
-                    .relativeLineSpacing(.em(0.18))
-                    .markdownMargin(top: 0, bottom: 8)
-            }
     }
 }
 
@@ -715,6 +485,8 @@ private struct PlainCodeBlockText: View {
     /// in an `HStack` for the horizontal-scroll layout.
     var wraps = false
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var lines: [MarkdownPlainCodeLine] {
         MarkdownPlainCodeFormatter.lines(in: content)
     }
@@ -738,7 +510,7 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: 13, weight: .regular, design: .monospaced))
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
         .foregroundStyle(.primary)
     }
 
@@ -754,6 +526,8 @@ private struct HighlightedCodeBlockText: View {
     /// See `PlainCodeBlockText.wraps`; the concatenated `Text` preserves each
     /// segment's syntax-highlight attributes.
     var wraps = false
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var lines: [MarkdownAttributedCodeLine] {
         MarkdownAttributedCodeFormatter.lines(in: content)
@@ -778,6 +552,8 @@ private struct HighlightedCodeBlockText: View {
                 }
             }
         }
+        // The highlighter strips its absolute fonts, so this sets every token's face and size.
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
     }
 
     private func combinedText(for line: MarkdownAttributedCodeLine) -> Text {
@@ -958,6 +734,10 @@ enum MarkdownContentFallbackReason: String, Equatable {
 enum MarkdownContentRenderingPolicy {
     static let maxMarkdownCharacterCount = 80_000
     static let maxMarkdownLineCount = 2_000
+    /// MarkdownUI joins a paragraph's inline elements with `Text` `+`, which
+    /// SwiftUI resolves recursively; about 600 overflow an iPhone's 1 MB main
+    /// thread stack (#1333). Paragraphs over this limit render as one `Text`.
+    static let maxInlineElementsPerParagraph = 300
 
     static func fallbackReason(for content: String) -> MarkdownContentFallbackReason? {
         if content.count > maxMarkdownCharacterCount {
@@ -970,6 +750,29 @@ enum MarkdownContentRenderingPolicy {
 
         return nil
     }
+
+    /// Overestimates inline elements: each delimiter counts once; each line, and
+    /// each `:`, `@` or `www.` of a bare URL or email that GFM autolinks, counts twice.
+    static func hasTooManyInlineElements(_ markdown: String) -> Bool {
+        var count = 0
+        var trailingWs = 0
+        for byte in markdown.utf8 {
+            if byte == UInt8(ascii: "\n") || byte == UInt8(ascii: "\r") {
+                count += 2
+            } else if byte == UInt8(ascii: ":") || byte == UInt8(ascii: "@") {
+                count += 2
+            } else if byte == UInt8(ascii: "."), trailingWs >= 3 {
+                count += 2
+            } else if inlineDelimiters.contains(byte) {
+                count += 1
+            }
+            trailingWs = byte == UInt8(ascii: "w") ? trailingWs + 1 : 0
+            if count > maxInlineElementsPerParagraph { return true }
+        }
+        return false
+    }
+
+    private static let inlineDelimiters = Set("`*_~[]<>!$\\".utf8)
 }
 
 enum MarkdownHighlightEngine: Equatable {
@@ -1297,7 +1100,7 @@ actor MarkdownCodeHighlighter {
         }
 
         // Freeze the result so a cached string never aliases a mutable one.
-        let frozen = highlighted.copy() as? NSAttributedString ?? highlighted
+        let frozen = Self.removingAbsoluteFonts(from: highlighted)
         let key = Self.cacheKey(for: request)
         cache.setObject(frozen, forKey: key, cost: key.length + frozen.length)
         return .highlighted(frozen)
@@ -1315,6 +1118,26 @@ actor MarkdownCodeHighlighter {
         highlightr.setTheme(to: colorScheme == .dark ? "github-dark" : "xcode")
         highlightrsByAppearance[colorScheme] = highlightr
         return highlightr
+    }
+
+    /// Drops the engines' fixed-size fonts (Splash 13 pt, Highlightr Courier 14) so the code
+    /// view's `ChatTypography.codeFont` sizes every token, keeping the cache size-independent.
+    /// Bold and italic tokens keep their emphasis as relative presentation intents.
+    private static func removingAbsoluteFonts(from highlighted: NSAttributedString) -> NSAttributedString {
+        let result = NSMutableAttributedString(attributedString: highlighted)
+        let range = NSRange(location: 0, length: result.length)
+        result.enumerateAttribute(.font, in: range) { value, runRange, _ in
+            guard let font = value as? UIFont else { return }
+            result.removeAttribute(.font, range: runRange)
+            let traits = font.fontDescriptor.symbolicTraits
+            var intent: InlinePresentationIntent = []
+            if traits.contains(.traitBold) { intent.insert(.stronglyEmphasized) }
+            if traits.contains(.traitItalic) { intent.insert(.emphasized) }
+            if !intent.isEmpty {
+                result.addAttribute(.inlinePresentationIntent, value: intent.rawValue, range: runRange)
+            }
+        }
+        return result.copy() as? NSAttributedString ?? result
     }
 
     private static func cacheKey(for request: MarkdownCodeHighlightRequest) -> NSString {
@@ -1359,6 +1182,38 @@ private struct PlainMarkdownFallbackView: View {
     }
 }
 
+/// Rendered Markdown text sizes for a Dynamic Type size: 16 pt prose and 13 pt code at
+/// `.large`, scaled like body text and capped at 2.2x (the review diff's cap). Views read
+/// `dynamicTypeSize` from the environment and resolve through `init(dynamicTypeSize:)`.
+struct ChatTypography: Equatable {
+    static let maximumScale: CGFloat = 2.2
+
+    let bodySize: CGFloat
+    let codeSize: CGFloat
+
+    /// Resolved once per size, so scrolling cells never re-run font metrics.
+    private static let bySize: [DynamicTypeSize: ChatTypography] = Dictionary(
+        uniqueKeysWithValues: DynamicTypeSize.allCases.map { ($0, ChatTypography(resolving: $0)) }
+    )
+
+    init(dynamicTypeSize: DynamicTypeSize) {
+        self = Self.bySize[dynamicTypeSize] ?? ChatTypography(resolving: dynamicTypeSize)
+    }
+
+    private init(resolving dynamicTypeSize: DynamicTypeSize) {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        let metrics = UIFontMetrics(forTextStyle: .body)
+        func scaled(_ base: CGFloat) -> CGFloat {
+            min(metrics.scaledValue(for: base, compatibleWith: traits), base * Self.maximumScale)
+        }
+        bodySize = scaled(16)
+        codeSize = scaled(13)
+    }
+
+    /// The monospaced font for code block bodies (plain, highlighted, and diff).
+    var codeFont: SwiftUI.Font { .system(size: codeSize, weight: .regular, design: .monospaced) }
+}
+
 enum ChatMarkdownInlineStyle {
     static let codeFontScale = 0.85
 
@@ -1368,12 +1223,13 @@ enum ChatMarkdownInlineStyle {
 }
 
 private extension MarkdownUI.Theme {
-    static func chat(colorScheme: ColorScheme, isStreaming: Bool) -> MarkdownUI.Theme {
+    /// `bodySize` is `ChatTypography.bodySize`; headings and inline code scale relative to it.
+    static func chat(colorScheme: ColorScheme, isStreaming: Bool, bodySize: CGFloat) -> MarkdownUI.Theme {
         MarkdownUI.Theme.gitHub
             .text {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
-                FontSize(16)
+                FontSize(bodySize)
             }
             .paragraph { configuration in
                 MathMarkdownLabel(content: configuration.content, label: configuration.label)

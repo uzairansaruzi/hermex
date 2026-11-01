@@ -58,4 +58,23 @@ final class CacheFallbackPolicyTests: XCTestCase {
         XCTAssertTrue(CacheFallbackPolicy.shouldUseCache(for: URLError(.timedOut)))
         XCTAssertFalse(CacheFallbackPolicy.shouldUseCache(for: URLError(.badURL)))
     }
+
+    /// A Hermes host that can't be reached (#1054): its socket lost or never opened, or a proxy
+    /// or tunnel answering for it. Its sign-in's own connectivity errors are raw `URLError`s.
+    func testAnUnreachableHermesHostUsesCache() {
+        let failures: [BotFailure] = [.transport, .rejected(408), .rejected(502), .rejected(503), .rejected(504),
+                                      .rejected(522), .rejected(530)]
+        for failure in failures {
+            XCTAssertTrue(CacheFallbackPolicy.shouldUseCache(for: failure), "\(failure) should use cache fallback")
+        }
+    }
+
+    /// A Hermes host that answered: a refusal the user acts on, a host error, or a stale call.
+    func testAHermesRefusalDoesNotUseCache() {
+        let failures: [BotFailure] = [.rejected(401), .rejected(404), .rejected(500), .rejected(4023), .rejected(-32601),
+                                      .stale, .unsupported, .upgradeRefused(403), .blocked, .notDashboard]
+        for failure in failures {
+            XCTAssertFalse(CacheFallbackPolicy.shouldUseCache(for: failure), "\(failure) should not use cache fallback")
+        }
+    }
 }

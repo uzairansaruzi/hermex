@@ -38,4 +38,21 @@ extension APIClient {
             body: TTSSynthesisRequest(text: text, voice: voice, engine: engine)
         )
     }
+
+    /// Listen's speech on a webui server: the saved engine and voice, read from
+    /// `/api/settings` for every Listen so a preference never outlives the request or
+    /// crosses servers, then `/api/tts`. Nil when the saved engine is the browser's, which
+    /// speaks on device. A missing or failed settings read means Edge and the default voice.
+    func listenSpeech(for text: String) async throws -> Data? {
+        let settings = try? await settings()
+        // Stopped or superseded while settings were pending: `/api/tts` is never sent.
+        try Task.checkCancellation()
+        let engine = TTSEngine(savedValue: settings?.ttsEngine)
+        guard engine != .browser else { return nil }
+        let savedVoice = settings?.ttsVoice?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let voice = engine == .edge
+            ? (savedVoice?.isEmpty == false ? savedVoice : ServerTTSPolicy.defaultVoice)
+            : nil
+        return try await synthesizeSpeech(text: text, voice: voice, engine: engine)
+    }
 }

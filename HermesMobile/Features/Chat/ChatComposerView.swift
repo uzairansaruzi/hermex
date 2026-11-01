@@ -165,7 +165,8 @@ struct MessageComposerView: View {
     let isCompressingSession: Bool
     let isWaitingForStream: Bool
     let isCancellingStream: Bool
-    let readOnlyMessage: String?
+    /// A read-only session locks the editor; an offline chat holds only Send and host controls.
+    let access: ChatComposerAccess
     let errorMessage: String?
     /// Offered as Copy fix prompt on the `errorMessage` banner (#955).
     let errorFixPrompt: String?
@@ -208,13 +209,20 @@ struct MessageComposerView: View {
     /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
     let autoStartsVoiceInput: Bool
     let apiClient: APIClient?
-    /// This chat's server-side session, which the `@` panel lists workspace
-    /// files for. Nil before the session exists, which keeps the panel closed.
+    /// This chat's server-side session. Nil before the session exists.
     let sessionID: String?
+    /// Loads one query's rows into `filePathSearch`: the chat's workspace listing, or a
+    /// Hermes chat's `complete.path` (#1113). Nil keeps the `@` panel closed.
+    let searchFilePaths: ((String) async -> Void)?
     /// The workspace files already picked in this chat. The editor draws their
     /// `@path` references as chips; the view model owns the set so the sent
     /// transcript can draw the same ones.
     let chipFilePaths: Set<String>
+    /// A bot's chat's `@`mention roster (#1145): its bots lead the `@` panel and draw as chips in
+    /// the editor. Nil everywhere else.
+    var botMentions: BotMentions? = nil
+    /// Those bots' avatars, keyed by Profile, from this connection only.
+    var mentionAvatars: [String: UIImage] = [:]
     /// The `@` panel's rows and its directory listings. Owned by the view model
     /// so a folder listed to confirm a restored draft's references is not listed
     /// again the first time the panel opens.
@@ -225,11 +233,10 @@ struct MessageComposerView: View {
     /// The Send While Responding default: what a tap on Send does mid-run, and
     /// the glyph and VoiceOver label that say so.
     let streamingSendBehavior: StreamingSendBehavior
-    /// Sends with the default; a mid-run send uses `streamingSendBehavior`.
-    let onSend: () -> Void
-    /// Sends this one message with a behavior picked from the send-choice card
-    /// or a VoiceOver action. The default does not change.
-    let onSendWithBehavior: (StreamingSendBehavior) -> Void
+    /// Sends the draft. Mid-run it carries the behavior Send shows (tap and
+    /// Command-Return) or one picked for this message from the send-choice card
+    /// or a VoiceOver action; the default does not change. Nil while idle.
+    let onSend: (StreamingSendBehavior?) -> Void
     let onSendVoiceNote: (Data, String) -> Void
     let onCancel: () -> Void
     let onSelectModel: (ModelCatalogOption) -> Void
@@ -264,14 +271,16 @@ struct MessageComposerView: View {
     /// The chat's last sent message, for ↑ in an empty composer on a hardware
     /// keyboard. A closure, so the transcript is scanned only when ↑ is pressed.
     var recallLastSentText: (() -> String?)? = nil
+    /// Takes a long paste as a file; a Hermes session's (#1381). Nil keeps pastes inline.
+    var onPasteLargeText: ((String) -> Void)? = nil
     /// A file chip the user tapped, by workspace-relative path.
     let onOpenFileReference: (String) -> Void
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
-    /// False on a Hermes session (#1010): the workspace selector, the branch picker and voice
-    /// notes stay hidden until their phases land. The + menu, dictation and the context
-    /// indicator stay.
+    /// False on a Hermes session (#1010): voice notes stay hidden until their phase lands, and
+    /// the workspace picker takes a typed path (#1117). The + menu, dictation, the context
+    /// indicator and the branch picker (#1116) stay.
     var showsSessionControls = true
     /// The commands the `/` panel lists and runs: a Hermes chat's own and its host's (#1036).
     var slashScope = SlashCommandScope.webui
@@ -280,19 +289,29 @@ struct MessageComposerView: View {
     /// Asks the host to complete a host command's argument: the draft up to the caret, or nil
     /// once the caret leaves one. Called again on each change; a newer call replaces it.
     var onCompleteHostSlashArgument: (String?) async -> Void = { _ in }
-    /// A Hermes session's model and Profile chips (#1015), shown while the rest of
-    /// `showsSessionControls` stays hidden.
+    /// A Hermes session's model, folder and Profile chips (#1015, #1117), shown while the rest
+    /// of `showsSessionControls` stays hidden. Its folder picker takes a typed path, which the
+    /// host checks.
     var showsModelAndProfileControls = false
     /// A configuration change that has not landed yet, such as a model the host applies
     /// after the running response. Shown below any configuration error.
     var configurationNotice: String?
     /// The effort a Hermes host sends when the model takes less than the one picked (#1016).
     var sentReasoningEffort: String?
+    /// A Hermes session's Fast mode (#1142); nil hides the chip.
+    var fastMode: Bool?
+    /// Whether the host takes a Fast change now; the chip shows disabled otherwise.
+    var mayChangeFastMode = false
+    /// Asks the host for the other Fast mode.
+    var onSelectFastMode: (Bool) -> Void = { _ in }
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
     /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
     /// Set while a send uploads its files, for the status line's Cancel.
     var onCancelAttachmentUpload: (() -> Void)?
+    /// A Hermes session's dictation transcriber: the host's speech-to-text for the chat's
+    /// Profile (#1071). Nil sends dictation to the webui's `/api/transcribe` through `apiClient`.
+    var hermesTranscriber: ComposerTranscriber?
 
     @State private var textFieldHeight: CGFloat = 0
     @State private var textInputHeight: CGFloat = 22
@@ -300,9 +319,14 @@ struct MessageComposerView: View {
     /// design: a restored draft starts with the caret at its end, not wherever
     /// it was left last week.
     @State private var composerSelection = ComposerSelection()
+    /// Where Esc closed the `/` or `@` panel (#1380). It stays closed until the draft or
+    /// the caret moves, so the trigger it closed does not reopen it at once; the first move
+    /// clears it, so coming back to the same spot opens the panel again.
+    @State private var dismissedSuggestionsAnchor: SuggestionAnchor?
     @State private var noticeMessage: String?
     @State private var showsAllModelsSheet = false
     @State private var showsWorkspaceSheet = false
+    @State private var showsGitBranchPicker = false
     @State private var optimisticWorkspacePath: String?
     @State private var favoriteModelKeys = ModelFavoritesStore.shared.favoriteKeys
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
@@ -328,7 +352,12 @@ struct MessageComposerView: View {
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
 
     private var isReadOnly: Bool {
-        readOnlyMessage != nil
+        !access.allowsEditing
+    }
+
+    /// Offline or read-only: nothing that reaches the host starts, open controls included.
+    private var holdsHostControls: Bool {
+        !access.allowsHostControls
     }
 
     private enum DeferredUploadFocusPhase: Equatable {
@@ -340,37 +369,40 @@ struct MessageComposerView: View {
     /// The `/…` the caret is sitting in, whether that is the start of the draft
     /// or the middle of a sentence.
     private var slashTrigger: ComposerSlashTrigger? {
-        ComposerSlashTrigger.detect(in: draftMessage, selection: composerSelection.range, scope: slashScope)
+        guard !areSuggestionsDismissed else { return nil }
+        return ComposerSlashTrigger.detect(in: draftMessage, selection: composerSelection.range, scope: slashScope)
+    }
+
+    private struct SuggestionAnchor: Equatable {
+        let draft: String
+        let caret: NSRange
+    }
+
+    private var areSuggestionsDismissed: Bool {
+        dismissedSuggestionsAnchor == SuggestionAnchor(draft: draftMessage, caret: composerSelection.range)
     }
 
     /// The draft up to the caret while it is at a host command's argument (#1036), which the
     /// host is asked to complete.
     private var hostSlashArgumentText: String? {
-        guard fileTrigger == nil, let trigger = slashTrigger, trigger.startsDraft,
+        guard !holdsHostControls, fileTrigger == nil, let trigger = slashTrigger, trigger.startsDraft,
               ParsedSlashQuery(query: trigger.text, scope: slashScope).isHostArgumentMode else { return nil }
         return trigger.text
     }
 
     /// The `@…` the caret is sitting in, or `nil` when there is none.
     ///
-    /// Needs a session to list, since every path the panel offers comes from
-    /// that session's workspace.
+    /// Needs `searchFilePaths`, since every path the panel offers comes from
+    /// the chat's own workspace.
     private var fileTrigger: ComposerFileTrigger? {
-        guard !isReadOnly, apiClient != nil, fileReferenceSessionID != nil else { return nil }
+        guard !holdsHostControls, !areSuggestionsDismissed, searchFilePaths != nil || botMentions != nil else {
+            return nil
+        }
         return ComposerFileTrigger.detect(in: draftMessage, selection: composerSelection.range)
     }
 
     private var showsFileAutocomplete: Bool {
         fileTrigger != nil
-    }
-
-    private var fileReferenceSessionID: String? {
-        guard let sessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !sessionID.isEmpty
-        else {
-            return nil
-        }
-        return sessionID
     }
 
     /// What the panel filters on, or `nil` when it should be closed.
@@ -458,6 +490,31 @@ struct MessageComposerView: View {
         ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
     }
 
+    /// A bot's chat's `@` panel (#1145), as Bot Chat draws it: this connection's other bots, then
+    /// the chat's workspace files. Its task asks for files, so the container stands while the
+    /// first answer is out; it shows once there is a row or a lookup in flight.
+    private func botAutocomplete(_ trigger: ComposerFileTrigger, mentions: BotMentions) -> some View {
+        let bots = mentions.completions(query: trigger.query)
+        return Group {
+            if !bots.isEmpty || !filePathSearch.matches.isEmpty || filePathSearch.isLoading {
+                BotAtAutocompleteView(
+                    botCompletions: bots, avatars: mentionAvatars,
+                    fileMatches: filePathSearch.matches, isLoadingFiles: filePathSearch.isLoading,
+                    onSelectBot: { item in
+                        let completed = trigger.applying("@" + item.tag + " ", to: draftMessage)
+                        editDraft(completed.draft)
+                        composerSelection = composerSelection.moved(to: completed.selection)
+                        ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
+                    },
+                    onSelectFile: applyFileCompletion
+                )
+                .padding(.horizontal)
+                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            }
+        }
+        .task(id: trigger.query) { await searchFilePaths?(trigger.query) }
+    }
+
     /// Swaps the `@…` at the caret for the picked entry.
     ///
     /// A file finishes the reference: `@path` plus a space, recorded so the
@@ -537,13 +594,13 @@ struct MessageComposerView: View {
                 }
 
                 Group {
-                    if let fileTrigger, let sessionID = fileReferenceSessionID, let apiClient {
+                    if let fileTrigger, let botMentions {
+                        botAutocomplete(fileTrigger, mentions: botMentions)
+                    } else if let fileTrigger, let searchFilePaths {
                         FilePathAutocompleteView(
                             query: fileTrigger.query,
                             search: filePathSearch,
-                            load: { query in
-                                await filePathSearch.search(query, sessionID: sessionID, apiClient: apiClient)
-                            },
+                            load: searchFilePaths,
                             onSelect: applyFileCompletion
                         )
                         .padding(.horizontal)
@@ -677,6 +734,9 @@ struct MessageComposerView: View {
             cancelScheduledSendChoices()
             closeSendChoices()
         }
+        .onChange(of: areSuggestionsDismissed) { _, dismissed in
+            if !dismissed { dismissedSuggestionsAnchor = nil }
+        }
         .onChange(of: isPressingSend) { _, isPressing in
             if isPressing {
                 scheduleSendChoices()
@@ -684,13 +744,15 @@ struct MessageComposerView: View {
                 cancelScheduledSendChoices()
             }
         }
-        .task(id: draftMayReferenceSkill) {
+        // The view model holds both list loads while offline; going online is
+        // part of each identity so the held load runs on reconnect.
+        .task(id: [draftMayReferenceSkill, access.isOffline]) {
             await loadSkillSuggestionsForChipsIfNeeded()
         }
         .task(id: ComposerChipTokenizer.fileReferenceCandidates(in: draftMessage)) {
             await onFileReferenceCandidatesChange(draftMessage)
         }
-        .task(id: slashAutocompleteLoadKey) {
+        .task(id: [slashAutocompleteLoadKey, access.isOffline ? "offline" : ""]) {
             await loadSlashAutocompleteSubArgsIfNeeded()
         }
         .task(id: hostSlashArgumentText) {
@@ -724,6 +786,15 @@ struct MessageComposerView: View {
             // the clip hits the limit, mirroring a finger release.
             if voiceNoteRecorder.isRecording, elapsed >= ComposerVoiceNoteRecorder.maximumDuration {
                 finishVoiceNote(translationHeight: 0)
+            }
+        }
+        .onChange(of: showsGitBranchPicker) { _, isPresented in
+            // The New Branch alert takes the keyboard, so hand focus off up front
+            // and bring it back once the popover closes.
+            if isPresented {
+                prepareForComposerPresentation()
+            } else {
+                restoreFocusAfterPresentationDismissalSettles()
             }
         }
         .onChange(of: showMediaPicker) { _, isPresented in
@@ -776,12 +847,14 @@ struct MessageComposerView: View {
         }
         .sheet(isPresented: $showsWorkspaceSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
             ComposerWorkspacePickerSheet(
+                allowsCustomPath: !showsSessionControls,
                 workspaceRoots: workspaceRoots,
                 selectedWorkspacePath: displayedWorkspacePath,
                 suggestions: workspaceSuggestions,
-                managementServer: isReadOnly ? nil : workspaceManagementServer,
+                managementServer: holdsHostControls ? nil : workspaceManagementServer,
                 onLoadSuggestions: onLoadWorkspaceSuggestions,
                 onSelect: { path in
+                    guard !holdsHostControls else { return }
                     optimisticWorkspacePath = path
                     showsWorkspaceSheet = false
                     await onSelectWorkspace(path)
@@ -895,6 +968,7 @@ struct MessageComposerView: View {
             || shouldRestoreFocusAfterPresentation
             || showsAllModelsSheet
             || showsWorkspaceSheet
+            || showsGitBranchPicker
             || showMediaPicker
             || showFileImporter
     }
@@ -922,12 +996,12 @@ struct MessageComposerView: View {
                     measuredHeight: $textFieldHeight,
                     isDisabled: isReadOnly,
                     isCollapsed: !isExpanded,
-                    isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
+                    keyboardCommands: keyboardCommands,
                     verticalPadding: 12,
                     chipSkills: skillSuggestions,
                     chipFilePaths: chipFilePaths,
+                    chipBots: botMentions?.chipReferences(avatars: mentionAvatars) ?? [:],
                     quotes: quotes,
-                    onKeyboardSend: actionButtonTapped,
                     onPasteFileProviders: onPasteFileProviders,
                     onPasteFileURLs: onPasteFileURLs,
                     onPasteImageProviders: onPasteImageProviders,
@@ -939,7 +1013,8 @@ struct MessageComposerView: View {
                     },
                     onTapQuote: presentQuote,
                     onRemoveQuote: removeQuote,
-                    recallLastSentText: recallLastSentText
+                    recallLastSentText: recallLastSentText,
+                    onPasteLargeText: onPasteLargeText
                 )
 
                 if !isExpanded {
@@ -971,11 +1046,18 @@ struct MessageComposerView: View {
                 if showsSessionControls || showsModelAndProfileControls {
                     modelEffortControl
 
-                    if showsSessionControls { workspaceSelector }
+                    workspaceSelector
 
                     profileSelector
 
-                    if showsSessionControls { gitBranchPicker }
+                    if let fastMode {
+                        ComposerFastModeButton(
+                            isOn: fastMode, isDisabled: isConfigurationControlDisabled || !mayChangeFastMode, color: metaControlColor,
+                            controlFont: metaControlFont, chevronFont: metaChevronFont, onSelect: onSelectFastMode
+                        )
+                    }
+
+                    gitBranchPicker
                 }
 
                 voiceControlButton
@@ -1006,9 +1088,9 @@ struct MessageComposerView: View {
     }
 
     /// One trailing circle in both states. Stop while a response streams and the
-    /// draft is empty; Send as soon as there is text. Mid-run a tap sends with
-    /// the Send While Responding default, and a hold opens the send-choice card
-    /// for this one message (`ChatComposerSendButton`).
+    /// draft is empty; Send as soon as there is text (or, on Hermes, a staged
+    /// file). Mid-run a tap sends with the behavior its glyph shows, and a hold
+    /// opens the send-choice card for this one message (`ChatComposerSendButton`).
     private var actionButton: some View {
         Button(action: actionButtonPressed) {
             actionButtonLabel
@@ -1021,6 +1103,7 @@ struct MessageComposerView: View {
         .simultaneousGesture(sendHoldGesture)
         .disabled(isActionButtonDisabled)
         .accessibilityLabel(sendButton.accessibilityLabel)
+        .accessibilityValue(blockedSendReason ?? "")
         .accessibilityActions {
             // VoiceOver can't hold, so each choice is a named action.
             ForEach(sendChoices, id: \.self) { behavior in
@@ -1092,7 +1175,7 @@ struct MessageComposerView: View {
         if voiceInput.isListening {
             voiceInput.stopBeforeSubmittingDraft()
         }
-        onSendWithBehavior(behavior)
+        onSend(behavior)
     }
 
     /// Whether the draft holds anything that could be drawn as a skill chip.
@@ -1161,17 +1244,21 @@ struct MessageComposerView: View {
     @ViewBuilder
     private var gitBranchPicker: some View {
         // One "Git Actions" toggle covers every git control in chat (#189), so the
-        // branch chip goes with the toolbar menu rather than lingering alone.
-        if showsGitControls, gitViewModel.hasRepository {
+        // branch chip goes with the toolbar menu rather than lingering alone. A Hermes chat
+        // creates a branch only through hermex-push (#1236), and nothing switches while another
+        // write holds the repository's lock.
+        if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
                 branches: gitViewModel.branches,
                 isLoading: gitViewModel.isLoadingBranches,
                 isSwitching: gitViewModel.isSwitchingBranch,
-                isDisabled: isReadOnly || isWaitingForStream,
-                onSelect: onSelectGitBranch,
-                onCreate: onCreateGitBranch,
-                onRefresh: onRefreshGitBranches
+                isDisabled: holdsHostControls || isWaitingForStream || gitViewModel.isWriteLocked,
+                allowsCreate: gitViewModel.supportsSync,
+                onSelect: { if !holdsHostControls { onSelectGitBranch($0) } },
+                onCreate: { if !holdsHostControls { onCreateGitBranch($0) } },
+                onRefresh: onRefreshGitBranches,
+                showsPicker: $showsGitBranchPicker
             )
         }
     }
@@ -1270,8 +1357,10 @@ struct MessageComposerView: View {
 
     private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?, fixPrompt: String?,
                                  onCancel: (() -> Void)?)? {
-        if let readOnlyMessage {
+        if let readOnlyMessage = access.readOnlyMessage {
             return (readOnlyMessage, false, false, nil, nil, nil)
+        } else if access.isOffline {
+            return (ChatComposerSendBlock.offline.accessibilityValue, false, false, nil, nil, nil)
         } else if isWaitingForStream && isCancellingStream {
             return (String(localized: "Stopping response..."), false, false, nil, nil, nil)
         } else if isCompressingSession {
@@ -1374,7 +1463,7 @@ struct MessageComposerView: View {
     }
 
     private var isConfigurationControlDisabled: Bool {
-        isReadOnly || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration
+        holdsHostControls || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration
     }
 
     private var isVoiceInputDisabled: Bool {
@@ -1382,7 +1471,7 @@ struct MessageComposerView: View {
             return false
         }
 
-        return isReadOnly
+        return holdsHostControls
             || isSending
             || isCompressingSession
             || isWaitingForStream
@@ -1396,7 +1485,7 @@ struct MessageComposerView: View {
     /// this does not block on `isWaitingForStream`.
     private var isVoiceNoteRecordingDisabled: Bool {
         !showsSessionControls
-            || isReadOnly
+            || holdsHostControls
             || isSending
             || isSendingVoiceNote
             || isCompressingSession
@@ -1451,11 +1540,29 @@ struct MessageComposerView: View {
             hasText: !trimmedDraftMessage.isEmpty,
             hasQuotes: !quotes.isEmpty,
             hasStagedAttachments: !pendingAttachments.isEmpty,
+            block: sendBlock
+        )
+    }
+
+    private var sendBlock: ChatComposerSendBlock? {
+        ChatComposerSendBlock(
+            isWaitingForConnection: access.hasWaitingSend,
+            isOffline: access.holdsSendOffline(
+                isPlainText: quotes.isEmpty && pendingAttachments.isEmpty && !trimmedDraftMessage.hasPrefix("/")
+            ),
             isSending: isSending,
             isCompressingSession: isCompressingSession,
             isUploadingAttachment: isUploadingAttachment,
             isUpdatingConfiguration: isUpdatingConfiguration
         )
+    }
+
+    /// VoiceOver's value on a Send that has a draft but is held by work in
+    /// progress. Stop, a read-only chat and an empty draft explain themselves.
+    private var blockedSendReason: String? {
+        guard !isReadOnly, !showsStopButton,
+              !trimmedDraftMessage.isEmpty || !quotes.isEmpty || !pendingAttachments.isEmpty else { return nil }
+        return sendBlock?.accessibilityValue
     }
 
     /// A tap on the circle. The release of a hold that opened the send-choice
@@ -1465,16 +1572,45 @@ struct MessageComposerView: View {
         actionButtonTapped()
     }
 
-    /// Stop, or Send with the default. Command-Return comes straight here.
+    /// Stop, or Send with the behavior it shows. Keyboard sends come here too, so a
+    /// hold that arrived after the key was enabled still stops it.
     private func actionButtonTapped() {
+        guard !isActionButtonDisabled else { return }
         if showsStopButton {
             onCancel()
         } else {
             if voiceInput.isListening {
                 voiceInput.stopBeforeSubmittingDraft()
             }
-            onSend()
+            onSend(sendButton.runningBehavior)
         }
+    }
+
+    /// The hardware-keyboard commands (#1380), titled like the circle and the send-choice
+    /// card. ⌘↩ is Send, never Stop; ⌘⇧↩ is the card's safe alternate; Esc closes what is
+    /// open before it stops the run through the usual confirmation, keeping the draft.
+    private var keyboardCommands: ComposerKeyboardCommands {
+        let button = sendButton
+        var commands = ComposerKeyboardCommands()
+        if !button.showsStop, !isActionButtonDisabled {
+            commands.send = .init(title: button.accessibilityLabel) {
+                guard !showsStopButton else { return }
+                actionButtonTapped()
+            }
+        }
+        if let alternate = isActionButtonDisabled ? nil : button.alternateBehavior {
+            commands.alternateSend = .init(title: alternate.settingsDescription) { pickSendBehavior(alternate) }
+        }
+        if choosingSendBehavior {
+            commands.escape = .init(title: String(localized: "Close"), perform: closeSendChoices)
+        } else if showsSlashAutocomplete || showsFileAutocomplete {
+            commands.escape = .init(title: String(localized: "Close")) {
+                dismissedSuggestionsAnchor = SuggestionAnchor(draft: draftMessage, caret: composerSelection.range)
+            }
+        } else if isWaitingForStream, !isReadOnly, !isCancellingStream {
+            commands.escape = .init(title: String(localized: "Stop response"), perform: onCancel)
+        }
+        return commands
     }
 
     /// Starts dictation once for a composer opened by the "New Chat with Voice" intent (#338),
@@ -1494,7 +1630,7 @@ struct MessageComposerView: View {
 
     @MainActor
     private func toggleVoiceInput() {
-        voiceInput.apiClient = apiClient
+        voiceInput.transcribe = hermesTranscriber ?? apiClient?.dictationTranscriber
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
         voiceInput.scheduleToggle(currentDraft: draftMessage) { newDraft in
             editDraft(newDraft)

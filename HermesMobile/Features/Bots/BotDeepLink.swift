@@ -13,7 +13,6 @@ struct BotDestination: Equatable, Hashable {
 }
 
 extension HermesDeepLink {
-    private static let serverQueryItem = "server"
     private static let connectionQueryItem = "connection"
     private static let conversationQueryItem = "conversation"
 
@@ -101,11 +100,7 @@ enum BotDeepLinkOutcome: Equatable {
         state: AuthManager.State,
         servers: [ServerAccount],
         isBotModeEnabled: Bool,
-        // Main-actor isolated so the default can read the per-server Keychain record
-        // the way every other caller does.
-        botConnectionID: @MainActor (URL) -> UUID? = { @MainActor url in
-            (try? BotConnectionStore().load(server: url))?.id
-        }
+        botConnectionID: @MainActor (URL) -> UUID? = savedConnectionID
     ) -> BotDeepLinkOutcome {
         guard let account = servers.first(where: { $0.id == destination.server.absoluteString }) else {
             return .ignore
@@ -125,6 +120,12 @@ enum BotDeepLinkOutcome: Equatable {
         case .loggedOut, .unconfigured:
             return .waitForSignIn(destination)
         }
+    }
+
+    /// The server's saved Bot connection, from the per-server Keychain record the way every
+    /// other caller reads it.
+    static func savedConnectionID(for server: URL) -> UUID? {
+        (try? BotConnectionStore().load(server: server))?.id
     }
 
     /// Whether an inbox in this state can answer a held link now. A live roster can.
@@ -151,9 +152,22 @@ enum BotDeepLinkOutcome: Equatable {
 /// The inbox's presented chat and optional linked root. Resolving a link replaces
 /// the whole selection, including when its Profile is no longer on the roster.
 struct BotInboxSelection {
-    var profile: BotProfile?
-    var room: BotRoomKey?
+    // The inbox owns one destination on every width: picking a room replaces
+    // the bot (including a linked conversation), and picking a bot replaces the room.
+    var profile: BotProfile? {
+        didSet {
+            if profile != nil { room = nil }
+            conversation = nil
+            pick = UUID()
+        }
+    }
+    var room: BotRoomKey? {
+        didSet { if room != nil { profile = nil; conversation = nil }; pick = UUID() }
+    }
     var conversation: String?
+    /// New on every pick, the same bot or room again included, so a regular-width detail
+    /// re-roots and pops what it pushed, as a Sessions row does.
+    private(set) var pick = UUID()
 
     @MainActor mutating func open(
         _ destination: BotDestination, connection: BotConnection?, profiles: [BotProfile]
@@ -161,5 +175,17 @@ struct BotInboxSelection {
         profile = BotDeepLinkRouter.profile(for: destination, connection: connection, profiles: profiles)
         room = nil
         conversation = profile == nil ? nil : destination.conversation
+    }
+
+    /// The chat the selected bot opens (#1146): its canonical Bot Chat in the regular chat, the
+    /// one destination every bot route reaches (inbox row and tile, search, deep link, push and
+    /// Live Activity taps, a Sessions search hit, an Archived Bot Chat row). A link's root is
+    /// seeded, so a chat the host has since replaced opens the current one with its notice
+    /// (#1339). Nil with no bot selected.
+    func chat(server: URL, connection: BotConnection) -> HermesSessionChat? {
+        profile.map {
+            HermesSessionChat(server: server, connection: connection, target: .canonicalChat(profile: $0.id),
+                              linkedRoot: conversation)
+        }
     }
 }

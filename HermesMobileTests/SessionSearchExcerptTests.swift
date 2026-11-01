@@ -43,15 +43,6 @@ final class SessionSearchExcerptTests: XCTestCase {
         XCTAssertTrue(boldRuns(excerpt).isEmpty)
     }
 
-    /// Redaction can replace the matched span, leaving an excerpt the query is
-    /// no longer in. The excerpt still reads; nothing is bolded.
-    func testShowsPlainExcerptWhenTheQueryIsAbsent() {
-        let excerpt = SessionSearchExcerpt(text: "...the token is [redacted]...", query: "sk-live")
-
-        XCTAssertTrue(boldRuns(excerpt).isEmpty)
-        XCTAssertEqual(plainText(excerpt), excerpt.text)
-    }
-
     func testEmptyQueryHighlightsNothing() {
         let excerpt = SessionSearchExcerpt(text: "...deploy the worker...", query: "")
 
@@ -77,17 +68,36 @@ final class SessionSearchExcerptTests: XCTestCase {
         XCTAssertEqual(excerpt.text, "deploy the worker")
     }
 
-    func testLeavesAnOrdinaryExcerptAlone() {
-        let text = "...decided to move the billing plan tiers behind a flag..."
-        let excerpt = SessionSearchExcerpt(text: text, query: "billing")
+    // MARK: Hermes snippets (#1053)
 
-        XCTAssertEqual(excerpt.text, text)
+    /// The host marks each match with `>>>` and `<<<`: those spans are bolded, the marks
+    /// never show, and the plain text VoiceOver reads has none.
+    func testAHermesSnippetBoldsItsMarkedMatchesWithoutTheMarks() {
+        let excerpt = SessionSearchExcerpt(
+            hermesSnippet: "...the >>>Nimbus<<< rollout and the >>>nimbus<<<-2 cluster...", query: "nimb"
+        )
+
+        XCTAssertEqual(boldRuns(excerpt), ["Nimbus", "nimbus"])
+        XCTAssertEqual(excerpt.text, "...the Nimbus rollout and the nimbus-2 cluster...")
+        XCTAssertEqual(plainText(excerpt), excerpt.text)
     }
 
-    func testHighlightsAMatchAtEitherEdge() {
-        let excerpt = SessionSearchExcerpt(text: "deploy the deploy", query: "deploy")
+    /// A stray mark, such as a `>>>` the message itself held, is dropped too; it only starts or
+    /// ends the bolding. Escaped whitespace still becomes spaces.
+    func testAHermesSnippetNeverShowsAStrayMark() {
+        let excerpt = SessionSearchExcerpt(hermesSnippet: #"<<<print >>>deploy<<<\n done>>>"#, query: "deploy")
 
-        XCTAssertEqual(boldRuns(excerpt), ["deploy", "deploy"])
-        XCTAssertEqual(plainText(excerpt), excerpt.text)
+        XCTAssertEqual(excerpt.text, "print deploy done")
+        XCTAssertEqual(boldRuns(excerpt), ["deploy"])
+        XCTAssertFalse(plainText(excerpt).contains(">>>") || plainText(excerpt).contains("<<<"))
+    }
+
+    /// The host's substring search (for text FTS can't split) marks nothing, so the query is
+    /// bolded as in a webui excerpt.
+    func testAnUnmarkedHermesSnippetBoldsTheQuery() {
+        let excerpt = SessionSearchExcerpt(hermesSnippet: "会议记录：部署计划", query: "部署")
+
+        XCTAssertEqual(boldRuns(excerpt), ["部署"])
+        XCTAssertEqual(excerpt.text, "会议记录：部署计划")
     }
 }

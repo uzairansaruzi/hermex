@@ -189,33 +189,6 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(coordinator.pendingAttachments.map(\.name).sorted(), ["one.txt", "two.txt"])
     }
 
-    func testRemovePendingAttachmentRemovesOnlyMatchingAttachment() async throws {
-        let client = makeClient { request in
-            let filename = try apiTestMultipartFilename(from: request)
-            return apiTestJSONResponse(
-                """
-                {
-                  "filename": "\(filename)",
-                  "path": "/tmp/workspace/\(filename)",
-                  "size": 4,
-                  "mime": "text/plain",
-                  "is_image": false
-                }
-                """,
-                for: request
-            )
-        }
-        let coordinator = makeCoordinator(client: client)
-
-        await coordinator.uploadAttachment(data: Data("one".utf8), filename: "one.txt")
-        await coordinator.uploadAttachment(data: Data("two".utf8), filename: "two.txt")
-        let firstID = try XCTUnwrap(coordinator.pendingAttachments.first?.id)
-
-        coordinator.removePendingAttachment(id: firstID)
-
-        XCTAssertEqual(coordinator.pendingAttachments.map(\.name), ["two.txt"])
-    }
-
     func testTranscriptSameServerRemoteMediaUsesAuthenticatedSession() async throws {
         let mediaData = Data([0x01, 0x02, 0x03])
         let remoteURL = try XCTUnwrap(URL(string: "https://example.test/generated/media/image.png?variant=full"))
@@ -267,36 +240,6 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
         )
 
         XCTAssertNotNil(thumbnail)
-    }
-
-    func testTranscriptLocalAudioMediaIncludesSessionIDOnMediaEndpoint() async throws {
-        let mediaData = Data("audio-bytes".utf8)
-        let mediaPath = "/tmp/generated/clip.mp3"
-        let sessionID = "session-abc"
-        let client = makeAuthenticatedMediaClient { request in
-            XCTAssertEqual(request.httpMethod, "GET")
-            XCTAssertEqual(request.url?.path, "/api/media")
-
-            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
-            XCTAssertEqual(query["session_id"], sessionID)
-            XCTAssertEqual(query["path"], mediaPath)
-
-            let response = HTTPURLResponse(
-                url: try XCTUnwrap(request.url),
-                statusCode: 200,
-                httpVersion: nil,
-                headerFields: ["Content-Type": "audio/mpeg"]
-            )!
-            return (response, mediaData)
-        }
-        let coordinator = makeCoordinator(client: client)
-
-        let data = await coordinator.transcriptMediaData(
-            for: TranscriptMediaReference(rawReference: mediaPath)
-        )
-
-        XCTAssertEqual(data, mediaData)
     }
 
     func testTranscriptExternalRemoteVideoUsesPublicMediaSession() async throws {

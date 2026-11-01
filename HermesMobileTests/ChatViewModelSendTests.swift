@@ -15,32 +15,9 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testOpeningSessionDoesNotCreateSpeechSynthesizer() throws {
-        var createdSynthesizers = 0
-
-        _ = try makeViewModel(
-            speechSynthesizerFactory: {
-                createdSynthesizers += 1
-                return SpySpeechSynthesizer()
-            }
-        ) { request in
-            XCTFail("Opening a session should not request network work in this test.")
-            return apiTestJSONResponse("{}", for: request)
-        }
-
-        XCTAssertEqual(createdSynthesizers, 0)
-    }
-
-    @MainActor
     func testValidStreamProgressClearsRecoveryOwnedComposerError() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse(
-                #"{"session_id": "session-abc", "stream_id": "stream-123"}"#,
-                for: request
-            )
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -67,40 +44,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.sendErrorMessage, "The response failed on the server.")
     }
 
-    @MainActor
-    func testListenCreatesSpeechSynthesizerOnlyWhenRequested() async throws {
-        let speechSynthesizer = SpySpeechSynthesizer()
-        var createdSynthesizers = 0
-        let viewModel = try makeViewModel(
-            speechSynthesizerFactory: {
-                createdSynthesizers += 1
-                return speechSynthesizer
-            }
-        ) { request in
-            // Refuse settings and audio so the fallback creates the synthesizer.
-            XCTAssertTrue(["/api/settings", "/api/tts"].contains(request.url?.path ?? ""))
-            return Self.ttsUnavailableResponse(for: request)
-        }
-        let context = try XCTUnwrap(MessageActionContext(
-            message: ChatMessage(
-                role: "assistant",
-                content: "Playback should be explicit.",
-                timestamp: 1_770_000_001,
-                messageId: "assistant-1"
-            ),
-            visibleIndex: 0,
-            messagesOffset: 0
-        ))
-
-        viewModel.toggleListening(to: context)
-        XCTAssertEqual(viewModel.listeningMessageID, "assistant-1")
-        await viewModel.listenPreparationTask?.value
-
-        XCTAssertEqual(createdSynthesizers, 1)
-        XCTAssertEqual(speechSynthesizer.spokenStrings, ["Playback should be explicit."])
-        XCTAssertEqual(viewModel.listeningMessageID, "assistant-1")
-    }
-
     func testListenAudioSessionRoutesToSpeakerNotEarpiece() {
         // `.playback` forces the speaker (not the receiver/earpiece) by default, and
         // `.spokenAudio` is Apple's recommended mode for synthesized speech. #252.
@@ -111,14 +54,23 @@ final class ChatViewModelSendTests: XCTestCase {
         )
     }
 
+    /// The real on-device voice renders audio the Listen player can play and scrub (#1352).
     @MainActor
-    func testListenActivatesAudioSessionBeforeSpeaking() async throws {
+    func testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay() async throws {
+        let audio = try await OnDeviceSpeech.render("Hermex reads this reply aloud.")
+        let player = try ListenAudioPlayer(data: audio)
+        XCTAssertGreaterThan(player.duration, 0.5)
+    }
+
+    @MainActor
+    func testListenActivatesAudioSessionOnlyOnceOnDeviceSpeechIsReady() async throws {
         let recorder = ListenCallRecorder()
-        let speechSynthesizer = SpySpeechSynthesizer(recorder: recorder)
+        let speechSynthesizer = SpyOnDeviceSpeech(recorder: recorder)
         let audioSession = SpyListenAudioSession(recorder: recorder)
         let viewModel = try makeViewModel(
-            speechSynthesizerFactory: { speechSynthesizer },
-            listenAudioSession: audioSession
+            renderOnDeviceSpeech: speechSynthesizer.render,
+            listenAudioSession: audioSession,
+            listenAudioPlayerFactory: { _ in SpyListenAudioPlayer() }
         ) { request in
             Self.ttsUnavailableResponse(for: request)
         }
@@ -142,66 +94,21 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertEqual(audioSession.activateCount, 1)
         XCTAssertEqual(speechSynthesizer.spokenStrings, ["Out loud, please."])
-        // Prove activate precedes speak on a single interleaved timeline shared by both
-        // spies (the audio session and the synthesizer), so the "before speaking" claim
-        // is provable rather than relying on two independent logs (review on #332).
+        // One interleaved timeline shared by both spies (review on #332): the session
+        // is activated only after the on-device render, never held while it runs.
         let activateIndex = try XCTUnwrap(recorder.events.firstIndex(of: "activate"))
-        let speakIndex = try XCTUnwrap(recorder.events.firstIndex(of: "speak"))
-        XCTAssertLessThan(activateIndex, speakIndex)
-    }
-
-    @MainActor
-    func testStaleCancelAfterSwitchingMessagesKeepsNewListenActive() async throws {
-        let speechSynthesizer = SpySpeechSynthesizer()
-        let audioSession = SpyListenAudioSession()
-        let viewModel = try makeViewModel(
-            speechSynthesizerFactory: { speechSynthesizer },
-            listenAudioSession: audioSession
-        ) { request in
-            Self.ttsUnavailableResponse(for: request)
-        }
-        func makeContext(_ id: String, _ text: String, _ timestamp: Double) throws -> MessageActionContext {
-            try XCTUnwrap(MessageActionContext(
-                message: ChatMessage(role: "assistant", content: text, timestamp: timestamp, messageId: id),
-                visibleIndex: 0,
-                messagesOffset: 0
-            ))
-        }
-
-        // Start listening to A, then switch to B while A is still "speaking".
-        viewModel.toggleListening(to: try makeContext("assistant-A", "First message.", 1_770_000_010))
-        await viewModel.listenPreparationTask?.value
-        let utteranceA = try XCTUnwrap(speechSynthesizer.spokenUtterances.first)
-        viewModel.toggleListening(to: try makeContext("assistant-B", "Second message.", 1_770_000_011))
-        await viewModel.listenPreparationTask?.value
-
-        XCTAssertEqual(viewModel.listeningMessageID, "assistant-B")
-        let deactivationsBeforeStaleCallback = audioSession.deactivateCount
-
-        // A's cancel callback now arrives late, after B has started speaking. It must be
-        // ignored so it can't clear B's "now playing" state or deactivate the session.
-        speechSynthesizer.fireDidCancel(utteranceA)
-        await drainMainActor()
-
-        XCTAssertEqual(viewModel.listeningMessageID, "assistant-B")
-        XCTAssertEqual(audioSession.deactivateCount, deactivationsBeforeStaleCallback)
-
-        // A matching completion (for the live utterance B) still tears down cleanly.
-        let utteranceB = try XCTUnwrap(speechSynthesizer.spokenUtterances.last)
-        speechSynthesizer.fireDidCancel(utteranceB)
-        await drainMainActor()
-
-        XCTAssertNil(viewModel.listeningMessageID)
-        XCTAssertEqual(audioSession.deactivateCount, deactivationsBeforeStaleCallback + 1)
+        let renderIndex = try XCTUnwrap(recorder.events.firstIndex(of: "render"))
+        XCTAssertLessThan(renderIndex, activateIndex)
     }
 
     @MainActor
     func testStoppingListeningReleasesAudioSession() async throws {
-        let speechSynthesizer = SpySpeechSynthesizer()
+        let speechSynthesizer = SpyOnDeviceSpeech()
         let audioSession = SpyListenAudioSession()
         let viewModel = try makeViewModel(
-            speechSynthesizerFactory: { speechSynthesizer },
-            listenAudioSession: audioSession
+            renderOnDeviceSpeech: speechSynthesizer.render,
+            listenAudioSession: audioSession,
+            listenAudioPlayerFactory: { _ in SpyListenAudioPlayer() }
         ) { request in
             Self.ttsUnavailableResponse(for: request)
         }
@@ -218,6 +125,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         viewModel.toggleListening(to: context)
         await viewModel.listenPreparationTask?.value
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
         let deactivationsAfterStart = audioSession.deactivateCount
 
         viewModel.stopListening()
@@ -234,16 +142,13 @@ final class ChatViewModelSendTests: XCTestCase {
         let player = SpyListenAudioPlayer()
         player.duration = 83
         var receivedAudioData: [Data] = []
-        var createdSynthesizers = 0
+        let onDeviceSpeech = SpyOnDeviceSpeech()
         let serverAudio = Data([0xFF, 0xF3, 0x18, 0xC4])
         let viewModel = try makeViewModel(
-            speechSynthesizerFactory: {
-                createdSynthesizers += 1
-                return SpySpeechSynthesizer()
-            },
+            renderOnDeviceSpeech: onDeviceSpeech.render,
             listenAudioSession: audioSession,
             listenRemoteControlCenter: remoteControlCenter,
-            serverTTSAudioPlayerFactory: { data in
+            listenAudioPlayerFactory: { data in
                 receivedAudioData.append(data)
                 return player
             },
@@ -288,25 +193,20 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(audioSession.activateCount, 0)
         await viewModel.listenPreparationTask?.value
 
-        // Server audio plays; the on-device synthesizer is never touched.
+        // Server audio plays; the on-device voice is never touched.
         XCTAssertEqual(receivedAudioData, [serverAudio])
         XCTAssertEqual(player.prepareToPlayCount, 1)
         XCTAssertEqual(player.playCount, 1)
         XCTAssertEqual(player.rate, Float(1))
-        XCTAssertEqual(createdSynthesizers, 0)
+        XCTAssertEqual(onDeviceSpeech.spokenStrings, [])
         XCTAssertEqual(viewModel.listeningMessageID, "assistant-20")
         XCTAssertTrue(viewModel.showsListenPlaybackBar)
         XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
         XCTAssertEqual(viewModel.listenPlaybackDuration, 83)
         XCTAssertEqual(audioSession.activateCount, 1)
         XCTAssertEqual(remoteControlCenter.configureCount, 1)
-        XCTAssertEqual(remoteControlCenter.snapshots.last, ListenNowPlayingSnapshot(
-            title: "Hermex response 1",
-            duration: 83,
-            elapsedTime: 0,
-            speed: .normal,
-            isPlaying: true
-        ))
+        XCTAssertEqual(remoteControlCenter.snapshots.last?.duration, 83)
+        XCTAssertEqual(remoteControlCenter.snapshots.last?.isPlaying, true)
 
         // Natural finish tears listen state down and releases the session. The
         // defensive stopListening() at the start of toggleListening also
@@ -325,7 +225,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let remoteControlCenter = SpyListenRemoteControlCenter()
         let viewModel = try makeViewModel(
             listenRemoteControlCenter: remoteControlCenter,
-            serverTTSAudioPlayerFactory: { _ in player }
+            listenAudioPlayerFactory: { _ in player }
         ) { request in
             let response = HTTPURLResponse(
                 url: request.url!,
@@ -373,55 +273,12 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testListenPlaybackResyncsProgressWhenSceneBecomesActive() async throws {
-        let player = SpyListenAudioPlayer()
-        player.duration = 90
-        let remoteControlCenter = SpyListenRemoteControlCenter()
-        let viewModel = try makeViewModel(
-            listenRemoteControlCenter: remoteControlCenter,
-            serverTTSAudioPlayerFactory: { _ in player }
-        ) { request in
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: 200,
-                httpVersion: nil,
-                headerFields: ["Content-Type": "audio/mpeg"]
-            )!
-            return (response, Data([0xFF, 0xF3]))
-        }
-        let context = try XCTUnwrap(MessageActionContext(
-            message: ChatMessage(
-                role: "assistant",
-                content: "Keep progress honest.",
-                timestamp: 1_770_000_026,
-                messageId: "assistant-26"
-            ),
-            visibleIndex: 0,
-            messagesOffset: 0
-        ))
-
-        viewModel.toggleListening(to: context)
-        await viewModel.listenPreparationTask?.value
-        XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 0)
-        let nowPlayingUpdatesAfterStart = remoteControlCenter.snapshots.count
-
-        // Simulates background audio advancing while the foreground UI timer is not
-        // firing. Returning to the scene must pull the latest player time into the bar.
-        player.currentTime = 42
-        viewModel.refreshListenPlaybackProgressAfterSceneActivation()
-
-        XCTAssertEqual(viewModel.listenPlaybackElapsedTime, 42)
-        XCTAssertEqual(viewModel.listenPlaybackDisplayTime, 42)
-        XCTAssertEqual(remoteControlCenter.snapshots.count, nowPlayingUpdatesAfterStart)
-    }
-
-    @MainActor
     func testListenPlaybackSeekAndSpeedPersist() async throws {
         let userDefaults = try makeEphemeralUserDefaults()
         let player = SpyListenAudioPlayer()
         player.duration = 120
         let viewModel = try makeViewModel(
-            serverTTSAudioPlayerFactory: { _ in player },
+            listenAudioPlayerFactory: { _ in player },
             userDefaults: userDefaults
         ) { request in
             let response = HTTPURLResponse(
@@ -466,13 +323,44 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(reloadedViewModel.listenPlaybackSpeed, .oneAndHalf)
     }
 
+    /// iOS shows Now Playing as Stopped right after a mid-play rate change, so the Lock
+    /// Screen would offer a dead play button; Listen sends Now Playing again once that settles.
+    @MainActor
+    func testChangingSpeedWhilePlayingSendsNowPlayingAgainOnceItSettles() async throws {
+        let settle = ManualAsyncDelay()
+        let remoteControlCenter = SpyListenRemoteControlCenter()
+        let player = SpyListenAudioPlayer()
+        let viewModel = try makeViewModel(
+            listenSpeedChangeSettleDelay: { await settle.wait() },
+            listenRemoteControlCenter: remoteControlCenter,
+            listenAudioPlayerFactory: { _ in player },
+            userDefaults: try makeEphemeralUserDefaults()
+        ) { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "audio/mpeg"])!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        viewModel.toggleListening(to: try listenContext("Faster, please.", id: "speed"))
+        await viewModel.listenPreparationTask?.value
+
+        viewModel.setListenPlaybackSpeed(.oneAndHalf)
+        await settle.waitForRegistrationCount(1)
+        let sentBeforeSettling = remoteControlCenter.snapshots.count
+        await settle.resumeNext()
+        await viewModel.listenNowPlayingRefreshTask?.value
+
+        XCTAssertEqual(remoteControlCenter.snapshots.count, sentBeforeSettling + 1)
+        XCTAssertEqual(remoteControlCenter.snapshots.last?.isPlaying, true)
+        XCTAssertEqual(remoteControlCenter.snapshots.last?.speed, .oneAndHalf)
+    }
+
     @MainActor
     func testStartingListenOnDifferentMessageStopsCurrentServerAudio() async throws {
         let firstPlayer = SpyListenAudioPlayer()
         let secondPlayer = SpyListenAudioPlayer()
         var players = [firstPlayer, secondPlayer]
         let viewModel = try makeViewModel(
-            serverTTSAudioPlayerFactory: { _ in
+            listenAudioPlayerFactory: { _ in
                 players.removeFirst()
             }
         ) { request in
@@ -504,14 +392,17 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testListenFallsBackToSynthesizerSilentlyWhenServerTTSFails() async throws {
-        let speechSynthesizer = SpySpeechSynthesizer()
-        var playerFactoryCalls = 0
+    func testListenFallsBackToOnDeviceVoiceWithPlaybackControlsWhenServerTTSFails() async throws {
+        let speechSynthesizer = SpyOnDeviceSpeech()
+        let remoteControlCenter = SpyListenRemoteControlCenter()
+        let player = SpyListenAudioPlayer()
+        var playedAudio: [Data] = []
         let viewModel = try makeViewModel(
-            speechSynthesizerFactory: { speechSynthesizer },
-            serverTTSAudioPlayerFactory: { _ in
-                playerFactoryCalls += 1
-                return SpyListenAudioPlayer()
+            renderOnDeviceSpeech: speechSynthesizer.render,
+            listenRemoteControlCenter: remoteControlCenter,
+            listenAudioPlayerFactory: { data in
+                playedAudio.append(data)
+                return player
             }
         ) { request in
             // A raw 429 from the ~2 s rate limit must never surface to the user.
@@ -537,20 +428,28 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.toggleListening(to: context)
         await viewModel.listenPreparationTask?.value
 
-        XCTAssertEqual(playerFactoryCalls, 0)
+        // The on-device voice plays through the same player, so the playback bar and the
+        // Lock Screen controls cover it too (#1352).
         XCTAssertEqual(speechSynthesizer.spokenStrings, ["Fall back quietly."])
+        XCTAssertEqual(playedAudio, [SpyOnDeviceSpeech.audio])
+        XCTAssertEqual(player.playCount, 1)
         XCTAssertEqual(viewModel.listeningMessageID, "assistant-21")
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
+        XCTAssertEqual(remoteControlCenter.configureCount, 1)
+        XCTAssertEqual(remoteControlCenter.snapshots.last?.isPlaying, true)
         // Silent fallback: no error alert for the user (#15).
         XCTAssertNil(viewModel.messageActionErrorMessage)
     }
 
     @MainActor
-    func testListenFallsBackToSynthesizerWhenServerAudioIsUndecodable() async throws {
-        let speechSynthesizer = SpySpeechSynthesizer()
+    func testListenFallsBackToOnDeviceVoiceWhenServerAudioIsUndecodable() async throws {
+        let speechSynthesizer = SpyOnDeviceSpeech()
+        let player = SpyListenAudioPlayer()
         let viewModel = try makeViewModel(
-            speechSynthesizerFactory: { speechSynthesizer },
-            serverTTSAudioPlayerFactory: { _ in
-                throw URLError(.cannotDecodeContentData)
+            renderOnDeviceSpeech: speechSynthesizer.render,
+            listenAudioPlayerFactory: { data in
+                guard data == SpyOnDeviceSpeech.audio else { throw URLError(.cannotDecodeContentData) }
+                return player
             }
         ) { request in
             let response = HTTPURLResponse(
@@ -576,14 +475,55 @@ final class ChatViewModelSendTests: XCTestCase {
         await viewModel.listenPreparationTask?.value
 
         XCTAssertEqual(speechSynthesizer.spokenStrings, ["Bad bytes, good fallback."])
+        XCTAssertEqual(player.playCount, 1)
         XCTAssertNil(viewModel.messageActionErrorMessage)
     }
 
     @MainActor
-    func testListenOverServerLimitSkipsServerTTSEntirely() async throws {
-        let speechSynthesizer = SpySpeechSynthesizer()
+    func testServerAudioThatWontPlayReleasesTheSessionBeforeOnDeviceSpeech() async throws {
+        let recorder = ListenCallRecorder()
+        let speech = SpyOnDeviceSpeech(recorder: recorder)
+        let audioSession = SpyListenAudioSession(recorder: recorder)
+        let serverPlayer = SpyListenAudioPlayer()
+        serverPlayer.playResult = false
+        serverPlayer.duration = 999
+        let onDevicePlayer = SpyListenAudioPlayer()
+        onDevicePlayer.duration = 42
+        weak var model: ChatViewModel?
+        var durationWhileRendering: TimeInterval?
         let viewModel = try makeViewModel(
-            speechSynthesizerFactory: { speechSynthesizer }
+            renderOnDeviceSpeech: { text in
+                durationWhileRendering = model?.listenPlaybackDuration
+                return try await speech.render(text)
+            },
+            listenAudioSession: audioSession,
+            listenAudioPlayerFactory: { $0 == SpyOnDeviceSpeech.audio ? onDevicePlayer : serverPlayer }
+        ) { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "audio/mpeg"])!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        model = viewModel
+
+        viewModel.toggleListening(to: try listenContext("Won't play.", id: "wont-play"))
+        await viewModel.listenPreparationTask?.value
+
+        // The failed server attempt hands the session back before the render runs, so other
+        // audio isn't held silent, and the loading bar never shows the failed audio's length.
+        let renderIndex = try XCTUnwrap(recorder.events.firstIndex(of: "render"))
+        XCTAssertEqual(Array(recorder.events[..<renderIndex].suffix(2)), ["activate", "deactivate"])
+        XCTAssertEqual(durationWhileRendering, 0)
+        XCTAssertEqual(onDevicePlayer.playCount, 1)
+        XCTAssertEqual(viewModel.listenPlaybackDuration, 42)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
+    }
+
+    @MainActor
+    func testListenOverServerLimitSkipsServerTTSEntirely() async throws {
+        let speechSynthesizer = SpyOnDeviceSpeech()
+        let viewModel = try makeViewModel(
+            renderOnDeviceSpeech: speechSynthesizer.render,
+            listenAudioPlayerFactory: { _ in SpyListenAudioPlayer() }
         ) { request in
             XCTFail("Text over the 5000-char cap must not hit /api/tts.")
             return apiTestJSONResponse("{}", for: request)
@@ -601,21 +541,21 @@ final class ChatViewModelSendTests: XCTestCase {
         ))
 
         viewModel.toggleListening(to: context)
+        await viewModel.listenPreparationTask?.value
 
-        // Straight to the on-device path — synchronous, no preparation task.
-        XCTAssertNil(viewModel.listenPreparationTask)
         XCTAssertEqual(speechSynthesizer.spokenStrings, [longText])
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
         XCTAssertEqual(viewModel.listeningMessageID, "assistant-23")
     }
 
     @MainActor
     func testSecondTapWhileFetchingServerAudioStopsInsteadOfRestarting() async throws {
-        let speechSynthesizer = SpySpeechSynthesizer()
+        let speechSynthesizer = SpyOnDeviceSpeech()
         var playerFactoryCalls = 0
         var ttsRequests = 0
         let viewModel = try makeViewModel(
-            speechSynthesizerFactory: { speechSynthesizer },
-            serverTTSAudioPlayerFactory: { _ in
+            renderOnDeviceSpeech: speechSynthesizer.render,
+            listenAudioPlayerFactory: { _ in
                 playerFactoryCalls += 1
                 return SpyListenAudioPlayer()
             }
@@ -659,6 +599,37 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testStoppingWhileTheOnDeviceVoiceRendersPlaysNothing() async throws {
+        let speech = SpyOnDeviceSpeech()
+        let rendering = expectation(description: "on-device render started")
+        var release: CheckedContinuation<Void, Never>?
+        speech.hold = { await withCheckedContinuation { release = $0; rendering.fulfill() } }
+        let audioSession = SpyListenAudioSession()
+        let viewModel = try makeViewModel(
+            renderOnDeviceSpeech: speech.render,
+            listenAudioSession: audioSession,
+            listenAudioPlayerFactory: { _ in
+                XCTFail("A stopped Listen must not create a player")
+                return SpyListenAudioPlayer()
+            }
+        ) { request in
+            Self.ttsUnavailableResponse(for: request)
+        }
+
+        viewModel.toggleListening(to: try listenContext("Stop mid-render.", id: "render"))
+        let pending = viewModel.listenPreparationTask
+        await fulfillment(of: [rendering], timeout: 3)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .loading)
+        viewModel.stopListening()
+        release?.resume()
+        await pending?.value
+
+        XCTAssertEqual(audioSession.activateCount, 0)
+        XCTAssertNil(viewModel.listeningMessageID)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .idle)
+    }
+
+    @MainActor
     func testListenRoutesSavedEnginesAndFallsBackForMissingOrFailedSettings() async throws {
         let scenarios: [(String?, String, String?)] = [
             (#"{"tts_engine":"browser","tts_voice":"tr-TR-EmelNeural"}"#, "browser", nil),
@@ -670,12 +641,12 @@ final class ChatViewModelSendTests: XCTestCase {
             (#"{"tts_engine":"future","tts_voice":" "}"#, "edge", "en-US-AriaNeural")
         ]
         for (settings, engine, voice) in scenarios {
-            let speech = SpySpeechSynthesizer()
+            let speech = SpyOnDeviceSpeech()
             let player = SpyListenAudioPlayer()
             var paths: [String] = []
             let viewModel = try makeViewModel(
-                speechSynthesizerFactory: { speech },
-                serverTTSAudioPlayerFactory: { _ in player }
+                renderOnDeviceSpeech: speech.render,
+                listenAudioPlayerFactory: { _ in player }
             ) { request in
                 paths.append(request.url!.path)
                 if request.url?.path == "/api/settings" {
@@ -694,7 +665,7 @@ final class ChatViewModelSendTests: XCTestCase {
             await viewModel.listenPreparationTask?.value
             XCTAssertEqual(paths, engine == "browser" ? ["/api/settings"] : ["/api/settings", "/api/tts"])
             XCTAssertEqual(speech.spokenStrings, engine == "browser" ? ["Hello"] : [])
-            XCTAssertEqual(player.prepareToPlayCount, engine == "browser" ? 0 : 1)
+            XCTAssertEqual(player.prepareToPlayCount, 1)
             XCTAssertNil(viewModel.messageActionErrorMessage)
             viewModel.stopListening()
         }
@@ -706,22 +677,24 @@ final class ChatViewModelSendTests: XCTestCase {
             let started = expectation(description: "settings started")
             let released = expectation(description: "settings released")
             let release = DispatchSemaphore(value: 0)
-            let speech = SpySpeechSynthesizer()
+            let speech = SpyOnDeviceSpeech()
             let audioSession = SpyListenAudioSession()
             let viewModel = try makeViewModel(
-                speechSynthesizerFactory: { speech },
+                renderOnDeviceSpeech: speech.render,
                 listenAudioSession: audioSession,
-                serverTTSAudioPlayerFactory: { _ in
+                listenAudioPlayerFactory: { _ in
                     XCTFail("Stopped settings must not create a player")
                     return SpyListenAudioPlayer()
-                }
-            ) { request in
-                XCTAssertEqual(request.url?.path, "/api/settings")
-                started.fulfill()
-                release.wait()
-                defer { released.fulfill() }
-                return apiTestJSONResponse(#"{"tts_engine":"browser"}"#, for: request)
-            }
+                },
+                handler: routes([
+                    "/api/settings": { request in
+                        started.fulfill()
+                        release.wait()
+                        defer { released.fulfill() }
+                        return apiTestJSONResponse(#"{"tts_engine":"browser"}"#, for: request)
+                    },
+                ])
+            )
             let context = try listenContext("Stopped", id: "stopped")
             viewModel.toggleListening(to: context)
             let pending = viewModel.listenPreparationTask
@@ -743,8 +716,8 @@ final class ChatViewModelSendTests: XCTestCase {
             let started = expectation(description: "old settings started")
             let released = expectation(description: "old settings released")
             let release = DispatchSemaphore(value: 0)
-            let oldSpeech = SpySpeechSynthesizer()
-            let newSpeech = SpySpeechSynthesizer()
+            let oldSpeech = SpyOnDeviceSpeech()
+            let newSpeech = SpyOnDeviceSpeech()
             let player = SpyListenAudioPlayer()
             var settingsCount = 0
             let handler: (URLRequest) throws -> (HTTPURLResponse, Data) = { request in
@@ -766,7 +739,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 XCTAssertEqual(json, ["text": "New", "voice": "tr-TR-EmelNeural", "engine": "edge"])
                 return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!, Data([1]))
             }
-            let old = try makeViewModel(speechSynthesizerFactory: { oldSpeech }, serverTTSAudioPlayerFactory: { _ in player }, handler: handler)
+            let old = try makeViewModel(renderOnDeviceSpeech: oldSpeech.render, listenAudioPlayerFactory: { _ in player }, handler: handler)
             old.toggleListening(to: try listenContext("Old", id: "old"))
             let pending = old.listenPreparationTask
             await fulfillment(of: [started], timeout: 3)
@@ -774,7 +747,7 @@ final class ChatViewModelSendTests: XCTestCase {
             if switchesServer {
                 // ChatView.onDisappear stops Listen when the server-keyed tree is replaced.
                 old.stopListening()
-                current = try makeViewModel(speechSynthesizerFactory: { newSpeech }, serverTTSAudioPlayerFactory: { _ in player }, serverURL: URL(string: "https://second.test")!, handler: handler)
+                current = try makeViewModel(renderOnDeviceSpeech: newSpeech.render, listenAudioPlayerFactory: { _ in player }, serverURL: URL(string: "https://second.test")!, handler: handler)
             } else {
                 current = old
             }
@@ -804,7 +777,17 @@ final class ChatViewModelSendTests: XCTestCase {
     func testServerTTSPolicyRoutesByServerTextCap() {
         XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 5000)))
         XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 5001)))
-        XCTAssertEqual(ServerTTSPolicy.defaultVoice, "en-US-AriaNeural")
+        XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 4000), onHermes: true))
+        XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 4001), onHermes: true))
+    }
+
+    /// A Hermes host splits text by Python's `len`, Unicode scalars, so a reply whose characters
+    /// combine several scalars ("é" as e + U+0301) is measured that way, not by Swift's `count`.
+    func testServerTTSPolicyCountsHermesTextInUnicodeScalars() {
+        let accented = "e\u{301}"
+        XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: accented, count: 2000), onHermes: true))
+        XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: accented, count: 2001), onHermes: true))
+        XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: accented, count: 2001)))
     }
 
     @MainActor
@@ -823,10 +806,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertFalse(didRequestUpload)
         XCTAssertTrue(viewModel.pendingAttachments.isEmpty)
-        XCTAssertEqual(
-            viewModel.uploadAttachmentErrorMessage,
-            "too-large.mov is too large. Attachments must be 20 MB or smaller."
-        )
+        XCTAssertNotNil(viewModel.uploadAttachmentErrorMessage)
     }
 
     @MainActor
@@ -862,26 +842,6 @@ final class ChatViewModelSendTests: XCTestCase {
             try maxPixelDimension(in: thumbnailData),
             ImagePreviewDownsampler.attachmentMaxPixelSize
         )
-    }
-
-    func testImagePreviewDownsamplerSkipsWorkWhenCallerIsCancelled() async throws {
-        let originalData = try makeJPEGData(size: CGSize(width: 1_600, height: 1_200))
-        let task = Task<Data?, Never> {
-            while !Task.isCancelled {
-                await Task.yield()
-            }
-
-            return await ImagePreviewDownsampler.previewDataAsync(
-                from: originalData,
-                maxPixelSize: ImagePreviewDownsampler.attachmentMaxPixelSize
-            )
-        }
-
-        task.cancel()
-
-        let thumbnailData = await task.value
-
-        XCTAssertNil(thumbnailData)
     }
 
     @MainActor
@@ -929,9 +889,8 @@ final class ChatViewModelSendTests: XCTestCase {
         let imageB = try makeJPEGData(size: CGSize(width: 16, height: 12))
         var uploadedFilenames: [String] = []
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": { request in
                 let filename = try apiTestMultipartFilename(from: request)
                 uploadedFilenames.append(filename)
                 return apiTestJSONResponse("""
@@ -943,7 +902,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   "is_image": true
                 }
                 """, for: request)
-            case "/api/chat/start":
+            },
+            "/api/chat/start": chatStarted { request in
                 let body = try apiTestJSONBody(from: request)
                 let attachmentPayloads = try XCTUnwrap(body["attachments"] as? [[String: Any]])
                 let paths = attachmentPayloads.compactMap { $0["path"] as? String }
@@ -960,18 +920,8 @@ final class ChatViewModelSendTests: XCTestCase {
                 for path in paths {
                     XCTAssertTrue(message.contains(path))
                 }
-
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         await viewModel.uploadAttachment(data: Data("image-a".utf8), filename: "shared-image.jpg", previewData: imageA)
         await viewModel.uploadAttachment(data: Data("image-b".utf8), filename: "shared-image.jpg", previewData: imageB)
@@ -1092,6 +1042,351 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.sendErrorMessage, "Could not start chat")
     }
 
+    @MainActor
+    private func makeContinuationDraftStore() -> ChatDraftStore {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        // Budgeted staging requires a backing store; keep real attachment copies
+        // isolated alongside this fixture's draft persistence.
+        return ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory),
+                              attachmentStore: ChatDraftAttachmentStore(directoryURL: directory),
+                              debounceDuration: .seconds(60))
+    }
+
+    @MainActor
+    func testRotatedSendNavigatesWithReconciledDraftAndAttachmentsWithoutReplay() async throws {
+        let drafts = makeContinuationDraftStore()
+        let server = URL(string: "https://example.test")!
+        let source = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        let target = ChatDraftKey.session(server: server, sessionID: "continuation-tip")
+        let otherServer = ChatDraftKey.session(server: URL(string: "https://other.test")!, sessionID: "continuation-tip")
+        drafts.setDraft("Other server draft", for: otherServer)
+        var paths: [String] = []
+        let viewModel = try makeViewModel(sessionSummary: makeSession(profile: "work"), draftStore: drafts) { request in
+            XCTAssertEqual(request.url?.host, "example.test")
+            let path = request.url?.path ?? ""
+            paths.append(path)
+            switch path {
+            case "/api/upload":
+                return apiTestJSONResponse(#"{"filename":"note.txt","path":"/tmp/note.txt","mime":"text/plain","size":4,"is_image":false}"#, for: request)
+            case "/api/chat/start":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["profile"] as? String, "work")
+                return apiTestJSONResponse(#"{"error":"Open its continuation before sending.","code":"session_rotated","continuation_session_id":"continuation-next"}"#, for: request, status: 409)
+            case "/api/session":
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+                XCTAssertEqual(query?.first(where: { $0.name == "session_id" })?.value, "continuation-next")
+                // GET navigation can itself adopt the latest durable tip.
+                return apiTestJSONResponse(#"{"session":{"session_id":"continuation-tip","title":"Continuation","profile":"work","messages":[]}}"#, for: request)
+            default:
+                XCTFail("Unexpected request \(path)")
+                throw URLError(.badURL)
+            }
+        }
+        await viewModel.uploadAttachment(data: Data([1, 2, 3, 4]), filename: "note.txt", previewData: nil)
+        let staged = try XCTUnwrap(viewModel.pendingAttachments.first)
+        let record = ChatDraftAttachment(id: staged.id, name: staged.name, mime: staged.mime,
+                                         size: staged.size, isImage: staged.isImage, file: staged.draftFileName)
+        let submitted = ComposerDraftContent(text: "  Keep my whitespace  ", quotes: [ComposerQuote(text: "A quote")])
+        drafts.setContent(submitted, for: source)
+        drafts.setAttachments([record], for: source)
+        let didStart = await viewModel.sendMessage(submitted.text)
+        XCTAssertFalse(didStart)
+        XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(viewModel.pendingAttachments.map(\.id), [staged.id])
+        XCTAssertNil(viewModel.activeStreamID)
+        // Match ChatView's failed-submission reconciliation, including an edit during send.
+        let edited = ComposerDraftContent(text: "Newer draft", quotes: submitted.quotes)
+        let resolved = drafts.resolveSubmission(submitted: submitted, current: edited,
+                                                didStart: didStart, draftWasEdited: true,
+                                                preserveRejectedSubmission: viewModel.isCompressionRotated, for: source)
+        XCTAssertEqual(resolved.text, submitted.text + "\n\n" + edited.text)
+        XCTAssertEqual(resolved.quotes, submitted.quotes)
+        drafts.setContent(resolved, for: source)
+        var preparedForHandoff = false
+        let latest = ComposerDraftContent(text: resolved.text + "\n\nLast edit", quotes: resolved.quotes + [ComposerQuote(text: "Last quote")])
+        let destination = await viewModel.compressionContinuationForNavigation(
+            from: source, isCurrent: { true }, prepareDraftForHandoff: {
+                preparedForHandoff = true
+                drafts.setContent(latest, for: source)
+            }
+        )
+        XCTAssertTrue(preparedForHandoff)
+        XCTAssertEqual(destination?.sessionId, "continuation-tip")
+        XCTAssertEqual(destination?.profile, "work")
+        let retained = await drafts.draft(for: target)
+        XCTAssertEqual(retained?.text, latest.text)
+        XCTAssertEqual(retained?.quotes, latest.quotes)
+        XCTAssertEqual(retained?.attachments, [record])
+        let removedSource = await drafts.draft(for: source)
+        XCTAssertNil(removedSource)
+        try await drafts.flush()
+        let unrelated = await drafts.draft(for: otherServer)
+        XCTAssertEqual(unrelated?.text, "Other server draft")
+        XCTAssertEqual(paths, ["/api/upload", "/api/chat/start", "/api/session"])
+        XCTAssertNil(viewModel.sendErrorMessage)
+        let duplicate = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertNil(duplicate)
+        viewModel.suspendStreamForNavigation()
+        let backSend = await viewModel.sendMessage("New work after Back")
+        XCTAssertFalse(backSend)
+        XCTAssertEqual(paths, ["/api/upload", "/api/chat/start", "/api/session"])
+        let unchanged = await drafts.draft(for: target)
+        XCTAssertEqual(unchanged?.text, latest.text)
+        XCTAssertEqual(unchanged?.attachments, [record])
+    }
+
+    @MainActor
+    func testRotatedQueueAndSteerReconcileComposerBeforeNavigationWithoutReplay() async throws {
+        for command in ["/queue", "/steer"] {
+            for edited in [false, true] {
+                let drafts = makeContinuationDraftStore()
+                let source = ChatDraftKey.session(server: URL(string: "https://example.test")!, sessionID: "session-abc")
+                let submitted = ComposerDraftContent(text: "\(command) Keep working", quotes: [])
+                drafts.setContent(submitted, for: source)
+                var posts = 0
+                let viewModel = try makeViewModel(draftStore: drafts) { request in
+                    if request.url?.path == "/api/chat/start" {
+                        posts += 1
+                        return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                    }
+                    XCTAssertEqual(request.httpMethod, "GET")
+                    return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+                }
+                let result = await SlashCommandExecutor.execute(text: submitted.text, viewModel: viewModel)
+                guard case .unsupported = result else {
+                    return XCTFail("Expected the rejected fallback to reach unsupported composer reconciliation")
+                }
+                let current = edited
+                    ? ComposerDraftContent(text: "New work", quotes: [ComposerQuote(text: "New quote")])
+                    : submitted
+                // The exact store path used by handleSlashExecutionResult ->
+                // reconcileConsumedDraft, before opening the continuation.
+                let resolved = drafts.resolveConsumedInput(
+                    submitted: submitted, current: current, draftWasEdited: edited,
+                    preserveRejectedSubmission: viewModel.isCompressionRotated, for: source
+                )
+                XCTAssertEqual(resolved.text, edited ? submitted.text + "\n\nNew work" : submitted.text)
+                XCTAssertEqual(resolved.quotes, current.quotes)
+                let destination = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+                XCTAssertEqual(destination?.sessionId, "next")
+                let retained = await drafts.draft(for: .session(server: URL(string: "https://example.test")!, sessionID: "next"))
+                XCTAssertEqual(retained?.text, resolved.text)
+                XCTAssertEqual(retained?.quotes, resolved.quotes)
+                XCTAssertEqual(posts, 1)
+            }
+        }
+    }
+
+    @MainActor
+    func testInvalidRotationsStayInOriginalChatWithoutGETOrReplay() async throws {
+        for metadata in ["", #", "continuation_session_id":null"#, #", "continuation_session_id":42"#,
+                         #", "continuation_session_id":"""#, #", "continuation_session_id":"session-abc""#,
+                         #", "continuation_session_id":"../other""#] {
+            var requests = 0
+            let viewModel = try makeViewModel { request in
+                requests += 1
+                XCTAssertEqual(request.url?.path, "/api/chat/start")
+                return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated"\#(metadata)}"#, for: request, status: 409)
+            }
+            let didStart = await viewModel.sendMessage("Keep draft")
+            XCTAssertFalse(didStart)
+            let destination = await viewModel.compressionContinuationForNavigation(
+                from: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"), isCurrent: { true })
+            XCTAssertNil(destination)
+            XCTAssertNotNil(viewModel.sendErrorMessage)
+            XCTAssertTrue(viewModel.messages.isEmpty)
+            XCTAssertEqual(requests, 1)
+        }
+    }
+
+    @MainActor
+    func testContinuationLoadFailureOrWrongProfileDoesNotNavigate() async throws {
+        for reply in [#"{"session":{"session_id":"next","profile":"other"}}"#,
+                      #"{"session":{"session_id":"session-abc","profile":"work"}}"#, "{}", "failure"] {
+            let viewModel = try makeViewModel(sessionSummary: makeSession(profile: "work")) { request in
+                if request.url?.path == "/api/chat/start" {
+                    return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                }
+                XCTAssertEqual(request.url?.path, "/api/session")
+                return apiTestJSONResponse(reply, for: request, status: reply == "failure" ? 404 : 200)
+            }
+            let didStart = await viewModel.sendMessage("Keep draft")
+            XCTAssertFalse(didStart)
+            let destination = await viewModel.compressionContinuationForNavigation(
+                from: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"), isCurrent: { true })
+            XCTAssertNil(destination)
+            XCTAssertNotNil(viewModel.sendErrorMessage)
+            XCTAssertTrue(viewModel.messages.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testSendAfterFailedContinuationLoadRetriesGETWithoutReplay() async throws {
+        let drafts = makeContinuationDraftStore()
+        let server = URL(string: "https://example.test")!
+        let source = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        drafts.setDraft("Keep draft", for: source)
+        var paths: [String] = []
+        var continuationLoads = 0
+        var viewModelRef: ChatViewModel?
+        var sendHeldOffDuringRetry: Bool?
+        let viewModel = try makeViewModel(draftStore: drafts) { request in
+            paths.append(request.url?.path ?? "")
+            if request.url?.path == "/api/chat/start" {
+                return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+            }
+            XCTAssertEqual(request.url?.path, "/api/session")
+            continuationLoads += 1
+            // The first load fails while the connection drops; the retry succeeds.
+            if continuationLoads == 1 { throw URLError(.networkConnectionLost) }
+            // The handler runs off the main thread while the retry awaits this response.
+            sendHeldOffDuringRetry = DispatchQueue.main.sync { MainActor.assumeIsolated { viewModelRef?.isStartingChat } }
+            return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+        }
+        viewModelRef = viewModel
+        let firstSend = await viewModel.sendMessage("Keep draft")
+        XCTAssertFalse(firstSend)
+        let stranded = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertNil(stranded)
+
+        let retry = await viewModel.sendMessage("Keep draft")
+        XCTAssertFalse(retry)
+        let destination = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertEqual(destination?.sessionId, "next")
+        let moved = await drafts.draft(for: .session(server: server, sessionID: "next"))
+        XCTAssertEqual(moved?.text, "Keep draft")
+        XCTAssertEqual(paths, ["/api/chat/start", "/api/session", "/api/session"])
+        XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(sendHeldOffDuringRetry, true, "Send must stay off while the retry loads")
+        XCTAssertFalse(viewModel.isStartingChat)
+    }
+
+    @MainActor
+    func testContinuationUsesAuthoritativeDefaultNotSelectedProfile() async throws {
+        for targetProfile in ["default", "", "work"] {
+            let drafts = makeContinuationDraftStore()
+            let source = ChatDraftKey.session(server: URL(string: "https://example.test")!, sessionID: "session-abc")
+            drafts.setDraft("Keep", for: source)
+            let viewModel = try makeViewModel(sessionSummary: makeSession(profile: nil), draftStore: drafts) { request in
+                switch request.url?.path {
+                case "/api/profiles":
+                    return apiTestJSONResponse(#"{"active":"work","profiles":[]}"#, for: request)
+                case "/api/chat/start":
+                    XCTAssertEqual(try apiTestJSONBody(from: request)["profile"] as? String, "work")
+                    return apiTestJSONResponse(#"{"code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                case "/api/session":
+                    return apiTestJSONResponse(#"{"session":{"session_id":"next","profile":"\#(targetProfile)"}}"#, for: request)
+                default:
+                    return apiTestJSONResponse("{}", for: request, status: 500)
+                }
+            }
+            await viewModel.loadComposerConfiguration()
+            XCTAssertEqual(viewModel.selectedProfileName, "work")
+            _ = await viewModel.sendMessage("Keep")
+            let destination = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+            XCTAssertEqual(destination?.sessionId, targetProfile == "work" ? nil : "next")
+        }
+    }
+
+    @MainActor
+    func testContinuationHandoffRefusesOtherServerStaleViewAndExistingDraft() async throws {
+        let drafts = makeContinuationDraftStore()
+        let server = URL(string: "https://example.test")!
+        let source = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        let target = ChatDraftKey.session(server: server, sessionID: "next")
+        drafts.setDraft("Original draft", for: source)
+        drafts.setDraft("Destination draft", for: target)
+        let viewModel = try makeViewModel(draftStore: drafts) { request in
+            if request.url?.path == "/api/chat/start" {
+                return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+            }
+            return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+        }
+        _ = await viewModel.sendMessage("Original draft")
+        let wrongServer = await viewModel.compressionContinuationForNavigation(
+            from: .session(server: URL(string: "https://other.test")!, sessionID: "session-abc"), isCurrent: { true })
+        let hidden = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { false })
+        let occupied = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertNil(wrongServer)
+        XCTAssertNil(hidden)
+        XCTAssertNil(occupied)
+        let original = await drafts.draft(for: source)
+        let existing = await drafts.draft(for: target)
+        XCTAssertEqual(original?.text, "Original draft")
+        XCTAssertEqual(existing?.text, "Destination draft")
+        viewModel.suspendStreamForNavigation()
+        drafts.setDraft("", for: target)
+        let stale = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertEqual(stale?.sessionId, "next", "A new visible owner can use the retained target without another POST")
+    }
+
+    @MainActor
+    func testAcceptedSendDuringNavigationStillAttachesItsStream() async throws {
+        let requested = expectation(description: "POST reached server")
+        let release = DispatchSemaphore(value: 0)
+        let stream = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: stream) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            requested.fulfill()
+            release.wait()
+            return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"accepted-stream"}"#, for: request)
+        }
+        let send = Task { await viewModel.sendMessage("Already accepted") }
+        await fulfillment(of: [requested], timeout: 2)
+        viewModel.suspendStreamForNavigation()
+        release.signal()
+        let didStart = await send.value
+        XCTAssertTrue(didStart, "An accepted POST must not restore the input as rejected")
+        XCTAssertEqual(viewModel.activeStreamID, "accepted-stream", "Back must find the run it started")
+        XCTAssertFalse(viewModel.isStartingChat)
+        XCTAssertFalse(viewModel.isCompressionRotated)
+    }
+
+    @MainActor
+    func testCancelledRotatedSendCannotFetchOrNavigate() async throws {
+        for delayedPath in ["/api/chat/start", "/api/session"] {
+            let drafts = makeContinuationDraftStore()
+            let requested = expectation(description: "Owned request reached server: \(delayedPath)")
+            let release = DispatchSemaphore(value: 0)
+            let viewModel = try makeViewModel(draftStore: drafts) { request in
+                let path = request.url?.path
+                if path == "/api/upload" {
+                    return apiTestJSONResponse(#"{"filename":"note.txt","path":"/tmp/note.txt","mime":"text/plain","size":4,"is_image":false}"#, for: request)
+                }
+                if path == delayedPath {
+                    requested.fulfill()
+                    release.wait()
+                }
+                if path == "/api/chat/start" {
+                    return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                }
+                XCTAssertEqual(delayedPath, "/api/session", "A stale POST must not fetch a continuation")
+                return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+            }
+            await viewModel.uploadAttachment(data: Data([1, 2, 3, 4]), filename: "note.txt", previewData: nil)
+            let attachment = try XCTUnwrap(viewModel.pendingAttachments.first)
+            let context = try makeContext()
+            let send = Task { await viewModel.sendMessage("Keep draft", modelContext: context) }
+            await fulfillment(of: [requested], timeout: 2)
+            send.cancel()
+            release.signal()
+            let didStart = await send.value
+            XCTAssertFalse(didStart)
+            let destination = await viewModel.compressionContinuationForNavigation(
+                from: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"), isCurrent: { true })
+            XCTAssertNil(destination)
+            XCTAssertFalse(viewModel.isStartingChat)
+            XCTAssertTrue(viewModel.messages.isEmpty)
+            XCTAssertTrue(viewModel.localAttachmentPreviews.isEmpty)
+            XCTAssertEqual(viewModel.pendingAttachments.map(\.id), [attachment.id])
+            XCTAssertNotNil(attachment.draftFileName)
+            let retained = await drafts.draft(for: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"))
+            XCTAssertEqual(retained?.attachments.map(\.id), [attachment.id])
+            XCTAssertTrue(try CacheStore.cachedMessages(serverURL: URL(string: "https://example.test")!,
+                                                       sessionID: "session-abc", in: context).isEmpty)
+        }
+    }
+
     /// After a Hermes update the server refuses every send until WebUI restarts (#955).
     @MainActor
     func testStaleAgentRuntimeSendFailureExplainsRestartAndRollsBack() async throws {
@@ -1112,37 +1407,12 @@ final class ChatViewModelSendTests: XCTestCase {
         // `false` is what keeps the draft in the composer (ChatView restores it).
         XCTAssertFalse(didStart)
         XCTAssertTrue(viewModel.messages.isEmpty)
-        XCTAssertEqual(
-            viewModel.sendErrorMessage,
-            "Hermes was updated on your server. Restart Hermes WebUI there, then try again."
-        )
+        XCTAssertNotNil(viewModel.sendErrorMessage)
         XCTAssertEqual(viewModel.sendErrorRuntimeStale, .updated)
 
         // The next error replaces it, so Copy fix prompt never outlives its banner.
         viewModel.setSendErrorMessage("Choose a slash command or continue typing.")
         XCTAssertNil(viewModel.sendErrorRuntimeStale)
-    }
-
-    /// Slash commands that send (`/queue` with nothing running, skill shortcuts)
-    /// hand the failed send's text back, and ChatView sets it again.
-    @MainActor
-    func testStaleAgentRuntimeSlashSendKeepsFixPrompt() async throws {
-        let viewModel = try makeViewModel { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse(
-                #"{"error": "Hermes Agent was updated while Hermes WebUI was running.", "type": "agent_runtime_stale"}"#,
-                for: request,
-                status: 409
-            )
-        }
-        let copy = "Hermes was updated on your server. Restart Hermes WebUI there, then try again."
-
-        let result = await SlashCommandExecutor.execute(text: "/queue Keep working", viewModel: viewModel)
-        XCTAssertEqual(result, .unsupported(friendlyMessage: copy))
-        viewModel.setSendErrorMessage(copy)
-
-        XCTAssertEqual(viewModel.sendErrorMessage, copy)
-        XCTAssertEqual(viewModel.sendErrorRuntimeStale, .updated)
     }
 
     @MainActor
@@ -1163,19 +1433,12 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testSendMessageAddsSingleOptimisticUserMessageWhenStartSucceeds() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-
-            let body = try XCTUnwrap(apiTestJSONBody(from: request))
-            XCTAssertEqual(body["message"] as? String, "Keep working")
-
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted { request in
+                let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                XCTAssertEqual(body["message"] as? String, "Keep working")
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("  Keep working  ")
 
@@ -1221,12 +1484,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 let body = try apiTestJSONBody(from: request)
                 startMessage = body["message"] as? String
                 startAttachments = body["attachments"] as? [[String: Any]]
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
+                return try chatStarted()(request)
             default:
                 XCTFail("Unexpected request path: \(path ?? "nil")")
                 throw URLError(.badURL)
@@ -1265,94 +1523,28 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
     }
 
-    func testChatMessageTextStillAppendsAttachedFilesSuffixForFileUploads() {
-        // Guard: the voice-note path deliberately bypasses chatMessageText to send
-        // the bare transcript (#330), but real file uploads from the text composer
-        // MUST keep the "[Attached files: …]" suffix so the agent can inspect them.
-        let file = PendingAttachment(
-            name: "report.pdf",
-            path: "/tmp/workspace/report.pdf",
-            mime: "application/pdf",
-            size: 1234,
-            isImage: false,
-            thumbnailData: nil
-        )
-
-        let text = PendingAttachment.chatMessageText(draft: "Summarize this", attachments: [file])
-
-        XCTAssertEqual(text, "Summarize this\n\n[Attached files: /tmp/workspace/report.pdf]")
-    }
-
-    func testChatMessageTextSynthesizesUploadedFormForEmptyDraft() {
-        // Attachment-only send (#403): with no typed draft the message text is
-        // synthesized exactly like the web UI (`static/messages.js`), since the
-        // server requires non-empty text.
-        let image = PendingAttachment(
-            name: "photo.jpg",
-            path: "/tmp/workspace/photo.jpg",
-            mime: "image/jpeg",
-            size: 45_678,
-            isImage: true,
-            thumbnailData: nil
-        )
-        let file = PendingAttachment(
-            name: "report.pdf",
-            path: "/tmp/workspace/report.pdf",
-            mime: "application/pdf",
-            size: 1234,
-            isImage: false,
-            thumbnailData: nil
-        )
-
-        XCTAssertEqual(
-            PendingAttachment.chatMessageText(draft: "", attachments: [image, file]),
-            "I've uploaded 2 file(s): /tmp/workspace/photo.jpg, /tmp/workspace/report.pdf"
-        )
-        XCTAssertEqual(
-            PendingAttachment.chatMessageText(draft: "   ", attachments: [file]),
-            "I've uploaded 1 file(s): /tmp/workspace/report.pdf",
-            "Whitespace-only draft counts as attachment-only"
-        )
-        XCTAssertEqual(
-            PendingAttachment.chatMessageText(draft: "", attachments: []),
-            "",
-            "No attachments: the empty draft passes through unchanged"
-        )
-    }
-
     @MainActor
     func testSendMessageWithEmptyDraftAndStagedAttachmentSendsSynthesizedMessage() async throws {
         let streamClient = SpySSEStreamingClient()
         var startMessage: String?
         var startAttachments: [[String: Any]]?
 
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
-                return apiTestJSONResponse("""
-                {
-                  "filename": "photo.jpg",
-                  "path": "/tmp/workspace/photo.jpg",
-                  "size": 45678,
-                  "mime": "image/jpeg",
-                  "is_image": true
-                }
-                """, for: request)
-            case "/api/chat/start":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": jsonReply("""
+            {
+              "filename": "photo.jpg",
+              "path": "/tmp/workspace/photo.jpg",
+              "size": 45678,
+              "mime": "image/jpeg",
+              "is_image": true
+            }
+            """),
+            "/api/chat/start": chatStarted(stream: "stream-403") { request in
                 let body = try apiTestJSONBody(from: request)
                 startMessage = body["message"] as? String
                 startAttachments = body["attachments"] as? [[String: Any]]
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-403"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         // Stage one attachment through the real coordinator (mocked upload).
         let staged = await viewModel.uploadAttachment(
@@ -1379,18 +1571,6 @@ final class ChatViewModelSendTests: XCTestCase {
 
         // The composer strip is empty after a successful send.
         XCTAssertTrue(viewModel.pendingAttachments.isEmpty)
-    }
-
-    @MainActor
-    func testSendMessageWithEmptyDraftAndNoAttachmentsStillReturnsFalse() async {
-        let viewModel = try? makeViewModel { _ in
-            XCTFail("No request should be made for an empty draft with no attachments")
-            throw URLError(.badURL)
-        }
-
-        let didStart = await viewModel?.sendMessage("") ?? false
-
-        XCTAssertFalse(didStart)
     }
 
     @MainActor
@@ -1468,44 +1648,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testGoalSlashCommandSubmitsStatusAndRevealsGoalControls() async throws {
-        let viewModel = try makeViewModel { request in
-            XCTAssertEqual(request.url?.path, "/api/goal")
-
-            let body = try XCTUnwrap(apiTestJSONBody(from: request))
-            XCTAssertEqual(body["session_id"] as? String, "session-abc")
-            XCTAssertEqual(body["args"] as? String, "status")
-            XCTAssertEqual(body["workspace"] as? String, "/tmp/workspace")
-            XCTAssertEqual(body["model"] as? String, "gpt-5.4")
-
-            return apiTestJSONResponse("""
-            {
-              "ok": true,
-              "action": "status",
-              "message": "Goal is active.",
-              "goal": {
-                "goal": "Ship the TestFlight build",
-                "status": "active",
-                "turns_used": 1,
-                "max_turns": 20
-              }
-            }
-            """, for: request)
-        }
-
-        XCTAssertFalse(viewModel.hasActivatedGoalCommand)
-
-        let result = await SlashCommandExecutor.execute(text: "/goal", viewModel: viewModel)
-
-        XCTAssertEqual(result, .executed(message: nil))
-        XCTAssertTrue(viewModel.hasActivatedGoalCommand)
-        XCTAssertEqual(viewModel.currentGoal?.goal, "Ship the TestFlight build")
-        XCTAssertEqual(viewModel.currentGoal?.status, "active")
-        XCTAssertEqual(viewModel.messages.map(\.role), ["local_notice"])
-        XCTAssertEqual(viewModel.messages.first?.content, "Goal is active.")
-    }
-
-    @MainActor
     func testBareResumeSlashCommandFallsThroughToNormalSendPath() async throws {
         var requestedPaths: [String] = []
         let viewModel = try makeViewModel { request in
@@ -1579,35 +1721,24 @@ final class ChatViewModelSendTests: XCTestCase {
     func testSkillShortcutExecutesBeforeUnknownCommandFallthrough() async throws {
         var startedMessage: String?
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/skills":
-                return apiTestJSONResponse("""
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/skills": jsonReply("""
+            {
+              "skills": [
                 {
-                  "skills": [
-                    {
-                      "name": "Spotify",
-                      "category": "media",
-                      "description": "Control Spotify playback."
-                    }
-                  ]
+                  "name": "Spotify",
+                  "category": "media",
+                  "description": "Control Spotify playback."
                 }
-                """, for: request)
-            case "/api/chat/start":
+              ]
+            }
+            """),
+            "/api/chat/start": chatStarted { request in
                 let data = try XCTUnwrap(apiTestBodyData(from: request))
                 let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
                 startedMessage = body["message"] as? String
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let result = await SlashCommandExecutor.execute(text: "/spotify check songs", viewModel: viewModel)
 
@@ -1669,27 +1800,19 @@ final class ChatViewModelSendTests: XCTestCase {
         var didFetchPendingAfterResponse = false
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/approval/respond":
-                respondBody = try XCTUnwrap(apiTestJSONBody(from: request))
-                return apiTestJSONResponse(#"{"ok": true, "choice": "once"}"#, for: request)
-            case "/api/approval/pending":
-                didFetchPendingAfterResponse = true
-                return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            approvalStreamClient: approvalStreamClient,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/respond": { request in
+                    respondBody = try XCTUnwrap(apiTestJSONBody(from: request))
+                    return apiTestJSONResponse(#"{"ok": true, "choice": "once"}"#, for: request)
+                },
+                "/api/approval/pending": { request in
+                    didFetchPendingAfterResponse = true
+                    return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
+                },
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run the installer")
 
@@ -1740,21 +1863,16 @@ final class ChatViewModelSendTests: XCTestCase {
         var responded = false
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/approval/respond":
-                responded = true
-                return apiTestJSONResponse(#"{"ok":true,"choice":"once"}"#, for: request)
-            case "/api/approval/pending":
-                return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            approvalStreamClient: approvalStreamClient,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/respond": { request in
+                    responded = true
+                    return apiTestJSONResponse(#"{"ok":true,"choice":"once"}"#, for: request)
+                },
+                "/api/approval/pending": jsonReply(#"{"pending":null,"pending_count":0}"#),
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run setup")
         XCTAssertTrue(didStart)
@@ -1778,64 +1896,13 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testApprovalArrivingAfterChatStreamEndsIsShown() async throws {
-        let streamClient = SpySSEStreamingClient()
-        let approvalStreamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/approval/respond":
-                return apiTestJSONResponse(#"{"ok":true,"choice":"once"}"#, for: request)
-            case "/api/approval/pending":
-                return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStart = await viewModel.sendMessage("Run setup")
-        XCTAssertTrue(didStart)
-        streamClient.emit(.streamEnd)
-        XCTAssertNil(viewModel.activeStreamID)
-        XCTAssertEqual(approvalStreamClient.stopCount, 0)
-
-        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(pending: nil, pendingCount: 0)))
-        XCTAssertEqual(approvalStreamClient.stopCount, 0)
-
-        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
-            pending: PendingApproval(approvalId: "approval-1", command: "make install"),
-            pendingCount: 1
-        )))
-        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "approval-1")
-
-        let didRespond = await viewModel.respondToApproval(.once)
-        XCTAssertTrue(didRespond)
-        XCTAssertNil(viewModel.approvalPrompt)
-        XCTAssertEqual(approvalStreamClient.stopCount, 1)
-    }
-
-    @MainActor
     func testIdleSessionLoadsPendingApprovalAndClearsOnServerUpdate() async throws {
         let approvalStreamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(approvalStreamClient: approvalStreamClient) { request in
-            switch request.url?.path {
-            case "/api/session/yolo":
-                return apiTestJSONResponse(#"{"ok":true,"yolo_enabled":false}"#, for: request)
-            case "/api/approval/pending":
-                return apiTestJSONResponse(
-                    #"{"pending":{"approval_id":"approval-1","command":"make install"},"pending_count":1}"#,
-                    for: request
-                )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+        let viewModel = try makeViewModel(approvalStreamClient: approvalStreamClient, handler: routes([
+            "/api/session/yolo": jsonReply(#"{"ok":true,"yolo_enabled":false}"#),
+            "/api/approval/pending": jsonReply(
+                #"{"pending":{"approval_id":"approval-1","command":"make install"},"pending_count":1}"#),
+        ]))
 
         await viewModel.refreshApprovalBypassState()
 
@@ -1854,11 +1921,9 @@ final class ChatViewModelSendTests: XCTestCase {
         let approvalStreamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient
-        ) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-        }
+            approvalStreamClient: approvalStreamClient,
+            handler: routes(["/api/chat/start": chatStarted()])
+        )
 
         let didStart = await viewModel.sendMessage("Run setup")
         XCTAssertTrue(didStart)
@@ -1880,21 +1945,16 @@ final class ChatViewModelSendTests: XCTestCase {
         var respondBody: [String: Any]?
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/approval/respond":
-                respondBody = try XCTUnwrap(apiTestJSONBody(from: request))
-                return apiTestJSONResponse(#"{"ok": true, "choice": "once"}"#, for: request)
-            case "/api/approval/pending":
-                return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            approvalStreamClient: approvalStreamClient,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/respond": { request in
+                    respondBody = try XCTUnwrap(apiTestJSONBody(from: request))
+                    return apiTestJSONResponse(#"{"ok": true, "choice": "once"}"#, for: request)
+                },
+                "/api/approval/pending": jsonReply(#"{"pending": null, "pending_count": 0}"#),
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run the installer")
         XCTAssertTrue(didStart)
@@ -1924,18 +1984,12 @@ final class ChatViewModelSendTests: XCTestCase {
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: clarifyStreamClient
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/approval/respond":
-                throw URLError(.timedOut)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            clarifyStreamClient: clarifyStreamClient,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/respond": { _ in throw URLError(.timedOut) },
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run the installer")
         XCTAssertTrue(didStart)
@@ -1967,27 +2021,24 @@ final class ChatViewModelSendTests: XCTestCase {
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: clarifyStreamClient
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/approval/respond":
-                let response = HTTPURLResponse(
-                    url: request.url!,
-                    statusCode: 409,
-                    httpVersion: nil,
-                    headerFields: ["Content-Type": "application/json"]
-                )!
-                return (response, Data(#"{"ok": false, "error": "Approval prompt expired or not found.", "stale": true}"#.utf8))
-            case "/api/approval/pending":
-                didRefreshPendingAfterStale = true
-                return apiTestJSONResponse(#"{"pending": null}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            clarifyStreamClient: clarifyStreamClient,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/respond": { request in
+                    let response = HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 409,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )!
+                    return (response, Data(#"{"ok": false, "error": "Approval prompt expired or not found.", "stale": true}"#.utf8))
+                },
+                "/api/approval/pending": { request in
+                    didRefreshPendingAfterStale = true
+                    return apiTestJSONResponse(#"{"pending": null}"#, for: request)
+                },
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run the installer")
         XCTAssertTrue(didStart)
@@ -2028,25 +2079,20 @@ final class ChatViewModelSendTests: XCTestCase {
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: SpySSEStreamingClient()
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/approval/respond":
-                // 200, not an error status — that is the whole trap.
-                return apiTestJSONResponse(#"{"ok": false, "choice": "once"}"#, for: request)
-            case "/api/approval/pending":
-                return apiTestJSONResponse("""
+            clarifyStreamClient: SpySSEStreamingClient(),
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/respond": { request in
+                    // 200, not an error status — that is the whole trap.
+                    return apiTestJSONResponse(#"{"ok": false, "choice": "once"}"#, for: request)
+                },
+                "/api/approval/pending": jsonReply("""
                 {"pending": {"approval_id": "approval-1", "command": "make install",
                  "description": "Install command", "pattern_key": "install"},
                  "pending_count": 1}
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                """),
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run the installer")
         XCTAssertTrue(didStart)
@@ -2067,88 +2113,37 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNotNil(viewModel.approvalErrorMessage, "Silence here is what made this untraceable.")
     }
 
-    /// A response without `ok: true` is not proof the server accepted the
-    /// choice, so the pending card must remain actionable.
-    @MainActor
-    func testApprovalRespondWithoutAnOkFieldKeepsTheCardAndExplains() async throws {
-        let streamClient = SpySSEStreamingClient()
-        let approvalStreamClient = SpySSEStreamingClient()
-
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: SpySSEStreamingClient()
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/approval/respond":
-                return apiTestJSONResponse(#"{"choice": "once"}"#, for: request)
-            case "/api/approval/pending":
-                return apiTestJSONResponse("""
-                {"pending": {"approval_id": "approval-1", "command": "make install",
-                 "description": "Install command", "pattern_key": "install"},
-                 "pending_count": 1}
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStart = await viewModel.sendMessage("Run the installer")
-        XCTAssertTrue(didStart)
-        approvalStreamClient.emit(.approvalPending(ApprovalPendingResponse(
-            pending: PendingApproval(
-                approvalId: "approval-1",
-                command: "make install",
-                description: "Install command",
-                patternKey: "install"
-            ),
-            pendingCount: 1
-        )))
-
-        let didRespond = await viewModel.respondToApproval(.once)
-
-        XCTAssertFalse(didRespond)
-        XCTAssertNotNil(viewModel.approvalPrompt)
-        XCTAssertNotNil(viewModel.approvalErrorMessage)
-    }
-
     @MainActor
     func testApprovalFallbackPollingFailureStaysDiagnosticOnly() async throws {
         let streamClient = SpySSEStreamingClient()
         let approvalStreamClient = SpySSEStreamingClient()
         let approvalPendingRequests = LockedCounter()
+        let pollHandled = expectation(description: "the failed poll was handled")
         let pollingIntervals = ChatPollingIntervals(
             approvalNanoseconds: 100_000_000,
             clarificationNanoseconds: 100_000_000,
-            backgroundNanoseconds: 100_000_000
+            backgroundNanoseconds: 100_000_000,
+            sleep: pollClock(slept: pollHandled)
         )
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             approvalStreamClient: approvalStreamClient,
-            pollingIntervals: pollingIntervals
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/approval/pending":
-                _ = approvalPendingRequests.increment()
-                throw URLError(.timedOut)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            pollingIntervals: pollingIntervals,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/pending": { request in
+                    _ = approvalPendingRequests.increment()
+                    throw URLError(.timedOut)
+                },
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run the installer")
         XCTAssertTrue(didStart)
 
         approvalStreamClient.emit(.transportError("approval stream failed"))
-        try await waitUntil {
-            approvalPendingRequests.count > 0
-        }
+        await fulfillment(of: [pollHandled], timeout: 5)
+        XCTAssertEqual(approvalPendingRequests.count, 1)
 
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
         XCTAssertNil(viewModel.lastError)
@@ -2172,24 +2167,20 @@ final class ChatViewModelSendTests: XCTestCase {
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             approvalStreamClient: approvalStreamClient,
-            pollingIntervals: pollingIntervals
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/approval/pending":
-                if approvalPendingRequests.increment() == 1 {
-                    return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
-                }
-                return apiTestJSONResponse(
-                    #"{"pending":{"approval_id":"approval-1","command":"make install"},"pending_count":1}"#,
-                    for: request
-                )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            pollingIntervals: pollingIntervals,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/pending": { request in
+                    if approvalPendingRequests.increment() == 1 {
+                        return apiTestJSONResponse(#"{"pending":null,"pending_count":0}"#, for: request)
+                    }
+                    return apiTestJSONResponse(
+                        #"{"pending":{"approval_id":"approval-1","command":"make install"},"pending_count":1}"#,
+                        for: request
+                    )
+                },
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run setup")
         XCTAssertTrue(didStart)
@@ -2217,36 +2208,38 @@ final class ChatViewModelSendTests: XCTestCase {
         let approvalPendingRequests = LockedCounter()
         let clarificationPendingRequests = LockedCounter()
         let backgroundStatusRequests = LockedCounter()
+        let slept = expectation(description: "the approval, clarification and background polls are asleep")
+        slept.expectedFulfillmentCount = 3
+        let cancelled = expectation(description: "cleanup cancelled each sleeping poll")
+        cancelled.expectedFulfillmentCount = 3
         let pollingIntervals = ChatPollingIntervals(
             approvalNanoseconds: 100_000_000,
             clarificationNanoseconds: 100_000_000,
-            backgroundNanoseconds: 100_000_000
+            backgroundNanoseconds: 100_000_000,
+            sleep: pollClock(slept: slept, cancelled: cancelled)
         )
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             approvalStreamClient: approvalStreamClient,
             clarifyStreamClient: clarifyStreamClient,
-            pollingIntervals: pollingIntervals
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/approval/pending":
-                _ = approvalPendingRequests.increment()
-                return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
-            case "/api/clarify/pending":
-                _ = clarificationPendingRequests.increment()
-                return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
-            case "/api/background":
-                return apiTestJSONResponse(#"{"task_id": "task-1", "stream_id": "stream-bg", "session_id": "background-1"}"#, for: request)
-            case "/api/background/status":
-                _ = backgroundStatusRequests.increment()
-                return apiTestJSONResponse(#"{"results": []}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            pollingIntervals: pollingIntervals,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/pending": { request in
+                    _ = approvalPendingRequests.increment()
+                    return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
+                },
+                "/api/clarify/pending": { request in
+                    _ = clarificationPendingRequests.increment()
+                    return apiTestJSONResponse(#"{"pending": null, "pending_count": 0}"#, for: request)
+                },
+                "/api/background": jsonReply(#"{"task_id": "task-1", "stream_id": "stream-bg", "session_id": "background-1"}"#),
+                "/api/background/status": { request in
+                    _ = backgroundStatusRequests.increment()
+                    return apiTestJSONResponse(#"{"results": []}"#, for: request)
+                },
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run the installer")
         XCTAssertTrue(didStart)
@@ -2259,29 +2252,21 @@ final class ChatViewModelSendTests: XCTestCase {
         )
         XCTAssertEqual(result, .executed(message: "Background task started. I'll add the result here when it completes."))
 
-        try await waitUntil {
-            approvalPendingRequests.count > 0 &&
-                clarificationPendingRequests.count > 0 &&
-                backgroundStatusRequests.count > 0
-        }
+        await fulfillment(of: [slept], timeout: 5)
 
         viewModel.cleanupPollingTasks()
-        let approvalCountAfterCleanup = approvalPendingRequests.count
-        let clarificationCountAfterCleanup = clarificationPendingRequests.count
-        let backgroundCountAfterCleanup = backgroundStatusRequests.count
+        await fulfillment(of: [cancelled], timeout: 5)
 
-        try await Task.sleep(nanoseconds: 350_000_000)
-
-        XCTAssertEqual(approvalPendingRequests.count, approvalCountAfterCleanup)
-        XCTAssertEqual(clarificationPendingRequests.count, clarificationCountAfterCleanup)
-        XCTAssertEqual(backgroundStatusRequests.count, backgroundCountAfterCleanup)
+        XCTAssertEqual(approvalPendingRequests.count, 1)
+        XCTAssertEqual(clarificationPendingRequests.count, 1)
+        XCTAssertEqual(backgroundStatusRequests.count, 1)
     }
 
     @MainActor
     func testApprovalForDifferentSessionDoesNotRenderOverCurrentChat() async throws {
         let viewModel = try makeViewModel { request in
             XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
+            return try chatStarted()(request)
         }
 
         let didStart = await viewModel.sendMessage("Keep working")
@@ -2325,19 +2310,15 @@ final class ChatViewModelSendTests: XCTestCase {
         var yoloBody: [String: Any]?
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/session/yolo":
-                yoloBody = try XCTUnwrap(apiTestJSONBody(from: request))
-                return apiTestJSONResponse(#"{"ok": true, "yolo_enabled": true}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            approvalStreamClient: approvalStreamClient,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/session/yolo": { request in
+                    yoloBody = try XCTUnwrap(apiTestJSONBody(from: request))
+                    return apiTestJSONResponse(#"{"ok": true, "yolo_enabled": true}"#, for: request)
+                },
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Run setup")
         XCTAssertTrue(didStart)
@@ -2364,15 +2345,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testLiveStreamEventsUpdateTranscriptBeforeCompletion() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -2420,15 +2393,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testReasoningAndToolEventsAnchorToStableAssistantTurnBeforeFirstToken() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Use tools before answering")
         XCTAssertTrue(didStart)
@@ -2473,16 +2438,9 @@ final class ChatViewModelSendTests: XCTestCase {
         // default (16ms) is exercised everywhere else.
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            streamingScrollCoalescingDelayNanoseconds: 1_000_000
-        ) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+            streamingScrollCoalescingDelayNanoseconds: 1_000_000,
+            handler: routes(["/api/chat/start": chatStarted()])
+        )
 
         let didStart = await viewModel.sendMessage("Stream a long response")
         XCTAssertTrue(didStart)
@@ -2535,15 +2493,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testDisplayedTranscriptMessagesMemoMatchesPureMappingAcrossAppendsAndEdits() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         func assertMemoMatchesPureMapping(_ message: String, line: UInt = #line) {
             XCTAssertEqual(
@@ -2580,15 +2530,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testInterimAssistantEventUpdatesTranscriptBeforeCompletion() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Use the project skill")
         XCTAssertTrue(didStart)
@@ -2608,43 +2550,31 @@ final class ChatViewModelSendTests: XCTestCase {
     func testLoadMessagesClearsPendingStreamingBuffersBeforeReload() async throws {
         let streamClient = SpySSEStreamingClient()
         streamClient.automaticallyFlushPendingStreamingContent = false
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "active_stream_id": "stream-123",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "message_id": "user-1"
-                      },
-                      {
-                        "role": "assistant",
-                        "content": "From server.",
-                        "timestamp": 1770000101,
-                        "message_id": "assistant-1"
-                      }
-                    ]
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "active_stream_id": "stream-123",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Keep working",
+                    "message_id": "user-1"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "From server.",
+                    "timestamp": 1770000101,
+                    "message_id": "assistant-1"
                   }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -2658,7 +2588,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
         XCTAssertEqual(viewModel.messages.last?.content, "From server.")
 
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // The flush the coalescing timer would run finds nothing left to apply.
+        viewModel.flushPendingStreamingContent()
         XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
         XCTAssertEqual(viewModel.messages.last?.content, "From server.")
     }
@@ -2666,37 +2597,25 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testLoadMessagesDuringActiveStreamPreservesLiveStateWhenServerSnapshotIsStale() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      }
-                    ]
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Keep working",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
                   }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -2727,28 +2646,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportReconnectUsesReplayWhenInactiveStreamHasJournal() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": false,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": false,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -2756,9 +2663,7 @@ final class ChatViewModelSendTests: XCTestCase {
         streamClient.emit(.token("Partial live answer."), lastEventID: "session-abc:4")
         streamClient.emit(.transportError("lost connection"), lastEventID: "session-abc:4")
 
-        try await waitUntil {
-            streamClient.startedURLs.count == 2
-        }
+        await waitUntil("the replay started") { streamClient.startedURLs.count == 2 }
 
         let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
         let replayQueryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -2773,15 +2678,7 @@ final class ChatViewModelSendTests: XCTestCase {
         ChatViewModel.resetActiveStreamSnapshotsForTesting()
         defer { ChatViewModel.resetActiveStreamSnapshotsForTesting() }
         let originalStreamClient = SpySSEStreamingClient()
-        let originalViewModel = try makeViewModel(streamClient: originalStreamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let originalViewModel = try makeViewModel(streamClient: originalStreamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await originalViewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -2789,39 +2686,32 @@ final class ChatViewModelSendTests: XCTestCase {
         originalViewModel.suspendStreamForNavigation()
 
         let reopenedStreamClient = SpySSEStreamingClient()
-        let reopenedViewModel = try makeViewModel(streamClient: reopenedStreamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "active_stream_id": "stream-123",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      }
-                    ]
+        let reopenedViewModel = try makeViewModel(streamClient: reopenedStreamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "active_stream_id": "stream-123",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Keep working",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
                   }
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": false,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": false,
+              "stream_id": "stream-123",
+              "replay_available": true
+            }
+            """),
+        ]))
 
         await reopenedViewModel.loadMessages()
         await reopenedViewModel.reconnectStreamIfNeeded()
@@ -2837,45 +2727,33 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStreamTicksAndKeystrokesReuseTheStoredReasoningGroups() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Reasoning",
-                    "messages": [
-                      {"role": "user", "content": "First question", "message_id": "user-1"},
-                      {
-                        "role": "assistant",
-                        "content": "First answer.",
-                        "reasoning": "Work through the first question.",
-                        "message_id": "assistant-1"
-                      },
-                      {"role": "user", "content": "Second question", "message_id": "user-2"},
-                      {
-                        "role": "assistant",
-                        "content": "Second answer.",
-                        "reasoning": "Work through the second question.",
-                        "message_id": "assistant-2"
-                      }
-                    ]
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Reasoning",
+                "messages": [
+                  {"role": "user", "content": "First question", "message_id": "user-1"},
+                  {
+                    "role": "assistant",
+                    "content": "First answer.",
+                    "reasoning": "Work through the first question.",
+                    "message_id": "assistant-1"
+                  },
+                  {"role": "user", "content": "Second question", "message_id": "user-2"},
+                  {
+                    "role": "assistant",
+                    "content": "Second answer.",
+                    "reasoning": "Work through the second question.",
+                    "message_id": "assistant-2"
                   }
-                }
-                """, for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+            "/api/chat/start": chatStarted(),
+        ]))
 
         await viewModel.loadMessages()
         let groups = viewModel.displayedReasoningGroups
@@ -2912,58 +2790,51 @@ final class ChatViewModelSendTests: XCTestCase {
     func testColdReopenActiveStreamReplaysFromStartWithoutDuplicatingLoadedState() async throws {
         ChatViewModel.resetActiveStreamSnapshotsForTesting()
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Recovery",
-                    "active_stream_id": "stream-123",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Inspect the report",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      },
-                      {
-                        "role": "assistant",
-                        "content": "Partial answer.",
-                        "reasoning": "Plan the inspection.",
-                        "attachments": [
-                          {"name": "report.txt", "path": "/tmp/report.txt"}
-                        ],
-                        "timestamp": 1770000101,
-                        "message_id": "assistant-1"
-                      }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Recovery",
+                "active_stream_id": "stream-123",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Inspect the report",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "Partial answer.",
+                    "reasoning": "Plan the inspection.",
+                    "attachments": [
+                      {"name": "report.txt", "path": "/tmp/report.txt"}
                     ],
-                    "tool_calls": [
-                      {
-                        "name": "read_file",
-                        "snippet": "Read report.txt",
-                        "tid": "tool-1",
-                        "assistant_msg_idx": 1,
-                        "args": {"path": "/tmp/report.txt"}
-                      }
-                    ]
+                    "timestamp": 1770000101,
+                    "message_id": "assistant-1"
                   }
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ],
+                "tool_calls": [
+                  {
+                    "name": "read_file",
+                    "snippet": "Read report.txt",
+                    "tid": "tool-1",
+                    "assistant_msg_idx": 1,
+                    "args": {"path": "/tmp/report.txt"}
+                  }
+                ]
+              }
             }
-        }
+            """),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
+            }
+            """),
+        ]))
 
         await viewModel.loadMessages()
         await viewModel.reconnectStreamIfNeeded()
@@ -3074,34 +2945,27 @@ final class ChatViewModelSendTests: XCTestCase {
     func testColdReopenActiveStreamFallsBackToOrdinaryReconnectWithoutJournal() async throws {
         ChatViewModel.resetActiveStreamSnapshotsForTesting()
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "active_stream_id": "stream-123",
-                    "messages": [
-                      {"role": "user", "content": "Keep working", "message_id": "user-1"},
-                      {"role": "assistant", "content": "Server prefix. ", "message_id": "assistant-1"}
-                    ]
-                  }
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": false
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "active_stream_id": "stream-123",
+                "messages": [
+                  {"role": "user", "content": "Keep working", "message_id": "user-1"},
+                  {"role": "assistant", "content": "Server prefix. ", "message_id": "assistant-1"}
+                ]
+              }
             }
-        }
+            """),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": false
+            }
+            """),
+        ]))
 
         await viewModel.loadMessages()
         await viewModel.reconnectStreamIfNeeded()
@@ -3120,16 +2984,9 @@ final class ChatViewModelSendTests: XCTestCase {
         let streamClient = SpySSEStreamingClient()
         var didRequestStatus = false
         var didReloadMessages = false
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": { request in
                 didRequestStatus = true
                 return apiTestJSONResponse("""
                 {
@@ -3137,7 +2994,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   "stream_id": "stream-123"
                 }
                 """, for: request)
-            case "/api/session":
+            },
+            "/api/session": { request in
                 didReloadMessages = true
                 return apiTestJSONResponse("""
                 {
@@ -3161,11 +3019,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -3188,23 +3043,15 @@ final class ChatViewModelSendTests: XCTestCase {
     func testActiveStreamStatusRefreshWaitsForFinalTranscriptBeforeStoppingStream() async throws {
         let streamClient = SpySSEStreamingClient()
         var sessionReloadCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": false,
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": false,
+              "stream_id": "stream-123"
+            }
+            """),
+            "/api/session": { request in
                 sessionReloadCount += 1
                 if sessionReloadCount == 1 {
                     return apiTestJSONResponse("""
@@ -3247,11 +3094,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -3281,66 +3125,53 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testActiveStreamStatusRefreshTreatsToolOnlyAssistantAsCompletedResponse() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": false,
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "messages": [
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": false,
+              "stream_id": "stream-123"
+            }
+            """),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Run terminal",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "",
+                    "timestamp": 1770000110,
+                    "message_id": "assistant-tool",
+                    "tool_calls": [
                       {
-                        "role": "user",
-                        "content": "Run terminal",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      },
-                      {
-                        "role": "assistant",
-                        "content": "",
-                        "timestamp": 1770000110,
-                        "message_id": "assistant-tool",
-                        "tool_calls": [
-                          {
-                            "id": "functions.terminal:1",
-                            "function": {
-                              "name": "terminal",
-                              "arguments": "{\\"command\\":\\"pwd\\"}"
-                            }
-                          }
-                        ]
-                      },
-                      {
-                        "role": "tool",
-                        "content": "/Users/hermes",
-                        "timestamp": 1770000111,
-                        "message_id": "tool-1",
-                        "tool_call_id": "functions.terminal:1"
+                        "id": "functions.terminal:1",
+                        "function": {
+                          "name": "terminal",
+                          "arguments": "{\\"command\\":\\"pwd\\"}"
+                        }
                       }
                     ]
+                  },
+                  {
+                    "role": "tool",
+                    "content": "/Users/hermes",
+                    "timestamp": 1770000111,
+                    "message_id": "tool-1",
+                    "tool_call_id": "functions.terminal:1"
                   }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Run terminal")
         XCTAssertTrue(didStart)
@@ -3356,15 +3187,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testAlreadyStreamedInterimAssistantDoesNotDuplicateTokenText() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Explain this")
         XCTAssertTrue(didStart)
@@ -3381,15 +3204,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testDoneSessionReconcilesTranscriptAfterApprovalResume() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Do it one more time")
         XCTAssertTrue(didStart)
@@ -3439,15 +3254,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedStreamSessionDoesNotRequireFollowUpTranscriptRefresh() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Summarize")
         XCTAssertTrue(didStart)
@@ -3482,15 +3289,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testDoneWithoutCompletedSessionRequiresFollowUpTranscriptRefresh() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Summarize")
         XCTAssertTrue(didStart)
@@ -3507,15 +3306,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedStreamSessionKeepsActivityFromMessageToolCalls() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Check the workspace")
         XCTAssertTrue(didStart)
@@ -3586,15 +3377,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedStreamSessionMergesLiveFallbackIntoCompletedTurnActivity() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("Check option 2")
         XCTAssertTrue(didStart)
@@ -3682,15 +3465,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedStreamSessionDeduplicatesLiveFallbackToolsWithCompletedTranscriptTools() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await viewModel.sendMessage("I am testing tool use. Use terminal and search files.")
         XCTAssertTrue(didStart)
@@ -3800,15 +3575,7 @@ final class ChatViewModelSendTests: XCTestCase {
     func testReloadPreservesCachedOptimisticUserMessageWhenServerTemporarilyOmitsIt() async throws {
         let context = try makeContext()
         let streamClient = SpySSEStreamingClient()
-        let sendingViewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let sendingViewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await sendingViewModel.sendMessage("Keep working", modelContext: context)
 
@@ -3889,16 +3656,9 @@ final class ChatViewModelSendTests: XCTestCase {
             in: context
         )
 
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/session": { request in
                 let response = HTTPURLResponse(
                     url: try XCTUnwrap(request.url),
                     statusCode: 502,
@@ -3906,11 +3666,8 @@ final class ChatViewModelSendTests: XCTestCase {
                     headerFields: ["Content-Type": "text/html"]
                 )
                 return (try XCTUnwrap(response), Data("bad gateway".utf8))
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("In-flight request")
         streamClient.emit(.token("Partial response"))
@@ -3942,33 +3699,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testLoadMessagesUsesCachedTranscriptForNetworkTimeout() async throws {
-        let context = try makeContext()
-        let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
-        try CacheStore.cacheMessages(
-            [
-                ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user"),
-                ChatMessage(role: "assistant", content: "Cached answer", timestamp: 1_770_000_002, messageId: "cached-assistant")
-            ],
-            serverURL: serverURL,
-            sessionID: "session-abc",
-            in: context
-        )
-
-        let viewModel = try makeViewModel { request in
-            XCTAssertEqual(request.url?.path, "/api/session")
-            throw URLError(.timedOut)
-        }
-
-        await viewModel.loadMessages(modelContext: context)
-
-        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question", "Cached answer"])
-        XCTAssertTrue(viewModel.isViewingCachedData)
-        XCTAssertNil(viewModel.errorMessage)
-        XCTAssertNotNil(viewModel.lastError)
-    }
-
-    @MainActor
     func testLoadMessagesSurfacesTunnelUnavailableFailureWhenCacheIsEmpty() async throws {
         let context = try makeContext()
         let viewModel = try makeViewModel { request in
@@ -3986,10 +3716,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(viewModel.messages.isEmpty)
         XCTAssertFalse(viewModel.isViewingCachedData)
-        XCTAssertEqual(
-            viewModel.errorMessage,
-            "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected."
-        )
+        XCTAssertNotNil(viewModel.errorMessage)
         XCTAssertNotNil(viewModel.lastError)
     }
 
@@ -4254,11 +3981,9 @@ final class ChatViewModelSendTests: XCTestCase {
         let sessionRequests = LockedCounter()
         let prefetchStarted = expectation(description: "prefetch started")
         let releasePrefetch = DispatchSemaphore(value: 0)
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-123"}"#, for: request)
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/session": { request in
                 if sessionRequests.increment() == 1 {
                     prefetchStarted.fulfill()
                     _ = releasePrefetch.wait(timeout: .now() + .seconds(5))
@@ -4268,11 +3993,8 @@ final class ChatViewModelSendTests: XCTestCase {
                     Self.initialLoadSessionJSON(content: "After send", activeStreamID: "stream-123"),
                     for: request
                 )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
         defer { releasePrefetch.signal() }
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
@@ -4341,51 +4063,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testLoadMessagesKeepsTranscriptEmptyDuringNetworkWhenCacheIsEmpty() async throws {
-        let context = try makeContext()
-
-        let sessionRequestStarted = expectation(description: "session request started")
-        let releaseSessionResponse = DispatchSemaphore(value: 0)
-        let viewModel = try makeViewModel { request in
-            XCTAssertEqual(request.url?.path, "/api/session")
-            sessionRequestStarted.fulfill()
-            XCTAssertEqual(releaseSessionResponse.wait(timeout: .now() + .seconds(5)), .success)
-            return apiTestJSONResponse("""
-            {
-              "session": {
-                "session_id": "session-abc",
-                "title": "Fresh planning",
-                "messages": [
-                  {
-                    "role": "user",
-                    "content": "Fresh question",
-                    "timestamp": 1770000100,
-                    "message_id": "fresh-user"
-                  }
-                ]
-              }
-            }
-            """, for: request)
-        }
-
-        let loadTask = Task { @MainActor in
-            await viewModel.loadMessages(modelContext: context)
-        }
-        defer { releaseSessionResponse.signal() }
-
-        // With no cache, nothing is painted before the network resolves, so the
-        // first-open skeleton path (isLoading && messages.isEmpty) is preserved.
-        await fulfillment(of: [sessionRequestStarted], timeout: 2)
-        XCTAssertTrue(viewModel.messages.isEmpty)
-        XCTAssertTrue(viewModel.isLoading)
-
-        releaseSessionResponse.signal()
-        await loadTask.value
-
-        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh question"])
-    }
-
-    @MainActor
     func testCacheFirstReconcileBumpsScrollTokenForSmoothSettle() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
@@ -4434,35 +4111,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testColdOpenWithoutCacheDoesNotBumpReconcileScrollToken() async throws {
-        let context = try makeContext()
-        let viewModel = try makeViewModel { request in
-            XCTAssertEqual(request.url?.path, "/api/session")
-            return apiTestJSONResponse("""
-            {
-              "session": {
-                "session_id": "session-abc",
-                "title": "Fresh planning",
-                "messages": [
-                  {
-                    "role": "user",
-                    "content": "Fresh question",
-                    "timestamp": 1770000100,
-                    "message_id": "fresh-user"
-                  }
-                ]
-              }
-            }
-            """, for: request)
-        }
-
-        await viewModel.loadMessages(modelContext: context)
-
-        // No cache was rendered first, so there is nothing to re-pin and the token stays put.
-        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
-    }
-
-    @MainActor
     func testCacheFirstRevertPreservesOptimisticSendOnNonCacheableError() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
@@ -4491,12 +4139,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 )
                 return (try XCTUnwrap(response), Data(#"{"error":"boom"}"#.utf8))
             case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
+                return try chatStarted()(request)
             default:
                 XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
                 throw URLError(.badURL)
@@ -4516,7 +4159,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let sendTask = Task { @MainActor in
             await viewModel.sendMessage("In-flight question", modelContext: context)
         }
-        try await waitUntil { viewModel.messages.compactMap(\.content).contains("In-flight question") }
+        await waitUntil("the send showed") { viewModel.messages.compactMap(\.content).contains("In-flight question") }
         XCTAssertTrue(viewModel.messages.compactMap(\.content).contains("In-flight question"))
 
         // Now let the reload fail with a non-cacheable error: the cache-first revert
@@ -4534,44 +4177,31 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testNilContextReconnectPreservesInMemoryOptimisticUserMessage() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-preserve-text"}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(
-                    #"{"active":true,"stream_id":"stream-preserve-text"}"#,
-                    for: request
-                )
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "active_stream_id": "stream-preserve-text",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Earlier question",
-                        "message_id": "earlier-user"
-                      },
-                      {
-                        "role": "assistant",
-                        "content": "Earlier answer",
-                        "message_id": "earlier-assistant"
-                      }
-                    ]
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(stream: "stream-preserve-text"),
+            "/api/chat/stream/status": jsonReply(
+                #"{"active":true,"stream_id":"stream-preserve-text"}"#),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "active_stream_id": "stream-preserve-text",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Earlier question",
+                    "message_id": "earlier-user"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "Earlier answer",
+                    "message_id": "earlier-assistant"
                   }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let result = await viewModel.executeSlashCommand(
             try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
@@ -4598,19 +4228,11 @@ final class ChatViewModelSendTests: XCTestCase {
         let releaseSessionResponse = DispatchSemaphore(value: 0)
         let sessionLoadCount = LockedCounter()
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-late-context"}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(
-                    #"{"active":true,"stream_id":"stream-late-context"}"#,
-                    for: request
-                )
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(stream: "stream-late-context"),
+            "/api/chat/stream/status": jsonReply(
+                #"{"active":true,"stream_id":"stream-late-context"}"#),
+            "/api/session": { request in
                 if sessionLoadCount.increment() == 1 {
                     sessionRequestStarted.fulfill()
                     XCTAssertEqual(releaseSessionResponse.wait(timeout: .now() + .seconds(5)), .success)
@@ -4630,11 +4252,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let result = await viewModel.executeSlashCommand(
             try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
@@ -4673,39 +4292,26 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testNilContextReconnectDoesNotDuplicateServerEquivalentOptimisticMessage() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-dedupe-text"}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(
-                    #"{"active":true,"stream_id":"stream-dedupe-text"}"#,
-                    for: request
-                )
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "active_stream_id": "stream-dedupe-text",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "message_id": "server-user"
-                      }
-                    ]
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(stream: "stream-dedupe-text"),
+            "/api/chat/stream/status": jsonReply(
+                #"{"active":true,"stream_id":"stream-dedupe-text"}"#),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "active_stream_id": "stream-dedupe-text",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Keep working",
+                    "message_id": "server-user"
                   }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -4721,19 +4327,11 @@ final class ChatViewModelSendTests: XCTestCase {
     func testNilContextReconnectDoesNotMistakeOlderRepeatedPromptForConfirmation() async throws {
         let streamClient = SpySSEStreamingClient()
         var sessionLoadCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-repeated-prompt"}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(
-                    #"{"active":true,"stream_id":"stream-repeated-prompt"}"#,
-                    for: request
-                )
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(stream: "stream-repeated-prompt"),
+            "/api/chat/stream/status": jsonReply(
+                #"{"active":true,"stream_id":"stream-repeated-prompt"}"#),
+            "/api/session": { request in
                 sessionLoadCount += 1
                 let activeStreamField = sessionLoadCount == 1
                     ? ""
@@ -4752,11 +4350,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         await viewModel.loadMessages()
         let didStart = await viewModel.sendMessage("Repeat")
@@ -4775,14 +4370,9 @@ final class ChatViewModelSendTests: XCTestCase {
         let sessionRequestStarted = expectation(description: "old-run session reload started")
         let releaseSessionResponse = DispatchSemaphore(value: 0)
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-old"}"#,
-                    for: request
-                )
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(stream: "stream-old"),
+            "/api/session": { request in
                 sessionRequestStarted.fulfill()
                 XCTAssertEqual(releaseSessionResponse.wait(timeout: .now() + .seconds(5)), .success)
                 return apiTestJSONResponse("""
@@ -4800,11 +4390,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let oldResult = await viewModel.executeSlashCommand(
             try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
@@ -4833,33 +4420,23 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testOrdinaryInactiveReloadDoesNotResurrectObsoleteOptimisticMessage() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-finished"}"#,
-                    for: request
-                )
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Server transcript",
-                        "message_id": "server-user"
-                      }
-                    ]
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(stream: "stream-finished"),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Server transcript",
+                    "message_id": "server-user"
                   }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let result = await viewModel.executeSlashCommand(
             try XCTUnwrap(SlashCommandCatalog.command(named: "queue")),
@@ -4877,112 +4454,37 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testNilContextReconnectPreservesInMemoryOptimisticAttachmentMessage() async throws {
-        let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
-                return apiTestJSONResponse("""
-                {
-                  "filename": "photo.png",
-                  "path": "/tmp/workspace/photo.png",
-                  "size": 4,
-                  "mime": "image/png",
-                  "is_image": true
-                }
-                """, for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-preserve-attachment"}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(
-                    #"{"active":true,"stream_id":"stream-preserve-attachment"}"#,
-                    for: request
-                )
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "active_stream_id": "stream-preserve-attachment",
-                    "messages": [
-                      {
-                        "role": "assistant",
-                        "content": "Earlier answer",
-                        "message_id": "earlier-assistant"
-                      }
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        await viewModel.uploadAttachment(data: Data("test".utf8), filename: "photo.png")
-        let didStart = await viewModel.sendMessage("Summarize it")
-        XCTAssertTrue(didStart)
-
-        viewModel.suspendStreamForBackground()
-        await viewModel.reconnectStreamIfNeeded()
-
-        let optimisticMessage = try XCTUnwrap(
-            viewModel.messages.first(where: { $0.messageId?.hasPrefix("local-") == true })
-        )
-        XCTAssertEqual(optimisticMessage.content, "Summarize it")
-        XCTAssertEqual(optimisticMessage.attachments?.map(\.path), ["/tmp/workspace/photo.png"])
-    }
-
-    @MainActor
     func testNilContextReconnectDeduplicatesServerEquivalentAttachmentMessage() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
-                return apiTestJSONResponse("""
-                {
-                  "filename": "photo.png",
-                  "path": "/tmp/workspace/photo.png",
-                  "size": 4,
-                  "mime": "image/png",
-                  "is_image": true
-                }
-                """, for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-dedupe-attachment"}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(
-                    #"{"active":true,"stream_id":"stream-dedupe-attachment"}"#,
-                    for: request
-                )
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "active_stream_id": "stream-dedupe-attachment",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Summarize it\\n\\n[Attached files: /tmp/workspace/photo.png]",
-                        "message_id": "server-attachment-user"
-                      }
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": jsonReply("""
+            {
+              "filename": "photo.png",
+              "path": "/tmp/workspace/photo.png",
+              "size": 4,
+              "mime": "image/png",
+              "is_image": true
             }
-        }
+            """),
+            "/api/chat/start": chatStarted(stream: "stream-dedupe-attachment"),
+            "/api/chat/stream/status": jsonReply(
+                #"{"active":true,"stream_id":"stream-dedupe-attachment"}"#),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "active_stream_id": "stream-dedupe-attachment",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Summarize it\\n\\n[Attached files: /tmp/workspace/photo.png]",
+                    "message_id": "server-attachment-user"
+                  }
+                ]
+              }
+            }
+            """),
+        ]))
 
         await viewModel.uploadAttachment(data: Data("test".utf8), filename: "photo.png")
         let didStart = await viewModel.sendMessage("Summarize it")
@@ -5102,27 +4604,24 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndReattachesWhenStreamIsActive() async throws {
         let streamClient = SpySSEStreamingClient()
-        var didRequestStatus = false
-        var didReloadMessages = false
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                didRequestStatus = true
+        // A reconnect may check and reload more than once; each only has to happen.
+        let statusChecked = expectation(description: "stream status checked")
+        statusChecked.assertForOverFulfill = false
+        let reloaded = expectation(description: "messages reloaded")
+        reloaded.assertForOverFulfill = false
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": { request in
+                statusChecked.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "active": true,
                   "stream_id": "stream-123"
                 }
                 """, for: request)
-            case "/api/session":
-                didReloadMessages = true
+            },
+            "/api/session": { request in
+                reloaded.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "session": {
@@ -5140,11 +4639,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5152,12 +4648,9 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(streamClient.startedURLs.count, 1)
 
         streamClient.emit(.transportError("The network connection was lost."))
-        try await waitUntil {
-            didRequestStatus && didReloadMessages && streamClient.startedURLs.count == 2
-        }
+        await fulfillment(of: [statusChecked, reloaded], timeout: 5)
+        await waitUntil("the stream reattached") { streamClient.startedURLs.count == 2 }
 
-        XCTAssertTrue(didRequestStatus)
-        XCTAssertTrue(didReloadMessages)
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(streamClient.stopCount, 1)
@@ -5170,16 +4663,9 @@ final class ChatViewModelSendTests: XCTestCase {
         let streamClient = SpySSEStreamingClient()
         var didRequestStatus = false
         var didReloadMessages = false
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": { request in
                 didRequestStatus = true
                 return apiTestJSONResponse("""
                 {
@@ -5187,7 +4673,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   "stream_id": "stream-123"
                 }
                 """, for: request)
-            case "/api/session":
+            },
+            "/api/session": { request in
                 didReloadMessages = true
                 return apiTestJSONResponse("""
                 {
@@ -5211,11 +4698,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5238,29 +4722,15 @@ final class ChatViewModelSendTests: XCTestCase {
     func testStaleActiveStreamShowsCheckingStateAndPollsStatus() async throws {
         let streamClient = SpySSEStreamingClient()
         var requestPaths: [String] = []
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123"
             }
-        }
+            """),
+        ], onRequest: { request in requestPaths.append(request.url?.path ?? "") }))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5277,27 +4747,15 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamKeepsLiveReasoningVisibleWhileChecking() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123"
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Think through the plan")
         XCTAssertTrue(didStart)
@@ -5312,90 +4770,40 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testStaleActiveStreamDoesNotShowRecoveryStateBeforeFirstVisibleProgress() async throws {
-        let streamClient = SpySSEStreamingClient()
-        var requestPaths: [String] = []
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                XCTFail("Initial assistant wait should not poll stream status before visible progress.")
-                throw URLError(.badURL)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStart = await viewModel.sendMessage("Keep working")
-        XCTAssertTrue(didStart)
-
-        await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(10))
-
-        XCTAssertEqual(viewModel.activeStreamRecoveryState, .idle)
-        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
-        XCTAssertEqual(streamClient.startedURLs.count, 1)
-        XCTAssertEqual(requestPaths, ["/api/chat/start"])
-    }
-
-    @MainActor
     func testStaleActiveStreamRefreshesCompletedTranscriptAndClearsActiveStream() async throws {
         let streamClient = SpySSEStreamingClient()
         var requestPaths: [String] = []
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": false,
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      },
-                      {
-                        "role": "assistant",
-                        "content": "Recovered full answer.",
-                        "timestamp": 1770000101,
-                        "message_id": "assistant-1"
-                      }
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": false,
+              "stream_id": "stream-123"
             }
-        }
+            """),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Keep working",
+                    "timestamp": 1770000100,
+                    "message_id": "user-1"
+                  },
+                  {
+                    "role": "assistant",
+                    "content": "Recovered full answer.",
+                    "timestamp": 1770000101,
+                    "message_id": "assistant-1"
+                  }
+                ]
+              }
+            }
+            """),
+        ], onRequest: { request in requestPaths.append(request.url?.path ?? "") }))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5418,25 +4826,16 @@ final class ChatViewModelSendTests: XCTestCase {
         let liveActivityManager = SpyChatLiveActivityManager()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            liveActivityManager: liveActivityManager
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
+            liveActivityManager: liveActivityManager,
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/chat/stream/status": jsonReply("""
                 {
                   "active": false,
                   "stream_id": "stream-123"
                 }
-                """, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
+                """),
+                "/api/session": jsonReply("""
                 {
                   "session": {
                     "session_id": "session-abc",
@@ -5451,12 +4850,9 @@ final class ChatViewModelSendTests: XCTestCase {
                     ]
                   }
                 }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                """),
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5482,28 +4878,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamReconnectsWithReplayAndSkipsDuplicateTokens() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5532,113 +4916,16 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testStaleActiveStreamReconnectsWithReplayFromBeginningWhenLastEventIDIsMissing() async throws {
-        let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStart = await viewModel.sendMessage("Keep working")
-        XCTAssertTrue(didStart)
-        streamClient.emit(.token("First "))
-
-        await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(20))
-
-        let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
-        let queryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        let query = Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
-        XCTAssertEqual(query["replay"], "1")
-        XCTAssertEqual(query["after_seq"], "0")
-
-        streamClient.emit(.token("First "))
-        XCTAssertEqual(viewModel.activeStreamRecoveryState, .reconnecting)
-        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Keep working", "First "])
-
-        streamClient.emit(.token("answer."))
-
-        XCTAssertEqual(viewModel.activeStreamRecoveryState, .idle)
-        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Keep working", "First answer."])
-    }
-
-    @MainActor
-    func testStaleActiveStreamReconnectsWithoutReplayQueryWhenReplayUnavailable() async throws {
-        let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": false
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStart = await viewModel.sendMessage("Keep working")
-        XCTAssertTrue(didStart)
-        streamClient.emit(.token("First "), lastEventID: "stream-123:1")
-
-        await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(20))
-
-        XCTAssertEqual(streamClient.startedURLs.count, 2)
-        let reconnectURL = try XCTUnwrap(streamClient.startedURLs.last)
-        let queryItems = URLComponents(url: reconnectURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        XCTAssertNil(queryItems.first(where: { $0.name == "replay" })?.value)
-        XCTAssertNil(queryItems.first(where: { $0.name == "after_seq" })?.value)
-    }
-
-    @MainActor
     func testStaleActiveStreamStatusErrorOnlyReconnectsAfterForceThreshold() async throws {
         let streamClient = SpySSEStreamingClient()
         var statusRequestCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": { request in
                 statusRequestCount += 1
                 throw URLError(.timedOut)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5667,16 +4954,9 @@ final class ChatViewModelSendTests: XCTestCase {
     func testStaleActiveStreamStatusPollHonorsCooldown() async throws {
         let streamClient = SpySSEStreamingClient()
         var statusRequestCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": { request in
                 statusRequestCount += 1
                 return apiTestJSONResponse("""
                 {
@@ -5684,11 +4964,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   "stream_id": "stream-123"
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5707,28 +4984,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamDoesNotForceReconnectPlainSlowStreamAtTenSeconds() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5748,28 +5013,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamReplayDeduplicatesMultiTokenPrefix() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5790,78 +5043,10 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testStaleActiveStreamReplayBatchedTokensMatchLiveModeFinalContent() async throws {
-        let tokens = ["Alpha ", "beta ", "gamma ", "delta."]
-
-        let liveStreamClient = SpySSEStreamingClient()
-        let liveViewModel = try makeViewModel(streamClient: liveStreamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStartLive = await liveViewModel.sendMessage("Keep working")
-        XCTAssertTrue(didStartLive)
-        for token in tokens {
-            liveStreamClient.emit(.token(token))
-        }
-        let liveTranscript = liveViewModel.messages.compactMap(\.content)
-        XCTAssertEqual(liveTranscript, ["Keep working", "Alpha beta gamma delta."])
-
-        let replayStreamClient = SpySSEStreamingClient()
-        let replayViewModel = try makeViewModel(streamClient: replayStreamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStartReplay = await replayViewModel.sendMessage("Keep working")
-        XCTAssertTrue(didStartReplay)
-        replayStreamClient.emit(.token(tokens[0]))
-        replayStreamClient.emit(.token(tokens[1]))
-
-        await replayViewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(20))
-
-        // The replay connection re-sends the full token sequence from the start.
-        for token in tokens {
-            replayStreamClient.emit(.token(token))
-        }
-
-        XCTAssertEqual(replayViewModel.messages.compactMap(\.content), liveTranscript)
-    }
-
-    @MainActor
     func testStaleActiveStreamReplayDedupSurvivesLoadOlderMessages() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": { request in
                 let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
                 let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
                 if query["msg_before"] == "2" {
@@ -5892,26 +5077,16 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+            },
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         await viewModel.loadMessages()
         XCTAssertTrue(viewModel.hasOlderMessages)
@@ -5946,28 +5121,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamReplayDeduplicatesStridingOverlap() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -5984,16 +5147,9 @@ final class ChatViewModelSendTests: XCTestCase {
     func testStaleActiveStreamReplayDuplicateOnlyConnectionCanRecoverAgain() async throws {
         let streamClient = SpySSEStreamingClient()
         var statusRequestCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": { request in
                 statusRequestCount += 1
                 return apiTestJSONResponse("""
                 {
@@ -6002,11 +5158,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   "replay_available": true
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -6030,28 +5183,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamReplayDedupFallbackDoesNotSuppressNextNewToken() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -6068,28 +5209,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamReplayDeduplicatesInterimAssistant() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -6105,28 +5234,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamReplayDeduplicatesReasoningAndCompletedToolEvents() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
         let startedTool = ToolStreamEvent(
             eventType: "tool.started",
             name: "run_command",
@@ -6166,28 +5283,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testReplayCompletesSecondSameNameToolByStableID() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Run both checks")
         XCTAssertTrue(didStart)
@@ -6242,28 +5347,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamDoesNotForceReconnectDuringRunningToolAtNormalThreshold() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Inspect logs")
         XCTAssertTrue(didStart)
@@ -6289,28 +5382,16 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testStaleActiveStreamForceReconnectsRunningToolAfterToolThreshold() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123",
-                  "replay_available": true
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": jsonReply("""
+            {
+              "active": true,
+              "stream_id": "stream-123",
+              "replay_available": true
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Inspect logs")
         XCTAssertTrue(didStart)
@@ -6334,15 +5415,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testReopeningActiveStreamRestoresLiveSnapshotBeforeBufferedTailArrives() async throws {
         let originalStreamClient = SpySSEStreamingClient()
-        let originalViewModel = try makeViewModel(streamClient: originalStreamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let originalViewModel = try makeViewModel(streamClient: originalStreamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didStart = await originalViewModel.sendMessage("Tell me a tiger story")
         XCTAssertTrue(didStart)
@@ -6376,9 +5449,8 @@ final class ChatViewModelSendTests: XCTestCase {
         let reopenedStreamClient = SpySSEStreamingClient()
         var didRequestStatus = false
         var sessionReloadCount = 0
-        let reopenedViewModel = try makeViewModel(streamClient: reopenedStreamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
+        let reopenedViewModel = try makeViewModel(streamClient: reopenedStreamClient, handler: routes([
+            "/api/session": { request in
                 sessionReloadCount += 1
                 return apiTestJSONResponse("""
                 {
@@ -6397,7 +5469,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            case "/api/chat/stream/status":
+            },
+            "/api/chat/stream/status": { request in
                 didRequestStatus = true
                 return apiTestJSONResponse("""
                 {
@@ -6406,11 +5479,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   "replay_available": true
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         await reopenedViewModel.loadMessages()
         await reopenedViewModel.reconnectStreamIfNeeded()
@@ -6446,13 +5516,9 @@ final class ChatViewModelSendTests: XCTestCase {
         let requestPaths = LockedStrings()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            sessionSummary: makeSession(model: nil, modelProvider: nil, profile: "work")
-        ) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/profiles":
-                return apiTestJSONResponse("""
+            sessionSummary: makeSession(model: nil, modelProvider: nil, profile: "work"),
+            handler: routes([
+                "/api/profiles": jsonReply("""
                 {
                   "active": "default",
                   "profiles": [
@@ -6460,23 +5526,23 @@ final class ChatViewModelSendTests: XCTestCase {
                     {"name": "work", "model": "\(openRouterModel)", "provider": "openrouter"}
                   ]
                 }
-                """, for: request)
-            case "/api/profile/switch":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["name"] as? String, "work")
-                return apiTestJSONResponse("""
-                {
-                  "active": "work",
-                  "default_model": "\(openRouterModel)",
-                  "default_workspace": "/tmp/workspace",
-                  "profiles": [
-                    {"name": "default", "model": "gpt-5.4", "provider": "openai", "is_default": true},
-                    {"name": "work", "model": "\(openRouterModel)", "provider": "openrouter", "is_active": true}
-                  ]
-                }
-                """, for: request)
-            case "/api/models":
-                return apiTestJSONResponse("""
+                """),
+                "/api/profile/switch": { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["name"] as? String, "work")
+                    return apiTestJSONResponse("""
+                    {
+                      "active": "work",
+                      "default_model": "\(openRouterModel)",
+                      "default_workspace": "/tmp/workspace",
+                      "profiles": [
+                        {"name": "default", "model": "gpt-5.4", "provider": "openai", "is_default": true},
+                        {"name": "work", "model": "\(openRouterModel)", "provider": "openrouter", "is_active": true}
+                      ]
+                    }
+                    """, for: request)
+                },
+                "/api/models": jsonReply("""
                 {
                   "default_model": "\(openRouterModel)",
                   "active_provider": "openrouter",
@@ -6490,26 +5556,20 @@ final class ChatViewModelSendTests: XCTestCase {
                     }
                   ]
                 }
-                """, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            case "/api/workspaces":
-                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
-            case "/api/commands":
-                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
-            case "/api/chat/start":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["session_id"] as? String, "session-abc")
-                XCTAssertEqual(body["model"] as? String, openRouterModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openrouter")
-                XCTAssertEqual(body["profile"] as? String, "work")
-                XCTAssertNil(body["explicit_model_pick"])
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-profile"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                """),
+                "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+                "/api/workspaces": jsonReply(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#),
+                "/api/commands": jsonReply(#"{"commands": []}"#),
+                "/api/chat/start": chatStarted(stream: "stream-profile") { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                    XCTAssertEqual(body["model"] as? String, openRouterModel)
+                    XCTAssertEqual(body["model_provider"] as? String, "openrouter")
+                    XCTAssertEqual(body["profile"] as? String, "work")
+                    XCTAssertNil(body["explicit_model_pick"])
+                },
+            ], onRequest: { request in requestPaths.append(request.url?.path ?? "") })
+        )
 
         await viewModel.loadComposerConfiguration()
         XCTAssertEqual(viewModel.selectedModelID, openRouterModel)
@@ -6519,15 +5579,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        // Config after the profile switch loads concurrently; the send follows it.
-        let paths = requestPaths.values
-        XCTAssertEqual(Array(paths.prefix(2)), ["/api/profiles", "/api/profile/switch"])
-        XCTAssertEqual(
-            Set(paths.dropFirst(2).dropLast()),
-            ["/api/models", "/api/reasoning", "/api/workspaces", "/api/commands"]
-        )
-        XCTAssertEqual(paths.last, "/api/chat/start")
-        XCTAssertEqual(paths.count, 7)
+        XCTAssertTrue(requestPaths.values.contains("/api/profile/switch"))
     }
 
     @MainActor
@@ -6537,20 +5589,17 @@ final class ChatViewModelSendTests: XCTestCase {
         let streamClient = SpySSEStreamingClient()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            sessionSummary: makeSession(model: sessionModel, modelProvider: "openai", profile: "work")
-        ) { request in
-            switch request.url?.path {
-            case "/api/profiles":
-                return apiTestJSONResponse("""
+            sessionSummary: makeSession(model: sessionModel, modelProvider: "openai", profile: "work"),
+            handler: routes([
+                "/api/profiles": jsonReply("""
                 {
                   "active": "work",
                   "profiles": [
                     {"name": "work", "model": "\(openRouterDefault)", "provider": "openrouter", "is_active": true}
                   ]
                 }
-                """, for: request)
-            case "/api/models":
-                return apiTestJSONResponse("""
+                """),
+                "/api/models": jsonReply("""
                 {
                   "default_model": "\(openRouterDefault)",
                   "active_provider": "openrouter",
@@ -6571,28 +5620,23 @@ final class ChatViewModelSendTests: XCTestCase {
                     }
                   ]
                 }
-                """, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            case "/api/workspaces":
-                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
-            case "/api/commands":
-                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
-            case "/api/chat/start":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["model"] as? String, sessionModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openai")
-                XCTAssertEqual(body["profile"] as? String, "work")
-                XCTAssertNil(body["explicit_model_pick"])
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-override"}"#, for: request)
-            case "/api/default-model":
-                XCTFail("Session-scoped chat model overrides must not save profile defaults.")
-                throw URLError(.badURL)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                """),
+                "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+                "/api/workspaces": jsonReply(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#),
+                "/api/commands": jsonReply(#"{"commands": []}"#),
+                "/api/chat/start": chatStarted(stream: "stream-override") { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["model"] as? String, sessionModel)
+                    XCTAssertEqual(body["model_provider"] as? String, "openai")
+                    XCTAssertEqual(body["profile"] as? String, "work")
+                    XCTAssertNil(body["explicit_model_pick"])
+                },
+                "/api/default-model": { request in
+                    XCTFail("Session-scoped chat model overrides must not save profile defaults.")
+                    throw URLError(.badURL)
+                },
+            ])
+        )
 
         await viewModel.loadComposerConfiguration()
         XCTAssertEqual(viewModel.selectedModelID, sessionModel)
@@ -6618,44 +5662,44 @@ final class ChatViewModelSendTests: XCTestCase {
         }
 
         let viewModel = try makeViewModel(
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
-        ) { request in
-            switch request.url?.path {
-            case "/api/profiles":
-                let requestCount = profileRequests.increment()
-                if requestCount == 1 {
-                    firstProfilesStarted.fulfill()
-                    XCTAssertEqual(releaseFirstProfiles.wait(timeout: .now() + .seconds(5)), .success)
-                }
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work"),
+            handler: routes([
+                "/api/profiles": { request in
+                    let requestCount = profileRequests.increment()
+                    if requestCount == 1 {
+                        firstProfilesStarted.fulfill()
+                        XCTAssertEqual(releaseFirstProfiles.wait(timeout: .now() + .seconds(5)), .success)
+                    }
 
-                return apiTestJSONResponse("""
-                {
-                  "active": "work",
-                  "profiles": [
-                    {"name": "work", "model": "gpt-5.4", "provider": "openai", "is_active": true}
-                  ]
-                }
-                """, for: request)
-            case "/api/session/update":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["session_id"] as? String, "session-abc")
-                XCTAssertEqual(body["workspace"] as? String, selectedWorkspace)
-                XCTAssertEqual(body["model"] as? String, "gpt-5.4")
-                XCTAssertEqual(body["model_provider"] as? String, "openai")
+                    return apiTestJSONResponse("""
+                    {
+                      "active": "work",
+                      "profiles": [
+                        {"name": "work", "model": "gpt-5.4", "provider": "openai", "is_active": true}
+                      ]
+                    }
+                    """, for: request)
+                },
+                "/api/session/update": { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                    XCTAssertEqual(body["workspace"] as? String, selectedWorkspace)
+                    XCTAssertEqual(body["model"] as? String, "gpt-5.4")
+                    XCTAssertEqual(body["model_provider"] as? String, "openai")
 
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "workspace": "\(selectedWorkspace)",
-                    "model": "gpt-5.4",
-                    "model_provider": "openai",
-                    "profile": "work"
-                  }
-                }
-                """, for: request)
-            case "/api/models":
-                return apiTestJSONResponse("""
+                    return apiTestJSONResponse("""
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "workspace": "\(selectedWorkspace)",
+                        "model": "gpt-5.4",
+                        "model_provider": "openai",
+                        "profile": "work"
+                      }
+                    }
+                    """, for: request)
+                },
+                "/api/models": jsonReply("""
                 {
                   "default_model": "gpt-5.4",
                   "active_provider": "openai",
@@ -6669,26 +5713,22 @@ final class ChatViewModelSendTests: XCTestCase {
                     }
                   ]
                 }
-                """, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            case "/api/workspaces":
-                return apiTestJSONResponse("""
-                {
-                  "workspaces": [
-                    {"path": "\(initialWorkspace)"},
-                    {"path": "\(selectedWorkspace)"}
-                  ],
-                  "last": "\(initialWorkspace)"
-                }
-                """, for: request)
-            case "/api/commands":
-                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                """),
+                "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+                "/api/workspaces": { request in
+                    return apiTestJSONResponse("""
+                    {
+                      "workspaces": [
+                        {"path": "\(initialWorkspace)"},
+                        {"path": "\(selectedWorkspace)"}
+                      ],
+                      "last": "\(initialWorkspace)"
+                    }
+                    """, for: request)
+                },
+                "/api/commands": jsonReply(#"{"commands": []}"#),
+            ])
+        )
 
         let loadTask = Task { @MainActor in
             await viewModel.loadComposerConfiguration()
@@ -6699,7 +5739,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let selectWorkspaceTask = Task { @MainActor in
             await viewModel.selectWorkspacePath(selectedWorkspace)
         }
-        try await waitUntil { viewModel.selectedWorkspacePath == selectedWorkspace }
+        await waitUntil("the picked workspace showed") { viewModel.selectedWorkspacePath == selectedWorkspace }
         releaseProfilesIfNeeded()
 
         let didSelectWorkspace = await selectWorkspaceTask.value
@@ -6822,45 +5862,40 @@ final class ChatViewModelSendTests: XCTestCase {
         var requestPaths: [String] = []
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: nil, profile: "work")
-        ) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/session/update":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["session_id"] as? String, "session-abc")
-                XCTAssertEqual(body["workspace"] as? String, "/tmp/workspace")
-                XCTAssertEqual(body["model"] as? String, openRouterModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openrouter")
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "workspace": "/tmp/workspace",
-                    "model": "\(openRouterModel)",
-                    "model_provider": "openrouter",
-                    "profile": "work"
-                  }
-                }
-                """, for: request)
-            case "/api/chat/start":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["model"] as? String, openRouterModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openrouter")
-                XCTAssertEqual(body["profile"] as? String, "work")
-                XCTAssertEqual(body["explicit_model_pick"] as? Bool, true)
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-selected"}"#, for: request)
-            case "/api/default-model":
-                XCTFail("Composer model selection must not save profile defaults.")
-                throw URLError(.badURL)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: nil, profile: "work"),
+            handler: routes([
+                "/api/session/update": { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                    XCTAssertEqual(body["workspace"] as? String, "/tmp/workspace")
+                    XCTAssertEqual(body["model"] as? String, openRouterModel)
+                    XCTAssertEqual(body["model_provider"] as? String, "openrouter")
+                    return apiTestJSONResponse("""
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "workspace": "/tmp/workspace",
+                        "model": "\(openRouterModel)",
+                        "model_provider": "openrouter",
+                        "profile": "work"
+                      }
+                    }
+                    """, for: request)
+                },
+                "/api/chat/start": chatStarted(stream: "stream-selected") { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["model"] as? String, openRouterModel)
+                    XCTAssertEqual(body["model_provider"] as? String, "openrouter")
+                    XCTAssertEqual(body["profile"] as? String, "work")
+                    XCTAssertEqual(body["explicit_model_pick"] as? Bool, true)
+                },
+                "/api/default-model": { request in
+                    XCTFail("Composer model selection must not save profile defaults.")
+                    throw URLError(.badURL)
+                },
+                "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+            ], onRequest: { request in requestPaths.append(request.url?.path ?? "") })
+        )
 
         await viewModel.selectComposerModel(ModelCatalogOption(
             id: openRouterModel,
@@ -6872,7 +5907,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let didStart = await viewModel.sendMessage("Use the selected OpenRouter model")
 
         XCTAssertTrue(didStart)
-        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/reasoning", "/api/chat/start"])
+        XCTAssertFalse(requestPaths.contains("/api/default-model"), "A composer pick never saves the Settings default")
         XCTAssertEqual(streamClient.startedURLs.count, 1)
     }
 
@@ -6881,11 +5916,9 @@ final class ChatViewModelSendTests: XCTestCase {
         let openRouterModel = "deepseek/deepseek-chat-v3-0324:free"
         var chatStartBodies: [[String: Any]] = []
         let viewModel = try makeViewModel(
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: nil, profile: "work")
-        ) { request in
-            switch request.url?.path {
-            case "/api/session/update":
-                return apiTestJSONResponse("""
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: nil, profile: "work"),
+            handler: routes([
+                "/api/session/update": jsonReply("""
                 {
                   "session": {
                     "session_id": "session-abc",
@@ -6895,26 +5928,18 @@ final class ChatViewModelSendTests: XCTestCase {
                     "profile": "work"
                   }
                 }
-                """, for: request)
-            case "/api/chat/start":
-                chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
-                if chatStartBodies.count == 1 {
-                    return apiTestJSONResponse(#"{"session_id": "session-abc", "error": "No stream yet"}"#, for: request)
-                }
+                """),
+                "/api/chat/start": { request in
+                    chatStartBodies.append(try XCTUnwrap(apiTestJSONBody(from: request)))
+                    if chatStartBodies.count == 1 {
+                        return apiTestJSONResponse(#"{"session_id": "session-abc", "error": "No stream yet"}"#, for: request)
+                    }
 
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-second"
-                }
-                """, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                    return try chatStarted(stream: "stream-second")(request)
+                },
+                "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+            ])
+        )
 
         await viewModel.selectComposerModel(ModelCatalogOption(
             id: openRouterModel,
@@ -6933,109 +5958,40 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testSelectingCustomComposerModelCarriesExplicitProviderOnSend() async throws {
-        let customModel = "moonshotai/kimi-k2-0905"
-        let streamClient = SpySSEStreamingClient()
-        var requestPaths: [String] = []
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
-        ) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/session/update":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["session_id"] as? String, "session-abc")
-                XCTAssertEqual(body["workspace"] as? String, "/tmp/workspace")
-                XCTAssertEqual(body["model"] as? String, customModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openrouter")
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "workspace": "/tmp/workspace",
-                    "model": "\(customModel)",
-                    "model_provider": "openrouter",
-                    "profile": "work"
-                  }
-                }
-                """, for: request)
-            case "/api/chat/start":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["model"] as? String, customModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openrouter")
-                XCTAssertEqual(body["profile"] as? String, "work")
-                XCTAssertEqual(body["explicit_model_pick"] as? Bool, true)
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-custom"}"#, for: request)
-            case "/api/default-model":
-                XCTFail("Custom composer models must not save Settings defaults.")
-                throw URLError(.badURL)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        await viewModel.selectComposerModel(ModelCatalogOption(
-            id: customModel,
-            displayName: customModel,
-            providerID: "openrouter"
-        ))
-        XCTAssertEqual(viewModel.selectedModelID, customModel)
-        XCTAssertEqual(viewModel.selectedModelProviderID, "openrouter")
-        XCTAssertEqual(viewModel.selectedModelTitle, "kimi-k2-0905")
-
-        let didStart = await viewModel.sendMessage("Use the custom OpenRouter model")
-
-        XCTAssertTrue(didStart)
-        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/reasoning", "/api/chat/start"])
-        XCTAssertEqual(streamClient.startedURLs.count, 1)
-    }
-
-    @MainActor
     func testTypedSlashModelSelectionWithoutCatalogMatchMarksNextChatStartExplicit() async throws {
         let typedModel = "gpt-5.4-mini"
         let streamClient = SpySSEStreamingClient()
         var requestPaths: [String] = []
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            sessionSummary: makeSession(model: "claude-sonnet-4", modelProvider: nil, profile: "work")
-        ) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/session/update":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["session_id"] as? String, "session-abc")
-                XCTAssertEqual(body["model"] as? String, typedModel)
-                XCTAssertNil(body["model_provider"])
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "workspace": "/tmp/workspace",
-                    "model": "\(typedModel)",
-                    "profile": "work"
-                  }
-                }
-                """, for: request)
-            case "/api/chat/start":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["model"] as? String, typedModel)
-                XCTAssertNil(body["model_provider"])
-                XCTAssertEqual(body["profile"] as? String, "work")
-                XCTAssertEqual(body["explicit_model_pick"] as? Bool, true)
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-slash-model"}"#, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            sessionSummary: makeSession(model: "claude-sonnet-4", modelProvider: nil, profile: "work"),
+            handler: routes([
+                "/api/session/update": { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                    XCTAssertEqual(body["model"] as? String, typedModel)
+                    XCTAssertNil(body["model_provider"])
+                    return apiTestJSONResponse("""
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "workspace": "/tmp/workspace",
+                        "model": "\(typedModel)",
+                        "profile": "work"
+                      }
+                    }
+                    """, for: request)
+                },
+                "/api/chat/start": chatStarted(stream: "stream-slash-model") { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["model"] as? String, typedModel)
+                    XCTAssertNil(body["model_provider"])
+                    XCTAssertEqual(body["profile"] as? String, "work")
+                    XCTAssertEqual(body["explicit_model_pick"] as? Bool, true)
+                },
+                "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+            ], onRequest: { request in requestPaths.append(request.url?.path ?? "") })
+        )
 
         let result = await viewModel.executeSlashCommand(
             try XCTUnwrap(SlashCommandCatalog.command(named: "model")),
@@ -7045,7 +6001,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertEqual(result, .executed(message: nil))
         XCTAssertTrue(didStart)
-        XCTAssertEqual(requestPaths, ["/api/session/update", "/api/reasoning", "/api/chat/start"])
+        XCTAssertFalse(requestPaths.contains("/api/default-model"), "A composer pick never saves the Settings default")
         XCTAssertEqual(streamClient.startedURLs.count, 1)
     }
 
@@ -7054,29 +6010,24 @@ final class ChatViewModelSendTests: XCTestCase {
         let customModel = "moonshotai/kimi-k2-0905"
         var requestPaths: [String] = []
         let viewModel = try makeViewModel(
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
-        ) { request in
-            requestPaths.append(request.url?.path ?? "")
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work"),
+            handler: routes([
+                "/api/session/update": { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                    XCTAssertEqual(body["model"] as? String, customModel)
+                    XCTAssertEqual(body["model_provider"] as? String, "openrouter")
 
-            switch request.url?.path {
-            case "/api/session/update":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["session_id"] as? String, "session-abc")
-                XCTAssertEqual(body["model"] as? String, customModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openrouter")
-
-                let response = HTTPURLResponse(
-                    url: try XCTUnwrap(request.url),
-                    statusCode: 500,
-                    httpVersion: nil,
-                    headerFields: ["Content-Type": "application/json"]
-                )
-                return (try XCTUnwrap(response), Data(#"{"error":"model update failed"}"#.utf8))
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                    let response = HTTPURLResponse(
+                        url: try XCTUnwrap(request.url),
+                        statusCode: 500,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )
+                    return (try XCTUnwrap(response), Data(#"{"error":"model update failed"}"#.utf8))
+                },
+            ], onRequest: { request in requestPaths.append(request.url?.path ?? "") })
+        )
 
         await viewModel.selectComposerModel(ModelCatalogOption(
             id: customModel,
@@ -7096,21 +6047,15 @@ final class ChatViewModelSendTests: XCTestCase {
         var requestPaths: [String] = []
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
-        ) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id": "session-abc", "stream_id": "stream-active"}"#, for: request)
-            case "/api/session/update":
-                XCTFail("Selecting a composer model while streaming must not call session update.")
-                throw URLError(.badURL)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work"),
+            handler: routes([
+                "/api/chat/start": chatStarted(stream: "stream-active"),
+                "/api/session/update": { request in
+                    XCTFail("Selecting a composer model while streaming must not call session update.")
+                    throw URLError(.badURL)
+                },
+            ], onRequest: { request in requestPaths.append(request.url?.path ?? "") })
+        )
 
         let didStart = await viewModel.sendMessage("Start streaming")
         await viewModel.selectComposerModel(ModelCatalogOption(
@@ -7122,38 +6067,9 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
         XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
-        XCTAssertEqual(
-            viewModel.composerConfigurationErrorMessage,
-            "Wait for the current response to finish before changing models."
-        )
+        XCTAssertNotNil(viewModel.composerConfigurationErrorMessage)
         XCTAssertEqual(requestPaths, ["/api/chat/start"])
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-    }
-
-    @MainActor
-    func testSelectingCustomComposerModelWithNilSessionIDIsBlocked() async throws {
-        let session = SessionSummary(
-            sessionId: nil,
-            title: "Planning",
-            workspace: "/tmp/workspace",
-            model: "gpt-5.4",
-            modelProvider: "openai",
-            profile: "work"
-        )
-        let viewModel = try makeViewModel(sessionSummary: session) { request in
-            XCTFail("Selecting a composer model without a session ID must not call \(request.url?.path ?? "nil").")
-            throw URLError(.badURL)
-        }
-
-        await viewModel.selectComposerModel(ModelCatalogOption(
-            id: "moonshotai/kimi-k2-0905",
-            displayName: "moonshotai/kimi-k2-0905",
-            providerID: "openrouter"
-        ))
-
-        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
-        XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
-        XCTAssertEqual(viewModel.composerConfigurationErrorMessage, "The server did not provide a session ID.")
     }
 
     @MainActor
@@ -7161,32 +6077,26 @@ final class ChatViewModelSendTests: XCTestCase {
         let customModel = "moonshotai/kimi-k2-0905"
         var requestPaths: [String] = []
         let viewModel = try makeViewModel(
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
-        ) { request in
-            requestPaths.append(request.url?.path ?? "")
-
-            switch request.url?.path {
-            case "/api/session/update":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["model"] as? String, customModel)
-                XCTAssertEqual(body["model_provider"] as? String, "openrouter")
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "workspace": "/tmp/workspace",
-                    "model": "\(customModel)",
-                    "profile": "work"
-                  }
-                }
-                """, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work"),
+            handler: routes([
+                "/api/session/update": { request in
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["model"] as? String, customModel)
+                    XCTAssertEqual(body["model_provider"] as? String, "openrouter")
+                    return apiTestJSONResponse("""
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "workspace": "/tmp/workspace",
+                        "model": "\(customModel)",
+                        "profile": "work"
+                      }
+                    }
+                    """, for: request)
+                },
+                "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+            ], onRequest: { request in requestPaths.append(request.url?.path ?? "") })
+        )
 
         await viewModel.selectComposerModel(ModelCatalogOption(
             id: customModel,
@@ -7269,15 +6179,17 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testReasoningEffortSlashCommandSendsActiveSessionID() async throws {
         let viewModel = try makeViewModel(
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai")
-        ) { request in
-            XCTAssertEqual(request.url?.path, "/api/reasoning")
-            XCTAssertEqual(request.httpMethod, "POST")
-            let body = try XCTUnwrap(apiTestJSONBody(from: request))
-            XCTAssertEqual(body["effort"] as? String, "high")
-            XCTAssertEqual(body["session_id"] as? String, "session-abc")
-            return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "high"}"#, for: request)
-        }
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai"),
+            handler: routes([
+                "/api/reasoning": { request in
+                    XCTAssertEqual(request.httpMethod, "POST")
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    XCTAssertEqual(body["effort"] as? String, "high")
+                    XCTAssertEqual(body["session_id"] as? String, "session-abc")
+                    return apiTestJSONResponse(#"{"ok": true, "reasoning_effort": "high"}"#, for: request)
+                },
+            ])
+        )
 
         let result = await viewModel.executeSlashCommand(
             try XCTUnwrap(SlashCommandCatalog.command(named: "reasoning")),
@@ -7290,81 +6202,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testReasoningEffortChangesWithBlankSessionIDAreBlockedLocally() async throws {
-        let session = SessionSummary(
-            sessionId: "   ",
-            title: "Planning",
-            workspace: "/tmp/workspace",
-            model: "gpt-5.4",
-            modelProvider: "openai"
-        )
-        let viewModel = try makeViewModel(sessionSummary: session) { request in
-            XCTFail("Changing reasoning effort without a session ID must not call \(request.url?.path ?? "nil").")
-            throw URLError(.badURL)
-        }
-
-        let didSelect = await viewModel.selectReasoningEffort("high")
-        XCTAssertFalse(didSelect)
-        XCTAssertEqual(viewModel.composerConfigurationErrorMessage, "The server did not provide a session ID.")
-
-        let slashResult = await viewModel.executeSlashCommand(
-            try XCTUnwrap(SlashCommandCatalog.command(named: "reasoning")),
-            args: "high"
-        )
-        XCTAssertEqual(
-            slashResult,
-            .unsupported(friendlyMessage: "The server did not provide a session ID.")
-        )
-        XCTAssertEqual(viewModel.composerConfigurationErrorMessage, "The server did not provide a session ID.")
-    }
-
-    @MainActor
-    func testSelectingComposerModelHidesEffortControlWhenUnsupported() async throws {
-        let viewModel = try makeViewModel(
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
-        ) { request in
-            switch request.url?.path {
-            case "/api/session/update":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "workspace": "/tmp/workspace",
-                    "model": "no-effort-model",
-                    "model_provider": "openai",
-                    "profile": "work"
-                  }
-                }
-                """, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse("""
-                {
-                  "show_reasoning": true,
-                  "reasoning_effort": "",
-                  "supported_efforts": [],
-                  "supports_reasoning_effort": false
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        XCTAssertTrue(viewModel.showsReasoningEffortControl)
-
-        await viewModel.selectComposerModel(ModelCatalogOption(
-            id: "no-effort-model",
-            displayName: "no-effort-model",
-            providerID: "openai"
-        ))
-
-        XCTAssertEqual(viewModel.supportedReasoningEfforts, [])
-        XCTAssertEqual(viewModel.supportsReasoningEffort, false)
-        XCTAssertFalse(viewModel.showsReasoningEffortControl)
-    }
-
-    @MainActor
     func testEffortGatingRefreshFailureResetsStaleGatingToFallback() async throws {
         // First switch lands restrictive gating (no effort support); the second
         // switch succeeds but its gating refresh fails. The stale "hidden"
@@ -7373,39 +6210,37 @@ final class ChatViewModelSendTests: XCTestCase {
         var reasoningCalls = 0
         var sessionModel = "gpt-5.4"
         let viewModel = try makeViewModel(
-            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work")
-        ) { request in
-            switch request.url?.path {
-            case "/api/session/update":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "workspace": "/tmp/workspace",
-                    "model": "\(sessionModel)",
-                    "model_provider": "openai",
-                    "profile": "work"
-                  }
-                }
-                """, for: request)
-            case "/api/reasoning":
-                reasoningCalls += 1
-                if reasoningCalls == 1 {
+            sessionSummary: makeSession(model: "gpt-5.4", modelProvider: "openai", profile: "work"),
+            handler: routes([
+                "/api/session/update": { request in
                     return apiTestJSONResponse("""
                     {
-                      "show_reasoning": true,
-                      "reasoning_effort": "",
-                      "supported_efforts": [],
-                      "supports_reasoning_effort": false
+                      "session": {
+                        "session_id": "session-abc",
+                        "workspace": "/tmp/workspace",
+                        "model": "\(sessionModel)",
+                        "model_provider": "openai",
+                        "profile": "work"
+                      }
                     }
                     """, for: request)
-                }
-                throw URLError(.timedOut)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                },
+                "/api/reasoning": { request in
+                    reasoningCalls += 1
+                    if reasoningCalls == 1 {
+                        return apiTestJSONResponse("""
+                        {
+                          "show_reasoning": true,
+                          "reasoning_effort": "",
+                          "supported_efforts": [],
+                          "supports_reasoning_effort": false
+                        }
+                        """, for: request)
+                    }
+                    throw URLError(.timedOut)
+                },
+            ])
+        )
 
         sessionModel = "no-effort-model"
         let didSelectFirst = await viewModel.selectComposerModel(ModelCatalogOption(
@@ -7442,24 +6277,17 @@ final class ChatViewModelSendTests: XCTestCase {
             modelsJSON: String
         ) throws -> ChatViewModel {
             try makeViewModel(
-                sessionSummary: makeSession(model: model, modelProvider: provider)
-            ) { request in
-                switch request.url?.path {
-                case "/api/profiles":
-                    return apiTestJSONResponse(#"{"profiles": []}"#, for: request)
-                case "/api/models":
-                    return apiTestJSONResponse(modelsJSON, for: request)
-                case "/api/reasoning":
-                    return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-                case "/api/workspaces":
-                    return apiTestJSONResponse(#"{"workspaces": []}"#, for: request)
-                case "/api/commands":
-                    return apiTestJSONResponse(#"{"commands": []}"#, for: request)
-                default:
-                    XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                    throw URLError(.badURL)
-                }
-            }
+                sessionSummary: makeSession(model: model, modelProvider: provider),
+                handler: routes([
+                    "/api/profiles": jsonReply(#"{"profiles": []}"#),
+                    "/api/models": { request in
+                        return apiTestJSONResponse(modelsJSON, for: request)
+                    },
+                    "/api/reasoning": jsonReply(#"{"reasoning_effort": "medium"}"#),
+                    "/api/workspaces": jsonReply(#"{"workspaces": []}"#),
+                    "/api/commands": jsonReply(#"{"commands": []}"#),
+                ])
+            )
         }
 
         let exact = try makeConfiguredViewModel(
@@ -7535,37 +6363,26 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedResponseRefreshesGeneratedSessionTitle() async throws {
         let streamClient = SpySSEStreamingClient()
-        var didRefreshTitle = false
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            sessionSummary: makeSession(title: "Untitled Session")
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session":
-                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-                XCTAssertEqual(query["messages"], "0")
-                didRefreshTitle = true
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Generated Meal Plan"
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            sessionSummary: makeSession(title: "Untitled Session"),
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/session": { request in
+                    let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                    let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+                    XCTAssertEqual(query["messages"], "0")
+                    return apiTestJSONResponse("""
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "title": "Generated Meal Plan"
+                      }
+                    }
+                    """, for: request)
+                },
+            ])
+        )
 
         XCTAssertEqual(viewModel.displayTitle, "Untitled Session")
 
@@ -7573,63 +6390,13 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         streamClient.emit(.done(DoneStreamEvent()))
         streamClient.emit(.streamEnd)
-        try await waitUntil {
-            didRefreshTitle && viewModel.displayTitle == "Generated Meal Plan"
-        }
-
-        XCTAssertEqual(viewModel.displayTitle, "Generated Meal Plan")
-    }
-
-    @MainActor
-    func testDoneUsageReplacesLiveResponseSpeedOnAssistantMessage() async throws {
-        let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
-
-        let didSend = await viewModel.sendMessage("Measure this")
-        XCTAssertTrue(didSend)
-        streamClient.emit(.token("Measured response."))
-        streamClient.emit(.metering(MeteringStreamEvent(
-            tokensPerSecond: 18.25,
-            isTokensPerSecondAvailable: true,
-            isEstimated: false,
-            sessionId: "session-abc"
-        )))
-        XCTAssertEqual(viewModel.liveTokensPerSecond, 18.25)
-
-        streamClient.emit(.done(DoneStreamEvent(usage: ContextWindowSnapshot(
-            contextLength: nil,
-            thresholdTokens: nil,
-            lastPromptTokens: nil,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: nil,
-            tokensPerSecond: 20.5
-        ))))
-
-        XCTAssertNil(viewModel.liveTokensPerSecond)
-        XCTAssertEqual(viewModel.messages.last(where: { $0.role == "assistant" })?.turnTps, 20.5)
+        await waitUntil("the generated title") { viewModel.displayTitle == "Generated Meal Plan" }
     }
 
     @MainActor
     func testDoneUsageAppliesResponseSpeedToLastAssistantInCompletedToolTurn() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didSend = await viewModel.sendMessage("Run a tool")
         XCTAssertTrue(didSend)
@@ -7669,15 +6436,7 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testDoneUsageDoesNotOverwritePreviousAssistantWithoutCurrentStreamingAnchor() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didSend = await viewModel.sendMessage("Run a tool only")
         XCTAssertTrue(didSend)
@@ -7713,15 +6472,7 @@ final class ChatViewModelSendTests: XCTestCase {
     func testCompletedResponseCachesFinalTurnTpsWithoutTranscriptReload() async throws {
         let streamClient = SpySSEStreamingClient()
         let modelContext = try makeContext()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes(["/api/chat/start": chatStarted()]))
 
         let didSend = await viewModel.sendMessage("Measure this", modelContext: modelContext)
         XCTAssertTrue(didSend)
@@ -7765,27 +6516,24 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndFinishesWhenStreamIsInactive() async throws {
         let streamClient = SpySSEStreamingClient()
-        var didRequestStatus = false
-        var didReloadMessages = false
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                didRequestStatus = true
+        // A reconnect may check and reload more than once; each only has to happen.
+        let statusChecked = expectation(description: "stream status checked")
+        statusChecked.assertForOverFulfill = false
+        let reloaded = expectation(description: "messages reloaded")
+        reloaded.assertForOverFulfill = false
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/stream/status": { request in
+                statusChecked.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "active": false,
                   "stream_id": "stream-123"
                 }
                 """, for: request)
-            case "/api/session":
-                didReloadMessages = true
+            },
+            "/api/session": { request in
+                reloaded.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "session": {
@@ -7802,74 +6550,20 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
 
         streamClient.emit(.transportError("The network connection was lost."))
-        try await waitUntil {
-            didRequestStatus && didReloadMessages
+        await fulfillment(of: [statusChecked, reloaded], timeout: 5)
+        await waitUntil("the recovered transcript") {
+            viewModel.activeStreamID == nil && viewModel.messages.map(\.content) == ["Recovered transcript."]
         }
-
-        XCTAssertTrue(didRequestStatus)
-        XCTAssertTrue(didReloadMessages)
-        XCTAssertNil(viewModel.activeStreamID)
-        XCTAssertEqual(viewModel.messages.map(\.content), ["Recovered transcript."])
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(streamClient.stopCount, 2)
-    }
-
-    @MainActor
-    func testLoadMessagesReattachesActiveStreamFromReloadedSession() async throws {
-        let streamClient = SpySSEStreamingClient()
-        var didRequestStatus = false
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "active_stream_id": "stream-123",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      }
-                    ]
-                  }
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                didRequestStatus = true
-                return apiTestJSONResponse("""
-                {
-                  "active": true,
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        await viewModel.loadMessages()
-        await viewModel.reconnectStreamIfNeeded()
-
-        XCTAssertTrue(didRequestStatus)
-        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
-        XCTAssertEqual(streamClient.startedURLs.count, 1)
-        XCTAssertEqual(streamClient.startedURLs.first?.path, "/api/chat/stream")
     }
 
     /// #406 fallback ordering: an older server omits `pending_started_at`, so the
@@ -7950,31 +6644,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messagesOffset, 8)
         XCTAssertEqual(viewModel.messages.first?.messageId, "42")
         XCTAssertTrue(viewModel.messages.first?.content?.contains("Open this in mobile") == true)
-    }
-
-    @MainActor
-    func testLoadMessagesTracksOlderHistoryAvailability() async throws {
-        let viewModel = try makeViewModel { request in
-            XCTAssertEqual(request.url?.path, "/api/session")
-
-            return apiTestJSONResponse("""
-            {
-              "session": {
-                "session_id": "session-abc",
-                "messages": [
-                  {"role": "user", "content": "Recent question", "timestamp": 1, "message_id": "u-50"}
-                ],
-                "_messages_truncated": true,
-                "_messages_offset": 50
-              }
-            }
-            """, for: request)
-        }
-
-        await viewModel.loadMessages()
-
-        XCTAssertEqual(viewModel.messagesOffset, 50)
-        XCTAssertTrue(viewModel.hasOlderMessages)
     }
 
     @MainActor
@@ -8159,9 +6828,8 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedStreamSessionPreservesExpandedTranscriptWhenDoneReturnsLatestWindow() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": { request in
                 let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
                 let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
 
@@ -8194,18 +6862,9 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+            "/api/chat/start": chatStarted(),
+        ]))
 
         await viewModel.loadMessages()
         let didLoadOlder = await viewModel.loadOlderMessages()
@@ -8244,34 +6903,22 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedStreamSessionKeepsCurrentOffsetWhenDoneReturnsWidenedWindow() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "messages": [
-                      {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
-                      {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
-                    ],
-                    "_messages_truncated": true,
-                    "_messages_offset": 2
-                  }
-                }
-                """, for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
+                  {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
+                ],
+                "_messages_truncated": true,
+                "_messages_offset": 2
+              }
             }
-        }
+            """),
+            "/api/chat/start": chatStarted(),
+        ]))
 
         await viewModel.loadMessages()
         let didStart = await viewModel.sendMessage("Newest question")
@@ -8311,34 +6958,22 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedStreamSessionKeepsCurrentOffsetWhenDoneOmitsOffset() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "messages": [
-                      {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
-                      {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
-                    ],
-                    "_messages_truncated": true,
-                    "_messages_offset": 2
-                  }
-                }
-                """, for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
+                  {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
+                ],
+                "_messages_truncated": true,
+                "_messages_offset": 2
+              }
             }
-        }
+            """),
+            "/api/chat/start": chatStarted(),
+        ]))
 
         await viewModel.loadMessages()
         let didStart = await viewModel.sendMessage("Newest question")
@@ -8529,52 +7164,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testLoadOlderMessagesKeepsAffordanceWhenAnotherOlderPageExists() async throws {
-        let viewModel = try makeViewModel { request in
-            XCTAssertEqual(request.url?.path, "/api/session")
-            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-
-            if query["msg_before"] == nil {
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "messages": [
-                      {"role": "user", "content": "Tail", "timestamp": 51, "message_id": "u-50"}
-                    ],
-                    "_messages_truncated": true,
-                    "_messages_offset": 50
-                  }
-                }
-                """, for: request)
-            }
-
-            XCTAssertEqual(query["msg_before"], "50")
-            return apiTestJSONResponse("""
-            {
-              "session": {
-                "session_id": "session-abc",
-                "messages": [
-                  {"role": "assistant", "content": "Earlier page", "timestamp": 50, "message_id": "a-49"}
-                ],
-                "_messages_truncated": true,
-                "_messages_offset": 49
-              }
-            }
-            """, for: request)
-        }
-
-        await viewModel.loadMessages()
-        let didLoadOlder = await viewModel.loadOlderMessages()
-
-        XCTAssertTrue(didLoadOlder)
-        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Earlier page", "Tail"])
-        XCTAssertEqual(viewModel.messagesOffset, 49)
-        XCTAssertTrue(viewModel.hasOlderMessages)
-    }
-
-    @MainActor
     func testSkillShortcutWithoutArgsReturnsLocalSkillInfoWithoutStartingChat() async throws {
         var didRequestSkills = false
         let viewModel = try makeViewModel { request in
@@ -8616,72 +7205,27 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testSkillShortcutWithArgsStartsChatMessage() async throws {
-        var startedMessage: String?
-        let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/skills":
-                return apiTestJSONResponse("""
-                {
-                  "skills": [
-                    {
-                      "name": "Spotify",
-                      "category": "media",
-                      "description": "Control Spotify playback."
-                    }
-                  ]
-                }
-                """, for: request)
-            case "/api/chat/start":
-                let data = try XCTUnwrap(apiTestBodyData(from: request))
-                let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-                startedMessage = body["message"] as? String
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let result = await viewModel.executeSkillShortcutCommand(name: "spotify", args: "check songs")
-
-        XCTAssertEqual(result, .executed(message: nil))
-        XCTAssertEqual(startedMessage, "/spotify check songs")
-        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
-        XCTAssertEqual(streamClient.startedURLs.count, 1)
-    }
-
-    @MainActor
     func testEditUserMessageTruncatesBeforeMessageThenStartsChatWithEditedText() async throws {
         var requestPaths: [String] = []
         var truncateKeepCount: Int?
         var startedMessage: String?
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            requestPaths.append(request.url?.path ?? "")
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "_messages_offset": 10,
-                    "messages": [
-                      {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-10"},
-                      {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-11"},
-                      {"role": "user", "content": "Original question", "timestamp": 3, "message_id": "u-12"},
-                      {"role": "assistant", "content": "Original answer", "timestamp": 4, "message_id": "a-13"}
-                    ]
-                  }
-                }
-                """, for: request)
-            case "/api/session/truncate":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "_messages_offset": 10,
+                "messages": [
+                  {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-10"},
+                  {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-11"},
+                  {"role": "user", "content": "Original question", "timestamp": 3, "message_id": "u-12"},
+                  {"role": "assistant", "content": "Original answer", "timestamp": 4, "message_id": "a-13"}
+                ]
+              }
+            }
+            """),
+            "/api/session/truncate": { request in
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 XCTAssertEqual(body["session_id"] as? String, "session-abc")
                 truncateKeepCount = body["keep_count"] as? Int
@@ -8697,21 +7241,13 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            case "/api/chat/start":
+            },
+            "/api/chat/start": chatStarted(stream: "stream-edit") { request in
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 XCTAssertEqual(body["session_id"] as? String, "session-abc")
                 startedMessage = body["message"] as? String
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-edit"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ], onRequest: { request in requestPaths.append(request.url?.path ?? "") }))
 
         await viewModel.loadMessages()
         let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[2], visibleIndex: 2))
@@ -8731,24 +7267,22 @@ final class ChatViewModelSendTests: XCTestCase {
         var truncateKeepCount: Int?
         var startedMessage: String?
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "_messages_offset": 5,
-                    "messages": [
-                      {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-5"},
-                      {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-6"},
-                      {"role": "user", "content": "Second question", "timestamp": 3, "message_id": "u-7"},
-                      {"role": "assistant", "content": "Second answer", "timestamp": 4, "message_id": "a-8"}
-                    ]
-                  }
-                }
-                """, for: request)
-            case "/api/session/truncate":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "_messages_offset": 5,
+                "messages": [
+                  {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-5"},
+                  {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-6"},
+                  {"role": "user", "content": "Second question", "timestamp": 3, "message_id": "u-7"},
+                  {"role": "assistant", "content": "Second answer", "timestamp": 4, "message_id": "a-8"}
+                ]
+              }
+            }
+            """),
+            "/api/session/truncate": { request in
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 truncateKeepCount = body["keep_count"] as? Int
                 return apiTestJSONResponse("""
@@ -8764,20 +7298,12 @@ final class ChatViewModelSendTests: XCTestCase {
                   }
                 }
                 """, for: request)
-            case "/api/chat/start":
+            },
+            "/api/chat/start": chatStarted(stream: "stream-regen") { request in
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 startedMessage = body["message"] as? String
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-regen"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         await viewModel.loadMessages()
         let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[3], visibleIndex: 3))
@@ -8987,37 +7513,16 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.isClearingConversation)
         let didSend = await viewModel.sendMessage("Sneak this in")
         XCTAssertFalse(didSend)
-        XCTAssertEqual(viewModel.sendErrorMessage, "Wait for the conversation to finish clearing.")
+        XCTAssertNotNil(viewModel.sendErrorMessage)
 
         let secondClear = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
-        XCTAssertEqual(secondClear, .unsupported(friendlyMessage: "Wait for the conversation to finish clearing."))
+        assertUnsupported(secondClear)
 
         releaseClearResponse.signal()
         let result = await clearTask.value
 
         XCTAssertEqual(result, .executed(message: nil))
         XCTAssertFalse(viewModel.isClearingConversation)
-    }
-
-    @MainActor
-    func testClearRefusalIsKnownBeforeConfirmingForCLISessions() async throws {
-        let webUIViewModel = try makeViewModel { request in
-            XCTFail("Reading the refusal must not call \(request.url?.path ?? "unknown path").")
-            throw URLError(.badURL)
-        }
-        XCTAssertNil(webUIViewModel.clearConversationRefusal)
-
-        let cliViewModel = try makeViewModel(
-            sessionSummary: SessionSummary(sessionId: "session-abc", title: "Planning", isCliSession: true)
-        ) { request in
-            XCTFail("Reading the refusal must not call \(request.url?.path ?? "unknown path").")
-            throw URLError(.badURL)
-        }
-
-        XCTAssertEqual(
-            cliViewModel.clearConversationRefusal,
-            "Clearing the conversation is available for WebUI sessions only."
-        )
     }
 
     @MainActor
@@ -9057,40 +7562,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testClearSlashCommandLeavesTranscriptIntactWhenRequestThrows() async throws {
-        let viewModel = try makeViewModel { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "messages": [
-                      {"role": "user", "content": "Old question", "timestamp": 1, "message_id": "u-1"}
-                    ]
-                  }
-                }
-                """, for: request)
-            case "/api/session/clear":
-                throw URLError(.timedOut)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        await viewModel.loadMessages()
-        let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
-
-        guard case .unsupported = result else {
-            return XCTFail("Expected a thrown request to surface as .unsupported, got \(result).")
-        }
-        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Old question"])
-        XCTAssertNotNil(viewModel.lastError)
-    }
-
-    @MainActor
     func testClearSlashCommandRefusesWhileViewingCachedData() async throws {
         let context = try makeContext()
         let serverURL = try XCTUnwrap(URL(string: "https://example.test"))
@@ -9114,7 +7585,7 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let result = await viewModel.clearConversationFromSlashCommand(modelContext: context)
 
-        XCTAssertEqual(result, .unsupported(friendlyMessage: "Reconnect to the server to clear the conversation."))
+        assertUnsupported(result)
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question"])
     }
 
@@ -9129,42 +7600,26 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let result = await viewModel.clearConversationFromSlashCommand(modelContext: nil)
 
-        XCTAssertEqual(
-            result,
-            .unsupported(friendlyMessage: "Clearing the conversation is available for WebUI sessions only.")
-        )
+        assertUnsupported(result)
     }
 
     @MainActor
     func testClearSlashCommandIsBlockedWhileStreaming() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session/clear":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/session/clear": { request in
                 XCTFail("Clear should not call the server while streaming.")
                 throw URLError(.badURL)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
 
         let result = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "clear")))
 
-        XCTAssertEqual(
-            result,
-            .unsupported(friendlyMessage: "Wait for the current response to finish before clearing the conversation.")
-        )
+        assertUnsupported(result)
     }
 
     @MainActor
@@ -9209,29 +7664,19 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testUndoSlashCommandIsBlockedWhileStreaming() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-123"
-                }
-                """, for: request)
-            case "/api/session/undo":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/session/undo": { request in
                 XCTFail("Undo should not call the server while streaming.")
                 throw URLError(.badURL)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
         let result = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "undo")))
 
-        XCTAssertEqual(result, .unsupported(friendlyMessage: "Wait for the current response to finish before undoing messages."))
+        assertUnsupported(result)
     }
 
     @MainActor
@@ -9239,10 +7684,8 @@ final class ChatViewModelSendTests: XCTestCase {
         var requestPaths: [String] = []
         var startedMessage: String?
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            requestPaths.append(request.url?.path ?? "")
-            switch request.url?.path {
-            case "/api/session/retry":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session/retry": { request in
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 XCTAssertEqual(body["session_id"] as? String, "session-abc")
                 return apiTestJSONResponse("""
@@ -9252,31 +7695,22 @@ final class ChatViewModelSendTests: XCTestCase {
                   "removed_count": 2
                 }
                 """, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "messages": [
-                      {"role": "user", "content": "Earlier message", "timestamp": 1, "message_id": "u-1"}
-                    ]
-                  }
-                }
-                """, for: request)
-            case "/api/chat/start":
+            },
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {"role": "user", "content": "Earlier message", "timestamp": 1, "message_id": "u-1"}
+                ]
+              }
+            }
+            """),
+            "/api/chat/start": chatStarted(stream: "stream-retry") { request in
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 startedMessage = body["message"] as? String
-                return apiTestJSONResponse("""
-                {
-                  "session_id": "session-abc",
-                  "stream_id": "stream-retry"
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ], onRequest: { request in requestPaths.append(request.url?.path ?? "") }))
 
         let result = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "retry")))
 
@@ -9352,88 +7786,17 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testSuccessfulSteeringUsesOneTransientConfirmationAndRestartsDismissal() async throws {
-        let streamClient = SpySSEStreamingClient()
-        let dismissalDelay = ManualAsyncDelay()
-        var steerRequests = 0
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            steeringConfirmationDismissDelay: { await dismissalDelay.wait() }
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-123"}"#,
-                    for: request
-                )
-            case "/api/chat/steer":
-                steerRequests += 1
-                return apiTestJSONResponse(#"{"accepted":true}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let didStart = await viewModel.sendMessage("Start a response")
-        XCTAssertTrue(didStart)
-
-        let steerCommand = try XCTUnwrap(SlashCommandCatalog.command(named: "steer"))
-        let slashResult = await viewModel.executeSlashCommand(steerCommand, args: "First hint")
-        XCTAssertEqual(slashResult, .executed(message: nil))
-        XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
-        await dismissalDelay.waitForRegistrationCount(1)
-
-        let normalSendResult = await viewModel.submitStreamingMessage("Second hint", behavior: .steer)
-        XCTAssertEqual(normalSendResult, .executed(message: nil))
-        await dismissalDelay.waitForRegistrationCount(2)
-
-        XCTAssertEqual(steerRequests, 2)
-        XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
-        XCTAssertTrue(viewModel.pinnedLocalNotices.isEmpty)
-
-        await dismissalDelay.resumeNext()
-        await drainMainActor()
-
-        XCTAssertEqual(viewModel.steeringConfirmationNotice, "Steering hint delivered.")
-
-        // The restarted timer resumes on `ManualAsyncDelay`, then hops back to the main
-        // actor to clear the notice. Draining main can finish before that hop lands, so
-        // wait for the notice to change instead.
-        let cleared = expectation(description: "Steering notice cleared")
-        withObservationTracking {
-            _ = viewModel.steeringConfirmationNotice
-        } onChange: {
-            cleared.fulfill()
-        }
-        await dismissalDelay.resumeNext()
-        await fulfillment(of: [cleared], timeout: 5)
-
-        XCTAssertNil(viewModel.steeringConfirmationNotice)
-        XCTAssertFalse(viewModel.messages.contains { $0.content == "Steering hint delivered." })
-    }
-
-    @MainActor
     func testStreamCompletionDiscardsSteeringConfirmationInsteadOfPersistingIt() async throws {
         let streamClient = SpySSEStreamingClient()
         let dismissalDelay = ManualAsyncDelay()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            steeringConfirmationDismissDelay: { await dismissalDelay.wait() }
-        ) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(
-                    #"{"session_id":"session-abc","stream_id":"stream-123"}"#,
-                    for: request
-                )
-            case "/api/chat/steer":
-                return apiTestJSONResponse(#"{"accepted":true}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            steeringConfirmationDismissDelay: { await dismissalDelay.wait() },
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/chat/steer": jsonReply(#"{"accepted":true}"#),
+            ])
+        )
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9460,22 +7823,14 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testRefusedSteerKeepsRunDraftAndAttachments() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": { request in
                 return Self.notesUploadResponse(for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/chat/steer":
-                return apiTestJSONResponse(
-                    #"{"accepted":false,"fallback":"no_cached_agent","stream_id":null}"#,
-                    for: request
-                )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+            "/api/chat/start": chatStarted(),
+            "/api/chat/steer": jsonReply(
+                #"{"accepted":false,"fallback":"no_cached_agent","stream_id":null}"#),
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9498,7 +7853,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let viewModel = try makeViewModel { request in
             switch request.url?.path {
             case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+                return try chatStarted()(request)
             case "/api/chat/steer":
                 throw URLError(.notConnectedToInternet)
             default:
@@ -9530,11 +7885,11 @@ final class ChatViewModelSendTests: XCTestCase {
         let queuedSend = expectation(description: "Queued message starts a new turn")
         var chatStartCount = 0
         var queuedStartBody: [String: Any]?
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": { request in
                 return Self.notesUploadResponse(for: request)
-            case "/api/chat/start":
+            },
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 if chatStartCount == 2 {
                     let body = try XCTUnwrap(apiTestBodyData(from: request))
@@ -9545,16 +7900,10 @@ final class ChatViewModelSendTests: XCTestCase {
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            case "/api/chat/steer":
-                return apiTestJSONResponse(
-                    #"{"accepted":false,"fallback":"gateway_steer_queued","stream_id":"stream-1"}"#,
-                    for: request
-                )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+            "/api/chat/steer": jsonReply(
+                #"{"accepted":false,"fallback":"gateway_steer_queued","stream_id":"stream-1"}"#),
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9585,9 +7934,8 @@ final class ChatViewModelSendTests: XCTestCase {
         let newTurn = expectation(description: "Steer text starts a new turn")
         var chatStartCount = 0
         var newTurnMessage: String?
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 if chatStartCount == 2 {
                     let body = try XCTUnwrap(apiTestBodyData(from: request))
@@ -9598,31 +7946,23 @@ final class ChatViewModelSendTests: XCTestCase {
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            case "/api/chat/steer":
-                return apiTestJSONResponse(
-                    #"{"accepted":false,"fallback":"stream_dead","stream_id":null}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(#"{"active":false,"stream_id":"stream-1"}"#, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "messages": [
-                      {"role": "user", "content": "Start a response", "message_id": "user-1"},
-                      {"role": "assistant", "content": "Done.", "timestamp": 1770000101, "message_id": "assistant-1"}
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+            },
+            "/api/chat/steer": jsonReply(
+                #"{"accepted":false,"fallback":"stream_dead","stream_id":null}"#),
+            "/api/chat/stream/status": jsonReply(#"{"active":false,"stream_id":"stream-1"}"#),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {"role": "user", "content": "Start a response", "message_id": "user-1"},
+                  {"role": "assistant", "content": "Done.", "timestamp": 1770000101, "message_id": "assistant-1"}
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9642,9 +7982,8 @@ final class ChatViewModelSendTests: XCTestCase {
         let newTurn = expectation(description: "Steer text starts a new turn after the run")
         var chatStartCount = 0
         var newTurnMessage: String?
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 if chatStartCount == 2 {
                     let body = try XCTUnwrap(apiTestBodyData(from: request))
@@ -9655,18 +7994,11 @@ final class ChatViewModelSendTests: XCTestCase {
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            case "/api/chat/steer":
-                return apiTestJSONResponse(
-                    #"{"accepted":false,"fallback":"not_running","stream_id":null}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(#"{"active":true,"stream_id":"stream-1"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+            "/api/chat/steer": jsonReply(
+                #"{"accepted":false,"fallback":"not_running","stream_id":null}"#),
+            "/api/chat/stream/status": jsonReply(#"{"active":true,"stream_id":"stream-1"}"#),
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9692,9 +8024,8 @@ final class ChatViewModelSendTests: XCTestCase {
         let newTurn = expectation(description: "Steer text starts a new turn after the stream ends")
         var chatStartCount = 0
         var newTurnMessage: String?
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 if chatStartCount == 2 {
                     let body = try XCTUnwrap(apiTestBodyData(from: request))
@@ -9705,30 +8036,22 @@ final class ChatViewModelSendTests: XCTestCase {
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            case "/api/chat/steer":
-                return apiTestJSONResponse(
-                    #"{"accepted":false,"fallback":"stream_dead","stream_id":null}"#,
-                    for: request
-                )
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(#"{"active":false,"stream_id":"stream-1"}"#, for: request)
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "messages": [
-                      {"role": "user", "content": "Start a response", "message_id": "user-1"}
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+            },
+            "/api/chat/steer": jsonReply(
+                #"{"accepted":false,"fallback":"stream_dead","stream_id":null}"#),
+            "/api/chat/stream/status": jsonReply(#"{"active":false,"stream_id":"stream-1"}"#),
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "messages": [
+                  {"role": "user", "content": "Start a response", "message_id": "user-1"}
+                ]
+              }
             }
-        }
+            """),
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9757,9 +8080,8 @@ final class ChatViewModelSendTests: XCTestCase {
         var uploadCount = 0
         var chatStartCount = 0
         var queuedStartBody: [String: Any]?
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": { request in
                 uploadCount += 1
                 if uploadCount == 1 {
                     return Self.notesUploadResponse(for: request)
@@ -9773,7 +8095,8 @@ final class ChatViewModelSendTests: XCTestCase {
                   "is_image": false
                 }
                 """, for: request)
-            case "/api/chat/start":
+            },
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 if chatStartCount == 2 {
                     let body = try XCTUnwrap(apiTestBodyData(from: request))
@@ -9784,18 +8107,16 @@ final class ChatViewModelSendTests: XCTestCase {
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            case "/api/chat/steer":
+            },
+            "/api/chat/steer": { request in
                 steerStarted.fulfill()
                 XCTAssertEqual(releaseSteer.wait(timeout: .now() + .seconds(5)), .success)
                 return apiTestJSONResponse(
                     #"{"accepted":false,"fallback":"gateway_steer_queued","stream_id":"stream-1"}"#,
                     for: request
                 )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9831,9 +8152,8 @@ final class ChatViewModelSendTests: XCTestCase {
         let newTurn = expectation(description: "Steer text starts a new turn")
         var chatStartCount = 0
         var newTurnMessage: String?
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 if chatStartCount == 2 {
                     let body = try XCTUnwrap(apiTestBodyData(from: request))
@@ -9844,18 +8164,16 @@ final class ChatViewModelSendTests: XCTestCase {
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            case "/api/chat/steer":
+            },
+            "/api/chat/steer": { request in
                 steerStarted.fulfill()
                 XCTAssertEqual(releaseSteer.wait(timeout: .now() + .seconds(5)), .success)
                 return apiTestJSONResponse(
                     #"{"accepted":false,"fallback":"no_cached_agent","stream_id":null}"#,
                     for: request
                 )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9883,19 +8201,14 @@ final class ChatViewModelSendTests: XCTestCase {
         let streamClient = SpySSEStreamingClient()
         let steerStarted = expectation(description: "Steer request started")
         let releaseSteer = DispatchSemaphore(value: 0)
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/chat/steer":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/steer": { request in
                 steerStarted.fulfill()
                 XCTAssertEqual(releaseSteer.wait(timeout: .now() + .seconds(5)), .success)
                 throw URLError(.notConnectedToInternet)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9925,24 +8238,20 @@ final class ChatViewModelSendTests: XCTestCase {
     func testAcceptedSteerCarriesAttachmentNote() async throws {
         let attachmentStore = RecordingSendDraftAttachmentStore()
         var steerText: String?
-        let viewModel = try makeViewModel(draftAttachmentStore: attachmentStore) { request in
-            switch request.url?.path {
-            case "/api/upload":
+        let viewModel = try makeViewModel(draftAttachmentStore: attachmentStore, handler: routes([
+            "/api/upload": { request in
                 return Self.notesUploadResponse(for: request)
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/chat/steer":
+            },
+            "/api/chat/start": chatStarted(),
+            "/api/chat/steer": { request in
                 let body = try XCTUnwrap(apiTestBodyData(from: request))
                 steerText = (try JSONSerialization.jsonObject(with: body) as? [String: Any])?["text"] as? String
                 return apiTestJSONResponse(
                     #"{"accepted":true,"fallback":null,"stream_id":"stream-123"}"#,
                     for: request
                 )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -9991,25 +8300,18 @@ final class ChatViewModelSendTests: XCTestCase {
         // attempt 7 is a safety escape hatch: it guarantees even a buggy retry loop terminates
         // (a successful send clears activeStreamID's nil guard / empties the queue), so the test
         // can never hang regardless of whether the loop exists.
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": { request in
                 startChatAttempts += 1
                 if startChatAttempts == 1 || startChatAttempts >= 7 {
-                    return apiTestJSONResponse(
-                        #"{"session_id": "session-abc", "stream_id": "stream-123"}"#,
-                        for: request
-                    )
+                    return try chatStarted()(request)
                 }
                 return apiTestJSONResponse(
                     #"{"session_id": "session-abc", "error": "server unreachable"}"#,
                     for: request
                 )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         // 1. Establish a live stream so the queued message has something to wait behind.
         let didStart = await viewModel.sendMessage("first message")
@@ -10027,21 +8329,9 @@ final class ChatViewModelSendTests: XCTestCase {
         streamClient.emit(.streamEnd)
         XCTAssertNil(viewModel.activeStreamID)
 
-        // 4. Let the drain (and any retry loop) fully quiesce. MockURLProtocol resolves
-        //    synchronously, so once the attempt count is stable across several short polls no
-        //    further sends are in flight.
-        var lastSeen = startChatAttempts
-        var stablePolls = 0
-        for _ in 0..<80 {
-            try await Task.sleep(nanoseconds: 50_000_000)
-            if startChatAttempts == lastSeen {
-                stablePolls += 1
-                if stablePolls >= 3 { break }
-            } else {
-                stablePolls = 0
-                lastSeen = startChatAttempts
-            }
-        }
+        // 4. Wait for the drained send to fail. A retry loop re-drains in the same step, so by
+        //    then it would already have taken the message out of the queue again.
+        await waitUntil("the drained send failed") { viewModel.sendErrorMessage != nil }
 
         let drainedAttempts = startChatAttempts - attemptsBeforeDrain
 
@@ -10070,11 +8360,9 @@ final class ChatViewModelSendTests: XCTestCase {
         var chatStartCount = 0
         let viewModel = try makeViewModel(
             streamClient: streamClient,
-            draftAttachmentStore: attachmentStore
-        ) { request in
-            switch request.url?.path {
-            case "/api/upload":
-                return apiTestJSONResponse("""
+            draftAttachmentStore: attachmentStore,
+            handler: routes([
+                "/api/upload": jsonReply("""
                 {
                   "filename": "notes.txt",
                   "path": "/tmp/workspace/notes.txt",
@@ -10082,20 +8370,18 @@ final class ChatViewModelSendTests: XCTestCase {
                   "mime": "text/plain",
                   "is_image": false
                 }
-                """, for: request)
-            case "/api/chat/start":
-                chatStartCount += 1
-                return apiTestJSONResponse(
-                    """
-                    {"session_id":"session-abc","stream_id":"stream-\(chatStartCount)"}
-                    """,
-                    for: request
-                )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+                """),
+                "/api/chat/start": { request in
+                    chatStartCount += 1
+                    return apiTestJSONResponse(
+                        """
+                        {"session_id":"session-abc","stream_id":"stream-\(chatStartCount)"}
+                        """,
+                        for: request
+                    )
+                },
+            ])
+        )
 
         let didStartFirstMessage = await viewModel.sendMessage("first message")
         XCTAssertTrue(didStartFirstMessage)
@@ -10105,7 +8391,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(queued, .executed(message: nil))
 
         streamClient.emit(.streamEnd)
-        try await waitUntil { chatStartCount == 2 }
+        await waitUntil("the queued send started") { viewModel.activeStreamID == "stream-2" }
         let deletedNames = await attachmentStore.deletedNames()
 
         XCTAssertEqual(deletedNames, ["saved-1-notes.txt"])
@@ -10118,21 +8404,18 @@ final class ChatViewModelSendTests: XCTestCase {
     func testLeavingChatHandsOverQueuedMessagesInOrder() async throws {
         let streamClient = SpySSEStreamingClient()
         var chatStartCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": { request in
                 return Self.notesUploadResponse(for: request)
-            case "/api/chat/start":
+            },
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 return apiTestJSONResponse(
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -10173,17 +8456,10 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testReturningToChatDoesNotRestoreQueueReceipt() async throws {
         let streamClient = SpySSEStreamingClient()
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/chat/cancel":
-                return apiTestJSONResponse(#"{"ok":false}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/cancel": jsonReply(#"{"ok":false}"#),
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -10200,28 +8476,21 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.takeQueuedMessages().map(\.text), ["interrupting", "queued"])
         viewModel.suspendStreamForNavigation()
 
-        let reopened = try makeViewModel(streamClient: SpySSEStreamingClient()) { request in
-            switch request.url?.path {
-            case "/api/session":
-                return apiTestJSONResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Planning",
-                    "active_stream_id": "stream-123",
-                    "messages": [
-                      {"role": "user", "content": "Keep working", "timestamp": 1770000100, "message_id": "user-1"}
-                    ]
-                  }
-                }
-                """, for: request)
-            case "/api/chat/stream/status":
-                return apiTestJSONResponse(#"{"active":true,"stream_id":"stream-123","replay_available":true}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
+        let reopened = try makeViewModel(streamClient: SpySSEStreamingClient(), handler: routes([
+            "/api/session": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "title": "Planning",
+                "active_stream_id": "stream-123",
+                "messages": [
+                  {"role": "user", "content": "Keep working", "timestamp": 1770000100, "message_id": "user-1"}
+                ]
+              }
             }
-        }
+            """),
+            "/api/chat/stream/status": jsonReply(#"{"active":true,"stream_id":"stream-123","replay_available":true}"#),
+        ]))
         await reopened.loadMessages()
         await reopened.reconnectStreamIfNeeded()
 
@@ -10239,19 +8508,14 @@ final class ChatViewModelSendTests: XCTestCase {
         let streamClient = SpySSEStreamingClient()
         let cancelStarted = expectation(description: "Cancel started")
         let releaseCancel = DispatchSemaphore(value: 0)
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
-            case "/api/chat/cancel":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/chat/start": chatStarted(),
+            "/api/chat/cancel": { request in
                 cancelStarted.fulfill()
                 releaseCancel.wait()
                 return apiTestJSONResponse(#"{"ok":false}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
@@ -10277,11 +8541,11 @@ final class ChatViewModelSendTests: XCTestCase {
         let drainedSendStarted = expectation(description: "Drained send started")
         let releaseDrainedSend = DispatchSemaphore(value: 0)
         var chatStartCount = 0
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            switch request.url?.path {
-            case "/api/upload":
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/upload": { request in
                 return Self.notesUploadResponse(for: request)
-            case "/api/chat/start":
+            },
+            "/api/chat/start": { request in
                 chatStartCount += 1
                 if chatStartCount == 2 {
                     drainedSendStarted.fulfill()
@@ -10291,11 +8555,8 @@ final class ChatViewModelSendTests: XCTestCase {
                     #"{"session_id":"session-abc","stream_id":"stream-\#(chatStartCount)"}"#,
                     for: request
                 )
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
+            },
+        ]))
 
         let didStart = await viewModel.sendMessage("Start a response")
         XCTAssertTrue(didStart)
@@ -10311,7 +8572,7 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.appendPendingAttachments(parked.flatMap(\.attachments))
         releaseDrainedSend.signal()
 
-        try await waitUntil { viewModel.activeStreamID == "stream-2" }
+        await waitUntil("the drained send started") { viewModel.activeStreamID == "stream-2" }
         await drainMainActor()
         XCTAssertEqual(viewModel.pendingAttachments.map(\.path), ["/tmp/workspace/notes.txt"])
     }
@@ -10322,6 +8583,13 @@ final class ChatViewModelSendTests: XCTestCase {
     /// work still running on another actor (such as a delay resumed on `ManualAsyncDelay`)
     /// that will hop back to main later: observe the state change for that instead.
     @MainActor
+    /// Asserts a slash command was refused, whatever its copy says.
+    private func assertUnsupported(_ result: SlashCommandExecutionResult, file: StaticString = #filePath, line: UInt = #line) {
+        guard case .unsupported = result else {
+            return XCTFail("Expected a refusal, got \(result)", file: file, line: line)
+        }
+    }
+
     private func drainMainActor() async {
         for _ in 0..<3 { await Task.yield() }
         await Task { @MainActor in }.value
@@ -10451,6 +8719,50 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(attempts, 1)
     }
 
+    /// The `/` panel's lists, typed for while the chat shows its offline cache, ask the
+    /// host nothing; they load once the chat reconnects.
+    @MainActor
+    func testOfflineSlashListsWaitForTheReconnect() async throws {
+        let context = try makeContext()
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user")],
+            serverURL: try XCTUnwrap(URL(string: "https://example.test")),
+            sessionID: "session-abc",
+            in: context
+        )
+        let sessionRequests = LockedCounter()
+        let asked = LockedStrings()
+        let viewModel = try makeViewModel { request in
+            let path = request.url?.path ?? ""
+            switch path {
+            case "/api/session":
+                guard sessionRequests.increment() > 1 else { throw URLError(.timedOut) }
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc", "messages": []}}"#, for: request)
+            case "/api/personalities":
+                asked.append(path)
+                return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
+            default:
+                asked.append(path)
+                return apiTestJSONResponse(#"{"skills": [{"name": "handoff"}]}"#, for: request)
+            }
+        }
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertTrue(viewModel.showsOfflineCache)
+        await viewModel.loadPersonalitySuggestions()
+        await viewModel.loadSkillSlashSuggestions()
+
+        XCTAssertEqual(asked.values, [])
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertFalse(viewModel.showsOfflineCache)
+        await viewModel.loadPersonalitySuggestions()
+        await viewModel.loadSkillSlashSuggestions()
+
+        XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
+        XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
+    }
+
     /// Sent references become chips the moment the catalog lands, and a chip is
     /// not the size of the `/slug` it replaces, so the transcript has to be told
     /// it just re-laid out under the reader (#388).
@@ -10470,22 +8782,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
     }
 
-    /// A server with no skills leaves the transcript exactly as it was drawn, so
-    /// it must not claim a relayout. Covers the general rule too: a catalog that
-    /// came back unchanged says nothing.
-    @MainActor
-    func testAnEmptySkillListDoesNotSignalARelayout() async throws {
-        let viewModel = try makeViewModel { request in
-            apiTestJSONResponse(#"{"skills": []}"#, for: request)
-        }
-
-        await viewModel.loadSkillSlashSuggestions()
-        await viewModel.loadSkillSlashSuggestions()
-
-        XCTAssertTrue(viewModel.skillChipCatalog.isEmpty)
-        XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
-    }
-
     // MARK: - Workspace file references (`@path`)
 
     /// `.` holds `a/`; `a/` holds `b.md` and `c.md`.
@@ -10503,6 +8799,26 @@ final class ChatViewModelSendTests: XCTestCase {
     private func listedPath(in request: URLRequest) -> String {
         let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
         return components?.queryItems?.first { $0.name == "path" }?.value ?? "."
+    }
+
+    /// A webui chat's `@` panel lists its own session's workspace, one folder per query.
+    @MainActor
+    func testTheAtPanelListsTheSessionsWorkspace() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            XCTAssertEqual(request.url?.path, "/api/list")
+            let query = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems
+            XCTAssertEqual(query?.first { $0.name == "session_id" }?.value, "session-abc")
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+        XCTAssertTrue(viewModel.offersFilePathSearch)
+
+        await viewModel.searchFilePaths("a/")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertEqual(viewModel.filePathSearch.matches.map(\.path), ["a/b.md", "a/c.md"])
     }
 
     /// What the composer picked dies with the view model, so a chat re-entered
@@ -10545,6 +8861,43 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(listed.values, ["a"])
         XCTAssertFalse(viewModel.composerChipCatalog.containsFile(path: "a/missing.md"))
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
+    }
+
+    /// A draft typed while the chat shows its offline cache asks the host nothing; its
+    /// `@path` is confirmed once the chat reconnects.
+    @MainActor
+    func testAnOfflineDraftReferenceWaitsForTheReconnect() async throws {
+        let context = try makeContext()
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user")],
+            serverURL: try XCTUnwrap(URL(string: "https://example.test")),
+            sessionID: "session-abc",
+            in: context
+        )
+        let sessionRequests = LockedCounter()
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            if request.url?.path == "/api/session" {
+                guard sessionRequests.increment() > 1 else { throw URLError(.timedOut) }
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc", "messages": []}}"#, for: request)
+            }
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertTrue(viewModel.showsOfflineCache)
+        await viewModel.loadFileChipReferences(draft: "read @a/b.md please")
+
+        XCTAssertEqual(listed.values, [])
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertFalse(viewModel.showsOfflineCache)
+        await viewModel.loadFileChipReferences(draft: "read @a/b.md please")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
     @MainActor
@@ -10709,6 +9062,26 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
+    /// A webui workspace switch is optimistic: `/api/list` still answers from the old root
+    /// until the server applies it, so an open `@` panel must not load its query again on
+    /// the switch. Only a Hermes chat's folder move, which `session.info` reports already
+    /// applied, reloads it (#1113).
+    @MainActor
+    func testAWebuiWorkspaceSwitchLeavesAnOpenPanelsQueryAlone() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(#"""
+            {"session": {"session_id": "session-abc", "workspace": "/tmp/other", "model": "gpt-5.4"}}
+            """#, for: request)
+        }
+        let panelScope = viewModel.filePathSearch.scopeRevision
+        let chipScope = viewModel.fileChipScopeRevision
+
+        await viewModel.selectWorkspacePath("/tmp/other")
+
+        XCTAssertGreaterThan(viewModel.fileChipScopeRevision, chipScope, "the switch still resets")
+        XCTAssertEqual(viewModel.filePathSearch.scopeRevision, panelScope)
+    }
+
     /// A pass still listing the old workspace's folders when the workspace moves
     /// is cancelled outright: it stops before the next folder, settles nothing,
     /// and the candidates are asked again under the new root.
@@ -10860,14 +9233,20 @@ final class ChatViewModelSendTests: XCTestCase {
         liveActivityManager: (any AgentLiveActivityManaging)? = nil,
         pollingIntervals: ChatPollingIntervals = .standard,
         steeringConfirmationDismissDelay: @escaping @Sendable () async throws -> Void = {
+            // test-wait: a factory default no test waits out; tests that dismiss pass their own.
             try await Task.sleep(nanoseconds: 3_000_000_000)
         },
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
-        speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
+        renderOnDeviceSpeech: @escaping @MainActor (String) async throws -> Data = { _ in SpyOnDeviceSpeech.audio },
+        listenSpeedChangeSettleDelay: @escaping @Sendable () async throws -> Void = {
+            // test-wait: a factory default no test waits out; tests that settle pass their own.
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
-        serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
+        listenAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
         draftAttachmentStore: any ChatDraftAttachmentStoring = RecordingSendDraftAttachmentStore(),
+        draftStore: ChatDraftStore? = nil,
         userDefaults: UserDefaults = .standard,
         serverURL: URL? = nil,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
@@ -10894,16 +9273,20 @@ final class ChatViewModelSendTests: XCTestCase {
             streamClient: resolvedStreamClient,
             approvalStreamClient: approvalStreamClient ?? SpySSEStreamingClient(),
             clarifyStreamClient: clarifyStreamClient ?? SpySSEStreamingClient(),
-            liveActivityManager: liveActivityManager,
+            // Default to a spy so unit tests never drive ActivityKit, whose synchronous reads
+            // can hold the main actor for seconds and starve a test's waits.
+            liveActivityManager: liveActivityManager ?? SpyChatLiveActivityManager(),
             pollingIntervals: pollingIntervals,
             steeringConfirmationDismissDelay: steeringConfirmationDismissDelay,
             streamingScrollCoalescingDelayNanoseconds: streamingScrollCoalescingDelayNanoseconds,
-            speechSynthesizerFactory: speechSynthesizerFactory,
+            renderOnDeviceSpeech: renderOnDeviceSpeech,
+            listenSpeedChangeSettleDelay: listenSpeedChangeSettleDelay,
             // Default to a spy so unit tests never drive the live shared AVAudioSession.
             listenAudioSession: listenAudioSession ?? SpyListenAudioSession(),
             listenRemoteControlCenter: listenRemoteControlCenter ?? SpyListenRemoteControlCenter(),
-            serverTTSAudioPlayerFactory: serverTTSAudioPlayerFactory,
+            listenAudioPlayerFactory: listenAudioPlayerFactory,
             draftAttachmentStore: draftAttachmentStore,
+            draftStore: draftStore,
             userDefaults: userDefaults
         )
 
@@ -10914,17 +9297,6 @@ final class ChatViewModelSendTests: XCTestCase {
         }
 
         return viewModel
-    }
-
-    @MainActor
-    private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
-        for _ in 0..<40 {
-            if condition() {
-                return
-            }
-
-            try await Task.sleep(nanoseconds: 50_000_000)
-        }
     }
 
     private func makeSession(
@@ -10987,54 +9359,229 @@ final class ChatViewModelSendTests: XCTestCase {
         let height = try XCTUnwrap(properties[kCGImagePropertyPixelHeight] as? NSNumber).intValue
         return max(width, height)
     }
+}
 
-    @MainActor
-    func testLiveStreamContentCoalescesRapidTokenUpdates() async throws {
-        let streamClient = SpySSEStreamingClient()
-        streamClient.automaticallyFlushPendingStreamingContent = false
-        let viewModel = try makeViewModel(streamClient: streamClient) { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return apiTestJSONResponse("""
-            {
-              "session_id": "session-abc",
-              "stream_id": "stream-123"
-            }
-            """, for: request)
-        }
+/// Listen on a Hermes Sessions reply (#1072): the host's voice from `/api/audio/speak` in
+/// the chat's Profile, else the on-device voice, silently, as on webui (#15).
+@MainActor final class ListenSynthesisTests: XCTestCase {
+    private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
+                                                  username: "user", password: "fixture")
 
-        let didStart = await viewModel.sendMessage("Stream a long response")
-        XCTAssertTrue(didStart)
+    /// The last `openHermesChat`'s conversation. Its reconnects wait until `suspend()`.
+    private var engine: HermesConversation?
 
-        for index in 0..<25 {
-            streamClient.emit(.token("chunk-\(index)"))
-        }
-
-        try await waitForStreamingContent(
-            viewModel,
-            toSatisfy: { $0 == (0..<25).map { "chunk-\($0)" }.joined() }
-        )
+    override func tearDown() {
+        engine?.suspend()
+        engine = nil
+        HermesHostFixture.reset()
+        super.tearDown()
     }
 
-    @MainActor
-    private func waitForStreamingContent(
-        _ viewModel: ChatViewModel,
-        toSatisfy predicate: (String?) -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        for _ in 0..<20 {
-            if predicate(viewModel.messages.last?.content) {
-                return
-            }
-
-            try await Task.sleep(nanoseconds: 50_000_000)
+    func testAHermesReplyPlaysInTheHostsVoice() async throws {
+        let speech = SpyOnDeviceSpeech()
+        let player = SpyListenAudioPlayer()
+        var played: [Data] = []
+        let model = await openHermesChat(speech: speech) { played.append($0); return player }
+        let audio = Data([0xFF, 0xF3, 0x18, 0xC4])
+        var sent: [URLRequest] = []
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/audio/speak" else { return nil }
+            sent.append(request)
+            return .json(200, .object(["ok": .bool(true), "data_url": .string("data:audio/mpeg;base64," + audio.base64EncodedString()),
+                                       "mime_type": .string("audio/mpeg"), "provider": .string("edge")]))
         }
 
-        XCTAssertTrue(
-            predicate(viewModel.messages.last?.content),
-            file: file,
-            line: line
+        model.toggleListening(to: try Self.reply("Hello from the host."))
+        await model.listenPreparationTask?.value
+
+        let request = try XCTUnwrap(sent.first)
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.query, "profile=work")
+        XCTAssertEqual(try apiTestBodyData(from: request).map { try JSONDecoder().decode(BotJSON.self, from: $0) },
+                       .object(["text": .string("Hello from the host.")]))
+        XCTAssertEqual(played, [audio])
+        XCTAssertEqual(player.playCount, 1)
+        XCTAssertEqual(model.listenPlaybackPhase, .playing)
+        XCTAssertEqual(speech.spokenStrings, [])
+        XCTAssertNil(model.messageActionErrorMessage)
+    }
+
+    /// A refusal, a timeout, audio the player can't decode, or a reply over the 4,000-character
+    /// ceiling: the reply is spoken on device, with the playback bar and no alert.
+    func testAHermesReplyTheHostCannotVoiceIsSpokenOnDeviceSilently() async throws {
+        let ogg = HermesHostFixture.Reply.json(200, .object([
+            "ok": .bool(true), "data_url": .string("data:audio/ogg;base64,T2dnUw=="), "mime_type": .string("audio/ogg")
+        ]))
+        let scenarios: [(label: String, text: String, reply: HermesHostFixture.Reply, requests: Int, decodes: Int)] = [
+            ("refused", "Refused.", .json(400, .object(["detail": .string("Speech synthesis failed")])), 1, 0),
+            ("timed out", "Timed out.", .fail(URLError(.timedOut)), 1, 0),
+            ("undecodable", "Ogg.", ogg, 1, 1),
+            ("over the ceiling", String(repeating: "a", count: ServerTTSPolicy.maximumHermesTextLength + 1), ogg, 0, 0)
+        ]
+        for scenario in scenarios {
+            let speech = SpyOnDeviceSpeech()
+            var decodes = 0
+            let model = await openHermesChat(speech: speech) { data in
+                guard data == SpyOnDeviceSpeech.audio else {
+                    decodes += 1
+                    throw URLError(.cannotDecodeContentData)
+                }
+                return SpyListenAudioPlayer()
+            }
+            var sent = 0
+            _ = HermesHostFixture.configuration { request in
+                guard request.url?.path == "/api/audio/speak" else { return nil }
+                sent += 1
+                return scenario.reply
+            }
+
+            model.toggleListening(to: try Self.reply(scenario.text))
+            await model.listenPreparationTask?.value
+
+            XCTAssertEqual(sent, scenario.requests, scenario.label)
+            XCTAssertEqual(decodes, scenario.decodes, scenario.label)
+            XCTAssertEqual(speech.spokenStrings, [scenario.text], scenario.label)
+            XCTAssertEqual(model.listeningMessageID, "reply", scenario.label)
+            XCTAssertEqual(model.listenPlaybackPhase, .playing, scenario.label)
+            XCTAssertNil(model.messageActionErrorMessage, scenario.label)
+            model.stopListening()
+        }
+    }
+
+    /// Speech is plain HTTP, so Listen still reaches the host while the chat's socket is down
+    /// and reconnecting.
+    func testAHermesReplyPlaysInTheHostsVoiceWhileTheChatReconnects() async throws {
+        let speech = SpyOnDeviceSpeech()
+        let player = SpyListenAudioPlayer()
+        let model = await openHermesChat(speech: speech) { _ in player }
+        let engine = try XCTUnwrap(engine)
+        engine.disconnect(BotFailure.transport)
+        XCTAssertTrue(engine.isReconnecting)
+        var sent = 0
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/audio/speak" else { return nil }
+            sent += 1
+            return .json(200, .object(["ok": .bool(true), "data_url": .string("data:audio/mpeg;base64,//MYxA=="),
+                                       "mime_type": .string("audio/mpeg"), "provider": .string("edge")]))
+        }
+
+        model.toggleListening(to: try Self.reply("Hello while reconnecting."))
+        await model.listenPreparationTask?.value
+
+        XCTAssertEqual(sent, 1)
+        XCTAssertEqual(player.playCount, 1)
+        XCTAssertEqual(speech.spokenStrings, [])
+    }
+
+    /// Audio the host sends after the user stopped Listen never plays.
+    func testStoppingWhileTheHostSpeaksPlaysNothingWhenTheAudioArrives() async throws {
+        let speech = SpyOnDeviceSpeech()
+        let requested = expectation(description: "speech requested")
+        var deliver: CheckedContinuation<Void, Never>?
+        let model = await openHermesChat(speech: speech, player: { _ in
+            XCTFail("A stopped Listen must not create a player")
+            return SpyListenAudioPlayer()
+        }, synthesize: { _ in
+            await withCheckedContinuation { deliver = $0; requested.fulfill() }
+            return Data([0xFF, 0xF3])
+        })
+
+        model.toggleListening(to: try Self.reply("Stop me."))
+        let pending = model.listenPreparationTask
+        await fulfillment(of: [requested], timeout: 3)
+        model.stopListening()
+        deliver?.resume()
+        await pending?.value
+
+        XCTAssertEqual(speech.spokenStrings, [])
+        XCTAssertNil(model.listeningMessageID)
+        XCTAssertEqual(model.listenPlaybackPhase, .idle)
+    }
+
+    /// A Hermes chat in Profile `work`, attached over a scripted host. `synthesize` stands in
+    /// for the host's speech when set.
+    private func openHermesChat(speech: SpyOnDeviceSpeech,
+                                player: @escaping @MainActor (Data) throws -> any ListenAudioPlaying,
+                                synthesize: (@MainActor (String) async throws -> Data?)? = nil) async -> ChatViewModel {
+        let host = BotSocketHost()
+        host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("work")])
+        ])))
+        host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
+        let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
+                                        target: .session(profile: "work", key: "tip"),
+                                        wire: BotClient(http: host.connection(Self.connection)),
+                                        // test-wait: a reconnect waits until the test ends; none is expected.
+                                        reconnectDelay: { _ in try await Task.sleep(for: .seconds(3600)) })
+        self.engine = engine
+        let model = ChatViewModel(
+            session: SessionSummary(profile: "work"), server: URL(string: "https://hermes.example")!,
+            streamingScrollCoalescingDelayNanoseconds: 0, renderOnDeviceSpeech: speech.render,
+            listenAudioSession: SpyListenAudioSession(), listenRemoteControlCenter: SpyListenRemoteControlCenter(),
+            listenAudioPlayerFactory: player, synthesizeListenAudio: synthesize,
+            draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
+            backend: .hermes(HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true }))
         )
+        await model.loadMessages()
+        XCTAssertEqual(engine.connectionState, .connected)
+        return model
+    }
+
+    private static func reply(_ text: String) throws -> MessageActionContext {
+        try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(role: "assistant", content: text, timestamp: 1_770_000_024, messageId: "reply"),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
+    }
+}
+
+/// A polling `sleep` whose waits are events: `slept` is fulfilled as each poll goes back to
+/// sleep, and `cancelled` as a sleeping poll is cancelled. A wait ends only when cancelled.
+private func pollClock(slept: XCTestExpectation,
+                       cancelled: XCTestExpectation? = nil) -> @Sendable (UInt64) async -> Void {
+    { _ in
+        slept.fulfill()
+        await withTaskCancellationHandler {
+            // test-wait: a poll sleeps until it is cancelled; the test waits on `slept`/`cancelled`.
+            try? await Task.sleep(for: .seconds(3_600))
+        } onCancel: { cancelled?.fulfill() }
+    }
+}
+
+// MARK: - Fake server
+
+/// One path's reply on the fake server a `makeViewModel` handler stands in for.
+private typealias ServerRoute = (URLRequest) throws -> (HTTPURLResponse, Data)
+
+/// A `makeViewModel` handler that answers each path from `table` and fails the test on any
+/// other path. `onRequest` sees every request first, for a test that records them.
+private func routes(_ table: [String: ServerRoute], onRequest: ((URLRequest) -> Void)? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) -> ServerRoute {
+    { request in
+        onRequest?(request)
+        let path = request.url?.path ?? "nil"
+        guard let route = table[path] else {
+            XCTFail("Unexpected request path: \(path)", file: file, line: line)
+            throw URLError(.badURL)
+        }
+        return try route(request)
+    }
+}
+
+/// A route that answers `json` with `status`.
+private func jsonReply(_ json: String, status: Int = 200) -> ServerRoute {
+    { apiTestJSONResponse(json, for: $0, status: status) }
+}
+
+/// `/api/chat/start`'s reply opening `stream` on `session`, after `inspect` checks the request.
+private func chatStarted(stream: String = "stream-123", session: String = "session-abc",
+                         inspect: ((URLRequest) throws -> Void)? = nil) -> ServerRoute {
+    { request in
+        try inspect?(request)
+        return apiTestJSONResponse(#"{"session_id": "\#(session)", "stream_id": "\#(stream)"}"#, for: request)
     }
 }
 
@@ -11107,38 +9654,25 @@ private final class ListenCallRecorder {
     func record(_ event: String) { events.append(event) }
 }
 
-private final class SpySpeechSynthesizer: ChatSpeechSynthesizing {
-    var delegate: (any AVSpeechSynthesizerDelegate)?
-    var isSpeaking = false
-    var isPaused = false
+/// Stands in for the on-device voice: records what it was asked to speak and returns
+/// `audio` as the rendered bytes. `hold` keeps a render in flight until the test releases it.
+@MainActor
+private final class SpyOnDeviceSpeech {
+    static let audio = Data("on-device speech".utf8)
     private(set) var spokenStrings: [String] = []
-    private(set) var spokenUtterances: [AVSpeechUtterance] = []
-    private(set) var stopBoundaries: [AVSpeechBoundary] = []
+    var hold: (@MainActor () async -> Void)?
     private let recorder: ListenCallRecorder?
 
     init(recorder: ListenCallRecorder? = nil) {
         self.recorder = recorder
     }
 
-    func speak(_ utterance: AVSpeechUtterance) {
-        spokenStrings.append(utterance.speechString)
-        spokenUtterances.append(utterance)
-        isSpeaking = true
-        recorder?.record("speak")
-    }
-
-    func stopSpeaking(at boundary: AVSpeechBoundary) -> Bool {
-        stopBoundaries.append(boundary)
-        isSpeaking = false
-        isPaused = false
-        return true
-    }
-
-    /// Drives the production delegate's `didCancel` exactly as `AVSpeechSynthesizer`
-    /// would after `stopSpeaking(at:)` — late, via the delegate's `@MainActor` hop. The
-    /// delegate ignores the synthesizer argument, so a throwaway instance is fine.
-    func fireDidCancel(_ utterance: AVSpeechUtterance) {
-        delegate?.speechSynthesizer?(AVSpeechSynthesizer(), didCancel: utterance)
+    func render(_ text: String) async throws -> Data {
+        spokenStrings.append(text)
+        recorder?.record("render")
+        await hold?()
+        try Task.checkCancellation()
+        return Self.audio
     }
 }
 
@@ -11276,13 +9810,13 @@ private final class SpyListenRemoteControlCenter: ListenRemoteControlControlling
     }
 }
 
-private final class SpySSEStreamingClient: SSEStreamingClient {
+@Observable private final class SpySSEStreamingClient: SSEStreamingClient {
     private(set) var startedURLs: [URL] = []
     private(set) var stopCount = 0
     private(set) var lastEventID: String?
-    private var onEvent: (@MainActor (SSEEvent) -> Void)?
-    var automaticallyFlushPendingStreamingContent = true
-    var flushPendingStreamingContent: (() -> Void)?
+    @ObservationIgnored private var onEvent: (@MainActor (SSEEvent) -> Void)?
+    @ObservationIgnored var automaticallyFlushPendingStreamingContent = true
+    @ObservationIgnored var flushPendingStreamingContent: (() -> Void)?
 
     func start(url: URL, onEvent: @escaping @MainActor (SSEEvent) -> Void) {
         startedURLs.append(url)

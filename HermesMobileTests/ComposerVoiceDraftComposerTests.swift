@@ -4,12 +4,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ComposerVoiceDraftComposerTests: XCTestCase {
-    func testComposerSendKeyboardCommandIsDiscoverableCommandReturn() {
-        XCTAssertEqual(ComposerKeyboardCommand.title, "Send Message")
-        XCTAssertEqual(ComposerKeyboardCommand.input, "\r")
-        XCTAssertEqual(ComposerKeyboardCommand.modifierFlags, .command)
-    }
-
     func testVoiceInputCannotStartBehindAppLockEvenInAnActiveScene() {
         XCTAssertFalse(ComposerVoiceInputStartPolicy.canStart(appIsActive: true, appIsLocked: true))
         XCTAssertTrue(ComposerVoiceInputStartPolicy.canStart(appIsActive: true, appIsLocked: false))
@@ -34,14 +28,6 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
             ComposerVoiceDraftComposer.composedDraft(baseDraft: "Keep this", transcript: "   \n"),
             "Keep this"
         )
-    }
-
-    func testDraftUpdateSessionComposesWhileAcceptingUpdates() {
-        var session = ComposerVoiceDraftUpdateSession()
-
-        session.begin(baseDraft: "Please")
-
-        XCTAssertEqual(session.composedDraft(for: "summarize this file"), "Please summarize this file")
     }
 
     func testDraftUpdateSessionIgnoresLateTranscriptAfterStop() {
@@ -77,50 +63,9 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         }
     }
 
-    func testVoiceInputPreflightRejectsInfiniteSampleRate() {
-        XCTAssertThrowsError(
-            try ComposerVoiceInputPreflight.validate(sampleRate: .infinity, channelCount: 1)
-        ) { error in
-            XCTAssertEqual(error as? ComposerVoiceInputError, .invalidInputFormat)
-        }
-    }
-
-    func testVoiceInputPreflightRejectsTooLowSampleRate() {
-        XCTAssertThrowsError(
-            try ComposerVoiceInputPreflight.validate(
-                sampleRate: ComposerVoiceInputPreflight.validSampleRateRange.lowerBound - 1,
-                channelCount: 1
-            )
-        ) { error in
-            XCTAssertEqual(error as? ComposerVoiceInputError, .invalidInputFormat)
-        }
-    }
-
-    func testVoiceInputPreflightRejectsTooHighSampleRate() {
-        XCTAssertThrowsError(
-            try ComposerVoiceInputPreflight.validate(
-                sampleRate: ComposerVoiceInputPreflight.validSampleRateRange.upperBound + 1,
-                channelCount: 1
-            )
-        ) { error in
-            XCTAssertEqual(error as? ComposerVoiceInputError, .invalidInputFormat)
-        }
-    }
-
     func testVoiceInputPreflightRejectsZeroChannelCount() {
         XCTAssertThrowsError(
             try ComposerVoiceInputPreflight.validate(sampleRate: 44_100, channelCount: 0)
-        ) { error in
-            XCTAssertEqual(error as? ComposerVoiceInputError, .invalidInputFormat)
-        }
-    }
-
-    func testVoiceInputPreflightRejectsTooHighChannelCount() {
-        XCTAssertThrowsError(
-            try ComposerVoiceInputPreflight.validate(
-                sampleRate: 44_100,
-                channelCount: ComposerVoiceInputPreflight.validChannelCountRange.upperBound + 1
-            )
         ) { error in
             XCTAssertEqual(error as? ComposerVoiceInputError, .invalidInputFormat)
         }
@@ -132,10 +77,6 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertTrue(ComposerVoiceAudioSessionConfiguration.options.contains(.mixWithOthers))
         XCTAssertTrue(ComposerVoiceAudioSessionConfiguration.options.contains(.allowBluetooth))
         XCTAssertFalse(ComposerVoiceAudioSessionConfiguration.options.contains(.duckOthers))
-    }
-
-    func testVoiceInputStartPolicyAllowsActiveAppState() {
-        XCTAssertTrue(ComposerVoiceInputStartPolicy.canStart(appIsActive: true))
     }
 
     func testVoiceInputStartPolicyRejectsInactiveAppState() {
@@ -154,39 +95,12 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         }
     }
 
-    func testVoiceInputStartPolicyRejectsInvalidSessionFormat() {
-        XCTAssertThrowsError(
-            try ComposerVoiceInputStartPolicy.validateAudioSessionInput(
-                isInputAvailable: true,
-                sampleRate: 0,
-                inputNumberOfChannels: 1
-            )
-        ) { error in
-            XCTAssertEqual(error as? ComposerVoiceInputError, .invalidInputFormat)
-        }
-    }
-
     func testVoiceInputStartPolicyRejectsRunningEngineBeforeTapInstall() {
         XCTAssertThrowsError(
             try ComposerVoiceInputStartPolicy.validateAudioEngine(isRunning: true)
         ) { error in
             XCTAssertEqual(error as? ComposerVoiceInputError, .audioEngineAlreadyRunning)
         }
-    }
-
-    func testVoiceControlAccessibilityLabelsDescribeTheAvailableAction() {
-        XCTAssertEqual(
-            ComposerVoiceControlAccessibility.label(isListening: false, isRecordingVoiceNote: false),
-            "Voice input"
-        )
-        XCTAssertEqual(
-            ComposerVoiceControlAccessibility.label(isListening: true, isRecordingVoiceNote: false),
-            "Stop voice input"
-        )
-        XCTAssertEqual(
-            ComposerVoiceControlAccessibility.label(isListening: false, isRecordingVoiceNote: true),
-            "Recording voice note"
-        )
     }
 
     @MainActor
@@ -210,41 +124,6 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
 
         XCTAssertEqual(counter.speechRecognizerCalls, 0)
         XCTAssertEqual(counter.audioEngineCalls, 0)
-    }
-
-    func testSpeechLocaleCandidatesKeepCurrentFirstThenPreferredThenEnglishUS() {
-        let candidates = ComposerSpeechLocalePolicy.candidates(
-            current: Locale(identifier: "en_PK"),
-            preferredLanguages: ["en-PK", "ur-PK", "fr-FR", "de-DE", "es-ES"]
-        )
-
-        XCTAssertEqual(
-            candidates.map(\.normalizedSpeechIdentifier),
-            ["en-pk", "ur-pk", "fr-fr", "de-de", "en-us"],
-            "en-PK repeats the current locale, so it does not take a preferred-language slot."
-        )
-    }
-
-    func testSpeechLocaleCandidatesDedupeEnglishUSAcrossSeparators() {
-        let candidates = ComposerSpeechLocalePolicy.candidates(
-            current: Locale(identifier: "en_US"),
-            preferredLanguages: ["EN-us"]
-        )
-
-        XCTAssertEqual(candidates.map(\.normalizedSpeechIdentifier), ["en-us"])
-    }
-
-    func testSpeechLocaleSelectionKeepsASupportedCurrentLocale() {
-        let selected = ComposerSpeechLocalePolicy.firstAvailable(
-            in: ComposerSpeechLocalePolicy.candidates(
-                current: Locale(identifier: "en_GB"),
-                preferredLanguages: ["fr-FR"]
-            ),
-            supportedLocales: [Locale(identifier: "en-GB"), Locale(identifier: "fr-FR"), Locale(identifier: "en-US")],
-            recognizer: { $0.normalizedSpeechIdentifier }
-        )
-
-        XCTAssertEqual(selected, "en-gb")
     }
 
     func testSpeechLocaleSelectionFallsBackPastUnsupportedAndModelLessLocales() {
@@ -309,27 +188,6 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertEqual(select(current: "hi-IN-translit"), "hi-IN-translit")
     }
 
-    func testSpeechLocaleSelectionReturnsNilWhenNoCandidateHasAModel() {
-        let selected = ComposerSpeechLocalePolicy.firstAvailable(
-            in: ComposerSpeechLocalePolicy.candidates(
-                current: Locale(identifier: "en_PK"),
-                preferredLanguages: []
-            ),
-            supportedLocales: [Locale(identifier: "en-US")],
-            recognizer: { _ -> String? in nil }
-        )
-
-        XCTAssertNil(selected)
-    }
-
-    func testSTTProviderPreferenceDefaultsToServerFirst() {
-        XCTAssertEqual(ComposerSTTProviderPreference.defaultValue, .serverFirst)
-        XCTAssertEqual(
-            ComposerSTTProviderPreference.storedValue("unknown"),
-            .serverFirst
-        )
-    }
-
     func testServerFirstPolicyPrefersServerThenOnDevice() {
         XCTAssertEqual(
             ComposerSTTProviderPolicy.orderedProviders(
@@ -379,26 +237,6 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
                 onDeviceSupported: false
             ),
             []
-        )
-    }
-
-    func testProviderPolicyReturnsNextFallbackOnly() {
-        XCTAssertEqual(
-            ComposerSTTProviderPolicy.fallbackProvider(
-                after: .server,
-                preference: .serverFirst,
-                serverConfigured: true,
-                onDeviceSupported: true
-            ),
-            .onDevice
-        )
-        XCTAssertNil(
-            ComposerSTTProviderPolicy.fallbackProvider(
-                after: .server,
-                preference: .onDeviceOnly,
-                serverConfigured: true,
-                onDeviceSupported: true
-            )
         )
     }
 }

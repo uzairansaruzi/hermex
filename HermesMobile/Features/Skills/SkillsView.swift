@@ -1,23 +1,31 @@
 import SwiftUI
 
+/// The Skills list: a webui server's, or on a Hermes host (#1069) one Profile's.
 struct SkillsView: View {
-    let server: URL
     let onAPIError: (Error) -> Void
+    private let profile: String?
 
     @State private var viewModel: SkillsViewModel
     @State private var selectedSkill: SkillSummary?
     @State private var searchText = ""
+    /// A failed toggle's notice (#1410).
+    @State private var toast = ActionToastState()
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
-        self.server = server
+        self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
+    }
+
+    /// The skills `client` reads. On a Hermes host that is `profile`'s, which the title names.
+    init(client: any SkillsDataClient, profile: String? = nil, onAPIError: @escaping (Error) -> Void) {
         self.onAPIError = onAPIError
-        _viewModel = State(initialValue: SkillsViewModel(server: server))
+        self.profile = profile
+        _viewModel = State(initialValue: SkillsViewModel(client: client))
     }
 
     var body: some View {
         content
             .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
-            .navigationTitle("Skills")
+            .modifier(SkillsTitle(profile: profile))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -36,6 +44,18 @@ struct SkillsView: View {
                 await loadSkills()
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search skills...")
+            .overlay(alignment: .bottom) {
+                ActionToastView(state: toast)
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 22)
+            }
+            .onChange(of: viewModel.toggleErrorMessage) { _, message in
+                guard let message else { return }
+                toast.show(.failure(message))
+                viewModel.clearToggleError()
+            }
+            .onDisappear { toast.dismiss() }
     }
 
     private var filteredGroups: [(category: String, skills: [SkillSummary])] {
@@ -75,7 +95,7 @@ struct SkillsView: View {
                         SkillCategorySection(
                             category: group.category,
                             skills: group.skills,
-                            server: server,
+                            client: viewModel.client,
                             togglingSkillNames: viewModel.togglingSkillNames,
                             onToggleSkill: { skill, enabled in
                                 await toggle(skill: skill, enabled: enabled)
@@ -114,7 +134,7 @@ struct SkillsView: View {
 private struct SkillCategorySection: View {
     let category: String
     let skills: [SkillSummary]
-    let server: URL
+    let client: any SkillsDataClient
     let togglingSkillNames: Set<String>
     let onToggleSkill: (SkillSummary, Bool) async -> Void
     let onAPIError: (Error) -> Void
@@ -132,7 +152,7 @@ private struct SkillCategorySection: View {
                     NavigationLink {
                         SkillDetailView(
                             skill: skill,
-                            server: server,
+                            client: client,
                             onAPIError: onAPIError
                         )
                     } label: {
@@ -273,16 +293,17 @@ private struct SkillRow: View {
     }
 }
 
+/// One skill's SKILL.md, and its linked files where the server lists them (`skillsFeatures`).
 struct SkillDetailView: View {
     let skill: SkillSummary
-    let server: URL
+    let client: any SkillsDataClient
     let onAPIError: (Error) -> Void
 
     @State private var detail: SkillDetailResponse?
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedFile: String?
-    @State private var fileContent: String?
+    @State private var openedFile: SkillDetailResponse?
     @State private var isLoadingFile = false
 
     var body: some View {
@@ -309,8 +330,10 @@ struct SkillDetailView: View {
                 NavigationStack {
                     SkillLinkedFileView(
                         fileName: fileName,
-                        content: fileContent,
-                        isLoading: isLoadingFile
+                        content: openedFile?.content,
+                        isLoading: isLoadingFile,
+                        isBinary: openedFile?.isBinary == true,
+                        isTruncated: openedFile?.isTruncated == true
                     )
                 }
                 .adaptivePagePresentation()
@@ -340,7 +363,7 @@ struct SkillDetailView: View {
                             .padding(.horizontal)
                     }
 
-                    if let linkedFiles = detail.linkedFiles, !linkedFiles.isEmpty {
+                    if client.skillsFeatures.hasLinkedFiles, let linkedFiles = detail.linkedFiles, !linkedFiles.isEmpty {
                         SkillLinkedFilesSection(
                             fileNames: linkedFiles,
                             onSelect: { fileName in
@@ -367,7 +390,7 @@ struct SkillDetailView: View {
         defer { isLoading = false }
 
         do {
-            let response = try await APIClient(baseURL: server).skillContent(name: name)
+            let response = try await client.skillContent(name: name, file: nil)
             detail = response
         } catch {
             errorMessage = error.localizedDescription
@@ -382,10 +405,28 @@ struct SkillDetailView: View {
         defer { isLoadingFile = false }
 
         do {
-            let response = try await APIClient(baseURL: server).skillContent(name: name, file: fileName)
-            fileContent = response.content
+            openedFile = try await client.skillContent(name: name, file: fileName)
         } catch {
-            fileContent = String(localized: "Could not load file: \(error.localizedDescription)")
+            openedFile = SkillDetailResponse(name: name, content: String(localized: "Could not load file: \(error.localizedDescription)"),
+                                             linkedFiles: nil)
+        }
+    }
+}
+
+/// Titles the Skills list. On a Hermes host it also names the Profile the list is for: under
+/// the title on iOS 26, and in the title before that.
+private struct SkillsTitle: ViewModifier {
+    let profile: String?
+
+    func body(content: Content) -> some View {
+        if let profile {
+            if #available(iOS 26, *) {
+                content.navigationTitle("Skills").navigationSubtitle(profile)
+            } else {
+                content.navigationTitle(Text("Skills · \(profile)"))
+            }
+        } else {
+            content.navigationTitle("Skills")
         }
     }
 }
@@ -440,10 +481,14 @@ private struct SkillLinkedFilesSection: View {
     }
 }
 
+/// One linked file's text. A Hermes host (#1070) also says when the file is not text, which has
+/// no preview, and when the text is only the start of the file.
 struct SkillLinkedFileView: View {
     let fileName: String
     let content: String?
     let isLoading: Bool
+    var isBinary = false
+    var isTruncated = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -451,10 +496,23 @@ struct SkillLinkedFileView: View {
         Group {
             if isLoading {
                 ProgressView("Loading file...")
+            } else if isBinary {
+                ContentUnavailableView {
+                    Label("No Preview", systemImage: "doc.questionmark")
+                } description: {
+                    Text("Preview is not available for this file type.")
+                }
             } else if let content, !content.isEmpty {
                 ScrollView {
-                    MarkdownRenderer(content: content)
-                        .padding()
+                    VStack(alignment: .leading, spacing: 12) {
+                        if isTruncated {
+                            Label("Preview truncated", systemImage: "scissors")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        MarkdownRenderer(content: content)
+                    }
+                    .padding()
                 }
             } else {
                 ContentUnavailableView {

@@ -23,17 +23,23 @@ final class CachedMessage {
     /// Optional server display hint (e.g. `"steer"`). Added after the initial
     /// schema; SwiftData migrates it as a nullable column on existing stores.
     var displayKind: String?
+    /// The message's `displayMetadata`, encoded. Added with `rowID` (#1054), both nullable.
+    var displayMetadataData: Data?
+    /// A Hermes session's row id (`ChatMessage.rowID`); nil on a webui message.
+    var rowID: Int?
     var cachedAt: Date
     var expiresAt: Date
 
+    /// `cacheKey` is a Hermes row's (`CacheStore.hermesMessageKey`); a webui message's is derived.
     init(
         serverURLString: String,
         sessionID: String,
         message: ChatMessage,
         sortIndex: Int,
+        cacheKey: String? = nil,
         cachedAt: Date = Date()
     ) {
-        self.cacheKey = Self.cacheKey(
+        self.cacheKey = cacheKey ?? Self.cacheKey(
             serverURLString: serverURLString,
             sessionID: sessionID,
             message: message,
@@ -92,6 +98,8 @@ final class CachedMessage {
             && turnTps == message.turnTps
             && turnDuration == message.turnDuration
             && displayKind == message.displayKind
+            && rowID == message.rowID
+            && displayMetadataData == blobs.displayMetadata
             && toolCallsData == blobs.toolCalls
             && contentPartsData == blobs.contentParts
             && attachmentsData == blobs.attachments
@@ -112,6 +120,8 @@ final class CachedMessage {
         turnTps = message.turnTps
         turnDuration = message.turnDuration
         displayKind = message.displayKind
+        displayMetadataData = blobs.displayMetadata
+        rowID = message.rowID
         attachmentsData = blobs.attachments
         stamp(cachedAt)
     }
@@ -134,11 +144,13 @@ private struct Blobs {
     let toolCalls: Data?
     let contentParts: Data?
     let attachments: Data?
+    let displayMetadata: Data?
 
     init(_ message: ChatMessage) {
         toolCalls = Self.encode(message.toolCalls)
         contentParts = Self.encode(message.contentParts)
         attachments = Self.encode(message.attachments)
+        displayMetadata = message.displayMetadata.flatMap { $0.isEmpty ? nil : try? Self.encoder.encode($0) }
     }
 
     private static func encode<Element: Encodable>(_ values: [Element]?) -> Data? {

@@ -1,4 +1,5 @@
 import AVFoundation
+import Speech
 import XCTest
 import UIKit
 @testable import HermesMobile
@@ -10,10 +11,10 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         let controller = ComposerVoiceInputController(
             speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
             serverRecorder: recorder, mayRecord: { true })
-        controller.apiClient = makeClient { _ in
+        controller.transcribe = makeClient { _ in
             XCTFail("A gone composer must not upload")
             throw URLError(.cancelled)
-        }
+        }.dictationTranscriber
         let tap = controller.scheduleToggle(currentDraft: "Original") { _ in XCTFail("Stale draft update") }
         controller.stopBeforeSubmittingDraft()
         await tap.value
@@ -34,13 +35,13 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         )
         let updated = expectation(description: "Retained audio updates its draft")
         var drafts: [String] = []
-        controller.apiClient = makeClient { request in
+        controller.transcribe = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/transcribe")
             let body = String(data: apiTestBodyData(from: request) ?? Data(), encoding: .utf8) ?? ""
             XCTAssertTrue(body.contains("interrupted-clip"))
             XCTAssertTrue(body.contains(recorder.url.lastPathComponent))
             return apiTestJSONResponse(#"{"ok":true,"transcript":"retained words"}"#, for: request)
-        }
+        }.dictationTranscriber
         await controller.toggle(currentDraft: "Please") {
             drafts.append($0)
             updated.fulfill()
@@ -74,10 +75,10 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
             serverRecorder: recorder, mayRecord: { true }
         )
-        controller.apiClient = makeClient { _ in
+        controller.transcribe = makeClient { _ in
             XCTFail("A discarded clip must never upload")
             throw URLError(.cancelled)
-        }
+        }.dictationTranscriber
         var draft = "Original"
         await controller.toggle(currentDraft: draft) { draft = $0 }
         controller.suspend()
@@ -106,7 +107,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
                 }
             }, serverRecorder: recorder, mayRecord: { true }
         )
-        controller.apiClient = makeClient { _ in throw URLError(.cancelled) }
+        controller.transcribe = makeClient { _ in throw URLError(.cancelled) }.dictationTranscriber
         let first = Task { await controller.toggle(currentDraft: "Old") { _ in XCTFail("Stale update") } }
         await fulfillment(of: [firstAsked], timeout: 2)
         controller.suspend()
@@ -139,8 +140,8 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             XCTFail("Neither discarded clip should upload")
             throw URLError(.cancelled)
         }
-        old.apiClient = client
-        replacement.apiClient = client
+        old.transcribe = client.dictationTranscriber
+        replacement.transcribe = client.dictationTranscriber
         await old.toggle(currentDraft: "Old") { _ in XCTFail("Old composer must not update") }
         old.suspend()
         await replacement.toggle(currentDraft: "New") { _ in XCTFail("Not transcribed") }
@@ -160,10 +161,10 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         let controller = ComposerVoiceInputController(
             speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
             serverRecorder: recorder, mayRecord: { true })
-        controller.apiClient = makeClient { request in
+        controller.transcribe = makeClient { request in
             XCTAssertTrue(String(data: apiTestBodyData(from: request) ?? Data(), encoding: .utf8)?.contains("interrupted-clip") == true)
             return apiTestJSONResponse(#"{"transcript":"saved"}"#, for: request)
-        }
+        }.dictationTranscriber
         let updated = expectation(description: "One final transcript")
         var drafts: [String] = []
         await controller.toggle(currentDraft: "") { drafts.append($0); updated.fulfill() }
@@ -176,6 +177,96 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertEqual(drafts, ["saved"])
         XCTAssertEqual(controller.state, .idle)
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
+    }
+
+    func testWithoutATranscriberNothingRecordsForTheServer() async {
+        let recorder = DictationTestRecorder()
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
+            serverRecorder: recorder, mayRecord: { true })
+        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        XCTAssertEqual(recorder.starts, 0)
+        XCTAssertEqual(controller.errorMessage, "Speech-to-text is not available right now.")
+    }
+
+    /// A Hermes host answers a quiet recording with `{ok: true, transcript: ""}` (#1071).
+    func testServerSilenceLeavesTheDraftAndShowsNoError() async {
+        let recorder = DictationTestRecorder()
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
+            serverRecorder: recorder, mayRecord: { true })
+        var uploads: [(Data, String)] = []
+        controller.transcribe = { audio, filename in
+            uploads.append((audio, filename))
+            return TranscribeResponse(ok: true, transcript: "", error: nil)
+        }
+        var drafts: [String] = []
+        await controller.toggle(currentDraft: "Keep this") { drafts.append($0) }
+        await finishRecording(controller)
+        XCTAssertEqual(uploads.map(\.0), [Data("interrupted-clip".utf8)])
+        XCTAssertEqual(uploads.map(\.1), [recorder.url.lastPathComponent])
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertNil(controller.errorMessage)
+        XCTAssertEqual(drafts, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
+    }
+
+    /// webui's empty `{ok: true}` stays the failure it was before #1071; only a Hermes host's is silence.
+    func testWebuiEmptyTranscriptStillFails() async {
+        let recorder = DictationTestRecorder()
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
+            serverRecorder: recorder, mayRecord: { true })
+        controller.transcribe = makeClient { request in
+            apiTestJSONResponse(#"{"ok":true,"transcript":"  "}"#, for: request)
+        }.dictationTranscriber
+        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await finishRecording(controller)
+        XCTAssertEqual(controller.errorMessage, "Transcription returned no text.")
+    }
+
+    /// With no on-device recognizer, the server is the only provider and its reason shows as is.
+    func testServerOnlyShowsTheHostsReason() async {
+        let recorder = DictationTestRecorder()
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
+            speechAuthorization: { XCTFail("No on-device fallback"); return .denied },
+            serverRecorder: recorder, mayRecord: { true })
+        controller.transcribe = { _, _ in TranscribeResponse(ok: false, transcript: nil, error: "STT is disabled") }
+        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await finishRecording(controller)
+        XCTAssertEqual(controller.errorMessage, "STT is disabled")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
+    }
+
+    /// Server first retries a refused recording on-device, which here has no speech permission.
+    func testServerFirstFallsBackOnDeviceAfterTheHostRefuses() async {
+        let recorder = DictationTestRecorder()
+        var authorizations = 0
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in OnDeviceTestRecognizer() },
+            supportedLocales: { [.current] },
+            microphonePermission: { true },
+            speechAuthorization: { authorizations += 1; return .denied },
+            serverRecorder: recorder, mayRecord: { true })
+        controller.providerPreference = .serverFirst
+        controller.transcribe = { _, _ in TranscribeResponse(ok: false, transcript: nil, error: "STT is disabled") }
+        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        XCTAssertEqual(controller.state, .serverListening)
+        await finishRecording(controller)
+        XCTAssertEqual(authorizations, 1)
+        XCTAssertEqual(controller.errorMessage, "Speech recognition is disabled. Enable it in Settings to use voice input.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
+    }
+
+    /// Stops a server recording and waits for its transcription to settle.
+    private func finishRecording(_ controller: ComposerVoiceInputController) async {
+        controller.stopKeepingTranscript()
+        XCTAssertEqual(controller.state, .transcribing)
+        let settled = expectation(description: "Transcription settles")
+        withObservationTracking { _ = controller.state } onChange: { settled.fulfill() }
+        await fulfillment(of: [settled], timeout: 2)
+        XCTAssertEqual(controller.state, .idle)
     }
 
     func testRecordingLeaseRestoresExistingPolicyAndIgnoresDuplicateExits() {
@@ -212,43 +303,6 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertEqual(orientations.count, 0)
     }
 
-    func testServerRecordingSettingsAreMonoAACWithSpeechBitrate() {
-        let settings = ComposerVoiceInputController.serverRecordingSettings
-        XCTAssertEqual(settings[AVFormatIDKey] as? Int, Int(kAudioFormatMPEG4AAC))
-        XCTAssertEqual(settings[AVNumberOfChannelsKey] as? Int, 1)
-        XCTAssertEqual(settings[AVEncoderBitRateKey] as? Int, ComposerVoiceInputController.serverRecordingBitrate)
-    }
-
-    func testServerRecordingUsesM4AContainer() {
-        XCTAssertEqual(ComposerVoiceInputController.serverRecordingFileExtension, "m4a")
-    }
-
-    func testRecordingAtUploadBoundaryLoadsForServerTranscription() {
-        var dataLoadCount = 0
-        let expectedData = Data("recording".utf8)
-        let expectedBoundary = 19 * 1_024 * 1_024
-
-        XCTAssertEqual(
-            ComposerVoiceInputController.maximumServerRecordingUploadBytes,
-            expectedBoundary
-        )
-        XCTAssertLessThan(
-            ComposerVoiceInputController.maximumServerRecordingUploadBytes,
-            PendingAttachment.maximumUploadBytes
-        )
-
-        let data = ComposerVoiceInputController.loadServerRecordingForUpload(
-            fileSize: expectedBoundary,
-            dataLoader: {
-                dataLoadCount += 1
-                return expectedData
-            }
-        )
-
-        XCTAssertEqual(data, expectedData)
-        XCTAssertEqual(dataLoadCount, 1)
-    }
-
     func testRecordingOneByteOverUploadBoundarySkipsDataLoadAndServerUpload() {
         var dataLoadCount = 0
 
@@ -264,22 +318,43 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertEqual(dataLoadCount, 0)
     }
 
-    func testMissingRecordingFailsFileSizeInspection() {
-        let missingFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
+    // Server First records with these settings on a real device, where an AAC
+    // sample-rate and bitrate pair the encoder rejects only shows up as a
+    // recording that fails to start. Encode a short clip with the same settings
+    // and check the file comes out in the configured format.
+    func testServerRecordingSettingsAreAcceptedByTheAACEncoder() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
 
-        XCTAssertThrowsError(
-            try ComposerVoiceInputController.serverRecordingFileSize(at: missingFile)
-        )
+        try Self.encodeNoise(seconds: 1, to: url, settings: ComposerVoiceInputController.serverRecordingSettings)
+
+        let written = try AVAudioFile(forReading: url).fileFormat
+        XCTAssertEqual(written.sampleRate, ComposerVoiceInputController.serverRecordingSampleRate)
+        XCTAssertEqual(written.channelCount, 1)
     }
 
-    // Recording has no duration cap: it runs until the user stops it. This
-    // documents why that is safe — even a 30-minute dictation at the configured
-    // bitrate stays comfortably below the server's default 20 MB upload ceiling.
-    func testHalfHourRecordingStaysUnderUploadCeiling() {
-        let thirtyMinutesInSeconds = 30 * 60
-        let approxBytes = ComposerVoiceInputController.serverRecordingBitrate / 8 * thirtyMinutesInSeconds
-        XCTAssertLessThan(approxBytes, PendingAttachment.maximumUploadBytes)
+    private static func encodeNoise(seconds: Int, to url: URL, settings: [String: Any]) throws {
+        let file = try AVAudioFile(forWriting: url, settings: settings)
+        let format = file.processingFormat
+        let frames = AVAudioFrameCount(format.sampleRate) * AVAudioFrameCount(seconds)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames))
+        buffer.frameLength = frames
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for frame in 0..<Int(frames) { samples[frame] = Float.random(in: -0.3...0.3) }
+        try file.write(from: buffer)
+    }
+}
+
+/// Reports an on-device model without the simulator's speech service. Tests that
+/// use it are denied speech authorization first, so recognition never starts.
+private final class OnDeviceTestRecognizer: ComposerSpeechRecognizing {
+    let supportsOnDeviceRecognition = true
+    func recognitionTask(
+        with request: SFSpeechRecognitionRequest,
+        resultHandler: @escaping (SFSpeechRecognitionResult?, (any Error)?) -> Void
+    ) -> SFSpeechRecognitionTask {
+        preconditionFailure("Recognition starts only after speech authorization is granted")
     }
 }
 

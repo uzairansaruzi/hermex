@@ -69,6 +69,50 @@ import UIKit
         XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["Q3 report.pdf"])
     }
 
+    /// A Windows host (#1312) stores both files under drive-letter paths. The send goes
+    /// through, its rebuilt row shows the photo as a chip, ↑ recalls only the typed text,
+    /// and the chip downloads from the path as the host wrote it.
+    func testAWindowsHostTakesBothAttachmentsAndItsPhotoChipDownloads() async throws {
+        let chat = await openChat()
+        let image = #"C:\Users\u\AppData\Local\hermes\images\dashboard_20261004_031500_ab12cd34_photo.jpg"#
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/chat/image-upload"
+                ? .json(200, .object(["ok": .bool(true), "path": .string(image)])) : nil
+        }
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string(#"C:\Users\u\work\\#(Self.uuid)-notes.txt"#),
+            "ref_text": .string("@file:\(Self.uuid)-notes.txt")
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+
+        let sent = await chat.model.sendMessage("Compare these")
+        XCTAssertTrue(sent)
+        let prompt = try XCTUnwrap(chat.writes("prompt.submit").first?["text"]?.text)
+        XCTAssertEqual(prompt, "Compare these\n\n"
+            + "[The user attached an image: dashboard_20261004_031500_ab12cd34_photo.jpg]\n"
+            + "[Examine it with the vision_analyze tool using image_url: \(image)]\n\n"
+            + "@file:\(Self.uuid)-notes.txt")
+
+        let rebuilt = await openChat(history: [.object(["id": .number(1), "role": .string("user"),
+                                                        "content": .string(prompt), "timestamp": .number(1_790_000_000)])])
+        let row = try XCTUnwrap(rebuilt.model.messages.first)
+        XCTAssertEqual(row.content, "Compare these")
+        XCTAssertEqual(row.attachments?.map(\.name), ["photo.jpg", "notes.txt"])
+        XCTAssertEqual(rebuilt.model.lastSentText, "Compare these")
+        var download: String?
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/fs/download" else { return nil }
+            download = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }?
+                .first { $0.name == "path" }?.value
+            return .json(200, .string("bytes"))
+        }
+        let data = await rebuilt.model.attachmentImageData(path: try XCTUnwrap(row.attachments?.first?.path))
+        XCTAssertNotNil(data)
+        XCTAssertEqual(download, image)
+    }
+
     /// One failed upload of two: nothing is submitted, and the text and both files stay.
     func testAFailedUploadSubmitsNothingAndKeepsTheDraft() async {
         let chat = await openChat()
@@ -177,6 +221,23 @@ import UIKit
         XCTAssertEqual(row.attachments?.map(\.name), ["notes.txt"])
     }
 
+    /// A files-only draft mid-run queues (#1367): with no text, the file's reference is the
+    /// whole queued prompt.
+    func testAFileOnlyDraftMidRunQueuesItsFile() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/a/notes.txt"), "ref_text": .string("@file:/a/notes.txt")
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+
+        let result = await chat.model.submitStreamingMessage("", behavior: .queue)
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("@file:/a/notes.txt")])
+        XCTAssertEqual(chat.model.pendingAttachments, [])
+    }
+
     // MARK: Steer and limits
 
     /// Steer and Stop and send never carry files. With files staged on a Hermes session,
@@ -213,24 +274,6 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["more.txt"])
     }
 
-    /// A Hermes send clears a staging error, so the status line shows its upload and Cancel.
-    func testASendClearsAStaleStagingError() async {
-        let chat = await openChat()
-        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
-        HermesHostFixture.onPark = { Task { @MainActor in
-            XCTAssertNil(chat.model.uploadAttachmentErrorMessage)
-            XCTAssertTrue(chat.model.isSendingAttachments)
-            chat.model.cancelAttachmentUpload()
-        } }
-        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
-        await chat.model.uploadAttachment(data: Data(), filename: "empty.txt")
-        XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
-
-        let sent = await chat.model.sendMessage("Look")
-        XCTAssertFalse(sent)
-        XCTAssertEqual(chat.model.sendErrorMessage, "Upload cancelled. Your message and attachments are still here.")
-    }
-
     /// Bot Chat's limits: eight files. The ninth is refused with the Bot message.
     func testStagingStopsAtEightFiles() async {
         let chat = await openChat()
@@ -253,6 +296,48 @@ import UIKit
         XCTAssertEqual(staged, 2)
         XCTAssertEqual(chat.model.pendingAttachments.count, 2)
         XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
+    }
+
+    /// Two long pastes in quick succession (#1381): the second is named before the first
+    /// lands, so each file keeps its own name and its own bytes.
+    func testRapidPastesStageDistinctFiles() async throws {
+        let chat = await openChat()
+        let logs = [String(repeating: "a", count: 3_001), String(repeating: "b", count: 3_001)]
+
+        let pastes = logs.map { chat.model.stagePastedText($0) }
+        for paste in pastes { _ = await paste.value }
+
+        let staged = chat.model.pendingAttachments
+        XCTAssertEqual(Set(staged.map(\.name)), ["pasted-text.txt", "pasted-text-2.txt"])
+        var bytes: Set<Data> = []
+        for attachment in staged {
+            bytes.insert(try await chat.copies.data(named: try XCTUnwrap(attachment.draftFileName)))
+        }
+        XCTAssertEqual(bytes, Set(logs.map { Data($0.utf8) }))
+    }
+
+    /// A long paste whose chat goes away while its copy is being saved (#1381) leaves no
+    /// tile, no copy and no held Send.
+    func testAPasteCancelledMidSaveLeavesNothingBehind() async throws {
+        let copies = PausingCopies()
+        let coordinator = ChatAttachmentCoordinator(
+            client: APIClient(baseURL: URL(string: "https://hermes.example")!), draftAttachmentStore: copies,
+            draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60)),
+            uploadsOnSend: true
+        )
+        let saving = expectation(description: "The paste's copy is being written")
+        await copies.onSave { saving.fulfill() }
+
+        let paste = coordinator.stagePastedText(String(repeating: "a", count: 3_001))
+        await fulfillment(of: [saving], timeout: 5)
+        coordinator.cancelPastedTextStaging()
+        await copies.resume()
+        _ = await paste.value
+
+        XCTAssertEqual(coordinator.pendingAttachments, [])
+        XCTAssertFalse(coordinator.isUploadingAttachment)
+        let copiesLeft = await copies.count
+        XCTAssertEqual(copiesLeft, 0)
     }
 
     // MARK: Transcript
@@ -291,8 +376,9 @@ import UIKit
             + quoted + "\n\n"
             + "--- Context Warnings ---\n- \(quoted): path is outside the allowed workspace"
         let chat = await openChat(history: [
-            .object(["role": .string("user"), "text": .string(stored), "timestamp": .number(1_790_000_000)]),
-            .object(["role": .string("assistant"), "text": .string("Both look fine."), "timestamp": .number(1_790_000_010)])
+            .object(["id": .number(1), "role": .string("user"), "content": .string(stored), "timestamp": .number(1_790_000_000)]),
+            .object(["id": .number(2), "role": .string("assistant"), "content": .string("Both look fine."),
+                     "timestamp": .number(1_790_000_010)])
         ])
         let row = try XCTUnwrap(chat.model.messages.first)
         XCTAssertEqual(row.content, "Compare these")
@@ -359,6 +445,120 @@ import UIKit
         XCTAssertNotEqual(chat.turn.engine.generation, attempt)
     }
 
+    /// An inline player that loads while the chat is detached waits instead of failing, and
+    /// plays once the chat attaches, downloading the clip once.
+    func testInlineAudioLoadedWhileDetachedPlaysOnceTheChatAttaches() async throws {
+        let chat = await openChat()
+        let path = "/home/u/.hermes/attachments/\(Self.uuid)-memo.wav"
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/fs/download" ? .body(200, TranscriptMediaPreviewViewModelTests.wavData()) : nil
+        }
+        let player = InlineAudioPlayerModel()
+        let load = { await chat.model.attachmentRawData(path: path) }
+        chat.turn.engine.suspend()
+
+        XCTAssertNil(chat.model.attachmentLoadKey)
+        await player.loadIfNeeded(key: chat.model.attachmentLoadKey, using: load)
+        XCTAssertEqual(player.phase, .idle)
+
+        await chat.turn.activate()
+        await player.loadIfNeeded(key: chat.model.attachmentLoadKey, using: load)
+        await player.loadIfNeeded(key: chat.model.attachmentLoadKey, using: load)
+
+        XCTAssertEqual(player.phase, .ready)
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }.count, 1)
+    }
+
+    /// A bubble hands its player the source's load key unchanged: a detached Hermes chat's
+    /// nil waits for the attach, where a stand-in key would load now and show the failure.
+    func testABubblesInlinePlayerKeepsADetachedChatsNilLoadKey() {
+        func player(loadKey: Int?) -> InlineAudioPlayerView {
+            let attachment = MessageAttachment(name: "memo.wav", path: "/home/u/.hermes/attachments/memo.wav")
+            return MessageBubbleView(
+                message: ChatMessage(role: "user", content: "Listen", timestamp: nil, messageId: "m"),
+                attachmentAudio: AttachmentAudioSource(load: { _ in nil }, isHost: true, loadKey: loadKey),
+                transcriptMediaCacheNamespace: "ns"
+            ).inlineAudioPlayer(for: attachment, localData: nil)
+        }
+
+        XCTAssertNil(player(loadKey: nil).loadKey)
+        XCTAssertEqual(player(loadKey: 3).loadKey, 3)
+    }
+
+    /// Transcript rows skip re-rendering while their inputs compare equal, so the attach
+    /// generation must be one of them, or an unchanged row's player never learns of it.
+    func testATranscriptRowRerendersWhenOnlyTheAudioLoadKeyChanges() {
+        func row(loadKey: Int?) -> ChatTranscriptMessageBlock {
+            ChatTranscriptMessageBlock(
+                transcriptMessage: TranscriptMessage(
+                    loadedIndex: 0, renderID: "r", anchorID: "a",
+                    message: ChatMessage(role: "assistant", content: "Here", timestamp: nil, messageId: "m")
+                ),
+                transcriptSpacing: 8, showsThinkingAndToolCards: true, foldState: nil, isTerminalReply: true,
+                onToggleTurnFold: { _ in }, reasoningGroups: [], toolCallGroups: [], liveReasoningText: "",
+                reasoningAnchorMessageID: nil, liveReasoningStreamID: nil, liveToolCalls: [],
+                isReplayingLiveToolCalls: false, toolCallAnchorMessageID: nil, streamingAssistantMessageID: nil,
+                liveTokensPerSecond: nil, localAttachmentPreviews: nil, listeningMessageID: nil,
+                isViewingCachedData: false, hasActiveStream: false, isRegeneratingMessage: false,
+                isEditingMessage: false, isForkingMessage: false, loadAttachmentImage: { _ in nil },
+                attachmentAudio: AttachmentAudioSource(load: { _ in nil }, isHost: true, loadKey: loadKey),
+                loadTranscriptMediaImage: { _ in nil }, loadTranscriptMediaData: { _ in nil },
+                transcriptMediaCacheNamespace: "ns", actionContext: { _, _ in nil },
+                shouldRenderMessageRow: { _ in true }, onPreviewAttachment: { _, _ in },
+                onPreviewTranscriptMedia: { _, _ in }, onAskHermex: { _ in }, onToggleListening: { _ in },
+                onRegenerate: { _ in }, onEdit: { _ in }, onFork: { _ in }, onCopy: { _ in }
+            )
+        }
+
+        XCTAssertEqual(row(loadKey: 3), row(loadKey: 3))
+        XCTAssertNotEqual(row(loadKey: nil), row(loadKey: 3))
+        XCTAssertNotEqual(row(loadKey: 3), row(loadKey: 4))
+    }
+
+    /// A just-sent audio chip has no host path yet, so it stays a file cell and nothing
+    /// downloads it by its display name; a chip with its host path plays inline. A webui
+    /// chip still plays by name, as older sessions saved uploads to the workspace root.
+    func testAHermesAudioChipPlaysInlineOnlyFromItsHostPath() async throws {
+        let chat = await openChat()
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/\(Self.uuid)-memo.m4a"),
+            "ref_text": .string("@file:/home/u/.hermes/attachments/\(Self.uuid)-memo.m4a")
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: Data("audio".utf8), filename: "memo.m4a")
+        let sent = await chat.model.sendMessage("Listen")
+        XCTAssertTrue(sent)
+        let optimistic = try XCTUnwrap(chat.model.messages.last?.attachments?.first)
+        XCTAssertNil(optimistic.path)
+        var loaded: [String] = []
+        let hermes = AttachmentAudioSource(load: { loaded.append($0); return nil }, isHost: true)
+        let webui = AttachmentAudioSource(load: { _ in nil }, isHost: false)
+
+        XCTAssertFalse(hermes.playsInline(optimistic))
+        XCTAssertTrue(hermes.playsInline(MessageAttachment(name: "memo.m4a", path: "/home/u/.hermes/attachments/memo.m4a")))
+        XCTAssertTrue(webui.playsInline(MessageAttachment(name: "memo.m4a")))
+        XCTAssertFalse(hermes.playsInline(MessageAttachment(name: "notes.txt", path: "/home/u/notes.txt")))
+        XCTAssertEqual(loaded, [])
+    }
+
+    /// A Hermes chip's inline player keeps the chip's Open action (Quick Look, Save and
+    /// Share, #1030), handing over the chip itself; a webui player has none.
+    func testAHermesAudioPlayerOpensTheChipsPreview() throws {
+        let chip = MessageAttachment(name: "memo.m4a", path: "/home/u/.hermes/attachments/memo.m4a", mime: "audio/mp4")
+        var opened: [(MessageAttachment, Data?)] = []
+        let onPreview: (MessageAttachment, Data?) -> Void = { opened.append(($0, $1)) }
+        let hermes = AttachmentAudioSource(load: { _ in nil }, isHost: true)
+        let webui = AttachmentAudioSource(load: { _ in nil }, isHost: false)
+
+        let open = try XCTUnwrap(hermes.openAction(for: chip, localData: Data("local".utf8), onPreview: onPreview))
+        open()
+
+        XCTAssertEqual(opened.map(\.0), [chip])
+        XCTAssertEqual(opened.map(\.1), [Data("local".utf8)])
+        XCTAssertNil(webui.openAction(for: chip, localData: nil, onPreview: onPreview))
+        XCTAssertNil(hermes.openAction(for: chip, localData: nil, onPreview: nil))
+    }
+
     /// Thumbnails are cached per connection and Profile: neither shows the other's.
     func testTheThumbnailNamespaceSeparatesConnectionsAndProfiles() {
         let other = BotConnection(id: UUID(), name: "Mac", address: Self.connection.address,
@@ -375,6 +575,128 @@ import UIKit
         XCTAssertNotEqual(base, namespace(Self.connection, "work"))
     }
 
+    // MARK: Workspace (#1112)
+
+    /// The chat's workspace is its Profile, stored key, and the folder and terminal backend
+    /// `session.info` names; a later report moving the folder moves it, and its files download
+    /// on the chat's connection by their host path. Before any report names a folder there is none.
+    func testTheWorkspaceFollowsSessionInfoAndReadsOnTheChatsConnection() async throws {
+        let chat = await openChat()
+        XCTAssertNil(chat.model.hermesWorkspace, "no session.info has named a folder")
+
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        XCTAssertEqual(chat.model.hermesWorkspace, HermesWorkspaceContext(
+            server: URL(string: "https://hermes.example")!, profile: "default", storedKey: "tip",
+            cwd: "/work/app", terminalBackend: "local"))
+
+        chat.receive(event(2, "session.info", ["cwd": .string("/work/moved"), "terminal_backend": .string("docker")]))
+        XCTAssertEqual(chat.model.hermesWorkspace?.cwd, "/work/moved")
+        XCTAssertEqual(chat.model.hermesWorkspace?.isLocal, false)
+
+        var query: [URLQueryItem]?
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/fs/download" else { return nil }
+            query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
+            return .json(200, .string("bytes"))
+        }
+        _ = try await XCTUnwrap(chat.model.hermesWorkspaceFiles).rawFileData(path: "out/report.pdf")
+        XCTAssertEqual(query, [URLQueryItem(name: "path", value: "/work/moved/out/report.pdf"),
+                               URLQueryItem(name: "profile", value: "default")])
+    }
+
+    /// The chat owns its repository's Git writes (#1115): none goes out while a turn runs, and a
+    /// client made for a folder the chat has since left writes nothing at all.
+    func testGitWritesWaitForTheTurnAndStopAtAFolderMove() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        let git = try XCTUnwrap(chat.model.hermesWorkspaceGit)
+        _ = HermesHostFixture.configuration { HermesGitHost.repositoryReply($0, root: "/work/app") }
+        var refusals: [String] = []
+
+        chat.receive(event(2, "message.start"))
+        do { _ = try await git.push() } catch { refusals.append(error.localizedDescription) }
+        chat.receive(event(3, "message.complete", ["status": .string("complete")]))
+        chat.receive(event(4, "session.info", ["cwd": .string("/work/moved"), "terminal_backend": .string("local")]))
+        do { _ = try await git.push() } catch { refusals.append(error.localizedDescription) }
+
+        XCTAssertEqual(refusals, [String(localized: "Wait for the active response to finish before changing this repository."),
+                                  BotFailure.stale.localizedDescription])
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/git/") == true }, [])
+    }
+
+    /// A move made from the composer's folder picker (#1117) leaves the old folder behind as a
+    /// `session.info` move does: Files reads the new folder (#1112), the `@path` chips go
+    /// (#1113), and a Git client made for the old folder writes nothing (#1115). The host's
+    /// `session.info` echo of the same folder changes nothing more.
+    func testAComposerFolderMoveLeavesTheOldFolderBehind() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        chat.model.recordFileChipReference("picked.md")
+        let git = try XCTUnwrap(chat.model.hermesWorkspaceGit)
+        _ = HermesHostFixture.configuration { HermesGitHost.repositoryReply($0, root: "/work/app") }
+        chat.host.always("session.workspace.move", .init(result: .object(["cwd": .string("/work/moved")])))
+
+        let moved = await chat.model.confirmHermesFolderMove("/work/moved")
+
+        XCTAssertTrue(moved)
+        XCTAssertEqual(chat.model.hermesWorkspace?.cwd, "/work/moved")
+        XCTAssertEqual(chat.model.fileChipPaths, [])
+        do {
+            _ = try await git.push()
+            XCTFail("a client for the old folder pushed")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, BotFailure.stale.localizedDescription)
+        }
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/git/") == true }, [])
+
+        chat.model.recordFileChipReference("new.md")
+        chat.receive(event(2, "session.info", ["cwd": .string("/work/moved"), "terminal_backend": .string("local")]))
+        XCTAssertEqual(chat.model.fileChipPaths, ["new.md"], "an echo of the folder already moved to drops nothing")
+    }
+
+    /// A MEDIA reference's inline audio, video or file in a reply downloads from the host by
+    /// the path the reply wrote, under the session's Profile and stored key, so the host
+    /// resolves it against the session; webui's `/api/media` is never asked.
+    func testInlineTranscriptMediaDownloadsFromTheHost() async throws {
+        let chat = await openChat()
+        var query: [URLQueryItem]?
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/fs/download" else { return nil }
+            query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
+            return .json(200, .string("audio"))
+        }
+
+        let data = await chat.model.transcriptMediaData(for: TranscriptMediaReference(rawReference: "/tmp/report.wav"))
+
+        XCTAssertEqual(data, Data(#""audio""#.utf8))
+        XCTAssertEqual(query, [URLQueryItem(name: "path", value: "/tmp/report.wav"),
+                               URLQueryItem(name: "profile", value: "default"),
+                               URLQueryItem(name: "session_id", value: "tip")])
+        XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path == "/api/media" })
+    }
+
+    /// A MEDIA file's export downloads all of it, past the preview cap that stops a MEDIA image's
+    /// thumbnail, on the same session's Profile and stored key.
+    func testInlineTranscriptMediaFileExportHasNoPreviewCap() async throws {
+        let cap = 4 * 1024
+        let chat = await openChat(previewLimit: cap)
+        let large = String(repeating: "a", count: cap)
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/fs/download" ? .json(200, .string(large)) : nil
+        }
+
+        let export = await chat.model.transcriptMediaData(for: TranscriptMediaReference(rawReference: "/tmp/archive.zip"))
+        let thumbnail = await chat.model.transcriptMediaThumbnailData(for: TranscriptMediaReference(rawReference: "/tmp/huge.png"))
+
+        XCTAssertEqual(export?.count, cap + 2, "the cap and the JSON string's quotes")
+        XCTAssertNil(thumbnail)
+        let downloads = HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }
+        XCTAssertEqual(downloads.first.flatMap { $0.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems } },
+                       [URLQueryItem(name: "path", value: "/tmp/archive.zip"), URLQueryItem(name: "profile", value: "default"),
+                        URLQueryItem(name: "session_id", value: "tip")])
+        XCTAssertEqual(downloads.count, 2)
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -388,7 +710,8 @@ import UIKit
         }
     }
 
-    /// A Hermes chat attached to an idle session whose saved transcript is `history`.
+    /// A Hermes chat attached to an idle session whose saved transcript is `history`, the rows
+    /// of its transcript page (#1047).
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
@@ -411,20 +734,24 @@ import UIKit
                  "payload": .object(payload)])
     }
 
-    private func openChat(history: [BotJSON] = []) async -> Chat {
+    /// `previewLimit` is the chat's preview cap, which a test lowers to stay small.
+    private func openChat(history: [BotJSON] = [], previewLimit: Int = BotArtifactBuffer.maximumBytes) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: .object([
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
-            "messages": .array(history), "info": .object(["profile_name": .string("default")])
+            "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         let copies = BotAttachmentCopies()
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60))
         let client = BotClient(http: host.connection(Self.connection))
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/sessions/tip/messages" ? .json(200, .object(["messages": .array(history)])) : nil
+        }
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "default", key: "tip"), wire: client)
-        let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
+        let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true }, previewLimit: previewLimit)
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: URL(string: "https://hermes.example")!,
             streamingScrollCoalescingDelayNanoseconds: 0,

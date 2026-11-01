@@ -35,14 +35,18 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.failed = 0
         self.boot_failed = False
         self.hung_runs = 0
+        self.stalled_runs = 0
+        self.xcodebuild_timeout = False
         self.xcodebuild_runs = 0
         self.timeouts = []
         self.app_installed = True
         self.lookup_status = 0
         self.terminate_status = 3
         self.timeout_operation = None
+        # CI runs these on Linux, which has no hw.memsize; default to a large Mac.
+        self.host_bytes = 32 * 1024 ** 3
 
-    def fake_run(self, command, output, timeout, lock_fds=()):
+    def fake_run(self, command, output, timeout, lock_fds=(), stalled=None):
         self.commands.append(command)
         self.timeouts.append(timeout)
         if command[:3] == ["xcrun", "simctl", self.timeout_operation]:
@@ -61,10 +65,17 @@ class SimulatorRunnerTests(unittest.TestCase):
             if not self.app_installed:
                 raise subprocess.TimeoutExpired(command, timeout)
             return self.terminate_status
+        elif command[0] == "sysctl":
+            output.write_text("vm.swapusage: total = 2048.00M  used = 1024.00M\n")
         elif command[0] == "xcodebuild":
             Path(command[command.index("-resultBundlePath") + 1]).mkdir()
             output.write_text("test log\n")
             self.xcodebuild_runs += 1
+            self.build_lock_fds = lock_fds
+            if self.xcodebuild_timeout:
+                raise subprocess.TimeoutExpired(command, timeout)
+            if self.xcodebuild_runs <= self.stalled_runs:
+                raise runner.HandshakeStall
             return 65 if self.is_hung_run() else self.exit_code
         elif command[:3] == ["xcrun", "xcresulttool", "get"]:
             if self.is_hung_run():
@@ -85,6 +96,7 @@ class SimulatorRunnerTests(unittest.TestCase):
         with patch.object(runner, "__file__", str(self.home / checkout / "scripts/test-sim")), \
                 patch.object(runner.Path, "home", return_value=self.home), \
                 patch.object(runner, "run", side_effect=self.fake_run), \
+                patch.object(runner, "host_memory", return_value=self.host_bytes), \
                 patch.object(sys, "argv", ["test-sim", "SIM-A", *extra]), \
                 redirect_stdout(io.StringIO()):
             return runner.main()
@@ -115,15 +127,17 @@ class SimulatorRunnerTests(unittest.TestCase):
 
     def test_lookup_error_stops_without_termination_or_tests(self):
         self.lookup_status = 1
+        self.device["state"] = "Shutdown"
         self.assertEqual(self.invoke(), 2)
         self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
         self.assertEqual(self.xcodebuild_runs, 0)
+        self.assertEqual(self.device["state"], "Booted", "Left up for sim-doctor")
 
     def test_preparation_uses_remaining_test_budget_after_lookup(self):
         now = [100.0]
         fake_run = self.fake_run
 
-        def elapsed_lookup(command, output, timeout, lock_fds=()):
+        def elapsed_lookup(command, output, timeout, lock_fds=(), stalled=None):
             status = fake_run(command, output, timeout, lock_fds)
             if command[:3] == ["xcrun", "simctl", "get_app_container"]:
                 now[0] += 4
@@ -159,7 +173,7 @@ class SimulatorRunnerTests(unittest.TestCase):
                 now = [100.0]
                 fake_run = self.fake_run
 
-                def exhausted_lookup(command, output, timeout, lock_fds=()):
+                def exhausted_lookup(command, output, timeout, lock_fds=(), stalled=None):
                     status = fake_run(command, output, timeout, lock_fds)
                     if command[:3] == ["xcrun", "simctl", "get_app_container"]:
                         now[0] += 10
@@ -185,9 +199,11 @@ class SimulatorRunnerTests(unittest.TestCase):
 
     def test_installation_check_timeout_stops_without_termination_or_tests(self):
         self.timeout_operation = "get_app_container"
+        self.device["state"] = "Shutdown"
         self.assertEqual(self.invoke(), 124)
         self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
         self.assertEqual(self.xcodebuild_runs, 0)
+        self.assertEqual(self.device["state"], "Booted", "Left up for sim-doctor")
 
     def test_installed_app_termination_timeout_stops_without_tests(self):
         self.timeout_operation = "terminate"
@@ -220,6 +236,22 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertEqual(self.invoke(), 2)
         self.assertFalse(any(c[0] == "xcodebuild" for c in self.commands))
         self.assertEqual(sum(c[:3] == ["xcrun", "simctl", "bootstatus"] for c in self.commands), 1)
+
+    def test_run_leaves_the_simulator_the_way_it_found_it(self):
+        for state, extra, failed, expected in (("Shutdown", (), 0, "Shutdown"),
+                                               ("Shutdown", (), 1, "Shutdown"),
+                                               ("Booted", (), 0, "Booted"),
+                                               ("Shutdown", ("--keep-booted",), 0, "Booted")):
+            with self.subTest(state=state, extra=extra, failed=failed):
+                self.device["state"] = state
+                self.exit_code, self.failed = (65, 1) if failed else (0, 0)
+                self.assertEqual(self.invoke(extra=extra), failed)
+                self.assertEqual(self.device["state"], expected)
+
+    def test_failed_shutdown_keeps_the_test_result(self):
+        self.device["state"] = "Shutdown"
+        self.timeout_operation = "shutdown"
+        self.assertEqual(self.invoke(), 0)
 
     def test_test_failure_is_returned_without_retry(self):
         self.exit_code = 65
@@ -267,8 +299,45 @@ class SimulatorRunnerTests(unittest.TestCase):
 
     def test_repeated_runner_hang_stops_after_one_retry(self):
         self.hung_runs = 2
+        self.device["state"] = "Shutdown"
         self.assertEqual(self.invoke(), 1)
         self.assertEqual(sum(c[0] == "xcodebuild" for c in self.commands), 2)
+        self.assertEqual(self.device["state"], "Booted", "Left up for sim-doctor")
+
+    def test_silent_handshake_retries_without_waiting_for_xcodebuild(self):
+        self.stalled_runs = 1
+        self.assertEqual(self.invoke(), 0)
+        self.assertEqual(sum(c[0] == "xcodebuild" for c in self.commands), 2)
+
+    def test_handshake_watch_fires_only_on_a_silent_test_launch(self):
+        log = self.home / "test.log"
+        old = runner.time.time() - runner.HANDSHAKE_SILENCE - 1
+        launched = "built\n" + runner.TEST_ACTION_MARKER + "\n"
+        for text, mtime, expected in ((launched, old, True),
+                                      ("quiet compile step\n", old, False),
+                                      (launched + "Test Suite 'Selected tests' started\n", old, False),
+                                      (launched, None, False)):
+            with self.subTest(text=text, silent=mtime is not None):
+                log.write_text(text)
+                if mtime is not None:
+                    os.utime(log, (mtime, mtime))
+                self.assertEqual(runner.handshake_watch()(log), expected)
+
+    def test_small_host_always_shuts_its_simulator_down(self):
+        self.host_bytes = 16 * 1024 ** 3
+        for case, extra, expected in (("already booted", (), "Shutdown"),
+                                      ("hung twice", (), "Shutdown"),
+                                      ("timed out", (), "Shutdown"),
+                                      ("never became ready", (), "Shutdown"),
+                                      ("keep booted", ("--keep-booted",), "Booted")):
+            with self.subTest(case=case):
+                self.device["state"] = "Shutdown" if case == "never became ready" else "Booted"
+                self.xcodebuild_runs = 0
+                self.hung_runs = 2 if case == "hung twice" else 0
+                self.xcodebuild_timeout = case == "timed out"
+                self.timeout_operation = "bootstatus" if case == "never became ready" else None
+                self.invoke(extra=extra)
+                self.assertEqual(self.device["state"], expected)
 
     def test_failed_results_cannot_be_reported_as_success(self):
         self.failed = 1
@@ -285,6 +354,19 @@ class SimulatorRunnerTests(unittest.TestCase):
                     raise RuntimeError("simulated failure")
         with runner.lock(first, "next run"), runner.lock(second, "next run"):
             pass
+
+    def test_small_host_runs_one_build_at_a_time_across_devices(self):
+        held = self.home / "Library/Caches/HermexSimulatorLocks/host-build.lock"
+        with runner.lock(held, "another device's run"), patch.object(runner, "HOST_LOCK_WAIT", 0):
+            self.host_bytes = 16 * 1024 ** 3
+            self.assertNotEqual(self.invoke(), 0)
+            self.assertEqual(self.xcodebuild_runs, 0)
+            self.host_bytes = 32 * 1024 ** 3
+            self.assertEqual(self.invoke(), 0)
+            self.assertEqual(len(self.build_lock_fds), 2, "A large Mac skips the host lock")
+        self.host_bytes = 16 * 1024 ** 3
+        self.assertEqual(self.invoke(), 0)
+        self.assertEqual(len(self.build_lock_fds), 3, "The build holds the host lock once it is free")
 
     def test_child_keeps_lock_until_it_exits(self):
         path = self.home / "SIM-A.lock"

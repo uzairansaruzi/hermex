@@ -38,6 +38,8 @@ node_modules/
 .claude/
 .codex/
 .cursor/
+# App Store Connect credentials, release metadata, checkpoints, and tester exports
+.asc/
 
 # App packaging
 *.ipa

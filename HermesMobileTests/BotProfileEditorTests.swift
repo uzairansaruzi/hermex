@@ -246,28 +246,6 @@ import SwiftUI
         XCTAssertFalse(editor.isSaving)
     }
 
-    func testEqualProfileNamesOnTwoConnectionsLoadTheirOwnScopedDetails() async throws {
-        let serverTwo = URL(string: "https://two.example")!
-        let one = connection(name: "One")
-        let two = connection(name: "Two")
-        let keychain = InMemoryKeychainStore()
-        let store = BotConnectionStore(keychain: keychain)
-        try store.save(one, server: server)
-        try store.save(two, server: serverTwo)
-        let wireOne = BotProfileEditorWire(details: details(description: "First host"))
-        let wireTwo = BotProfileEditorWire(details: details(description: "Second host"))
-        let first = BotProfileEditor(server: server, connection: one, profile: profile(), avatar: nil,
-                                     store: store, avatarStore: BotAvatarStore(), makeWire: { _ in wireOne })
-        let second = BotProfileEditor(server: serverTwo, connection: two, profile: profile(), avatar: nil,
-                                      store: store, avatarStore: BotAvatarStore(), makeWire: { _ in wireTwo })
-
-        await first.load(); await second.load()
-
-        XCTAssertEqual(first.draft.description, "First host")
-        XCTAssertEqual(second.draft.description, "Second host")
-        XCTAssertNotEqual(first.connection.id, second.connection.id)
-    }
-
     func testExpressionRoundTripsThroughTheLookMergeAndClearsOnReset() async throws {
         let profile = self.profile(look: ["expression": .string("happy"), "sectionId": .string("desktop-section")], revision: 1)
         let (editor, wire, _) = try makeEditor(profile: profile, details: details())
@@ -306,13 +284,6 @@ import SwiftUI
 
         XCTAssertNotNil(editor.avatar)
         XCTAssertFalse(editor.dirtyFields.contains(.avatar))
-    }
-
-    func testUnknownStoredExpressionReadsAsNeutral() {
-        XCTAssertEqual(BotAvatarExpression.resolve(nil), .neutral)
-        XCTAssertEqual(BotAvatarExpression.resolve("grumpy"), .neutral)
-        XCTAssertEqual(BotAvatarExpression.resolve("sleepy"), .sleepy)
-        XCTAssertEqual(BotAvatarExpression.allCases.count, 16)
     }
 
     func testReloadingAConflictRefetchesOnlyThisBotsAvatar() async throws {

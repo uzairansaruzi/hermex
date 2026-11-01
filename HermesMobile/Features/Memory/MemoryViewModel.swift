@@ -22,11 +22,22 @@ final class MemoryViewModel {
     private(set) var errorMessage: String?
     private(set) var actionErrorMessage: String?
     private(set) var lastError: Error?
+    /// What a Hermes host's files add (#1073); empty on webui.
+    private(set) var hiddenSections: Set<MemorySection> = []
+    private(set) var characterLimits: [MemorySection: Int] = [:]
+    private(set) var readOnlySections: Set<MemorySection> = []
+    /// The section whose last save found its file changed on the host since its editor
+    /// opened. Its editor keeps the draft and offers Reload; a save or Reload clears it.
+    private(set) var conflictedSection: MemorySection?
+    private(set) var isReloading = false
 
-    private let client: APIClient
+    let features: MemoryFeatures
+    private let client: any MemoryDataClient
 
-    init(server: URL, client: APIClient? = nil) {
-        self.client = client ?? APIClient(baseURL: server)
+    init(server: URL, client: (any MemoryDataClient)? = nil) {
+        let client: any MemoryDataClient = client ?? APIClient(baseURL: server)
+        self.client = client
+        features = client.memoryFeatures
     }
 
     func load() async {
@@ -44,8 +55,23 @@ final class MemoryViewModel {
         }
     }
 
+    /// Clears what the last editor left: its error and its conflict.
     func clearActionError() {
         actionErrorMessage = nil
+        conflictedSection = nil
+    }
+
+    /// The sections the server keeps on, in screen order.
+    var visibleSections: [MemorySection] {
+        MemorySection.allCases.filter { !hiddenSections.contains($0) }
+    }
+
+    func characterLimit(for section: MemorySection) -> Int? {
+        characterLimits[section]
+    }
+
+    func isReadOnly(_ section: MemorySection) -> Bool {
+        readOnlySections.contains(section)
     }
 
     /// The read-only project-context section only appears when the server sent a
@@ -87,14 +113,27 @@ final class MemoryViewModel {
         }
     }
 
-    func save(section: MemorySection, content: String) async -> Bool {
+    /// Saves `content` and reloads the screen. `loaded` is the section's text when its editor
+    /// opened, the screen's current text by default. Over the section's limit, or for a file the
+    /// host turned read-only (found by Reload), nothing is sent.
+    /// A file changed on the host since `loaded` is not overwritten: `conflictedSection` names
+    /// it and the editor keeps its draft.
+    func save(section: MemorySection, content: String, loaded: String? = nil) async -> Bool {
+        guard !isReadOnly(section) else { return false }
+        if let limit = characterLimit(for: section), MemoryCharacterCount(draft: content, limit: limit).isOver {
+            actionErrorMessage = String(localized: "Over the host's limit. Shorten to save.")
+            return false
+        }
         isSaving = true
         actionErrorMessage = nil
         lastError = nil
+        conflictedSection = nil
         defer { isSaving = false }
 
         do {
-            let writeResponse = try await client.writeMemory(section: section, content: content)
+            let writeResponse = try await client.saveMemory(
+                section: section, content: content, loaded: loaded ?? self.content(for: section)
+            )
             guard writeResponse.ok != false else {
                 actionErrorMessage = writeResponse.error ?? String(localized: "Could not save memory.")
                 return false
@@ -103,10 +142,33 @@ final class MemoryViewModel {
             let refreshed = try await client.memory()
             apply(refreshed)
             return true
+        } catch is MemoryConflict {
+            conflictedSection = section
+            return false
         } catch {
             lastError = error
             actionErrorMessage = error.localizedDescription
             return false
+        }
+    }
+
+    /// Reads the screen again for an editor whose save found `section` changed on the host,
+    /// and returns the host's text, which replaces the editor's draft. nil when the read
+    /// fails, with why in `actionErrorMessage`.
+    func reload(_ section: MemorySection) async -> String? {
+        isReloading = true
+        actionErrorMessage = nil
+        lastError = nil
+        defer { isReloading = false }
+
+        do {
+            apply(try await client.memory())
+            conflictedSection = nil
+            return content(for: section)
+        } catch {
+            lastError = error
+            actionErrorMessage = error.localizedDescription
+            return nil
         }
     }
 
@@ -123,6 +185,9 @@ final class MemoryViewModel {
         projectContextMtime = response.projectContextMtime.map { Date(timeIntervalSince1970: $0) }
         isProjectContextShadowed = response.projectContextShadowed ?? false
         isExternalNotesEnabled = response.externalNotesEnabled
+        hiddenSections = response.hiddenSections
+        characterLimits = response.characterLimits
+        readOnlySections = response.readOnlySections
         hasLoaded = true
     }
 }

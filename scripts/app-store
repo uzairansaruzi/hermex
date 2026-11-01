@@ -1,0 +1,42 @@
+#!/bin/bash
+# Run asc with Hermex's API-key profile and production App Store app as defaults.
+# Read-only mode also protects commands whose native CLI has no --confirm flag.
+set -euo pipefail
+
+if [[ $# -eq 0 || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'USAGE'
+Usage: scripts/app-store [--write] <asc command> [flags]
+
+Defaults to Hermex (6767006319), the "hermex" auth profile, and read-only API access.
+Use --write only for an owner-authorized App Store Connect change.
+All remaining arguments go directly to asc; add --help to discover its commands.
+
+Examples:
+  scripts/app-store status
+  scripts/app-store versions list --platform IOS
+  scripts/app-store release stage --help
+  scripts/app-store --write versions release --version-id VERSION_ID --confirm
+
+Setup and release procedure: TESTFLIGHT.md, "App Store Connect CLI".
+USAGE
+  exit 0
+fi
+
+export ASC_READ_ONLY=1
+if [[ "$1" == "--write" ]]; then
+  export ASC_READ_ONLY=0
+  shift
+  if [[ $# -eq 0 ]]; then
+    echo "Provide an asc command after --write. See scripts/app-store --help." >&2
+    exit 2
+  fi
+fi
+
+if ! command -v asc >/dev/null 2>&1; then
+  echo "Install the App Store Connect CLI with: brew install asc" >&2
+  exit 127
+fi
+
+export ASC_APP_ID=6767006319
+export ASC_TELEMETRY_DISABLED=1
+exec asc --profile hermex "$@"

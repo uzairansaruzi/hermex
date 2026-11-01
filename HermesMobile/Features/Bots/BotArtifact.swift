@@ -8,12 +8,14 @@ struct BotArtifactContext: Hashable {
     let generation: Int
 }
 
+/// `folder` is a download the host refused because the path is a folder, as a symlinked folder
+/// the workspace listing shows as a file is (#1112); it reads as `unavailable` anywhere else.
 enum BotArtifactFailure: Error, LocalizedError {
-    case unavailable, tooLarge, invalidReference
+    case unavailable, tooLarge, invalidReference, folder
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: return String(localized: "This file could not be opened. It may be missing or unavailable on this Hermes connection.")
+        case .unavailable, .folder: return String(localized: "This file could not be opened. It may be missing or unavailable on this Hermes connection.")
         case .tooLarge: return String(localized: "This file is too large to preview on this device (25 MB maximum).")
         case .invalidReference: return String(localized: "This reference does not name a file on this Bot connection.")
         }
@@ -28,6 +30,8 @@ enum BotArtifactReference {
         guard !value.isEmpty, !value.contains("\0"), !value.hasPrefix("//") else {
             throw BotArtifactFailure.invalidReference
         }
+        // A Windows host's `C:\…` would otherwise parse as a URL with scheme `C`.
+        if BotAttachmentUpload.isHostAbsolute(value) { return value }
         if let url = URL(string: value), let scheme = url.scheme {
             if scheme.lowercased() == "file", url.host == nil || url.host == "" || url.host == "localhost" {
                 return url.path(percentEncoded: false)

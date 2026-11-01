@@ -151,3 +151,50 @@ struct PushPreferences: Codable, Equatable, Sendable {
         return String(key.dropFirst(prefix.count))
     }
 }
+
+/// What Move to Hermes did with the webui server's push pairing (#1215).
+enum MovePushPairingOutcome: Equatable, Sendable {
+    /// The webui server never paired, so there was nothing to carry. The host wasn't read.
+    case sourceUnpaired
+    /// The Hermes server keeps the pairing it already had. The host wasn't read.
+    case destinationAlreadyPaired
+    /// Both reach the same install, so the Hermes server now shares the webui server's
+    /// registration, token and preferences. The relay wasn't called.
+    case copied
+    /// Another install: nothing was copied. The webui server's pairing keeps routing its own
+    /// host's pushes while that entry stays, and removing it ends them.
+    case differentInstall
+    /// The Hermes host's pairing couldn't be read, or the Hermes server went while the copy
+    /// waited. Nothing was copied.
+    case unchecked
+}
+
+/// The registrar's side of `MovePushPairing`: reading a stored pairing and copying one in the
+/// queue its device writes share.
+@MainActor protocol PushPairingCopying {
+    func pairing(for server: URL) -> PushPairing?
+    /// Copies `source`'s stored pairing to `destination` while it still matches `install`,
+    /// `destination` has none, and `isConfigured(destination)` holds. No relay call.
+    func copyPairing(from source: URL, to destination: URL, matching install: PushPairing,
+                     isConfigured: @escaping @MainActor (URL) -> Bool) async throws -> MovePushPairingOutcome
+}
+
+/// Carries a webui server's push pairing to the Hermes server it moved to (#1215).
+@MainActor enum MovePushPairing {
+    /// The Move runner's first step after the commit (#1216), and only after the user
+    /// confirmed Move: `readDestination` signs in and reads the Hermes host's pairing route,
+    /// which can create the host's keys, so Review never calls this.
+    ///
+    /// Copies only when the host confirms the install the webui server is paired with and the
+    /// Hermes server has no pairing of its own. A cross-host move copies nothing and never
+    /// touches the destination's keys.
+    static func carry(from source: URL, to destination: URL, registrar: any PushPairingCopying,
+                      isConfigured: @escaping @MainActor (URL) -> Bool,
+                      readDestination: () async throws -> PushPairing) async -> MovePushPairingOutcome {
+        guard registrar.pairing(for: source) != nil else { return .sourceUnpaired }
+        guard registrar.pairing(for: destination) == nil else { return .destinationAlreadyPaired }
+        guard let install = try? await readDestination() else { return .unchecked }
+        return (try? await registrar.copyPairing(from: source, to: destination, matching: install,
+                                                 isConfigured: isConfigured)) ?? .unchecked
+    }
+}

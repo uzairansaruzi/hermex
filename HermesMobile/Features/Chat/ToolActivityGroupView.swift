@@ -12,7 +12,8 @@ enum ToolActivityEntrance {
 }
 
 /// A turn's tool calls as a dense log. The last call stays visible while earlier
-/// calls sit behind a `+N previous tool calls` toggle, during and after streaming.
+/// calls sit behind a toggle that names what they did ("Changed 2 files and ran
+/// 4 commands", with a triangle when one failed), during and after streaming.
 struct ToolActivityGroupView: View {
     let group: ToolCallGroup
     var isLive = false
@@ -20,8 +21,9 @@ struct ToolActivityGroupView: View {
     var isReplaying = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
-    @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
+    @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @State private var userToggledExpansion: Bool?
 
     /// Whether previous rows are shown. Follows "Expand Tools by Default"
@@ -29,12 +31,13 @@ struct ToolActivityGroupView: View {
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
-            startsExpanded: startsExpanded
+            startsExpanded: thinkingAndToolCards.startsExpanded
         )
     }
 
     @ViewBuilder
     var body: some View {
+        let _ = RenderProbe.hit(.toolActivityGroup)
         let entries = ToolCallSummaryFormatter.entries(for: group.toolCalls, isLive: isLive)
 
         if let lastEntry = entries.last {
@@ -42,7 +45,7 @@ struct ToolActivityGroupView: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 if !previousEntries.isEmpty {
-                    previousRowsToggle(hiddenCount: previousEntries.count)
+                    previousRowsToggle(hiddenEntries: previousEntries)
 
                     if isExpanded {
                         ForEach(previousEntries) { entry in
@@ -82,33 +85,48 @@ struct ToolActivityGroupView: View {
         }
     }
 
-    private func previousRowsToggle(hiddenCount: Int) -> some View {
-        Button(action: toggleExpansion) {
-            HStack(spacing: 6) {
+    /// Collapsed, the title summarizes the hidden rows and a static triangle in
+    /// the rows' status column flags a hidden failure; expanded, the rows show
+    /// their own marks and the title is "Show fewer tool calls".
+    private func previousRowsToggle(hiddenEntries: [ToolCallLogEntry]) -> some View {
+        let summary = isExpanded ? nil : ToolCallGroupSummary(entries: hiddenEntries)
+        let title = if isExpanded {
+            String(localized: "Show fewer tool calls")
+        } else {
+            summary?.sentence ?? String(localized: "+\(hiddenEntries.count) previous tool calls")
+        }
+
+        return Button(action: toggleExpansion) {
+            HStack(alignment: wrapsTitle ? .top : .center, spacing: 6) {
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 20, height: 18)
 
-                Text(previousRowsToggleTitle(hiddenCount: hiddenCount))
+                Text(title)
                     .font(AppFont.caption(weight: .medium))
                     .foregroundStyle(.primary.opacity(0.8))
-                    .lineLimit(1)
+                    .lineLimit(wrapsTitle ? nil : 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: 0)
+                if let summary, summary.failedCount > 0 {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.red)
+                        .frame(width: 16, height: 16)
+                }
             }
             .padding(.horizontal, 2)
             .frame(minHeight: TranscriptLogRowMetrics.minimumHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(previousRowsToggleTitle(hiddenCount: hiddenCount))
+        .accessibilityLabel(summary?.accessibilityLabel(title: title) ?? title)
     }
 
-    private func previousRowsToggleTitle(hiddenCount: Int) -> String {
-        isExpanded
-            ? String(localized: "Show fewer tool calls")
-            : String(localized: "+\(hiddenCount) previous tool calls")
+    /// The summary wraps at accessibility sizes instead of truncating.
+    private var wrapsTitle: Bool {
+        dynamicTypeSize.isAccessibilitySize
     }
 
 }

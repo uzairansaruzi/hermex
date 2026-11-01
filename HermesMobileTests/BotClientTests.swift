@@ -164,26 +164,19 @@ import XCTest
         XCTAssertEqual(disconnects, 0)
     }
 
+    /// A password host's four sign-in replies. Any other HTTP request fails the test.
     private static let signIn: (URLRequest) -> (Int, BotJSON) = { request in
         switch request.url!.path {
         case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
         case "/auth/password-login": return (200, .object([:]))
         case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
         case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-        default: return (404, .null)
+        default: XCTFail("Unexpected HTTP endpoint \(request.url!.path)"); return (404, .null)
         }
     }
 
     func testCancelFileUploadKeepsSocketAvailableWithoutResendingIt() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -206,15 +199,7 @@ import XCTest
     }
 
     func testProfileEditorAllowlistAdmitsOnlyTypedScopedCalls() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -255,15 +240,7 @@ import XCTest
     }
 
     func testDelegatedWorkAllowlistAdmitsOnlySessionOwnedShapes() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -297,15 +274,7 @@ import XCTest
     /// The connection card answers one row or Continue, by `op_id`, and nothing
     /// else: no claimed outcome, no other settle reason, no connector RPC.
     func testConnectionAllowlistAdmitsOnlyOneRowOrContinue() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -371,13 +340,7 @@ import XCTest
             var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
             status["version"] = release.version.map(BotJSON.string)
             BotHTTPFixture.handler = { request in
-                switch request.url!.path {
-                case "/api/status": return (200, .object(status))
-                case "/auth/password-login": return (200, .object([:]))
-                case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-                case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-                default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-                }
+                request.url!.path == "/api/status" ? (200, .object(status)) : Self.signIn(request)
             }
             let configuration = URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [BotHTTPFixture.self]
@@ -394,15 +357,7 @@ import XCTest
     }
 
     func testCancellingDelegatedReadsKeepsTheConversationSocketAvailable() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -435,15 +390,7 @@ import XCTest
     }
 
     func testDelegatedReadTimeoutFailsOnlyTheOptionalRequest() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -474,16 +421,9 @@ import XCTest
     func testLifecycleAllowlistAdmitsOnlyTheCreateShapeAndCanonicalChatCalls() async throws {
         var deletes: [(String, String)] = []
         BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            case "/api/profiles/home-hunter":
-                deletes.append((request.httpMethod ?? "", request.url!.path))
-                return deletes.count == 1 ? (200, .object(["ok": .bool(true), "path": .string("/p")])) : (400, .object(["detail": .string("no")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
+            guard request.url!.path == "/api/profiles/home-hunter" else { return Self.signIn(request) }
+            deletes.append((request.httpMethod ?? "", request.url!.path))
+            return deletes.count == 1 ? (200, .object(["ok": .bool(true), "path": .string("/p")])) : (400, .object(["detail": .string("no")]))
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
@@ -534,15 +474,7 @@ import XCTest
     }
 
     func testPromptActionsUseExplicitMethodsAndQueueParameters() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -567,15 +499,7 @@ import XCTest
     /// particular must never widen: the gateway resolves quick commands ahead of
     /// skills, and one of those can run a shell command on the host.
     func testSlashAllowlistAdmitsOnlyTheCatalogReadAndABareDispatchName() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -608,12 +532,14 @@ import XCTest
     }
 
     /// A rewind cuts one durable row and resends a prompt; an empty prompt or a
-    /// row id the host never issued is refused before the socket.
+    /// row id the host never issued is refused before the socket, as is an undo
+    /// without its runtime (#1049).
     func testRewindAdmitsOnlyARowAndThePromptItResends() {
         let rejected: [HermesCall] = [
-            .promptRewind(sessionID: "", text: "hi", beforeRowID: 41),
-            .promptRewind(sessionID: "runtime", text: " \n", beforeRowID: 41),
-            .promptRewind(sessionID: "runtime", text: "hi", beforeRowID: 0)
+            .promptRewind(sessionID: "", text: "hi", beforeRowID: 41, deep: false),
+            .promptRewind(sessionID: "runtime", text: " \n", beforeRowID: 41, deep: false),
+            .promptRewind(sessionID: "runtime", text: "hi", beforeRowID: 0, deep: false),
+            .sessionUndo(runtime: "")
         ]
         for call in rejected {
             XCTAssertThrowsError(try call.params()) { XCTAssertEqual($0 as? BotFailure, .unsupported) }
@@ -637,15 +563,7 @@ import XCTest
     /// The inbox's live-status read is `session.active_list` with no parameters,
     /// exactly as Desktop's background sync sends it; anything else stays local.
     func testActiveListAllowlistAdmitsOnlyTheEmptyRead() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -661,15 +579,7 @@ import XCTest
     }
 
     func testCompletionAllowlistAdmitsOneWordAndRejectsEverythingElse() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -698,91 +608,8 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 1)
     }
 
-    func testReactAllowlistAdmitsYourOwnReactionAndRejectsEverythingElse() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [BotHTTPFixture.self]
-        let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
-        try await client.connect()
-        defer { client.close() }
-
-        _ = try await client.call(.messageReact(sessionID: "runtime", rowID: 42, emoji: "👍"))
-        _ = try await client.call(.messageReact(sessionID: "runtime", rowID: 42, emoji: nil))
-        XCTAssertEqual(socket.sentRequests.map { $0["params"] }, [
-            .object(["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍")]),
-            .object(["session_id": .string("runtime"), "row_id": .number(42), "emoji": .null])
-        ])
-
-        // `author`, `newest_role`, a non-integer row and a non-string emoji have no typed shape.
-        let rejected: [HermesCall] = [
-            .messageReact(sessionID: "runtime", rowID: 42, emoji: "  "),
-            .messageReact(sessionID: "", rowID: 42, emoji: "👍")
-        ]
-        for call in rejected {
-            do {
-                _ = try await client.call(call)
-                XCTFail("Invalid message.react call dispatched: \(call)")
-            } catch {
-                XCTAssertEqual(error as? BotFailure, .unsupported)
-            }
-        }
-        XCTAssertEqual(socket.sentTextFrames, 2)
-    }
-
-    func testCancelCompletionKeepsSocketAvailableWithoutResendingIt() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [BotHTTPFixture.self]
-        let socket = BotScriptedSocket()
-        let started = expectation(description: "completion dispatched")
-        socket.withholdReply = { request in
-            guard request["method"].text == "complete.path" else { return false }
-            started.fulfill(); return true
-        }
-        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
-        try await client.connect()
-        defer { client.close() }
-
-        let lookup = Task {
-            try await client.call(.completePath(word: "src", sessionID: "runtime", profile: "default"))
-        }
-        await fulfillment(of: [started], timeout: 2)
-        lookup.cancel()
-        do { _ = try await lookup.value; XCTFail("Cancelled completion succeeded") }
-        catch { XCTAssertTrue(error is CancellationError) }
-
-        _ = try await client.call(.profilesList(includeSessions: false))
-        XCTAssertEqual(socket.sentRequests.filter { $0["method"].text == "complete.path" }.count, 1)
-        XCTAssertEqual(socket.sentRequests.last?["method"].text, "profiles.list")
-    }
-
     func testSettingsAllowlistRejectsUnscopedWritesAndPreservesHostError() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -824,31 +651,10 @@ import XCTest
         XCTAssertTrue(socket.sentRequests.allSatisfy { $0["params"]["scope"] == .string("session") && $0["params"]["session_id"] == .string("runtime") })
     }
 
-    func testStatusWithoutVersionStillConnects() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
-        }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [BotHTTPFixture.self]
-        let client = BotClient(connection: connection(), configuration: configuration) { _ in BotScriptedSocket() }
-        try await client.connect()
-        XCTAssertNil(client.serverVersion)
-        var record = connection()
-        record.hermesVersion = client.serverVersion
-        XCTAssertNil(record.hermesVersion)
-        client.close()
-    }
-
-    func testMissingPasswordGateFailsBeforeCredentialsOrSocket() async {
+    func testAStatusWithoutTheSignInFlagFailsBeforeCredentialsOrSocket() async {
         BotHTTPFixture.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/status")
-            return (200, .object(["auth_required": .bool(false)]))
+            return (200, .object(["version": .string("0.21.5")]))
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
@@ -886,17 +692,10 @@ import XCTest
         let known = String(repeating: "a", count: 32), fresh = String(repeating: "c", count: 32)
         // (stored, live): the same host, a host omitting it after a read error, and a legacy record.
         for (stored, live) in [(known, known), (known, nil), (nil, fresh)] as [(String?, String?)] {
+            var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+            if let live { status["install_id"] = .string(live) }
             BotHTTPFixture.handler = { request in
-                switch request.url!.path {
-                case "/api/status":
-                    var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
-                    if let live { status["install_id"] = .string(live) }
-                    return (200, .object(status))
-                case "/auth/password-login": return (200, .object([:]))
-                case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-                case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-                default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-                }
+                request.url!.path == "/api/status" ? (200, .object(status)) : Self.signIn(request)
             }
             let configuration = URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [BotHTTPFixture.self]
@@ -986,15 +785,7 @@ import XCTest
     }
 
     func testARefusedUpgradeFailsTheConnectWithItsFailure() async {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let client = BotClient(connection: connection(), configuration: configuration) { _ in
@@ -1004,6 +795,21 @@ import XCTest
         }
         do { try await client.connect(); XCTFail("Expected a refused upgrade") }
         catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
+        client.close()
+    }
+
+    /// A gateway's own listener (#1340) signs in, then fails every chat: its `gateway.ready`
+    /// stops the connect before the handshake sends anything.
+    func testAGatewayListenerFailsTheConnectBeforeTheHandshake() async {
+        BotHTTPFixture.handler = Self.signIn
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket(ready: #"{"replay_epoch":"epoch","session_authority":true}"#)
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
+        do { try await client.connect(); XCTFail("Expected a gateway listener") }
+        catch { XCTAssertEqual(error as? BotFailure, .gatewayListener) }
+        XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.gatewayListener))
+        XCTAssertEqual(socket.outbound, [])
         client.close()
     }
 
@@ -1070,15 +876,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let record = connection()
-        BotHTTPFixture.handler = { request in
-            switch request.url?.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected endpoint during connect"); return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let client = BotClient(connection: record, configuration: configuration) { _ in BotScriptedSocket() }
         try await client.connect()
         let context = BotArtifactContext(connectionID: record.id, profile: "same-profile", sessionID: "tip", generation: 1)
@@ -1099,14 +897,7 @@ import XCTest
     }
 
     func testStringIDServerRequestDoesNotConsumeIntegerRPCReply() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            default: return (200, .object(["ticket": .string("ticket")]))
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -1129,14 +920,7 @@ import XCTest
     }
 
     func testRoomAllowlistRejectsAdministrationAndInvalidTypedParameters() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (200, .object([:]))
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -1238,9 +1022,11 @@ private final class BotHTTPFixture: URLProtocol {
 /// Lock ownership protects the queued scripted frames and exactly one waiting reader.
 final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private let lock = NSLock()
-    private var frames: [URLSessionWebSocketTask.Message] = [
-        .string(#"{"method":"event","params":{"type":"gateway.ready","payload":{"replay_epoch":"epoch"}}}"#)
-    ]
+    private var frames: [URLSessionWebSocketTask.Message]
+    /// `ready` is the `gateway.ready` payload the socket opens with; nil never sends one.
+    init(ready: String? = #"{"replay_epoch":"epoch"}"#) {
+        frames = ready.map { [.string(#"{"method":"event","params":{"type":"gateway.ready","payload":\#($0)}}"#)] } ?? []
+    }
     private var waiter: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
     private var closed = false
     var reply: ((BotJSON) -> BotJSON)?
@@ -1250,6 +1036,9 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     var onPing: (() -> Void)?
     /// Thrown by every send, handshake and keepalive included, as a dropped connection would.
     var sendFailure: Error?
+    /// Sends it matches never return until the socket is cancelled, as on a dead route.
+    var holdsSend: ((BotJSON) -> Bool)?
+    private var heldSends: [CheckedContinuation<Void, Error>] = []
     /// Thrown by the next receive instead of its frame, as a refused upgrade fails the first read.
     var receiveFailure: Error?
     /// Replies to caller RPCs; the handshake and keepalive are not counted.
@@ -1272,6 +1061,13 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
         let request = try JSONDecoder().decode(BotJSON.self, from: Data(text.utf8))
         logOutbound(request)
         if let sendFailure { throw sendFailure }
+        if holdsSend?(request) == true {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                lock.lock()
+                if closed { lock.unlock(); continuation.resume(throwing: BotFailure.transport) }
+                else { heldSends.append(continuation); lock.unlock() }
+            }
+        }
         switch request["method"].text {
         case "client.capabilities":
             let response = capabilitiesReply?(request)
@@ -1310,8 +1106,10 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     func cancel() {
         lock.lock(); closed = true
         let waiting = waiter; waiter = nil
+        let sends = heldSends; heldSends = []
         lock.unlock()
         waiting?.resume(throwing: BotFailure.transport)
+        for send in sends { send.resume(throwing: BotFailure.transport) }
     }
 }
 

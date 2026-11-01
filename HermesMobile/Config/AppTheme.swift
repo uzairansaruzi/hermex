@@ -203,27 +203,56 @@ enum AgentRunLiveActivityPrivacy {
     static let showsResponseExcerptsKey = "agentRunLiveActivity.showsResponseExcerpts"
 }
 
-/// User-facing switch for the streamed-text fade-in (issues #213/#234).
-/// Defaults to on; Reduce Motion disables the animation regardless.
-enum StreamedTextAnimationSettings {
-    static let isEnabledKey = "chatTranscript.streamedTextAnimationEnabled"
+/// Settings → Chat "Thinking & Tools" (#1254): whether a chat shows thinking and tool
+/// cards, and whether they start open.
+enum ThinkingAndToolCards: String, CaseIterable, Identifiable {
+    case hidden
+    case collapsed
+    case expanded
 
-    /// The fade-window start ordinal the renderer should use. `Int.max`
-    /// routes every block into the solid head, so no fade renderer (and no
-    /// frame clock) is ever attached — disabling the animation entirely.
-    static func effectiveFirstFadeOrdinal(
-        _ firstFadeOrdinal: Int,
-        reduceMotion: Bool,
-        isEnabled: Bool
-    ) -> Int {
-        (reduceMotion || !isEnabled) ? Int.max : firstFadeOrdinal
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .hidden: String(localized: "Hidden")
+        case .collapsed: String(localized: "Collapsed")
+        case .expanded: String(localized: "Expanded")
+        }
     }
+
+    var showsCards: Bool { self != .hidden }
+    var startsExpanded: Bool { self == .expanded }
 }
 
 enum ChatTranscriptDisplaySettings {
-    static let showsThinkingAndToolCardsKey = "chatTranscript.showsThinkingAndToolCards"
-    static let thinkingCardsStartExpandedKey = "chatTranscript.thinkingCardsStartExpanded"
-    static let toolCardsStartExpandedKey = "chatTranscript.toolCardsStartExpanded"
+    static let thinkingAndToolCardsKey = "chatTranscript.thinkingAndToolCards"
+
+    /// The three toggles the Thinking & Tools picker replaced (#1254). Read only by
+    /// `migrateThinkingAndToolCards`.
+    private static let legacyShowsCardsKey = "chatTranscript.showsThinkingAndToolCards"
+    private static let legacyThinkingExpandedKey = "chatTranscript.thinkingCardsStartExpanded"
+    private static let legacyToolsExpandedKey = "chatTranscript.toolCardsStartExpanded"
+
+    /// Carries the three old toggles into the picker once, at launch: cards off is Hidden,
+    /// either expand toggle on is Expanded, otherwise Collapsed. Afterwards it finds no old
+    /// keys and does nothing.
+    static func migrateThinkingAndToolCards(in defaults: UserDefaults = .standard) {
+        let legacyKeys = [legacyShowsCardsKey, legacyThinkingExpandedKey, legacyToolsExpandedKey]
+        guard legacyKeys.contains(where: { defaults.object(forKey: $0) != nil }) else { return }
+        if defaults.object(forKey: thinkingAndToolCardsKey) == nil {
+            let mode: ThinkingAndToolCards
+            if defaults.object(forKey: legacyShowsCardsKey) as? Bool == false {
+                mode = .hidden
+            } else if defaults.bool(forKey: legacyThinkingExpandedKey) || defaults.bool(forKey: legacyToolsExpandedKey) {
+                mode = .expanded
+            } else {
+                mode = .collapsed
+            }
+            defaults.set(mode.rawValue, forKey: thinkingAndToolCardsKey)
+        }
+        legacyKeys.forEach(defaults.removeObject(forKey:))
+    }
+
     static let hidesAttachmentPathsKey = "chatTranscript.hidesAttachmentPaths"
     /// Settings → Chat "Message Timestamps": the time under each user message
     /// and each finished reply. The key name predates the move under the
@@ -329,13 +358,12 @@ enum SectionVisibilitySettings {
     }
 }
 
-/// App-wide preview gate for Bot Mode (#496). Default off so unfinished Bot UI
-/// never ships through a hotfix cut from `master`. Not per-server: it hides
-/// screens, it is not user data, and Bot connections and drafts stay in the
-/// Keychain while it is off. The Hermes connection screen is deliberately no
-/// longer behind it (#557): that login is what push pairing needs, and push
-/// serves a server's webui sessions too. Delete this gate and its Settings row
-/// in the release PR that ships Bot Mode; see `docs/agents/bots.md`.
+/// App-wide preview gate for Bot Mode (#496): the Bots row on a webui server's main
+/// screen. Default off. Not per-server: it hides screens, it is not user data, and Bot
+/// connections and drafts stay in the Keychain while it is off. Hermes servers never
+/// need it: adding one, moving a webui server to one (#712), its Bots side and its bot
+/// links all work with it off. Nor is the Hermes connection screen behind it (#557):
+/// that login is what push pairing needs, and push serves a server's webui sessions too.
 enum BotModeGate {
     static let isEnabledKey = "botMode.isEnabled"
 
@@ -606,12 +634,16 @@ struct ResponseCompletionNotificationRequest: Equatable {
     /// trims it, falling back to "Hermes session".
     let title: String
     let outcome: ResponseCompletionOutcome
+    /// A Hermes chat's Profile, with `sessionID` its stored key (#1177): the tap opens the
+    /// session link, which looks the session up there. Nil for a webui chat.
+    let hermesProfile: String?
 
-    init(sessionID: String?, server: URL, title: String, outcome: ResponseCompletionOutcome) {
+    init(sessionID: String?, server: URL, title: String, outcome: ResponseCompletionOutcome, hermesProfile: String? = nil) {
         self.sessionID = sessionID?.isEmpty == false ? sessionID : nil
         self.server = server
         self.title = AgentRunActivitySanitizer.sessionTitle(title)
         self.outcome = outcome
+        self.hermesProfile = hermesProfile
     }
 
     var body: String { outcome.body }
@@ -629,6 +661,7 @@ struct ResponseCompletionNotificationRequest: Equatable {
     var userInfo: [String: String] {
         var info = ["server_hash": Self.serverHash(server), "source": Self.source]
         info["session_id"] = sessionID
+        info["hermes_profile"] = hermesProfile
         return info
     }
 
@@ -637,17 +670,20 @@ struct ResponseCompletionNotificationRequest: Equatable {
         SHA256.hash(data: Data(server.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// The chat a tapped local alert names, on a server that is still configured.
-    /// Nil for a relay push, a removed server, or a missing session, so the tap only
-    /// opens the app.
-    static func destination(userInfo: [AnyHashable: Any], servers: [URL]) -> WebuiPushDestination? {
+    /// The link to the chat a tapped local alert names, on a server that is still configured:
+    /// a Hermes session link when it names a Profile, else the webui session. Nil for a relay
+    /// push, a removed server, or a missing session, so the tap only opens the app.
+    static func destination(userInfo: [AnyHashable: Any], servers: [URL]) -> URL? {
         guard userInfo["source"] as? String == source,
               let hash = userInfo["server_hash"] as? String,
               let sessionID = (userInfo["session_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !sessionID.isEmpty,
               let server = servers.first(where: { serverHash($0) == hash })
         else { return nil }
-        return WebuiPushDestination(server: server, sessionID: sessionID)
+        if let profile = userInfo["hermes_profile"] as? String {
+            return HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: profile, key: sessionID))
+        }
+        return HermesDeepLink.webuiSessionURL(server: server, sessionID: sessionID)
     }
 }
 
@@ -797,6 +833,7 @@ enum ResponseCompletionNotificationService {
     static func scheduleRunEndedIfAllowed(
         _ outcome: ResponseCompletionOutcome,
         sessionID: String?,
+        hermesProfile: String? = nil,
         title: String,
         server: URL,
         preferenceEnabled: Bool,
@@ -819,7 +856,7 @@ enum ResponseCompletionNotificationService {
         }
 
         await scheduler.schedule(ResponseCompletionNotificationRequest(
-            sessionID: sessionID, server: server, title: title, outcome: outcome))
+            sessionID: sessionID, server: server, title: title, outcome: outcome, hermesProfile: hermesProfile))
         return true
     }
 }

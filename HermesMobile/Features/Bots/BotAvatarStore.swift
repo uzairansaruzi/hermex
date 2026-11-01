@@ -1,10 +1,12 @@
 import ImageIO
+import UniformTypeIdentifiers
 import UIKit
 
 /// Decoded Desktop avatars for the Bots inbox, read through `profiles.get_asset`.
 /// Keyed by connection UUID plus Profile name so equal Profile names on two hosts
 /// never share an image. Entries exist only for the current connection's roster
 /// and drop when the connection is replaced or removed; nothing is written to disk.
+/// Desktop's copies of a drawn face are skipped (`decode`), so the face stays live.
 @MainActor final class BotAvatarStore {
     static let shared = BotAvatarStore()
 
@@ -14,7 +16,9 @@ import UIKit
     nonisolated static let maxPayloadBytes = 3_000_000
 
     private struct Key: Hashable { let connectionID: UUID; let profile: String }
-    private struct Entry { let revision: Int?; let image: UIImage }
+    /// A nil image is Desktop's face copy, kept so an unchanged revision does not
+    /// fetch it again. Unreadable assets are not kept and retry on the next refresh.
+    private struct Entry { let revision: Int?; let image: UIImage? }
     private var entries: [Key: Entry] = [:]
 
     init() {}
@@ -55,9 +59,10 @@ import UIKit
             if let revision = entries[key]?.revision, revision == profile.lookRevision { continue }
             guard let reply = try? await transport.call(.profilesGetAsset(name: profile.id), validateDispatch: validateDispatch),
                   !Task.isCancelled else { return }
-            let image = await Task.detached(priority: .utility) { Self.decode(reply) }.value
+            let photo = profile.isPhoto
+            let asset = await Task.detached(priority: .utility) { Self.asset(reply, photo: photo) }.value
             guard !Task.isCancelled else { return }
-            if let image { entries[key] = Entry(revision: profile.lookRevision, image: image) }
+            if let asset { entries[key] = Entry(revision: profile.lookRevision, image: asset.image) }
             else { entries.removeValue(forKey: key) }
             onUpdate()
         }
@@ -73,21 +78,39 @@ import UIKit
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
     }
 
-    /// Decodes a `profiles.get_asset` reply into a bounded thumbnail. Anything other
-    /// than a found, base64 image data URL within the size cap decodes to nil, and a
-    /// nil avatar means the row keeps its static shape fallback.
-    nonisolated static func decode(_ reply: BotJSON) -> UIImage? {
+    /// A readable asset: a picture to show, or Desktop's still copy of a drawn face.
+    enum Asset {
+        case image(UIImage), faceCopy
+        var image: UIImage? { if case .image(let image) = self { image } else { nil } }
+    }
+
+    /// Decodes a `profiles.get_asset` reply into a bounded thumbnail; nil means the row draws its face.
+    nonisolated static func decode(_ reply: BotJSON, photo: Bool) -> UIImage? { asset(reply, photo: photo)?.image }
+
+    /// Reads a `profiles.get_asset` reply. Anything other than a found, base64 image
+    /// data URL within the size cap is nil, so a later fetch retries it. Unless the
+    /// look says `photo`, a 160x160 PNG is `faceCopy`: Desktop uploads a still copy of
+    /// its own drawing at that size for any bot without an asset, and draws the face
+    /// over it the same way (`isBackfilledFacePng`).
+    nonisolated static func asset(_ reply: BotJSON, photo: Bool) -> Asset? {
         guard reply["found"].flag == true, let text = reply["data"].text, text.utf8.count <= maxPayloadBytes,
               text.hasPrefix("data:image/"), let comma = text.firstIndex(of: ","),
               text[..<comma].hasSuffix(";base64"),
               let data = Data(base64Encoded: String(text[text.index(after: comma)...])),
               let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        if !photo, isDesktopFaceCopy(source) { return .faceCopy }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
         ]
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return UIImage(cgImage: thumbnail)
+        return .image(UIImage(cgImage: thumbnail))
+    }
+
+    private nonisolated static func isDesktopFaceCopy(_ source: CGImageSource) -> Bool {
+        guard CGImageSourceGetType(source) as String? == UTType.png.identifier,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return false }
+        return properties[kCGImagePropertyPixelWidth] as? Int == 160 && properties[kCGImagePropertyPixelHeight] as? Int == 160
     }
 }

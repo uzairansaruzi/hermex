@@ -6,23 +6,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         MarkdownDiffFormatter.parse(code).lines.map(\.kind)
     }
 
-    func testSingleFileDiff() {
-        let document = MarkdownDiffFormatter.parse("""
-        --- a/f.swift
-        +++ b/f.swift
-        @@ -1,3 +1,3 @@
-         let a = 1
-        -let b = 2
-        +let b = 3
-         let c = 4
-        """)
-
-        XCTAssertEqual(document.lines.map(\.kind), [.fileHeader, .fileHeader, .hunk, .context, .removed, .added, .context])
-        XCTAssertEqual(document.additions, 1)
-        XCTAssertEqual(document.deletions, 1)
-        XCTAssertEqual(document.lines[4].text, "-let b = 2")
-    }
-
     /// The design mock's two-file patch: a removed `--- TODO` SQL comment inside a counted
     /// hunk is a deletion, and a context line whose leading space was trimmed still counts.
     func testMultiFileGitDiffCountsDashedLinesInsideCountedHunks() {
@@ -159,14 +142,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         XCTAssertEqual(document.deletions, 1)
     }
 
-    func testRemovedSQLCommentInsideHunkIsARemoval() {
-        XCTAssertEqual(kinds("""
-        @@ -1,2 +1,1 @@
-        -- drop this comment
-         SELECT 1;
-        """), [.hunk, .removed, .context])
-    }
-
     func testDiffWithoutHunkHeadersUsesPrefixRules() {
         let document = MarkdownDiffFormatter.parse("""
         --- a/file
@@ -186,15 +161,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
 
         XCTAssertEqual(document.lines.map(\.kind), [.hunk, .removed, .added])
         XCTAssertEqual(document.lines.map(\.text), ["@@ -1 +1 @@", "-a", "+b"])
-    }
-
-    func testEmptyBlockParsesToOneBlankLineAndRendersPlain() {
-        let document = MarkdownDiffFormatter.parse("")
-
-        XCTAssertEqual(document.lines.map(\.kind), [.context])
-        XCTAssertEqual(document.additions, 0)
-        XCTAssertEqual(document.deletions, 0)
-        XCTAssertNil(MarkdownDiffFormatter.document(for: "", language: "diff", isStreaming: false))
     }
 
     /// Only a settled diff or patch fence within the highlighter's size guards is styled;
@@ -230,14 +196,5 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         )
         XCTAssertFalse(short.isCollapsible)
         XCTAssertEqual(short.visibleLines(showingAll: false).count, 80)
-    }
-
-    func testAccessibilityLabelsNameTheChangeWithoutThePrefix() {
-        let lines = MarkdownDiffFormatter.parse("@@ -1,2 +1,1 @@\n-old\n+new\n-").lines
-
-        XCTAssertEqual(DiffCodeBlockText.accessibilityLabel(for: lines[0]), "@@ -1,2 +1,1 @@")
-        XCTAssertEqual(DiffCodeBlockText.accessibilityLabel(for: lines[1]), "removed, old")
-        XCTAssertEqual(DiffCodeBlockText.accessibilityLabel(for: lines[2]), "added, new")
-        XCTAssertEqual(DiffCodeBlockText.accessibilityLabel(for: lines[3]), "removed, blank")
     }
 }

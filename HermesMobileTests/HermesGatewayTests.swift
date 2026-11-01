@@ -16,6 +16,24 @@ import XCTest
         super.tearDown()
     }
 
+    func testAnUnansweredApprovalSummaryTimesOutWithoutDisconnectingChat() async throws {
+        let chat = BotClient(http: connection(rpcDeadline: .milliseconds(50)))
+        try await chat.connect()
+        defer { chat.close() }
+        var lost = 0
+        chat.onDisconnect = { _ in lost += 1 }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.withholdReply = { $0["method"].text == "llm.oneshot" }
+        do {
+            _ = try await chat.call(.approvalSummary(input: "Command: rm ./draft.txt", language: "English", sessionID: "runtime", profile: "default"))
+            XCTFail("An unanswered summary must time out")
+        } catch { XCTAssertEqual(error as? BotFailure, .transport) }
+        XCTAssertEqual(lost, 0)
+        XCTAssertFalse(socket.isClosed)
+        let profiles = try await chat.call(.profilesList(includeSessions: false))["profiles"].list
+        XCTAssertEqual(profiles, [], "the same consumer can still approve and read")
+    }
+
     func testConcurrentConsumersShareOneSignInTicketSocketAndHandshake() async throws {
         let http = connection()
         let inbox = BotClient(http: http), chat = BotClient(http: http), editor = BotClient(http: http)
@@ -142,6 +160,52 @@ import XCTest
         XCTAssertEqual(first.sentRequests.filter { $0["method"].text == "session.interrupt" }.count, 1, "Never resent")
     }
 
+    /// A network change probes the shared socket (#1372); one that answers stays open.
+    func testAProbeKeepsASocketThatAnswers() async throws {
+        let http = connection()
+        let chat = BotClient(http: http)
+        try await chat.connect()
+        defer { chat.close() }
+        var lost = 0
+        chat.onDisconnect = { _ in lost += 1 }
+
+        await http.liveGateway?.probe()
+
+        let socket = try XCTUnwrap(sockets.first)
+        XCTAssertEqual(socket.outbound.filter { $0["method"].text == "gateway.ping" }.count, 1)
+        XCTAssertFalse(socket.isClosed)
+        XCTAssertEqual(lost, 0)
+    }
+
+    /// A handover can leave the socket open but dead, with even the probe's ping stuck in its
+    /// send. The probe's deadline still ends it: concurrent probes send one ping, each consumer
+    /// hears the loss once, and their reconnects share one replacement.
+    func testASilentSocketIsLostAtTheProbeDeadlineAndConsumersShareOneReplacement() async throws {
+        let http = connection(probeDeadline: .milliseconds(50))
+        let chat = BotClient(http: http), inbox = BotClient(http: http)
+        try await chat.connect()
+        try await inbox.connect()
+        defer { chat.close(); inbox.close() }
+        var lost: [String] = []
+        chat.onDisconnect = { lost.append("chat"); XCTAssertEqual($0 as? BotFailure, .transport) }
+        inbox.onDisconnect = { lost.append("inbox"); XCTAssertEqual($0 as? BotFailure, .transport) }
+        let first = try XCTUnwrap(sockets.first)
+        first.holdsSend = { $0["method"].text == "gateway.ping" }
+        let gateway = try XCTUnwrap(http.liveGateway)
+
+        async let probe: Void = gateway.probe()
+        async let again: Void = gateway.probe()
+        _ = await (probe, again)
+
+        XCTAssertTrue(first.isClosed)
+        XCTAssertEqual(lost.sorted(), ["chat", "inbox"])
+        XCTAssertEqual(first.outbound.filter { $0["method"].text == "gateway.ping" }.count, 1)
+        async let chatBack: Void = chat.connect()
+        async let inboxBack: Void = inbox.connect()
+        _ = try await (chatBack, inboxBack)
+        XCTAssertEqual(sockets.count, 2, "One replacement for both")
+    }
+
     /// The socket fails both consumers' sends and then its reader: one report each. A
     /// consumer that has not reconnected stays out of the replacement: it sends nothing,
     /// hears nothing, and is not told when the replacement drops.
@@ -218,6 +282,27 @@ import XCTest
         XCTAssertEqual(socket.sentRequests.filter { $0["method"].text == "prompt.submit" }.count, 1, "Never resent")
     }
 
+    /// A Profile read controls nothing on the host, so a screen whose task ends while it waits
+    /// (a chat pushed over the Sessions list) keeps its place on the socket.
+    func testCancellingAProfilesReadKeepsItsConsumer() async throws {
+        let http = connection()
+        let list = BotClient(http: http)
+        try await list.connect()
+        defer { list.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        let sent = expectation(description: "roster on the wire")
+        socket.withholdReply = { _ in sent.fulfill(); return true }
+        let roster = Task { try await list.call(.profilesList(includeSessions: false)) }
+        await fulfillment(of: [sent], timeout: 2)
+
+        roster.cancel()
+        do { _ = try await roster.value; XCTFail("A cancelled read gets no reply") }
+        catch { XCTAssertTrue(error is CancellationError, "\(error)") }
+        socket.withholdReply = nil
+        let rows = try await list.call(.profilesList(includeSessions: false))["profiles"].list
+        XCTAssertEqual(rows, [], "the screen still reads on the socket")
+    }
+
     /// A required call left unanswered past its deadline ends only its consumer, which hears
     /// it once as a lost connection. The heartbeat and the silence deadline decide whether
     /// the socket itself is gone, so the other consumer stays and the reconnect joins it.
@@ -248,6 +333,57 @@ import XCTest
         _ = try await chat.call(.profilesList(includeSessions: false))
         XCTAssertEqual(sockets.count, 1, "The reconnect joins the open socket")
         XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 1)
+    }
+
+    /// Bot Chat's `@` lookup keeps the required-call policy: left unanswered, it ends its
+    /// screen's connection, as it did before the Hermes chat's own lookup (#1113) failed alone.
+    func testBotChatsUnansweredCompletionEndsItsConsumer() async throws {
+        let http = connection(rpcDeadline: .milliseconds(50))
+        let chat = BotClient(http: http)
+        try await chat.connect()
+        defer { chat.close() }
+        var lost: [BotFailure?] = []
+        let told = expectation(description: "the chat told")
+        chat.onDisconnect = { lost.append($0 as? BotFailure); told.fulfill() }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.withholdReply = { $0["method"].text == "complete.path" }
+
+        do {
+            _ = try await chat.call(.completePath(word: "Sou", sessionID: "runtime", profile: "default"))
+            XCTFail("An unanswered call cannot succeed")
+        } catch { XCTAssertEqual(error as? BotFailure, .transport) }
+        await fulfillment(of: [told], timeout: 2)
+        XCTAssertEqual(lost, [.transport])
+    }
+
+    /// `session.compress` waits on the model's summary as Desktop does (#1050): the usual
+    /// deadline, which still ends another screen's call, never ends it.
+    func testACompressionOutlivesTheUsualDeadline() async throws {
+        let http = connection(rpcDeadline: .milliseconds(50))
+        let chat = BotClient(http: http), other = BotClient(http: http)
+        try await chat.connect()
+        try await other.connect()
+        defer { chat.close(); other.close() }
+        var chatLost = 0
+        chat.onDisconnect = { _ in chatLost += 1 }
+        let socket = try XCTUnwrap(sockets.first)
+        let sent = expectation(description: "compress on the wire")
+        socket.withholdReply = { request in
+            if request["method"].text == "session.compress" { sent.fulfill(); return true }
+            return request["method"].text == "session.resume"
+        }
+
+        let compress = Task { try await chat.call(.sessionCompress(runtime: "runtime", focus: nil, profile: "default")) }
+        await fulfillment(of: [sent], timeout: 2)
+        do {
+            _ = try await other.call(.sessionResume(profile: "default", sessionID: "tip", omitMessages: true))
+            XCTFail("An unanswered call cannot succeed")
+        } catch { XCTAssertEqual(error as? BotFailure, .transport, "the usual deadline passed") }
+        try answer(socket, "session.compress", with: .object(["status": .string("compressed"), "removed": .number(4)]))
+
+        let reply = try await compress.value
+        XCTAssertEqual(reply["removed"].integer, 4)
+        XCTAssertEqual(chatLost, 0)
     }
 
     /// The socket closes with the last screen to leave, and the next screen opens a fresh
@@ -345,11 +481,66 @@ import XCTest
         XCTAssertEqual(reasons.count, 2)
     }
 
+    /// A ticket the host minted proves the live authorization, never the socket: a refused
+    /// upgrade fails only the handshake (#1395).
+    func testAUsableTicketNeverClaimsTheRefusedSocketConnected() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+                                    gateway: .init { _ in
+                                        let socket = BotScriptedSocket()
+                                        socket.receiveFailure = BotFailure.upgradeRefused(403)
+                                        return socket
+                                    })
+        let client = BotClient(http: http)
+        do { try await client.connect(); XCTFail("The upgrade was refused") }
+        catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .passed, .passed, .passed, .failed(.http(403))])
+    }
+
+    /// A socket lost after `gateway.ready` but before the `client.capabilities` reply failed
+    /// the handshake, though the teardown ended the opening before it reported (#1395).
+    func testASocketLostMidHandshakeFailsTheLiveHandshake() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+                                    gateway: .init { _ in
+                                        let socket = BotScriptedSocket()
+                                        socket.sendFailure = URLError(.networkConnectionLost)
+                                        return socket
+                                    })
+        let client = BotClient(http: http)
+        do { try await client.connect(); XCTFail("The socket dropped mid-handshake") } catch {}
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .passed, .passed, .passed, .failed(.unreachable)])
+    }
+
+    /// A ticket refused with 401 signs in again; when that sign-in is refused, the attempt
+    /// names the sign-in, not the ticket (#1395).
+    func testATicketsRefusedReSignInIsASignInFailure() async throws {
+        var logins = 0
+        let client = BotClient(http: connection { request in
+            switch request.url?.path {
+            case "/api/auth/ws-ticket": return .json(401, .object(["detail": .string("Unauthorized")]))
+            case "/auth/password-login":
+                logins += 1
+                return logins == 1 ? nil : .json(401, .object(["error": .string("invalid_credentials")]))
+            default: return nil
+            }
+        })
+        do { try await client.connect(); XCTFail("The second sign-in was refused") } catch {}
+
+        let attempt = try XCTUnwrap(client.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .failed(.http(401)), .notChecked, .notChecked, .notChecked])
+    }
+
     /// A saved connection whose gateway opens scripted sockets, kept in `sockets`.
-    private func connection(rpcDeadline: Duration = .seconds(30),
+    private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30),
                             _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
         HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
-                         gateway: .init(rpcDeadline: rpcDeadline) { [weak self] _ in
+                         gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline) { [weak self] _ in
                              let socket = BotScriptedSocket()
                              self?.sockets.append(socket)
                              return socket

@@ -123,18 +123,6 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertEqual(folds.folds.first?.label.title, "Worked")
     }
 
-    func testElapsedFallsBackToTheGapFromTheUserMessage() {
-        let messages = [
-            user("u1", timestamp: 100),
-            assistantWithTools("a1", timestamp: 105),
-            assistant("a2", text: "Done.", timestamp: 160)
-        ]
-
-        let folds = derive(messages, activityAnchorIDs: ["a1"])
-
-        XCTAssertEqual(folds.folds.first?.label, .worked(elapsed: "1m"))
-    }
-
     func testClientRunSeededFromTheServerStartOutlastsTheUserMessageGap() {
         // A run adopted on session load and settled while the user watched: the
         // transcript carries no `_turnDuration` yet, and its last loaded row

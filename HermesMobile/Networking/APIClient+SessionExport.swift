@@ -147,3 +147,112 @@ extension SessionExportFile {
             .joined(separator: " ")
     }
 }
+
+/// Move to Hermes's scan listing (#1213), `GET /api/sessions?all_profiles=1&include_archived=1`:
+/// every webui chat with the Profile holding it. When `allProfiles` isn't true the server listed
+/// only `activeProfile` (its isolated-Profile mode), so other Profiles went unscanned, not empty.
+/// A row that can't be read, or has no id, is skipped; a reply without `sessions` is a failed read.
+struct WebuiScanListing: Decodable, Equatable {
+    struct Row: Decodable, Equatable {
+        let sessionId: String
+        /// Nil for a legacy row of the webui's root Profile.
+        let profile: String?
+        let title: String?
+        let messageCount: Int?
+        let archived: Bool?
+        let pinned: Bool?
+        let workspace: String?
+        let isStreaming: Bool?
+        let activeStreamId: String?
+        let isCliSession: Bool?
+        let sessionSource: String?
+        let sourceTag: String?
+        let rawSource: String?
+
+        enum CodingKeys: String, CodingKey {
+            case sessionId, profile, title, messageCount, archived, pinned, workspace, isStreaming, activeStreamId
+            case isCliSession, sessionSource, sourceTag, rawSource
+        }
+
+        /// The webui is streaming a reply into it now, so a Move must wait (#1218). Either field
+        /// counts, as in the session list (`SessionRowView.isActiveStreaming`).
+        var isRunning: Bool { isStreaming == true || activeStreamId?.isEmpty == false }
+
+        /// A Hermes CLI/TUI session or an external agent's transcript (Claude Code) the webui only
+        /// shows, not a webui chat, so a Move never counts, waits for or copies it (#1218). The
+        /// webui sets `is_cli_session` from its own classifier, which keeps webui, cron, webhook
+        /// and messaging rows out; Claude Code rows also carry `session_source: external_agent`.
+        /// A webui source marker wins over a stale CLI flag, as in the webui and the session list.
+        var isExternal: Bool {
+            let sources = [sessionSource, sourceTag, rawSource].map { $0?.trimmingCharacters(in: .whitespaces).lowercased() }
+            if sources.contains("webui") { return false }
+            return isCliSession == true || sources.contains("external_agent")
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            sessionId = try c.decode(String.self, forKey: .sessionId)
+            profile = try? c.decodeIfPresent(String.self, forKey: .profile)
+            title = try? c.decodeIfPresent(String.self, forKey: .title)
+            messageCount = c.decodeLossyIntIfPresent(forKey: .messageCount)
+            archived = try? c.decodeIfPresent(Bool.self, forKey: .archived)
+            pinned = try? c.decodeIfPresent(Bool.self, forKey: .pinned)
+            workspace = try? c.decodeIfPresent(String.self, forKey: .workspace)
+            isStreaming = try? c.decodeIfPresent(Bool.self, forKey: .isStreaming)
+            activeStreamId = try? c.decodeIfPresent(String.self, forKey: .activeStreamId)
+            isCliSession = try? c.decodeIfPresent(Bool.self, forKey: .isCliSession)
+            sessionSource = try? c.decodeIfPresent(String.self, forKey: .sessionSource)
+            sourceTag = try? c.decodeIfPresent(String.self, forKey: .sourceTag)
+            rawSource = try? c.decodeIfPresent(String.self, forKey: .rawSource)
+        }
+    }
+
+    /// The webui's own chats; external rows are dropped here, so no Move reader sees them.
+    let sessions: [Row]
+    let allProfiles: Bool?
+    let activeProfile: String?
+
+    enum CodingKeys: String, CodingKey { case sessions, allProfiles, activeProfile }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        sessions = try c.decode([Slot].self, forKey: .sessions).compactMap(\.row).filter { !$0.sessionId.isEmpty && !$0.isExternal }
+        allProfiles = try? c.decodeIfPresent(Bool.self, forKey: .allProfiles)
+        activeProfile = try? c.decodeIfPresent(String.self, forKey: .activeProfile)
+    }
+
+    private struct Slot: Decodable {
+        let row: Row?
+        init(from decoder: Decoder) throws { row = try? Row(from: decoder) }
+    }
+}
+
+extension APIClient {
+    /// Every webui chat across Profiles for Move to Hermes's scan (#1213). Read-only: it never
+    /// switches the Profile this client's cookie names.
+    func moveScanSessions() async throws -> WebuiScanListing {
+        try await send(endpoint: .moveScanSessions, method: "GET")
+    }
+
+    /// A client for one Move's copy from the webui at `baseURL` (#1213), sending `headers` (that
+    /// server's own, not the active server's) from a cookie jar of its own seeded with `cookies`,
+    /// its sign-in. The Profile cookie each `switchProfile` sets lands only in that jar, so the
+    /// app's screens never see it and none of them can change it mid-copy. `configuration` is
+    /// only for tests' protocol classes; its cookie storage is always replaced. Invalidate the
+    /// returned session once the copy ends.
+    static func moveCopyClient(
+        baseURL: URL,
+        headers: [CustomHeader],
+        cookies: [HTTPCookie],
+        configuration: URLSessionConfiguration = .ephemeral
+    ) -> (client: APIClient, session: URLSession) {
+        let configuration = configuration.copy() as? URLSessionConfiguration ?? .ephemeral
+        let jar = URLSessionConfiguration.ephemeral.httpCookieStorage
+        cookies.forEach { jar?.setCookie($0) }
+        configuration.httpCookieStorage = jar
+        configuration.httpCookieAcceptPolicy = .always
+        configuration.httpShouldSetCookies = true
+        let session = URLSession(configuration: configuration)
+        return (APIClient(baseURL: baseURL, session: session, customHeaderProvider: { headers }), session)
+    }
+}

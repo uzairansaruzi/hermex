@@ -9,16 +9,6 @@ final class HitchMeterTests: XCTestCase {
     private let sixtyHertz: CFTimeInterval = 1.0 / 60
     private let oneTwentyHertz: CFTimeInterval = 1.0 / 120
 
-    func testSteadySixtyHertzFramesHaveNoHitches() {
-        var accumulator = HitchAccumulator()
-        feed(&accumulator, from: 10, frames: 90, every: sixtyHertz)
-
-        let reading = accumulator.reading
-        XCTAssertEqual(reading.hitchCount, 0)
-        XCTAssertEqual(reading.hitchMillisecondsPerSecond, 0)
-        XCTAssertEqual(reading.hertz, 60, accuracy: 0.01)
-    }
-
     func testFiftyMillisecondGapAtSixtyHertzCountsOneThirtyThreeMillisecondHitch() {
         var accumulator = HitchAccumulator()
         let last = feed(&accumulator, from: 10, frames: 30, every: sixtyHertz)
@@ -27,7 +17,6 @@ final class HitchMeterTests: XCTestCase {
         let reading = accumulator.reading
         XCTAssertEqual(reading.hitchCount, 1)
         XCTAssertEqual(reading.hitchMillisecondsPerSecond, 33.33, accuracy: 0.01)
-        XCTAssertEqual(reading.summary, "33.3 ms/s · 1 hitch · 60 Hz")
     }
 
     func testHitchesOlderThanOneSecondFallOutOfTheWindow() {

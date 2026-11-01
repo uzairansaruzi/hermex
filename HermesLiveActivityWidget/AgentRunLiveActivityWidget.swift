@@ -6,15 +6,17 @@ import WidgetKit
 struct HermesLiveActivityWidgetBundle: WidgetBundle {
     var body: some Widget {
         AgentRunLiveActivityWidget()
+        ProviderLimitsWidget()
     }
 }
 
 struct AgentRunLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentRunActivityAttributes.self) { context in
-            AgentRunLockScreenView(context: context)
-                .activityBackgroundTint(AgentRunLiveActivityTheme.background)
-                .activitySystemActionForegroundColor(AgentRunLiveActivityTheme.primaryText)
+            AgentRunActivityContent(context: context)
+                .agentRunPalette(on: .lockScreen)
+                .activityBackgroundTint(AgentRunPalette.Surface.lockScreen.backgroundTint)
+                .activitySystemActionForegroundColor(AgentRunPalette.Surface.lockScreen.actionForeground)
                 .widgetURL(AgentRunTapTarget.url(attributes: context.attributes, sessionID: context.presentedState.sessionID, activityID: context.activityID))
         } dynamicIsland: { context in
             DynamicIsland {
@@ -22,29 +24,107 @@ struct AgentRunLiveActivityWidget: Widget {
                     AgentRunIslandBadge(status: context.presentedState.status, bot: context.attributes.bot,
                                         title: context.presentedState.sessionTitle)
                         .padding(.leading, 18)
+                        .agentRunPalette(on: .host)
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
                     AgentRunIslandStatusView(state: context.presentedState)
                         .padding(.trailing, 18)
+                        .agentRunPalette(on: .host)
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
                     AgentRunExpandedIslandBottomView(state: context.presentedState, isBot: context.attributes.bot != nil)
+                        .agentRunPalette(on: .host)
                 }
             } compactLeading: {
-                AgentRunIslandCompactMark(status: context.presentedState.status)
+                AgentRunIslandCompactMark(state: context.presentedState, isBot: context.attributes.bot != nil)
+                    .agentRunPalette(on: .host)
             } compactTrailing: {
-                Text(context.presentedState.status.compactTitle)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale))
-                    .minimumScaleFactor(0.72)
-                    .lineLimit(1)
+                AgentRunCompactTrailingView(state: context.presentedState)
+                    .agentRunPalette(on: .host)
             } minimal: {
-                AgentRunIslandCompactMark(status: context.presentedState.status)
+                AgentRunIslandCompactMark(state: context.presentedState, isBot: context.attributes.bot != nil)
+                    .agentRunPalette(on: .host)
             }
             .widgetURL(AgentRunTapTarget.url(attributes: context.attributes, sessionID: context.presentedState.sessionID, activityID: context.activityID))
-            .keylineTint(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale))
+            // The keyline only rings the iPhone's black Island, so it keeps the dark hues.
+            .keylineTint(AgentRunPalette.dark.status(context.presentedState.status, isStale: context.presentedState.isStale))
+        }
+        .supplementalActivityFamilies([.small])
+    }
+}
+
+/// The activity's content view for every family: the two-line small layout on the
+/// Apple Watch Smart Stack and CarPlay (#1400), the Lock Screen card everywhere else.
+/// The family is read here because ActivityConfiguration's builder closures get no
+/// environment.
+private struct AgentRunActivityContent: View {
+    let context: ActivityViewContext<AgentRunActivityAttributes>
+    @Environment(\.activityFamily) private var family
+
+    var body: some View {
+        if family == .small {
+            AgentRunSmallView(state: context.presentedState, isBot: context.attributes.bot != nil)
+        } else {
+            AgentRunLockScreenView(context: context)
+        }
+    }
+}
+
+/// Title first, then state (#1400): the full ask or outcome title, the elapsed timer
+/// while working, or the latest-status wording for stale work. Stale asks stay asks.
+/// No excerpt, chips or pill: the card has to make sense at a glance without a tap.
+private struct AgentRunSmallView: View {
+    let state: AgentRunActivityAttributes.ContentState
+    let isBot: Bool
+    @Environment(\.agentRunPalette) private var palette
+
+    private var presentation: AgentRunCompactPresentation { AgentRunCompactPresentation(state: state) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: AgentRunStatusStyle.symbolName(for: state.status))
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(palette.status(state.status, isStale: state.isStale))
+                    .widgetAccentable()
+                    // Working has no status words on the second line, so the glyph names the phase.
+                    .accessibilityLabel(state.status.title)
+                    .accessibilityHidden(presentation != .working)
+
+                Text(state.sessionTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(palette.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            statusLine
+                .font(.subheadline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var statusLine: some View {
+        switch presentation {
+        case .working:
+            AgentRunElapsedTimerText(startedAt: state.startedAt, alignment: .leading)
+                .foregroundStyle(palette.secondaryText)
+        case .staleWork:
+            Text(AgentRunStaleBotPresentation.presentation(state: state, isBot: isBot)?.lead
+                 ?? String(localized: "Latest status shown"))
+                .foregroundStyle(palette.secondaryText)
+        case .approval, .clarification, .waiting, .complete, .failed, .cancelled:
+            Text(state.status.title)
+                .foregroundStyle(state.isStale ? palette.secondaryText : palette.status(state.status, isStale: false))
         }
     }
 }
@@ -52,6 +132,7 @@ struct AgentRunLiveActivityWidget: Widget {
 private struct AgentRunExpandedIslandBottomView: View {
     let state: AgentRunActivityAttributes.ContentState
     let isBot: Bool
+    @Environment(\.agentRunPalette) private var palette
 
     /// One line without reply text: what the agent is doing, then its counts.
     private var countsLine: String {
@@ -66,18 +147,16 @@ private struct AgentRunExpandedIslandBottomView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            AgentRunProgressRail(status: state.status)
-
             if state.responseExcerpt.isEmpty || showsStaleWaitingAnswer {
                 Text(countsLine)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                    .foregroundStyle(palette.secondaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
             } else {
                 Text(state.responseExcerpt)
                     .font(.caption2)
-                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                    .foregroundStyle(palette.secondaryText)
                     .lineLimit(2)
                     .truncationMode(.tail)
             }
@@ -91,11 +170,12 @@ private struct AgentRunExpandedIslandBottomView: View {
 
 private struct AgentRunLockScreenView: View {
     let context: ActivityViewContext<AgentRunActivityAttributes>
+    @Environment(\.agentRunPalette) private var palette
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            activityProgressRow(progressWidth: 112)
+            activityRow
             // A stale ask stays on the chips, including its answer action, even when
             // reply text would otherwise take this row. Counts stay counts.
             if isBot, (showsStaleWaitingAnswer || context.presentedState.responseExcerpt.isEmpty), !botChips.isEmpty {
@@ -150,12 +230,12 @@ private struct AgentRunLockScreenView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(isBot ? "Hermex · \(String(localized: "Bot"))" : "Hermex")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                    .foregroundStyle(palette.secondaryText)
                     .textCase(.uppercase)
 
                 Text(context.presentedState.sessionTitle)
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
+                    .foregroundStyle(palette.primaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .minimumScaleFactor(0.82)
@@ -168,37 +248,29 @@ private struct AgentRunLockScreenView: View {
         }
     }
 
-    private func activityProgressRow(progressWidth: CGFloat) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text(activityText)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .layoutPriority(1)
-
-            Spacer(minLength: 8)
-
-            AgentRunProgressRail(status: context.presentedState.status)
-                .frame(width: progressWidth)
-        }
+    private var activityRow: some View {
+        Text(activityText)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(palette.primaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
     }
 
     private var transcriptPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(excerptText)
                 .font(.caption)
-                .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                .foregroundStyle(palette.secondaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale).opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(palette.status(context.presentedState.status, isStale: context.presentedState.isStale).opacity(0.14), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(AgentRunLiveActivityTheme.stroke, lineWidth: 1)
+                .stroke(palette.stroke, lineWidth: 1)
         )
     }
 
@@ -220,17 +292,18 @@ private struct AgentRunLockScreenView: View {
 private struct AgentRunChipRow: View {
     let chips: [AgentRunDetailChip]
     let isDimmed: Bool
+    @Environment(\.agentRunPalette) private var palette
 
     var body: some View {
         HStack(spacing: 6) {
             ForEach(chips, id: \.self) { chip in
                 label(for: chip)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(isDimmed || !chip.isCount ? AgentRunLiveActivityTheme.secondaryText : AgentRunLiveActivityTheme.primaryText)
+                    .foregroundStyle(isDimmed || !chip.isCount ? palette.secondaryText : palette.primaryText)
                     .lineLimit(1)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .background(palette.fill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
         }
         .accessibilityElement(children: .combine)
@@ -256,6 +329,7 @@ private struct AgentRunLeadingMark: View {
     let status: AgentRunActivityStatus
     let isStale: Bool
     var size: CGFloat = 22
+    @Environment(\.agentRunPalette) private var palette
 
     private var avatar: UIImage? {
         AgentRunActivityAvatarFile.url(named: bot?.avatarFile).flatMap { UIImage(contentsOfFile: $0.path) }
@@ -267,9 +341,10 @@ private struct AgentRunLeadingMark: View {
                 .frame(width: size, height: size)
                 .opacity(isStale ? 0.6 : 1)
                 .overlay(alignment: .bottomTrailing) {
-                    Circle().fill(AgentRunStatusStyle.color(for: status, isStale: isStale))
+                    Circle().fill(palette.status(status, isStale: isStale))
                         .frame(width: size * 0.32, height: size * 0.32)
-                        .overlay(Circle().stroke(AgentRunLiveActivityTheme.background, lineWidth: 2))
+                        .overlay(Circle().stroke(palette.avatarOutline, lineWidth: 2))
+                        .widgetAccentable()
                         .offset(x: 2, y: 2)
                 }
                 .accessibilityHidden(true)
@@ -283,13 +358,14 @@ private struct AgentRunIslandBadge: View {
     let status: AgentRunActivityStatus
     let bot: AgentRunActivityBot?
     let title: String
+    @Environment(\.agentRunPalette) private var palette
 
     var body: some View {
         HStack(spacing: 6) {
             AgentRunLeadingMark(bot: bot, status: status, isStale: false)
             Text(bot == nil ? "Hermex" : title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
+                .foregroundStyle(palette.primaryText)
                 .lineLimit(1)
         }
     }
@@ -297,49 +373,108 @@ private struct AgentRunIslandBadge: View {
 
 private struct AgentRunIslandStatusView: View {
     let state: AgentRunActivityAttributes.ContentState
+    @Environment(\.agentRunPalette) private var palette
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 3) {
             Text(state.status.title)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AgentRunStatusStyle.color(for: state.status, isStale: state.isStale))
+                .foregroundStyle(palette.status(state.status, isStale: state.isStale))
                 .lineLimit(1)
 
             if state.isFinal {
                 Text("Ready")
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                    .foregroundStyle(palette.secondaryText)
             } else if state.isStale {
                 Text("Latest")
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                    .foregroundStyle(palette.secondaryText)
             } else {
                 HStack(spacing: 3) {
                     Circle()
-                        .fill(AgentRunLiveActivityTheme.liveDot)
+                        .fill(palette.liveDot)
                         .frame(width: 4, height: 4)
                     AgentRunElapsedTimerText(startedAt: state.startedAt, alignment: .trailing)
                 }
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+                .foregroundStyle(palette.secondaryText)
             }
         }
     }
 }
 
+/// The compact leading and minimal glyph. It names the working phase on its own, so
+/// it carries the full status for VoiceOver (#1398).
 private struct AgentRunIslandCompactMark: View {
-    let status: AgentRunActivityStatus
+    let state: AgentRunActivityAttributes.ContentState
+    let isBot: Bool
+    @Environment(\.agentRunPalette) private var palette
+
+    private var status: AgentRunActivityStatus { state.status }
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(AgentRunStatusStyle.color(for: status, isStale: false).opacity(0.25))
+                .fill(palette.status(status, isStale: false).opacity(0.25))
 
             Image(systemName: AgentRunStatusStyle.symbolName(for: status))
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(AgentRunStatusStyle.color(for: status, isStale: false))
+                .foregroundStyle(palette.status(status, isStale: false))
         }
+        .widgetAccentable()
         .frame(width: 22, height: 22)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// "Hermex, Thinking". Stale work says it shows the latest status, or for a Bot
+    /// that it is disconnected; a stale Bot also says how to recover (#584).
+    private var accessibilityLabel: String {
+        let compact = AgentRunCompactPresentation(state: state)
+        let stale = AgentRunStaleBotPresentation.presentation(state: state, isBot: isBot)
+        var parts = ["Hermex"]
+        if compact == .staleWork {
+            parts.append(stale?.lead ?? String(localized: "Latest status shown"))
+        } else {
+            parts.append(status.title)
+        }
+        if let stale, compact == .staleWork || stale.isPendingInput {
+            parts.append(stale.action)
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// Compact trailing: empty while working, one short word for an ask, an outcome, or
+/// stale work (#1398). The leading mark already reads the full status, so VoiceOver
+/// skips the word.
+private struct AgentRunCompactTrailingView: View {
+    let state: AgentRunActivityAttributes.ContentState
+    @Environment(\.agentRunPalette) private var palette
+
+    var body: some View {
+        if let word {
+            Text(word)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(palette.status(state.status, isStale: state.isStale))
+                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var word: String? {
+        switch AgentRunCompactPresentation(state: state) {
+        case .working: nil
+        case .approval: String(localized: "Approve")
+        case .clarification: String(localized: "Question")
+        case .waiting: String(localized: "Waiting")
+        case .complete: String(localized: "Done")
+        case .failed: String(localized: "Failed")
+        case .cancelled: String(localized: "Stopped")
+        case .staleWork: String(localized: "Latest")
+        }
     }
 }
 
@@ -347,6 +482,7 @@ private struct AgentRunStatusDot: View {
     let status: AgentRunActivityStatus
     let isStale: Bool
     var size: CGFloat = 22
+    @Environment(\.agentRunPalette) private var palette
 
     var body: some View {
         Image(systemName: symbolName)
@@ -355,10 +491,11 @@ private struct AgentRunStatusDot: View {
             .frame(width: size, height: size)
             .background(color.opacity(0.18), in: Circle())
             .overlay(Circle().stroke(color.opacity(0.36), lineWidth: 1))
+            .widgetAccentable()
     }
 
     var color: Color {
-        AgentRunStatusStyle.color(for: status, isStale: isStale)
+        palette.status(status, isStale: isStale)
     }
 
     var symbolName: String {
@@ -366,50 +503,14 @@ private struct AgentRunStatusDot: View {
     }
 }
 
-private struct AgentRunProgressRail: View {
-    let status: AgentRunActivityStatus
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule(style: .continuous)
-                    .fill(AgentRunLiveActivityTheme.railBackground)
-
-                Capsule(style: .continuous)
-                    .fill(AgentRunStatusStyle.color(for: status, isStale: false))
-                    .frame(width: max(12, geometry.size.width * progressFraction))
-            }
-        }
-        .frame(height: 6)
-    }
-
-    private var progressFraction: CGFloat {
-        switch status {
-        case .starting:
-            0.14
-        case .thinking:
-            0.3
-        case .usingTool, .searchingFiles, .readingFiles, .runningCommand:
-            0.52
-        case .waiting, .waitingForApproval, .waitingForClarification:
-            0.62
-        case .responding:
-            0.78
-        case .complete:
-            1
-        case .failed, .cancelled:
-            1
-        }
-    }
-}
-
 private struct AgentRunTimerPill: View {
     let state: AgentRunActivityAttributes.ContentState
+    @Environment(\.agentRunPalette) private var palette
 
     var body: some View {
         HStack(spacing: 4) {
             Circle()
-                .fill(state.isFinal ? AgentRunStatusStyle.color(for: state.status, isStale: state.isStale) : AgentRunLiveActivityTheme.liveDot)
+                .fill(state.isFinal ? palette.status(state.status, isStale: state.isStale) : palette.liveDot)
                 .frame(width: 5, height: 5)
 
             if state.isFinal {
@@ -419,13 +520,13 @@ private struct AgentRunTimerPill: View {
             }
         }
         .font(.caption2.weight(.semibold))
-        .foregroundStyle(AgentRunLiveActivityTheme.secondaryText)
+        .foregroundStyle(palette.secondaryText)
         .lineLimit(1)
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(width: 62, alignment: .center)
-        .background(AgentRunLiveActivityTheme.pillBackground, in: Capsule(style: .continuous))
-        .overlay(Capsule(style: .continuous).stroke(AgentRunLiveActivityTheme.stroke, lineWidth: 1))
+        .background(palette.fill, in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).stroke(palette.stroke, lineWidth: 1))
     }
 }
 
@@ -453,46 +554,139 @@ private struct AgentRunElapsedTimerText: View {
     }
 }
 
-private enum AgentRunLiveActivityTheme {
-    static let background = Color(red: 0.025, green: 0.028, blue: 0.038)
-    static let primaryText = Color.white
-    static let secondaryText = Color.white.opacity(0.68)
-    static let stroke = Color.white.opacity(0.13)
-    static let pillBackground = Color.white.opacity(0.08)
-    static let railBackground = Color.white.opacity(0.14)
-    static let liveDot = Color(red: 0.35, green: 0.95, blue: 0.7)
+/// Every color the Live Activity draws, chosen from the surface under it and from how the
+/// system renders it (#1399). `agentRunPalette(on:)` builds one per surface; views read it
+/// from the environment. Status glyphs and words carry status in every treatment.
+struct AgentRunPalette {
+    /// What the activity draws on.
+    enum Surface {
+        /// The fixed near-black card: dark whatever the system appearance.
+        case darkCard
+        /// System material or a host's own background (the iPhone Island, a Mac menu
+        /// bar): light or dark per the environment's `colorScheme`.
+        case host
+
+        /// iOS 26 and later asks for system material; iOS 18–25 keeps the dark card.
+        static var lockScreen: Surface {
+            if #available(iOS 26, *) { .host } else { .darkCard }
+        }
+
+        /// nil asks for the system default material.
+        var backgroundTint: Color? { self == .darkCard ? AgentRunPalette.darkCardBackground : nil }
+        var actionForeground: Color? { self == .darkCard ? .white : nil }
+    }
+
+    /// Today's look: the dark card in full color. The environment default, and the
+    /// Island keyline's colors.
+    static let dark = AgentRunPalette(surface: .darkCard, colorScheme: .dark, renderingMode: .fullColor,
+                                      isLuminanceReduced: false, increasedContrast: false)
+
+    private static let darkCardBackground = Color(red: 0.025, green: 0.028, blue: 0.038)
+
+    let primaryText: Color
+    let secondaryText: Color
+    let stroke: Color
+    /// Chip and timer pill fill: kept faint so the background shows through.
+    let fill: Color
+    /// Rings the avatar's status badge so it reads as cut out of the background.
+    let avatarOutline: Color
+    private let isDark: Bool
+    /// Replaces every status hue: secondary when luminance is reduced (Always-On),
+    /// primary when the system tints or desaturates the activity.
+    private let statusOverride: Color?
+
+    /// Rules in order: reduced luminance mutes status, accented or vibrant rendering
+    /// draws in hierarchical primary and secondary, and full color contrasts with the
+    /// actual background, which is always dark for the dark card.
+    init(surface: Surface, colorScheme: ColorScheme, renderingMode: WidgetRenderingMode,
+         isLuminanceReduced: Bool, increasedContrast: Bool) {
+        isDark = surface == .darkCard || colorScheme == .dark
+        let isMonochrome = renderingMode != .fullColor
+        let ink: Color = isDark ? .white : .black
+        if isMonochrome {
+            primaryText = .primary
+            secondaryText = .secondary
+            stroke = Color.primary.opacity(increasedContrast ? 0.3 : 0.15)
+            fill = Color.primary.opacity(0.08)
+        } else {
+            primaryText = ink
+            secondaryText = ink.opacity(isDark ? (increasedContrast ? 0.82 : 0.68) : (increasedContrast ? 0.78 : 0.6))
+            stroke = ink.opacity(increasedContrast ? 0.3 : (isDark ? 0.13 : 0.12))
+            fill = ink.opacity(isDark ? 0.08 : 0.06)
+        }
+        avatarOutline = isDark ? Self.darkCardBackground : .white
+        statusOverride = isLuminanceReduced ? secondaryText : (isMonochrome ? primaryText : nil)
+    }
+
+    func status(_ status: AgentRunActivityStatus, isStale: Bool) -> Color {
+        if let statusOverride { return statusOverride }
+        let hue = isStale ? Self.neutral : Self.hue(for: status)
+        return isDark ? hue.dark : hue.light
+    }
+
+    /// The working dot beside the timer.
+    var liveDot: Color {
+        statusOverride ?? (isDark ? Color(red: 0.35, green: 0.95, blue: 0.7) : Color(red: 0.06, green: 0.5, blue: 0.32))
+    }
+
+    private static let neutral = (dark: Color.white.opacity(0.54), light: Color.black.opacity(0.45))
+
+    /// Bright hues for dark backgrounds, darker variants of the same hue for light ones.
+    private static func hue(for status: AgentRunActivityStatus) -> (dark: Color, light: Color) {
+        switch status {
+        case .starting, .thinking, .responding:
+            (Color(red: 1.0, green: 0.82, blue: 0.18), Color(red: 0.54, green: 0.42, blue: 0.0))
+        case .usingTool:
+            (Color(red: 0.50, green: 0.72, blue: 1.0), Color(red: 0.12, green: 0.37, blue: 0.75))
+        case .searchingFiles:
+            (Color(red: 0.22, green: 0.92, blue: 0.95), Color(red: 0.0, green: 0.45, blue: 0.48))
+        case .readingFiles:
+            (Color(red: 0.58, green: 0.78, blue: 1.0), Color(red: 0.17, green: 0.40, blue: 0.70))
+        case .runningCommand:
+            (Color(red: 0.76, green: 0.55, blue: 1.0), Color(red: 0.42, green: 0.25, blue: 0.72))
+        case .waiting, .waitingForApproval:
+            (Color(red: 1.0, green: 0.58, blue: 0.24), Color(red: 0.72, green: 0.35, blue: 0.0))
+        case .waitingForClarification:
+            (Color(red: 1.0, green: 0.65, blue: 0.30), Color(red: 0.66, green: 0.36, blue: 0.04))
+        case .complete:
+            (Color(red: 0.35, green: 0.95, blue: 0.55), Color(red: 0.12, green: 0.56, blue: 0.24))
+        case .failed:
+            (Color(red: 1.0, green: 0.32, blue: 0.32), Color(red: 0.70, green: 0.15, blue: 0.12))
+        case .cancelled:
+            neutral
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// Set by `agentRunPalette(on:)`; defaults to the dark card.
+    @Entry var agentRunPalette = AgentRunPalette.dark
+}
+
+/// Reads how the system draws this view and hands the matching palette down. The reads
+/// live in a view modifier because ActivityConfiguration's builder closures get no
+/// environment.
+private struct AgentRunPaletteScope: ViewModifier {
+    let surface: AgentRunPalette.Surface
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+    func body(content: Content) -> some View {
+        content.environment(\.agentRunPalette, AgentRunPalette(
+            surface: surface, colorScheme: colorScheme, renderingMode: renderingMode,
+            isLuminanceReduced: isLuminanceReduced, increasedContrast: contrast == .increased))
+    }
+}
+
+private extension View {
+    func agentRunPalette(on surface: AgentRunPalette.Surface) -> some View {
+        modifier(AgentRunPaletteScope(surface: surface))
+    }
 }
 
 private enum AgentRunStatusStyle {
-    static func color(for status: AgentRunActivityStatus, isStale: Bool) -> Color {
-        if isStale {
-            return Color.white.opacity(0.52)
-        }
-
-        switch status {
-        case .starting, .thinking, .responding:
-            return Color(red: 1.0, green: 0.82, blue: 0.18)
-        case .usingTool:
-            return Color(red: 0.50, green: 0.72, blue: 1.0)
-        case .searchingFiles:
-            return Color(red: 0.22, green: 0.92, blue: 0.95)
-        case .readingFiles:
-            return Color(red: 0.58, green: 0.78, blue: 1.0)
-        case .runningCommand:
-            return Color(red: 0.76, green: 0.55, blue: 1.0)
-        case .waiting, .waitingForApproval:
-            return Color(red: 1.0, green: 0.58, blue: 0.24)
-        case .waitingForClarification:
-            return Color(red: 1.0, green: 0.65, blue: 0.30)
-        case .complete:
-            return Color(red: 0.35, green: 0.95, blue: 0.55)
-        case .failed:
-            return Color(red: 1.0, green: 0.32, blue: 0.32)
-        case .cancelled:
-            return Color.white.opacity(0.56)
-        }
-    }
-
     static func symbolName(for status: AgentRunActivityStatus) -> String {
         switch status {
         case .starting:

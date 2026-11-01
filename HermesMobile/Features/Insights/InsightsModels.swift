@@ -1,5 +1,8 @@
 import Foundation
 
+/// One window's usage: webui's `GET /api/insights`, or a Hermes host's analytics mapped into it
+/// (`InsightsResponse(hermesUsage:models:counts:now:)`, #1074). Each type's decoder sits in an
+/// extension so its memberwise initializer stays for that mapping.
 struct InsightsResponse: Decodable, Equatable {
     let periodDays: Int?
     let totalSessions: Int?
@@ -30,7 +33,9 @@ struct InsightsResponse: Decodable, Equatable {
         case activityByDay
         case activityByHour
     }
+}
 
+extension InsightsResponse {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         periodDays = container.decodeLossyIntIfPresent(forKey: .periodDays)
@@ -51,6 +56,9 @@ struct InsightsResponse: Decodable, Equatable {
 
 struct InsightsModelBreakdown: Decodable, Equatable {
     let model: String?
+    /// The billing provider, which only a Hermes host reports; one model can be billed through
+    /// two, and each is its own row.
+    let provider: String?
     let sessions: Int?
     let inputTokens: Int?
     let outputTokens: Int?
@@ -64,6 +72,7 @@ struct InsightsModelBreakdown: Decodable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case model
+        case provider
         case sessions
         case inputTokens
         case outputTokens
@@ -75,10 +84,13 @@ struct InsightsModelBreakdown: Decodable, Equatable {
         case tokenShare
         case costShare
     }
+}
 
+extension InsightsModelBreakdown {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         model = container.decodeLossyStringIfPresent(forKey: .model)
+        provider = container.decodeLossyStringIfPresent(forKey: .provider)
         sessions = container.decodeLossyIntIfPresent(forKey: .sessions)
         inputTokens = container.decodeLossyIntIfPresent(forKey: .inputTokens)
         outputTokens = container.decodeLossyIntIfPresent(forKey: .outputTokens)
@@ -113,7 +125,9 @@ struct InsightsDailyToken: Decodable, Equatable {
         case sessions
         case cost
     }
+}
 
+extension InsightsDailyToken {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         date = container.decodeLossyStringIfPresent(forKey: .date)

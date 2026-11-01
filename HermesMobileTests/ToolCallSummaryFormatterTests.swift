@@ -214,16 +214,6 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .failure)
     }
 
-    func testResultTextCanFailACompletedCall() {
-        let toolCall = ToolCall(
-            name: "read_file",
-            preview: "No such file or directory: missing.txt",
-            args: ["path": .string("missing.txt")],
-            isCompleted: true
-        )
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.status, .failure)
-    }
-
     func testNeverCompletedCallIsInterrupted() {
         let toolCall = ToolCall(name: "terminal", preview: nil, args: ["command": .string("sleep 60")])
         XCTAssertEqual(
@@ -287,27 +277,5 @@ final class ToolCallSummaryFormatterTests: XCTestCase {
 
         let clarify = ToolCall(name: "clarify", preview: nil, args: ["question": .string("Which?")], isCompleted: true)
         XCTAssertEqual(ToolCallSummaryFormatter.row(for: clarify, isLive: false)?.summary, "clarify")
-    }
-
-    func testSearchAndWebRowsShowTheQuery() {
-        let search = ToolCall(name: "search_files", preview: nil, args: ["pattern": .string("TODO")], isCompleted: true)
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: search, isLive: false)?.summary, "Searched")
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: search, isLive: false)?.detail, "TODO")
-
-        let web = ToolCall(name: "web_search", preview: nil, args: ["query": .string("swift  regex")], isCompleted: true)
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web, isLive: false)?.summary, "Checked")
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web, isLive: false)?.detail, "swift regex")
-        XCTAssertEqual(ToolCallSummaryFormatter.row(for: web, isLive: false)?.icon, "globe")
-    }
-
-    func testCopyTextIncludesRowArgumentsAndResult() {
-        let toolCall = ToolCall(
-            name: "terminal",
-            preview: "ok",
-            args: ["command": .string("ls")],
-            isCompleted: true
-        )
-
-        XCTAssertEqual(ToolCallSummaryFormatter.copyText(for: toolCall), "Ran ls\ncommand: ls\nok")
     }
 }

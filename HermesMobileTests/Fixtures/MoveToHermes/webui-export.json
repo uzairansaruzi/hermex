@@ -1,0 +1,34 @@
+{
+  "session_id": "a1b2c3d4e5f6",
+  "title": "Plan the launch",
+  "workspace": "/Users/test/projects/launch",
+  "model": "anthropic/claude-sonnet-5-5",
+  "model_provider": "openrouter",
+  "messages": [
+    {"role": "system", "content": "You are Hermes."},
+    {"role": "user", "content": "Use token [REDACTED] for the deploy.", "_ts": 1791000000.25},
+    {"role": "user", "content": [
+      {"type": "text", "text": "What is in this picture?"},
+      {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="}}
+    ], "timestamp": 1791000010, "attachments": [{"name": "dot.png", "path": "/Users/test/projects/launch/dot.png", "mime": "image/png"}]},
+    {"role": "assistant", "content": "", "reasoning": "Check the workspace first.", "tool_calls": [
+      {"id": "call_1", "type": "function", "function": {"name": "terminal", "arguments": "{\"command\": \"ls\"}"}}
+    ], "_ts": 1791000020},
+    {"role": "tool", "name": "terminal", "tool_call_id": "call_1", "content": "README.md\nsrc", "_ts": 1791000021},
+    {"role": "assistant", "content": "The picture is a single dot.", "reasoning_content": 7, "_ts": 1791000030}
+  ],
+  "tool_calls": [{"name": "terminal", "args": {"command": "ls"}, "result": "README.md\nsrc"}],
+  "created_at": 1791000000,
+  "updated_at": 1791000030,
+  "pinned": true,
+  "archived": true,
+  "project_id": "p1",
+  "profile": "research",
+  "input_tokens": 1200,
+  "output_tokens": 340,
+  "estimated_cost": 0.0123,
+  "cache_read_tokens": 800,
+  "cache_write_tokens": 60,
+  "personality": "concise",
+  "context_messages": [{"role": "user", "content": "compacted"}]
+}

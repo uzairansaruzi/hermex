@@ -37,7 +37,16 @@ final class SSEClient: SSEStreamingClient {
             onEvent: onEvent
         )
         var config = EventSource.Config(handler: handler, url: url)
-        config.connectionErrorHandler = { _ in .shutdown }
+        config.connectionErrorHandler = { [handler] error in
+            // Reconnection is owned by the consumers (chat stream resume, approval and
+            // clarify fallback polling), so the library must not retry on its own.
+            // LDSwiftEventSource skips `handler.onError` when this returns `.shutdown`
+            // (see `dispatchError`), which left a dropped socket silent: the consumer kept
+            // treating the stream as attached and never fell back or reopened it.
+            // Deliver the error ourselves so `.transportError` reaches the consumer.
+            handler.onError(error: error)
+            return .shutdown
+        }
         // Custom headers merged underneath the built-ins so the built-ins win on
         // collision; an empty list leaves the built-in three unchanged (#255).
         config.headers = customHeaderProvider().merged(under: [

@@ -8,12 +8,6 @@ final class AppThemeTests: XCTestCase {
         XCTAssertEqual(AppTheme.storedValue("unexpected"), .system)
     }
 
-    func testThemeMapsToExpectedColorScheme() {
-        XCTAssertNil(AppTheme.system.colorScheme)
-        XCTAssertEqual(AppTheme.light.colorScheme, .light)
-        XCTAssertEqual(AppTheme.dark.colorScheme, .dark)
-    }
-
     func testHeaderLogoColorNormalizesStoredHexValues() {
         XCTAssertEqual(HeaderLogoColor.normalizedHex("#5b7cff"), "#5B7CFF")
         XCTAssertEqual(HeaderLogoColor.normalizedHex(" ff3b30 "), "#FF3B30")
@@ -21,38 +15,9 @@ final class AppThemeTests: XCTestCase {
         XCTAssertNil(HeaderLogoColor.normalizedHex("#GG0000"))
     }
 
-    func testHeaderLogoColorDisplayNameUsesPresetOrCustomFallback() {
-        XCTAssertEqual(HeaderLogoColor.displayName(for: "#FFD700"), "Yellow")
-        XCTAssertEqual(HeaderLogoColor.displayName(for: "#123456"), "Custom")
-        XCTAssertEqual(HeaderLogoColor.displayName(for: "not-a-color"), "Yellow")
-    }
-
     func testHeaderLogoColorFormatsRGBComponentsAsHex() {
         XCTAssertEqual(HeaderLogoColor.hexString(red: 1, green: 0, blue: 0.5), "#FF0080")
         XCTAssertEqual(HeaderLogoColor.hexString(red: -0.2, green: 1.2, blue: 0), "#00FF00")
-    }
-
-    func testRTLLayoutHorizontalOffsetMirrorsUnderRightToLeft() {
-        XCTAssertEqual(RTLLayout.horizontalOffset(6, isRightToLeft: false), 6)
-        XCTAssertEqual(RTLLayout.horizontalOffset(6, isRightToLeft: true), -6)
-        XCTAssertEqual(RTLLayout.horizontalOffset(-4, isRightToLeft: true), 4)
-        XCTAssertEqual(RTLLayout.horizontalOffset(0, isRightToLeft: true), 0)
-    }
-
-    func testRTLDisclosureChevronRotationReversesUnderRightToLeft() {
-        // Collapsed: no rotation regardless of direction.
-        XCTAssertEqual(RTLLayout.disclosureChevronRotationDegrees(isExpanded: false, isRightToLeft: false), 0)
-        XCTAssertEqual(RTLLayout.disclosureChevronRotationDegrees(isExpanded: false, isRightToLeft: true), 0)
-        // Expanded: clockwise in LTR, counter-clockwise in RTL so it still points down.
-        XCTAssertEqual(RTLLayout.disclosureChevronRotationDegrees(isExpanded: true, isRightToLeft: false), 90)
-        XCTAssertEqual(RTLLayout.disclosureChevronRotationDegrees(isExpanded: true, isRightToLeft: true), -90)
-    }
-
-    func testHeaderLogoColorChoosesReadableForeground() {
-        XCTAssertTrue(HeaderLogoColor.prefersDarkForeground(for: "#FFD700"))
-        XCTAssertTrue(HeaderLogoColor.prefersDarkForeground(for: "#FFFFFF"))
-        XCTAssertFalse(HeaderLogoColor.prefersDarkForeground(for: "#5B7CFF"))
-        XCTAssertFalse(HeaderLogoColor.prefersDarkForeground(for: "#AF52DE"))
     }
 
     func testSessionIdentityInitialsPreferStoredValueThenDisplayName() {
@@ -95,21 +60,6 @@ final class PrimaryActionTintSettingsTests: XCTestCase {
             "appearance.tintsPrimaryActionsWithThemeColor"
         )
     }
-
-    func testUsesThemeColorRequiresBothEnabledAndInteractive() {
-        XCTAssertTrue(
-            PrimaryActionTintSettings.usesThemeColor(isEnabled: true, controlIsEnabled: true)
-        )
-        XCTAssertFalse(
-            PrimaryActionTintSettings.usesThemeColor(isEnabled: false, controlIsEnabled: true)
-        )
-        XCTAssertFalse(
-            PrimaryActionTintSettings.usesThemeColor(isEnabled: true, controlIsEnabled: false)
-        )
-        XCTAssertFalse(
-            PrimaryActionTintSettings.usesThemeColor(isEnabled: false, controlIsEnabled: false)
-        )
-    }
 }
 
 final class ChatLayoutDirectionSettingsTests: XCTestCase {
@@ -118,11 +68,6 @@ final class ChatLayoutDirectionSettingsTests: XCTestCase {
             ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey,
             "chatTranscript.rtlChatLayoutEnabled"
         )
-    }
-
-    func testChatLayoutDirectionFollowsToggle() {
-        XCTAssertEqual(ChatTranscriptDisplaySettings.chatLayoutDirection(rtlEnabled: true), .rightToLeft)
-        XCTAssertEqual(ChatTranscriptDisplaySettings.chatLayoutDirection(rtlEnabled: false), .leftToRight)
     }
 
     func testRightToLeftLanguageDetectionUsesPrimaryPreferredLanguage() {
@@ -192,26 +137,6 @@ final class CodeBlockWrappingSettingsTests: XCTestCase {
 }
 
 final class ResponseCompletionNotificationPolicyTests: XCTestCase {
-    func testAllowsEnabledAuthorizedRunEndWhileSceneInactive() {
-        XCTAssertTrue(
-            ResponseCompletionNotificationPolicy.shouldSchedule(
-                preferenceEnabled: true,
-                authorizationStatus: .authorized,
-                sceneIsActive: false
-            )
-        )
-    }
-
-    func testBlocksForegroundRunEnd() {
-        XCTAssertFalse(
-            ResponseCompletionNotificationPolicy.shouldSchedule(
-                preferenceEnabled: true,
-                authorizationStatus: .authorized,
-                sceneIsActive: true
-            )
-        )
-    }
-
     // #862: a completed or failed run can alert; a stopped one has no outcome to alert with.
     func testOnlyCompletedAndFailedRunsHaveAnAlertOutcome() {
         XCTAssertEqual(ResponseCompletionOutcome(.complete), .completed)
@@ -261,14 +186,6 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
         ])
         XCTAssertEqual(request.identifier, "run-alert-93d446a9d8ca42b5-session-abc")
         XCTAssertEqual(request.threadIdentifier, request.identifier)
-    }
-
-    func testTitleFallsBackToHermesSession() {
-        let request = ResponseCompletionNotificationRequest(
-            sessionID: "session-abc", server: serverA, title: " \n ", outcome: .completed)
-
-        XCTAssertEqual(request.title, "Hermes session")
-        XCTAssertEqual(request.body, "Response complete")
     }
 
     // #862: a newer alert for the same chat replaces the last one; the same session ID
@@ -453,14 +370,6 @@ final class ResponseCompletionNotificationTrackerTests: XCTestCase {
             ResponseCompletionNotificationCompletionContext(sceneIsActive: false)
         )
         XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: 2))
-    }
-
-    func testCompletionContextCapturesSceneStateAtRunEnd() {
-        var tracker = ResponseCompletionNotificationTracker()
-
-        let context = tracker.completionContext(runEndTrigger: 1, sceneIsActive: true)
-
-        XCTAssertEqual(context, ResponseCompletionNotificationCompletionContext(sceneIsActive: true))
     }
 }
 

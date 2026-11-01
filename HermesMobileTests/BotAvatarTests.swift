@@ -111,13 +111,35 @@ import XCTest
         XCTAssertEqual(Array(store.images(connectionID: connection).keys), ["ok"])
     }
 
+    /// Desktop uploads a 160x160 PNG copy of its drawn face; Hermex draws the face instead,
+    /// unless the look marks the asset as a photo, and keeps that answer for the revision.
+    func testDesktopFaceCopyDrawsTheFaceUnlessTheLookSaysPhoto() async {
+        let store = BotAvatarStore()
+        let wire = BotAvatarFixtureWire()
+        wire.assets = ["drawn": found(png(side: 160)), "photo": found(png(side: 160)), "upload": found(png(side: 256)),
+                       "broken": found("data:image/png;base64,AAAA")]
+        let connection = UUID()
+        func profile(_ name: String, kind: String) -> BotProfile {
+            BotProfile(row(name, extra: [
+                "has_avatar": .bool(true), "ui_meta_revisions": .object(["hermes-bots": .number(2)]),
+                "ui_meta": .object(["hermes-bots": .object(["imageKind": .string(kind), "shape": .string("cloud")])])
+            ]))!
+        }
+        let profiles = [profile("drawn", kind: "shape"), profile("photo", kind: "photo"), profile("upload", kind: "shape"),
+                        profile("broken", kind: "photo")]
+        await store.refresh(profiles, connectionID: connection, using: wire) {}
+        await store.refresh(profiles, connectionID: connection, using: wire) {}
+        XCTAssertEqual(Set(store.images(connectionID: connection).keys), ["photo", "upload"])
+        XCTAssertEqual(wire.calls.map { $0.1["name"]?.text }, ["drawn", "photo", "upload", "broken", "broken"])
+    }
+
     func testDecodeBoundsSizeAndRejectsOversizedPayloads() {
-        let image = BotAvatarStore.decode(found(png(side: 600)))
+        let image = BotAvatarStore.decode(found(png(side: 600)), photo: false)
         XCTAssertEqual(image?.size.width, CGFloat(BotAvatarStore.maxPixelSize))
         let oversized = "data:image/png;base64," + String(repeating: "A", count: BotAvatarStore.maxPayloadBytes)
-        XCTAssertNil(BotAvatarStore.decode(found(oversized)))
-        XCTAssertNil(BotAvatarStore.decode(.object(["found": .bool(false)])))
-        XCTAssertNil(BotAvatarStore.decode(.object(["found": .bool(true), "data": .string("data:image/png,notbase64")])))
+        XCTAssertNil(BotAvatarStore.decode(found(oversized), photo: true))
+        XCTAssertNil(BotAvatarStore.decode(.object(["found": .bool(false)]), photo: true))
+        XCTAssertNil(BotAvatarStore.decode(.object(["found": .bool(true), "data": .string("data:image/png,notbase64")]), photo: true))
     }
 }
 

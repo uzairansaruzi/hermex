@@ -233,8 +233,8 @@ struct OnboardingStepHeader: View {
 
 struct OnboardingAgentPromptCard: View {
     let prompt: String
-    @Binding var hasCopied: Bool
-    @State private var didCopyRecently = false
+    let isCopied: Bool
+    let onCopy: () -> Void
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     var body: some View {
@@ -250,18 +250,17 @@ struct OnboardingAgentPromptCard: View {
 
             Button {
                 UIPasteboard.general.string = prompt
-                hasCopied = true
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    didCopyRecently = true
+                    onCopy()
                 }
             } label: {
-                Label(didCopyRecently ? String(localized: "Copied") : String(localized: "Copy prompt"), systemImage: didCopyRecently ? "checkmark" : "doc.on.doc")
+                Label(isCopied ? String(localized: "Copied") : String(localized: "Copy prompt"), systemImage: isCopied ? "checkmark" : "doc.on.doc")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnboardingPrimaryButtonStyle())
-            .accessibilityLabel(didCopyRecently ? String(localized: "Agent setup prompt copied") : String(localized: "Copy agent setup prompt"))
+            .accessibilityLabel(isCopied ? String(localized: "Agent setup prompt copied") : String(localized: "Copy agent setup prompt"))
         }
         .padding(16)
         .background(

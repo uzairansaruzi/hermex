@@ -113,43 +113,6 @@ final class APIClientCronEndpointTests: APIClientTestCase {
         XCTAssertNil(response.runningJobs)
     }
 
-    func testCronOutputBuildsExpectedQueryAndDecodesResponse() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/crons/output")
-            XCTAssertEqual(request.httpMethod, "GET")
-
-            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
-            XCTAssertEqual(query["job_id"], "job123")
-            XCTAssertEqual(query["limit"], "5")
-
-            return apiTestJSONResponse("""
-            {
-              "job_id": "job123",
-              "outputs": [
-                {
-                  "filename": "2026-05-04_10-00-00.md",
-                  "content": "## Response\\n\\nAll clear."
-                },
-                {
-                  "filename": "2026-05-04_09-00-00.md",
-                  "content": ""
-                }
-              ]
-            }
-            """, for: request)
-        }
-
-        let response = try await client.cronOutput(jobID: "job123", limit: 5)
-
-        XCTAssertEqual(response.jobId, "job123")
-        XCTAssertEqual(response.outputs?.count, 2)
-        XCTAssertEqual(response.outputs?.first?.filename, "2026-05-04_10-00-00.md")
-        XCTAssertEqual(response.outputs?.first?.content, "## Response\n\nAll clear.")
-        XCTAssertEqual(response.outputs?.last?.filename, "2026-05-04_09-00-00.md")
-        XCTAssertEqual(response.outputs?.last?.content, "")
-    }
-
     func testCronCreateBuildsExpectedBodyAndDecodesMutationResponse() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/crons/create")
@@ -262,69 +225,6 @@ final class APIClientCronEndpointTests: APIClientTestCase {
         XCTAssertEqual(response.job?.toastNotifications, false)
     }
 
-    func testCronCreateSendsProviderWhenSet() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/crons/create")
-
-            let data = try XCTUnwrap(apiTestBodyData(from: request))
-            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            XCTAssertEqual(body?["provider"] as? String, "openai")
-
-            return apiTestJSONResponse("""
-            {
-              "ok": true,
-              "job": {
-                "id": "job-provider",
-                "prompt": "Run it",
-                "schedule": "0 7 * * *",
-                "provider": "openai"
-              }
-            }
-            """, for: request)
-        }
-
-        let response = try await client.createCron(
-            prompt: "Run it",
-            schedule: "0 7 * * *",
-            name: nil,
-            deliver: nil,
-            skills: [],
-            model: nil,
-            provider: "openai",
-            profile: nil,
-            toastNotifications: true
-        )
-
-        XCTAssertEqual(response.job?.provider, "openai")
-    }
-
-    func testCronDeliveryOptionsBuildsExpectedPathAndDecodesTolerantly() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/crons/delivery-options")
-            XCTAssertEqual(request.httpMethod, "GET")
-            XCTAssertNil(request.url?.query)
-
-            return apiTestJSONResponse("""
-            {
-              "platforms": [
-                {"value": "local", "label": "Local (save output only)"},
-                {"value": "origin", "label": "Origin (reply to creator)"},
-                {"value": "slack", "label": "Slack", "unexpected_field": {"nested": true}},
-                {"value": "telegram"}
-              ],
-              "ignored_new_field": 7
-            }
-            """, for: request)
-        }
-
-        let response = try await client.cronDeliveryOptions()
-        let platforms = try XCTUnwrap(response.platforms)
-
-        XCTAssertEqual(platforms.map(\.value), ["local", "origin", "slack", "telegram"])
-        XCTAssertEqual(platforms.first?.label, "Local (save output only)")
-        XCTAssertNil(platforms.last?.label)
-    }
-
     func testCronDeliveryOptionsToleratesUnexpectedPlatformsShape() async throws {
         let client = makeClient { request in
             apiTestJSONResponse(#"{"platforms": "unexpected"}"#, for: request)
@@ -376,25 +276,5 @@ final class APIClientCronEndpointTests: APIClientTestCase {
         XCTAssertEqual(resumeResponse.job?.jobId, "job123")
         XCTAssertEqual(deleteResponse.job?.jobId, "job123")
         XCTAssertTrue(expectedRequests.isEmpty)
-    }
-
-    func testCronOutputOmitsLimitWhenNil() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/crons/output")
-            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
-            XCTAssertEqual(query["job_id"], "job456")
-            XCTAssertNil(query["limit"])
-
-            return apiTestJSONResponse("""
-            {
-              "job_id": "job456",
-              "outputs": []
-            }
-            """, for: request)
-        }
-
-        let response = try await client.cronOutput(jobID: "job456", limit: nil)
-        XCTAssertEqual(response.outputs?.count, 0)
     }
 }

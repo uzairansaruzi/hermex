@@ -36,6 +36,10 @@ Apply `needs-manual-validation` sparingly: only when automated tests genuinely c
 
 Apply `release-blocker` at triage when a daily workflow is broken: sign-in, sending, streaming, a crash, or data loss. A bug report whose Impact is "Blocks work completely" is a prompt to check, not an automatic blocker.
 
+| Label | Combines with | Meaning |
+| --- | --- | --- |
+| `via-triage` | `needs-triage` | A user's Hermes agent drafted the issue with `.github/triage/PLAYBOOK.md`. Check its diagnosis against the source before trusting it. Issues posted from an account that cannot label lose it; their body ends with a "Triaged by" line instead. |
+
 > **Why no `needs-response` label?** It was considered ("maintainer replied, waiting on reporter") and judged redundant: `needs-info` already means the ball is in the reporter's court. Keep `needs-info` as the single waiting-on-reporter label.
 
 ## Other labels

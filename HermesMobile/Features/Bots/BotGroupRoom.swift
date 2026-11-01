@@ -94,13 +94,6 @@ struct BotRoomEvent: Identifiable, Equatable {
     }
     var isMessage: Bool { kind == "message.user" || kind == "message.member" }
 
-    /// The events that open a dated stretch of a room. Only user and member
-    /// messages carry a time; system rows neither show one nor date a gap.
-    static func gapStarts(in events: some Sequence<BotRoomEvent>) -> Set<Int> {
-        TranscriptTimeline.gapStarts(events.map {
-            (id: $0.seq, timestamp: ["message.user", "message.member"].contains($0.kind) ? $0.timestamp : nil)
-        })
-    }
     /// True once the user or a member has said something. System rows such as
     /// a rename don't count, so a room renamed before its first message is new.
     static func hasConversation(in events: some Sequence<BotRoomEvent>) -> Bool {

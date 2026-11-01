@@ -83,6 +83,15 @@ struct ToolCallDiff: Equatable {
         return partial.flatMap { diff(from: $0, args: args, resultIsCutOff: result.isCutOff) }
     }
 
+    /// Whether a write's result says its args did not land: an envelope reporting
+    /// an error, failure, or no-op, or a plain-text result that reads as an error.
+    /// Plain success text, such as an MCP server's "Successfully wrote to …",
+    /// still counts as landed. The tool group summary counts a write that did not
+    /// land as another action, not a changed file.
+    static func resultReportsNoChange(for toolCall: ToolCall) -> Bool {
+        ResultReading(preview: toolCall.preview).reportsNoChange
+    }
+
     // MARK: - Sources
 
     private struct Candidate {
@@ -142,7 +151,29 @@ struct ToolCallDiff: Equatable {
                 // The webui unwraps a failed edit's `error` into plain text, so any
                 // other complete, non-envelope result means the args did not land.
                 allowsArgumentDiff = false
+                reportsNoChange = plainText.map(Self.looksLikeWriteError) ?? false
             }
+        }
+
+        /// hermes-agent's write and patch errors carry no marker once the webui
+        /// unwraps them, so they are recognized only by how they start. Anything
+        /// else, including success text that names an alarming path, landed.
+        /// Sources at the pinned hermes-agent commit are noted per lead.
+        private static let writeErrorLead = "^(?:" + [
+            "could not find",                          // tools/fuzzy_match.py:397, tools/file_operations.py:1329
+            #"found \d+ (?:approximate )?matches"#,    // tools/fuzzy_match.py:372, :377
+            "old_string is (?:empty|only whitespace)", // tools/fuzzy_match.py:350, :358
+            "no edit was applied",                     // tools/fuzzy_match.py:20
+            "escape-drift detected",                   // tools/fuzzy_match.py:416, :445
+            "failed to",                               // tools/file_operations.py:1091, :1103, :1297, :1385, :1402
+            "refusing to (?:write|overwrite)",         // tools/file_operations.py:1119, :1137, tools/file_tools_write_guards.py:532
+            "post-write verification failed",          // tools/file_operations.py:1244, :1344, :1350
+            "(?:write|delete|move) denied:"            // agent/file_safety.py:168, :294, :299
+        ].joined(separator: "|") + ")"
+
+        private static func looksLikeWriteError(_ text: String) -> Bool {
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
+                .range(of: writeErrorLead, options: [.regularExpression, .caseInsensitive]) != nil
         }
 
         private mutating func read(_ envelope: [String: JSONValue]) {

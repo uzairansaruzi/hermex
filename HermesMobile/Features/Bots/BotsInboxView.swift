@@ -1,51 +1,17 @@
+import SwiftData
 import SwiftUI
 
-/// Whether the inbox's + menu offers "New Session" (#1010), which opens a Hermes session in
-/// the main chat, "Tasks" (#1040), the host's scheduled Tasks, and "Kanban" (#1043), which opens
-/// the host's Boards: only as a Hermes server's home, and only in a DEBUG build or Hermex Branch
-/// (bundle id ending `.branch`). Temporary: #709's build gives them a permanent home.
-enum HermesSessionEntry {
-    static func isOffered(isHermesHome: Bool, isDebugBuild: Bool = HermesSessionEntry.isDebugBuild,
-                          bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> Bool {
-        isHermesHome && (isDebugBuild || bundleIdentifier?.hasSuffix(".branch") == true)
-    }
-
-    static var isDebugBuild: Bool {
-        #if DEBUG
-        return true
-        #else
-        return false
-        #endif
-    }
-}
-
-/// The Tasks screen the inbox's + menu pushed on a Hermes host (#1040), with the client it
-/// reads through and the Profile a new Task starts in.
-struct HermesTasksEntry: Hashable, Identifiable {
-    let id = UUID()
-    let server: URL
-    let client: HermesCronClient
-    let newTaskProfile: String
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-}
-
-/// What titles the Bots inbox as a Hermes server's home: the server's name, and its host
-/// when that differs from the name.
-struct BotsInboxHome {
-    let title: String
-    let subtitle: String?
-}
-
-/// The Bots inbox: pushed from a webui server's session list, or the root of a Hermes
-/// server's home (`HermesServerHome`), where `home` titles it and `HomeControl` replaces
-/// the Bot connection gear.
-@MainActor struct BotsInboxView<HomeControl: View>: View {
+/// The Bots inbox: pushed from a webui server's session list, or the Bots side of a Hermes
+/// server's home (`HermesServerHome`), where it leads with the session list's header, whose
+/// avatar replaces the Bot connection gear, and takes the home's bar (`HermesHomeChrome`): the
+/// filter holds hidden bots and section order, and new chat makes a bot or a group chat.
+@MainActor struct BotsInboxView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     let server: URL
-    private let home: BotsInboxHome?
-    private let homeControl: HomeControl
+    private let home: HermesHome?
     /// The bot a deep link named, resolved here because this is where the live roster
     /// is. Cleared once this inbox has settled, whether or not it matched (#554).
     @Binding private var pendingDestination: BotDestination?
@@ -69,7 +35,6 @@ struct BotsInboxHome {
     @State private var filing: BotProfile?
     @State private var newSectionName = ""
     @State private var showingSectionOrder = false
-    @State private var selection = BotInboxSelection()
     @State private var searchedRoom: BotRoomKey?
     @State private var searchedSequence: Int?
     @State private var roomSequence: Int?
@@ -79,47 +44,34 @@ struct BotsInboxHome {
     /// True once `open()` has returned at least once, so "no Bot connection" is a
     /// settled answer to a held deep link rather than a not-loaded-yet one.
     @State private var hasSettled = false
-    /// The Hermes session "New Session" pushed, the Tasks screen "Tasks" pushed, and whether
-    /// the Profile either starts in is being read.
-    @State private var newSession: HermesSessionChat?
-    @State private var tasks: HermesTasksEntry?
-    @State private var isOpeningSession = false
-    /// True while the host's Kanban is pushed from the + menu (#1043).
-    @State private var showingKanban = false
 
     init(
         server: URL,
         pendingDestination: Binding<BotDestination?> = .constant(nil)
-    ) where HomeControl == EmptyView {
-        self.init(server: server, pendingDestination: pendingDestination, home: nil) { EmptyView() }
+    ) {
+        self.init(server: server, pendingDestination: pendingDestination, home: nil, inbox: BotInbox(server: server))
     }
 
-    /// A Hermes server's home. Its sign-in form is reached through Settings there, so
-    /// `homeControl`, the server's avatar, takes the gear's place.
-    init(
-        server: URL,
-        pendingDestination: Binding<BotDestination?>,
-        home: BotsInboxHome?,
-        @ViewBuilder homeControl: () -> HomeControl
-    ) {
+    /// A Hermes server's home, which keeps `inbox` across its switch, so a switch back shows the
+    /// roster at once (#709). Its sign-in form is reached through Settings there.
+    init(server: URL, pendingDestination: Binding<BotDestination?>, home: HermesHome?, inbox: BotInbox) {
         self.server = server
         self.home = home
-        self.homeControl = homeControl()
         _pendingDestination = pendingDestination
-        _inbox = State(initialValue: BotInbox(server: server))
+        _inbox = State(initialValue: inbox)
     }
 
     /// An inbox the caller built, such as one on scripted wires.
-    init(server: URL, inbox: BotInbox) where HomeControl == EmptyView {
+    init(server: URL, inbox: BotInbox) {
         self.server = server
         home = nil
-        homeControl = EmptyView()
         _pendingDestination = .constant(nil)
         _inbox = State(initialValue: inbox)
     }
 
     var body: some View {
-        let toasted = list
+        let toasted = navigationSurface
+            .focusedSceneValue(\.hermexSceneActions, sceneActions)
             .overlay(alignment: .bottom) {
                 if let toast {
                     Text(toast).font(.callout).padding()
@@ -135,10 +87,66 @@ struct BotsInboxHome {
         attachPresentations(to: toasted)
     }
 
+    private var usesSplit: Bool {
+        HermesHomeLayout.usesSplit(isHome: home != nil, horizontalSizeClass: horizontalSizeClass)
+    }
+
+    @ViewBuilder private var navigationSurface: some View {
+        if usesSplit {
+            SessionSplitView(rootRevision: inbox.selection.pick.hashValue) {
+                list
+                    .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
+            } detail: {
+                regularWidthDetail
+            }
+        } else {
+            compactList
+        }
+    }
+
+    @ViewBuilder private var regularWidthDetail: some View {
+        if let profile = inbox.selection.profile, let connection = inbox.connection { chat(profile, connection) }
+        else if let key = inbox.selection.room, let connection = inbox.connection, connection.id == key.connectionID,
+                let room = inbox.rooms.first(where: { $0.id == key.roomID }) {
+            BotRoomView(reader: BotRoomReader(key: key, connection: connection, room: room, initialSequence: roomSequence, onExpired: {
+                inbox.expireRoom(key); inbox.selection.room = nil
+                toast = String(localized: "This room’s history is no longer available.")
+            }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
+                inbox.removeRoom(key); inbox.selection.room = nil
+            }), roster: inbox.profiles, avatars: inbox.avatars,
+                onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
+                .id(key)
+        } else { ContentUnavailableView("Select a Bot", systemImage: "bubble.left.and.bubble.right") }
+    }
+
+    private var compactList: some View {
+        list
+            .navigationDestination(item: $inbox.selection.profile) { profile in
+                if let connection = inbox.connection { chat(profile, connection) }
+            }
+            .navigationDestination(item: $inbox.selection.room) { key in
+                if let connection = inbox.connection, connection.id == key.connectionID,
+                   let room = inbox.rooms.first(where: { $0.id == key.roomID }) {
+                    BotRoomView(reader: BotRoomReader(key: key, connection: connection, room: room, initialSequence: roomSequence, onExpired: {
+                        inbox.expireRoom(key); inbox.selection.room = nil
+                        toast = String(localized: "This room’s history is no longer available.")
+                    }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
+                        inbox.removeRoom(key); inbox.selection.room = nil
+                    }), roster: inbox.profiles, avatars: inbox.avatars,
+                        onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
+                    .id(key)
+                }
+            }
+            .navigationDestination(item: $editSelection) { selection in
+                editProfile(selection)
+            }
+    }
+
     /// The rows alone. The list, its sheets and its lifecycle each sit in their
     /// own expression: together they were too much for the CI type-checker.
     private var list: some View {
         List {
+            homeHeader
             if inbox.connection != nil {
                 if let message = inbox.errorMessage ?? inbox.routeAdvice {
                     Text(message).font(.callout)
@@ -158,7 +166,7 @@ struct BotsInboxHome {
                             .accessibilityHidden(index > 0)
                     }
                 } else if inbox.profiles.isEmpty && inbox.link == .live {
-                    Text("No bots yet. Tap + to create one.")
+                    home == nil ? Text("No bots yet. Tap + to create one.") : Text("No bots yet. Tap New Chat to create one.")
                 }
                 if let notice = inbox.notice {
                     Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
@@ -181,8 +189,8 @@ struct BotsInboxHome {
                             case .bot(let profile):
                                 Menu { organizeMenu(profile) } label: {
                                     BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                                                status: inbox.liveStatuses[profile.id])
-                                } primaryAction: { selection.profile = profile }
+                                                status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
+                                } primaryAction: { inbox.selection.profile = profile }
                                 .buttonStyle(.plain)
                             case .room(let room):
                                 Menu { roomOrganizeMenu(room) } label: {
@@ -196,7 +204,8 @@ struct BotsInboxHome {
                     .listRowSeparator(.hidden)
                 }
                 chatSections(inbox.sections)
-                if inbox.hiddenCount > 0 {
+                // The home's filter holds this instead.
+                if home == nil && inbox.hiddenCount > 0 {
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
                     }
@@ -212,64 +221,70 @@ struct BotsInboxHome {
             if inbox.connection == nil {
                 GeometryReader { geometry in
                     ScrollView {
-                        BotConnectionWelcomeView(isCovered: showingSetup) { showingSetup = true }
-                            .frame(minHeight: geometry.size.height)
+                        // The home's header stays, so Settings and the server switcher do too.
+                        VStack(spacing: 0) {
+                            homeHeader
+                            BotConnectionWelcomeView(isCovered: showingSetup) { showingSetup = true }
+                        }
+                        .frame(minHeight: geometry.size.height)
                     }
                     .background(Color(uiColor: .systemBackground))
                 }
             }
         }
-        .modifier(BotsInboxTitle(home: home))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Search bots and messages", systemImage: "magnifyingglass") { showingSearch = true }
-                    .disabled(inbox.connection == nil)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("New Bot", systemImage: "plus.bubble") { creation = .new }
-                    Button("New Group Chat", systemImage: "person.2") {
-                        guard let connection = inbox.connection else { return }
-                        roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
-                            onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
-                    }
-                    .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
-                    if HermesSessionEntry.isOffered(isHermesHome: home != nil) {
-                        // Temporary entries until #709's build replaces them.
-                        Button("New Session", systemImage: "square.and.pencil") {
-                            openOnSelectedProfile { connection, profile in
-                                newSession = HermesSessionChat(server: server, connection: connection,
-                                                               target: .new(profile: profile))
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                        Button("Tasks", systemImage: "calendar.badge.clock") {
-                            openOnSelectedProfile { connection, profile in
-                                tasks = HermesTasksEntry(server: server, client: HermesCronClient(saved: connection, server: server),
-                                                         newTaskProfile: profile)
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                        Button("Kanban", systemImage: "rectangle.split.3x1") { showingKanban = true }
-                    }
-                    if inbox.reorderableSectionNames.count >= 2 {
-                        Divider()
-                        Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
-                    }
-                } label: { Label("New chat", systemImage: "plus") }
-                .disabled(inbox.link != .live)
-            }
-            if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
-            ToolbarItem(placement: .topBarTrailing) {
-                if home == nil {
-                    Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
-                } else {
-                    homeControl
-                }
-            }
+        .modifier(chrome)
+    }
+
+    /// The session list's header, leading the home's Bots side. Its search opens the inbox's
+    /// search sheet.
+    @ViewBuilder private var homeHeader: some View {
+        if let home {
+            SessionsHeader(logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
+                           searchLabel: "Search bots and messages", isSearchDisabled: inbox.connection == nil,
+                           connection: inbox.homeConnection, reconnectNow: inbox.reconnectNow,
+                           openSearch: { showingSearch = true })
+                .sessionsTopChromeListRow()
         }
     }
 
+    /// The home's chrome, or the pushed inbox's own toolbar.
+    private var chrome: some ViewModifier {
+        BotsInboxChrome(home: home, isOffline: inbox.connection == nil, search: { showingSearch = true },
+                        openSetup: { showingSetup = true }, filter: { filterMenu }, newChat: { newChatMenu })
+    }
+
+    /// New Bot and New Group Chat: the pushed inbox's + menu, and the home's new chat.
+    private var newChatMenu: some View {
+        Menu {
+            Button("New Bot", systemImage: "plus.bubble") { creation = .new }
+            Button("New Group Chat", systemImage: "person.2") {
+                guard let connection = inbox.connection else { return }
+                roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
+                    onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
+            }
+            .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
+            if home == nil && inbox.reorderableSectionNames.count >= 2 {
+                Divider()
+                Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
+            }
+        } label: { Label("New chat", systemImage: home == nil ? "plus" : "square.and.pencil") }
+        .disabled(inbox.link != .live)
+    }
+
+    /// The home's filter: hidden bots and groups, and the order of Desktop's sections.
+    private var filterMenu: some View {
+        Menu {
+            Toggle(isOn: $inbox.showsHidden) {
+                Label("Show hidden (\(inbox.hiddenCount))", systemImage: "eye")
+            }
+            .disabled(inbox.hiddenCount == 0 && !inbox.showsHidden)
+            Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
+                .disabled(inbox.reorderableSectionNames.count < 2)
+        } label: {
+            Label("Filter", systemImage: "line.3.horizontal.decrease")
+        }
+        .disabled(inbox.connection == nil)
+    }
 
     /// Opens the bot a deep link named, once this inbox has a roster to resolve it
     /// against. A connecting or retrying socket keeps the link pending, so a dropped
@@ -278,14 +293,15 @@ struct BotsInboxHome {
     /// guessing (#554).
     private func openPendingDestination() {
         guard let destination = pendingDestination, destination.server == server else { return }
-        // A pushed chat closes the inbox socket. Return to the inbox before waiting
-        // for its roster, so its appearance task can reconnect and resolve the link.
-        selection = BotInboxSelection()
+        // A pushed screen closes the inbox socket. Return to the inbox before waiting
+        // for its roster, so its appearance task can reconnect and resolve the link,
+        // as when the Sessions list opens a Bot Chat it found (#1053).
+        inbox.selection = BotInboxSelection()
         guard BotDeepLinkRouter.inboxCanAnswer(
             link: inbox.link, hasConnection: inbox.connection != nil, hasSettled: hasSettled
         ) else { return }
         pendingDestination = nil
-        selection.open(destination, connection: inbox.connection, profiles: inbox.profiles)
+        inbox.selection.open(destination, connection: inbox.connection, profiles: inbox.profiles)
     }
 
     /// Resolve the selection again after the sheet closes so a refreshed roster
@@ -293,9 +309,9 @@ struct BotsInboxHome {
     private func openSearchSelection() {
         defer { searchedProfile = nil; searchedRoom = nil; searchedSequence = nil }
         if let key = searchedRoom, key.connectionID == inbox.connection?.id,
-           inbox.rooms.contains(where: { $0.id == key.roomID }) { roomSequence = searchedSequence; selection.room = key; return }
+           inbox.rooms.contains(where: { $0.id == key.roomID }) { roomSequence = searchedSequence; inbox.selection.room = key; return }
         guard let searched = searchedProfile, inbox.connection?.id == searched.connectionID else { return }
-        selection.profile = inbox.profiles.first { $0.id == searched.profileID }
+        inbox.selection.profile = inbox.profiles.first { $0.id == searched.profileID }
     }
 
     /// The list under the tiles. Headers appear only when a named section is on
@@ -333,9 +349,9 @@ struct BotsInboxHome {
     }
 
     private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
-        Button { selection.profile = profile } label: {
+        Button { inbox.selection.profile = profile } label: {
             BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                        status: inbox.liveStatuses[profile.id])
+                        status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
         }
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
@@ -372,26 +388,6 @@ struct BotsInboxHome {
         .padding(.vertical, 12)
     }
 
-    /// Opens a new Hermes session, or the Tasks screen, on the Profile last picked for this
-    /// server, or the one the host's dashboard runs (`current`) when none is, or the host no
-    /// longer lists it (#1015). A session is created when its chat attaches, not here; a new
-    /// Task starts in that Profile (#1040).
-    private func openOnSelectedProfile(_ open: @escaping (BotConnection, String) -> Void) {
-        guard let connection = inbox.connection, !isOpeningSession else { return }
-        isOpeningSession = true
-        Task {
-            defer { isOpeningSession = false }
-            do {
-                let current = try await inbox.currentProfile()
-                guard inbox.connection?.id == connection.id else { return }
-                open(connection, HermesProfilePreference.resolve(for: server, listed: inbox.profiles.map(\.id),
-                                                                 current: current))
-            } catch {
-                toast = BotConnectionAdvice.message(for: error, address: connection.address)
-            }
-        }
-    }
-
     /// Opens the sign-in form for a password the host refused. A chat or room returns
     /// here first: its client is bound to the rejected sign-in, and the inbox reloads the
     /// record when the form closes. Its callback calls `noteRejectedSignIn` before it
@@ -400,19 +396,20 @@ struct BotsInboxHome {
         updatingSignIn = true; showingSetup = true
     }
 
-    private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
-        BotChatView(server: server, connection: connection, profile: profile, roster: inbox.profiles,
-                    avatars: inbox.avatars, conversation: selection.conversation, onConversationUnavailable: {
-                        selection.profile = nil
-                        toast = String(localized: "That conversation is no longer available.")
-                    }, onUpdateSignIn: { inbox.noteRejectedSignIn(connection); selection.profile = nil; updateSignIn() })
+    /// The selected bot's canonical Bot Chat in the regular chat (#1146), where every bot route
+    /// lands. A refused password comes back here to the inbox's sign-in form.
+    @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
+        if let chat = inbox.selection.chat(server: server, connection: connection) {
+            ChatView(hermesSession: chat)
+            .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); inbox.selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them
             // could let two destinations share one identity and keep the wrong
             // conversation on screen.
-            .id([profile.id, connection.id.uuidString, selection.conversation ?? ""])
+            .id([profile.id, connection.id.uuidString, inbox.selection.conversation ?? ""])
             .onAppear { inbox.markSeen(profile) }
             .onDisappear { inbox.noteReturn(from: profile) }
+        }
     }
 
     @ViewBuilder private func editProfile(_ selection: BotProfileEditSelection) -> some View {
@@ -458,7 +455,49 @@ struct BotsInboxHome {
 
     private func openRoom(_ room: BotGroupRoom) {
         guard let key = inbox.roomKey(room) else { return }
-        roomSequence = nil; selection.room = key
+        roomSequence = nil; inbox.selection.room = key
+    }
+
+    /// The hardware-keyboard commands (`HermexCommands`) on the home's Bots side, acting as its
+    /// New Bot, search, tiles and rows do. An inbox the webui list pushed publishes none, so that
+    /// list keeps its own.
+    private var sceneActions: HermexSceneActions? {
+        guard home != nil else { return nil }
+        return HermexSceneActions(
+            canCreateNewChat: inbox.link == .live,
+            createNewChat: { if inbox.link == .live { creation = .new } },
+            searchSessions: { if inbox.connection != nil { showingSearch = true } },
+            openChat: { position in
+                if let chat = ChatShortcutNavigation.chat(atPosition: position, in: keyboardShortcutChats) { open(chat) }
+            },
+            openAdjacentChat: { offset in
+                if let chat = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedChatID, in: keyboardShortcutChats) {
+                    open(chat)
+                }
+            }
+        )
+    }
+
+    /// The tiles, then the rows under them, as the list shows them, which it does only with a
+    /// connection. Read only on a key press, never in `body`.
+    private var keyboardShortcutChats: [BotInbox.ChatRow] {
+        guard inbox.connection != nil else { return [] }
+        return inbox.pinned + inbox.sections.flatMap(\.chats)
+    }
+
+    /// The open bot's or room's `ChatRow.id`, where Next and Previous Chat step from.
+    private var selectedChatID: String? {
+        if let profile = inbox.selection.profile { return BotInbox.ChatRow.bot(profile).id }
+        guard let key = inbox.selection.room, let room = inbox.rooms.first(where: { $0.id == key.roomID }) else { return nil }
+        return BotInbox.ChatRow.room(room).id
+    }
+
+    /// Opens a tile or row as its tap does.
+    private func open(_ chat: BotInbox.ChatRow) {
+        switch chat {
+        case .bot(let profile): inbox.selection.profile = profile
+        case .room(let room): openRoom(room)
+        }
     }
 
     /// Pin and hide are this phone's own marks and always apply; Rename and
@@ -549,7 +588,7 @@ extension BotsInboxView {
     private func attachPresentations(to content: some View) -> some View {
         content
             .sheet(isPresented: Binding(get: { roomCreator != nil }, set: { if !$0 { roomCreator = nil } }), onDismiss: {
-                if let key = createdRoom, key.connectionID == inbox.connection?.id { roomSequence = nil; selection.room = key }
+                if let key = createdRoom, key.connectionID == inbox.connection?.id { roomSequence = nil; inbox.selection.room = key }
                 createdRoom = nil
             }) {
                 if let creator = roomCreator {
@@ -621,9 +660,7 @@ extension BotsInboxView {
                 showingSearch = false
                 searchedProfile = nil
                 searchedRoom = nil; searchedSequence = nil; roomSequence = nil
-                selection.room = nil; selection.conversation = nil
-                newSession = nil; tasks = nil
-                showingKanban = false
+                inbox.selection.room = nil; inbox.selection.conversation = nil
                 editSelection = nil
                 creation = nil
                 roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
@@ -639,47 +676,25 @@ extension BotsInboxView {
                     BotConnectionView(server: server, focusesPassword: updatingSignIn) { inbox.signInSaved() }
                 }
             }
-            .navigationDestination(item: $selection.profile) { profile in
-                if let connection = inbox.connection { chat(profile, connection) }
-            }
-            .navigationDestination(item: $selection.room) { key in
-                if let connection = inbox.connection, connection.id == key.connectionID,
-                   let room = inbox.rooms.first(where: { $0.id == key.roomID }) {
-                    BotRoomView(reader: BotRoomReader(key: key, connection: connection, room: room, initialSequence: roomSequence, onExpired: {
-                        inbox.expireRoom(key); selection.room = nil
-                        toast = String(localized: "This room’s history is no longer available.")
-                    }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
-                        inbox.removeRoom(key); selection.room = nil
-                    }), roster: inbox.profiles, avatars: inbox.avatars,
-                        onUpdateSignIn: { inbox.noteRejectedSignIn(connection); selection.room = nil; updateSignIn() })
-                    .id(key)
-                }
-            }
-            .navigationDestination(item: $editSelection) { selection in
-                editProfile(selection)
-            }
-            // Keyed by the chat, so a Profile picked before sending replaces the screen's
-            // state rather than reusing it (#1015).
-            .navigationDestination(item: $newSession) { chat in
-                ChatView(hermesSession: chat) { newSession = $0 }.id(chat.id)
-            }
-            .navigationDestination(item: $tasks) { entry in
-                TasksView(server: entry.server, onAPIError: { _ in }, client: entry.client,
-                          newTaskProfile: entry.newTaskProfile)
-                    .id(entry.id)
-            }
-            .navigationDestination(isPresented: $showingKanban) {
-                if let connection = inbox.connection {
-                    KanbanView(server: server, hermes: HermesConnections.shared.connection(for: connection, server: server))
-                        .id(connection.id)
+            .sheet(item: Binding(get: { usesSplit ? editSelection : nil },
+                                 set: { editSelection = $0 })) { selection in
+                NavigationStack {
+                    editProfile(selection)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cancel") { editSelection = nil }
+                            }
+                        }
                 }
             }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().
-            .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }
+            .task(id: revision) {
+                inbox.offlineCache = modelContext
+                await inbox.open(); hasSettled = true; openPendingDestination()
+            }
             .onChange(of: inbox.link) { openPendingDestination() }
             .onChange(of: pendingDestination) { openPendingDestination() }
-            .onChange(of: selection.profile) { if selection.profile == nil { selection.conversation = nil } }
             .refreshable { await inbox.open() }
             .onChange(of: scenePhase) {
                 // Control Center and banners (`.inactive`) keep the socket (#902); only an
@@ -691,40 +706,49 @@ extension BotsInboxView {
                 }
             }
             .onDisappear { inbox.close() }
+            // A quiet reconnect holds while offline and runs as the network returns (#1372).
+            .onChange(of: NetworkPathMonitor.shared.changeCount) { inbox.networkPathDidChange() }
     }
 }
 
-/// The inbox's title. Pushed from the session list's Bots row, the back button and the
-/// toolbar are the whole header, so the pinned tiles sit at the top; the title still
-/// names the screen for VoiceOver and for a pushed chat's back button, with only its
-/// visible text removed. As a Hermes server's home, the server's name titles it, leading,
-/// with its host under it on iOS 26.
-private struct BotsInboxTitle: ViewModifier {
-    let home: BotsInboxHome?
+/// The inbox's title and toolbar. As a Hermes server's home it takes the home's bar. Pushed from
+/// the session list's Bots row, the back button and the toolbar are the whole header, so the
+/// pinned tiles sit at the top; the title still names the screen for VoiceOver and for a pushed
+/// chat's back button, with only its visible text removed.
+private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
+    let home: HermesHome?
+    /// No Bot connection is saved, so there is nothing to search.
+    let isOffline: Bool
+    let search: () -> Void
+    let openSetup: () -> Void
+    @ViewBuilder let filter: Filter
+    @ViewBuilder let newChat: NewChat
+
+    init(home: HermesHome?, isOffline: Bool, search: @escaping () -> Void, openSetup: @escaping () -> Void,
+         @ViewBuilder filter: () -> Filter, @ViewBuilder newChat: () -> NewChat) {
+        self.home = home; self.isOffline = isOffline; self.search = search; self.openSetup = openSetup
+        self.filter = filter(); self.newChat = newChat()
+    }
 
     func body(content: Content) -> some View {
         if let home {
-            content
-                .navigationTitle(home.title)
-                .toolbarTitleDisplayMode(.inlineLarge)
-                .modifier(BotsInboxSubtitle(subtitle: home.subtitle))
+            content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newChat }))
         } else {
             content
                 .navigationTitle("Bots")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(removing: .title)
-        }
-    }
-}
-
-private struct BotsInboxSubtitle: ViewModifier {
-    let subtitle: String?
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *), let subtitle {
-            content.navigationSubtitle(subtitle)
-        } else {
-            content
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Search bots and messages", systemImage: "magnifyingglass", action: search)
+                            .disabled(isOffline)
+                    }
+                    ToolbarItem(placement: .topBarTrailing) { newChat }
+                    if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Bot connection", systemImage: "gearshape", action: openSetup)
+                    }
+                }
         }
     }
 }
@@ -785,6 +809,7 @@ private struct BotHeroTile: View {
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
+    let statusIsStale: Bool
     var body: some View {
         VStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 84)
@@ -795,7 +820,7 @@ private struct BotHeroTile: View {
                 }
                 if let status {
                     // Two lines, so a long translation at a large size still reads whole.
-                    BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold))
+                    BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold), isStale: statusIsStale)
                         .lineLimit(2).multilineTextAlignment(.center)
                 }
             }
@@ -831,6 +856,7 @@ private struct BotInboxRow: View {
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
+    let statusIsStale: Bool
     /// A description short enough to read as a role sits beside the name; a
     /// longer one only stands in for the preview when the chat has none.
     private var chip: String? {
@@ -881,7 +907,7 @@ private struct BotInboxRow: View {
     /// otherwise the last activity.
     @ViewBuilder private var trailingSlot: some View {
         if let status {
-            BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold))
+            BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold), isStale: statusIsStale)
                 .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
         } else if let date = profile.lastActive {
             Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.secondary)
@@ -891,15 +917,20 @@ private struct BotInboxRow: View {
 
 /// A bot's live status as a still, tinted word: the Live Activity's translated
 /// "Working" and "Waiting for you" in the Sessions list's attention tints. It never
-/// animates; the word carries the meaning without the color.
+/// animates; the word carries the meaning without the color. A last known status
+/// (#1374) is drawn secondary and read "Last known".
 private struct BotLiveStatusLabel: View {
     let status: BotLiveStatus
     let font: Font
+    let isStale: Bool
     var body: some View {
-        switch status {
-        case .working: Text("Working").font(font).foregroundStyle(Color("AttentionWorking"))
-        case .waiting: Text("Waiting for you").font(font).foregroundStyle(Color("AttentionApproval"))
+        let (word, tint) = switch status {
+        case .working: (String(localized: "Working"), Color("AttentionWorking"))
+        case .waiting: (String(localized: "Waiting for you"), Color("AttentionApproval"))
         }
+        Text(word).font(font)
+            .foregroundStyle(isStale ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
+            .accessibilityLabel(isStale ? String(localized: "Last known: \(word)") : word)
     }
 }
 

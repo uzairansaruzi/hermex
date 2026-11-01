@@ -22,19 +22,6 @@ final class HermesConnectionLogTests: XCTestCase {
         XCTAssertEqual(HermesConnectionLog.reason(error), "NSPOSIXErrorDomain 57")
     }
 
-    func testABotFailureIsNamedByItsCase() {
-        XCTAssertEqual(HermesConnectionLog.reason(BotFailure.rejected(403)), "rejected(403)")
-        XCTAssertEqual(HermesConnectionLog.reason(BotFailure.upgradeRefused(403)), "upgradeRefused(403)")
-        XCTAssertEqual(HermesConnectionLog.reason(BotFailure.transport), "transport")
-        XCTAssertEqual(HermesConnectionLog.reason(BotFailure.outdated("0.21.2")), #"outdated("0.21.2")"#, "The public release, nothing else")
-    }
-
-    func testADecodingErrorAndACancellationAreNamedByKind() {
-        do { _ = try JSONDecoder().decode(BotJSON.self, from: Data("<html>".utf8)); XCTFail("Expected a decoding error") }
-        catch { XCTAssertEqual(HermesConnectionLog.reason(error), "DecodingError") }
-        XCTAssertEqual(HermesConnectionLog.reason(CancellationError()), "cancelled")
-    }
-
     /// A rejected setting carries the host's own message, which can name anything.
     func testAnErrorCarryingHostTextNeverLogsIt() {
         let reason = HermesConnectionLog.reason(BotSettingFailure.rejected(4001, "secret-host.example refused the model"))

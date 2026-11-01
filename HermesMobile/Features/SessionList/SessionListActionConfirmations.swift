@@ -1,7 +1,10 @@
 import SwiftUI
 
+/// A session list's delete confirmations, and its failed actions handed to `showFailure`, which
+/// shows them as failure toasts rather than alerts (#1410), since nothing needs the user's answer.
 struct SessionActionConfirmations: ViewModifier {
     @Bindable var viewModel: SessionListViewModel
+    let showFailure: (String) -> Void
     @Binding var sessionPendingDeletion: SessionSummary?
     @Binding var projectPendingDeletion: ProjectSummary?
 
@@ -10,22 +13,10 @@ struct SessionActionConfirmations: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .alert(
-                "Session Action Failed",
-                isPresented: Binding(
-                    get: { viewModel.actionErrorMessage != nil },
-                    set: { isPresented in
-                        if !isPresented {
-                            viewModel.clearActionError()
-                        }
-                    }
-                )
-            ) {
-                Button("OK") {
-                    viewModel.clearActionError()
-                }
-            } message: {
-                Text(viewModel.actionErrorMessage ?? "")
+            .onChange(of: viewModel.actionErrorMessage) { _, message in
+                guard let message else { return }
+                showFailure(message)
+                viewModel.clearActionError()
             }
             .alert(
                 "Delete Session?",
@@ -51,7 +42,11 @@ struct SessionActionConfirmations: ViewModifier {
                     }
                 }
             } message: {
-                Text("This removes the session from the Hermes server. Use this only on a session you no longer need.")
+                if sessionPendingDeletion?.hermes != nil {
+                    Text("This deletes the session and its messages from the Hermes host. It can't be undone.")
+                } else {
+                    Text("This removes the session from the Hermes server. Use this only on a session you no longer need.")
+                }
             }
             .alert(
                 "Delete Project?",
@@ -77,7 +72,11 @@ struct SessionActionConfirmations: ViewModifier {
                     }
                 }
             } message: {
-                Text("Sessions in this project will be moved to No project. The sessions themselves will not be deleted.")
+                if projectPendingDeletion?.hermes != nil {
+                    Text("Sessions stay; only the project is removed.")
+                } else {
+                    Text("Sessions in this project will be moved to No project. The sessions themselves will not be deleted.")
+                }
             }
     }
 }

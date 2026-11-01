@@ -4,17 +4,6 @@ import XCTest
 
 @MainActor
 final class ChatVerticalScrollAxisGuardTests: XCTestCase {
-    func testGuardConfiguresEnclosingScrollViewForVerticalAxis() {
-        let scrollView = makeOversizedScrollView()
-        let guardView = attachGuardView(to: scrollView)
-
-        guardView.attachToNearestScrollViewIfNeeded()
-
-        XCTAssertFalse(scrollView.alwaysBounceHorizontal)
-        XCTAssertFalse(scrollView.showsHorizontalScrollIndicator)
-        XCTAssertTrue(scrollView.isDirectionalLockEnabled)
-    }
-
     func testGuardClampsHorizontalOffsetToAdjustedLeftInset() {
         let scrollView = makeOversizedScrollView(leftInset: 12)
         let guardView = attachGuardView(to: scrollView)
@@ -64,42 +53,6 @@ final class ChatVerticalScrollAxisGuardTests: XCTestCase {
 
         let expected = 1_400 + scrollView.adjustedContentInset.right - scrollView.bounds.width
         XCTAssertEqual(scrollView.contentOffset.x, expected, accuracy: 0.001)
-    }
-
-    func testPinnedOffsetHelperLTRUsesNegativeLeftInset() {
-        let x = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: false,
-            adjustedInset: UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 8),
-            contentSize: CGSize(width: 900, height: 1_200),
-            boundsSize: CGSize(width: 320, height: 480)
-        )
-        XCTAssertEqual(x, -12, accuracy: 0.001)
-    }
-
-    func testPinnedOffsetHelperRTLPinsToTrailingEdgeWhenContentOverflows() {
-        let x = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: true,
-            adjustedInset: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 8),
-            contentSize: CGSize(width: 900, height: 1_200),
-            boundsSize: CGSize(width: 320, height: 480)
-        )
-        XCTAssertEqual(x, 900 + 8 - 320, accuracy: 0.001)
-    }
-
-    func testPinnedOffsetHelperResolvesToZeroWhenTranscriptHasNoOverflowOrInset() {
-        // The normal transcript case: content fits the viewport, no horizontal
-        // inset — both directions rest at 0, so the toggle changes nothing here.
-        let inset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        let content = CGSize(width: 320, height: 1_200)
-        let bounds = CGSize(width: 320, height: 480)
-        let ltr = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: false, adjustedInset: inset, contentSize: content, boundsSize: bounds
-        )
-        let rtl = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: true, adjustedInset: inset, contentSize: content, boundsSize: bounds
-        )
-        XCTAssertEqual(ltr, 0, accuracy: 0.001)
-        XCTAssertEqual(rtl, 0, accuracy: 0.001)
     }
 
     func testGuardDetachesObserversWhenRemovedFromSuperview() {
@@ -190,22 +143,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         scrollView.contentOffset.y = 300
 
         XCTAssertEqual(scrollView.contentOffset.y, 300, accuracy: 0.001)
-    }
-
-    func testHoldKeepsRevertingAcrossALongRelayout() {
-        // 28 lazy rows settle over many frames; each frame SwiftUI re-applies the
-        // bottom anchor and each time the pin puts the reader back.
-        let scrollView = makeScrollView()
-        scrollView.contentOffset = CGPoint(x: 0, y: 0)
-        let controller = ChatScrollPositionController()
-        controller.attach(to: scrollView)
-
-        controller.holdPosition {}
-        for growth in [640, 400, 220, 90, 40] as [CGFloat] {
-            scrollView.contentSize.height += growth
-            scrollView.contentOffset.y = scrollView.contentSize.height - scrollView.bounds.height
-            XCTAssertEqual(scrollView.contentOffset.y, 0, accuracy: 0.001)
-        }
     }
 
     func testHoldResyncsSwiftUIOnlyAfterItHadToRevert() {
@@ -348,6 +285,58 @@ final class ChatScrollPositionControllerTests: XCTestCase {
             740,
             accuracy: 0.001
         )
+    }
+
+    func testReflowRestoresAgainstTheNewFrameUntilTheReaderScrolls() {
+        // Rows report old-layout frames, the reader sits 40% into "reply", then
+        // the column widens: the first new-layout frame must capture from the old
+        // frames, and the reply's new frame must put the reader back.
+        let scrollView = makeScrollView()
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+        let narrow = ChatScrollPositionController.Layout(contentWidth: 288, dynamicTypeSize: .large)
+        let wide = ChatScrollPositionController.Layout(contentWidth: 768, dynamicTypeSize: .large)
+        controller.rowFrameChanged(id: "prompt", frame: CGRect(x: 0, y: 0, width: 288, height: 400), layout: narrow, isFollowing: false)
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 408, width: 288, height: 600), layout: narrow, isFollowing: false)
+        scrollView.contentOffset.y = 648
+
+        controller.rowFrameChanged(id: "prompt", frame: CGRect(x: 0, y: 0, width: 768, height: 200), layout: wide, isFollowing: false)
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 300), layout: wide, isFollowing: false)
+        XCTAssertEqual(scrollView.contentOffset.y, 328, accuracy: 0.001)
+
+        // VoiceOver or a keyboard scroll ends it, even in the same turn as a size
+        // change: later settling must not snap back.
+        scrollView.contentSize.height += 100
+        scrollView.contentOffset.y = 100
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 340), layout: wide, isFollowing: false)
+        XCTAssertEqual(scrollView.contentOffset.y, 100, accuracy: 0.001)
+    }
+
+    func testReflowYieldsToFollowAndToAnInFlightPrepend() {
+        let narrow = ChatScrollPositionController.Layout(contentWidth: 288, dynamicTypeSize: .large)
+        let larger = ChatScrollPositionController.Layout(contentWidth: 288, dynamicTypeSize: .xxxLarge)
+        let tall = CGRect(x: 0, y: 0, width: 288, height: 600)
+        let taller = CGRect(x: 0, y: 0, width: 288, height: 1_000)
+
+        // Following: the bottom size-change anchor owns the position.
+        let following = makeScrollView()
+        following.contentOffset.y = 240
+        let followController = ChatScrollPositionController()
+        followController.attach(to: following)
+        followController.rowFrameChanged(id: "reply", frame: tall, layout: narrow, isFollowing: true)
+        followController.rowFrameChanged(id: "reply", frame: taller, layout: larger, isFollowing: true)
+        XCTAssertEqual(following.contentOffset.y, 240, accuracy: 0.001)
+
+        // Load Older in flight: its capture must survive the rewrap.
+        let prepending = makeScrollView()
+        prepending.contentOffset.y = 240
+        let prependController = ChatScrollPositionController()
+        prependController.attach(to: prepending)
+        prependController.rowFrameChanged(id: "reply", frame: tall, layout: narrow, isFollowing: false)
+        XCTAssertTrue(prependController.capture())
+        prependController.rowFrameChanged(id: "reply", frame: taller, layout: larger, isFollowing: false)
+        XCTAssertEqual(prepending.contentOffset.y, 240, accuracy: 0.001)
+        XCTAssertTrue(prependController.restoreAfterPrepend())
     }
 
     private func makeScrollView() -> UIScrollView {

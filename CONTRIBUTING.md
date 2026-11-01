@@ -6,8 +6,7 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Local setup
 
-- **Xcode 26 or newer** (the project builds with the iOS 18 SDK or later; the
-  deployment target is iOS 18).
+- **Xcode 27** (CI pins 27.1; the deployment target is iOS 18).
 - Clone the repo and open `HermesMobile.xcodeproj`. Dependencies resolve
   automatically via Swift Package Manager — the dependency list is locked in
   `AGENTS.md`; do not add new ones without maintainer approval. Their versions
@@ -16,11 +15,11 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
   project.
 - Build and run the **`HermesMobile`** scheme on an iPhone simulator
   (`iPhone 17` is the reference device; any recent iPhone simulator works).
-- To actually use the app you need your own
-  [hermes-webui](https://github.com/nesquena/hermes-webui) server — the app is
-  a client only. See the [README](README.md#getting-started) for
-  reachable-server options (Cloudflare Tunnel, reverse proxy, Tailscale, or
-  `http://localhost:8787` for simulator-only testing).
+- To use the app, you need your own
+  [Hermes Agent](https://github.com/NousResearch/hermes-agent) host. The app is
+  a client only. See the [README](README.md#getting-started) for setup and
+  reachable-server options (`http://localhost:9119` works for simulator-only
+  testing).
 
 ## Running tests
 
@@ -154,15 +153,25 @@ create an obligation to review or merge it.
 
 ## App bug or server bug?
 
-Hermex is a thin client over [hermes-webui](https://github.com/nesquena/hermes-webui),
-so a fair share of apparent app bugs are really server bugs. Before filing a
-bug here, reproduce it in the hermes-webui **web UI** against the same server:
+Hermex is a thin client over your server, so a fair share of apparent app bugs
+are really server bugs. Before filing a bug here, reproduce it in the server's
+own web interface against the same server: the Hermes dashboard, or the web UI
+on a legacy hermes-webui server.
 
-- **Breaks in the web UI too** → it's a server bug. File it
-  [upstream](https://github.com/nesquena/hermes-webui/issues); if the app
+- **Breaks in the web interface too** → it's a server bug. File it upstream
+  ([Hermes Agent](https://github.com/NousResearch/hermes-agent/issues) or
+  [hermes-webui](https://github.com/nesquena/hermes-webui/issues)); if the app
   should still handle it more gracefully, open an issue here that links the
   upstream ticket (we track those with the `upstream-change` label).
 - **Only breaks in the app** → file it here with the bug-report form.
+
+Not sure which? Your Hermes agent can triage it for you: it checks the server's
+logs, reads the app's source at your version, looks for duplicates, and drafts
+the issue for your approval. Send it:
+
+> I'm having a problem with Hermex, the iPhone app I use to reach you. Fetch
+> https://raw.githubusercontent.com/uzairansaruzi/hermex/master/.github/triage/PLAYBOOK.md
+> and follow it to help me triage it.
 
 ## PR workflow
 
@@ -183,7 +192,8 @@ bug here, reproduce it in the hermes-webui **web UI** against the same server:
    - **Tolerant decoding:** every `Codable` model uses optionals for fields the
      server might add or rename — never crash on unknown fields.
    - **Never invent API endpoints or JSON shapes** — verify against the pinned
-     upstream `hermes-webui` source or your own running server.
+     upstream source (`hermes-agent`, or `hermes-webui` for legacy servers) or
+     your own running server.
    - **No new third-party dependencies** without approval.
 4. **Run the full test suite** (command above) and make sure it passes.
 5. **Open a PR** against `master` using the PR template — link the issue with

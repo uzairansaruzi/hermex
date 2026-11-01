@@ -349,7 +349,7 @@ final class ChatPendingActionCoordinator {
 
         approvalStreamClient.stop()
         approvalPollingTask?.cancel()
-        let pollingInterval = pollingIntervals.approvalNanoseconds
+        let pollingInterval = pollingIntervals.approvalNanoseconds, waitInterval = pollingIntervals.sleep
         approvalPollingTask = Task { @MainActor [weak self] in
             pollingLoop: while !Task.isCancelled {
                 do {
@@ -364,7 +364,7 @@ final class ChatPendingActionCoordinator {
                 }
 
                 guard !Task.isCancelled else { break }
-                try? await Task.sleep(nanoseconds: pollingInterval)
+                await waitInterval(pollingInterval)
             }
         }
     }
@@ -460,7 +460,7 @@ final class ChatPendingActionCoordinator {
 
         clarifyStreamClient.stop()
         clarificationPollingTask?.cancel()
-        let pollingInterval = pollingIntervals.clarificationNanoseconds
+        let pollingInterval = pollingIntervals.clarificationNanoseconds, waitInterval = pollingIntervals.sleep
         clarificationPollingTask = Task { @MainActor [weak self] in
             pollingLoop: while !Task.isCancelled {
                 do {
@@ -474,7 +474,7 @@ final class ChatPendingActionCoordinator {
                 }
 
                 guard !Task.isCancelled else { break }
-                try? await Task.sleep(nanoseconds: pollingInterval)
+                await waitInterval(pollingInterval)
             }
         }
     }
