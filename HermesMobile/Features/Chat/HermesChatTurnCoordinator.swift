@@ -114,6 +114,19 @@ struct HermesChatTranscript: Equatable {
     var title: String?
     /// What the last newest read covered, for the offline cache (#1054).
     var newestCoverage: HermesNewestCoverage?
+
+    /// Gives the settled rows' trailing cards, which the projection leaves unanchored for want of
+    /// a next row, the first row laid after them: the in-flight prompt or reply (#1531). Without
+    /// one they stay unanchored, and show after every row.
+    mutating func anchorTrailingCards() {
+        guard let next = (live.first ?? streamingReply)?.messageId else { return }
+        toolCallGroups = toolCallGroups.map {
+            $0.anchorMessageID == nil ? ToolCallGroup(id: $0.id, anchorMessageID: next, toolCalls: $0.toolCalls) : $0
+        }
+        reasoningGroups = reasoningGroups.map {
+            $0.anchorMessageID == nil ? ReasoningGroup(id: $0.id, anchorMessageID: next, text: $0.text) : $0
+        }
+    }
 }
 
 /// Runs a Hermes session's turns in the main chat (#1010). It owns the session's
@@ -123,7 +136,8 @@ struct HermesChatTranscript: Equatable {
 /// from REST transcript pages (#1047), 100 rows at a time, newest first: an attach's rebuild
 /// signal (a gap, a reset replay, a new runtime) re-reads the newest rows, back to the rows
 /// held, and lays the snapshot's in-flight turn after them, and a turn the host saved in full
-/// re-reads them so its rows take their durable ids. The engine drops repeated frames by
+/// re-reads them so its rows take their durable ids, as does a turn's end after a running turn's
+/// rebuild (#1531). The engine drops repeated frames by
 /// `seq`, so appends never deduplicate by text. Each prompt, steer, redirect and stop is one
 /// `write`, never resent; a Send or Queue uploads its staged files first (#1012). The host's
 /// requests (approvals, questions, sudo and secret prompts, Desktop tasks and connection
@@ -247,6 +261,10 @@ struct HermesChatTranscript: Equatable {
     /// The running turn's rows as `message.complete`'s `persisted_turn` names them, when the
     /// host saved all of them.
     @ObservationIgnored private var savedTurn: SavedTurn?
+    /// A rebuild laid out a running turn's saved rows, its cards anchored to its live reply
+    /// (#1531). Until a turn's end re-reads the newest rows, each end does so even without a full
+    /// receipt, which a steered turn never gets.
+    @ObservationIgnored private var rebuiltRunningTurn = false
     @ObservationIgnored private var historyRefresh: Task<Void, Never>?
     /// Sends between their call and the host's answer: a page must not replace the
     /// transcript under a prompt the chat already shows.
@@ -1063,6 +1081,7 @@ struct HermesChatTranscript: Equatable {
     /// same outcome, haptic and alert.
     private func finish(_ ending: TranscriptTurnRunOutcome.Ending) {
         guard let streamID = activeStreamID else { return }
+        let startedAt = turnStartedAt
         endLiveActivity(ending)
         liveActivity = nil
         latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt ?? Date(), endedAt: Date(), ending: ending)
@@ -1080,7 +1099,9 @@ struct HermesChatTranscript: Equatable {
         delegate?.streamCoordinatorDidResetRecoveryState()
         if let savedTurn {
             self.savedTurn = nil
-            refreshHistory(after: savedTurn)
+            refreshHistory(after: .receipt(savedTurn))
+        } else if rebuiltRunningTurn, let startedAt {
+            refreshHistory(after: .start(startedAt))
         }
         if completedFailed {
             completedFailed = false
@@ -1375,8 +1396,10 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// The transcript from the settled history plus the snapshot's in-flight turn: the prompt
-    /// until the host saves it, and the reply so far, which the next deltas continue. Held
-    /// deltas that reply already holds are dropped when the engine releases them.
+    /// until the host saves it, and the reply so far, which the next deltas continue. A running
+    /// turn always gets its reply row, empty until text arrives, so the cards of the rows it
+    /// already saved anchor to it, as its later frames do (#1531). Held deltas that reply already
+    /// holds are dropped when the engine releases them.
     private func rebuild(from snapshot: BotJSON, running: Bool) {
         needsRebuild = false
         let root = engine.storedKey ?? ""
@@ -1387,11 +1410,15 @@ struct HermesChatTranscript: Equatable {
             let prompt = Self.displayed(ChatMessage(role: "user", content: text, timestamp: startedAt, messageId: "\(root)/live-user"))
             if !Self.holdsPrompt(prompt, in: transcript.messages, startedAt: startedAt) { transcript.live.append(prompt) }
         }
-        if let text = inflight["assistant"].text, !text.isEmpty {
-            let row = ChatMessage(role: "assistant", content: text, timestamp: nil, messageId: "\(root)/live-\(UUID().uuidString)")
-            if running { transcript.streamingReply = row } else { transcript.live.append(row) }
-            deltasInRebuild = Self.heldDeltas(heldFrames, after: engine.sequence, alreadyIn: text, following: replayedReply)
+        let reply = inflight["assistant"].text ?? ""
+        let row = ChatMessage(role: "assistant", content: reply, timestamp: nil, messageId: "\(root)/live-\(UUID().uuidString)")
+        if running { transcript.streamingReply = row } else if !reply.isEmpty { transcript.live.append(row) }
+        if !reply.isEmpty {
+            deltasInRebuild = Self.heldDeltas(heldFrames, after: engine.sequence, alreadyIn: reply, following: replayedReply)
         }
+        transcript.anchorTrailingCards()
+        // Its saved rows took live anchors and ids: the turn's end re-reads them.
+        if running { rebuiltRunningTurn = true }
         transcript.title = snapshot["info"]["title"].text.flatMap { $0.isEmpty ? nil : $0 }
         delegate?.hermesReplaceTranscript(transcript)
     }
@@ -1453,11 +1480,18 @@ struct HermesChatTranscript: Equatable {
         }
     }
 
+    /// What an ended turn's refresh knows of the rows it saved: the receipt for all of them, or,
+    /// for a turn after a running turn's rebuild without one, when it began (#1531).
+    private enum EndedTurn {
+        case receipt(SavedTurn)
+        case start(Double)
+    }
+
     /// The rows the host saved for a turn take their durable ids and full tool output: the
     /// newest rows are read again and replace the transcript in place. It applies only if the
     /// chat is still idle on the same attach, nothing is going out, and the rows read hold the
     /// turn's; otherwise the next newest read brings them.
-    private func refreshHistory(after turn: SavedTurn) {
+    private func refreshHistory(after turn: EndedTurn) {
         let attempt = engine.generation, turns = turnsStarted
         historyRefresh?.cancel()
         historyRefresh = Task { [weak self] in
@@ -1465,11 +1499,29 @@ struct HermesChatTranscript: Equatable {
                   attempt == self.engine.generation, turns == self.turnsStarted, self.isIdle else { return }
             var merged = self.history
             merged.mergeNewest(fresh.rows, reachedStart: fresh.reachedStart)
-            guard merged.holds(turn.replyRowID), turn.promptRowID.map(merged.holds) != false else { return }
+            guard self.holds(turn, in: merged) else { return }
             self.history = merged
             self.historyTurns = turns
             self.historyFailure = nil
+            self.rebuiltRunningTurn = false
             self.delegate?.hermesReplaceTranscript(self.historyTranscript())
+        }
+    }
+
+    /// Whether `rows` hold an ended turn as the host settled it: the rows its receipt names, or,
+    /// without one, its prompt, dated from its start, then a row shown after it, and no card
+    /// left with nothing after it to anchor to, as a stop mid-tool leaves one. A transcript that
+    /// fails keeps the turn's live rows, its cards anchored to its reply.
+    private func holds(_ turn: EndedTurn, in rows: HermesTranscriptHistory) -> Bool {
+        switch turn {
+        case .receipt(let saved):
+            return rows.holds(saved.replyRowID) && saved.promptRowID.map(rows.holds) != false
+        case .start(let startedAt):
+            guard let prompt = savedPromptRowID(startedAt: startedAt, in: rows) else { return false }
+            let projected = HermesTranscriptProjection.project(rows.rows, root: engine.storedKey ?? "")
+            return projected.messages.last?.rowID != prompt
+                && projected.toolCallGroups.allSatisfy { $0.anchorMessageID != nil }
+                && projected.reasoningGroups.allSatisfy { $0.anchorMessageID != nil }
         }
     }
 
