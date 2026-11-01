@@ -296,19 +296,19 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         controller.attach(to: scrollView)
         let narrow = ChatScrollPositionController.Layout(contentWidth: 288, dynamicTypeSize: .large)
         let wide = ChatScrollPositionController.Layout(contentWidth: 768, dynamicTypeSize: .large)
-        controller.rowFrameChanged(renderID: "prompt", frame: CGRect(x: 0, y: 0, width: 288, height: 400), layout: narrow, isFollowing: false)
-        controller.rowFrameChanged(renderID: "reply", frame: CGRect(x: 0, y: 408, width: 288, height: 600), layout: narrow, isFollowing: false)
+        controller.rowFrameChanged(id: "prompt", frame: CGRect(x: 0, y: 0, width: 288, height: 400), layout: narrow, isFollowing: false)
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 408, width: 288, height: 600), layout: narrow, isFollowing: false)
         scrollView.contentOffset.y = 648
 
-        controller.rowFrameChanged(renderID: "prompt", frame: CGRect(x: 0, y: 0, width: 768, height: 200), layout: wide, isFollowing: false)
-        controller.rowFrameChanged(renderID: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 300), layout: wide, isFollowing: false)
+        controller.rowFrameChanged(id: "prompt", frame: CGRect(x: 0, y: 0, width: 768, height: 200), layout: wide, isFollowing: false)
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 300), layout: wide, isFollowing: false)
         XCTAssertEqual(scrollView.contentOffset.y, 328, accuracy: 0.001)
 
         // VoiceOver or a keyboard scroll ends it, even in the same turn as a size
         // change: later settling must not snap back.
         scrollView.contentSize.height += 100
         scrollView.contentOffset.y = 100
-        controller.rowFrameChanged(renderID: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 340), layout: wide, isFollowing: false)
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 340), layout: wide, isFollowing: false)
         XCTAssertEqual(scrollView.contentOffset.y, 100, accuracy: 0.001)
     }
 
@@ -323,8 +323,8 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         following.contentOffset.y = 240
         let followController = ChatScrollPositionController()
         followController.attach(to: following)
-        followController.rowFrameChanged(renderID: "reply", frame: tall, layout: narrow, isFollowing: true)
-        followController.rowFrameChanged(renderID: "reply", frame: taller, layout: larger, isFollowing: true)
+        followController.rowFrameChanged(id: "reply", frame: tall, layout: narrow, isFollowing: true)
+        followController.rowFrameChanged(id: "reply", frame: taller, layout: larger, isFollowing: true)
         XCTAssertEqual(following.contentOffset.y, 240, accuracy: 0.001)
 
         // Load Older in flight: its capture must survive the rewrap.
@@ -332,9 +332,9 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         prepending.contentOffset.y = 240
         let prependController = ChatScrollPositionController()
         prependController.attach(to: prepending)
-        prependController.rowFrameChanged(renderID: "reply", frame: tall, layout: narrow, isFollowing: false)
+        prependController.rowFrameChanged(id: "reply", frame: tall, layout: narrow, isFollowing: false)
         XCTAssertTrue(prependController.capture())
-        prependController.rowFrameChanged(renderID: "reply", frame: taller, layout: larger, isFollowing: false)
+        prependController.rowFrameChanged(id: "reply", frame: taller, layout: larger, isFollowing: false)
         XCTAssertEqual(prepending.contentOffset.y, 240, accuracy: 0.001)
         XCTAssertTrue(prependController.restoreAfterPrepend())
     }

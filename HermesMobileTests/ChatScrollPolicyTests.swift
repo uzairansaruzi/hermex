@@ -244,7 +244,7 @@ final class ChatScrollPolicyTests: XCTestCase {
             "reply": CGRect(x: 0, y: 108, width: 358, height: 200)
         ]
         let anchor = try XCTUnwrap(ChatScrollPolicy.reflowAnchor(readingLineY: 188, isAtTop: false, rowFrames: frames))
-        XCTAssertEqual(anchor.renderID, "reply")
+        XCTAssertEqual(anchor.id, "reply")
 
         // The reply doubles in height and moves down; the line stays 40% into it.
         let rewrapped = CGRect(x: 0, y: 300, width: 300, height: 400)

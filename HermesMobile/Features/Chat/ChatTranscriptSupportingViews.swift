@@ -389,8 +389,9 @@ struct ChatScrollObserver: UIViewRepresentable {
 ///   and is put back. Any other offset change is someone scrolling on purpose
 ///   (VoiceOver, a hardware keyboard, a follow scroll) and releases the hold.
 /// - **Reflow.** The column width or text size changed, so every row rewraps
-///   and the raw offset lands on another passage (#1414). Rows report their
-///   frames (`rowFrameChanged`) under the layout they were measured in; the
+///   and the raw offset lands on another passage (#1414). Rows, and the plan
+///   and compression card between them, report their frames
+///   (`rowFrameChanged`) under the layout they were measured in; the
 ///   first frame of a new layout captures the reader's place from the old
 ///   layout's frames, and the anchor row's new frames put it back. A reader
 ///   following the live edge or at the top is left alone, as is any prepend
@@ -463,10 +464,12 @@ final class ChatScrollPositionController {
         self.scrollView = scrollView
     }
 
-    /// A row's frame changed. The first frame under a new `layout` arms a
-    /// reflow from the frames still stored for the old one; a reflow already
-    /// running keeps its anchor through further layouts (a second rotation).
-    func rowFrameChanged(renderID: String, frame: CGRect, layout: Layout, isFollowing: Bool) {
+    /// A row's frame changed; `id` is its `renderID`, or a stable key for a
+    /// block drawn between rows (a plan, a compression card). The first frame
+    /// under a new `layout` arms a reflow from the frames still stored for the
+    /// old one; a reflow already running keeps its anchor through further
+    /// layouts (a second rotation).
+    func rowFrameChanged(id: String, frame: CGRect, layout: Layout, isFollowing: Bool) {
         if let previous = rowFramesLayout, previous != layout {
             if mode == .reflow, reflowAnchor != nil {
                 scheduleQuietRelease()
@@ -475,16 +478,16 @@ final class ChatScrollPositionController {
             }
         }
         rowFramesLayout = layout
-        rowFrames[renderID] = frame
-        if mode == .reflow, reflowAnchor?.renderID == renderID {
+        rowFrames[id] = frame
+        if mode == .reflow, reflowAnchor?.id == id {
             applyCompensation()
             scheduleQuietRelease()
         }
     }
 
     /// A row left the transcript.
-    func forgetRow(renderID: String) {
-        rowFrames[renderID] = nil
+    func forgetRow(id: String) {
+        rowFrames[id] = nil
     }
 
     private func armReflow(isFollowing: Bool) {
@@ -748,7 +751,7 @@ final class ChatScrollPositionController {
         guard let baselineContentHeight, var baselineOffsetY else { return nil }
 
         if mode == .reflow {
-            guard let reflowAnchor, let frame = rowFrames[reflowAnchor.renderID] else { return nil }
+            guard let reflowAnchor, let frame = rowFrames[reflowAnchor.id] else { return nil }
             baselineOffsetY = ChatScrollPolicy.reflowReadingLineY(anchor: reflowAnchor, newFrame: frame)
                 + contentOriginY(in: scrollView) - scrollView.adjustedContentInset.top
         }

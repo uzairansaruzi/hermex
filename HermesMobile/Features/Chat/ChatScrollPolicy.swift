@@ -185,7 +185,8 @@ enum ChatScrollPolicy {
     /// window, a text-size change) that moves every row under the reader (#1414).
     /// Approximate: the same share of the row's height, not the same glyph.
     struct ReflowAnchor: Equatable {
-        let renderID: String
+        /// The row's `renderID`, or the key of a block between rows.
+        let id: String
         /// Share of the row's height above the reading line, 0...1.
         let fractionWithinRow: CGFloat
     }
@@ -200,7 +201,7 @@ enum ChatScrollPolicy {
             .max { $0.value.minY < $1.value.minY }
         guard let row else { return nil }
         let fraction = (readingLineY - row.value.minY) / row.value.height
-        return ReflowAnchor(renderID: row.key, fractionWithinRow: min(max(fraction, 0), 1))
+        return ReflowAnchor(id: row.key, fractionWithinRow: min(max(fraction, 0), 1))
     }
 
     /// Where the reading line belongs once the anchor's row has its new frame.

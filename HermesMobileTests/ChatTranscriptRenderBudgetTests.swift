@@ -150,6 +150,8 @@ final class ChatTranscriptRenderBudgetTests: XCTestCase {
 private final class TranscriptHostControls {
     var dynamicTypeSize = DynamicTypeSize.large
     var proxy: ScrollViewProxy?
+    var settledPlan: HermesPlan?
+    var settledPlanAfterRenderID: String?
 }
 
 /// Hosts the real `ChatTranscriptView` with `ChatView`'s view-model wiring for every
@@ -241,7 +243,9 @@ private struct BudgetTranscriptHost: View {
             onRegenerate: { _ in },
             onEdit: { _ in },
             onFork: { _ in },
-            onCopy: { _ in }
+            onCopy: { _ in },
+            settledPlan: controls.settledPlan,
+            settledPlanAfterRenderID: controls.settledPlanAfterRenderID
         )
         .environment(\.dynamicTypeSize, controls.dynamicTypeSize)
     }
@@ -249,8 +253,9 @@ private struct BudgetTranscriptHost: View {
 
 /// A reader parked inside a long reply keeps their place when the column rewraps
 /// (#1414): rotation and a text-size change move every row above them, and a raw
-/// offset would land them screens away. Row frames are measured independently of
-/// the controller, by scrolling each row to the top through the transcript's proxy.
+/// offset would land them screens away. A reader on a block between rows (a plan)
+/// keeps that block. Frames are measured independently of the controller, by
+/// scrolling each block to the top through the transcript's proxy.
 @MainActor
 final class ChatTranscriptReflowTests: XCTestCase {
     override func tearDown() {
@@ -264,6 +269,10 @@ final class ChatTranscriptReflowTests: XCTestCase {
         let rows = viewModel.displayedTranscriptMessages.map(\.renderID)
         XCTAssertEqual(rows.count, 40)
         let controls = TranscriptHostControls()
+        controls.settledPlan = HermesPlan(.object(["todos": .array([
+            .object(["id": .string("a"), "content": .string("Read the replies"), "status": .string("in_progress")])
+        ])]))
+        controls.settledPlanAfterRenderID = rows[25]
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = UIHostingController(rootView: BudgetTranscriptHost(viewModel: viewModel, controls: controls))
         window.makeKeyAndVisible()
@@ -275,38 +284,39 @@ final class ChatTranscriptReflowTests: XCTestCase {
         await layOut(window)
         let proxy = try XCTUnwrap(controls.proxy)
         let scrollView = try XCTUnwrap(transcriptScrollView(in: window))
-        // A long reply halfway up, and the row after it, which bounds it.
-        let reply = rows[21], next = rows[22]
-
-        func rowSpan() async -> (top: CGFloat, height: CGFloat) {
+        /// The span of the block `id`, bounded by the top of the row after it.
+        func span(of id: String, before next: String) async -> (top: CGFloat, height: CGFloat) {
             proxy.scrollTo(next, anchor: .top)
             await layOut(window)
             let nextTop = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
-            proxy.scrollTo(reply, anchor: .top)
+            proxy.scrollTo(id, anchor: .top)
             await layOut(window)
             let top = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
             return (top, nextTop - top - 8)
         }
-        /// Parks the reading line 40% into the reply, applies `rewrap`, and returns
-        /// the share of the rewrapped reply above the line.
-        func shareAfter(_ rewrap: () -> Void) async -> CGFloat {
-            let span = await rowSpan()
+        /// Parks the reading line 40% into the block `id`, applies `rewrap`, and
+        /// returns the share of the rewrapped block above the line.
+        func shareAfter(in id: String, before next: String, _ rewrap: () -> Void) async -> CGFloat {
+            let parked = await span(of: id, before: next)
             scrollView.setContentOffset(
-                CGPoint(x: 0, y: span.top + 0.4 * span.height - scrollView.adjustedContentInset.top),
+                CGPoint(x: 0, y: parked.top + 0.4 * parked.height - scrollView.adjustedContentInset.top),
                 animated: false
             )
             await layOut(window)
             rewrap()
             await layOut(window)
             let readingLine = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
-            let rewrapped = await rowSpan()
+            let rewrapped = await span(of: id, before: next)
             return (readingLine - rewrapped.top) / rewrapped.height
         }
 
-        let rotated = await shareAfter { window.frame = CGRect(x: 0, y: 0, width: 844, height: 390) }
+        // A long reply halfway up, bounded by the row after it.
+        let rotated = await shareAfter(in: rows[21], before: rows[22]) { window.frame = CGRect(x: 0, y: 0, width: 844, height: 390) }
         XCTAssertEqual(rotated, 0.4, accuracy: 0.02, "Rotation moved the reader off their passage")
-        let largerText = await shareAfter { controls.dynamicTypeSize = .xxxLarge }
+        let largerText = await shareAfter(in: rows[21], before: rows[22]) { controls.dynamicTypeSize = .xxxLarge }
         XCTAssertEqual(largerText, 0.4, accuracy: 0.02, "A text-size change moved the reader off their passage")
+        let onPlan = await shareAfter(in: "hermes-plan", before: rows[26]) { window.frame = CGRect(x: 0, y: 0, width: 390, height: 844) }
+        XCTAssertEqual(onPlan, 0.4, accuracy: 0.02, "Rotation moved the reader off the plan they were reading")
     }
 
     // MARK: - Helpers
