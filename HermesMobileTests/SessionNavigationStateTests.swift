@@ -526,6 +526,22 @@ final class SessionNavigationStateTests: XCTestCase {
         )
     }
 
+    func testFailureToastShowsOnTheSessionScreenInFront() {
+        var route = SessionListArchiveToastRoute()
+
+        // iPhone: the first failure on Scheduled, before any archive.
+        route.noticeShown(destination: .utility(.scheduled))
+        XCTAssertEqual(route.host, .scheduled)
+
+        // iPhone: archived on Scheduled, tapped Back, then an action failed on the list.
+        let scheduledArchive = route.archiveStarted()
+        _ = route.archiveConfirmed(
+            scheduledArchive, swipedOn: .scheduled, destination: .utility(.scheduled), isRegularWidth: false
+        )
+        route.noticeShown(destination: nil)
+        XCTAssertEqual(route.host, .list)
+    }
+
     func testChatShortcutPositionPicksNthChatOrNothing() {
         let chats = ["a", "b", "c"].map { SessionSummary(sessionId: $0) }
 

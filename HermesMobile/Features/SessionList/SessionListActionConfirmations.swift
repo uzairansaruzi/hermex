@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// A session list's delete confirmations, and its failed actions shown as failure toasts in
-/// `actionToast` rather than alerts (#1410), since nothing needs the user's answer.
+/// A session list's delete confirmations, and its failed actions handed to `showFailure`, which
+/// shows them as failure toasts rather than alerts (#1410), since nothing needs the user's answer.
 struct SessionActionConfirmations: ViewModifier {
     @Bindable var viewModel: SessionListViewModel
-    let actionToast: ActionToastState
+    let showFailure: (String) -> Void
     @Binding var sessionPendingDeletion: SessionSummary?
     @Binding var projectPendingDeletion: ProjectSummary?
 
@@ -15,7 +15,7 @@ struct SessionActionConfirmations: ViewModifier {
         content
             .onChange(of: viewModel.actionErrorMessage) { _, message in
                 guard let message else { return }
-                actionToast.show(.failure(message))
+                showFailure(message)
                 viewModel.clearActionError()
             }
             .alert(

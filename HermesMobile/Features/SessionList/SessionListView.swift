@@ -77,6 +77,13 @@ struct SessionListArchiveToastRoute: Equatable {
         host = chosen
         return chosen
     }
+
+    /// Moves the toast to the session screen in front for a toast that isn't an
+    /// archive's, such as a failed action (#1410): Scheduled while it shows,
+    /// otherwise the list. An earlier archive's host may no longer be on screen.
+    mutating func noticeShown(destination: SessionNavigationDestination?) {
+        host = destination == .utility(.scheduled) ? .scheduled : .list
+    }
 }
 
 @MainActor
@@ -451,7 +458,10 @@ struct SessionListView: View {
             .modifier(
                 SessionActionConfirmations(
                     viewModel: viewModel,
-                    actionToast: actionToast,
+                    showFailure: { message in
+                        archiveToastRoute.noticeShown(destination: navigationState.destination)
+                        actionToast.show(.failure(message))
+                    },
                     sessionPendingDeletion: $sessionPendingDeletion,
                     projectPendingDeletion: $projectPendingDeletion,
                     deleteSession: { session in
