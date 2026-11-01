@@ -183,11 +183,16 @@ import Observation
         }
     }
 
-    /// Only a stored `cron_` session is a scheduled task's run; its chat's `SessionSummary` is a
-    /// placeholder that cannot say so.
-    func testOnlyACronSessionTargetIsACronRun() {
-        XCTAssertTrue(ConversationTarget.session(profile: "default", key: "cron_8f2c_20261031_090000").isCronRun)
-        XCTAssertFalse(ConversationTarget.session(profile: "default", key: "20261031_090000_8f2c").isCronRun)
+    /// Only a stored `cron_` session, or a compressed run's tip under a `cron_` root, is a
+    /// scheduled task's run; its chat's `SessionSummary` is a placeholder that cannot say so.
+    func testOnlyACronSessionOrLineageIsACronRun() {
+        func chat(_ key: String, root: String? = nil) -> HermesSessionChat {
+            HermesSessionChat(server: Self.connection.address, connection: Self.connection,
+                              target: .session(profile: "default", key: key), lineageRoot: root)
+        }
+        XCTAssertTrue(chat("cron_8f2c_20261031_090000").isCronRun)
+        XCTAssertTrue(chat("20261031_093000_a1b2", root: "cron_8f2c_20261031_090000").isCronRun)
+        XCTAssertFalse(chat("20261031_093000_a1b2", root: "20261031_090000_8f2c").isCronRun)
     }
 
     /// The pinned host's `_CRON_HINT`, with its nested `[SILENT]` and `[CRON_FAILURE]` tokens.

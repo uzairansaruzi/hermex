@@ -521,7 +521,7 @@ struct ChatView: View {
         isHermesSession = hermesSession != nil
         hermesSessionChatID = hermesSession?.id.uuidString
         hermesParentKey = hermesSession?.parentKey
-        isCronRun = hermesSession?.target.isCronRun == true
+        isCronRun = hermesSession?.isCronRun == true
         self.onReplaceHermesSession = onReplaceHermesSession
         hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
         self.onOpenHermesSessions = onOpenHermesSessions
