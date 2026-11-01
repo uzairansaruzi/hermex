@@ -897,9 +897,8 @@ final class AuthManagerStateTests: XCTestCase {
         let webuiHeaders = [CustomHeader(name: "CF-Access-Client-Id", value: "id.access"),
                             CustomHeader(name: "CF-Access-Client-Secret", value: "secret.access")]
         let form = makeForm(entry: .addServer, moveSource: .init(name: "Home", headers: webuiHeaders))
-        form.connectionMode = .cloudflareTunnel
         XCTAssertTrue(form.offersMoveSourceHeaders)
-        XCTAssertEqual(form.customHeaders.map(\.value), ["", ""], "Never filled in on its own")
+        XCTAssertTrue(form.customHeaders.isEmpty, "Never filled in on its own")
 
         form.useMoveSourceHeaders()
 
@@ -1065,11 +1064,11 @@ final class AuthManagerStateTests: XCTestCase {
     }
 
     /// Onboarding shows for a webui server whose session was refused, and the user types the
-    /// address of a Hermes server saved beside it. Connect or Test Connection opens that server
-    /// without a probe: its home when its sign-in is saved, its own sign-in form when not (#1331).
+    /// address of a Hermes server saved beside it. Connect opens that server without a probe: its
+    /// home when its sign-in is saved, its own sign-in form when not (#1331).
     func testOnboardingOpensASavedHermesServer() async throws {
         defer { HermesHostFixture.reset() }
-        for (isSignedIn, tests) in [(true, false), (false, false), (true, true)] {
+        for isSignedIn in [true, false] {
             HermesHostFixture.reset()
             let keychain = InMemoryKeychainStore()
             let manager = try await makeHermesManager(keychain: keychain)
@@ -1082,13 +1081,13 @@ final class AuthManagerStateTests: XCTestCase {
             let form = makeForm(entry: .onboarding)
             form.serverURLString = "HERMES.example/"
 
-            if tests { await form.testConnection(authManager: manager) } else { await form.connect(authManager: manager) }
+            await form.connect(authManager: manager)
 
-            XCTAssertNil(form.errorMessage, "signed in: \(isSignedIn), test: \(tests)")
+            XCTAssertNil(form.errorMessage, "signed in: \(isSignedIn)")
             XCTAssertEqual(manager.state, isSignedIn ? .loggedIn(server: hermesServer) : .loggedOut(server: hermesServer))
             XCTAssertEqual(manager.servers.map(\.kind), [.webui, .hermes])
             XCTAssertEqual(try store.load(server: hermesServer), isSignedIn ? saved : nil)
-            XCTAssertTrue(HermesHostFixture.requests.isEmpty, "signed in: \(isSignedIn), test: \(tests)")
+            XCTAssertTrue(HermesHostFixture.requests.isEmpty, "signed in: \(isSignedIn)")
         }
     }
 
@@ -1096,10 +1095,9 @@ final class AuthManagerStateTests: XCTestCase {
         defer { HermesHostFixture.reset() }
         // The second row changes only the scheme the dashboard is reached at: the webui path
         // reads both texts as https://hermes.local:9119, the Hermes parser does not.
-        let rows: [(saved: String, typed: String, edited: String, mode: OnboardingViewModel.ConnectionMode, rowsLeft: [String])] = [
-            ("https://hermes.example", "hermes.example", "other.example", .privateNetwork, []),
-            ("http://hermes.local:9119", "hermes.local:9119", "https://hermes.local:9119", .cloudflareTunnel,
-             ["CF-Access-Client-Id", "CF-Access-Client-Secret"])
+        let rows: [(saved: String, typed: String, edited: String)] = [
+            ("https://hermes.example", "hermes.example", "other.example"),
+            ("http://hermes.local:9119", "hermes.local:9119", "https://hermes.local:9119")
         ]
         for row in rows {
             HermesHostFixture.reset()
@@ -1110,7 +1108,6 @@ final class AuthManagerStateTests: XCTestCase {
                                      headers: [CustomHeader(name: "CF-Access-Client-Secret", value: "secret.access")])
             try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
             let form = makeForm(entry: .addServer)
-            form.connectionMode = row.mode
             form.serverURLString = row.typed
             await form.connect(authManager: manager)
             form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first, row.typed))
@@ -1121,8 +1118,7 @@ final class AuthManagerStateTests: XCTestCase {
 
             XCTAssertEqual(form.password, "", "\(row.edited): a saved password only goes to the address it was saved for")
             XCTAssertEqual(form.username, "", row.edited)
-            XCTAssertEqual(form.customHeaders.map(\.name), row.rowsLeft, "\(row.edited): so does its Access secret, renamed or not")
-            XCTAssertEqual(form.customHeaders.map(\.value), row.rowsLeft.map { _ in "" }, row.edited)
+            XCTAssertTrue(form.customHeaders.isEmpty, "\(row.edited): so does its Access secret, renamed or not")
             XCTAssertNil(form.reusedSignIn, row.edited)
             XCTAssertNil(form.detectedKind, row.edited)
         }

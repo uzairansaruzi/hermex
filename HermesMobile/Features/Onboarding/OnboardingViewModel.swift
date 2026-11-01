@@ -1,13 +1,13 @@
 import Foundation
 import Observation
 
-/// The connect form's model, shared by onboarding's Connect page and Settings → Add Server
-/// (#900). Connect first reads the public `/api/status` at the typed address. A Hermes
-/// dashboard reveals username and password, signs in once on a `HermesConnection` of its
-/// own and becomes a Hermes server (`AuthManager.addHermesServer`). Anything else goes on
-/// to today's webui path: onboarding's `configure`, or Add Server's `addServer`, which
-/// leaves the active server alone until the new one succeeds. Move to Hermes's host choice
-/// opens Add Server with a `MoveSource` (#1266).
+/// The Add Server sheet's model (`AddServerView`), from first launch and from Settings (#900,
+/// #1540). Its first Connect reads the public `/api/status` at the typed address. A Hermes
+/// dashboard reveals its sign-in, signs in once on a `HermesConnection` of its own and
+/// becomes a Hermes server (`AuthManager.addHermesServer`). Anything else goes on to the
+/// webui path: onboarding's `configure`, or Add Server's `addServer`, which leaves the active
+/// server alone until the new one succeeds. Move to Hermes's host choice opens Add Server
+/// with a `MoveSource` (#1266).
 @MainActor
 @Observable
 final class OnboardingViewModel {
@@ -22,54 +22,10 @@ final class OnboardingViewModel {
         let headers: [CustomHeader]
     }
 
-    /// How this iPhone reaches the host. It changes only the placeholder, the help and
-    /// which header rows show: it is not saved, and no request depends on it. The scheme
-    /// still comes from the address parser (#900, Decision 2).
-    enum ConnectionMode: CaseIterable, Identifiable {
-        case sameWiFi, privateNetwork, cloudflareTunnel
-
-        var id: Self { self }
-
-        var title: String {
-            switch self {
-            case .sameWiFi: return String(localized: "Same Wi-Fi")
-            case .privateNetwork: return String(localized: "Private network")
-            case .cloudflareTunnel: return String(localized: "Cloudflare Tunnel")
-            }
-        }
-
-        var subtitle: String {
-            switch self {
-            case .sameWiFi: return String(localized: "The host is on this network")
-            case .privateNetwork: return String(localized: "Tailscale, NetBird…")
-            case .cloudflareTunnel: return String(localized: "Your tunnel’s HTTPS address")
-            }
-        }
-
-        var help: String {
-            switch self {
-            case .sameWiFi:
-                return String(localized: "Enter the host’s local address and port. This iPhone must be on the same Wi-Fi as the host.")
-            case .privateNetwork:
-                return String(localized: "Enter the host’s name or IP on Tailscale, NetBird or another private network. Keep that app connected on this iPhone.")
-            case .cloudflareTunnel:
-                return String(localized: "Enter your tunnel’s HTTPS address. If Cloudflare Access protects it, add your service token below.")
-            }
-        }
-
-        /// An example address, never localized.
-        var placeholder: String {
-            switch self {
-            case .sameWiFi: return "http://192.168.1.5:9119"
-            case .privateNetwork: return "http://my-mac.tailnet-name.ts.net:9119"
-            case .cloudflareTunnel: return "https://hermes.example.com"
-            }
-        }
-    }
-
     nonisolated static let emptyPasswordMessage = String(localized: "Enter the server password.")
-    /// Cloudflare Access's service-token headers, which Cloudflare Tunnel opens empty.
-    nonisolated static let accessHeaderNames = ["CF-Access-Client-Id", "CF-Access-Client-Secret"]
+    /// Cloudflare Access's service-token headers, which Connection Options edits as two fields.
+    nonisolated private static let accessClientIDHeader = "CF-Access-Client-Id"
+    nonisolated private static let accessClientSecretHeader = "CF-Access-Client-Secret"
 
     let entry: Entry
     let moveSource: MoveSource?
@@ -87,11 +43,10 @@ final class OnboardingViewModel {
     var password = "" {
         didSet { if password != oldValue { lastAttempt = nil } }
     }
+    /// Every header row the form holds, Cloudflare Access's included; only rows with a name
+    /// and a value are sent or saved (`sentHeaders`).
     var customHeaders: [CustomHeader] = [] {
         didSet { invalidateProbedAuthStatusIfNeeded() }
-    }
-    var connectionMode: ConnectionMode = .privateNetwork {
-        didSet { syncAccessHeaders(leaving: oldValue) }
     }
     var authStatus: AuthStatusResponse?
     /// What answered at the typed address: `.hermes` once `/api/status` showed a dashboard,
@@ -104,7 +59,8 @@ final class OnboardingViewModel {
     /// before the password goes out (#777). Its copies stay while the address still parses
     /// to the one it was offered for and no webui answers there (`dropReusedSignIn`).
     private(set) var reusedSignIn: AuthManager.SavedHermesSignIn?
-    /// Add Server's webui answered that it needs a password, so its field shows.
+    /// A webui answered that it needs a password, or onboarding signs a saved one in again,
+    /// so its field shows.
     private(set) var webuiNeedsPassword = false
     /// The last Connect found a webui server saved at the dashboard's address, which
     /// `connect(authManager:replacingWebuiServer:)` can replace (#1027).
@@ -112,6 +68,8 @@ final class OnboardingViewModel {
     /// How the detected dashboard offers to sign in (`HermesSignInMethod.offered(by:)`), the
     /// default first; empty until one answers.
     private(set) var offeredSignInMethods: [HermesSignInMethod] = []
+    /// The release the detected dashboard reports, for the sheet's "Hermes <version>" line.
+    private(set) var hermesVersion: String?
     /// How Connect signs the detected dashboard in: a password, the browser (#708), whose page
     /// Connect shows, or none (#1314), which Connect signs in to as it is. Only the first asks
     /// for a username and password. The host's default, until the Password | Browser picker
@@ -121,10 +79,9 @@ final class OnboardingViewModel {
     }
     /// `useMoveSourceHeaders` filled the move source's headers in, so the offer is gone.
     private(set) var usedMoveSourceHeaders = false
-    var connectionMessage: String?
     var errorMessage: String?
-    /// What the last failed Hermes status read or sign-in observed (#1395). Each Connect or Test
-    /// Connection starts without one; a credential edit, or an edit that drops the error, drops it.
+    /// What the last failed Hermes status read or sign-in observed (#1395). Each Connect starts
+    /// without one; a credential edit, or an edit that drops the error, drops it.
     private var lastAttempt: HermesAttemptRecord?
     /// The failed Hermes attempt behind `errorMessage`, shown as its Details: none once a webui
     /// answered at the address, since the error is then the webui's.
@@ -143,7 +100,6 @@ final class OnboardingViewModel {
     // Identity + generation of the probe that produced `authStatus` or `detectedKind`.
     @ObservationIgnored private var probedConnectionIdentity: String?
     @ObservationIgnored private var operationGeneration = 0
-    @ObservationIgnored private var isSyncingAccessRows = false
 
     init(
         entry: Entry = .onboarding,
@@ -158,6 +114,8 @@ final class OnboardingViewModel {
         self.hermesConfiguration = hermesConfiguration
         if let savedServer {
             serverURLString = savedServer.absoluteString
+            // Only a webui server signs in again here, and it had a password to sign out of.
+            webuiNeedsPassword = true
         }
         customHeaders = savedHeaders
         errorMessage = initialErrorMessage
@@ -165,16 +123,6 @@ final class OnboardingViewModel {
             // The banner belongs to the restored identity so later edits clear it.
             probedConnectionIdentity = nil
         }
-    }
-
-    var isPasswordRequired: Bool {
-        // No auth → no password. Already signed in (trusted-header proxy) → no
-        // password either. Passkey/OIDC-only → hide the field; connect()
-        // surfaces the specific unsupported message instead. Unknown (nil)
-        // keeps today's "show the field" default.
-        guard authStatus?.authEnabled != false else { return false }
-        guard authStatus?.isAlreadySignedIn != true else { return false }
-        return authStatus?.passwordAuthEnabled != false
     }
 
     /// A detected dashboard's sign-in: its username and password, its browser sign-in, or the
@@ -197,11 +145,9 @@ final class OnboardingViewModel {
         catch { return nil }
     }
 
-    /// The dashboard's password, or the webui's as today: onboarding shows it until a
-    /// webui says it needs none, Add Server once a webui asks for one.
+    /// The dashboard's password, or a webui's once it asks for one: the address comes first.
     var showsPasswordField: Bool {
-        if detectedKind == .hermes { return signInMethod == .password }
-        return entry == .onboarding ? isPasswordRequired : webuiNeedsPassword
+        detectedKind == .hermes ? signInMethod == .password : webuiNeedsPassword
     }
 
     /// Off without an address, for a detected dashboard with a password until both its
@@ -232,6 +178,7 @@ final class OnboardingViewModel {
         guard !isConnectionLocked, detectedKind == .hermes, signInMethod == .password else { return }
         let offers = savedSignIns
         let methods = offeredSignInMethods
+        let version = hermesVersion
         // Another saved sign-in's copies go first, so none of them outlives its offer.
         dropReusedSignIn()
         customHeaders = signIn.connection.headers ?? []
@@ -239,6 +186,7 @@ final class OnboardingViewModel {
         // with the same sign-ins on offer.
         detectedKind = .hermes
         offeredSignInMethods = methods
+        hermesVersion = version
         savedSignIns = offers
         probedConnectionIdentity = currentConnectionIdentity()
         username = signIn.connection.username
@@ -252,7 +200,7 @@ final class OnboardingViewModel {
     }
 
     /// Fills in exactly the move source's headers, in place of rows with the same names and of
-    /// empty rows (Cloudflare Tunnel's), keeping any other row already filled in.
+    /// empty rows, keeping any other row already filled in.
     func useMoveSourceHeaders() {
         guard !isConnectionLocked, let headers = moveSource?.headers, !headers.isEmpty else { return }
         let names = Set(headers.map { $0.sanitizedName.lowercased() })
@@ -261,10 +209,52 @@ final class OnboardingViewModel {
         usedMoveSourceHeaders = true
     }
 
+    // MARK: - Connection Options' headers (#1540)
+
+    /// Cloudflare Access's service-token Client ID, Connection Options' first field.
+    var accessClientID: String {
+        get { headerValue(named: Self.accessClientIDHeader) }
+        set { setHeaderValue(newValue, named: Self.accessClientIDHeader) }
+    }
+
+    /// Cloudflare Access's service-token Client Secret, Connection Options' second field.
+    var accessClientSecret: String {
+        get { headerValue(named: Self.accessClientSecretHeader) }
+        set { setHeaderValue(newValue, named: Self.accessClientSecretHeader) }
+    }
+
+    /// The rows Connection Options' header editor shows: every row but Cloudflare Access's two.
+    var otherHeaders: [CustomHeader] {
+        get { customHeaders.filter { !Self.isAccessHeader($0) } }
+        set { customHeaders = customHeaders.filter(Self.isAccessHeader) + newValue }
+    }
+
+    nonisolated private static func isAccessHeader(_ header: CustomHeader) -> Bool {
+        [accessClientIDHeader, accessClientSecretHeader]
+            .contains { $0.caseInsensitiveCompare(header.sanitizedName) == .orderedSame }
+    }
+
+    private func headerValue(named name: String) -> String {
+        customHeaders.last { $0.sanitizedName.caseInsensitiveCompare(name) == .orderedSame }?.value ?? ""
+    }
+
+    /// Sets the last row named `name`, adding one if needed; an empty value removes the rows,
+    /// so a field left empty sends nothing.
+    private func setHeaderValue(_ value: String, named name: String) {
+        let matches = { (header: CustomHeader) in header.sanitizedName.caseInsensitiveCompare(name) == .orderedSame }
+        if value.isEmpty {
+            customHeaders.removeAll(where: matches)
+        } else if let index = customHeaders.lastIndex(where: matches) {
+            customHeaders[index].value = value
+        } else {
+            customHeaders.append(CustomHeader(name: name, value: value))
+        }
+    }
+
     // MARK: - Connection identity (issue #285)
 
-    /// The header rows the form sends and saves: a name and a value, so Cloudflare
-    /// Tunnel's empty Access rows never go out (#900).
+    /// The header rows the form sends and saves: a name and a value, so an empty row never
+    /// goes out (#900).
     private var sentHeaders: [CustomHeader] {
         customHeaders.sanitizedForStorage().filter { !$0.sanitizedValue.isEmpty }
     }
@@ -321,22 +311,14 @@ final class OnboardingViewModel {
     }
 
     private func invalidateProbedAuthStatusIfNeeded() {
-        // A mode switch only opens or drops empty Access rows, which send nothing, so it
-        // keeps the probe and any banner, such as the advice that suggested the switch.
-        guard !isSyncingAccessRows else { return }
         guard let probed = probedConnectionIdentity else {
             // No probe yet, but an inherited banner (re-login error) still has no
             // owner — clear it on any edit so stale copy can't survive.
-            if errorMessage != nil || connectionMessage != nil {
-                errorMessage = nil
-                connectionMessage = nil
-            }
+            if errorMessage != nil { errorMessage = nil }
             return
         }
-        let current = currentConnectionIdentity()
-        if current != probed {
+        if currentConnectionIdentity() != probed {
             forgetProbe()
-            connectionMessage = nil
             errorMessage = nil
         }
     }
@@ -347,6 +329,7 @@ final class OnboardingViewModel {
         offersWebuiReplace = false
         detectedKind = nil
         offeredSignInMethods = []
+        hermesVersion = nil
         signInMethod = .password
         savedSignIns = []
         probedConnectionIdentity = nil
@@ -371,30 +354,7 @@ final class OnboardingViewModel {
         let secrets = Set((reused.connection.headers ?? []).map(\.sanitizedValue).filter { !$0.isEmpty })
         let kept = customHeaders.filter { !secrets.contains($0.sanitizedValue) }
         guard kept.count != customHeaders.count else { return }
-        customHeaders = connectionMode == .cloudflareTunnel ? Self.withAccessRows(kept) : kept
-    }
-
-    /// `headers` plus an empty row for each Access header it lacks.
-    private static func withAccessRows(_ headers: [CustomHeader]) -> [CustomHeader] {
-        headers + accessHeaderNames
-            .filter { name in !headers.contains { $0.sanitizedName.caseInsensitiveCompare(name) == .orderedSame } }
-            .map { CustomHeader(name: $0) }
-    }
-
-    /// Cloudflare Tunnel opens Access's two header rows, empty; leaving it removes those
-    /// rows that are still empty. Neither changes what is sent (`sentHeaders`).
-    private func syncAccessHeaders(leaving old: ConnectionMode) {
-        guard old != connectionMode else { return }
-        isSyncingAccessRows = true
-        defer { isSyncingAccessRows = false }
-        if connectionMode == .cloudflareTunnel {
-            customHeaders = Self.withAccessRows(customHeaders)
-        } else if old == .cloudflareTunnel {
-            customHeaders.removeAll { header in
-                header.sanitizedValue.isEmpty
-                    && Self.accessHeaderNames.contains { $0.caseInsensitiveCompare(header.sanitizedName) == .orderedSame }
-            }
-        }
+        customHeaders = kept
     }
 
     /// Begins a tracked async operation and returns its generation token used
@@ -408,7 +368,8 @@ final class OnboardingViewModel {
 
     /// `notHermes` and `refused` carry a failed status read's attempt record, for the error's Details.
     private enum Detection {
-        case hermes(URL, [HermesSignInMethod])
+        /// The dashboard's address, how it signs in, and the release it reports.
+        case hermes(URL, [HermesSignInMethod], String?)
         case notHermes(HermesAttemptRecord?)
         /// A Host-header 400 or an access proxy's own sign-in, with its advice.
         case refused(String, HermesAttemptRecord?)
@@ -428,7 +389,7 @@ final class OnboardingViewModel {
         do {
             let status = try await http.status()
             guard let methods = HermesSignInMethod.offered(by: status) else { return .notHermes(nil) }
-            return .hermes(address, methods)
+            return .hermes(address, methods, status["version"].text)
         } catch let failure as BotFailure where failure == .blocked || failure == .rejected(400) {
             return .refused(BotConnectionAdvice.message(for: failure, address: address), http.lastAttempt)
         } catch {
@@ -437,17 +398,19 @@ final class OnboardingViewModel {
     }
 
     /// Callers have just checked that the inputs are the ones probed. `methods` is never empty.
-    private func foundHermes(at address: URL, signInMethods methods: [HermesSignInMethod], authManager: AuthManager) {
+    private func foundHermes(at address: URL, signInMethods methods: [HermesSignInMethod], version: String?,
+                             authManager: AuthManager) {
         authStatus = nil
         detectedKind = .hermes
         offeredSignInMethods = methods
+        hermesVersion = version
         signInMethod = methods.first ?? .password
         probedConnectionIdentity = currentConnectionIdentity()
         savedSignIns = methods.contains(.password) ? authManager.savedHermesSignIns(at: address) : []
     }
 
     /// Onboarding has no server switcher, so the address of a saved Hermes server switches to
-    /// it from Connect or Test Connection, with no probe or sign-in (#1331): its home opens, or
+    /// it from Connect, with no probe or sign-in (#1331): its home opens, or
     /// its own sign-in form when it has no saved sign-in. Returns whether it switched.
     private func opensSavedHermesServer(authManager: AuthManager) -> Bool {
         guard entry == .onboarding, let address = try? BotConnection.address(serverURLString),
@@ -457,74 +420,10 @@ final class OnboardingViewModel {
         return true
     }
 
-    func testConnection(authManager: AuthManager) async {
-        guard !isConnectionLocked else { return }
-        errorMessage = nil
-        connectionMessage = nil
-        lastAttempt = nil
-        if opensSavedHermesServer(authManager: authManager) { return }
-        isWorking = true
-        isConnectionLocked = true
-        let token = beginOperation()
-        var identityAtStart = currentConnectionIdentity()
-        defer {
-            if token == operationGeneration {
-                isWorking = false
-                isConnectionLocked = false
-            }
-        }
-
-        let detection = await detectHermes()
-        guard token == operationGeneration, identityAtStart == currentConnectionIdentity() else { return }
-        switch detection {
-        case .hermes(let address, let methods):
-            foundHermes(at: address, signInMethods: methods, authManager: authManager)
-            return
-        case .refused(let advice, let attempt):
-            forgetProbe()
-            errorMessage = advice
-            lastAttempt = attempt
-            return
-        case .notHermes(let attempt):
-            // A saved Hermes sign-in never goes down the webui path.
-            dropReusedSignIn()
-            lastAttempt = attempt
-            identityAtStart = currentConnectionIdentity()
-        }
-
-        do {
-            let status = try await authManager.testConnection(
-                serverURLString: serverURLString,
-                customHeaders: sentHeaders
-            )
-            guard token == operationGeneration else { return }
-            guard identityAtStart == currentConnectionIdentity() else { return }
-            probedConnectionIdentity = identityAtStart
-            authStatus = status
-            detectedKind = .webui
-            if let message = AuthManager.unsupportedSignInMessage(for: status) {
-                errorMessage = message
-            } else if status.isAlreadySignedIn {
-                connectionMessage = String(localized: "Connection ok. Already signed in by this server.")
-            } else {
-                connectionMessage = status.authEnabled == true
-                    ? String(localized: "Connection ok. Password required.")
-                    : String(localized: "Connection ok. Password not required.")
-            }
-        } catch {
-            guard token == operationGeneration else { return }
-            guard identityAtStart == currentConnectionIdentity() else { return }
-            // A failed re-probe invalidates the prior successful status: the old
-            // capability result no longer describes this identity.
-            forgetProbe()
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    /// Connect in onboarding, Add in Settings. The first one for an address finds out what
-    /// answers there; a dashboard then waits for its sign-in, if it has one. Returns the
-    /// server it added, or nil when nothing was added yet. Onboarding needs no result: the
-    /// new server's sign-in replaces it. In onboarding a saved Hermes server's address opens
+    /// The sheet's Continue, Connect or Sign In with Browser. The first one for an address finds
+    /// out what answers there; a dashboard then waits for its sign-in, if it has one, and a
+    /// webui for its password, if it asks for one. Returns the server it added or signed in,
+    /// or nil when nothing was added yet. In onboarding a saved Hermes server's address opens
     /// that server (`opensSavedHermesServer`). `replacingWebuiServer` is the confirmed Replace a
     /// saved webui server at a dashboard's address offers (`offersWebuiReplace`).
     /// A dashboard that signs in through the browser shows its sign-in page with `browser`.
@@ -533,7 +432,6 @@ final class OnboardingViewModel {
                  browser: HermesBrowserSignIn.Presenter = .unavailable) async -> URL? {
         guard !isConnectionLocked else { return nil }
         errorMessage = nil
-        connectionMessage = nil
         offersWebuiReplace = false
         lastAttempt = nil
 
@@ -564,8 +462,8 @@ final class OnboardingViewModel {
             let detection = await detectHermes()
             guard token == operationGeneration, identityAtStart == currentConnectionIdentity() else { return nil }
             switch detection {
-            case .hermes(let address, let methods):
-                foundHermes(at: address, signInMethods: methods, authManager: authManager)
+            case .hermes(let address, let methods, let version):
+                foundHermes(at: address, signInMethods: methods, version: version, authManager: authManager)
                 return nil
             case .refused(let advice, let attempt):
                 forgetProbe()
@@ -591,8 +489,7 @@ final class OnboardingViewModel {
         }
         switch entry {
         case .onboarding:
-            await configureWebui(authManager: authManager, token: token)
-            return nil
+            return await configureWebui(authManager: authManager, token: token)
         case .addServer:
             return await addWebuiServer(authManager: authManager, token: token)
         }
@@ -660,9 +557,9 @@ final class OnboardingViewModel {
         return address
     }
 
-    /// Onboarding's webui path, as before #900: probe unless a probe for these inputs
-    /// already answered, check the password, then `configure`.
-    private func configureWebui(authManager: AuthManager, token: Int) async {
+    /// Onboarding's webui path: probe unless a probe for these inputs already answered, ask for
+    /// the password when it needs one, then `configure`. Returns the server it signed in.
+    private func configureWebui(authManager: AuthManager, token: Int) async -> URL? {
         if authStatus == nil {
             let identityAtStart = currentConnectionIdentity()
             do {
@@ -670,22 +567,24 @@ final class OnboardingViewModel {
                     serverURLString: serverURLString,
                     customHeaders: sentHeaders
                 )
-                guard token == operationGeneration else { return }
-                guard identityAtStart == currentConnectionIdentity() else { return }
+                guard token == operationGeneration else { return nil }
+                guard identityAtStart == currentConnectionIdentity() else { return nil }
                 probedConnectionIdentity = identityAtStart
                 authStatus = status
                 detectedKind = .webui
             } catch {
-                guard token == operationGeneration else { return }
-                guard identityAtStart == currentConnectionIdentity() else { return }
+                guard token == operationGeneration else { return nil }
+                guard identityAtStart == currentConnectionIdentity() else { return nil }
                 forgetProbe()
                 errorMessage = error.localizedDescription
-                return
+                return nil
             }
 
             if let validationMessage = Self.passwordValidationMessage(authStatus: authStatus, password: password) {
-                errorMessage = validationMessage
-                return
+                // The first time it asks, the field appears; an empty one already shown is an error.
+                if webuiNeedsPassword { errorMessage = validationMessage }
+                webuiNeedsPassword = true
+                return nil
             }
         } else if probedConnectionIdentity == nil {
             probedConnectionIdentity = currentConnectionIdentity()
@@ -699,13 +598,15 @@ final class OnboardingViewModel {
             password: password,
             customHeaders: sentHeaders
         )
-        guard token == operationGeneration else { return }
-        guard configureIdentity == currentConnectionIdentity() else { return }
+        guard token == operationGeneration else { return nil }
+        guard configureIdentity == currentConnectionIdentity() else { return nil }
         errorMessage = authManager.lastErrorMessage
+        guard errorMessage == nil, case .loggedIn(let server) = authManager.state else { return nil }
+        return server
     }
 
-    /// Add Server's webui path, as before #900: `addServer` reveals the password field when
-    /// the server needs one, and the next Add sends it.
+    /// Add Server's webui path: `addServer` reveals the password field when the server needs
+    /// one, and the next Connect sends it.
     private func addWebuiServer(authManager: AuthManager, token: Int) async -> URL? {
         let identityAtStart = currentConnectionIdentity()
         let outcome = await authManager.addServer(
