@@ -1,0 +1,1307 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::Hermes did not accept this side question.",
+      "catalog": "Localizable",
+      "key": "Hermes did not accept this side question.",
+      "units": [
+        {
+          "source": "Hermes did not accept this side question."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4138
+        }
+      ],
+      "target": "Hermes no ha acceptat aquesta pregunta paral·lela."
+    },
+    {
+      "id": "Localizable::Hermes did not confirm the background task. It may still run, but its result can't show here.",
+      "catalog": "Localizable",
+      "key": "Hermes did not confirm the background task. It may still run, but its result can't show here.",
+      "units": [
+        {
+          "source": "Hermes did not confirm the background task. It may still run, but its result can't show here."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4154
+        }
+      ],
+      "target": "Hermes no ha confirmat la tasca en segon pla. Encara pot executar-se, però el resultat no es pot mostrar aquí."
+    },
+    {
+      "id": "Localizable::Hermes did not confirm the goal command. Check the goal before trying again.",
+      "catalog": "Localizable",
+      "key": "Hermes did not confirm the goal command. Check the goal before trying again.",
+      "units": [
+        {
+          "source": "Hermes did not confirm the goal command. Check the goal before trying again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 3665
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 3682
+        }
+      ],
+      "target": "Hermes no ha confirmat l'ordre d'objectiu. Comprova l'objectiu abans de tornar-ho a provar."
+    },
+    {
+      "id": "Localizable::Hermes did not confirm this message. Your draft is still here.",
+      "catalog": "Localizable",
+      "key": "Hermes did not confirm this message. Your draft is still here.",
+      "units": [
+        {
+          "source": "Hermes did not confirm this message. Your draft is still here."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 3202
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 3238
+        }
+      ],
+      "target": "Hermes no ha confirmat aquest missatge. El teu esborrany encara és aquí."
+    },
+    {
+      "id": "Localizable::Hermes did not delete this bot. It is still on the host.",
+      "catalog": "Localizable",
+      "key": "Hermes did not delete this bot. It is still on the host.",
+      "units": [
+        {
+          "source": "Hermes did not delete this bot. It is still on the host."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotInbox.swift",
+          "line": 542
+        }
+      ],
+      "target": "Hermes no ha suprimit aquest bot. Encara és a l'amfitrió."
+    },
+    {
+      "id": "Localizable::Hermes did not save this change.",
+      "catalog": "Localizable",
+      "key": "Hermes did not save this change.",
+      "units": [
+        {
+          "source": "Hermes did not save this change."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotInbox.swift",
+          "line": 613
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotInbox.swift",
+          "line": 620
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotInbox.swift",
+          "line": 881
+        }
+      ],
+      "target": "Hermes no ha desat aquest canvi."
+    },
+    {
+      "id": "Localizable::Hermes did not start the background task.",
+      "catalog": "Localizable",
+      "key": "Hermes did not start the background task.",
+      "units": [
+        {
+          "source": "Hermes did not start the background task."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4152
+        }
+      ],
+      "target": "Hermes no ha iniciat la tasca en segon pla."
+    },
+    {
+      "id": "Localizable::Hermes didn't accept the username or password.",
+      "catalog": "Localizable",
+      "key": "Hermes didn't accept the username or password.",
+      "units": [
+        {
+          "source": "Hermes didn't accept the username or password."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 81
+        }
+      ],
+      "target": "Hermes no ha acceptat el nom d'usuari o la contrasenya."
+    },
+    {
+      "id": "Localizable::Hermes didn’t come back",
+      "catalog": "Localizable",
+      "key": "Hermes didn’t come back",
+      "units": [
+        {
+          "source": "Hermes didn’t come back"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
+          "line": 250
+        }
+      ],
+      "target": "Hermes no ha tornat"
+    },
+    {
+      "id": "Localizable::Hermes didn’t say what went wrong. Its update log on the host has the details.",
+      "catalog": "Localizable",
+      "key": "Hermes didn’t say what went wrong. Its update log on the host has the details.",
+      "units": [
+        {
+          "source": "Hermes didn’t say what went wrong. Its update log on the host has the details."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
+          "line": 138
+        }
+      ],
+      "target": "Hermes no ha dit què ha fallat. El seu registre d'actualització a l'amfitrió en té els detalls."
+    },
+    {
+      "id": "Localizable::Hermes doesn't accept %@ as its address. On the host, set dashboard.public_url to %@, then restart the dashboard.",
+      "catalog": "Localizable",
+      "key": "Hermes doesn't accept %@ as its address. On the host, set dashboard.public_url to %@, then restart the dashboard.",
+      "units": [
+        {
+          "source": "Hermes doesn't accept %@ as its address. On the host, set dashboard.public_url to %@, then restart the dashboard."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 156
+        }
+      ],
+      "target": "Hermes no accepta %@ com a adreça. A l'amfitrió, defineix dashboard.public_url com a %@ i reinicia el tauler."
+    },
+    {
+      "id": "Localizable::Hermes has been working for %@",
+      "catalog": "Localizable",
+      "key": "Hermes has been working for %@",
+      "units": [
+        {
+          "source": "Hermes has been working for %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Hermes treballa des de fa %@"
+    },
+    {
+      "id": "Localizable::Hermes hasn’t answered since it restarted. If it stopped, start `hermes dashboard` on your host, then check again.",
+      "catalog": "Localizable",
+      "key": "Hermes hasn’t answered since it restarted. If it stopped, start `hermes dashboard` on your host, then check again.",
+      "units": [
+        {
+          "source": "Hermes hasn’t answered since it restarted. If it stopped, start `hermes dashboard` on your host, then check again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Hermes no ha respost des que es va reiniciar. Si s'ha aturat, executa `hermes dashboard` al teu amfitrió i torna-ho a comprovar."
+    },
+    {
+      "id": "Localizable::Hermes hit an internal error while running this turn",
+      "catalog": "Localizable",
+      "key": "Hermes hit an internal error while running this turn",
+      "units": [
+        {
+          "source": "Hermes hit an internal error while running this turn"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesTurnOutcomeRow.swift",
+          "line": 62
+        }
+      ],
+      "target": "Hermes ha tingut un error intern mentre executava aquest torn"
+    },
+    {
+      "id": "Localizable::Hermes host",
+      "catalog": "Localizable",
+      "key": "Hermes host",
+      "units": [
+        {
+          "source": "Hermes host"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsServerPage.swift",
+          "line": 343
+        }
+      ],
+      "target": "Amfitrió de Hermes"
+    },
+    {
+      "id": "Localizable::Hermes is back and Hermex reconnected.",
+      "catalog": "Localizable",
+      "key": "Hermes is back and Hermex reconnected.",
+      "units": [
+        {
+          "source": "Hermes is back and Hermex reconnected."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
+          "line": 73
+        }
+      ],
+      "target": "Hermes ha tornat i Hermex s'ha reconnectat."
+    },
+    {
+      "id": "Localizable::Hermes is checking the response stream",
+      "catalog": "Localizable",
+      "key": "Hermes is checking the response stream",
+      "units": [
+        {
+          "source": "Hermes is checking the response stream"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 433
+        }
+      ],
+      "target": "Hermes està comprovant la transmissió de la resposta"
+    },
+    {
+      "id": "Localizable::Hermes is installing %lld commits on your host.",
+      "catalog": "Localizable",
+      "key": "Hermes is installing %lld commits on your host.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "Hermes is installing %lld commit on your host."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "Hermes is installing %lld commits on your host."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
+          "line": 58
+        }
+      ],
+      "target": {
+        "one": "Hermes està instal·lant %lld comissió al teu amfitrió.",
+        "other": "Hermes està instal·lant %lld comissions al teu amfitrió."
+      }
+    },
+    {
+      "id": "Localizable::Hermes is installing the update on your host.",
+      "catalog": "Localizable",
+      "key": "Hermes is installing the update on your host.",
+      "units": [
+        {
+          "source": "Hermes is installing the update on your host."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
+          "line": 59
+        }
+      ],
+      "target": "Hermes està instal·lant l'actualització al teu amfitrió."
+    },
+    {
+      "id": "Localizable::Hermes is reconnecting the response stream",
+      "catalog": "Localizable",
+      "key": "Hermes is reconnecting the response stream",
+      "units": [
+        {
+          "source": "Hermes is reconnecting the response stream"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 435
+        }
+      ],
+      "target": "Hermes està reconnectant la transmissió de la resposta"
+    },
+    {
+      "id": "Localizable::Hermes is starting a response",
+      "catalog": "Localizable",
+      "key": "Hermes is starting a response",
+      "units": [
+        {
+          "source": "Hermes is starting a response"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 429
+        }
+      ],
+      "target": "Hermes està iniciant una resposta"
+    },
+    {
+      "id": "Localizable::Hermes is still updating after 10 minutes. Check again later.",
+      "catalog": "Localizable",
+      "key": "Hermes is still updating after 10 minutes. Check again later.",
+      "units": [
+        {
+          "source": "Hermes is still updating after 10 minutes. Check again later."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
+          "line": 90
+        }
+      ],
+      "target": "Hermes encara s'està actualitzant després de 10 minuts. Torna-ho a comprovar més tard."
+    },
+    {
+      "id": "Localizable::Hermes is still updating on your server. Wait for it to finish, restart Hermes WebUI, then try again.",
+      "catalog": "Localizable",
+      "key": "Hermes is still updating on your server. Wait for it to finish, restart Hermes WebUI, then try again.",
+      "units": [
+        {
+          "source": "Hermes is still updating on your server. Wait for it to finish, restart Hermes WebUI, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes",
+        "WebUI"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 283
+        }
+      ],
+      "target": "Hermes encara s'està actualitzant al teu servidor. Espera que acabi, reinicia Hermes WebUI i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::Hermes is stopping the response",
+      "catalog": "Localizable",
+      "key": "Hermes is stopping the response",
+      "units": [
+        {
+          "source": "Hermes is stopping the response"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 439
+        }
+      ],
+      "target": "Hermes està aturant la resposta"
+    },
+    {
+      "id": "Localizable::Hermes is waiting for the network to return",
+      "catalog": "Localizable",
+      "key": "Hermes is waiting for the network to return",
+      "units": [
+        {
+          "source": "Hermes is waiting for the network to return"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 437
+        }
+      ],
+      "target": "Hermes espera que torni la xarxa"
+    },
+    {
+      "id": "Localizable::Hermes is working",
+      "catalog": "Localizable",
+      "key": "Hermes is working",
+      "units": [
+        {
+          "source": "Hermes is working"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 412
+        }
+      ],
+      "target": "Hermes està treballant"
+    },
+    {
+      "id": "Localizable::Hermes is working on the response",
+      "catalog": "Localizable",
+      "key": "Hermes is working on the response",
+      "units": [
+        {
+          "source": "Hermes is working on the response"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 431
+        }
+      ],
+      "target": "Hermes està treballant en la resposta"
+    },
+    {
+      "id": "Localizable::Hermes is working · %@",
+      "catalog": "Localizable",
+      "key": "Hermes is working · %@",
+      "units": [
+        {
+          "source": "Hermes is working · %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Hermes està treballant · %@"
+    },
+    {
+      "id": "Localizable::Hermes reads Authorization: Bearer as its own sign-in and refuses it. Remove this header to connect.",
+      "catalog": "Localizable",
+      "key": "Hermes reads Authorization: Bearer as its own sign-in and refuses it. Remove this header to connect.",
+      "units": [
+        {
+          "source": "Hermes reads Authorization: Bearer as its own sign-in and refuses it. Remove this header to connect."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesConnection.swift",
+          "line": 828
+        }
+      ],
+      "target": "Hermes interpreta Authorization: Bearer com el seu propi inici de sessió i el rebutja. Elimina aquesta capçalera per connectar."
+    },
+    {
+      "id": "Localizable::Hermes recorded this completion without a result body.",
+      "catalog": "Localizable",
+      "key": "Hermes recorded this completion without a result body.",
+      "units": [
+        {
+          "source": "Hermes recorded this completion without a result body."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWorkView.swift",
+          "line": 343
+        }
+      ],
+      "target": "Hermes ha enregistrat aquesta finalització sense cap cos de resultat."
+    },
+    {
+      "id": "Localizable::Hermes refused this name. It may already exist on the host.",
+      "catalog": "Localizable",
+      "key": "Hermes refused this name. It may already exist on the host.",
+      "units": [
+        {
+          "source": "Hermes refused this name. It may already exist on the host."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotCreator.swift",
+          "line": 256
+        }
+      ],
+      "target": "Hermes ha rebutjat aquest nom. Potser ja existeix a l'amfitrió."
+    },
+    {
+      "id": "Localizable::Hermes session",
+      "catalog": "Localizable",
+      "key": "Hermes session",
+      "units": [
+        {
+          "source": "Hermes session"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 634
+        },
+        {
+          "file": "HermesMobile/Features/Hermes/HermesConversation.swift",
+          "line": 352
+        },
+        {
+          "file": "HermesMobile/LiveActivities/AgentRunActivityAttributes.swift",
+          "line": 350
+        }
+      ],
+      "target": "Sessió de Hermes"
+    },
+    {
+      "id": "Localizable::Hermes started a new Bot Chat. The earlier conversation is in Sessions under its new name.",
+      "catalog": "Localizable",
+      "key": "Hermes started a new Bot Chat. The earlier conversation is in Sessions under its new name.",
+      "units": [
+        {
+          "source": "Hermes started a new Bot Chat. The earlier conversation is in Sessions under its new name."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 8027
+        }
+      ],
+      "target": "Hermes ha iniciat un xat de bot nou. La conversa anterior és a Sessions amb el seu nom nou."
+    },
+    {
+      "id": "Localizable::Hermes still has the plugin turned off, so notifications stop when Hermes restarts. Try again to turn it back on.",
+      "catalog": "Localizable",
+      "key": "Hermes still has the plugin turned off, so notifications stop when Hermes restarts. Try again to turn it back on.",
+      "units": [
+        {
+          "source": "Hermes still has the plugin turned off, so notifications stop when Hermes restarts. Try again to turn it back on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": "Plugin update failure in Settings → Notifications: the update turned hermex-push off and couldn't turn it back on. \"Try again\" is the card's button.",
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushPairing.swift",
+          "line": 106
+        }
+      ],
+      "target": "Hermes encara té el connector desactivat, per això les notificacions s'aturen quan Hermes es reinicia. Torna-ho a provar per tornar-lo a activar."
+    },
+    {
+      "id": "Localizable::Hermes was updated on your server. Restart Hermes WebUI there, then try again.",
+      "catalog": "Localizable",
+      "key": "Hermes was updated on your server. Restart Hermes WebUI there, then try again.",
+      "units": [
+        {
+          "source": "Hermes was updated on your server. Restart Hermes WebUI there, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes",
+        "WebUI"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 281
+        }
+      ],
+      "target": "S'ha actualitzat Hermes al teu servidor. Reinicia-hi Hermes WebUI i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::Hermes will work in %@ from now on, including the reply that's running now. Files aren't moved.",
+      "catalog": "Localizable",
+      "key": "Hermes will work in %@ from now on, including the reply that's running now. Files aren't moved.",
+      "units": [
+        {
+          "source": "Hermes will work in %@ from now on, including the reply that's running now. Files aren't moved."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 1375
+        }
+      ],
+      "target": "A partir d'ara Hermes treballarà a %@, incloent-hi la resposta que s'està executant ara. Els fitxers no es mouen."
+    },
+    {
+      "id": "Localizable::Hermes will work in %@ from now on. Files aren't moved.",
+      "catalog": "Localizable",
+      "key": "Hermes will work in %@ from now on. Files aren't moved.",
+      "units": [
+        {
+          "source": "Hermes will work in %@ from now on. Files aren't moved."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1389
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 1376
+        }
+      ],
+      "target": "A partir d'ara Hermes treballarà a %@. Els fitxers no es mouen."
+    },
+    {
+      "id": "Localizable::Hermex can alert you when a reply finishes or fails while the app is in the background. You can change this in Settings → Notifications.",
+      "catalog": "Localizable",
+      "key": "Hermex can alert you when a reply finishes or fails while the app is in the background. You can change this in Settings → Notifications.",
+      "units": [
+        {
+          "source": "Hermex can alert you when a reply finishes or fails while the app is in the background. You can change this in Settings → Notifications."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/NotificationOffer.swift",
+          "line": 110
+        }
+      ],
+      "target": "Hermex pot avisar-te quan una resposta acabi o falli mentre l'app és en segon pla. Pots canviar-ho a Configuració → Notificacions."
+    },
+    {
+      "id": "Localizable::Hermex can't run /%@ in a Hermes chat yet (#702).",
+      "catalog": "Localizable",
+      "key": "Hermex can't run /%@ in a Hermes chat yet (#702).",
+      "units": [
+        {
+          "source": "Hermex can't run /%@ in a Hermes chat yet (#702)."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4207
+        }
+      ],
+      "target": "Hermex encara no pot executar /%@ en un xat de Hermes (#702)."
+    },
+    {
+      "id": "Localizable::Hermex cannot restore an archived Board in-app.",
+      "catalog": "Localizable",
+      "key": "Hermex cannot restore an archived Board in-app.",
+      "units": [
+        {
+          "source": "Hermex cannot restore an archived Board in-app."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1610
+        }
+      ],
+      "target": "Hermex no pot restaurar un tauler arxivat dins de l'app."
+    },
+    {
+      "id": "Localizable::Hermex can’t lock",
+      "catalog": "Localizable",
+      "key": "Hermex can’t lock",
+      "units": [
+        {
+          "source": "Hermex can’t lock"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Auth/AppLockWindow.swift",
+          "line": 190
+        }
+      ],
+      "target": "Hermex no es pot bloquejar"
+    },
+    {
+      "id": "Localizable::Hermex couldn’t save the files on this iPhone.",
+      "catalog": "Localizable",
+      "key": "Hermex couldn’t save the files on this iPhone.",
+      "units": [
+        {
+          "source": "Hermex couldn’t save the files on this iPhone."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 1049
+        }
+      ],
+      "target": "Hermex no ha pogut desar els fitxers en aquest iPhone."
+    },
+    {
+      "id": "Localizable::Hermex is free and open source, with no ads and no tracking. Supporters make that possible.",
+      "catalog": "Localizable",
+      "key": "Hermex is free and open source, with no ads and no tracking. Supporters make that possible.",
+      "units": [
+        {
+          "source": "Hermex is free and open source, with no ads and no tracking. Supporters make that possible."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/TipJarCard.swift",
+          "line": 35
+        }
+      ],
+      "target": "Hermex és gratuït i de codi obert, sense anuncis ni rastreig. Els mecenes ho fan possible."
+    },
+    {
+      "id": "Localizable::Hermex is locked",
+      "catalog": "Localizable",
+      "key": "Hermex is locked",
+      "units": [
+        {
+          "source": "Hermex is locked"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Auth/AppLockWindow.swift",
+          "line": 179
+        }
+      ],
+      "target": "Hermex està bloquejat"
+    },
+    {
+      "id": "Localizable::Hermex is preparing a response",
+      "catalog": "Localizable",
+      "key": "Hermex is preparing a response",
+      "units": [
+        {
+          "source": "Hermex is preparing a response"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Hermex està preparant una resposta"
+    },
+    {
+      "id": "Localizable::Hermex now talks to Hermes directly. Your chats, titles, pins and drafts come with you.",
+      "catalog": "Localizable",
+      "key": "Hermex now talks to Hermes directly. Your chats, titles, pins and drafts come with you.",
+      "units": [
+        {
+          "source": "Hermex now talks to Hermes directly. Your chats, titles, pins and drafts come with you."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 1100
+        }
+      ],
+      "target": "Ara Hermex parla directament amb Hermes. Els teus xats, títols, fixacions i esborranys vénen amb tu."
+    },
+    {
+      "id": "Localizable::Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.",
+      "catalog": "Localizable",
+      "key": "Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.",
+      "units": [
+        {
+          "source": "Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanFeatureState.swift",
+          "line": 145
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 503
+        }
+      ],
+      "target": "Hermex ha actualitzat el tauler, però no pot comprovar si els treballadors s'han iniciat. Revisa el tauler actual abans d'executar altre cop el Dispatcher."
+    },
+    {
+      "id": "Localizable::Hermex response",
+      "catalog": "Localizable",
+      "key": "Hermex response",
+      "units": [
+        {
+          "source": "Hermex response"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 666
+        }
+      ],
+      "target": "Resposta de Hermex"
+    },
+    {
+      "id": "Localizable::Hermex response %lld",
+      "catalog": "Localizable",
+      "key": "Hermex response %lld",
+      "units": [
+        {
+          "source": "Hermex response %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 7385
+        }
+      ],
+      "target": "Resposta de Hermex %lld"
+    },
+    {
+      "id": "Localizable::Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext.",
+      "catalog": "Localizable",
+      "key": "Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext.",
+      "units": [
+        {
+          "source": "Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Hermex configura aquest amfitrió de Hermes per al push i aparella aquest iPhone amb el seu relé. El teu amfitrió xifra el text de totes les notificacions: el relé només veu text xifrat."
+    }
+  ]
+}

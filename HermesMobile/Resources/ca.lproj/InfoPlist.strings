@@ -1,0 +1,7 @@
+"NSLocalNetworkUsageDescription" = "Hermex es connecta al backend Hermes de la teva xarxa local per carregar els bots i xatejar.";
+"NSMicrophoneUsageDescription" = "Hermex necessita accés al micròfon per dictar text al camp de redacció de missatges.";
+"NSCameraUsageDescription" = "Hermex necessita accés a la càmera per fer i adjuntar fotos directament al xat.";
+"NSFaceIDUsageDescription" = "Hermex utilitza Face ID per desbloquejar l'app quan el bloqueig està activat.";
+"NSPhotoLibraryUsageDescription" = "Hermex necessita accés a la fototeca per adjuntar imatges als missatges del xat.";
+"NSPhotoLibraryAddUsageDescription" = "Hermex necessita permís per desar a Fotos les imatges exportades de l'espai de treball.";
+"NSSpeechRecognitionUsageDescription" = "Hermex utilitza el reconeixement de la parla per convertir l'àudio dictat en text d'esborrany editable.";

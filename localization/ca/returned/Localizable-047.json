@@ -1,0 +1,1264 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::The relay couldn’t deliver (HTTP %lld).",
+      "catalog": "Localizable",
+      "key": "The relay couldn’t deliver (HTTP %lld).",
+      "units": [
+        {
+          "source": "The relay couldn’t deliver (HTTP %lld)."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 286
+        }
+      ],
+      "target": "El relé no ha pogut lliurar (HTTP %lld)."
+    },
+    {
+      "id": "Localizable::The relay couldn’t deliver the test right now (HTTP %lld). Try again in a few minutes.",
+      "catalog": "Localizable",
+      "key": "The relay couldn’t deliver the test right now (HTTP %lld). Try again in a few minutes.",
+      "units": [
+        {
+          "source": "The relay couldn’t deliver the test right now (HTTP %lld). Try again in a few minutes."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 282
+        }
+      ],
+      "target": "El relé no ha pogut lliurar la prova ara mateix (HTTP %lld). Torna-ho a provar d'aquí a uns minuts."
+    },
+    {
+      "id": "Localizable::The relay refused this phone (%lld). Check the relay address, then try again.",
+      "catalog": "Localizable",
+      "key": "The relay refused this phone (%lld). Check the relay address, then try again.",
+      "units": [
+        {
+          "source": "The relay refused this phone (%lld). Check the relay address, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 744
+        }
+      ],
+      "target": "El relé ha rebutjat aquest telèfon (%lld). Comprova l'adreça del relé i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::The relay’s hosting refused the request (HTTP %lld). The relay may be over its daily limit or switched off.",
+      "catalog": "Localizable",
+      "key": "The relay’s hosting refused the request (HTTP %lld). The relay may be over its daily limit or switched off.",
+      "units": [
+        {
+          "source": "The relay’s hosting refused the request (HTTP %lld). The relay may be over its daily limit or switched off."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 284
+        }
+      ],
+      "target": "L'allotjament del relé ha rebutjat la sol·licitud (HTTP %lld). El relé pot haver superat el límit diari o estar apagat."
+    },
+    {
+      "id": "Localizable::The request was cancelled.",
+      "catalog": "Localizable",
+      "key": "The request was cancelled.",
+      "units": [
+        {
+          "source": "The request was cancelled."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 223
+        }
+      ],
+      "target": "La sol·licitud s'ha cancel·lat."
+    },
+    {
+      "id": "Localizable::The request was too large for this model",
+      "catalog": "Localizable",
+      "key": "The request was too large for this model",
+      "units": [
+        {
+          "source": "The request was too large for this model"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesTurnOutcomeRow.swift",
+          "line": 49
+        }
+      ],
+      "target": "La sol·licitud era massa gran per a aquest model"
+    },
+    {
+      "id": "Localizable::The result is unknown. Reconnect and refresh before acting again.",
+      "catalog": "Localizable",
+      "key": "The result is unknown. Reconnect and refresh before acting again.",
+      "units": [
+        {
+          "source": "The result is unknown. Reconnect and refresh before acting again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWork.swift",
+          "line": 386
+        }
+      ],
+      "target": "El resultat és desconegut. Reconnecta't i actualitza abans de tornar a actuar."
+    },
+    {
+      "id": "Localizable::The room and its history will be removed from every device. All bots in it will stop. The room cannot be restored.",
+      "catalog": "Localizable",
+      "key": "The room and its history will be removed from every device. All bots in it will stop. The room cannot be restored.",
+      "units": [
+        {
+          "source": "The room and its history will be removed from every device. All bots in it will stop. The room cannot be restored."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotRoomProfileView.swift",
+          "line": 79
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotsInboxView.swift",
+          "line": 649
+        }
+      ],
+      "target": "La sala i el seu historial s'eliminaran de tots els dispositius. Tots els bots de la sala s'aturaran. La sala no es pot restaurar."
+    },
+    {
+      "id": "Localizable::The room is still present. Disband was not confirmed.",
+      "catalog": "Localizable",
+      "key": "The room is still present. Disband was not confirmed.",
+      "units": [
+        {
+          "source": "The room is still present. Disband was not confirmed."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotRoomReader.swift",
+          "line": 308
+        }
+      ],
+      "target": "La sala encara és present. No s'ha confirmat la dissolució."
+    },
+    {
+      "id": "Localizable::The selected Cards will be moved to the archive.",
+      "catalog": "Localizable",
+      "key": "The selected Cards will be moved to the archive.",
+      "units": [
+        {
+          "source": "The selected Cards will be moved to the archive."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 314
+        }
+      ],
+      "target": "Les targetes seleccionades es mouran a l'arxiu."
+    },
+    {
+      "id": "Localizable::The selection is no longer available. Refresh the Board and select the Cards again.",
+      "catalog": "Localizable",
+      "key": "The selection is no longer available. Refresh the Board and select the Cards again.",
+      "units": [
+        {
+          "source": "The selection is no longer available. Refresh the Board and select the Cards again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 755
+        }
+      ],
+      "target": "La selecció ja no està disponible. Actualitza el tauler i torna a seleccionar les targetes."
+    },
+    {
+      "id": "Localizable::The server could not archive this session.",
+      "catalog": "Localizable",
+      "key": "The server could not archive this session.",
+      "units": [
+        {
+          "source": "The server could not archive this session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionMutator.swift",
+          "line": 31
+        }
+      ],
+      "target": "El servidor no ha pogut arxivar aquesta sessió."
+    },
+    {
+      "id": "Localizable::The server could not stop the current response.",
+      "catalog": "Localizable",
+      "key": "The server could not stop the current response.",
+      "units": [
+        {
+          "source": "The server could not stop the current response."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 6181
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 6189
+        }
+      ],
+      "target": "El servidor no ha pogut aturar la resposta actual."
+    },
+    {
+      "id": "Localizable::The server could not unarchive this session.",
+      "catalog": "Localizable",
+      "key": "The server could not unarchive this session.",
+      "units": [
+        {
+          "source": "The server could not unarchive this session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionMutator.swift",
+          "line": 32
+        },
+        {
+          "file": "HermesMobile/Features/Settings/ArchivedSessionsViewModel.swift",
+          "line": 134
+        }
+      ],
+      "target": "El servidor no ha pogut desarxivar aquesta sessió."
+    },
+    {
+      "id": "Localizable::The server did not accept that response. The request is still waiting.",
+      "catalog": "Localizable",
+      "key": "The server did not accept that response. The request is still waiting.",
+      "units": [
+        {
+          "source": "The server did not accept that response. The request is still waiting."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatPendingActionCoordinator.swift",
+          "line": 142
+        },
+        {
+          "file": "HermesMobile/Features/Chat/HermesChatRequests.swift",
+          "line": 318
+        },
+        {
+          "file": "HermesMobile/Features/Chat/HermesChatRequests.swift",
+          "line": 397
+        }
+      ],
+      "target": "El servidor no ha acceptat aquella resposta. La sol·licitud encara espera."
+    },
+    {
+      "id": "Localizable::The server did not confirm the change.",
+      "catalog": "Localizable",
+      "key": "The server did not confirm the change.",
+      "units": [
+        {
+          "source": "The server did not confirm the change."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 6114
+        },
+        {
+          "file": "HermesMobile/Features/Settings/DefaultModelPickerView.swift",
+          "line": 176
+        }
+      ],
+      "target": "El servidor no ha confirmat el canvi."
+    },
+    {
+      "id": "Localizable::The server did not provide a profile name.",
+      "catalog": "Localizable",
+      "key": "The server did not provide a profile name.",
+      "units": [
+        {
+          "source": "The server did not provide a profile name."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 1541
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 562
+        }
+      ],
+      "target": "El servidor no ha proporcionat cap nom de perfil."
+    },
+    {
+      "id": "Localizable::The server did not provide a project ID.",
+      "catalog": "Localizable",
+      "key": "The server did not provide a project ID.",
+      "units": [
+        {
+          "source": "The server did not provide a project ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1479
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1508
+        }
+      ],
+      "target": "El servidor no ha proporcionat cap ID de projecte."
+    },
+    {
+      "id": "Localizable::The server did not provide a session ID.",
+      "catalog": "Localizable",
+      "key": "The server did not provide a session ID.",
+      "units": [
+        {
+          "source": "The server did not provide a session ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatAttachmentCoordinator.swift",
+          "line": 363
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 1193
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 1404
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 1629
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 1886
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 2236
+        }
+      ],
+      "target": "El servidor no ha proporcionat cap ID de sessió."
+    },
+    {
+      "id": "Localizable::The server did not respond in time. Check that the server is running and the connection is available.",
+      "catalog": "Localizable",
+      "key": "The server did not respond in time. Check that the server is running and the connection is available.",
+      "units": [
+        {
+          "source": "The server did not respond in time. Check that the server is running and the connection is available."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 42
+        },
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 207
+        }
+      ],
+      "target": "El servidor no ha respost a temps. Comprova que el servidor s'estigui executant i que la connexió estigui disponible."
+    },
+    {
+      "id": "Localizable::The server did not return a /btw stream.",
+      "catalog": "Localizable",
+      "key": "The server did not return a /btw stream.",
+      "units": [
+        {
+          "source": "The server did not return a /btw stream."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4074
+        }
+      ],
+      "target": "El servidor no ha retornat cap transmissió /btw."
+    },
+    {
+      "id": "Localizable::The server did not return a background task.",
+      "catalog": "Localizable",
+      "key": "The server did not return a background task.",
+      "units": [
+        {
+          "source": "The server did not return a background task."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4114
+        }
+      ],
+      "target": "El servidor no ha retornat cap tasca en segon pla."
+    },
+    {
+      "id": "Localizable::The server did not return a message to retry.",
+      "catalog": "Localizable",
+      "key": "The server did not return a message to retry.",
+      "units": [
+        {
+          "source": "The server did not return a message to retry."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5298
+        }
+      ],
+      "target": "El servidor no ha retornat cap missatge per reintentar."
+    },
+    {
+      "id": "Localizable::The server did not return a stream ID after editing.",
+      "catalog": "Localizable",
+      "key": "The server did not return a stream ID after editing.",
+      "units": [
+        {
+          "source": "The server did not return a stream ID after editing."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5784
+        }
+      ],
+      "target": "El servidor no ha retornat cap ID de transmissió després d'editar."
+    },
+    {
+      "id": "Localizable::The server did not return a stream ID after regenerating.",
+      "catalog": "Localizable",
+      "key": "The server did not return a stream ID after regenerating.",
+      "units": [
+        {
+          "source": "The server did not return a stream ID after regenerating."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5892
+        }
+      ],
+      "target": "El servidor no ha retornat cap ID de transmissió després de regenerar."
+    },
+    {
+      "id": "Localizable::The server did not return a stream ID after retrying.",
+      "catalog": "Localizable",
+      "key": "The server did not return a stream ID after retrying.",
+      "units": [
+        {
+          "source": "The server did not return a stream ID after retrying."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5344
+        }
+      ],
+      "target": "El servidor no ha retornat cap ID de transmissió després de reintentar."
+    },
+    {
+      "id": "Localizable::The server did not return a stream ID.",
+      "catalog": "Localizable",
+      "key": "The server did not return a stream ID.",
+      "units": [
+        {
+          "source": "The server did not return a stream ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 3471
+        }
+      ],
+      "target": "El servidor no ha retornat cap ID de transmissió."
+    },
+    {
+      "id": "Localizable::The server did not return the compressed session.",
+      "catalog": "Localizable",
+      "key": "The server did not return the compressed session.",
+      "units": [
+        {
+          "source": "The server did not return the compressed session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5081
+        }
+      ],
+      "target": "El servidor no ha retornat la sessió comprimida."
+    },
+    {
+      "id": "Localizable::The server did not return the duplicated session ID.",
+      "catalog": "Localizable",
+      "key": "The server did not return the duplicated session ID.",
+      "units": [
+        {
+          "source": "The server did not return the duplicated session ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "El servidor no ha retornat l'ID de la sessió duplicada."
+    },
+    {
+      "id": "Localizable::The server did not return the duplicated session.",
+      "catalog": "Localizable",
+      "key": "The server did not return the duplicated session.",
+      "units": [
+        {
+          "source": "The server did not return the duplicated session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 2600
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionMutator.swift",
+          "line": 105
+        }
+      ],
+      "target": "El servidor no ha retornat la sessió duplicada."
+    },
+    {
+      "id": "Localizable::The server did not return the forked session ID.",
+      "catalog": "Localizable",
+      "key": "The server did not return the forked session ID.",
+      "units": [
+        {
+          "source": "The server did not return the forked session ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4992
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5522
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5625
+        }
+      ],
+      "target": "El servidor no ha retornat l'ID de la sessió bifurcada."
+    },
+    {
+      "id": "Localizable::The server did not return the forked session.",
+      "catalog": "Localizable",
+      "key": "The server did not return the forked session.",
+      "units": [
+        {
+          "source": "The server did not return the forked session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5003
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5533
+        }
+      ],
+      "target": "El servidor no ha retornat la sessió bifurcada."
+    },
+    {
+      "id": "Localizable::The server did not return the linked session.",
+      "catalog": "Localizable",
+      "key": "The server did not return the linked session.",
+      "units": [
+        {
+          "source": "The server did not return the linked session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 959
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1020
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1030
+        }
+      ],
+      "target": "El servidor no ha retornat la sessió enllaçada."
+    },
+    {
+      "id": "Localizable::The server did not return the new profile session.",
+      "catalog": "Localizable",
+      "key": "The server did not return the new profile session.",
+      "units": [
+        {
+          "source": "The server did not return the new profile session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 1584
+        }
+      ],
+      "target": "El servidor no ha retornat la sessió del perfil nou."
+    },
+    {
+      "id": "Localizable::The server did not return the new project ID.",
+      "catalog": "Localizable",
+      "key": "The server did not return the new project ID.",
+      "units": [
+        {
+          "source": "The server did not return the new project ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1414
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1461
+        }
+      ],
+      "target": "El servidor no ha retornat l'ID del projecte nou."
+    },
+    {
+      "id": "Localizable::The server did not return the new project.",
+      "catalog": "Localizable",
+      "key": "The server did not return the new project.",
+      "units": [
+        {
+          "source": "The server did not return the new project."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1409
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1456
+        }
+      ],
+      "target": "El servidor no ha retornat el projecte nou."
+    },
+    {
+      "id": "Localizable::The server did not return the new session ID.",
+      "catalog": "Localizable",
+      "key": "The server did not return the new session ID.",
+      "units": [
+        {
+          "source": "The server did not return the new session ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1581
+        }
+      ],
+      "target": "El servidor no ha retornat l'ID de la sessió nova."
+    },
+    {
+      "id": "Localizable::The server did not return the new session.",
+      "catalog": "Localizable",
+      "key": "The server did not return the new session.",
+      "units": [
+        {
+          "source": "The server did not return the new session."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5037
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1575
+        }
+      ],
+      "target": "El servidor no ha retornat la sessió nova."
+    },
+    {
+      "id": "Localizable::The server did not return the renamed project ID.",
+      "catalog": "Localizable",
+      "key": "The server did not return the renamed project ID.",
+      "units": [
+        {
+          "source": "The server did not return the renamed project ID."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1530
+        }
+      ],
+      "target": "El servidor no ha retornat l'ID del projecte canviat de nom."
+    },
+    {
+      "id": "Localizable::The server did not return the renamed project.",
+      "catalog": "Localizable",
+      "key": "The server did not return the renamed project.",
+      "units": [
+        {
+          "source": "The server did not return the renamed project."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1525
+        }
+      ],
+      "target": "El servidor no ha retornat el projecte canviat de nom."
+    },
+    {
+      "id": "Localizable::The server did not return the uploaded file path.",
+      "catalog": "Localizable",
+      "key": "The server did not return the uploaded file path.",
+      "units": [
+        {
+          "source": "The server did not return the uploaded file path."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatAttachmentCoordinator.swift",
+          "line": 393
+        }
+      ],
+      "target": "El servidor no ha retornat la ruta del fitxer pujat."
+    },
+    {
+      "id": "Localizable::The server didn't come back after the update. Check the server, then retry.",
+      "catalog": "Localizable",
+      "key": "The server didn't come back after the update. Check the server, then retry.",
+      "units": [
+        {
+          "source": "The server didn't come back after the update. Check the server, then retry."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/WebuiServerSettingsModel.swift",
+          "line": 245
+        }
+      ],
+      "target": "El servidor no ha tornat després de l'actualització. Comprova el servidor i reintenta."
+    },
+    {
+      "id": "Localizable::The server endpoint was not found. Check that the URL points to your configured server.",
+      "catalog": "Localizable",
+      "key": "The server endpoint was not found. Check that the URL points to your configured server.",
+      "units": [
+        {
+          "source": "The server endpoint was not found. Check that the URL points to your configured server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "URL"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 40
+        }
+      ],
+      "target": "No s'ha trobat l'endpoint del servidor. Comprova que l'URL assenyali el teu servidor configurat."
+    },
+    {
+      "id": "Localizable::The server is busy with active work. Wait for it to finish, then retry.",
+      "catalog": "Localizable",
+      "key": "The server is busy with active work. Wait for it to finish, then retry.",
+      "units": [
+        {
+          "source": "The server is busy with active work. Wait for it to finish, then retry."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/WebuiServerSettingsModel.swift",
+          "line": 186
+        }
+      ],
+      "target": "El servidor està ocupat amb feina activa. Espera que acabi i reintenta."
+    },
+    {
+      "id": "Localizable::The server is receiving too many requests. Wait a moment, then try again.",
+      "catalog": "Localizable",
+      "key": "The server is receiving too many requests. Wait a moment, then try again.",
+      "units": [
+        {
+          "source": "The server is receiving too many requests. Wait a moment, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 44
+        }
+      ],
+      "target": "El servidor està rebent massa sol·licituds. Espera un moment i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::The server or Cloudflare tunnel is unavailable. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected.",
+      "catalog": "Localizable",
+      "key": "The server or Cloudflare tunnel is unavailable. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected.",
+      "units": [
+        {
+          "source": "The server or Cloudflare tunnel is unavailable. Check that the Mac is awake, hermes-webui is running, and the tunnel is connected."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Cloudflare"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "El servidor o el túnel de Cloudflare no estan disponibles. Comprova que el Mac estigui despert, que hermes-webui s'estigui executant i que el túnel estigui connectat."
+    },
+    {
+      "id": "Localizable::The server refused or did not apply this update.",
+      "catalog": "Localizable",
+      "key": "The server refused or did not apply this update.",
+      "units": [
+        {
+          "source": "The server refused or did not apply this update."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 358
+        }
+      ],
+      "target": "El servidor ha rebutjat o no ha aplicat aquesta actualització."
+    },
+    {
+      "id": "Localizable::The server refused the request. Check the server permissions and try again.",
+      "catalog": "Localizable",
+      "key": "The server refused the request. Check the server permissions and try again.",
+      "units": [
+        {
+          "source": "The server refused the request. Check the server permissions and try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIClient+Workspace.swift",
+          "line": 43
+        },
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 38
+        }
+      ],
+      "target": "El servidor ha rebutjat la sol·licitud. Comprova els permisos del servidor i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::The server refused the request: %@",
+      "catalog": "Localizable",
+      "key": "The server refused the request: %@",
+      "units": [
+        {
+          "source": "The server refused the request: %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 36
+        }
+      ],
+      "target": "El servidor ha rebutjat la sol·licitud: %@"
+    },
+    {
+      "id": "Localizable::The server refused this Dispatcher request. Hermex did not retry it.",
+      "catalog": "Localizable",
+      "key": "The server refused this Dispatcher request. Hermex did not retry it.",
+      "units": [
+        {
+          "source": "The server refused this Dispatcher request. Hermex did not retry it."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanFeatureState.swift",
+          "line": 141
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 519
+        }
+      ],
+      "target": "El servidor ha rebutjat aquesta sol·licitud del Dispatcher. Hermex no l'ha reintentada."
+    }
+  ]
+}

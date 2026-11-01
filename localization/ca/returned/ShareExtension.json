@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "ShareExtension",
+  "entries": [
+    {
+      "id": "ShareExtension::Opening Hermex...",
+      "key": "Opening Hermex...",
+      "units": [
+        {
+          "source": "Opening Hermex..."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "Transient status while the share extension stages content and opens the main app.",
+      "surface": "share-extension",
+      "sourceReferences": [
+        {
+          "file": "HermesShareExtension/ShareViewController.swift",
+          "line": 28
+        }
+      ],
+      "target": "S'està obrint Hermex..."
+    },
+    {
+      "id": "ShareExtension::Hermex accepts text, URLs, images, PDFs, and files up to 20 MB.",
+      "key": "Hermex accepts text, URLs, images, PDFs, and files up to 20 MB.",
+      "units": [
+        {
+          "source": "Hermex accepts text, URLs, images, PDFs, and files up to 20 MB."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "URL"
+      ],
+      "comment": "Error shown when a share contains no accepted text, URL, image, PDF, or file.",
+      "surface": "share-extension",
+      "sourceReferences": [
+        {
+          "file": "HermesShareExtension/ShareViewController.swift",
+          "line": 51
+        }
+      ],
+      "target": "Hermex accepta text, URL, imatges, PDF i fitxers de fins a 20 MB."
+    },
+    {
+      "id": "ShareExtension::Could not access Hermex storage.",
+      "key": "Could not access Hermex storage.",
+      "units": [
+        {
+          "source": "Could not access Hermex storage."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "Error shown when the app-group import directory is unavailable.",
+      "surface": "share-extension",
+      "sourceReferences": [
+        {
+          "file": "HermesShareExtension/ShareViewController.swift",
+          "line": 57
+        }
+      ],
+      "target": "No s'ha pogut accedir a l'emmagatzematge de Hermex."
+    },
+    {
+      "id": "ShareExtension::Could not save shared content.",
+      "key": "Could not save shared content.",
+      "units": [
+        {
+          "source": "Could not save shared content."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": "Error shown when writing a staged share fails.",
+      "surface": "share-extension",
+      "sourceReferences": [
+        {
+          "file": "HermesShareExtension/ShareViewController.swift",
+          "line": 65
+        }
+      ],
+      "target": "No s'ha pogut desar el contingut compartit."
+    },
+    {
+      "id": "ShareExtension::Shared content saved. Open Hermex manually.",
+      "key": "Shared content saved. Open Hermex manually.",
+      "units": [
+        {
+          "source": "Shared content saved. Open Hermex manually."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "Fallback after saving succeeds but every attempt to open the containing app fails.",
+      "surface": "share-extension",
+      "sourceReferences": [
+        {
+          "file": "HermesShareExtension/ShareViewController.swift",
+          "line": 106
+        }
+      ],
+      "target": "S'ha desat el contingut compartit. Obre Hermex manualment."
+    }
+  ]
+}

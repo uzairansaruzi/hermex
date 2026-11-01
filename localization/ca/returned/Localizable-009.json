@@ -1,0 +1,1265 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::Archived Cards",
+      "catalog": "Localizable",
+      "key": "Archived Cards",
+      "units": [
+        {
+          "source": "Archived Cards"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2094
+        }
+      ],
+      "target": "Targetes arxivades"
+    },
+    {
+      "id": "Localizable::Archived Sessions",
+      "catalog": "Localizable",
+      "key": "Archived Sessions",
+      "units": [
+        {
+          "source": "Archived Sessions"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 659
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListView.swift",
+          "line": 937
+        },
+        {
+          "file": "HermesMobile/Features/Settings/ArchivedSessionsView.swift",
+          "line": 39
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsServerPage.swift",
+          "line": 165
+        },
+        {
+          "file": "HermesMobile/Features/Settings/WebuiServerSettings.swift",
+          "line": 69
+        }
+      ],
+      "target": "Sessions arxivades"
+    },
+    {
+      "id": "Localizable::Arguments",
+      "catalog": "Localizable",
+      "key": "Arguments",
+      "units": [
+        {
+          "source": "Arguments"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ToolCallLogRowView.swift",
+          "line": 211
+        }
+      ],
+      "target": "Arguments"
+    },
+    {
+      "id": "Localizable::Ask Hermex",
+      "catalog": "Localizable",
+      "key": "Ask Hermex",
+      "units": [
+        {
+          "source": "Ask Hermex"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ResponseSelectionInput.swift",
+          "line": 264
+        }
+      ],
+      "target": "Pregunta a Hermex"
+    },
+    {
+      "id": "Localizable::Ask a side question",
+      "catalog": "Localizable",
+      "key": "Ask a side question",
+      "units": [
+        {
+          "source": "Ask a side question"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/SlashCommandCatalog.swift",
+          "line": 175
+        }
+      ],
+      "target": "Fes una pregunta paral·lela"
+    },
+    {
+      "id": "Localizable::Ask anything...",
+      "catalog": "Localizable",
+      "key": "Ask anything...",
+      "units": [
+        {
+          "source": "Ask anything..."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Pregunta el que vulguis..."
+    },
+    {
+      "id": "Localizable::Ask anything... /commands",
+      "catalog": "Localizable",
+      "key": "Ask anything... /commands",
+      "units": [
+        {
+          "source": "Ask anything... /commands"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerTextInputView.swift",
+          "line": 65
+        }
+      ],
+      "target": "Pregunta el que vulguis... /commands"
+    },
+    {
+      "id": "Localizable::Assign Profile",
+      "catalog": "Localizable",
+      "key": "Assign Profile",
+      "units": [
+        {
+          "source": "Assign Profile"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1996
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2003
+        }
+      ],
+      "target": "Assigna un perfil"
+    },
+    {
+      "id": "Localizable::Assigned Profile",
+      "catalog": "Localizable",
+      "key": "Assigned Profile",
+      "units": [
+        {
+          "source": "Assigned Profile"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2070
+        }
+      ],
+      "target": "Perfil assignat"
+    },
+    {
+      "id": "Localizable::Assignment",
+      "catalog": "Localizable",
+      "key": "Assignment",
+      "units": [
+        {
+          "source": "Assignment"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardEditorView.swift",
+          "line": 123
+        }
+      ],
+      "target": "Assignació"
+    },
+    {
+      "id": "Localizable::Assistant",
+      "catalog": "Localizable",
+      "key": "Assistant",
+      "units": [
+        {
+          "source": "Assistant"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/MessageBubbleView.swift",
+          "line": 325
+        }
+      ],
+      "target": "Assistent"
+    },
+    {
+      "id": "Localizable::Assistant, %@",
+      "catalog": "Localizable",
+      "key": "Assistant, %@",
+      "units": [
+        {
+          "source": "Assistant, %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/MessageBubbleView.swift",
+          "line": 327
+        }
+      ],
+      "target": "Assistent, %@"
+    },
+    {
+      "id": "Localizable::At the last count, %lld chats were only on %@.",
+      "catalog": "Localizable",
+      "key": "At the last count, %lld chats were only on %@.",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "At the last count, %arg chat was only on %2$@."
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "At the last count, %arg chats were only on %2$@."
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
+          "line": 786
+        }
+      ],
+      "target": {
+        "one": "En el darrer recompte, %arg xat només era a %2$@.",
+        "other": "En el darrer recompte, %arg xats només eren a %2$@."
+      }
+    },
+    {
+      "id": "Localizable::Attach",
+      "catalog": "Localizable",
+      "key": "Attach",
+      "units": [
+        {
+          "source": "Attach"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Adjunta"
+    },
+    {
+      "id": "Localizable::Attach File",
+      "catalog": "Localizable",
+      "key": "Attach File",
+      "units": [
+        {
+          "source": "Attach File"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Adjunta un fitxer"
+    },
+    {
+      "id": "Localizable::Attachment choices",
+      "catalog": "Localizable",
+      "key": "Attachment choices",
+      "units": [
+        {
+          "source": "Attachment choices"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift",
+          "line": 614
+        }
+      ],
+      "target": "Opcions d'adjunt"
+    },
+    {
+      "id": "Localizable::Attachment storage is busy. Try again shortly.",
+      "catalog": "Localizable",
+      "key": "Attachment storage is busy. Try again shortly.",
+      "units": [
+        {
+          "source": "Attachment storage is busy. Try again shortly."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatAttachmentCoordinator.swift",
+          "line": 279
+        },
+        {
+          "file": "HermesMobile/Persistence/ChatDraftStore.swift",
+          "line": 1341
+        }
+      ],
+      "target": "L'emmagatzematge d'adjunts està ocupat. Torna-ho a provar d'aquí una estona."
+    },
+    {
+      "id": "Localizable::Attempts to reconnect to the server and reload sessions.",
+      "catalog": "Localizable",
+      "key": "Attempts to reconnect to the server and reload sessions.",
+      "units": [
+        {
+          "source": "Attempts to reconnect to the server and reload sessions."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 923
+        }
+      ],
+      "target": "Intenta reconnectar amb el servidor i tornar a carregar les sessions."
+    },
+    {
+      "id": "Localizable::Attentive",
+      "catalog": "Localizable",
+      "key": "Attentive",
+      "units": [
+        {
+          "source": "Attentive"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
+          "line": 136
+        }
+      ],
+      "target": "Atent"
+    },
+    {
+      "id": "Localizable::Audio",
+      "catalog": "Localizable",
+      "key": "Audio",
+      "units": [
+        {
+          "source": "Audio"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/MessageBubbleView.swift",
+          "line": 563
+        }
+      ],
+      "target": "Àudio"
+    },
+    {
+      "id": "Localizable::Audio unavailable",
+      "catalog": "Localizable",
+      "key": "Audio unavailable",
+      "units": [
+        {
+          "source": "Audio unavailable"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/InlineAudioPlayerView.swift",
+          "line": 110
+        }
+      ],
+      "target": "Àudio no disponible"
+    },
+    {
+      "id": "Localizable::Authentication error: %@",
+      "catalog": "Localizable",
+      "key": "Authentication error: %@",
+      "units": [
+        {
+          "source": "Authentication error: %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/ProvidersView.swift",
+          "line": 215
+        }
+      ],
+      "target": "Error d'autenticació: %@"
+    },
+    {
+      "id": "Localizable::Auto",
+      "catalog": "Localizable",
+      "key": "Auto",
+      "units": [
+        {
+          "source": "Auto"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
+          "line": 69
+        }
+      ],
+      "target": "Automàtic"
+    },
+    {
+      "id": "Localizable::Auto-blocked",
+      "catalog": "Localizable",
+      "key": "Auto-blocked",
+      "units": [
+        {
+          "source": "Auto-blocked"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanFeatureState.swift",
+          "line": 133
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 539
+        }
+      ],
+      "target": "Bloquejat automàticament"
+    },
+    {
+      "id": "Localizable::Available mobile commands:\n\n`/help` - Show this command list.\n`/clear` - Clear the local transcript.\n`/stop` - Stop the current response.\n`/new` - Open a fresh session.\n`/model <id>` - Switch this session's model.\n`/workspace <path>` - Switch this session's workspace.\n`/reasoning <level>` - Set reasoning display or effort.\n`/title <text>` - Rename this session.\n`/personality <name>` - Set or clear this session's personality.\n`/skills [query]` - Search available skills.\n`/queue <message>` - Queue a message for the next turn.\n`/steer <message>` - Steer the active response.\n`/interrupt <message>` - Stop the active response and send a new message.\n`/status` - Show session status.\n`/btw <question>` - Ask a side question without changing this chat.\n`/background <prompt>` - Run a parallel task and post the result here.\n`/bg <prompt>` - Alias for `/background`.\n`/branch [name]` - Fork this conversation.\n`/fork [name]` - Alias for `/branch`.\n`/compress [focus]` - Compress this session's context.\n`/compact [focus]` - Alias for `/compress`.\n`/undo` - Undo the last exchange.\n`/retry` - Retry the last turn.",
+      "catalog": "Localizable",
+      "key": "Available mobile commands:\n\n`/help` - Show this command list.\n`/clear` - Clear the local transcript.\n`/stop` - Stop the current response.\n`/new` - Open a fresh session.\n`/model <id>` - Switch this session's model.\n`/workspace <path>` - Switch this session's workspace.\n`/reasoning <level>` - Set reasoning display or effort.\n`/title <text>` - Rename this session.\n`/personality <name>` - Set or clear this session's personality.\n`/skills [query]` - Search available skills.\n`/queue <message>` - Queue a message for the next turn.\n`/steer <message>` - Steer the active response.\n`/interrupt <message>` - Stop the active response and send a new message.\n`/status` - Show session status.\n`/btw <question>` - Ask a side question without changing this chat.\n`/background <prompt>` - Run a parallel task and post the result here.\n`/bg <prompt>` - Alias for `/background`.\n`/branch [name]` - Fork this conversation.\n`/fork [name]` - Alias for `/branch`.\n`/compress [focus]` - Compress this session's context.\n`/compact [focus]` - Alias for `/compress`.\n`/undo` - Undo the last exchange.\n`/retry` - Retry the last turn.",
+      "units": [
+        {
+          "source": "Available mobile commands:\n\n`/help` - Show this command list.\n`/clear` - Clear the local transcript.\n`/stop` - Stop the current response.\n`/new` - Open a fresh session.\n`/model <id>` - Switch this session's model.\n`/workspace <path>` - Switch this session's workspace.\n`/reasoning <level>` - Set reasoning display or effort.\n`/title <text>` - Rename this session.\n`/personality <name>` - Set or clear this session's personality.\n`/skills [query]` - Search available skills.\n`/queue <message>` - Queue a message for the next turn.\n`/steer <message>` - Steer the active response.\n`/interrupt <message>` - Stop the active response and send a new message.\n`/status` - Show session status.\n`/btw <question>` - Ask a side question without changing this chat.\n`/background <prompt>` - Run a parallel task and post the result here.\n`/bg <prompt>` - Alias for `/background`.\n`/branch [name]` - Fork this conversation.\n`/fork [name]` - Alias for `/branch`.\n`/compress [focus]` - Compress this session's context.\n`/compact [focus]` - Alias for `/compress`.\n`/undo` - Undo the last exchange.\n`/retry` - Retry the last turn."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Ordres mòbils disponibles:\n\n`/help` - Mostra aquesta llista d'ordres.\n`/clear` - Esborra la transcripció local.\n`/stop` - Atura la resposta actual.\n`/new` - Obre una sessió nova.\n`/model <id>` - Canvia el model d'aquesta sessió.\n`/workspace <path>` - Canvia l'espai de treball d'aquesta sessió.\n`/reasoning <level>` - Defineix la visualització o l'esforç de raonament.\n`/title <text>` - Canvia el nom d'aquesta sessió.\n`/personality <name>` - Defineix o esborra la personalitat d'aquesta sessió.\n`/skills [query]` - Cerca habilitats disponibles.\n`/queue <message>` - Posa un missatge a la cua per al proper torn.\n`/steer <message>` - Reorienta la resposta activa.\n`/interrupt <message>` - Atura la resposta activa i envia un missatge nou.\n`/status` - Mostra l'estat de la sessió.\n`/btw <question>` - Fes una pregunta paral·lela sense canviar aquest xat.\n`/background <prompt>` - Executa una tasca paral·lela i publica el resultat aquí.\n`/bg <prompt>` - Àlies de `/background`.\n`/branch [name]` - Bifurca aquesta conversa.\n`/fork [name]` - Àlies de `/branch`.\n`/compress [focus]` - Comprimeix el context d'aquesta sessió.\n`/compact [focus]` - Àlies de `/compress`.\n`/undo` - Desfés el darrer intercanvi.\n`/retry` - Reintenta el darrer torn."
+    },
+    {
+      "id": "Localizable::Available mobile commands:\n\n`/help` - Show this command list.\n`/clear` - Clear this conversation on the server. Asks first.\n`/stop` - Stop the current response.\n`/new` - Open a fresh session.\n`/model <id>` - Switch this session's model.\n`/workspace <path>` - Switch this session's workspace.\n`/reasoning <level>` - Set reasoning display or effort.\n`/title <text>` - Rename this session.\n`/personality <name>` - Set or clear this session's personality.\n`/skills [query]` - Search available skills.\n`/queue <message>` - Queue a message for the next turn.\n`/steer <message>` - Steer the active response.\n`/interrupt <message>` - Stop the active response and send a new message.\n`/status` - Show session status.\n`/btw <question>` - Ask a side question without changing this chat.\n`/background <prompt>` - Run a parallel task and post the result here.\n`/bg <prompt>` - Alias for `/background`.\n`/branch [name]` - Fork this conversation.\n`/fork [name]` - Alias for `/branch`.\n`/compress [focus]` - Compress this session's context.\n`/compact [focus]` - Alias for `/compress`.\n`/undo` - Undo the last exchange.\n`/retry` - Retry the last turn.",
+      "catalog": "Localizable",
+      "key": "Available mobile commands:\n\n`/help` - Show this command list.\n`/clear` - Clear this conversation on the server. Asks first.\n`/stop` - Stop the current response.\n`/new` - Open a fresh session.\n`/model <id>` - Switch this session's model.\n`/workspace <path>` - Switch this session's workspace.\n`/reasoning <level>` - Set reasoning display or effort.\n`/title <text>` - Rename this session.\n`/personality <name>` - Set or clear this session's personality.\n`/skills [query]` - Search available skills.\n`/queue <message>` - Queue a message for the next turn.\n`/steer <message>` - Steer the active response.\n`/interrupt <message>` - Stop the active response and send a new message.\n`/status` - Show session status.\n`/btw <question>` - Ask a side question without changing this chat.\n`/background <prompt>` - Run a parallel task and post the result here.\n`/bg <prompt>` - Alias for `/background`.\n`/branch [name]` - Fork this conversation.\n`/fork [name]` - Alias for `/branch`.\n`/compress [focus]` - Compress this session's context.\n`/compact [focus]` - Alias for `/compress`.\n`/undo` - Undo the last exchange.\n`/retry` - Retry the last turn.",
+      "units": [
+        {
+          "source": "Available mobile commands:\n\n`/help` - Show this command list.\n`/clear` - Clear this conversation on the server. Asks first.\n`/stop` - Stop the current response.\n`/new` - Open a fresh session.\n`/model <id>` - Switch this session's model.\n`/workspace <path>` - Switch this session's workspace.\n`/reasoning <level>` - Set reasoning display or effort.\n`/title <text>` - Rename this session.\n`/personality <name>` - Set or clear this session's personality.\n`/skills [query]` - Search available skills.\n`/queue <message>` - Queue a message for the next turn.\n`/steer <message>` - Steer the active response.\n`/interrupt <message>` - Stop the active response and send a new message.\n`/status` - Show session status.\n`/btw <question>` - Ask a side question without changing this chat.\n`/background <prompt>` - Run a parallel task and post the result here.\n`/bg <prompt>` - Alias for `/background`.\n`/branch [name]` - Fork this conversation.\n`/fork [name]` - Alias for `/branch`.\n`/compress [focus]` - Compress this session's context.\n`/compact [focus]` - Alias for `/compress`.\n`/undo` - Undo the last exchange.\n`/retry` - Retry the last turn."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Ordres mòbils disponibles:\n\n`/help` - Mostra aquesta llista d'ordres.\n`/clear` - Esborra aquesta conversa al servidor. Demana confirmació abans.\n`/stop` - Atura la resposta actual.\n`/new` - Obre una sessió nova.\n`/model <id>` - Canvia el model d'aquesta sessió.\n`/workspace <path>` - Canvia l'espai de treball d'aquesta sessió.\n`/reasoning <level>` - Defineix la visualització o l'esforç de raonament.\n`/title <text>` - Canvia el nom d'aquesta sessió.\n`/personality <name>` - Defineix o esborra la personalitat d'aquesta sessió.\n`/skills [query]` - Cerca habilitats disponibles.\n`/queue <message>` - Posa un missatge a la cua per al proper torn.\n`/steer <message>` - Reorienta la resposta activa.\n`/interrupt <message>` - Atura la resposta activa i envia un missatge nou.\n`/status` - Mostra l'estat de la sessió.\n`/btw <question>` - Fes una pregunta paral·lela sense canviar aquest xat.\n`/background <prompt>` - Executa una tasca paral·lela i publica el resultat aquí.\n`/bg <prompt>` - Àlies de `/background`.\n`/branch [name]` - Bifurca aquesta conversa.\n`/fork [name]` - Àlies de `/branch`.\n`/compress [focus]` - Comprimeix el context d'aquesta sessió.\n`/compact [focus]` - Àlies de `/compress`.\n`/undo` - Desfés el darrer intercanvi.\n`/retry` - Reintenta el darrer torn."
+    },
+    {
+      "id": "Localizable::Available personalities:\n\n%@\n\nUse `/personality <name>` or `/personality none`.",
+      "catalog": "Localizable",
+      "key": "Available personalities:\n\n%@\n\nUse `/personality <name>` or `/personality none`.",
+      "units": [
+        {
+          "source": "Available personalities:\n\n%@\n\nUse `/personality <name>` or `/personality none`."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Personalitats disponibles:\n\n%@\n\nFes servir `/personality <name>` o `/personality none`."
+    },
+    {
+      "id": "Localizable::Available skills:",
+      "catalog": "Localizable",
+      "key": "Available skills:",
+      "units": [
+        {
+          "source": "Available skills:"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Skills.swift",
+          "line": 202
+        }
+      ],
+      "target": "Habilitats disponibles:"
+    },
+    {
+      "id": "Localizable::Avatar",
+      "catalog": "Localizable",
+      "key": "Avatar",
+      "units": [
+        {
+          "source": "Avatar"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileEditor.swift",
+          "line": 70
+        }
+      ],
+      "target": "Avatar"
+    },
+    {
+      "id": "Localizable::Avatar color %@",
+      "catalog": "Localizable",
+      "key": "Avatar color %@",
+      "units": [
+        {
+          "source": "Avatar color %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotCreateView.swift",
+          "line": 186
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileEditorView.swift",
+          "line": 230
+        }
+      ],
+      "target": "Color de l'avatar %@"
+    },
+    {
+      "id": "Localizable::Back",
+      "catalog": "Localizable",
+      "key": "Back",
+      "units": [
+        {
+          "source": "Back"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotRoomCreateView.swift",
+          "line": 23
+        }
+      ],
+      "target": "Enrere"
+    },
+    {
+      "id": "Localizable::Back to the Hermes setup",
+      "catalog": "Localizable",
+      "key": "Back to the Hermes setup",
+      "units": [
+        {
+          "source": "Back to the Hermes setup"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Onboarding/OnboardingFlowPolicy.swift",
+          "line": 156
+        }
+      ],
+      "target": "Torna a la configuració de Hermes"
+    },
+    {
+      "id": "Localizable::Background task started. I'll add the result here when it completes.",
+      "catalog": "Localizable",
+      "key": "Background task started. I'll add the result here when it completes.",
+      "units": [
+        {
+          "source": "Background task started. I'll add the result here when it completes."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4119
+        }
+      ],
+      "target": "S'ha iniciat la tasca en segon pla. Hi afegiré el resultat quan acabi."
+    },
+    {
+      "id": "Localizable::Base URL",
+      "catalog": "Localizable",
+      "key": "Base URL",
+      "units": [
+        {
+          "source": "Base URL"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "URL"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/DefaultProfilePickerView.swift",
+          "line": 389
+        }
+      ],
+      "target": "URL base"
+    },
+    {
+      "id": "Localizable::Base URL must start with http:// or https://.",
+      "catalog": "Localizable",
+      "key": "Base URL must start with http:// or https://.",
+      "units": [
+        {
+          "source": "Base URL must start with http:// or https://."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "URL"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/DefaultProfilePickerView.swift",
+          "line": 397
+        }
+      ],
+      "target": "L'URL base ha de començar per http:// o https://."
+    },
+    {
+      "id": "Localizable::Become a supporter",
+      "catalog": "Localizable",
+      "key": "Become a supporter",
+      "units": [
+        {
+          "source": "Become a supporter"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/TipJarCard.swift",
+          "line": 95
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsAboutPage.swift",
+          "line": 66
+        }
+      ],
+      "target": "Fes-te mecenes"
+    },
+    {
+      "id": "Localizable::Become a supporter, opens in browser",
+      "catalog": "Localizable",
+      "key": "Become a supporter, opens in browser",
+      "units": [
+        {
+          "source": "Become a supporter, opens in browser"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/TipJarCard.swift",
+          "line": 105
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsAboutPage.swift",
+          "line": 69
+        }
+      ],
+      "target": "Fes-te mecenes, s'obre al navegador"
+    },
+    {
+      "id": "Localizable::Behind by %lld",
+      "catalog": "Localizable",
+      "key": "Behind by %lld",
+      "units": [
+        {
+          "source": "Behind by %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "%lld per darrere"
+    },
+    {
+      "id": "Localizable::Binary File",
+      "catalog": "Localizable",
+      "key": "Binary File",
+      "units": [
+        {
+          "source": "Binary File"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Fitxer binari"
+    },
+    {
+      "id": "Localizable::Binary file changed",
+      "catalog": "Localizable",
+      "key": "Binary file changed",
+      "units": [
+        {
+          "source": "Binary file changed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewDiffRow.swift",
+          "line": 143
+        }
+      ],
+      "target": "Fitxer binari canviat"
+    },
+    {
+      "id": "Localizable::Blob",
+      "catalog": "Localizable",
+      "key": "Blob",
+      "units": [
+        {
+          "source": "Blob"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
+          "line": 84
+        }
+      ],
+      "target": "Blob"
+    },
+    {
+      "id": "Localizable::Block",
+      "catalog": "Localizable",
+      "key": "Block",
+      "units": [
+        {
+          "source": "Block"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 413
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1247
+        }
+      ],
+      "target": "Bloc"
+    },
+    {
+      "id": "Localizable::Blocked",
+      "catalog": "Localizable",
+      "key": "Blocked",
+      "units": [
+        {
+          "source": "Blocked"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2395
+        }
+      ],
+      "target": "Bloquejat"
+    },
+    {
+      "id": "Localizable::Blue",
+      "catalog": "Localizable",
+      "key": "Blue",
+      "units": [
+        {
+          "source": "Blue"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 76
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
+          "line": 72
+        }
+      ],
+      "target": "Blau"
+    },
+    {
+      "id": "Localizable::Board",
+      "catalog": "Localizable",
+      "key": "Board",
+      "units": [
+        {
+          "source": "Board"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanFeatureState.swift",
+          "line": 38
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 607
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1388
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1690
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2288
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2293
+        }
+      ],
+      "target": "Tauler"
+    },
+    {
+      "id": "Localizable::Board actions for %@",
+      "catalog": "Localizable",
+      "key": "Board actions for %@",
+      "units": [
+        {
+          "source": "Board actions for %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2294
+        }
+      ],
+      "target": "Accions del tauler per a %@"
+    },
+    {
+      "id": "Localizable::Bored",
+      "catalog": "Localizable",
+      "key": "Bored",
+      "units": [
+        {
+          "source": "Bored"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
+          "line": 149
+        }
+      ],
+      "target": "Avorrit"
+    },
+    {
+      "id": "Localizable::Bot",
+      "catalog": "Localizable",
+      "key": "Bot",
+      "units": [
+        {
+          "source": "Bot"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotGroupRoom.swift",
+          "line": 110
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotSearchView.swift",
+          "line": 288
+        }
+      ],
+      "target": "Bot"
+    },
+    {
+      "id": "Localizable::Bot Chat",
+      "catalog": "Localizable",
+      "key": "Bot Chat",
+      "units": [
+        {
+          "source": "Bot Chat"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotCreator.swift",
+          "line": 33
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotCreator.swift",
+          "line": 45
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotCreator.swift",
+          "line": 278
+        },
+        {
+          "file": "HermesMobile/Features/Hermes/HermesConversation.swift",
+          "line": 351
+        },
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesCall.swift",
+          "line": 14
+        }
+      ],
+      "target": "Xat de bot"
+    },
+    {
+      "id": "Localizable::Bot Chat · %@",
+      "catalog": "Localizable",
+      "key": "Bot Chat · %@",
+      "units": [
+        {
+          "source": "Bot Chat · %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": "An archived Bot Chat's row title; %@ is its bot's Profile name.",
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesSessionPage.swift",
+          "line": 126
+        }
+      ],
+      "target": "Xat de bot · %@"
+    }
+  ]
+}

@@ -110,7 +110,10 @@ struct ToolCallDetailBodyView: View {
         switch status {
         case .success:
             if let duration = toolCall.duration {
-                return "Completed in \(duration.formatted(.number.precision(.fractionLength(1))))s"
+                return String(
+                    localized: "Completed in \(duration.formatted(.number.precision(.fractionLength(1))))s",
+                    table: "Auxiliary"
+                )
             }
             return String(localized: "Completed")
         case .failure:

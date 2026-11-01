@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "AppShortcuts",
+  "entries": [
+    {
+      "id": "AppShortcuts::New ${applicationName} chat",
+      "catalog": "AppShortcuts",
+      "key": "New ${applicationName} chat",
+      "units": [
+        {
+          "source": "New ${applicationName} chat"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 194
+        }
+      ],
+      "target": "Xat nou a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::New ${applicationName} voice chat",
+      "catalog": "AppShortcuts",
+      "key": "New ${applicationName} voice chat",
+      "units": [
+        {
+          "source": "New ${applicationName} voice chat"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 204
+        }
+      ],
+      "target": "Xat de veu nou a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::New ${profile} chat in ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "New ${profile} chat in ${applicationName}",
+      "units": [
+        {
+          "source": "New ${profile} chat in ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}",
+        "${profile}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 213
+        }
+      ],
+      "target": "Xat nou amb el perfil ${profile} a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::New chat in ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "New chat in ${applicationName}",
+      "units": [
+        {
+          "source": "New chat in ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 108
+        },
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 193
+        }
+      ],
+      "target": "Xat nou a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::New chat in ${profile} on ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "New chat in ${profile} on ${applicationName}",
+      "units": [
+        {
+          "source": "New chat in ${profile} on ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}",
+        "${profile}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 215
+        }
+      ],
+      "target": "Xat nou amb el perfil ${profile} a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::New chat with content in ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "New chat with content in ${applicationName}",
+      "units": [
+        {
+          "source": "New chat with content in ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 223
+        }
+      ],
+      "target": "Xat nou amb contingut a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::New voice chat in ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "New voice chat in ${applicationName}",
+      "units": [
+        {
+          "source": "New voice chat in ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 203
+        }
+      ],
+      "target": "Xat de veu nou a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::Start a ${applicationName} chat with content",
+      "catalog": "AppShortcuts",
+      "key": "Start a ${applicationName} chat with content",
+      "units": [
+        {
+          "source": "Start a ${applicationName} chat with content"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 224
+        }
+      ],
+      "target": "Comença un xat a ${applicationName} amb contingut"
+    },
+    {
+      "id": "AppShortcuts::Start a new ${profile} chat in ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "Start a new ${profile} chat in ${applicationName}",
+      "units": [
+        {
+          "source": "Start a new ${profile} chat in ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}",
+        "${profile}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 214
+        }
+      ],
+      "target": "Comença un xat nou amb el perfil ${profile} a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::Start a new chat in ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "Start a new chat in ${applicationName}",
+      "units": [
+        {
+          "source": "Start a new chat in ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 195
+        }
+      ],
+      "target": "Comença un xat nou a ${applicationName}"
+    },
+    {
+      "id": "AppShortcuts::Start a voice chat in ${applicationName}",
+      "catalog": "AppShortcuts",
+      "key": "Start a voice chat in ${applicationName}",
+      "units": [
+        {
+          "source": "Start a voice chat in ${applicationName}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${applicationName}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 205
+        }
+      ],
+      "target": "Comença un xat de veu a ${applicationName}"
+    }
+  ]
+}

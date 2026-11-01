@@ -429,10 +429,20 @@ struct DiffHunk: Identifiable, Equatable {
     var deletions: Int { lines.filter { $0.kind == .deletion }.count }
 
     var displayLabel: String {
-        if isSynthetic { return "Patch \(patchNumber) of \(patchCount)" }
+        if isSynthetic {
+            return String(
+                localized: "Patch \(patchNumber) of \(patchCount)",
+                table: "Auxiliary"
+            )
+        }
         guard let start = newStart else { return header }
         let count = max(newCount ?? 1, 1)
-        return count == 1 ? "Line \(start)" : "Lines \(start)-\(start + count - 1)"
+        return count == 1
+            ? String(localized: "Line \(start)")
+            : String(
+                localized: "Lines \(start)-\(start + count - 1)",
+                table: "Auxiliary"
+            )
     }
 
     static func parse(_ raw: String) -> [DiffHunk] {

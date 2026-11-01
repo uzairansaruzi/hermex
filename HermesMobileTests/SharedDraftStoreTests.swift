@@ -514,6 +514,19 @@ final class SharedDraftStoreTests: XCTestCase {
                        "An empty share is consumed without a chat")
     }
 
+    func testRejectedShareSummaryRetainsTheReason() {
+        let skipped = SharedSkips([
+            SharedSkippedItem(filename: "first.pdf", reason: .unreadable),
+            SharedSkippedItem(filename: "second.pdf", reason: .unreadable),
+        ])
+        let rejection = skipped.localizedRejectionSummary
+
+        XCTAssertNotEqual(rejection, skipped.localizedSummary)
+        XCTAssertTrue(rejection.contains("first.pdf"))
+        XCTAssertTrue(rejection.contains("second.pdf"))
+        XCTAssertTrue(rejection.contains("read"))
+    }
+
     @MainActor
     private func newSession(_ profile: String = "default") -> (chat: HermesSessionChat, key: ChatDraftKey) {
         let connection = BotConnection(id: UUID(uuidString: "00000000-0000-0000-0000-000000001181")!, name: "Host",

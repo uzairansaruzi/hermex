@@ -1,0 +1,91 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Opening Hermex...": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening Hermex..."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "S'està obrint Hermex..."
+          }
+        }
+      },
+      "comment": "Transient status while the share extension stages content and opens the main app."
+    },
+    "Hermex accepts text, URLs, images, PDFs, and files up to 20 MB.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermex accepts text, URLs, images, PDFs, and files up to 20 MB."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Hermex accepta text, URL, imatges, PDF i fitxers de fins a 20 MB."
+          }
+        }
+      },
+      "comment": "Error shown when a share contains no accepted text, URL, image, PDF, or file."
+    },
+    "Could not access Hermex storage.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not access Hermex storage."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "No s'ha pogut accedir a l'emmagatzematge de Hermex."
+          }
+        }
+      },
+      "comment": "Error shown when the app-group import directory is unavailable."
+    },
+    "Could not save shared content.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save shared content."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "No s'ha pogut desar el contingut compartit."
+          }
+        }
+      },
+      "comment": "Error shown when writing a staged share fails."
+    },
+    "Shared content saved. Open Hermex manually.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shared content saved. Open Hermex manually."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "S'ha desat el contingut compartit. Obre Hermex manualment."
+          }
+        }
+      },
+      "comment": "Fallback after saving succeeds but every attempt to open the containing app fails."
+    }
+  },
+  "version": "1.0"
+}

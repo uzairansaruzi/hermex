@@ -37,7 +37,7 @@ final class ShareViewController: UIViewController {
         view.backgroundColor = .clear
         view.isOpaque = false
 
-        statusLabel.text = "Opening Hermex..."
+        statusLabel.text = Self.localized("Opening Hermex...")
         statusLabel.font = .preferredFont(forTextStyle: .headline)
         statusLabel.textAlignment = .center
         statusLabel.textColor = .secondaryLabel
@@ -65,7 +65,7 @@ final class ShareViewController: UIViewController {
         }
 
         guard let directory = HermesShareDraft.containerURL() else {
-            showStatus("Could not access Hermex storage.")
+            showStatus(Self.localized("Could not access Hermex storage."))
             completeRequest(after: 0.8)
             return
         }
@@ -78,7 +78,7 @@ final class ShareViewController: UIViewController {
                 in: directory
             )
         } catch {
-            showStatus("Could not save shared content.")
+            showStatus(Self.localized("Could not save shared content."))
             completeRequest(after: 0.8)
             return
         }
@@ -87,13 +87,18 @@ final class ShareViewController: UIViewController {
     }
 
     /// Nothing in the share can be added: says why, and waits for Done so the reason can be read,
-    /// with VoiceOver too (#1401). English only, like the rest of the extension.
+    /// with VoiceOver too (#1401).
     private func showNothingAdded(skipped: [SharedSkippedItem]) {
-        let message = [Self.reason(for: skipped), "Hermex accepts text, URLs, images, PDFs, and files up to 20 MB."]
-            .compactMap { $0 }
-            .joined(separator: "\n\n")
-        let alert = UIAlertController(title: "Nothing was added", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Done", style: .default) { [weak self] _ in
+        let message = [
+            skipped.isEmpty ? nil : SharedSkips(skipped).localizedRejectionSummary,
+            Self.localized("Hermex accepts text, URLs, images, PDFs, and files up to 20 MB."),
+        ].compactMap { $0 }.joined(separator: "\n\n")
+        let alert = UIAlertController(
+            title: String(localized: "Couldn’t Add Shared Files"),
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: String(localized: "Done"), style: .default) { [weak self] _ in
             self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
         })
         if didAppear {
@@ -103,19 +108,14 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    /// Why the share's items were left out: the first item's reason, and how many more there
-    /// were. Nil when it held none.
-    private static func reason(for skipped: [SharedSkippedItem]) -> String? {
-        guard let first = skipped.first else { return nil }
-        let name = first.filename ?? "The item"
-        let reason = switch first.reason {
-        case .tooLarge: "\(name) is over 20 MB."
-        case .unsupported: "Hermex can’t attach \(name)."
-        case .unreadable, .overLimit, nil: "\(name) couldn’t be read."
-        }
-        let rest = skipped.count - 1
-        guard rest > 0 else { return reason }
-        return "\(reason) \(rest == 1 ? "1 more item" : "\(rest) more items") couldn’t be added."
+    private static func localized(_ key: String) -> String {
+        NSLocalizedString(
+            key,
+            tableName: "ShareExtension",
+            bundle: .main,
+            value: key,
+            comment: ""
+        )
     }
 
     private func showStatus(_ text: String) {
@@ -151,7 +151,7 @@ final class ShareViewController: UIViewController {
         }
 
         // Fallback if everything fails
-        showStatus("Shared content saved. Open Hermex manually.")
+        showStatus(Self.localized("Shared content saved. Open Hermex manually."))
         completeRequest(after: 1.5)
     }
 

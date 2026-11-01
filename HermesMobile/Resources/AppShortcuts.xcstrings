@@ -110,7 +110,8 @@
             "state": "translated",
             "value": "新增 ${applicationName} 聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Xat nou a ${applicationName}"}}
       }
     },
     "New ${applicationName} voice chat": {
@@ -222,7 +223,8 @@
             "state": "translated",
             "value": "新增 ${applicationName} 語音聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Xat de veu nou a ${applicationName}"}}
       }
     },
     "New ${profile} chat in ${applicationName}": {
@@ -334,7 +336,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 中新增 ${profile} 聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Xat nou amb el perfil ${profile} a ${applicationName}"}}
       }
     },
     "New chat in ${applicationName}": {
@@ -446,7 +449,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 中新增聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Xat nou a ${applicationName}"}}
       }
     },
     "New chat in ${profile} on ${applicationName}": {
@@ -558,7 +562,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 的 ${profile} 中新增聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Xat nou amb el perfil ${profile} a ${applicationName}"}}
       }
     },
     "New chat with content in ${applicationName}": {
@@ -670,7 +675,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 中以內容新增聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Xat nou amb contingut a ${applicationName}"}}
       }
     },
     "New voice chat in ${applicationName}": {
@@ -782,7 +788,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 中新增語音聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Xat de veu nou a ${applicationName}"}}
       }
     },
     "Start a ${applicationName} chat with content": {
@@ -894,7 +901,8 @@
             "state": "translated",
             "value": "以內容開始 ${applicationName} 聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Comença un xat a ${applicationName} amb contingut"}}
       }
     },
     "Start a new ${profile} chat in ${applicationName}": {
@@ -1006,7 +1014,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 中開始新的 ${profile} 聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Comença un xat nou amb el perfil ${profile} a ${applicationName}"}}
       }
     },
     "Start a new chat in ${applicationName}": {
@@ -1118,7 +1127,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 中開始新聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Comença un xat nou a ${applicationName}"}}
       }
     },
     "Start a voice chat in ${applicationName}": {
@@ -1230,7 +1240,8 @@
             "state": "translated",
             "value": "在 ${applicationName} 中開始語音聊天"
           }
-        }
+        },
+        "ca" : {"stringUnit" : {"state" : "needs_review", "value" : "Comença un xat de veu a ${applicationName}"}}
       }
     }
   },

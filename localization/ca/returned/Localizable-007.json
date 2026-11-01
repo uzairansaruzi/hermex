@@ -1,0 +1,1179 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::Add a workspace to make it available when starting sessions.",
+      "catalog": "Localizable",
+      "key": "Add a workspace to make it available when starting sessions.",
+      "units": [
+        {
+          "source": "Add a workspace to make it available when starting sessions."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/WorkspaceManagerView.swift",
+          "line": 76
+        }
+      ],
+      "target": "Afegeix un espai de treball per tenir-lo disponible en iniciar sessions."
+    },
+    {
+      "id": "Localizable::Add another",
+      "catalog": "Localizable",
+      "key": "Add another",
+      "units": [
+        {
+          "source": "Add another"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotRoomCreateView.swift",
+          "line": 59
+        }
+      ],
+      "target": "Afegeix-ne un altre"
+    },
+    {
+      "id": "Localizable::Add custom model to favorites",
+      "catalog": "Localizable",
+      "key": "Add custom model to favorites",
+      "units": [
+        {
+          "source": "Add custom model to favorites"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ModelPickerSheet.swift",
+          "line": 260
+        }
+      ],
+      "target": "Afegeix el model personalitzat als preferits"
+    },
+    {
+      "id": "Localizable::Add guidance to the current work without interrupting it.",
+      "catalog": "Localizable",
+      "key": "Add guidance to the current work without interrupting it.",
+      "units": [
+        {
+          "source": "Add guidance to the current work without interrupting it."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": "manual",
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Afegeix orientació a la feina en curs sense interrompre-la."
+    },
+    {
+      "id": "Localizable::Add header",
+      "catalog": "Localizable",
+      "key": "Add header",
+      "units": [
+        {
+          "source": "Add header"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/CustomHeadersEditor.swift",
+          "line": 51
+        }
+      ],
+      "target": "Afegeix una capçalera"
+    },
+    {
+      "id": "Localizable::Add project",
+      "catalog": "Localizable",
+      "key": "Add project",
+      "units": [
+        {
+          "source": "Add project"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 674
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
+          "line": 1435
+        }
+      ],
+      "target": "Afegeix un projecte"
+    },
+    {
+      "id": "Localizable::Add skill",
+      "catalog": "Localizable",
+      "key": "Add skill",
+      "units": [
+        {
+          "source": "Add skill"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobSkillsPicker.swift",
+          "line": 206
+        }
+      ],
+      "target": "Afegeix una habilitat"
+    },
+    {
+      "id": "Localizable::Add to Favorites",
+      "catalog": "Localizable",
+      "key": "Add to Favorites",
+      "units": [
+        {
+          "source": "Add to Favorites"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ModelPickerSheet.swift",
+          "line": 445
+        }
+      ],
+      "target": "Afegeix als preferits"
+    },
+    {
+      "id": "Localizable::Added",
+      "catalog": "Localizable",
+      "key": "Added",
+      "units": [
+        {
+          "source": "Added"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 255
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
+          "line": 396
+        }
+      ],
+      "target": "Afegit"
+    },
+    {
+      "id": "Localizable::Adding a suggestion saves it as your own text. Edit it freely.",
+      "catalog": "Localizable",
+      "key": "Adding a suggestion saves it as your own text. Edit it freely.",
+      "units": [
+        {
+          "source": "Adding a suggestion saves it as your own text. Edit it freely."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Afegir un suggeriment el desa com a text propi. Edita'l lliurement."
+    },
+    {
+      "id": "Localizable::Adds another Hermes server.",
+      "catalog": "Localizable",
+      "key": "Adds another Hermes server.",
+      "units": [
+        {
+          "source": "Adds another Hermes server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsView.swift",
+          "line": 51
+        }
+      ],
+      "target": "Afegeix un altre servidor de Hermes."
+    },
+    {
+      "id": "Localizable::Administrator password",
+      "catalog": "Localizable",
+      "key": "Administrator password",
+      "units": [
+        {
+          "source": "Administrator password"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotPendingRequestCard.swift",
+          "line": 443
+        }
+      ],
+      "target": "Contrasenya d'administrador"
+    },
+    {
+      "id": "Localizable::Administrator password needed",
+      "catalog": "Localizable",
+      "key": "Administrator password needed",
+      "units": [
+        {
+          "source": "Administrator password needed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotPendingRequest.swift",
+          "line": 278
+        }
+      ],
+      "target": "Cal la contrasenya d'administrador"
+    },
+    {
+      "id": "Localizable::Advanced",
+      "catalog": "Localizable",
+      "key": "Advanced",
+      "units": [
+        {
+          "source": "Advanced"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Onboarding/OnboardingConnectPage.swift",
+          "line": 137
+        }
+      ],
+      "target": "Avançat"
+    },
+    {
+      "id": "Localizable::After removing it, this iPhone can’t open chats that are only on %@; they stay on the server.",
+      "catalog": "Localizable",
+      "key": "After removing it, this iPhone can’t open chats that are only on %@; they stay on the server.",
+      "units": [
+        {
+          "source": "After removing it, this iPhone can’t open chats that are only on %@; they stay on the server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
+          "line": 788
+        }
+      ],
+      "target": "Després d'eliminar-lo, aquest iPhone no podrà obrir els xats que només són a %@; es queden al servidor."
+    },
+    {
+      "id": "Localizable::After removing it, this iPhone can’t open them; they stay on the server.",
+      "catalog": "Localizable",
+      "key": "After removing it, this iPhone can’t open them; they stay on the server.",
+      "units": [
+        {
+          "source": "After removing it, this iPhone can’t open them; they stay on the server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
+          "line": 809
+        }
+      ],
+      "target": "Després d'eliminar-lo, aquest iPhone no els podrà obrir; es queden al servidor."
+    },
+    {
+      "id": "Localizable::Age %@",
+      "catalog": "Localizable",
+      "key": "Age %@",
+      "units": [
+        {
+          "source": "Age %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Edat %@"
+    },
+    {
+      "id": "Localizable::Agent Soul",
+      "catalog": "Localizable",
+      "key": "Agent Soul",
+      "units": [
+        {
+          "source": "Agent Soul"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Memory/MemoryView.swift",
+          "line": 427
+        }
+      ],
+      "target": "Ànima de l'agent"
+    },
+    {
+      "id": "Localizable::Agent command",
+      "catalog": "Localizable",
+      "key": "Agent command",
+      "units": [
+        {
+          "source": "Agent command"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/SlashAutocompleteRanking.swift",
+          "line": 102
+        },
+        {
+          "file": "HermesMobile/Features/Chat/SlashAutocompleteRanking.swift",
+          "line": 118
+        }
+      ],
+      "target": "Ordre de l'agent"
+    },
+    {
+      "id": "Localizable::Agent setup prompt copied",
+      "catalog": "Localizable",
+      "key": "Agent setup prompt copied",
+      "units": [
+        {
+          "source": "Agent setup prompt copied"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Onboarding/OnboardingComponents.swift",
+          "line": 263
+        }
+      ],
+      "target": "S'ha copiat el prompt de configuració de l'agent"
+    },
+    {
+      "id": "Localizable::Ahead by %lld",
+      "catalog": "Localizable",
+      "key": "Ahead by %lld",
+      "units": [
+        {
+          "source": "Ahead by %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "%lld per davant"
+    },
+    {
+      "id": "Localizable::Alerts when a reply finishes or fails, for servers without push notifications.",
+      "catalog": "Localizable",
+      "key": "Alerts when a reply finishes or fails, for servers without push notifications.",
+      "units": [
+        {
+          "source": "Alerts when a reply finishes or fails, for servers without push notifications."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Avisos quan una resposta acaba o falla, per a servidors sense notificacions push."
+    },
+    {
+      "id": "Localizable::Alias for %@",
+      "catalog": "Localizable",
+      "key": "Alias for %@",
+      "units": [
+        {
+          "source": "Alias for %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Àlies per a %@"
+    },
+    {
+      "id": "Localizable::All",
+      "catalog": "Localizable",
+      "key": "All",
+      "units": [
+        {
+          "source": "All"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotSearchView.swift",
+          "line": 53
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 630
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 643
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListView.swift",
+          "line": 431
+        }
+      ],
+      "target": "Tots"
+    },
+    {
+      "id": "Localizable::All %lld",
+      "catalog": "Localizable",
+      "key": "All %lld",
+      "units": [
+        {
+          "source": "All %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/TaskAgenda.swift",
+          "line": 18
+        }
+      ],
+      "target": "Tots els %lld"
+    },
+    {
+      "id": "Localizable::All Models...",
+      "catalog": "Localizable",
+      "key": "All Models...",
+      "units": [
+        {
+          "source": "All Models..."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerSelectorControls.swift",
+          "line": 206
+        }
+      ],
+      "target": "Tots els models..."
+    },
+    {
+      "id": "Localizable::All Profiles",
+      "catalog": "Localizable",
+      "key": "All Profiles",
+      "units": [
+        {
+          "source": "All Profiles"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2071
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 581
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 596
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 609
+        }
+      ],
+      "target": "Tots els perfils"
+    },
+    {
+      "id": "Localizable::All Tenants",
+      "catalog": "Localizable",
+      "key": "All Tenants",
+      "units": [
+        {
+          "source": "All Tenants"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2087
+        }
+      ],
+      "target": "Tots els tenants"
+    },
+    {
+      "id": "Localizable::All Time",
+      "catalog": "Localizable",
+      "key": "All Time",
+      "units": [
+        {
+          "source": "All Time"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Tot el temps"
+    },
+    {
+      "id": "Localizable::All changes",
+      "catalog": "Localizable",
+      "key": "All changes",
+      "units": [
+        {
+          "source": "All changes"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 142
+        }
+      ],
+      "target": "Tots els canvis"
+    },
+    {
+      "id": "Localizable::Allow Photos access to save images from Hermex.",
+      "catalog": "Localizable",
+      "key": "Allow Photos access to save images from Hermex.",
+      "units": [
+        {
+          "source": "Allow Photos access to save images from Hermex."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Permet l'accés a Fotos per desar imatges de Hermex."
+    },
+    {
+      "id": "Localizable::Allow Photos access to save media from Hermex.",
+      "catalog": "Localizable",
+      "key": "Allow Photos access to save media from Hermex.",
+      "units": [
+        {
+          "source": "Allow Photos access to save media from Hermex."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/FileExportSupport.swift",
+          "line": 126
+        }
+      ],
+      "target": "Permet l'accés a Fotos per desar contingut multimèdia de Hermex."
+    },
+    {
+      "id": "Localizable::Allow access in Settings to browse recent photos here.",
+      "catalog": "Localizable",
+      "key": "Allow access in Settings to browse recent photos here.",
+      "units": [
+        {
+          "source": "Allow access in Settings to browse recent photos here."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift",
+          "line": 736
+        }
+      ],
+      "target": "Permet l'accés a Configuració per veure aquí les fotos recents."
+    },
+    {
+      "id": "Localizable::Allow camera access in Settings to take a photo for this chat.",
+      "catalog": "Localizable",
+      "key": "Allow camera access in Settings to take a photo for this chat.",
+      "units": [
+        {
+          "source": "Allow camera access in Settings to take a photo for this chat."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/CameraPickerView.swift",
+          "line": 418
+        }
+      ],
+      "target": "Permet l'accés a la càmera a Configuració per fer una foto per a aquest xat."
+    },
+    {
+      "id": "Localizable::Allow notifications for Hermex in iOS Settings, then turn this on again.",
+      "catalog": "Localizable",
+      "key": "Allow notifications for Hermex in iOS Settings, then turn this on again.",
+      "units": [
+        {
+          "source": "Allow notifications for Hermex in iOS Settings, then turn this on again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "iOS"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 731
+        }
+      ],
+      "target": "Permet les notificacions de Hermex a la Configuració d'iOS i torna a activar això."
+    },
+    {
+      "id": "Localizable::Allow once",
+      "catalog": "Localizable",
+      "key": "Allow once",
+      "units": [
+        {
+          "source": "Allow once"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotPendingRequestCard.swift",
+          "line": 179
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ApprovalRequestOverlay.swift",
+          "line": 177
+        }
+      ],
+      "target": "Permet una vegada"
+    },
+    {
+      "id": "Localizable::Allow session",
+      "catalog": "Localizable",
+      "key": "Allow session",
+      "units": [
+        {
+          "source": "Allow session"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotPendingRequestCard.swift",
+          "line": 180
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ApprovalRequestOverlay.swift",
+          "line": 178
+        }
+      ],
+      "target": "Permet durant la sessió"
+    },
+    {
+      "id": "Localizable::Allow session covers computer use: %@ (%@) in this chat; Always allow covers it for this Profile from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers computer use: %@ (%@) in this chat; Always allow covers it for this Profile from now on.",
+      "units": [
+        {
+          "source": "Allow session covers computer use: %1$@ (%2$@) in this chat; Always allow covers it for this Profile from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%1$@",
+        "%2$@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "«Permet durant la sessió» s'aplica a l'ús de l'ordinador: %1$@ (%2$@) en aquest xat; «Permet sempre» ho aplica a aquest perfil a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers computer use: %@ (%@) in this session; Always allow covers it on this server from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers computer use: %@ (%@) in this session; Always allow covers it on this server from now on.",
+      "units": [
+        {
+          "source": "Allow session covers computer use: %1$@ (%2$@) in this session; Always allow covers it on this server from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%1$@",
+        "%2$@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "«Permet durant la sessió» s'aplica a l'ús de l'ordinador: %1$@ (%2$@) en aquesta sessió; «Permet sempre» ho aplica a aquest servidor a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every %@ call for this reason in this chat; Always allow covers it for this Profile from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every %@ call for this reason in this chat; Always allow covers it for this Profile from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every %@ call for this reason in this chat; Always allow covers it for this Profile from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "«Permet durant la sessió» s'aplica a totes les crides %@ per aquest motiu en aquest xat; «Permet sempre» ho aplica a aquest perfil a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every %@ call for this reason in this session; Always allow covers it on this server from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every %@ call for this reason in this session; Always allow covers it on this server from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every %@ call for this reason in this session; Always allow covers it on this server from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "«Permet durant la sessió» s'aplica a totes les crides %@ per aquest motiu en aquesta sessió; «Permet sempre» ho aplica a aquest servidor a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every Python script in this chat; Always allow covers every Python script for this Profile from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every Python script in this chat; Always allow covers every Python script for this Profile from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every Python script in this chat; Always allow covers every Python script for this Profile from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Python"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 273
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a tots els scripts de Python d'aquest xat; «Permet sempre» ho aplica a tots els scripts de Python d'aquest perfil a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every Python script in this session; Always allow covers every Python script on this server from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every Python script in this session; Always allow covers every Python script on this server from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every Python script in this session; Always allow covers every Python script on this server from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Python"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 305
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a tots els scripts de Python d'aquesta sessió; «Permet sempre» ho aplica a tots els scripts de Python d'aquest servidor a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every action like this one in this chat.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every action like this one in this chat.",
+      "units": [
+        {
+          "source": "Allow session covers every action like this one in this chat."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 294
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a totes les accions com aquesta en aquest xat."
+    },
+    {
+      "id": "Localizable::Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 284
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a totes les accions com aquesta en aquest xat; «Permet sempre» ho aplica a aquest perfil a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every action like this one in this session; Always allow covers it on this server from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every action like this one in this session; Always allow covers it on this server from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every action like this one in this session; Always allow covers it on this server from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 315
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a totes les accions com aquesta en aquesta sessió; «Permet sempre» ho aplica a aquest servidor a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every “%@” in this chat; Always allow covers it for this Profile from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every “%@” in this chat; Always allow covers it for this Profile from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every “%@” in this chat; Always allow covers it for this Profile from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 269
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a tots els “%@” d'aquest xat; «Permet sempre» ho aplica a aquest perfil a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers every “%@” in this session; Always allow covers it on this server from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers every “%@” in this session; Always allow covers it on this server from now on.",
+      "units": [
+        {
+          "source": "Allow session covers every “%@” in this session; Always allow covers it on this server from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 301
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a tots els “%@” d'aquesta sessió; «Permet sempre» ho aplica a aquest servidor a partir d'ara."
+    },
+    {
+      "id": "Localizable::Allow session covers this security finding in this chat.",
+      "catalog": "Localizable",
+      "key": "Allow session covers this security finding in this chat.",
+      "units": [
+        {
+          "source": "Allow session covers this security finding in this chat."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 292
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a aquesta troballa de seguretat en aquest xat."
+    },
+    {
+      "id": "Localizable::Allow session covers this security finding in this session; Always allow covers it on this server from now on.",
+      "catalog": "Localizable",
+      "key": "Allow session covers this security finding in this session; Always allow covers it on this server from now on.",
+      "units": [
+        {
+          "source": "Allow session covers this security finding in this session; Always allow covers it on this server from now on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Approval.swift",
+          "line": 311
+        }
+      ],
+      "target": "«Permet durant la sessió» s'aplica a aquesta troballa de seguretat en aquesta sessió; «Permet sempre» ho aplica a aquest servidor a partir d'ara."
+    }
+  ]
+}

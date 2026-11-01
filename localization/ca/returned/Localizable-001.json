@@ -1,0 +1,1332 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::%@ was removed from Hermex, so the text from Shortcuts can’t open there.",
+      "catalog": "Localizable",
+      "key": "%@ was removed from Hermex, so the text from Shortcuts can’t open there.",
+      "units": [
+        {
+          "source": "%@ was removed from Hermex, so the text from Shortcuts can’t open there."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermex",
+        "Shortcuts"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/ContentView.swift",
+          "line": 53
+        }
+      ],
+      "target": "S'ha eliminat %@ de Hermex, per això el text de Dreceres no s'hi pot obrir."
+    },
+    {
+      "id": "Localizable::%@ · Build %@",
+      "catalog": "Localizable",
+      "key": "%@ · Build %@",
+      "units": [
+        {
+          "source": "%@ · Build %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 212
+        }
+      ],
+      "target": "%@ · Compilació %@"
+    },
+    {
+      "id": "Localizable::%lld items weren’t added. A message holds up to 10 attachments.",
+      "catalog": "Localizable",
+      "key": "%lld items weren’t added. A message holds up to 10 attachments.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld item wasn’t added. A message holds up to 10 attachments."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld items weren’t added. A message holds up to 10 attachments."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ActionToast.swift",
+          "line": 246
+        }
+      ],
+      "target": {
+        "one": "No s'ha afegit %lld element. Un missatge admet fins a 10 adjunts.",
+        "other": "No s'han afegit %lld elements. Un missatge admet fins a 10 adjunts."
+      }
+    },
+    {
+      "id": "Localizable::%lld items weren’t added: %@.",
+      "catalog": "Localizable",
+      "key": "%lld items weren’t added: %@.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld item wasn’t added: %@."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld items weren’t added: %@."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%@",
+        "%@",
+        "%@",
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ActionToast.swift",
+          "line": 262
+        }
+      ],
+      "target": {
+        "one": "No s'ha afegit %lld element: %@.",
+        "other": "No s'han afegit %lld elements: %@."
+      }
+    },
+    {
+      "id": "Localizable::%lld more",
+      "catalog": "Localizable",
+      "key": "%lld more",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld more"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld more"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ActionToast.swift",
+          "line": 261
+        }
+      ],
+      "target": {
+        "one": "%lld més",
+        "other": "%lld més"
+      }
+    },
+    {
+      "id": "Localizable::1 item wasn’t added: %@ couldn’t be read.",
+      "catalog": "Localizable",
+      "key": "1 item wasn’t added: %@ couldn’t be read.",
+      "units": [
+        {
+          "source": "1 item wasn’t added: %@ couldn’t be read."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ActionToast.swift",
+          "line": 253
+        }
+      ],
+      "target": "No s'ha afegit 1 element: no s'ha pogut llegir %@."
+    },
+    {
+      "id": "Localizable::1 item wasn’t added: %@ is over 20 MB.",
+      "catalog": "Localizable",
+      "key": "1 item wasn’t added: %@ is over 20 MB.",
+      "units": [
+        {
+          "source": "1 item wasn’t added: %@ is over 20 MB."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ActionToast.swift",
+          "line": 252
+        }
+      ],
+      "target": "No s'ha afegit 1 element: %@ supera els 20 MB."
+    },
+    {
+      "id": "Localizable::1 item wasn’t added: Hermex can’t attach %@.",
+      "catalog": "Localizable",
+      "key": "1 item wasn’t added: Hermex can’t attach %@.",
+      "units": [
+        {
+          "source": "1 item wasn’t added: Hermex can’t attach %@."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Shared/ActionToast.swift",
+          "line": 254
+        }
+      ],
+      "target": "No s'ha afegit 1 element: Hermex no pot adjuntar %@."
+    },
+    {
+      "id": "Localizable::10 Shortcut texts are already waiting. Open Hermex to review them first.",
+      "catalog": "Localizable",
+      "key": "10 Shortcut texts are already waiting. Open Hermex to review them first.",
+      "units": [
+        {
+          "source": "10 Shortcut texts are already waiting. Open Hermex to review them first."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 177
+        }
+      ],
+      "target": "Ja hi ha 10 textos de Dreceres en espera. Obre Hermex per revisar-los primer."
+    },
+    {
+      "id": "Localizable::About this range",
+      "catalog": "Localizable",
+      "key": "About this range",
+      "units": [
+        {
+          "source": "About this range"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitTurnChangesCard.swift",
+          "line": 106
+        }
+      ],
+      "target": "Quant a aquest rang"
+    },
+    {
+      "id": "Localizable::Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending.",
+      "catalog": "Localizable",
+      "key": "Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending.",
+      "units": [
+        {
+          "source": "Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Shortcuts"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatTranscriptSupportingViews.swift",
+          "line": 1326
+        }
+      ],
+      "target": "Afegit des de Dreceres amb caràcters ocults. Poden canviar com l'agent llegeix el text. Revisa'l abans d'enviar."
+    },
+    {
+      "id": "Localizable::Added from Shortcuts. Review before sending.",
+      "catalog": "Localizable",
+      "key": "Added from Shortcuts. Review before sending.",
+      "units": [
+        {
+          "source": "Added from Shortcuts. Review before sending."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Shortcuts"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatTranscriptSupportingViews.swift",
+          "line": 1328
+        }
+      ],
+      "target": "Afegit des de Dreceres. Revisa'l abans d'enviar."
+    },
+    {
+      "id": "Localizable::Another text from Shortcuts is waiting.",
+      "catalog": "Localizable",
+      "key": "Another text from Shortcuts is waiting.",
+      "units": [
+        {
+          "source": "Another text from Shortcuts is waiting."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Shortcuts"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatTranscriptSupportingViews.swift",
+          "line": 1343
+        }
+      ],
+      "target": "Hi ha un altre text de Dreceres en espera."
+    },
+    {
+      "id": "Localizable::Choose a Profile on a Hermes server, or make a Hermes server active in Hermex.",
+      "catalog": "Localizable",
+      "key": "Choose a Profile on a Hermes server, or make a Hermes server active in Hermex.",
+      "units": [
+        {
+          "source": "Choose a Profile on a Hermes server, or make a Hermes server active in Hermex."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 178
+        }
+      ],
+      "target": "Tria un perfil d'un servidor de Hermes o activa un servidor de Hermes a Hermex."
+    },
+    {
+      "id": "Localizable::Compares the commit from before this turn with the files now. Edits that were already uncommitted are included.",
+      "catalog": "Localizable",
+      "key": "Compares the commit from before this turn with the files now. Edits that were already uncommitted are included.",
+      "units": [
+        {
+          "source": "Compares the commit from before this turn with the files now. Edits that were already uncommitted are included."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitTurnChangesCard.swift",
+          "line": 109
+        }
+      ],
+      "target": "Compara la comissió de l'inici del torn amb els fitxers d'ara. S'hi inclouen els canvis que ja estaven pendents de cometre."
+    },
+    {
+      "id": "Localizable::Comment…",
+      "catalog": "Localizable",
+      "key": "Comment…",
+      "units": [
+        {
+          "source": "Comment…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitDiffView.swift",
+          "line": 182
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/SourceViewer/SourceFileSurface.swift",
+          "line": 125
+        }
+      ],
+      "target": "Comentari…"
+    },
+    {
+      "id": "Localizable::Add a comment (optional)",
+      "catalog": "Localizable",
+      "key": "Add a comment (optional)",
+      "units": [
+        {
+          "source": "Add a comment (optional)"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewCommentSheet.swift",
+          "line": 25
+        }
+      ],
+      "target": "Afegeix un comentari (opcional)"
+    },
+    {
+      "id": "Localizable::Back to Chat",
+      "catalog": "Localizable",
+      "key": "Back to Chat",
+      "units": [
+        {
+          "source": "Back to Chat"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewCommentSheet.swift",
+          "line": 75
+        }
+      ],
+      "target": "Torna al xat"
+    },
+    {
+      "id": "Localizable::Comment on line %lld",
+      "catalog": "Localizable",
+      "key": "Comment on line %lld",
+      "units": [
+        {
+          "source": "Comment on line %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewCommentSheet.swift",
+          "line": 56
+        }
+      ],
+      "target": "Comentari a la línia %lld"
+    },
+    {
+      "id": "Localizable::Comment on lines %lld to %lld",
+      "catalog": "Localizable",
+      "key": "Comment on lines %lld to %lld",
+      "units": [
+        {
+          "source": "Comment on lines %lld to %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewCommentSheet.swift",
+          "line": 57
+        }
+      ],
+      "target": "Comentari a les línies %lld a %lld"
+    },
+    {
+      "id": "Localizable::%lld comments added",
+      "catalog": "Localizable",
+      "key": "%lld comments added",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld comment added"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld comments added"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewCommentSheet.swift",
+          "line": 69
+        }
+      ],
+      "target": {
+        "one": "%lld comentari afegit",
+        "other": "%lld comentaris afegits"
+      }
+    },
+    {
+      "id": "Localizable::%@, in %@",
+      "catalog": "Localizable",
+      "key": "%@, in %@",
+      "units": [
+        {
+          "source": "%@, in %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/FileBrowserView.swift",
+          "line": 336
+        }
+      ],
+      "target": "%@, a %@"
+    },
+    {
+      "id": "Localizable::CPU",
+      "catalog": "Localizable",
+      "key": "CPU",
+      "units": [
+        {
+          "source": "CPU"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 190
+        }
+      ],
+      "target": "CPU"
+    },
+    {
+      "id": "Localizable::Connection details",
+      "catalog": "Localizable",
+      "key": "Connection details",
+      "units": [
+        {
+          "source": "Connection details"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 717
+        }
+      ],
+      "target": "Detalls de la connexió"
+    },
+    {
+      "id": "Localizable::Content",
+      "catalog": "Localizable",
+      "key": "Content",
+      "units": [
+        {
+          "source": "Content"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 131
+        }
+      ],
+      "target": "Contingut"
+    },
+    {
+      "id": "Localizable::Copy Details",
+      "catalog": "Localizable",
+      "key": "Copy Details",
+      "units": [
+        {
+          "source": "Copy Details"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 724
+        }
+      ],
+      "target": "Copia els detalls"
+    },
+    {
+      "id": "Localizable::Copy Support Details",
+      "catalog": "Localizable",
+      "key": "Copy Support Details",
+      "units": [
+        {
+          "source": "Copy Support Details"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsAboutPage.swift",
+          "line": 32
+        }
+      ],
+      "target": "Copia els detalls d'assistència"
+    },
+    {
+      "id": "Localizable::Crash",
+      "catalog": "Localizable",
+      "key": "Crash",
+      "units": [
+        {
+          "source": "Crash"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 188
+        }
+      ],
+      "target": "Tancament inesperat"
+    },
+    {
+      "id": "Localizable::Delete All",
+      "catalog": "Localizable",
+      "key": "Delete All",
+      "units": [
+        {
+          "source": "Delete All"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 86
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 96
+        }
+      ],
+      "target": "Suprimeix-ho tot"
+    },
+    {
+      "id": "Localizable::Delete all diagnostic reports?",
+      "catalog": "Localizable",
+      "key": "Delete all diagnostic reports?",
+      "units": [
+        {
+          "source": "Delete all diagnostic reports?"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 92
+        }
+      ],
+      "target": "Vols suprimir tots els informes de diagnòstic?"
+    },
+    {
+      "id": "Localizable::Diagnostics",
+      "catalog": "Localizable",
+      "key": "Diagnostics",
+      "units": [
+        {
+          "source": "Diagnostics"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/DiagnosticsLog.swift",
+          "line": 160
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsAboutPage.swift",
+          "line": 43
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 100
+        }
+      ],
+      "target": "Diagnòstic"
+    },
+    {
+      "id": "Localizable::Disk writes",
+      "catalog": "Localizable",
+      "key": "Disk writes",
+      "units": [
+        {
+          "source": "Disk writes"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 191
+        }
+      ],
+      "target": "Escriptures al disc"
+    },
+    {
+      "id": "Localizable::Failed · HTTP %lld",
+      "catalog": "Localizable",
+      "key": "Failed · HTTP %lld",
+      "units": [
+        {
+          "source": "Failed · HTTP %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 770
+        }
+      ],
+      "target": "Ha fallat · HTTP %lld"
+    },
+    {
+      "id": "Localizable::Failed · certificate",
+      "catalog": "Localizable",
+      "key": "Failed · certificate",
+      "units": [
+        {
+          "source": "Failed · certificate"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 773
+        }
+      ],
+      "target": "Ha fallat · certificat"
+    },
+    {
+      "id": "Localizable::Failed · couldn’t connect",
+      "catalog": "Localizable",
+      "key": "Failed · couldn’t connect",
+      "units": [
+        {
+          "source": "Failed · couldn’t connect"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 772
+        }
+      ],
+      "target": "Ha fallat · no s'ha pogut connectar"
+    },
+    {
+      "id": "Localizable::Failed · timed out",
+      "catalog": "Localizable",
+      "key": "Failed · timed out",
+      "units": [
+        {
+          "source": "Failed · timed out"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 771
+        }
+      ],
+      "target": "Ha fallat · s'ha esgotat el temps"
+    },
+    {
+      "id": "Localizable::Hang",
+      "catalog": "Localizable",
+      "key": "Hang",
+      "units": [
+        {
+          "source": "Hang"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 189
+        }
+      ],
+      "target": "Penjada"
+    },
+    {
+      "id": "Localizable::Hermex couldn’t save the text. Try again.",
+      "catalog": "Localizable",
+      "key": "Hermex couldn’t save the text. Try again.",
+      "units": [
+        {
+          "source": "Hermex couldn’t save the text. Try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 179
+        }
+      ],
+      "target": "Hermex no ha pogut desar el text. Torna-ho a provar."
+    },
+    {
+      "id": "Localizable::Live authorization",
+      "catalog": "Localizable",
+      "key": "Live authorization",
+      "units": [
+        {
+          "source": "Live authorization"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 759
+        },
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 272
+        }
+      ],
+      "target": "Autorització en directe"
+    },
+    {
+      "id": "Localizable::Live handshake",
+      "catalog": "Localizable",
+      "key": "Live handshake",
+      "units": [
+        {
+          "source": "Live handshake"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 760
+        },
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 273
+        }
+      ],
+      "target": "Encaixada en directe"
+    },
+    {
+      "id": "Localizable::New Chat with Content",
+      "catalog": "Localizable",
+      "key": "New Chat with Content",
+      "units": [
+        {
+          "source": "New Chat with Content"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 121
+        },
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 125
+        },
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 226
+        }
+      ],
+      "target": "Xat nou amb contingut"
+    },
+    {
+      "id": "Localizable::New chat with ${content}",
+      "catalog": "Localizable",
+      "key": "New chat with ${content}",
+      "units": [
+        {
+          "source": "New chat with ${content}"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "${content}"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 138
+        }
+      ],
+      "target": "Xat nou amb ${content}"
+    },
+    {
+      "id": "Localizable::No Reports",
+      "catalog": "Localizable",
+      "key": "No Reports",
+      "units": [
+        {
+          "source": "No Reports"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 78
+        }
+      ],
+      "target": "Cap informe"
+    },
+    {
+      "id": "Localizable::No reports yet. iOS decides when to deliver crash and hang reports, so a recent problem may not show here yet.",
+      "catalog": "Localizable",
+      "key": "No reports yet. iOS decides when to deliver crash and hang reports, so a recent problem may not show here yet.",
+      "units": [
+        {
+          "source": "No reports yet. iOS decides when to deliver crash and hang reports, so a recent problem may not show here yet."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "iOS"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 80
+        }
+      ],
+      "target": "Encara no hi ha informes. iOS decideix quan lliura els informes de tancaments inesperats i penjades, així que és possible que un problema recent encara no aparegui aquí."
+    },
+    {
+      "id": "Localizable::Not checked",
+      "catalog": "Localizable",
+      "key": "Not checked",
+      "units": [
+        {
+          "source": "Not checked"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 768
+        },
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 282
+        }
+      ],
+      "target": "No comprovat"
+    },
+    {
+      "id": "Localizable::Nothing was sent. Discard deletes this text from Hermex.",
+      "catalog": "Localizable",
+      "key": "Nothing was sent. Discard deletes this text from Hermex.",
+      "units": [
+        {
+          "source": "Nothing was sent. Discard deletes this text from Hermex."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 292
+        }
+      ],
+      "target": "No s'ha enviat res. Descartar suprimeix aquest text de Hermex."
+    },
+    {
+      "id": "Localizable::Open Hermex on a new chat with this text in the composer. Nothing is sent until you send it.",
+      "catalog": "Localizable",
+      "key": "Open Hermex on a new chat with this text in the composer. Nothing is sent until you send it.",
+      "units": [
+        {
+          "source": "Open Hermex on a new chat with this text in the composer. Nothing is sent until you send it."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "app-shortcuts",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/AppIntents/HermexAppIntents.swift",
+          "line": 126
+        }
+      ],
+      "target": "Obre Hermex en un xat nou amb aquest text al camp de redacció. No s'envia res fins que ho envies."
+    },
+    {
+      "id": "Localizable::Passed",
+      "catalog": "Localizable",
+      "key": "Passed",
+      "units": [
+        {
+          "source": "Passed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 769
+        },
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 283
+        }
+      ],
+      "target": "Superat"
+    },
+    {
+      "id": "Localizable::iOS delivers these reports. Hermex keeps up to 10 for 14 days, on this device only.",
+      "catalog": "Localizable",
+      "key": "iOS delivers these reports. Hermex keeps up to 10 for 14 days, on this device only.",
+      "units": [
+        {
+          "source": "iOS delivers these reports. Hermex keeps up to 10 for 14 days, on this device only."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "iOS"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsDiagnosticsPage.swift",
+          "line": 71
+        }
+      ],
+      "target": "iOS lliura aquests informes. Hermex en conserva fins a 10 durant 14 dies, només en aquest dispositiu."
+    },
+    {
+      "id": "Localizable::Pull Request #%@",
+      "catalog": "Localizable",
+      "key": "Pull Request #%@",
+      "units": [
+        {
+          "source": "Pull Request #%@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Pull request #%@"
+    }
+  ]
+}

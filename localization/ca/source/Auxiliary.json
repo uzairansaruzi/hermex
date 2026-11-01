@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Auxiliary",
+  "entries": [
+    {
+      "id": "Localizable::Completed in %@s",
+      "key": "Completed in %@s",
+      "units": [
+        {
+          "source": "Completed in \\(duration.formatted(.number.precision(.fractionLength(1))))s"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": "Visible tool-call completion status and its accessibility label; %@ is a one-decimal duration.",
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ToolCallLogRowView.swift",
+          "line": 113
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::Lines %lld-%lld",
+      "key": "Lines %lld-%lld",
+      "units": [
+        {
+          "source": "Lines \\(start)-\\(start + count - 1)"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": "Git diff hunk range with inclusive first and last line numbers.",
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitDiffView.swift",
+          "line": 436
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::Patch %lld of %lld",
+      "key": "Patch %lld of %lld",
+      "units": [
+        {
+          "source": "Patch \\(patchNumber) of \\(patchCount)"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": "Synthetic git diff hunk label: one-based patch number and total patch count.",
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitDiffView.swift",
+          "line": 432
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::Response is ready to review.",
+      "key": "Response is ready to review.",
+      "units": [
+        {
+          "source": "Response is ready to review."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": "Live Activity transcript fallback after a final response has no excerpt.",
+      "surface": "live-activity-widget",
+      "sourceReferences": [
+        {
+          "file": "HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift",
+          "line": 211
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::Waiting for the next agent update.",
+      "key": "Waiting for the next agent update.",
+      "units": [
+        {
+          "source": "Waiting for the next agent update."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": "Live Activity transcript fallback while a response is still running without an excerpt.",
+      "surface": "live-activity-widget",
+      "sourceReferences": [
+        {
+          "file": "HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift",
+          "line": 214
+        }
+      ],
+      "target": null
+    }
+  ]
+}
