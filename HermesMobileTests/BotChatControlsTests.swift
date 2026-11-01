@@ -57,6 +57,15 @@ import XCTest
         XCTAssertEqual(settings.catalog.active?.id, "model-b")
     }
 
+    /// A catalog read the dropped socket cut shows nothing: the banner would outlive the
+    /// reconnect, which keeps the same connection and Profile.
+    func testCatalogReadCutByALostConnectionLeavesNoError() async {
+        let wire = SettingsWire(); let settings = BotChatControls()
+        wire.catalogFailure = BotFailure.transport
+        await settings.connect(context(), wire: wire)
+        XCTAssertNil(settings.errorMessage)
+    }
+
     func testRejectedAndUnsupportedWritesPreserveSelectionAndHostError() async throws {
         for code in [4002, -32601, 403] {
             let wire = SettingsWire(); let settings = BotChatControls()
@@ -191,6 +200,7 @@ import XCTest
     var active = "model-a"
     var response = modelReply()
     var failure: Error?
+    var catalogFailure: Error?
     var beforeDispatch: (() -> Void)?
     var afterDispatch: (() async -> Void)?
     var writes: [(String, [String: BotJSON])] = []
@@ -201,6 +211,7 @@ import XCTest
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let method = call.method, params = try call.params()
         if method == "model.options" {
+            if let catalogFailure { throw catalogFailure }
             var fields = Self.catalog.fields!; fields["model"] = .string(active)
             return .object(fields)
         }
