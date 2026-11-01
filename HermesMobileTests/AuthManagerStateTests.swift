@@ -938,8 +938,10 @@ final class AuthManagerStateTests: XCTestCase {
 
     func testASavedSignInIsOfferedOnlyAtExactlyTheSameAddress() async throws {
         defer { HermesHostFixture.reset() }
-        // Every host reports the side connection's install id, as any host can.
+        // Every host reports the side connection's install id, as any host can, and offers
+        // both sign-ins, so copying a sign-in must keep the Password | Browser picker.
         let status = BotJSON.object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                     "auth_flows": .array([.string("native_pkce")]),
                                      "version": .string("0.21.5"), "install_id": .string("install-1")])
         let keychain = InMemoryKeychainStore()
         let manager = makeFormManager(keychain: keychain)
@@ -968,6 +970,7 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(same.password, "saved")
         XCTAssertEqual(same.customHeaders, side.headers)
         XCTAssertTrue(same.showsHermesSignIn, "Filling in the saved headers keeps the dashboard found")
+        XCTAssertTrue(same.offersSignInChoice, "Filling in the saved headers keeps the Password | Browser picker")
 
         let added = await same.connect(authManager: manager)
 

@@ -231,11 +231,14 @@ final class OnboardingViewModel {
     func useSavedSignIn(_ signIn: AuthManager.SavedHermesSignIn) {
         guard !isConnectionLocked, detectedKind == .hermes, signInMethod == .password else { return }
         let offers = savedSignIns
+        let methods = offeredSignInMethods
         // Another saved sign-in's copies go first, so none of them outlives its offer.
         dropReusedSignIn()
         customHeaders = signIn.connection.headers ?? []
-        // The saved headers are the ones that reach this address, so it stays a found dashboard.
+        // The saved headers are the ones that reach this address, so it stays a found dashboard
+        // with the same sign-ins on offer.
         detectedKind = .hermes
+        offeredSignInMethods = methods
         savedSignIns = offers
         probedConnectionIdentity = currentConnectionIdentity()
         username = signIn.connection.username
