@@ -505,7 +505,7 @@ import UIKit
                 loadTranscriptMediaImage: { _ in nil }, loadTranscriptMediaData: { _ in nil },
                 transcriptMediaCacheNamespace: "ns", actionContext: { _, _ in nil },
                 shouldRenderMessageRow: { _ in true }, onPreviewAttachment: { _, _ in },
-                onPreviewTranscriptMedia: { _ in }, onAskHermex: { _ in }, onToggleListening: { _ in },
+                onPreviewTranscriptMedia: { _, _ in }, onAskHermex: { _ in }, onToggleListening: { _ in },
                 onRegenerate: { _ in }, onEdit: { _ in }, onFork: { _ in }, onCopy: { _ in }
             )
         }

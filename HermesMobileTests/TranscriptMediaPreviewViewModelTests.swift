@@ -381,6 +381,32 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canExportMedia)
     }
 
+    /// A gallery page outside the admission window holds no image, and fetches it again
+    /// once the user swipes back to it.
+    func testReleasedMediaLetsGoOfItsImageAndLoadsAgain() async throws {
+        let recorder = TranscriptMediaPreviewRequestRecorder()
+        let imageData = try XCTUnwrap(Self.imageData())
+        let client = makeClient { request in
+            recorder.record(request)
+            return self.response(statusCode: 200, data: imageData, for: request)
+        }
+        let viewModel = TranscriptMediaPreviewViewModel(
+            server: Self.baseURL,
+            files: Self.webui("session-123", client),
+            reference: .init(rawReference: "/tmp/shots/after.png"),
+            apiClient: client
+        )
+        await viewModel.load()
+
+        viewModel.release()
+        XCTAssertNil(viewModel.previewData)
+        XCTAssertFalse(viewModel.canExportMedia)
+
+        await viewModel.load()
+        XCTAssertNotNil(viewModel.previewData)
+        XCTAssertEqual(recorder.requestCount, 2)
+    }
+
     private static let baseURL = URL(string: "https://example.test")!
 
     /// A webui chat's media client on `client`; none without a session ID.

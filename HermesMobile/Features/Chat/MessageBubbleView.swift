@@ -31,8 +31,11 @@ struct MessageBubbleView: View {
     /// attachment thumbnails and transcript media cannot share an empty bucket.
     let transcriptMediaCacheNamespace: String
     let localAttachmentPreviews: [String: Data]?
-    let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
-    let onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)?
+    /// Called with the tapped attachment and the message's other grid attachments, in
+    /// order, so an image opens in a gallery of the message's images.
+    let onPreviewAttachment: ((MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void)?
+    /// Called with the tapped media and every media reference in the reply, in order.
+    let onPreviewTranscriptMedia: ((TranscriptMediaReference, [TranscriptMediaReference]) -> Void)?
     let isStreaming: Bool
     let liveTokensPerSecond: Double?
     let onAskHermex: (String) -> Void
@@ -51,8 +54,8 @@ struct MessageBubbleView: View {
         loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)? = nil,
         transcriptMediaCacheNamespace: String,
         localAttachmentPreviews: [String: Data]? = nil,
-        onPreviewAttachment: ((MessageAttachment, Data?) -> Void)? = nil,
-        onPreviewTranscriptMedia: ((TranscriptMediaReference) -> Void)? = nil,
+        onPreviewAttachment: ((MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void)? = nil,
+        onPreviewTranscriptMedia: ((TranscriptMediaReference, [TranscriptMediaReference]) -> Void)? = nil,
         isStreaming: Bool = false,
         liveTokensPerSecond: Double? = nil,
         onAskHermex: @escaping (String) -> Void = { _ in },
@@ -206,6 +209,10 @@ struct MessageBubbleView: View {
             workspaceRoot: chatWorkspaceRoot,
             isStreaming: isStreaming
         )
+        // The reply's other media is collected when an image is tapped, not on each pass.
+        let onPreviewTranscriptMedia = onPreviewTranscriptMedia.map { preview in
+            { (reference: TranscriptMediaReference) in preview(reference, segments.mediaReferences) }
+        }
 
         return VStack(alignment: .leading, spacing: 6) {
             if showsAssistantTurnHeaderForThisMessage {
@@ -507,6 +514,9 @@ struct MessageBubbleView: View {
             if !gridItems.isEmpty {
                 attachmentGrid(
                     items: gridItems,
+                    onPreview: onPreviewAttachment.map { preview in
+                        { attachment, localData in preview((attachment, localData), gridItems) }
+                    },
                     columns: columns,
                     cellSize: cellSize,
                     spacing: spacing,
@@ -520,7 +530,8 @@ struct MessageBubbleView: View {
     }
 
     private func attachmentGrid(
-        items: [(attachment: MessageAttachment, localData: Data?)],
+        items: [MessageAttachmentPreview],
+        onPreview: ((MessageAttachment, Data?) -> Void)?,
         columns: Int,
         cellSize: CGFloat,
         spacing: CGFloat,
@@ -538,7 +549,7 @@ struct MessageBubbleView: View {
                             localData: item.localData,
                             cacheNamespace: transcriptMediaCacheNamespace,
                             loadAttachmentImage: loadAttachmentImage,
-                            onPreviewAttachment: onPreviewAttachment,
+                            onPreviewAttachment: onPreview,
                             size: cellSize
                         )
                         .frame(width: cellSize, height: cellSize)
@@ -572,7 +583,11 @@ struct MessageBubbleView: View {
             title: audioDisplayName(for: attachment),
             load: audioLoader(for: attachment),
             loadKey: attachmentAudio?.loadKey,
-            onOpen: attachmentAudio?.openAction(for: attachment, localData: localData, onPreview: onPreviewAttachment)
+            onOpen: attachmentAudio?.openAction(
+                for: attachment,
+                localData: localData,
+                onPreview: onPreviewAttachment.map { preview in { preview(($0, $1), []) } }
+            )
         )
     }
 
@@ -589,11 +604,11 @@ struct MessageBubbleView: View {
         }
     }
 
-    private func rowCount(items: [(attachment: MessageAttachment, localData: Data?)], columns: Int) -> Int {
+    private func rowCount(items: [MessageAttachmentPreview], columns: Int) -> Int {
         (items.count + columns - 1) / columns
     }
 
-    private var attachmentsWithPreviews: [(attachment: MessageAttachment, localData: Data?)] {
+    private var attachmentsWithPreviews: [MessageAttachmentPreview] {
         guard let attachments = message.attachments else { return [] }
         return attachments.map { attachment in
             let key = attachment.path ?? attachment.name ?? ""
@@ -686,7 +701,19 @@ private extension [TranscriptMediaSegment] {
             return false
         }
     }
+
+    var mediaReferences: [TranscriptMediaReference] {
+        compactMap { segment in
+            if case let .media(reference) = segment {
+                return reference
+            }
+            return nil
+        }
+    }
 }
+
+/// A sent attachment as its message row draws it: the server's record and any local copy.
+typealias MessageAttachmentPreview = (attachment: MessageAttachment, localData: Data?)
 
 /// Where a sent message's attachment row gets its inline audio. Without one, audio
 /// attachments are file cells. Equal sources differ only in `load`, which is fixed for a

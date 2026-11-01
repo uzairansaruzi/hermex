@@ -2,14 +2,35 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+extension TranscriptMediaReference {
+    /// Known to be a picture before anything is fetched. An extensionless remote URL may
+    /// turn out to be audio or video, so it keeps the preview sheet.
+    var opensInImageLightbox: Bool {
+        isRasterImageCandidate && !isExtensionlessRemoteMediaCandidate
+    }
+}
+
+extension ImageLightboxGallery where Item == TranscriptMediaPreviewItem {
+    /// The images among a reply's media, opened at the tapped one. A reference the reply
+    /// names twice is one page.
+    init(tapped: TranscriptMediaReference, in replyMedia: [TranscriptMediaReference]) {
+        self.init(
+            tapped: TranscriptMediaPreviewItem(reference: tapped),
+            siblings: replyMedia.map(TranscriptMediaPreviewItem.init(reference:)),
+            isImage: \.reference.opensInImageLightbox
+        )
+    }
+}
+
 /// The transcript's viewer for an image. Audio, video, and unsupported media keep
 /// `TranscriptMediaPreviewView`, which can only tell them apart after the bytes arrive;
 /// an image is known to be an image before anything is fetched, so it can open straight
-/// into the full-bleed lightbox.
+/// into the full-bleed lightbox. `page` says whether this image may load yet.
 struct TranscriptMediaImageLightbox: View {
     let onAPIError: (Error) -> Void
 
     private let item: TranscriptMediaPreviewItem
+    private let page: ImageLightboxPage
     @State private var viewModel: TranscriptMediaPreviewViewModel
     @State private var exportDocument = ExportedFileDocument(data: Data())
     @State private var exportContentType = UTType.data
@@ -24,9 +45,11 @@ struct TranscriptMediaImageLightbox: View {
         server: URL,
         files: (any WorkspaceFileClient)?,
         item: TranscriptMediaPreviewItem,
+        page: ImageLightboxPage,
         onAPIError: @escaping (Error) -> Void
     ) {
         self.item = item
+        self.page = page
         self.onAPIError = onAPIError
         _viewModel = State(
             initialValue: TranscriptMediaPreviewViewModel(
@@ -43,6 +66,7 @@ struct TranscriptMediaImageLightbox: View {
             title: item.reference.displayName,
             path: item.reference.rawReference,
             imageAccessibilityLabel: item.reference.accessibilityName,
+            page: page,
             onRetry: { Task { await loadMedia(force: true) } }
         ) {
             if viewModel.canSaveMediaToPhotos {
@@ -63,8 +87,12 @@ struct TranscriptMediaImageLightbox: View {
                 )
             }
         }
-        .task {
-            await loadMedia()
+        .task(id: page.isAdmitted) {
+            if page.isAdmitted {
+                await loadMedia()
+            } else {
+                viewModel.release()
+            }
         }
         .fileExporter(
             isPresented: $isFileExporterPresented,

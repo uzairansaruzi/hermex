@@ -132,10 +132,13 @@ final class TranscriptMediaPreviewViewModel {
             return originalData
         }
 
+        let generation = loadGeneration
         let data = try await transcriptMediaData()
         try Task.checkCancellation()
-        originalData = data
-        originalByteCount = data.count
+        if loadGeneration == generation {
+            originalData = data
+            originalByteCount = data.count
+        }
         return data
     }
 
@@ -160,6 +163,19 @@ final class TranscriptMediaPreviewViewModel {
         case let .remoteURL(url):
             return try await apiClient.remoteTranscriptMediaData(from: url)
         }
+    }
+
+    /// Lets go of everything loaded and drops a load still in flight, so a gallery page
+    /// outside the admission window holds no full-size image. The next `load()` starts over.
+    func release() {
+        cleanupTemporaryFiles()
+        didLoad = false
+        previewData = nil
+        originalData = nil
+        originalByteCount = nil
+        isPastPreviewCap = false
+        errorMessage = nil
+        lastError = nil
     }
 
     func cleanupTemporaryFiles() {
