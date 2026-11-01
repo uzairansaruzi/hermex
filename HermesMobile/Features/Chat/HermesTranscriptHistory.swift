@@ -354,3 +354,58 @@ enum HermesTranscriptProjection {
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
+/// A scheduled task's run prompt (#1413): a `cron_` session's row the host opens on its cron
+/// hint (`_CRON_HINT`, `cron/scheduler_prompt.py` at the pin), read from the text the history
+/// shows. The hint opens the row, follows the `/skill` label(s) `HermesTranscriptProjection.skillInvocation` rewrote a skill
+/// job's row to, or follows the notice of skills the job could not load. Nil for any other text,
+/// which keeps its bubble. The row's Copy still copies its `content` unchanged, hint included.
+struct CronRunPrompt: Equatable {
+    /// The skills the job loaded, without their slash.
+    let skills: [String]
+    /// The job's own text after the hint, with the row's line breaks.
+    let body: String
+
+    private static let hint = "[IMPORTANT: You are running as a scheduled cron job."
+    private static let missingSkills = "[IMPORTANT: The following skill(s) were listed for this job but could not be found and were skipped: "
+    private static let instruction = "The user has provided the following instruction alongside the skill invocation: "
+
+    init?(_ message: ChatMessage) {
+        guard message.role == "user", let content = message.content else { return nil }
+        var rest = content[...]
+        if rest.hasPrefix(Self.missingSkills) {
+            // The notice comes first, so the history left the row as stored: the skills that did
+            // load, or none and the instruction marker, then the hint.
+            guard let end = Self.end(ofBracketOpening: rest) else { return nil }
+            rest = rest[end...].drop(while: \.isWhitespace)
+            if let invocation = HermesTranscriptProjection.skillInvocation(String(rest)) {
+                rest = invocation[...]
+            } else if rest.hasPrefix(Self.instruction) {
+                rest = rest.dropFirst(Self.instruction.count)
+            }
+        }
+        var skills: [String] = []
+        while rest.hasPrefix("/"), let space = rest.firstIndex(of: " ") {
+            skills.append(String(rest[rest.index(after: rest.startIndex)..<space]))
+            rest = rest[rest.index(after: space)...]
+        }
+        guard rest.hasPrefix(Self.hint), let end = Self.end(ofBracketOpening: rest) else { return nil }
+        self.skills = skills
+        body = rest[end...].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The index past the `]` that closes the `[` opening `text`, counting nested pairs such as
+    /// the hint's `[SILENT]`. Nil when it never closes.
+    private static func end(ofBracketOpening text: Substring) -> Substring.Index? {
+        var depth = 0
+        for index in text.indices {
+            if text[index] == "[" {
+                depth += 1
+            } else if text[index] == "]" {
+                depth -= 1
+                if depth == 0 { return text.index(after: index) }
+            }
+        }
+        return nil
+    }
+}

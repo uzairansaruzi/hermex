@@ -334,6 +334,8 @@ struct ChatView: View {
     /// The parent the row this Hermes chat opened from named, which its "Forked from" row
     /// checks (#1051).
     let hermesParentKey: String?
+    /// A scheduled task's run (#1413): its prompt row shows as a `CronRunPromptCard`.
+    let isCronRun: Bool
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
     /// sent (#1015). Nil pushes it on top instead.
     let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
@@ -519,6 +521,7 @@ struct ChatView: View {
         isHermesSession = hermesSession != nil
         hermesSessionChatID = hermesSession?.id.uuidString
         hermesParentKey = hermesSession?.parentKey
+        isCronRun = hermesSession?.target.isCronRun == true
         self.onReplaceHermesSession = onReplaceHermesSession
         hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
         self.onOpenHermesSessions = onOpenHermesSessions
@@ -2296,6 +2299,7 @@ struct ChatView: View {
             settledPlanAfterRenderID: settledPlanAfterRenderID,
             turnOutcome: hermesTurnOutcome,
             queuedPrompt: viewModel.queuedPromptMessage,
+            isCronRun: isCronRun,
             onCopyQueuedPrompt: { text in
                 UIPasteboard.general.string = text
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)

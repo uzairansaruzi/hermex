@@ -131,6 +131,8 @@ struct ChatTranscriptView: View {
     /// A Hermes chat's queued prompt (`ChatViewModel.queuedPromptMessage`, #1379), drawn last
     /// as a pending bubble whose only action is `onCopyQueuedPrompt`.
     var queuedPrompt: ChatMessage? = nil
+    /// A Hermes scheduled task's run (#1413), whose prompt rows show as `CronRunPromptCard`s.
+    var isCronRun = false
     var onCopyQueuedPrompt: (String) -> Void = { _ in }
     /// A Hermes chat's Send waiting for the reconnect (`ChatViewModel.waitingSendMessage`, #1407),
     /// drawn last as a pending bubble whose only action is `onCancelWaitingSend`.
@@ -427,7 +429,8 @@ struct ChatTranscriptView: View {
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
-                    onCopy: onCopy
+                    onCopy: onCopy,
+                    isCronRun: isCronRun
                 )
                 .equatable()
                 .transition(rowEntryTransition(for: transcriptMessage.message, now: now))
@@ -721,6 +724,8 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
     let onCopy: (MessageActionContext) -> Void
+    /// A scheduled task's run (#1413): a row opening on the host's cron hint is its card.
+    var isCronRun = false
 
     // Equality over the value inputs only. The closures are pure functions of
     // these values (e.g. `actionContext` is determined by `transcriptMessage`,
@@ -753,7 +758,8 @@ struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.isEditingMessage == rhs.isEditingMessage &&
             lhs.isForkingMessage == rhs.isForkingMessage &&
             lhs.attachmentAudio == rhs.attachmentAudio &&
-            lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace
+            lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace &&
+            lhs.isCronRun == rhs.isCronRun
     }
 
     var body: some View {
@@ -869,7 +875,8 @@ struct ChatTranscriptMessageBlock: View, Equatable {
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
-                    onCopy: onCopy
+                    onCopy: onCopy,
+                    isCronRun: isCronRun
                 )
     }
 
@@ -1006,6 +1013,7 @@ private struct ChatTranscriptMessageRow: View {
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
     let onCopy: (MessageActionContext) -> Void
+    let isCronRun: Bool
 
     var body: some View {
         // Compaction marker messages render as collapsible cards (matching the
@@ -1017,6 +1025,15 @@ private struct ChatTranscriptMessageRow: View {
             // A Hermes chat's async-delegation delivery (#1140): the host's turn, never a
             // user bubble, with the full report one tap away.
             HermesDelegationCompletionCard(completion: completion)
+        } else if isCronRun, let prompt = CronRunPrompt(message) {
+            // A scheduled task's prompt (#1413): the host's runbook, not the user's words. Its
+            // card is the row's only action; the time keeps its place below.
+            VStack(alignment: .trailing, spacing: metaRowSpacing) {
+                CronRunPromptCard(prompt: prompt, onCopy: actionContext.map { context in { onCopy(context) } })
+                if let metaTimeText {
+                    ChatMessageMetaRow(isUserMessage: true, timeText: metaTimeText, onCopy: nil)
+                }
+            }
         } else {
             VStack(alignment: isUserMessage ? .trailing : .leading, spacing: metaRowSpacing) {
                 bubble

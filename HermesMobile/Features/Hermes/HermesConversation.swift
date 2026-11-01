@@ -35,6 +35,14 @@ enum ConversationTarget: Hashable, Sendable {
         case .new(let profile, _, _): return .hermesSession(server: server, connectionID: connectionID, profile: profile, key: nil)
         }
     }
+
+    /// Whether this is a scheduled task's run, which the host stores as `cron_<job>_<time>`, so
+    /// its prompt row can show as a `CronRunPromptCard` (#1413). The chat's `SessionSummary` is
+    /// a placeholder that cannot say so.
+    var isCronRun: Bool {
+        guard case .session(_, let key) = self else { return false }
+        return key.hasPrefix("cron_")
+    }
 }
 
 /// What an answer to a host request is checked against at the socket write: the attach and
