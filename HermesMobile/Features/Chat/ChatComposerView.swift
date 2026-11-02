@@ -380,8 +380,10 @@ struct MessageComposerView: View {
         let caret: NSRange
     }
 
+    /// Dictation closes every panel: the draft is locked, and accepting a row would
+    /// edit it and drop the words still being recorded.
     private var areSuggestionsDismissed: Bool {
-        dismissedSuggestionsAnchor == SuggestionAnchor(draft: draftMessage, caret: composerSelection.range)
+        isDictating || dismissedSuggestionsAnchor == SuggestionAnchor(draft: draftMessage, caret: composerSelection.range)
     }
 
     /// The draft up to the caret while it is at a host command's argument (#1036), which the
