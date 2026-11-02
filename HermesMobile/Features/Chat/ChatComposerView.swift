@@ -300,9 +300,9 @@ struct MessageComposerView: View {
     var configurationNotice: String?
     /// The effort a Hermes host sends when the model takes less than the one picked (#1016).
     var sentReasoningEffort: String?
-    /// A Hermes session's Fast mode (#1142); nil hides the chip.
+    /// A Hermes session's Fast mode (#1142); nil hides its row in Model settings.
     var fastMode: Bool?
-    /// Whether the host takes a Fast change now; the chip shows disabled otherwise.
+    /// Whether the host takes a Fast change now; the row shows disabled otherwise.
     var mayChangeFastMode = false
     /// Asks the host for the other Fast mode.
     var onSelectFastMode: (Bool) -> Void = { _ in }
@@ -314,6 +314,10 @@ struct MessageComposerView: View {
     var isModelSettingsPresented: Binding<Bool> = .constant(false)
     /// Where Model settings asks the host's expensive-model question. Nil outside Hermes.
     var modelConfirmationControls: BotChatControls?
+    /// Model settings' Approvals row; nil hides it.
+    var approvals: ComposerApprovals?
+    var onSetYolo: (Bool) -> Void = { _ in }
+    var onSelectApprovalMode: (HermesApprovalMode) -> Void = { _ in }
     /// Nothing is sent yet: workspace, branch, Profile and context sit above the composer.
     var showsNewChatControls = false
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
@@ -1434,8 +1438,14 @@ struct MessageComposerView: View {
             isUpdating: isUpdatingConfiguration,
             errorMessage: configurationErrorMessage,
             notice: configurationNotice,
+            fastMode: fastMode,
+            mayChangeFastMode: mayChangeFastMode,
+            approvals: approvals,
             onSelectModel: selectModel,
             onSelectEffort: onSelectReasoningEffort,
+            onSelectFastMode: onSelectFastMode,
+            onSetYolo: onSetYolo,
+            onSelectApprovalMode: onSelectApprovalMode,
             allModelsPicker: allModelsPicker
         )
         // Over this sheet while it is up; `ChatView`'s own stands down until it closes.

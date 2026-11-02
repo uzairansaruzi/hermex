@@ -107,6 +107,112 @@
         }
       }
     },
+    "All chats in this Profile" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "كل الدردشات في هذا الملف الشخصي"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Alle Chats in diesem Profil"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Todos los chats de este perfil"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Toutes les discussions de ce profil"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "כל הצ׳אטים בפרופיל הזה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tutte le chat di questo profilo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このプロファイルのすべてのチャット"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 프로필의 모든 채팅"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Alle chats in dit profiel"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wszystkie czaty w tym profilu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Todos os chats neste perfil"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Все чаты в этом профиле"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu profildeki tüm sohbetler"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس پروفائل کی تمام چیٹس"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此設定檔中的所有聊天"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此配置文件中的所有聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此設定檔中的所有聊天"
+          }
+        }
+      }
+    },
     "All models" : {
       "localizations" : {
         "ar" : {
@@ -315,6 +421,324 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "正在套用…"
+          }
+        }
+      }
+    },
+    "Approvals" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "الموافقات"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Freigaben"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aprobaciones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Approbations"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אישורים"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Approvazioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "承認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "승인"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Goedkeuringen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zatwierdzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aprovações"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Подтверждения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Onaylar"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منظوریاں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "批准"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "批准"
+          }
+        }
+      }
+    },
+    "Ask before actions that require approval" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "السؤال قبل الإجراءات التي تتطلب موافقة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vor Aktionen fragen, die eine Freigabe erfordern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Preguntar antes de las acciones que requieren aprobación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Demander avant les actions nécessitant une approbation"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לשאול לפני פעולות שדורשות אישור"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Chiedi prima delle azioni che richiedono approvazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "承認が必要な操作の前に確認します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "승인이 필요한 작업 전에 묻기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vragen vóór acties die goedkeuring vereisen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pytaj przed działaniami wymagającymi zatwierdzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Perguntar antes de ações que exigem aprovação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Спрашивать перед действиями, требующими подтверждения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Onay gerektiren eylemlerden önce sor"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منظوری والے کاموں سے پہلے پوچھیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在需要批准的操作前詢問"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在需要批准的操作前询问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在需要批准的操作前詢問"
+          }
+        }
+      }
+    },
+    "Automatically assess actions and ask when needed" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تقييم الإجراءات تلقائيًا والسؤال عند الحاجة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktionen automatisch bewerten und bei Bedarf fragen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Evaluar las acciones automáticamente y preguntar cuando sea necesario"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Évaluer automatiquement les actions et demander si besoin"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "להעריך פעולות אוטומטית ולשאול בעת הצורך"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Valuta automaticamente le azioni e chiedi quando serve"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "操作を自動で評価し、必要なときに確認します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "작업을 자동으로 평가하고 필요할 때 묻기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Acties automatisch beoordelen en vragen wanneer nodig"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Automatycznie oceniaj działania i pytaj w razie potrzeby"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Avaliar ações automaticamente e perguntar quando necessário"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Автоматически оценивать действия и спрашивать при необходимости"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Eylemleri otomatik değerlendir, gerektiğinde sor"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "کاموں کا خودکار جائزہ لیں اور ضرورت پر پوچھیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "自動評估操作，並在需要時詢問"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "自动评估操作，并在需要时询问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "自動評估操作，並在需要時詢問"
           }
         }
       }
@@ -955,6 +1379,112 @@
         }
       }
     },
+    "Every chat in this Profile will run commands without asking." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ستنفذ كل دردشة في هذا الملف الشخصي الأوامر دون سؤال."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Jeder Chat in diesem Profil führt Befehle ohne Nachfrage aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Todos los chats de este perfil ejecutarán comandos sin preguntar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Toutes les discussions de ce profil exécuteront des commandes sans demander."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "כל צ׳אט בפרופיל הזה יריץ פקודות בלי לשאול."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ogni chat di questo profilo eseguirà comandi senza chiedere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このプロファイルのすべてのチャットが、確認なしでコマンドを実行します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 프로필의 모든 채팅이 묻지 않고 명령을 실행합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Elke chat in dit profiel voert opdrachten uit zonder te vragen."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Każdy czat w tym profilu będzie wykonywać polecenia bez pytania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Todos os chats neste perfil executarão comandos sem perguntar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Каждый чат в этом профиле будет выполнять команды без вопросов."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu profildeki her sohbet komutları sormadan çalıştıracak."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس پروفائل کی ہر چیٹ پوچھے بغیر کمانڈز چلائے گی۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此設定檔中的每個聊天都會不經詢問直接執行指令。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此配置文件中的每个聊天都将不经询问直接运行命令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此設定檔中的每個聊天都會不經詢問直接執行指令。"
+          }
+        }
+      }
+    },
     "I don’t have one yet" : {
       "localizations" : {
         "ar" : {
@@ -1057,6 +1587,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "我還沒有伺服器"
+          }
+        }
+      }
+    },
+    "Manual" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يدوي"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Manuell"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Manual"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Manuel"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ידני"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Manuale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "手動"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "수동"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Handmatig"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ręcznie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Manual"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Вручную"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Manuel"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "دستی"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "手動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "手动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "手動"
           }
         }
       }
@@ -1167,6 +1803,112 @@
         }
       }
     },
+    "Run without approval prompts" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "التشغيل دون طلبات موافقة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ohne Freigabeabfragen ausführen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ejecutar sin solicitudes de aprobación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Exécuter sans demandes d’approbation"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "להריץ בלי בקשות אישור"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esegui senza richieste di approvazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "承認の確認なしで実行します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "승인 요청 없이 실행"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Uitvoeren zonder goedkeuringsvragen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Uruchamiaj bez próśb o zatwierdzenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Executar sem pedidos de aprovação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Выполнять без запросов подтверждения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Onay istemleri olmadan çalıştır"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منظوری کے سوالات کے بغیر چلائیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "不顯示批准提示直接執行"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "不显示批准提示直接运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "不顯示批准提示直接執行"
+          }
+        }
+      }
+    },
     "Search all models" : {
       "localizations" : {
         "ar" : {
@@ -1273,7 +2015,537 @@
         }
       }
     },
+    "Smart" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ذكي"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Smart"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Inteligente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Intelligent"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "חכם"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Smart"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "スマート"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "스마트"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Slim"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Inteligentnie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Inteligente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Умный"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Akıllı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اسمارٹ"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "智慧"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "智能"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "智慧"
+          }
+        }
+      }
+    },
     "Subscription limits from Usage in Hermex." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Abo-Limits aus der Nutzung in Hermex." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Límites de la suscripción desde Uso en Hermex." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Limites d’abonnement issues de l’utilisation dans Hermex." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Limiti dell’abbonamento da Utilizzo in Hermex." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Limity subskrypcji z Użycia w Hermex." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Limites da assinatura do Uso no Hermex." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Abonnementslimieten uit Gebruik in Hermex." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex’teki Kullanım’dan abonelik limitleri." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Лимиты подписки из раздела «Использование» в Hermex." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermexの使用状況から取得したサブスクリプションの上限。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "来自 Hermex 用量的订阅限额。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex 사용량의 구독 한도." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "حدود الاشتراك من الاستخدام في Hermex." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מגבלות המינוי מתוך השימוש ב-Hermex." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex میں استعمال سے سبسکرپشن کی حدیں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "來自 Hermex 用量的訂閱限額。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "來自 Hermex 用量的訂閱限額。" } } } },
+    "The host runs without approval prompts, so this chat can't turn YOLO off." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يعمل المضيف دون طلبات موافقة، لذا لا يمكن لهذه الدردشة إيقاف YOLO."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Der Host läuft ohne Freigabeabfragen, daher kann dieser Chat YOLO nicht ausschalten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El host se ejecuta sin solicitudes de aprobación, así que este chat no puede desactivar YOLO."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L’hôte s’exécute sans demandes d’approbation : cette discussion ne peut donc pas désactiver YOLO."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "המארח פועל בלי בקשות אישור, ולכן הצ׳אט הזה לא יכול לכבות את YOLO."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L’host funziona senza richieste di approvazione, quindi questa chat non può disattivare YOLO."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ホストが承認の確認なしで動作しているため、このチャットでは YOLO をオフにできません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "호스트가 승인 요청 없이 실행 중이므로 이 채팅에서 YOLO를 끌 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De host draait zonder goedkeuringsvragen, dus deze chat kan YOLO niet uitzetten."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Host działa bez próśb o zatwierdzenie, więc ten czat nie może wyłączyć YOLO."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O host roda sem pedidos de aprovação, então este chat não pode desativar o YOLO."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Хост работает без запросов подтверждения, поэтому этот чат не может отключить YOLO."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ana makine onay istemleri olmadan çalışıyor, bu yüzden bu sohbet YOLO'yu kapatamaz."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ہوسٹ منظوری کے سوالات کے بغیر چل رہا ہے، اس لیے یہ چیٹ YOLO بند نہیں کر سکتی۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "主機在沒有批准提示的情況下執行，因此此聊天無法關閉 YOLO。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "主机在没有批准提示的情况下运行，因此此聊天无法关闭 YOLO。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "主機在沒有批准提示的情況下執行，因此此聊天無法關閉 YOLO。"
+          }
+        }
+      }
+    },
+    "This chat runs commands without asking" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تنفذ هذه الدردشة الأوامر دون سؤال"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dieser Chat führt Befehle ohne Nachfrage aus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Este chat ejecuta comandos sin preguntar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cette discussion exécute des commandes sans demander"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הצ׳אט הזה מריץ פקודות בלי לשאול"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questa chat esegue comandi senza chiedere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このチャットは確認なしでコマンドを実行します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 채팅은 묻지 않고 명령을 실행합니다"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deze chat voert opdrachten uit zonder te vragen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ten czat wykonuje polecenia bez pytania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Este chat executa comandos sem perguntar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Этот чат выполняет команды без вопросов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu sohbet komutları sormadan çalıştırır"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ چیٹ پوچھے بغیر کمانڈز چلاتی ہے"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天會不經詢問直接執行指令"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天不经询问直接运行命令"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天會不經詢問直接執行指令"
+          }
+        }
+      }
+    },
+    "Turn off approval prompts?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "هل تريد إيقاف طلبات الموافقة؟"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Freigabeabfragen ausschalten?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "¿Desactivar las solicitudes de aprobación?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Désactiver les demandes d’approbation ?"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לכבות את בקשות האישור?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Disattivare le richieste di approvazione?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "承認の確認をオフにしますか?"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "승인 요청을 끌까요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Goedkeuringsvragen uitzetten?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wyłączyć prośby o zatwierdzenie?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Desativar os pedidos de aprovação?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Отключить запросы подтверждения?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Onay istemleri kapatılsın mı?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منظوری کے سوالات بند کریں؟"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要關閉批准提示嗎？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要关闭批准提示吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要關閉批准提示嗎？"
+          }
+        }
+      }
+    },
+    "Turn Off Approvals" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إيقاف الموافقات"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Freigaben ausschalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Desactivar aprobaciones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Désactiver les approbations"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "כיבוי אישורים"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Disattiva approvazioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "承認をオフにする"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "승인 끄기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Goedkeuringen uitzetten"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wyłącz zatwierdzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Desativar aprovações"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Отключить подтверждения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Onayları Kapat"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منظوریاں بند کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "關閉批准"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "关闭批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "關閉批准"
+          }
+        }
+      }
+    },
     "Updated %@" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Aktualisiert %@" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Actualizado: %@" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Mis à jour : %@" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Aggiornato: %@" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zaktualizowano: %@" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Atualizado: %@" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Bijgewerkt: %@" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Güncellendi: %@" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Обновлено: %@" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "更新: %@" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "更新于 %@" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "업데이트: %@" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تم التحديث: %@" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "עודכן: %@" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اپ ڈیٹ: %@" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "更新於 %@" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "更新於 %@" } } } },
     "As of %@" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Stand %@" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "A las %@" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "À %@" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Alle %@" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Stan na %@" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Às %@" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Stand van %@" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ itibarıyla" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "На %@" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@時点" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "截至 %@" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ 기준" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "حتى %@" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נכון ל-%@" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ تک" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "截至 %@" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "截至 %@" } } } },
     "Reset at %@" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Zurückgesetzt um %@" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Se restableció a las %@" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Réinitialisé à %@" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Azzerato alle %@" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zresetowano o %@" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Redefinido às %@" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gereset om %@" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ itibarıyla sıfırlandı" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Сброшено в %@" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@にリセット済み" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "已于 %@ 重置" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@에 재설정됨" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "أُعيد الضبط في %@" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "אופס ב-%@" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ پر ری سیٹ ہوا" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "已於 %@ 重設" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "已於 %@ 重設" } } } },

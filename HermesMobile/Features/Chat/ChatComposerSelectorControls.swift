@@ -25,31 +25,6 @@ struct ComposerWorkspaceSelectorButton: View {
     }
 }
 
-/// The Fast chip: a Hermes session's or a bot chat's priority mode (#1142). A tap asks for the
-/// other mode; the chip changes only once the host answers.
-struct ComposerFastModeButton: View {
-    let isOn: Bool
-    let isDisabled: Bool
-    let color: Color
-    let controlFont: Font
-    let chevronFont: Font
-    let onSelect: (Bool) -> Void
-
-    var body: some View {
-        Button { onSelect(!isOn) } label: {
-            ComposerInlineControlLabel(
-                title: isOn ? String(localized: "Fast") : String(localized: "Normal"),
-                systemImage: "bolt", showsChevron: false, color: color,
-                controlFont: controlFont, chevronFont: chevronFont
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityLabel("Fast")
-        .accessibilityValue(isOn ? String(localized: "On") : String(localized: "Off"))
-    }
-}
-
 struct ComposerProfileSelectorMenu: View {
     let profileOptions: [ProfileSummary]
     let selectedProfileName: String?
@@ -171,6 +146,37 @@ struct ComposerModelLabelButton: View {
         .disabled(isDisabled)
         .accessibilityLabel(Text(verbatim: selection.accessibilityTitle))
         .accessibilityHint(Text("Model settings"))
+    }
+}
+
+/// What Model settings' Approvals row shows and may change.
+struct ComposerApprovals: Equatable {
+    let isYoloOn: Bool
+    /// A Hermes session's Profile has an approval mode. A webui session has only YOLO.
+    let offersModes: Bool
+    /// The host's `approval_mode`, nil until it reports one.
+    let mode: String?
+    let mayTurnOffYolo: Bool
+    let isChanging: Bool
+    let errorMessage: String?
+
+    /// The state in effect: Off wins, then YOLO, then the mode. Nil when nothing is known.
+    var value: String? {
+        if mode == HermesApprovalMode.off.rawValue { return Self.title(for: .off) }
+        if isYoloOn { return "YOLO" }
+        guard let mode else { return nil }
+        return HermesApprovalMode(rawValue: mode).map(Self.title(for:)) ?? mode.capitalized
+    }
+
+    /// YOLO is on and this chat can't turn it off: the mode or a `--yolo` launch holds it.
+    var isYoloLocked: Bool { isYoloOn && !mayTurnOffYolo }
+
+    static func title(for mode: HermesApprovalMode) -> String {
+        switch mode {
+        case .smart: return String(localized: "Smart")
+        case .manual: return String(localized: "Manual")
+        case .off: return String(localized: "Off")
+        }
     }
 }
 

@@ -284,6 +284,61 @@ import XCTest
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
     }
 
+    /// A mode goes to the Profile's config with no session scope. Off holds the bypass for
+    /// this chat, so it can't be turned off here, and leaving Off releases it.
+    func testAnApprovalModeWritesTheProfilesConfigAndOffLocksTheBypass() async {
+        let chat = await openChat(info: ["yolo": .bool(false), "approval_mode": .string("manual")])
+        chat.host.next("config.set", .init(result: modeReply("off"), before: [
+            event(1, "session.info", ["yolo": .bool(true), "approval_mode": .string("off")])
+        ]))
+        chat.host.next("config.set", .init(result: modeReply("smart")))
+
+        let changed = await chat.requests.setApprovalMode(.off)
+        XCTAssertTrue(changed)
+        XCTAssertEqual(chat.writes("config.set"), [[
+            "session_id": .string("runtime"), "profile": .string("default"),
+            "key": .string("approvals.mode"), "value": .string("off")
+        ]])
+        XCTAssertEqual(chat.model.composerApprovals.value, "Off")
+        XCTAssertTrue(chat.model.composerApprovals.isYoloLocked)
+
+        // No `session.info` this time, as from a session with no agent yet. This chat's own
+        // flag may still hold the bypass, so the row never claims approvals are back.
+        await chat.requests.setApprovalMode(.smart)
+        XCTAssertEqual(chat.model.composerApprovals.value, "YOLO")
+        XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
+        XCTAssertFalse(chat.model.composerApprovals.isYoloLocked)
+
+        chat.requests.applyBypass(.object(["yolo": .bool(false), "approval_mode": .string("smart")]))
+        XCTAssertEqual(chat.model.composerApprovals.value, "Smart")
+    }
+
+    /// The switch sends the value asked for, so a report that lands first never turns it into
+    /// the opposite write, and a bypass this chat can't clear sends nothing.
+    func testTheYoloSwitchSendsTheValueAskedFor() async {
+        let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("manual")])
+        chat.requests.applyBypass(.object(["yolo": .bool(false), "approval_mode": .string("manual")]))
+        await chat.model.setSessionApprovalBypass(false)
+        XCTAssertEqual(chat.writes("config.set"), [], "already off, so nothing goes out")
+
+        chat.requests.applyBypass(.object(["yolo": .bool(true), "approval_mode": .string("off")]))
+        await chat.model.setSessionApprovalBypass(false)
+        XCTAssertEqual(chat.writes("config.set"), [], "the mode holds this bypass")
+    }
+
+    /// A refused mode leaves the row on the one in effect, with the host's reason.
+    func testARefusedApprovalModeKeepsTheModeInEffect() async {
+        let chat = await openChat(info: ["yolo": .bool(false), "approval_mode": .string("manual")])
+        chat.host.next("config.set", .init(error: 4002))
+
+        let changed = await chat.requests.setApprovalMode(.smart)
+
+        XCTAssertFalse(changed)
+        XCTAssertEqual(chat.model.composerApprovals.value, "Manual")
+        XCTAssertNotNil(chat.model.composerApprovals.errorMessage)
+        XCTAssertFalse(chat.model.composerApprovals.isChanging)
+    }
+
     // MARK: Questions
 
     /// A batch locks each outstanding question by its `qid`, skipping the one the host already
@@ -1024,6 +1079,10 @@ import XCTest
     }
 
     /// The host's `config.set yolo` reply for the session scope.
+    private func modeReply(_ value: String) -> BotJSON {
+        .object(["key": .string("approvals.mode"), "value": .string(value)])
+    }
+
     private func yoloReply(_ value: String) -> BotJSON {
         .object(["key": .string("yolo"), "value": .string(value), "scope": .string("session")])
     }

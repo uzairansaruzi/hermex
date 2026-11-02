@@ -70,9 +70,10 @@ import Observation
     /// session's flag is set or the host approves everything itself (`approvals.mode: off`,
     /// or a `--yolo` launch).
     private(set) var approvalBypass = false
-    /// `session.info`'s `approval_mode` is `off`: the host approves everything, whatever this
-    /// session sets.
-    private var hostApprovesAll = false
+    /// `session.info`'s `approval_mode`, kept as sent so a mode newer than this app still shows.
+    private(set) var approvalMode: String?
+    /// The host approves everything, whatever this session sets.
+    private var hostApprovesAll: Bool { approvalMode == HermesApprovalMode.off.rawValue }
     /// Turning this session's flag off left `session.info`'s `yolo` on, so the bypass is the
     /// host's own (a `--yolo` launch, which `session.info` does not name). Cleared once the
     /// bypass goes off.
@@ -80,7 +81,7 @@ import Observation
     /// Bumped by every `session.info` that reports `yolo`, so a bypass write knows whether
     /// the host reported the result itself.
     @ObservationIgnored private var bypassReports = 0
-    /// A `config.set yolo` in flight.
+    /// A `config.set` for `yolo` or `approvals.mode` in flight.
     private(set) var isChangingApprovalBypass = false
     /// This phone's Stop or Stop & send is in flight: the host withdrawing the cards then is
     /// the user's own doing, so it leaves no note.
@@ -280,6 +281,44 @@ import Observation
         return approvalBypass
     }
 
+    /// Sets this chat's YOLO from Model settings' switch, to the value the user asked for.
+    func setApprovalBypass(_ enabled: Bool) async {
+        guard enabled != approvalBypass, enabled || mayTurnOffApprovalBypass else { return }
+        await setApprovalBypass(enabled, for: nil)
+    }
+
+    /// Sends the Profile's approval mode, once; true when the host confirmed it. The `session.info`
+    /// the host sends ahead of the reply carries the new bypass. Only a session with no agent
+    /// sends none: then Off still bypasses, and leaving Off keeps showing the bypass until a report
+    /// says otherwise, because this chat's own flag may be holding it.
+    @discardableResult
+    func setApprovalMode(_ mode: HermesApprovalMode) async -> Bool {
+        guard engine.connectionState == .connected, let runtime = engine.runtime, !isChangingApprovalBypass,
+              answeringRequestID == nil else { return false }
+        let attempt = engine.generation
+        let reportsBefore = bypassReports
+        isChangingApprovalBypass = true
+        errorMessage = nil
+        var dispatched = false
+        do {
+            let reply = try await engine.write(.configSet(sessionID: runtime, profile: engine.target.profile, setting: .approvalMode(mode)),
+                                               attempt: attempt, runtime: runtime) { dispatched = true }
+            guard attempt == engine.generation, !Task.isCancelled else { return false }
+            isChangingApprovalBypass = false
+            guard reply["key"].text == "approvals.mode", reply["value"].text == mode.rawValue else {
+                throw BotSettingFailure.unknownOutcome
+            }
+            approvalMode = mode.rawValue
+            if bypassReports == reportsBefore, mode == .off { approvalBypass = true }
+            return true
+        } catch {
+            guard attempt == engine.generation, !Task.isCancelled else { return false }
+            isChangingApprovalBypass = false
+            failChange(error, dispatched: dispatched)
+            return false
+        }
+    }
+
     /// Answers one row of the connection card, or Continue without: one `connection.respond`,
     /// checked at the write against the card on screen and never retried. The card stays
     /// until the host says the operation settled; its updates move the rows meanwhile. True
@@ -438,12 +477,17 @@ import Observation
         } catch {
             guard attempt == engine.generation, !Task.isCancelled else { return false }
             isChangingApprovalBypass = false
-            if error as? BotFailure == .stale { return false }
-            if case BotSettingFailure.rejected = error { fail(error.localizedDescription) }
-            else if !dispatched { fail(error.localizedDescription) }
-            else { fail(BotSettingFailure.unknownOutcome.localizedDescription) }
+            failChange(error, dispatched: dispatched)
             return false
         }
+    }
+
+    /// Why a `config.set` failed. One that went out and lost its reply may still have applied.
+    private func failChange(_ error: Error, dispatched: Bool) {
+        if error as? BotFailure == .stale { return }
+        if case BotSettingFailure.rejected = error { fail(error.localizedDescription) }
+        else if !dispatched { fail(error.localizedDescription) }
+        else { fail(BotSettingFailure.unknownOutcome.localizedDescription) }
     }
 
     private func fail(_ message: String, about requestID: String? = nil) {
@@ -516,7 +560,7 @@ import Observation
             if yolo != approvalBypass { approvalBypass = yolo }
             if !yolo, bypassOutlivedTurnOff { bypassOutlivedTurnOff = false }
         }
-        if let mode = info["approval_mode"].text, (mode == "off") != hostApprovesAll { hostApprovesAll = mode == "off" }
+        if let mode = info["approval_mode"].text, mode != approvalMode { approvalMode = mode }
     }
 
     /// The host accepted a prompt: the withdrawn card's note has served its turn.

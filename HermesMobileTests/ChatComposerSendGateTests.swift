@@ -7,6 +7,24 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
+    /// The Approvals row shows the state in effect: Off wins, then YOLO, then the mode. A mode
+    /// newer than this app still shows, and a webui session has no mode to show.
+    func testApprovalsRowShowsTheStateInEffect() {
+        func approvals(yolo: Bool = false, mode: String?, mayTurnOff: Bool = true) -> ComposerApprovals {
+            ComposerApprovals(isYoloOn: yolo, offersModes: mode != nil, mode: mode, mayTurnOffYolo: mayTurnOff,
+                              isChanging: false, errorMessage: nil)
+        }
+
+        XCTAssertEqual(approvals(yolo: true, mode: "off", mayTurnOff: false).value, "Off")
+        XCTAssertEqual(approvals(yolo: true, mode: "smart").value, "YOLO")
+        XCTAssertEqual(approvals(mode: "manual").value, "Manual")
+        XCTAssertEqual(approvals(mode: "cautious").value, "Cautious")
+        XCTAssertNil(approvals(mode: nil).value)
+        XCTAssertEqual(approvals(yolo: true, mode: nil).value, "YOLO")
+        XCTAssertTrue(approvals(yolo: true, mode: "manual", mayTurnOff: false).isYoloLocked)
+        XCTAssertFalse(approvals(yolo: true, mode: "manual").isYoloLocked)
+    }
+
     /// A change's answer shows beside the row that asked, never on another row, and an
     /// old error doesn't show on a row nobody touched since the sheet opened.
     func testModelSettingsShowsAnswersOnlyBesideTheRowThatAsked() {

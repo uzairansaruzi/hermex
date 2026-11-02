@@ -790,6 +790,13 @@ struct ChatView: View {
             isChatSettingsPresented: $showsChatSettings,
             isModelSettingsPresented: $showsModelSettings,
             modelConfirmationControls: viewModel.hermesSettings?.controls,
+            approvals: viewModel.composerApprovals,
+            onSetYolo: { enabled in
+                Task { await viewModel.setSessionApprovalBypass(enabled) }
+            },
+            onSelectApprovalMode: { mode in
+                Task { await viewModel.selectApprovalMode(mode) }
+            },
             showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,

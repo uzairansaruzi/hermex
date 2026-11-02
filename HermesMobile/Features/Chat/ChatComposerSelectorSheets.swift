@@ -76,6 +76,8 @@ struct ChatSettingsSheet<WorkspacePicker: View, BranchControl: View, ProfileCont
 enum ModelSettingsRow: Equatable {
     case model
     case thinking
+    case fast
+    case approvals
 }
 
 /// What a row shows beside its value after the user changes it. A change never reads as
@@ -114,8 +116,16 @@ struct ModelSettingsSheet<AllModels: View>: View {
     let isUpdating: Bool
     let errorMessage: String?
     let notice: String?
+    /// This chat's Fast mode; nil where the host reports none, which hides the row.
+    let fastMode: Bool?
+    let mayChangeFastMode: Bool
+    /// Nil hides the row, on a composer with no session.
+    let approvals: ComposerApprovals?
     let onSelectModel: (ModelCatalogOption) -> Void
     let onSelectEffort: (String) -> Void
+    let onSelectFastMode: (Bool) -> Void
+    let onSetYolo: (Bool) -> Void
+    let onSelectApprovalMode: (HermesApprovalMode) -> Void
     /// All models, given the commit that keeps this sheet's status in step.
     let allModelsPicker: (@escaping (ModelCatalogOption) -> Void) -> AllModels
 
@@ -129,6 +139,8 @@ struct ModelSettingsSheet<AllModels: View>: View {
                 Section {
                     currentModelRow
                     if selection.showsEffortControl { thinkingRow }
+                    if let fastMode { fastRow(isOn: fastMode) }
+                    if let approvals { approvalsRow(approvals) }
                 }
 
                 if !favorites.isEmpty {
@@ -220,6 +232,50 @@ struct ModelSettingsSheet<AllModels: View>: View {
         }
     }
 
+    /// Follows the chat's state, so the switch only stays moved once the host answers.
+    private func fastRow(isOn: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Toggle("Fast", isOn: Binding(get: { isOn }, set: { enabled in
+                lastChanged = .fast
+                onSelectFastMode(enabled)
+            }))
+            .disabled(isDisabled || !mayChangeFastMode)
+            statusLine(for: .fast)
+        }
+    }
+
+    private func approvalsRow(_ approvals: ComposerApprovals) -> some View {
+        NavigationLink {
+            ApprovalChoicesView(
+                approvals: approvals,
+                isDisabled: isDisabled,
+                status: approvalsStatus(approvals),
+                onSetYolo: { enabled in
+                    lastChanged = .approvals
+                    onSetYolo(enabled)
+                },
+                onSelectMode: { mode in
+                    lastChanged = .approvals
+                    onSelectApprovalMode(mode)
+                }
+            )
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                LabeledContent("Approvals") {
+                    if let value = approvals.value { Text(verbatim: value) }
+                }
+                ModelSettingsStatusLine(status: approvalsStatus(approvals))
+            }
+        }
+    }
+
+    private func approvalsStatus(_ approvals: ComposerApprovals) -> ModelSettingsRowStatus? {
+        ModelSettingsRowStatus.resolve(
+            row: .approvals, lastChanged: lastChanged, isUpdating: approvals.isChanging,
+            errorMessage: approvals.errorMessage, notice: nil
+        )
+    }
+
     private func isCurrent(_ option: ModelCatalogOption) -> Bool {
         option.matchesSelection(modelID: selection.model.id, providerID: selection.modelProviderID)
     }
@@ -264,11 +320,19 @@ struct ModelSettingsSheet<AllModels: View>: View {
         onSelectModel(option)
     }
 
-    @ViewBuilder
     private func statusLine(for row: ModelSettingsRow) -> some View {
-        switch ModelSettingsRowStatus.resolve(
+        ModelSettingsStatusLine(status: ModelSettingsRowStatus.resolve(
             row: row, lastChanged: lastChanged, isUpdating: isUpdating, errorMessage: errorMessage, notice: notice
-        ) {
+        ))
+    }
+}
+
+/// A row's pending, failed, or later-applied line. Static text: no spinner repaints here.
+private struct ModelSettingsStatusLine: View {
+    let status: ModelSettingsRowStatus?
+
+    var body: some View {
+        switch status {
         case .pending:
             Text("Applying…").font(.caption).foregroundStyle(.secondary)
         case .failed(let message):
@@ -278,6 +342,82 @@ struct ModelSettingsSheet<AllModels: View>: View {
         case nil:
             EmptyView()
         }
+    }
+}
+
+/// YOLO for this chat and, on Hermes, the mode for every chat in the Profile. The wording is
+/// Official Hermes's; the section label is ours, because copy states the real consequence: the
+/// host writes the mode to that Profile's config. Off asks first for the same reason.
+private struct ApprovalChoicesView: View {
+    let approvals: ComposerApprovals
+    let isDisabled: Bool
+    let status: ModelSettingsRowStatus?
+    let onSetYolo: (Bool) -> Void
+    let onSelectMode: (HermesApprovalMode) -> Void
+
+    @State private var confirmsOff = false
+
+    var body: some View {
+        List {
+            Section {
+                Toggle(isOn: Binding(get: { approvals.isYoloOn }, set: onSetYolo)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: "YOLO")
+                        Text("This chat runs commands without asking")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(isDisabled || approvals.isChanging || approvals.isYoloLocked)
+            } footer: {
+                if approvals.isYoloLocked {
+                    Text("The host runs without approval prompts, so this chat can't turn YOLO off.")
+                }
+            }
+
+            if approvals.offersModes {
+                Section("All chats in this Profile") {
+                    modeRow(.smart, description: "Automatically assess actions and ask when needed")
+                    modeRow(.manual, description: "Ask before actions that require approval")
+                    modeRow(.off, description: "Run without approval prompts")
+                }
+            }
+
+            if status != nil {
+                ModelSettingsStatusLine(status: status)
+            }
+        }
+        .navigationTitle("Approvals")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("Turn off approval prompts?", isPresented: $confirmsOff, titleVisibility: .visible) {
+            Button("Turn Off Approvals", role: .destructive) { onSelectMode(.off) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every chat in this Profile will run commands without asking.")
+        }
+    }
+
+    private func modeRow(_ mode: HermesApprovalMode, description: LocalizedStringKey) -> some View {
+        let isCurrent = approvals.mode == mode.rawValue
+        return Button {
+            guard !isCurrent else { return }
+            if mode == .off { confirmsOff = true } else { onSelectMode(mode) }
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: ComposerApprovals.title(for: mode)).foregroundStyle(.primary)
+                    Text(description).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                if isCurrent {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .disabled(isDisabled || approvals.isChanging)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 }
 
