@@ -150,6 +150,11 @@ import SwiftUI
         return worker
     }
 
+    /// Waits for the latest proposed eyes to land, so Done never hands back an older position.
+    func settleEyes() async {
+        await eyeWorker?.value
+    }
+
     private func apply(eyes: BotAvatarDefinition.Eyes) async {
         var definition = appearance.drawn?.definition ?? BotAvatarClassic.definition(currentShape)
         definition.eyes = eyes
@@ -219,7 +224,12 @@ import SwiftUI
         let description = description.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let sendPrompt, !description.isEmpty, generation != .running else { return }
         generation = .running
+        // A call the user stopped waiting for may still hold the socket's handlers until its
+        // reply lands, so the next one starts after it has let them go.
+        let previous = generationTask
         generationTask = Task { [weak self] in
+            await previous?.value
+            guard !Task.isCancelled else { return }
             do {
                 let definition = try await BotAvatarGeneration.definition(description: description, send: sendPrompt)
                 guard let self, !Task.isCancelled else { return }
@@ -234,7 +244,6 @@ import SwiftUI
 
     func stopWaiting() {
         generationTask?.cancel()
-        generationTask = nil
         if generation == .running { generation = .idle }
     }
 

@@ -54,7 +54,10 @@ import UniformTypeIdentifiers
     }
 
     private func finish() {
-        if studio.replacesPhoto { confirmsPhoto = true } else { commit() }
+        Task {
+            await studio.settleEyes()
+            if studio.replacesPhoto { confirmsPhoto = true } else { commit() }
+        }
     }
 
     private func commit() {

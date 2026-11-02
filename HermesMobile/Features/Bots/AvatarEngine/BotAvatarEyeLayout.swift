@@ -11,6 +11,8 @@ nonisolated struct BotAvatarEyeLayout: Sendable {
     let left: Eye, right: Eye
     let spacing: Double
     let scale: Double
+    /// How far the eyes moved toward each other as they shrank, as a share of `spacing`.
+    let gapScale: Double
     let happy: Bool
     static func fit(volume: BotAvatarVolume, geometry: BotAvatarExpression.Geometry, lean: Double = 0, happy: Bool = false) -> Self {
         let boost = volume.eyeScale
@@ -23,15 +25,15 @@ nonisolated struct BotAvatarEyeLayout: Sendable {
             left.width > 0, left.height > 0, right.width > 0, right.height > 0
         else {
             return Self(
-                left: Eye(width: 0, height: 0, tilt: 0), right: Eye(width: 0, height: 0, tilt: 0), spacing: 0, scale: 0, happy: happy)
+                left: Eye(width: 0, height: 0, tilt: 0), right: Eye(width: 0, height: 0, tilt: 0), spacing: 0, scale: 0, gapScale: 0, happy: happy)
         }
         let spacing = volume.definition.eyes.spacing * geometry.split / 15.46
         let center = volume.definition.eyes
         let polygons = volume.body.polys
         // The same clearance includes the entire permitted gaze rectangle and the closed lid.
-        func fits(_ scale: Double) -> Bool {
+        func fits(_ scale: Double, gapScale: Double) -> Bool {
             for (index, eye) in [left, right].enumerated() {
-                let x = center.x + (index == 0 ? -1 : 1) * spacing * scale / 2
+                let x = center.x + (index == 0 ? -1 : 1) * spacing * gapScale / 2
                 let angle = eye.tilt * .pi / 180
                 let co = cos(angle)
                 let si = sin(angle)
@@ -81,18 +83,28 @@ nonisolated struct BotAvatarEyeLayout: Sendable {
             }
             return true
         }
-        var lo = 0.0
-        var hi = 1.0
-        if fits(1) {
-            lo = 1
-        } else {
+        func largestFit(gapScale: (Double) -> Double) -> Double {
+            if fits(1, gapScale: gapScale(1)) { return 1 }
+            var lo = 0.0
+            var hi = 1.0
             for _ in 0..<14 {
                 let mid = (lo + hi) / 2
-                if fits(mid) { lo = mid } else { hi = mid }
+                if fits(mid, gapScale: gapScale(mid)) { lo = mid } else { hi = mid }
             }
+            return lo
         }
-        return Self(left: left, right: right, spacing: spacing, scale: lo, happy: happy)
+        var scale = largestFit { $0 }
+        var gapScale = scale
+        // Eyes either side of a hole can't move inward, so they shrink where they stand. The
+        // validator accepted this placement at full size, so a face always keeps its eyes.
+        if scale == 0 {
+            scale = largestFit { _ in 1 }
+            if scale == 0 { scale = minimumScale }
+            gapScale = 1
+        }
+        return Self(left: left, right: right, spacing: spacing, scale: scale, gapScale: gapScale, happy: happy)
     }
+    private static let minimumScale = 0.5
     func marks(eyes: BotAvatarDefinition.Eyes, lid: Double = 1, gaze: AvatarPoint = AvatarPoint(0, 0)) -> [BotAvatarEyeMark] {
         guard scale > 0 else { return [] }
         return [left, right].enumerated().map { i, e in
@@ -100,7 +112,7 @@ nonisolated struct BotAvatarEyeLayout: Sendable {
             let h = e.height * scale
             let open = max(w * 0.55, h * max(0.09, BotAvatarPose.clamp(lid, 0, 1)))
             return BotAvatarEyeMark(
-                index: i, x: eyes.x + (i == 0 ? -1 : 1) * spacing * scale / 2 + gaze.x,
+                index: i, x: eyes.x + (i == 0 ? -1 : 1) * spacing * gapScale / 2 + gaze.x,
                 y: eyes.y + gaze.y + (happy ? 0 : (h - open) * 0.18), width: w, height: happy ? h : open, happy: happy, tilt: e.tilt)
         }
     }

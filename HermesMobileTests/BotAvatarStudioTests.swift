@@ -40,6 +40,65 @@ import XCTest
         XCTAssertNil(saved.merging(into: stored)[BotDrawnAvatar.lookKey])
     }
 
+    func testASaveKeepsFieldsFromANewerBuildUntilTheAvatarChanges() {
+        var stored = BotDrawnAvatar(definition: cat.definition, depth: 6).json.fields ?? [:]
+        stored["futureField"] = .string("kept")
+        let look: [String: BotJSON] = [BotDrawnAvatar.lookKey: .object(stored)]
+        var appearance = BotProfileAppearance(look: look, fallbackTitle: "Scout")
+        appearance.title = "Renamed"
+        XCTAssertEqual(appearance.merging(into: look)[BotDrawnAvatar.lookKey]?["futureField"], .string("kept"))
+
+        appearance.drawn?.depth = 9
+        XCTAssertEqual(appearance.merging(into: look)[BotDrawnAvatar.lookKey]?["depth"], .number(9))
+    }
+
+    func testEyesEitherSideOfAHoleKeepTheirPlaceAndStillDraw() throws {
+        let definition = BotAvatarDefinition(version: 1, id: "ring", name: "Ring", body: .init(path: "M10 10H90V90H10ZM34 20V80H66V20Z"),
+                                             eyes: .init(x: 50, y: 50, spacing: 40, scale: 1))
+        guard case .valid = BotAvatarValidator.validate(definition) else { return XCTFail("the import check accepts this") }
+        let volume = try BotAvatarVolume.prepare(definition, depth: 6)
+        let layout = BotAvatarEyeLayout.fit(volume: volume, geometry: BotAvatarExpression.neutral.geometry)
+        XCTAssertGreaterThan(layout.scale, 0)
+        let marks = layout.marks(eyes: definition.eyes)
+        XCTAssertEqual(marks.count, 2)
+        XCTAssertEqual(abs(marks[0].x - marks[1].x), layout.spacing, accuracy: 0.001, "the eyes stay on the body, not in the hole")
+    }
+
+    func testDoneWaitsForTheLastEyeMovement() async {
+        let studio = studio()
+        studio.pick(cat)
+        let start = studio.eyes
+        studio.propose(eyes: .init(x: start.x + 1, y: start.y, spacing: start.spacing, scale: start.scale))
+        studio.propose(eyes: .init(x: start.x + 2, y: start.y, spacing: start.spacing, scale: start.scale))
+
+        await studio.settleEyes()
+
+        XCTAssertEqual(studio.eyes.x, start.x + 2)
+    }
+
+    func testARetryWaitsForTheStoppedCallToLetGoOfTheSocket() async throws {
+        let held = HeldSend()
+        let studio = BotAvatarStudio(name: "scout", appearance: BotProfileAppearance(look: [:], fallbackTitle: "Scout"),
+                                     hadPhoto: false, sendPrompt: { try await held.send($0) })
+        let first = expectation(description: "the first call is out")
+        held.onSend = { first.fulfill() }
+        studio.generate(description: "a box")
+        await fulfillment(of: [first], timeout: 5)
+
+        studio.stopWaiting()
+        studio.generate(description: "a ball")
+        await Task.yield()
+        XCTAssertEqual(held.calls, 1, "the retry must not start while the first holds the handlers")
+
+        let second = expectation(description: "the retry starts")
+        held.onSend = { second.fulfill() }
+        held.release(throwing: CancellationError())
+        await fulfillment(of: [second], timeout: 5)
+        XCTAssertEqual(held.calls, 2)
+        studio.stopWaiting()
+        held.release(throwing: CancellationError())
+    }
+
     func testPickingAvatarsAndClassicsKeepsTheStoredShapeForDesktop() {
         let studio = studio(look: ["shape": .string("cloud"), "custom": .bool(true)])
 
@@ -296,6 +355,24 @@ import XCTest
         } catch {
             XCTAssertEqual(error as? BotAvatarGeneration.Failure, .disconnected)
         }
+    }
+}
+
+/// A model call that stays out until the test lets it go.
+@MainActor private final class HeldSend {
+    var onSend: (() -> Void)?
+    private(set) var calls = 0
+    private var held: CheckedContinuation<String, Error>?
+
+    func send(_ prompt: String) async throws -> String {
+        calls += 1
+        onSend?()
+        return try await withCheckedThrowingContinuation { held = $0 }
+    }
+
+    func release(throwing error: Error) {
+        held?.resume(throwing: error)
+        held = nil
     }
 }
 

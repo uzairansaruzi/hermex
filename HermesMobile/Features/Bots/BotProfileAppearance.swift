@@ -13,9 +13,10 @@ struct BotProfileAppearance: Equatable, Sendable {
     /// A `BotAvatarExpression` raw value. Hermex-owned: Desktop keeps the key but renders its own eyes.
     var expression: String?
     /// The drawn avatar, when this bot has more than a flat classic shape. Hermex-owned, like `expression`.
-    var drawn: BotDrawnAvatar? { didSet { unreadableDrawn = nil } }
-    /// A stored value this build cannot read. Kept so a save never erases a newer build's avatar.
-    private var unreadableDrawn: BotJSON?
+    var drawn: BotDrawnAvatar? { didSet { storedDrawn = nil } }
+    /// The value as the host stored it, until the user picks a face. A save writes it back as it
+    /// was, so a newer build's fields, or a whole format this build can't read, are never lost.
+    private var storedDrawn: BotJSON?
 
     init(profile: BotProfile) { self.init(look: profile.look, fallbackTitle: profile.name) }
 
@@ -31,7 +32,7 @@ struct BotProfileAppearance: Equatable, Sendable {
         expression = look["expression"]?.text
         if let stored = look[BotDrawnAvatar.lookKey] {
             drawn = BotDrawnAvatar(json: stored)
-            unreadableDrawn = drawn == nil ? stored : nil
+            storedDrawn = stored
         }
     }
 
@@ -48,8 +49,8 @@ struct BotProfileAppearance: Equatable, Sendable {
         var result = received
         Self.set(title, key: "title", in: &result)
         if let expression { result["expression"] = .string(expression) } else { result.removeValue(forKey: "expression") }
-        if let drawn { result[BotDrawnAvatar.lookKey] = drawn.json }
-        else if let unreadableDrawn { result[BotDrawnAvatar.lookKey] = unreadableDrawn }
+        if let storedDrawn { result[BotDrawnAvatar.lookKey] = storedDrawn }
+        else if let drawn { result[BotDrawnAvatar.lookKey] = drawn.json }
         else { result.removeValue(forKey: BotDrawnAvatar.lookKey) }
         if custom {
             result["custom"] = .bool(true)
