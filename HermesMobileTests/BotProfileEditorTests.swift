@@ -252,7 +252,7 @@ import SwiftUI
         await editor.load()
         XCTAssertEqual(editor.draft.appearance.expression, "happy")
 
-        editor.setExpression(.curious)
+        expression(.curious, on: editor)
         XCTAssertEqual(editor.dirtyFields, [.appearance], "an expression never touches the photo")
         XCTAssertFalse(editor.draft.appearance.custom, "the default look is not claimed as custom")
         var sent: [String: BotJSON]?
@@ -264,10 +264,12 @@ import SwiftUI
         XCTAssertEqual(sent?["expression"], .string("curious"))
         XCTAssertEqual(sent?["sectionId"], .string("desktop-section"))
 
-        editor.setExpression(.neutral)
+        expression(.neutral, on: editor)
         XCTAssertNil(editor.draft.appearance.expression, "neutral is the absence of the key")
-        editor.setExpression(.sleepy)
-        editor.resetAppearance()
+        expression(.sleepy, on: editor)
+        let studio = studio(for: editor)
+        studio.reset()
+        editor.applyStudio(studio)
         XCTAssertNil(editor.draft.appearance.expression)
     }
 
@@ -280,7 +282,7 @@ import SwiftUI
                                       store: store, avatarStore: BotAvatarStore(), makeWire: { _ in BotProfileEditorWire(details: self.details()) })
         await editor.load()
 
-        editor.setExpression(.happy)
+        expression(.happy, on: editor)
 
         XCTAssertNotNil(editor.avatar)
         XCTAssertFalse(editor.dirtyFields.contains(.avatar))
@@ -312,7 +314,9 @@ import SwiftUI
         let (editor, wire, _) = try makeEditor(details: details())
         await editor.load()
         editor.setTitle("Renamed")
-        editor.setShape(.hexagon)
+        let studio = studio(for: editor)
+        studio.pick(.hexagon)
+        editor.applyStudio(studio)
         wire.configure = { _ in
             .object(["ok": .bool(true), "applied": .object([
                 "ui_meta": .bool(true), "ui_meta_revisions": .object(["hermes-bots": .number(2)])
@@ -333,6 +337,16 @@ import SwiftUI
         XCTAssertEqual(thumbnail.map { max($0.size.width * $0.scale, $0.size.height * $0.scale) }, CGFloat(BotAvatarStore.maxPixelSize))
         let small = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { _ in }
         XCTAssertEqual(BotAvatarStore.thumbnail(small)?.size, small.size)
+    }
+
+    private func studio(for editor: BotProfileEditor) -> BotAvatarStudio {
+        BotAvatarStudio(name: editor.profile.id, appearance: editor.draft.appearance, hadPhoto: editor.avatar != nil, sendPrompt: nil)
+    }
+
+    private func expression(_ expression: BotAvatarExpression, on editor: BotProfileEditor) {
+        let studio = studio(for: editor)
+        studio.setExpression(expression)
+        editor.applyStudio(studio)
     }
 
     private func makeEditor(profile: BotProfile? = nil, details: BotJSON) throws -> (BotProfileEditor, BotProfileEditorWire, BotConnectionStore) {

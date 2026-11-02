@@ -40,13 +40,18 @@ extension AgentRunActivityBot {
         }
 
         let photo = BotAvatarStore.shared.images(connectionID: destination.connectionID)[profile.id]
+        let appearance = BotProfileAppearance(profile: profile)
+        // The drawn face draws with Core Graphics: Canvas paints nothing inside `ImageRenderer`.
+        let drawn = photo == nil ? appearance.drawnStill(name: profile.id, pointSize: 40, scale: 3, dark: true) : nil
         let renderer = ImageRenderer(content: Group {
-            if let photo {
+            if let picture = drawn {
+                Image(uiImage: picture).resizable().frame(width: 40, height: 40)
+            } else if let photo {
                 Image(uiImage: photo).resizable().scaledToFill()
                     .frame(width: 40, height: 40)
                     .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             } else {
-                BotAvatarMarkView(name: profile.id, appearance: BotProfileAppearance(profile: profile), size: 40)
+                BotAvatarMarkView(name: profile.id, appearance: appearance.withoutDrawnAvatar, size: 40)
             }
         }
         // The activity card is always dark, so the adaptive body color resolves for it.

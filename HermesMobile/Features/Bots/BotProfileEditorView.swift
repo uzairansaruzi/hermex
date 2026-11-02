@@ -7,7 +7,7 @@ import SwiftUI
     @State private var showsModels = false
     @State private var photoItem: PhotosPickerItem?
     @State private var showsPhotoPicker = false
-    @State private var showsExpressions = false
+    @State private var showsStudio = false
     @State private var imageError: String?
     /// What the face should do about the last edit; see `BotCreateView`.
     @State private var cue: BotFaceCue?
@@ -64,7 +64,12 @@ import SwiftUI
         }
         .sheet(item: $capabilitySheet) { field in capabilityPicker(field) }
         .sheet(isPresented: $showsModels) { modelPicker }
-        .navigationDestination(isPresented: $showsExpressions) { BotExpressionPickerView(editor: editor) }
+        .fullScreenCover(isPresented: $showsStudio) {
+            BotAvatarStudioView(studio: BotAvatarStudio(
+                name: editor.profile.id, appearance: editor.draft.appearance, hadPhoto: editor.avatar != nil,
+                sendPrompt: editor.holdsConnection ? { [editor] prompt in try await editor.sendAvatarPrompt(prompt) } : nil
+            )) { studio in editor.applyStudio(studio); cue = BotFaceCue(.hop) }
+        }
         .photosPicker(isPresented: $showsPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in loadPhoto(item) }
         .alert("Could not decode this image.", isPresented: Binding(
@@ -163,7 +168,6 @@ import SwiftUI
                 }
                 .frame(width: 96, height: 96)
                 .accessibilityHidden(true)
-                photoMenu
             }
             VStack(spacing: 10) {
                 Text(editor.draft.appearance.title.isEmpty ? editor.profile.name : editor.draft.appearance.title)
@@ -181,65 +185,23 @@ import SwiftUI
         .padding(.top, 26).padding(.bottom, 12)
     }
 
-    /// The Contacts-style badge on the hero avatar: the one place a photo is chosen or removed.
-    private var photoMenu: some View {
-        Menu {
-            Button { showsPhotoPicker = true } label: { Label("Choose Photo", systemImage: "photo.on.rectangle") }
-            if editor.avatar != nil {
-                Button(role: .destructive) { editor.removeAvatar() } label: { Label("Remove Photo", systemImage: "trash") }
-            }
-        } label: {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 30, height: 30)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
-                .overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 3))
-        }
-        .offset(x: 6, y: 6)
-        .accessibilityLabel("Change Photo")
-    }
-
+    /// The way into the studio, and the one place a photo is chosen or removed.
     private var characterCard: some View {
         card {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
-                ForEach(BotAvatarShape.allCases) { shape in
-                    Button { editor.setShape(shape); cue = BotFaceCue(.hop) } label: {
-                        BotAvatarMarkView(name: editor.profile.id, appearance: appearance(for: shape), size: 42)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .overlay {
-                                if editor.draft.appearance.shape == shape.rawValue {
-                                    RoundedRectangle(cornerRadius: 12).stroke(.secondary, lineWidth: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(shape.localizedName)
-                    .accessibilityAddTraits(editor.draft.appearance.shape == shape.rawValue ? .isSelected : [])
-                }
-            }
-            .padding(16)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
-                ForEach(colors) { color in
-                    Button { editor.setColor(color.hex); cue = BotFaceCue(.wobble) } label: {
-                        Circle().fill(color.swatch).frame(width: 30, height: 30)
-                            .overlay { if editor.draft.appearance.color == color.hex { Circle().stroke(.secondary, lineWidth: 3).padding(-5) } }
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "Avatar color \(color.localizedName)"))
-                    .accessibilityAddTraits(editor.draft.appearance.color == color.hex ? .isSelected : [])
-                }
-            }
-            .padding(.horizontal, 16).padding(.bottom, 10)
+            navigationRow(String(localized: "Customize Avatar"), subtitle: nil,
+                          value: editor.avatar == nil ? BotAvatarStudio.summary(of: editor.draft.appearance, name: editor.profile.id) : "",
+                          systemImage: "face.smiling") { showsStudio = true }
             Divider().padding(.leading, 16)
-            navigationRow(String(localized: "Expression"), subtitle: nil,
-                          value: BotAvatarExpression.resolve(editor.draft.appearance.expression).localizedName,
-                          systemImage: "face.smiling") { showsExpressions = true }
-            Button("Reset to default", systemImage: "arrow.counterclockwise") { editor.resetAppearance() }
-                .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
-                .tint(.secondary)
-                .padding(.bottom, 14)
+            navigationRow(String(localized: "Choose Photo"), subtitle: nil, value: "", systemImage: "photo.on.rectangle") {
+                showsPhotoPicker = true
+            }
+            if editor.avatar != nil {
+                Divider().padding(.leading, 16)
+                Button(role: .destructive) { editor.removeAvatar() } label: {
+                    Label("Remove Photo", systemImage: "trash").frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.vertical, 13)
+                }
+            }
         }
     }
 
@@ -339,12 +301,6 @@ import SwiftUI
             .padding(16).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func appearance(for shape: BotAvatarShape) -> BotProfileAppearance {
-        var appearance = editor.draft.appearance
-        appearance.shape = shape.rawValue; appearance.custom = true; appearance.imageKind = "shape"
-        return appearance
     }
 
     private func capabilities(_ field: BotProfileEditor.Field) -> [BotProfileCapability] {

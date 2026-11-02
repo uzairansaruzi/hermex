@@ -7,7 +7,7 @@ import SwiftUI
 @MainActor struct BotCreateView: View {
     @State private var creator: BotCreator
     @State private var showsModels = false
-    @State private var showsExpressions = false
+    @State private var showsStudio = false
     /// What the face should do about the last edit: a hop for a shape, a wobble
     /// for a color, a glance down while the name is typed.
     @State private var cue: BotFaceCue?
@@ -104,7 +104,12 @@ import SwiftUI
                         .disabled(creator.phase == .creating)
                 }
             }
-            .navigationDestination(isPresented: $showsExpressions) { expressionPicker }
+            .fullScreenCover(isPresented: $showsStudio) {
+                BotAvatarStudioView(studio: BotAvatarStudio(
+                    name: creator.name, appearance: creator.draft.appearance, hadPhoto: false,
+                    sendPrompt: creator.holdsConnection ? { [creator] prompt in try await creator.sendAvatarPrompt(prompt) } : nil
+                )) { studio in creator.applyStudio(studio); cue = BotFaceCue(.hop) }
+            }
         }
         .interactiveDismissDisabled(creator.phase == .creating)
         .sheet(isPresented: $showsModels) { modelPicker }
@@ -158,40 +163,9 @@ import SwiftUI
 
     private var lookCard: some View {
         card {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
-                ForEach(BotAvatarShape.allCases) { shape in
-                    Button { creator.setShape(shape); cue = BotFaceCue(.hop) } label: {
-                        BotAvatarMarkView(name: creator.name, appearance: appearance(for: shape), size: 42)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .overlay {
-                                if creator.draft.appearance.shape == shape.rawValue {
-                                    RoundedRectangle(cornerRadius: 12).stroke(.secondary, lineWidth: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(shape.localizedName)
-                    .accessibilityAddTraits(creator.draft.appearance.shape == shape.rawValue ? .isSelected : [])
-                }
-            }
-            .padding(16)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
-                ForEach(BotAvatarColor.palette) { color in
-                    Button { creator.setColor(color.hex); cue = BotFaceCue(.wobble) } label: {
-                        Circle().fill(color.swatch).frame(width: 30, height: 30)
-                            .overlay { if creator.draft.appearance.color == color.hex { Circle().stroke(.secondary, lineWidth: 3).padding(-5) } }
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "Avatar color \(color.localizedName)"))
-                    .accessibilityAddTraits(creator.draft.appearance.color == color.hex ? .isSelected : [])
-                }
-            }
-            .padding(.horizontal, 16).padding(.bottom, 10)
-            Divider().padding(.leading, 16)
-            navigationRow(String(localized: "Expression"), subtitle: nil,
-                          value: BotAvatarExpression.resolve(creator.draft.appearance.expression).localizedName,
-                          systemImage: "face.smiling") { showsExpressions = true }
+            navigationRow(String(localized: "Customize Avatar"), subtitle: nil,
+                          value: BotAvatarStudio.summary(of: creator.draft.appearance, name: creator.name),
+                          systemImage: "face.smiling") { showsStudio = true }
         }
     }
 
@@ -213,22 +187,6 @@ import SwiftUI
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
         .padding(.bottom, 16)
-    }
-
-    private var expressionPicker: some View {
-        List(BotAvatarExpression.allCases) { expression in
-            Button { creator.setExpression(expression); showsExpressions = false } label: {
-                HStack(spacing: 14) {
-                    BotAvatarMarkView(name: creator.name, appearance: appearance(expression: expression), size: 40)
-                    Text(expression.localizedName).foregroundStyle(.primary)
-                    Spacer()
-                    if BotAvatarExpression.resolve(creator.draft.appearance.expression) == expression {
-                        Image(systemName: "checkmark").foregroundStyle(.tint)
-                    }
-                }
-            }
-        }
-        .navigationTitle("Expression").navigationBarTitleDisplayMode(.inline)
     }
 
     private var modelPicker: some View {
@@ -273,18 +231,6 @@ import SwiftUI
             .padding(16).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func appearance(for shape: BotAvatarShape) -> BotProfileAppearance {
-        var appearance = creator.draft.appearance
-        appearance.shape = shape.rawValue; appearance.custom = true; appearance.imageKind = "shape"
-        return appearance
-    }
-
-    private func appearance(expression: BotAvatarExpression) -> BotProfileAppearance {
-        var appearance = creator.draft.appearance
-        appearance.expression = expression.rawValue
-        return appearance
     }
 
     private func icon(_ outcome: BotCreator.Outcome) -> String {

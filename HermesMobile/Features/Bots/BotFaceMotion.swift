@@ -98,6 +98,9 @@ struct BotWorkingSchedule: TimelineSchedule, Equatable {
 
     private var end: Date { start.addingTimeInterval(Self.beat) }
 
+    /// Whether the face is still swaying at `date`, rather than holding its lean.
+    func isInBeat(_ date: Date) -> Bool { date < end }
+
     /// The swaying pose inside the beat, then the settled lean with the blink's lid.
     func pose(at date: Date) -> BotFacePose {
         if date < end { return .working(at: date.timeIntervalSinceReferenceDate) }
@@ -238,6 +241,39 @@ struct BotAnimatedFaceView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        if let drawn = appearance.drawn {
+            drawnFace(drawn)
+        } else {
+            classicFace
+        }
+    }
+
+    /// A blink repaints only the eye layer, inside `BotAvatarEngineFace`. Work draws the live
+    /// tier in the upstream `thinking` pose for its beat, then settles back into the rest tier.
+    @ViewBuilder private func drawnFace(_ drawn: BotDrawnAvatar) -> some View {
+        switch motion.honoring(reduceMotion: reduceMotion) {
+        case .still:
+            BotAvatarEngineFace(name: name, appearance: appearance, drawn: drawn, size: size, pose: looking(.rest))
+        case .idle:
+            BotAvatarEngineFace(name: name, appearance: appearance, drawn: drawn, size: size, pose: looking(.rest),
+                                blink: BotBlinkSchedule(seed: name))
+        case .working(let since):
+            let blink = BotBlinkSchedule(seed: name)
+            let schedule = BotWorkingSchedule(start: since, blink: blink)
+            TimelineView(schedule) { context in
+                if schedule.isInBeat(context.date) {
+                    BotAvatarEngineLiveFace(name: name, appearance: appearance, drawn: drawn, size: size, mood: .thinking,
+                                            time: context.date.timeIntervalSinceReferenceDate,
+                                            lid: blink.isShut(at: context.date) ? BotFacePose.blink.lid : 1)
+                } else {
+                    BotAvatarEngineFace(name: name, appearance: appearance, drawn: drawn, size: size,
+                                        pose: looking(schedule.pose(at: context.date)))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var classicFace: some View {
         switch motion.honoring(reduceMotion: reduceMotion) {
         case .still:
             BotAvatarMarkView(name: name, appearance: appearance, size: size, pose: looking(.rest))
@@ -279,18 +315,32 @@ struct BotInteractiveFaceView: View {
     @State private var gaze = CGSize.zero
     @State private var reaction = 0
     @State private var playing: (bit: BotFaceBit, start: Date)?
+    /// A finger on a drawn avatar turns its whole body, in the live tier, as `follow` eases.
+    @State private var follow: BotAvatarGaze?
+    @State private var followWrite = Date.distantPast
+    @State private var followRelease: (gaze: BotAvatarGaze, start: Date)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// How far the eyes travel, as a fraction of the mark, and the reaction's length.
     private static let reach = 0.07
     private static let reactionDuration: Duration = .milliseconds(650)
+    /// The most the live tier redraws: one frame per this many seconds.
+    private static let liveFrame = 1.0 / 30
+    private static let releaseDuration = 0.3
 
     var body: some View {
         var shown = appearance
         if reaction > 0 { shown.expression = BotAvatarExpression.surprised.rawValue }
         return Group {
-            if let playing, !reduceMotion {
-                TimelineView(.animation(minimumInterval: 1 / 60)) { context in
+            if let drawn = shown.drawn, !reduceMotion, let follow {
+                BotAvatarEngineLiveFace(name: name, appearance: shown, drawn: drawn, size: size, gaze: follow)
+            } else if let drawn = shown.drawn, !reduceMotion, let release = followRelease {
+                TimelineView(.animation(minimumInterval: Self.liveFrame)) { context in
+                    BotAvatarEngineLiveFace(name: name, appearance: shown, drawn: drawn, size: size,
+                                            gaze: releasing(release, at: context.date))
+                }
+            } else if let playing, !reduceMotion {
+                TimelineView(.animation(minimumInterval: shown.drawn == nil ? 1 / 60 : Self.liveFrame)) { context in
                     BotAvatarMarkView(name: name, appearance: shown, size: size, pose: bitPose(playing, at: context.date))
                 }
             } else {
@@ -306,9 +356,11 @@ struct BotInteractiveFaceView: View {
                         let dx = (value.location.x - size / 2) / size, dy = (value.location.y - size / 2) / size
                         let length = max(hypot(dx, dy), 0.001), clamp = min(length, 0.5) / length
                         gaze = CGSize(width: dx * clamp * Self.reach * 2, height: dy * clamp * Self.reach * 2)
+                        moveFollow(x: dx * clamp * 2, y: dy * clamp * 2)
                     }
                     .onEnded { value in
                         withAnimation(reduceMotion ? nil : .spring(duration: 0.35)) { gaze = .zero }
+                        endFollow()
                         let moved = hypot(value.translation.width, value.translation.height)
                         if moved < 10 { react() }
                     }
@@ -353,6 +405,35 @@ struct BotInteractiveFaceView: View {
             try? await Task.sleep(for: .seconds(bit.duration))
             if playing?.start == start { playing = nil }
         }
+    }
+
+    /// Touch events can outrun the live budget, so a turn writes at most one frame per `liveFrame`.
+    private func moveFollow(x: Double, y: Double) {
+        guard appearance.drawn != nil, !reduceMotion else { return }
+        let now = Date()
+        guard now.timeIntervalSince(followWrite) >= Self.liveFrame else { return }
+        followWrite = now
+        followRelease = nil
+        follow = BotAvatarGaze(x: x, y: y)
+    }
+
+    /// Eases the body back to rest over one short timeline, then hands back to the rest tier.
+    private func endFollow() {
+        guard let last = follow else { return }
+        follow = nil
+        let start = Date()
+        followRelease = (last, start)
+        Task {
+            try? await Task.sleep(for: .seconds(Self.releaseDuration))
+            if followRelease?.start == start { followRelease = nil }
+        }
+    }
+
+    private func releasing(_ release: (gaze: BotAvatarGaze, start: Date), at date: Date) -> BotAvatarGaze {
+        let t = max(0, min(1, date.timeIntervalSince(release.start) / Self.releaseDuration))
+        var gaze = release.gaze
+        gaze.weight = 1 - t * t * (3 - 2 * t)
+        return gaze
     }
 
     private func react() {

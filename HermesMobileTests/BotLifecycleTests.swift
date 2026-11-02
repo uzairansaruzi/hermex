@@ -56,7 +56,9 @@ import XCTest
         let (creator, wire) = try makeCreator(roster: []) { created.append($0) }
         creator.setTitle("Home Hunter")
         creator.setRole("Finds apartments")
-        creator.setShape(.hexagon); creator.setColor("#f97316"); creator.setExpression(.happy)
+        let studio = BotAvatarStudio(name: creator.name, appearance: creator.draft.appearance, hadPhoto: false, sendPrompt: nil)
+        studio.pick(.hexagon); studio.setBodyColor("#f97316"); studio.setExpression(.happy)
+        creator.applyStudio(studio)
         creator.setModel(ModelCatalogOption(id: "gpt-6", displayName: "gpt-6", providerID: "openai"))
 
         await creator.create()

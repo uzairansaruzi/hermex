@@ -51,6 +51,7 @@ import UIKit
     /// The first failed call ends the pass silently: the roster never depends on it.
     func refresh(_ profiles: [BotProfile], connectionID: UUID, using transport: any BotTransport,
                  validateDispatch: (() throws -> Void)? = nil, onUpdate: () -> Void) async {
+        BotAvatarRenderStore.shared.prewarm(profiles.compactMap { BotProfileAppearance(profile: $0).renderKey })
         let wanted = Set(profiles.filter(\.hasAvatar).map(\.id))
         entries = entries.filter { $0.key.connectionID == connectionID && wanted.contains($0.key.profile) }
         onUpdate()

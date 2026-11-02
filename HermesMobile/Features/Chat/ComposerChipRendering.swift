@@ -173,10 +173,18 @@ struct ComposerChipMetrics: Equatable {
         case let .asset(name):
             return UIImage(named: name)
         case let .bot(reference):
-            let view = BotAvatarView(profile: reference.profile, avatar: reference.avatar, size: metrics.iconSize, motion: .still)
+            let scale = traits.displayScale > 0 ? traits.displayScale : UIScreen.main.scale
+            let appearance = BotProfileAppearance(profile: reference.profile)
+            // A drawn face comes from the render store: Canvas paints nothing inside `ImageRenderer`.
+            if reference.avatar == nil, let drawn = appearance.drawnStill(
+                name: reference.profile.id, pointSize: metrics.iconSize, scale: scale, dark: traits.userInterfaceStyle == .dark
+            ) {
+                return drawn
+            }
+            let view = BotAvatarView(profile: reference.profile, avatar: reference.avatar, size: metrics.iconSize, motion: .still, renderingToImage: true)
                 .environment(\.colorScheme, traits.userInterfaceStyle == .dark ? .dark : .light)
             let renderer = ImageRenderer(content: view)
-            renderer.scale = traits.displayScale > 0 ? traits.displayScale : UIScreen.main.scale
+            renderer.scale = scale
             return renderer.uiImage
         }
     }

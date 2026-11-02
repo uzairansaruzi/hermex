@@ -26,7 +26,6 @@
 		A4790000000000000000E005 /* PushAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F005 /* PushAppDelegate.swift */; };
 		A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F006 /* PushRegistrationTests.swift */; };
 		B48200000000000000000002 /* BotProfileAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000001 /* BotProfileAppearance.swift */; };
-		B48200000000000000000012 /* BotExpressionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000011 /* BotExpressionPickerView.swift */; };
 		B48200000000000000000032 /* BotCreator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000031 /* BotCreator.swift */; };
 		B48200000000000000000034 /* BotCreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000033 /* BotCreateView.swift */; };
 		B48200000000000000000036 /* BotLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000035 /* BotLifecycleTests.swift */; };
@@ -688,6 +687,15 @@
 		A6DACCCE2A2A8D328D06AB25 /* BotAvatarDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD16AFBD0BE2BA300B48F21 /* BotAvatarDrawing.swift */; };
 		6182056F20CD0E770E5B9072 /* AvatarEngineCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033A199304F756695A11961A /* AvatarEngineCacheTests.swift */; };
 		FAAE1CCC2ECA6DCDB5D0D5E9 /* AvatarEngineDrawingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65365692C6EB5F5E4DD6128 /* AvatarEngineDrawingTests.swift */; };
+		0760266F4A2148CC98932699 /* BotDrawnAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB05D140BB54BCC0760266F /* BotDrawnAvatar.swift */; };
+		C90F64A00302F249CBE2D298 /* BotAvatarClassic.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1DF58F8909E663DC90F64A0 /* BotAvatarClassic.swift */; };
+		5B1F39798D29ABD959366F32 /* BotAvatarRenderStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60D8F549C1F5C5D75B1F3979 /* BotAvatarRenderStore.swift */; };
+		149ECF51DF806CB559D03E40 /* BotAvatarEngineFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5217C5EC3BAF371F149ECF51 /* BotAvatarEngineFace.swift */; };
+		8AEDD84F8B3DC7CFA7880B10 /* BotAvatarDesignPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFFB6349B2F15B148AEDD84F /* BotAvatarDesignPrompt.swift */; };
+		A84F4579033855E7FC515078 /* BotAvatarStudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D0EB54D33CD374CA84F4579 /* BotAvatarStudio.swift */; };
+		FD3E09513D0737A13DCBCDB2 /* BotAvatarGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */; };
+		2FA70E0BF6E437C247A7A1F7 /* BotAvatarStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E4159E1D4FF53992FA70E0B /* BotAvatarStudioView.swift */; };
+		68CBD2DE0377263CADFEC99E /* BotAvatarStudioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D332A4F8DED4E1668CBD2DE /* BotAvatarStudioTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -750,7 +758,6 @@
 		A1022B000000000000000002 /* ApprovalSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummary.swift; sourceTree = "<group>"; };
 		A1022B000000000000000004 /* ApprovalSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummaryTests.swift; sourceTree = "<group>"; };
 		B48200000000000000000001 /* BotProfileAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileAppearance.swift; sourceTree = "<group>"; };
-		B48200000000000000000011 /* BotExpressionPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotExpressionPickerView.swift; sourceTree = "<group>"; };
 		B48200000000000000000031 /* BotCreator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotCreator.swift; sourceTree = "<group>"; };
 		B48200000000000000000033 /* BotCreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotCreateView.swift; sourceTree = "<group>"; };
 		B48200000000000000000035 /* BotLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotLifecycleTests.swift; sourceTree = "<group>"; };
@@ -1415,6 +1422,15 @@
 		5AD16AFBD0BE2BA300B48F21 /* BotAvatarDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarDrawing.swift; sourceTree = "<group>"; };
 		033A199304F756695A11961A /* AvatarEngineCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarEngineCacheTests.swift; sourceTree = "<group>"; };
 		C65365692C6EB5F5E4DD6128 /* AvatarEngineDrawingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarEngineDrawingTests.swift; sourceTree = "<group>"; };
+		4EB05D140BB54BCC0760266F /* BotDrawnAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotDrawnAvatar.swift; sourceTree = "<group>"; };
+		C1DF58F8909E663DC90F64A0 /* BotAvatarClassic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarClassic.swift; sourceTree = "<group>"; };
+		60D8F549C1F5C5D75B1F3979 /* BotAvatarRenderStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarRenderStore.swift; sourceTree = "<group>"; };
+		5217C5EC3BAF371F149ECF51 /* BotAvatarEngineFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarEngineFace.swift; sourceTree = "<group>"; };
+		CFFB6349B2F15B148AEDD84F /* BotAvatarDesignPrompt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarDesignPrompt.swift; sourceTree = "<group>"; };
+		6D0EB54D33CD374CA84F4579 /* BotAvatarStudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarStudio.swift; sourceTree = "<group>"; };
+		D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarGeneration.swift; sourceTree = "<group>"; };
+		6E4159E1D4FF53992FA70E0B /* BotAvatarStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarStudioView.swift; sourceTree = "<group>"; };
+		3D332A4F8DED4E1668CBD2DE /* BotAvatarStudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarStudioTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1535,6 +1551,7 @@
 		1A2B3C4D5E6F700000000034 /* HermesMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				3D332A4F8DED4E1668CBD2DE /* BotAvatarStudioTests.swift */,
 				B48200000000000000000007 /* BotProfileEditorTests.swift */,
 				B48200000000000000000035 /* BotLifecycleTests.swift */,
 				B48200000000000000000023 /* BotFaceMotionTests.swift */,
@@ -1891,8 +1908,10 @@
 		1A2B3C4D5E6F7000000000C3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				6E4159E1D4FF53992FA70E0B /* BotAvatarStudioView.swift */,
+				D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */,
+				6D0EB54D33CD374CA84F4579 /* BotAvatarStudio.swift */,
 				B48200000000000000000001 /* BotProfileAppearance.swift */,
-				B48200000000000000000011 /* BotExpressionPickerView.swift */,
 				B48200000000000000000031 /* BotCreator.swift */,
 				B48200000000000000000033 /* BotCreateView.swift */,
 				B48200000000000000000003 /* BotProfileEditor.swift */,
@@ -2408,6 +2427,11 @@
 			sourceTree = "<group>";
 		};
 A15510000000000000000001 /* AvatarEngine */ = {isa = PBXGroup; children = (
+				CFFB6349B2F15B148AEDD84F /* BotAvatarDesignPrompt.swift */,
+				5217C5EC3BAF371F149ECF51 /* BotAvatarEngineFace.swift */,
+				60D8F549C1F5C5D75B1F3979 /* BotAvatarRenderStore.swift */,
+				C1DF58F8909E663DC90F64A0 /* BotAvatarClassic.swift */,
+				4EB05D140BB54BCC0760266F /* BotDrawnAvatar.swift */,
 				C8F9317F49B81F2123D289C4 /* BotAvatarBodyCache.swift */,
 				5AD16AFBD0BE2BA300B48F21 /* BotAvatarDrawing.swift */,
 				59214B44D64BC232DBD234C2 /* BotAvatarEyeLayout.swift */,
@@ -2652,10 +2676,17 @@ A15510000000000000000001 /* AvatarEngine */ = {isa = PBXGroup; children = (
 				A4790000000000000000E004 /* PushRegistrar.swift in Sources */,
 				A4790000000000000000E005 /* PushAppDelegate.swift in Sources */,
 				B48200000000000000000002 /* BotProfileAppearance.swift in Sources */,
-				B48200000000000000000012 /* BotExpressionPickerView.swift in Sources */,
 				B48200000000000000000032 /* BotCreator.swift in Sources */,
 				B48200000000000000000034 /* BotCreateView.swift in Sources */,
 				B48200000000000000000004 /* BotProfileEditor.swift in Sources */,
+				0760266F4A2148CC98932699 /* BotDrawnAvatar.swift in Sources */,
+				C90F64A00302F249CBE2D298 /* BotAvatarClassic.swift in Sources */,
+				5B1F39798D29ABD959366F32 /* BotAvatarRenderStore.swift in Sources */,
+				149ECF51DF806CB559D03E40 /* BotAvatarEngineFace.swift in Sources */,
+				8AEDD84F8B3DC7CFA7880B10 /* BotAvatarDesignPrompt.swift in Sources */,
+				A84F4579033855E7FC515078 /* BotAvatarStudio.swift in Sources */,
+				FD3E09513D0737A13DCBCDB2 /* BotAvatarGeneration.swift in Sources */,
+				2FA70E0BF6E437C247A7A1F7 /* BotAvatarStudioView.swift in Sources */,
 				B48200000000000000000022 /* BotFaceMotion.swift in Sources */,
 				A6DACCCE2A2A8D328D06AB25 /* BotAvatarDrawing.swift in Sources */,
 				FC3CC66C856B04D092CC731A /* BotAvatarBodyCache.swift in Sources */,
@@ -3107,6 +3138,7 @@ A15510000000000000000001 /* AvatarEngine */ = {isa = PBXGroup; children = (
 				A760F1A70000000000000001 /* HermesAgentFixtureTests.swift in Sources */,
 				FAAE1CCC2ECA6DCDB5D0D5E9 /* AvatarEngineDrawingTests.swift in Sources */,
 				6182056F20CD0E770E5B9072 /* AvatarEngineCacheTests.swift in Sources */,
+				68CBD2DE0377263CADFEC99E /* BotAvatarStudioTests.swift in Sources */,
 				7D9E3A68562E7A6ACDEC9680 /* AvatarEngineGoldenTests.swift in Sources */,
 				A1213000000000000000A005 /* MoveToHermesTransferTests.swift in Sources */,
 				A1214000000000000000A003 /* MoveToHermesReconcileTests.swift in Sources */,

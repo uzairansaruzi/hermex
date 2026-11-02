@@ -12,6 +12,10 @@ struct BotProfileAppearance: Equatable, Sendable {
     var imageKind: String?
     /// A `BotAvatarExpression` raw value. Hermex-owned: Desktop keeps the key but renders its own eyes.
     var expression: String?
+    /// The drawn avatar, when this bot has more than a flat classic shape. Hermex-owned, like `expression`.
+    var drawn: BotDrawnAvatar? { didSet { unreadableDrawn = nil } }
+    /// A stored value this build cannot read. Kept so a save never erases a newer build's avatar.
+    private var unreadableDrawn: BotJSON?
 
     init(profile: BotProfile) { self.init(look: profile.look, fallbackTitle: profile.name) }
 
@@ -25,6 +29,17 @@ struct BotProfileAppearance: Equatable, Sendable {
         custom = look["custom"]?.flag == true || shape != nil || color != nil
         imageKind = look["imageKind"]?.text
         expression = look["expression"]?.text
+        if let stored = look[BotDrawnAvatar.lookKey] {
+            drawn = BotDrawnAvatar(json: stored)
+            unreadableDrawn = drawn == nil ? stored : nil
+        }
+    }
+
+    /// The classic face this bot falls back to when its drawn avatar cannot be drawn.
+    var withoutDrawnAvatar: BotProfileAppearance {
+        var classic = self
+        classic.drawn = nil
+        return classic
     }
 
     /// Applies only the compatible static appearance fields while retaining
@@ -33,6 +48,9 @@ struct BotProfileAppearance: Equatable, Sendable {
         var result = received
         Self.set(title, key: "title", in: &result)
         if let expression { result["expression"] = .string(expression) } else { result.removeValue(forKey: "expression") }
+        if let drawn { result[BotDrawnAvatar.lookKey] = drawn.json }
+        else if let unreadableDrawn { result[BotDrawnAvatar.lookKey] = unreadableDrawn }
+        else { result.removeValue(forKey: BotDrawnAvatar.lookKey) }
         if custom {
             result["custom"] = .bool(true)
             if let shape { result["shape"] = .string(shape) } else { result.removeValue(forKey: "shape") }
@@ -98,20 +116,25 @@ enum BotAvatarShape: String, CaseIterable, Identifiable, Sendable {
 enum BotAvatarExpression: String, CaseIterable, Identifiable, Sendable {
     case neutral, attentive, surprised, excited, happy, laughing, angry, sad
     case scared, wary, confused, curious, proud, shy, bored, sleepy
+    /// Open Bot Avatar's happy eyes: two arcs rather than capsules.
+    case joyful
     var id: String { rawValue }
+
+    /// Draws as a stroked arc instead of a capsule.
+    nonisolated var isArc: Bool { self == .joyful }
 
     struct Eye: Equatable { let width: Double; let height: Double; let tilt: Double }
     struct Geometry: Equatable { let left: Eye; let right: Eye; let split: Double }
 
     /// An unknown or missing stored value reads as neutral rather than failing the row.
-    static func resolve(_ raw: String?) -> BotAvatarExpression { raw.flatMap(BotAvatarExpression.init(rawValue:)) ?? .neutral }
+    nonisolated static func resolve(_ raw: String?) -> BotAvatarExpression { raw.flatMap(BotAvatarExpression.init(rawValue:)) ?? .neutral }
 
-    var geometry: Geometry {
+    nonisolated var geometry: Geometry {
         func pair(_ w: Double, _ h: Double, _ tilt: Double = 0, split: Double) -> Geometry {
             Geometry(left: Eye(width: w, height: h, tilt: tilt), right: Eye(width: w, height: h, tilt: -tilt), split: split)
         }
         switch self {
-        case .neutral: return pair(0.186, 0.412, split: 15.46)
+        case .neutral, .joyful: return pair(0.186, 0.412, split: 15.46)
         case .attentive: return pair(0.21, 0.44, split: 16)
         case .surprised: return pair(0.45, 0.47, split: 19)
         case .excited: return pair(0.4, 0.56, -10, split: 19.5)
@@ -148,6 +171,7 @@ enum BotAvatarExpression: String, CaseIterable, Identifiable, Sendable {
         case .shy: return String(localized: "Shy")
         case .bored: return String(localized: "Bored")
         case .sleepy: return String(localized: "Sleepy")
+        case .joyful: return String(localized: "Joyful")
         }
     }
 }
@@ -165,13 +189,22 @@ struct BotAvatarMarkView: View {
     }
 
     var body: some View {
+        if let drawn = appearance.drawn {
+            BotAvatarEngineFace(name: name, appearance: appearance, drawn: drawn, size: size, pose: pose)
+        } else {
+            classicFace
+        }
+    }
+
+    private var classicFace: some View {
         ZStack {
-            BotAvatarBody(shape: presentation.shape)
+            BotAvatarClassicBody(shape: presentation.shape)
                 .fill(presentation.color)
-            let geometry = BotAvatarExpression.resolve(appearance.expression).geometry
+            let expression = BotAvatarExpression.resolve(appearance.expression)
+            let geometry = expression.geometry
             HStack(spacing: size * 0.1 * geometry.split / 15.46) {
-                eye(geometry.left)
-                eye(geometry.right)
+                eye(geometry.left, arc: expression.isArc)
+                eye(geometry.right, arc: expression.isArc)
             }
             .offset(x: size * (0.12 + pose.gazeX), y: size * (-0.08 + pose.gazeY))
         }
@@ -184,10 +217,29 @@ struct BotAvatarMarkView: View {
 
     /// Bloub measures eyes against the body radius; the neutral eye maps onto the
     /// mark's original 0.075 x 0.22 capsule with its 18 degree lean.
-    private func eye(_ eye: BotAvatarExpression.Eye) -> some View {
-        Capsule().fill(presentation.eyeColor)
-            .frame(width: size * 0.075 * eye.width / 0.186, height: size * 0.22 * eye.height / 0.412 * pose.lid)
-            .rotationEffect(.degrees(-18 + eye.tilt))
+    @ViewBuilder private func eye(_ eye: BotAvatarExpression.Eye, arc: Bool) -> some View {
+        let width = size * 0.075 * eye.width / 0.186, height = size * 0.22 * eye.height / 0.412
+        if arc {
+            BotAvatarArcEye()
+                .stroke(presentation.eyeColor, style: StrokeStyle(lineWidth: width * 0.6, lineCap: .round))
+                .frame(width: width * 1.44, height: height * 0.52)
+                .rotationEffect(.degrees(eye.tilt))
+                .scaleEffect(y: pose.lid, anchor: .bottom)
+        } else {
+            Capsule().fill(presentation.eyeColor)
+                .frame(width: width, height: height * pose.lid)
+                .rotationEffect(.degrees(BotAvatarClassic.lean + eye.tilt))
+        }
+    }
+}
+
+/// The upward arc of a joyful classic eye.
+private struct BotAvatarArcEye: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.maxY), control: CGPoint(x: rect.midX, y: rect.minY - rect.height))
+        return path
     }
 }
 
@@ -285,6 +337,22 @@ struct HermesBotChatPill: View {
     }
 }
 
+extension BotProfileAppearance {
+    /// The render store key of this bot's drawn avatar, if it has one.
+    var renderKey: BotAvatarRenderStore.Key? {
+        drawn.map { BotAvatarRenderStore.key($0, expression: expression) }
+    }
+
+    /// A finished bitmap of the drawn avatar for a synchronous caller; nil when there is none
+    /// or it is not built yet, and the caller draws the classic face instead.
+    func drawnStill(name: String, pointSize: CGFloat, scale: CGFloat, dark: Bool) -> UIImage? {
+        guard let drawn, let key = renderKey else { return nil }
+        let palette = BotDrawnPalette(appearance: self, drawn: drawn, name: name, scheme: dark ? .dark : .light)
+        let eyes = drawn.eyeColor.flatMap(BotAvatarRGB.init(hex:)) ?? palette.bodyRGB.autoEyeColor
+        return BotAvatarRenderStore.shared.stillImage(key, body: palette.bodyRGB, eyes: eyes, pointSize: pointSize, scale: scale)
+    }
+}
+
 /// An asset wins over the compatible static mark. The fallback now honors the
 /// same shape and color fields the editor writes instead of inventing a letter tile.
 struct BotAvatarView: View {
@@ -295,12 +363,17 @@ struct BotAvatarView: View {
     var motion: BotFaceMotion = .idle
     /// Replaces the pinned expression on a drawn face, for a state the title shows; photos ignore it.
     var expression: BotAvatarExpression? = nil
+    /// Set inside `ImageRenderer`, which runs no tasks and paints no Canvas, so a drawn avatar
+    /// not yet built shows its classic face instead of nothing.
+    var renderingToImage = false
 
     var body: some View {
         if let avatar {
             Image(uiImage: avatar).resizable().scaledToFit()
                 .frame(width: size, height: size)
                 .accessibilityHidden(true)
+        } else if appearance.drawn != nil, renderingToImage {
+            BotAvatarMarkView(name: profile.id, appearance: appearance.withoutDrawnAvatar, size: size)
         } else {
             BotAnimatedFaceView(name: profile.id, appearance: appearance, size: size, motion: motion)
         }
@@ -313,14 +386,17 @@ struct BotAvatarView: View {
     }
 }
 
-private struct BotAvatarPresentation {
+struct BotAvatarPresentation {
     let shape: BotAvatarShape
+    /// The stored or name-seeded `#rrggbb`, before an adaptive color resolves.
+    let hex: String
     let color: Color
     let eyeColor: Color
 
     init(name: String, appearance: BotProfileAppearance) {
         if name.lowercased() == "default", !appearance.custom {
             shape = .squircle
+            hex = "#8b5cf6"
             color = Color(botHex: "#8b5cf6") ?? .purple
             eyeColor = Color.botHexIsDark("#8b5cf6") ? .white.opacity(0.9) : .black.opacity(0.85)
             return
@@ -329,80 +405,19 @@ private struct BotAvatarPresentation {
         let shapes = BotAvatarShape.allCases.filter { $0 != .blob }
         let colors = ["#8b5cf6", "#38bdf8", "#14b8a6", "#22c55e", "#f59e0b", "#f97316", "#ef4444", "#ec4899"]
         shape = appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) ?? shapes[Int(hash % UInt64(shapes.count))]
-        let hex = appearance.color ?? colors[Int(hash % UInt64(colors.count))]
+        hex = appearance.color ?? colors[Int(hash % UInt64(colors.count))]
         color = Color.botBody(hex)
         eyeColor = Color.botEyes(on: hex)
     }
 }
 
-private struct BotAvatarBody: Shape {
+/// A classic body from its stored path, scaled to the view.
+private struct BotAvatarClassicBody: Shape {
     let shape: BotAvatarShape
 
     func path(in rect: CGRect) -> Path {
-        let inset = rect.insetBy(dx: rect.width * 0.08, dy: rect.height * 0.08)
-        switch shape {
-        case .circle:
-            return Path(ellipseIn: inset)
-        case .squircle:
-            return Path(roundedRect: inset, cornerRadius: rect.width * 0.28)
-        case .pill:
-            let pill = CGRect(x: inset.minX, y: rect.midY - rect.height * 0.27,
-                              width: inset.width, height: rect.height * 0.54)
-            return Path(roundedRect: pill, cornerRadius: pill.height / 2)
-        case .triangle:
-            var path = Path()
-            path.move(to: CGPoint(x: rect.midX, y: inset.minY))
-            path.addLine(to: CGPoint(x: inset.maxX, y: inset.maxY))
-            path.addLine(to: CGPoint(x: inset.minX, y: inset.maxY))
-            path.closeSubpath()
-            return path
-        case .hexagon:
-            var path = Path()
-            let points = [
-                CGPoint(x: rect.midX, y: inset.minY), CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.3),
-                CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.7), CGPoint(x: rect.midX, y: inset.maxY),
-                CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.7), CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.3)
-            ]
-            path.move(to: points[0]); for point in points.dropFirst() { path.addLine(to: point) }; path.closeSubpath()
-            return path
-        case .cloud:
-            var path = Path()
-            path.addEllipse(in: CGRect(x: rect.minX + rect.width * 0.08, y: rect.minY + rect.height * 0.38,
-                                       width: rect.width * 0.48, height: rect.height * 0.48))
-            path.addEllipse(in: CGRect(x: rect.minX + rect.width * 0.28, y: rect.minY + rect.height * 0.12,
-                                       width: rect.width * 0.5, height: rect.height * 0.64))
-            path.addEllipse(in: CGRect(x: rect.minX + rect.width * 0.55, y: rect.minY + rect.height * 0.35,
-                                       width: rect.width * 0.38, height: rect.height * 0.45))
-            return path
-        case .drop:
-            var path = Path()
-            path.move(to: CGPoint(x: rect.midX, y: inset.minY))
-            path.addCurve(to: CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.62),
-                          control1: CGPoint(x: rect.midX + rect.width * 0.22, y: rect.minY + rect.height * 0.2),
-                          control2: CGPoint(x: inset.maxX, y: rect.minY + rect.height * 0.42))
-            path.addCurve(to: CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.62),
-                          control1: CGPoint(x: inset.maxX, y: inset.maxY), control2: CGPoint(x: inset.minX, y: inset.maxY))
-            path.addCurve(to: CGPoint(x: rect.midX, y: inset.minY),
-                          control1: CGPoint(x: inset.minX, y: rect.minY + rect.height * 0.42),
-                          control2: CGPoint(x: rect.midX - rect.width * 0.22, y: rect.minY + rect.height * 0.2))
-            return path
-        case .blob:
-            var path = Path()
-            path.move(to: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.minY + rect.height * 0.17))
-            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.86, y: rect.minY + rect.height * 0.2),
-                          control1: CGPoint(x: rect.minX + rect.width * 0.4, y: rect.minY),
-                          control2: CGPoint(x: rect.minX + rect.width * 0.78, y: rect.minY + rect.height * 0.02))
-            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.78, y: rect.minY + rect.height * 0.86),
-                          control1: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.4),
-                          control2: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.72))
-            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.minY + rect.height * 0.78),
-                          control1: CGPoint(x: rect.minX + rect.width * 0.55, y: rect.maxY),
-                          control2: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.maxY))
-            path.addCurve(to: CGPoint(x: rect.minX + rect.width * 0.2, y: rect.minY + rect.height * 0.17),
-                          control1: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.6),
-                          control2: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.3))
-            return path
-        }
+        BotAvatarClassic.flatPath(shape).applying(CGAffineTransform(scaleX: rect.width / 100, y: rect.height / 100))
+            .offsetBy(dx: rect.minX, dy: rect.minY)
     }
 }
 

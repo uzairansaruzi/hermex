@@ -204,38 +204,20 @@ struct BotProfileDetails: Equatable, Sendable {
     func setInstructions(_ value: String) { draft.instructions = value; clearOutcome(.instructions) }
     func setModel(_ value: ModelCatalogOption) { draft.model = value; clearOutcome(.model) }
 
-    func setShape(_ shape: BotAvatarShape) {
-        draft.appearance.shape = shape.rawValue
-        draft.appearance.custom = true
-        draft.appearance.imageKind = "shape"
-        avatar = nil; avatarChange = .remove
-        clearOutcome(.appearance); clearOutcome(.avatar)
-    }
-
-    func setColor(_ color: String) {
-        if draft.appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) == nil {
-            draft.appearance.shape = BotAvatarShape.circle.rawValue
-        }
-        draft.appearance.color = color
-        draft.appearance.custom = true
-        draft.appearance.imageKind = "shape"
-        avatar = nil; avatarChange = .remove
-        clearOutcome(.appearance)
-        clearOutcome(.avatar)
-    }
-
-    /// Only the eyes change: an uploaded photo, the `custom` flag and the default
-    /// bot's fixed look are left alone, so the expression shows once no photo covers it.
-    func setExpression(_ expression: BotAvatarExpression) {
-        draft.appearance.expression = expression == .neutral ? nil : expression.rawValue
+    /// Takes the face the Avatar studio ended with. A changed body deletes the photo on Save,
+    /// which the studio has already warned about. An expression alone leaves the photo in place,
+    /// so it shows once no photo covers it.
+    func applyStudio(_ studio: BotAvatarStudio) {
+        draft.appearance.adoptFace(of: studio.appearance)
+        if studio.bodyChanged { avatar = nil; avatarChange = .remove; clearOutcome(.avatar) }
         clearOutcome(.appearance)
     }
 
-    func resetAppearance() {
-        draft.appearance.shape = nil; draft.appearance.color = nil; draft.appearance.expression = nil
-        draft.appearance.custom = false; draft.appearance.imageKind = nil
-        avatar = nil; avatarChange = .remove
-        clearOutcome(.appearance); clearOutcome(.avatar)
+    /// One tool-free model call under this bot, for the studio's "Describe it".
+    func sendAvatarPrompt(_ prompt: String) async throws -> String {
+        guard let client = wire else { throw BotFailure.stale }
+        let owner = generation
+        return try await BotAvatarGeneration.ask(prompt, profile: profile.id, transport: client, validateDispatch: validate(owner))
     }
 
     func selectAvatar(_ data: Data) throws {
@@ -243,7 +225,7 @@ struct BotProfileDetails: Equatable, Sendable {
             throw BotProfileEditorImageError.unsupported
         }
         avatar = image; avatarChange = .replace(normalized)
-        draft.appearance.custom = true; draft.appearance.imageKind = "photo"
+        draft.appearance.custom = true; draft.appearance.imageKind = "photo"; draft.appearance.drawn = nil
         clearOutcome(.appearance); clearOutcome(.avatar)
     }
 

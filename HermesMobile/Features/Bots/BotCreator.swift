@@ -138,15 +138,14 @@ enum BotProfileName {
     func setSharesCredentials(_ value: Bool) { draft.sharesCredentials = value }
     func setInstructions(_ value: String) { draft.instructions = value }
     func setSkipsBundledSkills(_ value: Bool) { draft.skipsBundledSkills = value }
-    func setShape(_ shape: BotAvatarShape) {
-        draft.appearance.shape = shape.rawValue; draft.appearance.custom = true; draft.appearance.imageKind = "shape"
-    }
-    func setColor(_ hex: String) {
-        if draft.appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) == nil { draft.appearance.shape = BotAvatarShape.circle.rawValue }
-        draft.appearance.color = hex; draft.appearance.custom = true; draft.appearance.imageKind = "shape"
-    }
-    func setExpression(_ expression: BotAvatarExpression) {
-        draft.appearance.expression = expression == .neutral ? nil : expression.rawValue
+    func applyStudio(_ studio: BotAvatarStudio) { draft.appearance.adoptFace(of: studio.appearance) }
+    var holdsConnection: Bool { wire != nil }
+
+    /// The studio's "Describe it" under the default Profile: the new bot does not exist yet.
+    func sendAvatarPrompt(_ prompt: String) async throws -> String {
+        guard let client = wire else { throw BotFailure.stale }
+        let owner = generation
+        return try await BotAvatarGeneration.ask(prompt, profile: "default", transport: client, validateDispatch: validate(owner))
     }
 
     /// Opens the socket and reads the model inventory. A failure here leaves the
