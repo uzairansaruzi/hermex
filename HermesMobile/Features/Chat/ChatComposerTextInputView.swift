@@ -431,6 +431,9 @@ private struct ComposerTextView: UIViewRepresentable {
                 if textView.sourceSelection != clamped {
                     applyingBoundValue { textView.sourceSelection = clamped }
                 }
+                // A resigned editor does not follow its own caret, and dictation
+                // writes into one the user can't scroll.
+                textView.scrollRangeToVisible(textView.selectedRange)
                 return
             }
 

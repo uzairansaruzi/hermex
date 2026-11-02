@@ -345,6 +345,8 @@ struct MessageComposerView: View {
     @State private var presentFilesAfterMediaPickerDismisses = false
     @State private var showFileImporter = false
     @State private var voiceInput = ComposerVoiceInputController()
+    /// Whether the keyboard was up when dictation took it down, so it can return.
+    @State private var restoresFocusAfterDictation = false
     @State private var voiceNoteRecorder = ComposerVoiceNoteRecorder()
     @State private var voiceNoteCancelArmed = false
     @State private var didAutoStartVoiceInput = false
@@ -580,7 +582,7 @@ struct MessageComposerView: View {
                 } else if let voiceNoteStatus {
                     ComposerVoiceStatusView(status: voiceNoteStatus)
                 } else if let voiceStatus {
-                    ComposerVoiceStatusView(status: voiceStatus)
+                    ComposerVoiceStatusView(status: voiceStatus, onDismiss: voiceInput.dismissError)
                 } else if let composerStatus {
                     ComposerStatusView(
                         text: composerStatus.text,
@@ -657,7 +659,14 @@ struct MessageComposerView: View {
                     .padding(.horizontal)
 
                 if isExpanded {
-                    toolbarRow
+                    Group {
+                        if isDictating {
+                            dictationRow.transition(.opacity)
+                        } else {
+                            toolbarRow.transition(.opacity)
+                        }
+                    }
+                        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isDictating)
                         .padding(.horizontal)
                         .padding(.top, 8)
                         .frame(maxWidth: .infinity)
@@ -767,7 +776,13 @@ struct MessageComposerView: View {
             else if scenePhase == .active { voiceInput.resume() }
             autoStartVoiceInputIfNeeded()
         }
-        .onChange(of: sessionID) { _, _ in voiceInput.stopBeforeSubmittingDraft() }
+        .onChange(of: sessionID) { _, _ in
+            restoresFocusAfterDictation = false
+            voiceInput.stopBeforeSubmittingDraft()
+        }
+        .onChange(of: isDictating) { _, isDictating in
+            if !isDictating { restoreFocusAfterDictation() }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
                 voiceInput.suspend()
@@ -952,6 +967,7 @@ struct MessageComposerView: View {
             keyboardIsVisible = false
         }
         .onDisappear {
+            restoresFocusAfterDictation = false
             voiceInput.stopBeforeSubmittingDraft()
             cancelVoiceNote()
             cancelScheduledSendChoices()
@@ -964,6 +980,7 @@ struct MessageComposerView: View {
     /// bridges the gap between a sheet dismissing and focus coming back.
     private var isExpanded: Bool {
         isFocused
+            || isDictating
             || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
             || showsAllModelsSheet
@@ -971,6 +988,11 @@ struct MessageComposerView: View {
             || showsGitBranchPicker
             || showMediaPicker
             || showFileImporter
+    }
+
+    /// Dictation locks the draft from the mic tap until its words have landed.
+    private var isDictating: Bool {
+        voiceInput.state != .idle
     }
 
     /// The glass surface: one text view in both states so focus and the draft
@@ -1016,6 +1038,7 @@ struct MessageComposerView: View {
                     recallLastSentText: recallLastSentText,
                     onPasteLargeText: onPasteLargeText
                 )
+                .allowsHitTesting(!isDictating)
 
                 if !isExpanded {
                     ComposerAttachmentPillPreview(
@@ -1070,9 +1093,18 @@ struct MessageComposerView: View {
         }
     }
 
+    private var dictationRow: some View {
+        let finish = actionAppearance(isStop: false, isDisabled: false)
+        return ComposerDictationRow(
+            voiceInput: voiceInput,
+            circleSize: circleSize,
+            finishBackground: finish.background,
+            finishForeground: finish.foreground
+        )
+    }
+
     private var voiceControlButton: some View {
         ComposerVoiceControlButton(
-            isListening: voiceInput.isListening,
             isDisabled: isVoiceInputDisabled,
             color: metaControlColor,
             isRecordingVoiceNote: voiceNoteRecorder.isRecording,
@@ -1386,33 +1418,14 @@ struct MessageComposerView: View {
         return nil
     }
 
+    /// Only errors: the dictation row shows progress while a capture runs.
     private var voiceStatus: ComposerVoiceStatus? {
-        switch voiceInput.state {
-        case .listening:
-            return ComposerVoiceStatus(text: String(localized: "Listening..."), systemImage: "waveform", isError: false)
-        case .serverListening:
-            return ComposerVoiceStatus(text: String(localized: "Recording..."), systemImage: "mic.fill", isError: false)
-        case .transcribing:
-            return ComposerVoiceStatus(text: String(localized: "Transcribing..."), systemImage: "waveform", isError: false)
-        case .requestingPermission:
-            return ComposerVoiceStatus(
-                text: String(localized: "Requesting voice permissions..."),
-                systemImage: "mic.badge.plus",
-                isError: false
-            )
-        case .idle:
-            break
-        }
-
-        if let errorMessage = voiceInput.errorMessage {
-            return ComposerVoiceStatus(
-                text: errorMessage,
-                systemImage: "exclamationmark.triangle",
-                isError: true
-            )
-        }
-
-        return nil
+        guard !isDictating, let errorMessage = voiceInput.errorMessage else { return nil }
+        return ComposerVoiceStatus(
+            text: errorMessage,
+            systemImage: "exclamationmark.triangle",
+            isError: true
+        )
     }
 
     /// Voice-note status shown above the composer when *not* actively recording
@@ -1493,16 +1506,20 @@ struct MessageComposerView: View {
             || isUpdatingConfiguration
     }
 
-    private var actionAppearance: ChatComposerActionAppearance {
+    private func actionAppearance(isStop: Bool, isDisabled: Bool) -> ChatComposerActionAppearance {
         ChatComposerActionAppearance(
-            isStop: showsStopButton, isDisabled: isActionButtonDisabled,
+            isStop: isStop, isDisabled: isDisabled,
             colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
             themeHex: headerLogoColorHex
         )
     }
 
-    private var actionButtonBackground: Color { actionAppearance.background }
-    private var actionButtonForeground: Color { actionAppearance.foreground }
+    private var actionButtonBackground: Color {
+        actionAppearance(isStop: showsStopButton, isDisabled: isActionButtonDisabled).background
+    }
+    private var actionButtonForeground: Color {
+        actionAppearance(isStop: showsStopButton, isDisabled: isActionButtonDisabled).foreground
+    }
 
     private var trimmedDraftMessage: String {
         draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1632,9 +1649,32 @@ struct MessageComposerView: View {
     private func toggleVoiceInput() {
         voiceInput.transcribe = hermesTranscriber ?? apiClient?.dictationTranscriber
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
-        voiceInput.scheduleToggle(currentDraft: draftMessage) { newDraft in
-            editDraft(newDraft)
+        // Resign now, not on the next update: a live composition or a pending
+        // autocorrection commits as the editor lets go, and dictation's baseline
+        // has to include that edit.
+        restoresFocusAfterDictation = isFocused
+        if isFocused {
+            UIApplication.shared.sendAction(#selector(ComposerChipTextView.resignForDictation), to: nil, from: nil, for: nil)
+            isFocused = false
         }
+        let start = voiceInput.scheduleToggle(
+            draftState: { ComposerVoiceDraftState(text: draftMessage, selection: composerSelection) },
+            updateDraft: { update in
+                editDraft(update.text)
+                composerSelection = composerSelection.moved(to: update.caret)
+            }
+        )
+        // A start that fails at once never leaves idle where SwiftUI can see it.
+        Task {
+            await start.value
+            if !isDictating { restoreFocusAfterDictation() }
+        }
+    }
+
+    private func restoreFocusAfterDictation() {
+        guard restoresFocusAfterDictation else { return }
+        restoresFocusAfterDictation = false
+        isFocused = true
     }
 
     /// Hold recognized → start recording a voice note. Gated by the recording

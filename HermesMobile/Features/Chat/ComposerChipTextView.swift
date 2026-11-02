@@ -37,6 +37,14 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         pendingTransitionFocus = nil
     }
 
+    /// Gives up the keyboard for dictation, sent down the responder chain from the
+    /// mic. A live composition is committed first, or dictation's first write would
+    /// replace the document under it and split its characters (#312).
+    @objc func resignForDictation() {
+        if markedTextRange != nil { unmarkText() }
+        _ = resignFirstResponder()
+    }
+
     override func resignFirstResponder() -> Bool {
         cancelDeferredFocus()
         return super.resignFirstResponder()
