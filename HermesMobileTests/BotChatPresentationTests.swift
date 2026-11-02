@@ -452,6 +452,55 @@ import XCTest
         XCTAssertNil(editor.keyboardCommands.send)
     }
 
+    /// Every composer control is reachable without sideways scrolling, with the keyboard up
+    /// or down (#1550), so nothing in the composer may scroll horizontally.
+    func testComposerControlsNeverScrollSideways() async throws {
+        let focus = ComposerFixtureFocus()
+        let window = try show(SessionChatPresentationFixture(focus: focus))
+        defer { close(window) }
+
+        func sidewaysScrollers() -> [UIScrollView] {
+            descendants(window).compactMap { $0 as? UIScrollView }
+                .filter { $0.contentSize.width > $0.bounds.width + 1 }
+        }
+        await settle(window)
+        XCTAssertEqual(sidewaysScrollers(), [])
+
+        focus.isFocused = true
+        await settle(window)
+        XCTAssertEqual(sidewaysScrollers(), [])
+    }
+
+    /// Chat settings takes the keyboard while it is up and gives back only what it took: a
+    /// focused composer refocuses when it closes, and an idle one stays idle.
+    func testChatSettingsRestoresOnlyTheFocusItTook() async throws {
+        let focus = ComposerFixtureFocus()
+        let window = try show(SessionChatPresentationFixture(focus: focus))
+        defer { close(window) }
+        await settle(window)
+        let host = try XCTUnwrap(window.rootViewController)
+
+        func openAndCloseSettings() async {
+            focus.isChatSettingsOpen = true
+            await waitUntil(window) { host.presentedViewController != nil }
+            XCTAssertNotNil(host.presentedViewController)
+            XCTAssertFalse(focus.isFocused)
+            focus.isChatSettingsOpen = false
+            await waitUntil(window) { host.presentedViewController == nil }
+            XCTAssertNil(host.presentedViewController)
+        }
+
+        await openAndCloseSettings()
+        await settle(window)
+        XCTAssertFalse(focus.isFocused, "Settings opened from an idle composer must not raise the keyboard")
+
+        focus.isFocused = true
+        await settle(window)
+        await openAndCloseSettings()
+        await waitUntil(window) { focus.isFocused }
+        XCTAssertTrue(focus.isFocused)
+    }
+
     /// Esc (#1380) closes the `/` panel first and keeps it closed only until the draft changes,
     /// then stops the run through the composer's Stop; the draft stays. ⌘-hold titles name
     /// the real sends.
@@ -485,6 +534,16 @@ import XCTest
         await settle(window)
         XCTAssertEqual(probe.cancels, 1)
         XCTAssertEqual(editor.sourceText, "/")
+    }
+
+    /// For UIKit's sheet transitions, which finish on their own schedule with no model change
+    /// to await. Bounded by `callbackTimeout`, so a missed change fails the caller's assertion.
+    private func waitUntil(_ window: UIWindow, _ condition: @escaping @MainActor () -> Bool) async {
+        let changed = expectation(for: NSPredicate { _, _ in
+            MainActor.assumeIsolated { condition() }
+        }, evaluatedWith: nil)
+        await fulfillment(of: [changed], timeout: callbackTimeout)
+        await settle(window)
     }
 
     private func pressEscape(_ editor: ComposerChipTextView) throws {
@@ -653,6 +712,7 @@ private struct AttachmentOverlayHarnessView: View {
 /// Holds a composer's screen-owned focus binding for hosted integration tests.
 @MainActor @Observable private final class ComposerFixtureFocus {
     var isFocused = false
+    var isChatSettingsOpen = false
 }
 
 /// Counts the Sessions fixture's own body passes, and records the drafts its
@@ -717,7 +777,8 @@ private struct SessionChatPresentationFixture: View {
             onSelectFileReference: { _ in }, onFileReferenceCandidatesChange: { probe.scannedDrafts.append($0) },
             onDraftEdit: { probe.editedDrafts.append($0) },
             onOpenFileReference: { _ in }, onSelectGitBranch: { _ in },
-            onCreateGitBranch: { _ in }, onRefreshGitBranches: {}
+            onCreateGitBranch: { _ in }, onRefreshGitBranches: {},
+            isChatSettingsPresented: $focus.isChatSettingsOpen
         )
     }
 }

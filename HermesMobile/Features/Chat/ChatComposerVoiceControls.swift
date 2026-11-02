@@ -272,11 +272,14 @@ struct ComposerVoiceControlButton: View {
 
 /// Telegram-style indicator shown above the composer while a voice note records:
 /// a pulsing red dot, an `m:ss` timer, and a slide-to-cancel hint that turns red
-/// once the cancel threshold is armed. Exposes explicit VoiceOver actions because
-/// the hold-to-talk gesture isn't reachable with VoiceOver on.
+/// once the cancel threshold is armed, or Cancel and Send buttons when no finger is
+/// holding the mic. Exposes explicit VoiceOver actions because the hold-to-talk
+/// gesture isn't reachable with VoiceOver on.
 struct ComposerVoiceRecordingBar: View {
     let elapsed: TimeInterval
     let isCancelArmed: Bool
+    /// False when nothing is holding the mic, so a release can't end the recording.
+    var isHeld = true
     let onStop: () -> Void
     let onCancel: () -> Void
 
@@ -293,14 +296,28 @@ struct ComposerVoiceRecordingBar: View {
 
             Spacer(minLength: 8)
 
-            Label(
-                isCancelArmed
-                    ? String(localized: "Release to cancel")
-                    : String(localized: "Slide up to cancel"),
-                systemImage: isCancelArmed ? "xmark.circle.fill" : "chevron.up"
-            )
-            .font(.caption)
-            .foregroundStyle(isCancelArmed ? Color.red : Color.secondary)
+            if isHeld {
+                Label(
+                    isCancelArmed
+                        ? String(localized: "Release to cancel")
+                        : String(localized: "Slide up to cancel"),
+                    systemImage: isCancelArmed ? "xmark.circle.fill" : "chevron.up"
+                )
+                .font(.caption)
+                .foregroundStyle(isCancelArmed ? Color.red : Color.secondary)
+            } else {
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                Button(action: onStop) {
+                    Image(systemName: "arrow.up")
+                        .fontWeight(.semibold)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

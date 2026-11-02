@@ -129,6 +129,8 @@ struct ComposerProfileSelectorMenu: View {
 struct ComposerModelEffortMenu: View {
     /// Allows a caller to disable effort while retaining access to the model menu.
     var allowsEffortChanges = true
+    /// False leaves only the logo and chevron, for the keyboard-down pill.
+    var showsTitle = true
     let selection: ComposerModelEffortSelection
     let modelGroups: [ModelCatalogGroup]
     let favoriteModelKeys: [ModelFavoriteKey]
@@ -149,19 +151,23 @@ struct ComposerModelEffortMenu: View {
                 if ProviderGlyphKind.resolve(providerID: selection.modelProviderID) != nil {
                     ProviderGlyph(providerID: selection.modelProviderID)
                         .frame(width: 15, height: 15)
+                } else if !showsTitle {
+                    Image(systemName: "cpu")
+                        .font(controlFont)
                 }
 
-                Text(selection.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .font(controlFont)
-                    .layoutPriority(1)
+                if showsTitle {
+                    Text(selection.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .font(controlFont)
+                        .layoutPriority(1)
+                }
 
                 Image(systemName: "chevron.down")
                     .font(chevronFont)
             }
             .foregroundStyle(color)
-            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, ComposerInlineControlLabel.horizontalPadding)
             .frame(minHeight: ComposerInlineControlLabel.minimumHeight)
             .contentShape(Rectangle())

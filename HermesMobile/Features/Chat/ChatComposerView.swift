@@ -304,6 +304,11 @@ struct MessageComposerView: View {
     var mayChangeFastMode = false
     /// Asks the host for the other Fast mode.
     var onSelectFastMode: (Bool) -> Void = { _ in }
+    /// Chat settings, which the header opens. The composer presents it because its pickers
+    /// and their gates live here.
+    var isChatSettingsPresented: Binding<Bool> = .constant(false)
+    /// Nothing is sent yet: workspace, branch, Profile and context sit above the composer.
+    var showsNewChatControls = false
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
     /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
@@ -327,6 +332,10 @@ struct MessageComposerView: View {
     @State private var showsAllModelsSheet = false
     @State private var showsWorkspaceSheet = false
     @State private var showsGitBranchPicker = false
+    @State private var showsChatSettingsBranchPicker = false
+    /// Runs once Chat settings has closed: a change that may raise an alert from
+    /// `ChatView`, which can't appear over the sheet.
+    @State private var afterChatSettingsDismiss: (() -> Void)?
     @State private var optimisticWorkspacePath: String?
     @State private var favoriteModelKeys = ModelFavoritesStore.shared.favoriteKeys
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
@@ -349,6 +358,8 @@ struct MessageComposerView: View {
     @State private var restoresFocusAfterDictation = false
     @State private var voiceNoteRecorder = ComposerVoiceNoteRecorder()
     @State private var voiceNoteCancelArmed = false
+    /// A hold on the mic records until release; Voice note in `+` records until the bar's buttons.
+    @State private var voiceNoteIsHeld = true
     @State private var didAutoStartVoiceInput = false
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
@@ -577,6 +588,7 @@ struct MessageComposerView: View {
                     ComposerVoiceRecordingBar(
                         elapsed: voiceNoteRecorder.elapsed,
                         isCancelArmed: voiceNoteCancelArmed,
+                        isHeld: voiceNoteIsHeld,
                         onStop: { finishVoiceNote(translationHeight: 0) },
                         onCancel: cancelVoiceNote
                     )
@@ -657,6 +669,12 @@ struct MessageComposerView: View {
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
 
+                if showsNewChatControls, showsConfigurationControls {
+                    newChatControlsRow
+                        .padding(.horizontal)
+                        .transition(.opacity)
+                }
+
                 composerSurface
                     .padding(.horizontal)
 
@@ -714,6 +732,7 @@ struct MessageComposerView: View {
                     onChooseFiles: {
                         presentFilesAfterMediaPickerDismisses = true
                     },
+                    onRecordVoiceNote: isVoiceNoteRecordingDisabled ? nil : { startVoiceNoteRecording(isHeld: false) },
                     onAdd: { media in
                         guard !media.isEmpty else { return }
                         deferFocusRestoreUntilUploadCompletes()
@@ -863,23 +882,13 @@ struct MessageComposerView: View {
             }
         }
         .sheet(isPresented: $showsWorkspaceSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
-            ComposerWorkspacePickerSheet(
-                allowsCustomPath: !showsSessionControls,
-                workspaceRoots: workspaceRoots,
-                selectedWorkspacePath: displayedWorkspacePath,
-                suggestions: workspaceSuggestions,
-                managementServer: holdsHostControls ? nil : workspaceManagementServer,
-                onLoadSuggestions: onLoadWorkspaceSuggestions,
-                onSelect: { path in
-                    guard !holdsHostControls else { return }
-                    optimisticWorkspacePath = path
-                    showsWorkspaceSheet = false
-                    await onSelectWorkspace(path)
-                },
-                onRegistryChanged: onWorkspaceRegistryChanged
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+            workspacePickerSheet()
+        }
+        .sheet(isPresented: isChatSettingsPresented, onDismiss: chatSettingsDidDismiss) {
+            chatSettingsSheet
+        }
+        .onChange(of: isChatSettingsPresented.wrappedValue) { _, isPresented in
+            if isPresented { prepareForComposerPresentation() }
         }
         .sheet(item: $selectedQuote, onDismiss: restoreFocusAfterPresentationIfNeeded) { quote in
             ComposerQuoteDetailView(
@@ -977,19 +986,14 @@ struct MessageComposerView: View {
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
     }
 
-    /// Pill while the editor is idle; card while it is focused or a composer
-    /// sheet is up (so a picker never snaps it shut). `shouldRestoreFocus…`
-    /// bridges the gap between a sheet dismissing and focus coming back.
+    /// Pill while the editor is idle; card while it is focused. Controls in the pill
+    /// open their sheets without expanding it. `shouldRestoreFocus…` keeps a focused
+    /// card open while its sheet is up, until focus comes back.
     private var isExpanded: Bool {
         isFocused
             || isDictating
             || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
-            || showsAllModelsSheet
-            || showsWorkspaceSheet
-            || showsGitBranchPicker
-            || showMediaPicker
-            || showFileImporter
     }
 
     /// Dictation locks the draft from the mic tap until its words have landed.
@@ -998,8 +1002,9 @@ struct MessageComposerView: View {
     }
 
     /// The glass surface: one text view in both states so focus and the draft
-    /// survive the morph. Pill: text, thumbnails, mic, Stop/Send in a row.
-    /// Card: strip above the editor, controls move to `toolbarRow` below.
+    /// survive the morph. Pill: `+`, text, thumbnails, provider logo, mic and
+    /// Stop/Send in a row. Card: strip above the editor, controls move to
+    /// `toolbarRow` below.
     private var composerSurface: some View {
         VStack(spacing: 0) {
             if isExpanded {
@@ -1012,6 +1017,10 @@ struct MessageComposerView: View {
             }
 
             HStack(alignment: .center, spacing: 4) {
+                if !isExpanded {
+                    plusButton(usesGlass: false)
+                }
+
                 ComposerTextInputView(
                     text: Binding(get: { draftMessage }, set: editDraft),
                     selection: $composerSelection,
@@ -1038,7 +1047,9 @@ struct MessageComposerView: View {
                     onTapQuote: presentQuote,
                     onRemoveQuote: removeQuote,
                     recallLastSentText: recallLastSentText,
-                    onPasteLargeText: onPasteLargeText
+                    onPasteLargeText: onPasteLargeText,
+                    // The pill's `+` and logo already inset the draft.
+                    collapsedHorizontalPadding: 4
                 )
                 .allowsHitTesting(!isDictating)
 
@@ -1048,12 +1059,16 @@ struct MessageComposerView: View {
                         onPreview: onPreviewAttachment
                     )
 
+                    if showsConfigurationControls {
+                        modelEffortControl(showsTitle: false)
+                    }
+
                     voiceControlButton
 
                     actionButton
                 }
             }
-            .padding(.trailing, isExpanded ? 0 : pillInset)
+            .padding(.horizontal, isExpanded ? 0 : pillInset)
             .padding(.vertical, isExpanded ? 0 : pillInset)
         }
         .padding(.top, isExpanded ? 2 : 0)
@@ -1061,38 +1076,98 @@ struct MessageComposerView: View {
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
     }
 
-    /// Card-state row under the surface: a scroller of secondary controls plus
-    /// the pinned Stop/Send circle. Visual order is VoiceOver order.
+    /// Card-state row under the surface. It never scrolls: the model label takes the
+    /// spare width and truncates, which leaves room for #250's voice-mode button beside
+    /// the mic. Visual order is VoiceOver order.
     private var toolbarRow: some View {
         HStack(alignment: .center, spacing: 8) {
-            ComposerToolbarScroller {
-                composerPlusMenu
+            plusButton(usesGlass: true)
 
-                if showsSessionControls || showsModelAndProfileControls {
-                    modelEffortControl
-
-                    workspaceSelector
-
-                    profileSelector
-
-                    if let fastMode {
-                        ComposerFastModeButton(
-                            isOn: fastMode, isDisabled: isConfigurationControlDisabled || !mayChangeFastMode, color: metaControlColor,
-                            controlFont: metaControlFont, chevronFont: metaChevronFont, onSelect: onSelectFastMode
-                        )
-                    }
-
-                    gitBranchPicker
-                }
-
-                voiceControlButton
-
-                ContextWindowIndicatorView(snapshot: contextWindowSnapshot)
-                    .padding(.horizontal, 4)
+            if showsConfigurationControls {
+                modelEffortControl(showsTitle: true)
             }
+
+            Spacer(minLength: 0)
+
+            voiceControlButton
 
             actionButton
         }
+    }
+
+    /// Above a chat with nothing sent yet, and gone after the first message: the header
+    /// holds these from then on. The labels truncate instead of scrolling.
+    private var newChatControlsRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            workspaceSelector
+
+            gitBranchPicker(showsPicker: $showsGitBranchPicker)
+
+            profileSelector(onSelect: onSelectProfile)
+
+            Spacer(minLength: 0)
+
+            ContextWindowIndicatorView(snapshot: contextWindowSnapshot)
+        }
+    }
+
+    /// False only for a composer with no session to configure.
+    private var showsConfigurationControls: Bool {
+        showsSessionControls || showsModelAndProfileControls
+    }
+
+    /// The same controls and gates as the new-chat row. Every change waits for the sheet
+    /// to close, since each can raise an alert from `ChatView`.
+    private var chatSettingsSheet: some View {
+        ChatSettingsSheet(
+            workspaceTitle: workspaceTitle,
+            isWorkspaceDisabled: isConfigurationControlDisabled,
+            showsBranch: showsGitBranchControl,
+            profileNote: showsSessionControls || isSingleProfileMode
+                ? nil : String(localized: "Choosing another starts a new chat in it"),
+            contextSnapshot: contextWindowSnapshot,
+            workspacePicker: { workspacePickerSheet(perform: closeChatSettings(then:)) },
+            branchControl: {
+                gitBranchPicker(showsPicker: $showsChatSettingsBranchPicker, perform: closeChatSettings(then:))
+            },
+            profileControl: {
+                profileSelector { profile in closeChatSettings { onSelectProfile(profile) } }
+            }
+        )
+    }
+
+    private func closeChatSettings(then action: @escaping () -> Void) {
+        afterChatSettingsDismiss = action
+        isChatSettingsPresented.wrappedValue = false
+    }
+
+    private func chatSettingsDidDismiss() {
+        restoreFocusAfterPresentationIfNeeded()
+        afterChatSettingsDismiss?()
+        afterChatSettingsDismiss = nil
+    }
+
+    /// `perform` runs a picked workspace.
+    private func workspacePickerSheet(
+        perform: @escaping (@escaping () -> Void) -> Void = { $0() }
+    ) -> some View {
+        ComposerWorkspacePickerSheet(
+            allowsCustomPath: !showsSessionControls,
+            workspaceRoots: workspaceRoots,
+            selectedWorkspacePath: displayedWorkspacePath,
+            suggestions: workspaceSuggestions,
+            managementServer: holdsHostControls ? nil : workspaceManagementServer,
+            onLoadSuggestions: onLoadWorkspaceSuggestions,
+            onSelect: { path in
+                guard !holdsHostControls else { return }
+                optimisticWorkspacePath = path
+                showsWorkspaceSheet = false
+                perform { Task { await onSelectWorkspace(path) } }
+            },
+            onRegistryChanged: onWorkspaceRegistryChanged
+        )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     private var dictationRow: some View {
@@ -1111,7 +1186,7 @@ struct MessageComposerView: View {
             color: metaControlColor,
             isRecordingVoiceNote: voiceNoteRecorder.isRecording,
             onTap: toggleVoiceInput,
-            onRecordingStart: startVoiceNoteRecording,
+            onRecordingStart: { startVoiceNoteRecording() },
             onRecordingDragChanged: { height in
                 voiceNoteCancelArmed = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: height)
             },
@@ -1250,23 +1325,22 @@ struct MessageComposerView: View {
         }
     }
 
-    private var composerPlusMenu: some View {
+    /// Glass in the card's row. The pill is already glass, so its `+` stays plain.
+    private func plusButton(usesGlass: Bool) -> some View {
         Button {
             showMediaPicker = true
         } label: {
-            Image(systemName: "plus")
+            let icon = Image(systemName: "plus")
                 .font(.system(size: plusIconSize, weight: .medium))
                 .foregroundStyle(metaControlColor)
                 .frame(width: circleSize, height: circleSize)
-                // Inside the masked toolbar scroller, like the context ring.
-                .adaptiveGlass(
-                    .regular,
-                    isInteractive: true,
-                    fallbackMaterial: .ultraThinMaterial,
-                    inheritsClipping: true,
-                    in: Circle()
-                )
-                .clipShape(Circle())
+            if usesGlass {
+                icon
+                    .adaptiveGlass(.regular, isInteractive: true, fallbackMaterial: .ultraThinMaterial, in: Circle())
+                    .clipShape(Circle())
+            } else {
+                icon.contentShape(Circle())
+            }
         }
         .buttonStyle(.plain)
         .tint(metaControlColor)
@@ -1275,13 +1349,21 @@ struct MessageComposerView: View {
         .accessibilityLabel("Composer options")
     }
 
+    /// One "Git Actions" toggle covers every git control in chat (#189), so the branch
+    /// control goes with the toolbar menu rather than lingering alone.
+    private var showsGitBranchControl: Bool {
+        showsGitControls && gitViewModel.hasRepository && gitViewModel.supportsBranches
+    }
+
+    /// `perform` runs a picked switch or new branch. A Hermes chat creates a branch only
+    /// through hermex-push (#1236), and nothing switches while another write holds the
+    /// repository's lock.
     @ViewBuilder
-    private var gitBranchPicker: some View {
-        // One "Git Actions" toggle covers every git control in chat (#189), so the
-        // branch chip goes with the toolbar menu rather than lingering alone. A Hermes chat
-        // creates a branch only through hermex-push (#1236), and nothing switches while another
-        // write holds the repository's lock.
-        if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
+    private func gitBranchPicker(
+        showsPicker: Binding<Bool>,
+        perform: @escaping (@escaping () -> Void) -> Void = { $0() }
+    ) -> some View {
+        if showsGitBranchControl {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
                 branches: gitViewModel.branches,
@@ -1289,10 +1371,14 @@ struct MessageComposerView: View {
                 isSwitching: gitViewModel.isSwitchingBranch,
                 isDisabled: holdsHostControls || isWaitingForStream || gitViewModel.isWriteLocked,
                 allowsCreate: gitViewModel.supportsSync,
-                onSelect: { if !holdsHostControls { onSelectGitBranch($0) } },
-                onCreate: { if !holdsHostControls { onCreateGitBranch($0) } },
+                onSelect: { target in
+                    if !holdsHostControls { perform { onSelectGitBranch(target) } }
+                },
+                onCreate: { target in
+                    if !holdsHostControls { perform { onCreateGitBranch(target) } }
+                },
                 onRefresh: onRefreshGitBranches,
-                showsPicker: $showsGitBranchPicker
+                showsPicker: showsPicker
             )
         }
     }
@@ -1322,7 +1408,7 @@ struct MessageComposerView: View {
         }
     }
 
-    private var profileSelector: some View {
+    private func profileSelector(onSelect: @escaping (ProfileSummary) -> Void) -> some View {
         ComposerProfileSelectorMenu(
             profileOptions: profileOptions,
             selectedProfileName: selectedProfileName,
@@ -1332,12 +1418,14 @@ struct MessageComposerView: View {
             color: metaControlColor,
             controlFont: metaControlFont,
             chevronFont: metaChevronFont,
-            onSelectProfile: onSelectProfile
+            onSelectProfile: onSelect
         )
     }
 
-    private var modelEffortControl: some View {
+    /// `showsTitle` is false in the pill, where the logo is the only model identity.
+    private func modelEffortControl(showsTitle: Bool) -> some View {
         ComposerModelEffortMenu(
+            showsTitle: showsTitle,
             selection: currentModelEffortSelection,
             modelGroups: modelGroups,
             favoriteModelKeys: favoriteModelKeys,
@@ -1656,6 +1744,8 @@ struct MessageComposerView: View {
 
     @MainActor
     private func toggleVoiceInput() {
+        // A recording from `+` leaves the mic free to tap; dictation must not start over it.
+        guard !voiceNoteRecorder.isRecording else { return }
         voiceInput.transcribe = hermesTranscriber ?? apiClient?.dictationTranscriber
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
         // Resign now, not on the next update: a live composition or a pending
@@ -1686,11 +1776,12 @@ struct MessageComposerView: View {
         isFocused = true
     }
 
-    /// Hold recognized → start recording a voice note. Gated by the recording
-    /// disabled conditions; stops dictation first if it's running.
+    /// Hold recognized, or Voice note picked in `+` → start recording a voice note.
+    /// Gated by the recording disabled conditions; stops dictation first if it's running.
     @MainActor
-    private func startVoiceNoteRecording() {
+    private func startVoiceNoteRecording(isHeld: Bool = true) {
         guard !isVoiceNoteRecordingDisabled, !voiceNoteRecorder.isRecording else { return }
+        voiceNoteIsHeld = isHeld
 
         if voiceInput.isListening {
             voiceInput.stopKeepingTranscript()

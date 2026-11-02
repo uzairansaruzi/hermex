@@ -1,5 +1,77 @@
 import SwiftUI
 
+/// Workspace, branch, Profile and context for one chat, opened from the chat header. The
+/// composer supplies the pickers so they keep the gates they have in the new-chat row.
+struct ChatSettingsSheet<WorkspacePicker: View, BranchControl: View, ProfileControl: View>: View {
+    let workspaceTitle: String
+    let isWorkspaceDisabled: Bool
+    let showsBranch: Bool
+    /// What choosing another Profile does, where that differs from changing this chat.
+    let profileNote: String?
+    let contextSnapshot: ContextWindowSnapshot?
+    @ViewBuilder let workspacePicker: () -> WorkspacePicker
+    @ViewBuilder let branchControl: () -> BranchControl
+    @ViewBuilder let profileControl: () -> ProfileControl
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var showsWorkspacePicker = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Button { showsWorkspacePicker = true } label: {
+                    LabeledContent {
+                        Text(workspaceTitle).lineLimit(1).truncationMode(.middle)
+                    } label: {
+                        Label("Workspace", systemImage: "folder")
+                    }
+                }
+                .disabled(isWorkspaceDisabled)
+
+                if showsBranch {
+                    LabeledContent {
+                        branchControl()
+                    } label: {
+                        Label("Branch", systemImage: "arrow.triangle.branch")
+                    }
+                }
+
+                LabeledContent {
+                    profileControl()
+                } label: {
+                    Label {
+                        Text("Profile")
+                        if let profileNote { Text(profileNote) }
+                    } icon: {
+                        Image(systemName: "person.crop.circle")
+                    }
+                }
+
+                LabeledContent {
+                    ContextWindowIndicatorView(snapshot: contextSnapshot)
+                } label: {
+                    Label {
+                        Text("Context")
+                        if let contextSnapshot { Text(ContextWindowFormatter.tokensLabel(from: contextSnapshot)) }
+                    } icon: {
+                        Image(systemName: "gauge.with.dots.needle.33percent")
+                    }
+                }
+            }
+            .navigationTitle("Chat settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showsWorkspacePicker) { workspacePicker() }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 struct ComposerWorkspacePickerSheet: View {
     /// Direct-Hermes validates a typed path itself; webui uses trusted suggestions.
     var allowsCustomPath = false

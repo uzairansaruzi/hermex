@@ -444,6 +444,7 @@ struct ChatView: View {
     @State private var showsDelegatedWork = false
     /// A bot's chat's pill opened the bot's profile (#1145).
     @State private var showsBotProfileEditor = false
+    @State private var showsChatSettings = false
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -784,6 +785,8 @@ struct ChatView: View {
                     }
                 }
             },
+            isChatSettingsPresented: $showsChatSettings,
+            showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber
@@ -1204,15 +1207,31 @@ struct ChatView: View {
                     }
                 } else {
                     ToolbarItem(placement: .principal) {
-                        ChatToolbarTitleLabel(
-                            title: displayTitle,
-                            subtitle: headerSubtitle
-                        )
+                        Button { showsChatSettings = true } label: {
+                            ChatToolbarTitleLabel(title: displayTitle, subtitle: headerSubtitle)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(Text("Chat settings"))
                     }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     ChatToolbarActionCluster {
+                        // A bot's chat has no subtitle to tap, since the pill opens its bot.
+                        if viewModel.hermesBotChat != nil {
+                            ChatToolbarActionSlot {
+                                Button { showsChatSettings = true } label: {
+                                    Label("Chat settings", systemImage: "slider.horizontal.3")
+                                }
+                                .accessibilityLabel("Chat settings")
+                            }
+                        }
+
+                        if !showsNewChatControls {
+                            ContextWindowIndicatorView(snapshot: viewModel.contextWindowSnapshot)
+                        }
+
                         if viewModel.showsGoalControls {
                             ChatToolbarActionSlot {
                                 goalControlMenu
@@ -2530,7 +2549,17 @@ struct ChatView: View {
     private var headerSubtitle: String? {
         ChatToolbarSubtitleResolver.subtitle(
             workspacePath: viewModel.selectedWorkspacePath,
+            branch: showsGitControls && gitAvailabilityViewModel.hasRepository
+                ? gitAvailabilityViewModel.currentBranchName : nil,
             profileTitle: viewModel.selectedProfileTitle
+        )
+    }
+
+    private var showsNewChatControls: Bool {
+        ChatComposerNewChatPolicy.showsControls(
+            hasMessages: !viewModel.messages.isEmpty,
+            serverMessageCount: session.messageCount,
+            isStreaming: viewModel.activeStreamID != nil
         )
     }
 
@@ -4412,9 +4441,11 @@ struct ChatToolbarActionSlot<Content: View>: View {
 }
 
 enum ChatToolbarSubtitleResolver {
-    static func subtitle(workspacePath: String?, profileTitle: String?) -> String? {
+    /// `hermes · main`: the workspace and its branch, or the Profile with no workspace.
+    static func subtitle(workspacePath: String?, branch: String?, profileTitle: String?) -> String? {
         if let workspace = nonEmpty(workspacePath) {
-            return workspace.lastPathComponentFallback
+            let name = workspace.lastPathComponentFallback
+            return nonEmpty(branch).map { "\(name) · \($0)" } ?? name
         }
 
         guard let profile = nonEmpty(profileTitle), profile != "Profile" else {

@@ -7,6 +7,26 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
+    /// A chat's settings leave the composer after its first message, and an existing chat
+    /// that hasn't loaded yet never shows them.
+    func testNewChatControlsShowOnlyBeforeTheFirstMessage() {
+        XCTAssertTrue(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: nil, isStreaming: false))
+        XCTAssertTrue(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 0, isStreaming: false))
+        XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: true, serverMessageCount: 0, isStreaming: false))
+        XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 4, isStreaming: false))
+        XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 0, isStreaming: true))
+    }
+
+    /// The header reads `hermes · main`, and falls back to the Profile without a workspace.
+    func testHeaderSubtitleNamesWorkspaceAndBranch() {
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", branch: "main", profileTitle: "Default"),
+                       "hermes · main")
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", branch: nil, profileTitle: "Default"),
+                       "hermes")
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, branch: "main", profileTitle: "Default"),
+                       "Default")
+    }
+
     /// A run holds configuration but not `+` (#1436); offline and read-only hold both.
     func testAttachingStaysOpenDuringARunWhereConfigurationIsHeld() {
         func gate(_ session: SessionSummary = SessionSummary(sessionId: "s"), offline: Bool = false) -> ChatComposerControlGate {

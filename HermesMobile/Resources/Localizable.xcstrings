@@ -107,6 +107,218 @@
         }
       }
     },
+    "Chat settings" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إعدادات الدردشة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Chat-Einstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ajustes del chat"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Réglages de la discussion"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הגדרות צ׳אט"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Impostazioni chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "チャット設定"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "채팅 설정"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Chatinstellingen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ustawienia czatu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ajustes do chat"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Настройки чата"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sohbet ayarları"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "چیٹ کی ترتیبات"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "聊天設定"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "聊天设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "聊天設定"
+          }
+        }
+      }
+    },
+    "Choosing another starts a new chat in it" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يؤدي اختيار ملف آخر إلى بدء دردشة جديدة فيه"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bei Auswahl eines anderen startet darin ein neuer Chat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Al elegir otro, se inicia un chat nuevo en él"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "En choisir un autre y démarre une nouvelle discussion"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "בחירה באחר תתחיל בו צ׳אט חדש"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Scegliendone un altro si avvia una nuova chat al suo interno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "別のものを選ぶと、そこで新しいチャットが始まります"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "다른 항목을 선택하면 거기에서 새 채팅이 시작됩니다"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Als je een ander kiest, start daarin een nieuwe chat"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wybranie innego rozpocznie w nim nowy czat"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Escolher outro inicia um novo chat nele"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "При выборе другого в нём начнётся новый чат"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Başka birini seçmek onda yeni bir sohbet başlatır"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "دوسرا منتخب کرنے سے اس میں نئی چیٹ شروع ہو گی"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "選擇其他項目會在其中開始新聊天"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "选择其他项会在其中开始新聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "選擇其他項目會在其中開始新聊天"
+          }
+        }
+      }
+    },
     "Client ID" : {
       "localizations" : {
         "ar" : {
@@ -421,6 +633,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "連線選項"
+          }
+        }
+      }
+    },
+    "Context" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "السياق"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kontext"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Contexto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Contexte"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הקשר"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Contesto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "コンテキスト"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "컨텍스트"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Context"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kontekst"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Contexto"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Контекст"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bağlam"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "سیاق"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "上下文"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "上下文"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "上下文"
           }
         }
       }
@@ -20634,6 +20952,112 @@
       }
     },
     "Troubleshooting" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Fehlerbehebung"}},"es":{"stringUnit":{"state":"needs_review","value":"Solución de problemas"}},"fr":{"stringUnit":{"state":"needs_review","value":"Dépannage"}},"it":{"stringUnit":{"state":"needs_review","value":"Risoluzione dei problemi"}},"pl":{"stringUnit":{"state":"needs_review","value":"Rozwiązywanie problemów"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Solução de problemas"}},"nl":{"stringUnit":{"state":"needs_review","value":"Probleemoplossing"}},"tr":{"stringUnit":{"state":"needs_review","value":"Sorun giderme"}},"ru":{"stringUnit":{"state":"needs_review","value":"Устранение неполадок"}},"ja":{"stringUnit":{"state":"needs_review","value":"トラブルシューティング"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"故障排除"}},"ko":{"stringUnit":{"state":"needs_review","value":"문제 해결"}},"ar":{"stringUnit":{"state":"needs_review","value":"استكشاف الأخطاء وإصلاحها"}},"he":{"stringUnit":{"state":"needs_review","value":"פתרון בעיות"}},"ur":{"stringUnit":{"state":"needs_review","value":"خرابی کا ازالہ"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"疑難排解"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"疑難排解"}}}},
+    "Voice note" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ملاحظة صوتية"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sprachnotiz"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nota de voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Note vocale"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הודעה קולית"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nota vocale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ボイスメモ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "음성 메모"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Spraakbericht"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Notatka głosowa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nota de voz"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Голосовая заметка"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ses notu"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "صوتی نوٹ"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "語音訊息"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "语音消息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "語音訊息"
+          }
+        }
+      }
+    },
     "Workspace search unavailable" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Suche im Arbeitsbereich nicht verfügbar" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Búsqueda en el espacio de trabajo no disponible" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Recherche dans l’espace de travail indisponible" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Ricerca nel workspace non disponibile" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wyszukiwanie w obszarze roboczym niedostępne" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Busca no espaço de trabalho indisponível" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zoeken in workspace niet beschikbaar" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Çalışma alanında arama kullanılamıyor" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Поиск в рабочей области недоступен" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ワークスペースを検索できません" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法搜索工作区" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "작업 공간 검색을 사용할 수 없음" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "البحث في مساحة العمل غير متاح" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "החיפוש בסביבת העבודה לא זמין" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ورک اسپیس میں تلاش دستیاب نہیں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法搜尋工作區" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法搜尋工作區" } } } },
     "changed %lld files" : {
       "localizations" : {

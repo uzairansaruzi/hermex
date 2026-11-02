@@ -161,7 +161,6 @@
 		C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000002 /* ChatComposerSelectorControls.swift */; };
 		C040F000000000000000001 /* ProviderGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000002 /* ProviderGlyph.swift */; };
 		C040F000000000000000003 /* ProviderLogos.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000004 /* ProviderLogos.bundle */; };
-		C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */; };
 		C08730000000000000000B05 /* ForkOrigin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F05 /* ForkOrigin.swift */; };
 		C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */; };
 		C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000004 /* ChatComposerSelectorSheets.swift */; };
@@ -864,7 +863,6 @@
 		C042A000000000000000002 /* ChatComposerSelectorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorControls.swift; sourceTree = "<group>"; };
 		C040F000000000000000002 /* ProviderGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyph.swift; sourceTree = "<group>"; };
 		C040F000000000000000004 /* ProviderLogos.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = ProviderLogos.bundle; sourceTree = "<group>"; };
-		C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerToolbarScroller.swift; sourceTree = "<group>"; };
 		C08730000000000000000F05 /* ForkOrigin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForkOrigin.swift; sourceTree = "<group>"; };
 		C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFades.swift; sourceTree = "<group>"; };
 		C042A000000000000000004 /* ChatComposerSelectorSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorSheets.swift; sourceTree = "<group>"; };
@@ -2017,7 +2015,6 @@
 				C04900000000000000000004 /* ChatComposerVoiceControls.swift */,
 				C042A000000000000000002 /* ChatComposerSelectorControls.swift */,
 				C040F000000000000000002 /* ProviderGlyph.swift */,
-				C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */,
 				C08730000000000000000F05 /* ForkOrigin.swift */,
 				C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */,
 				C042A000000000000000004 /* ChatComposerSelectorSheets.swift */,
@@ -2850,7 +2847,6 @@
 					C04900000000000000000003 /* ChatComposerVoiceControls.swift in Sources */,
 					C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */,
 					C040F000000000000000001 /* ProviderGlyph.swift in Sources */,
-					C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */,
 					C08730000000000000000B05 /* ForkOrigin.swift in Sources */,
 					C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */,
 					C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */,

@@ -57,6 +57,14 @@ struct ChatComposerAccess: Equatable {
     var allowsHostControls: Bool { allowsEditing && !isOffline }
 }
 
+/// Whether a chat still counts as new, with its settings above the composer rather than in
+/// the header. The server's count keeps the row from flashing while an existing chat loads.
+enum ChatComposerNewChatPolicy {
+    static func showsControls(hasMessages: Bool, serverMessageCount: Int?, isStreaming: Bool) -> Bool {
+        !hasMessages && (serverMessageCount ?? 0) == 0 && !isStreaming
+    }
+}
+
 /// Which composer controls respond while work is in progress.
 struct ChatComposerControlGate {
     let access: ChatComposerAccess
@@ -69,7 +77,7 @@ struct ChatComposerControlGate {
     /// work in progress holds it (#1436).
     var allowsAttaching: Bool { access.allowsHostControls }
 
-    /// Model, workspace, Profile, and Fast changes wait for the chat to settle.
+    /// Model, workspace, and Profile changes wait for the chat to settle.
     var allowsConfiguration: Bool {
         access.allowsHostControls && !isSending && !isCompressingSession
             && !isWaitingForStream && !isUpdatingConfiguration

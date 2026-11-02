@@ -351,7 +351,7 @@ private struct HermexAttachmentPickerLayout {
     let leadingPadding: CGFloat
     let bottomPadding: CGFloat
 
-    static func resolve(containerSize: CGSize, mode: HermexAttachmentPickerMode) -> Self {
+    static func resolve(containerSize: CGSize, mode: HermexAttachmentPickerMode, menuRowCount: Int) -> Self {
         let width = max(1, containerSize.width)
         let height = max(1, containerSize.height)
         let expanded = mode == .photos || mode == .camera
@@ -367,7 +367,7 @@ private struct HermexAttachmentPickerLayout {
         let preferredExpandedHeight = max(460, height * 0.66)
         let panelHeight = expanded
             ? min(expandedMaximumHeight, min(preferredExpandedHeight, availableHeight))
-            : min(222, availableHeight)
+            : min(CGFloat(menuRowCount) * 66 + 24, availableHeight)
         return Self(
             panelSize: CGSize(width: panelWidth, height: panelHeight),
             leadingPadding: leadingPadding,
@@ -530,12 +530,16 @@ struct HermexAttachmentPickerView: View {
 
     let imageCapacity: Int
     let onChooseFiles: () -> Void
+    /// Offers Voice note, which starts a recording the composer's bar then stops or cancels.
+    var onRecordVoiceNote: (() -> Void)? = nil
     let onAdd: ([HermexPickedMedia]) -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = HermexAttachmentPickerLayout.resolve(containerSize: proxy.size, mode: mode)
+            let layout = HermexAttachmentPickerLayout.resolve(
+                containerSize: proxy.size, mode: mode, menuRowCount: onRecordVoiceNote == nil ? 3 : 4
+            )
             ZStack(alignment: .bottomLeading) {
                 Button(action: dismissPicker) {
                     Color.black.opacity(isVisible ? (mode == .menu ? 0.08 : 0.2) : 0)
@@ -607,6 +611,13 @@ struct HermexAttachmentPickerView: View {
             menuRow(title: "Photos", systemImage: "photo.on.rectangle.angled", enabled: imageChoicesAreEnabled) {
                 animate { mode = .photos }
                 Task { await model.loadLibrary() }
+            }
+            if let onRecordVoiceNote {
+                menuRow(title: "Voice note", systemImage: "waveform", enabled: !isBusy) {
+                    guard !isDismissing else { return }
+                    onRecordVoiceNote()
+                    animateDismissal()
+                }
             }
         }
         .padding(.vertical, 12)
