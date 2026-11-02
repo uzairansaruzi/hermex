@@ -202,6 +202,9 @@ struct HermesSessionListView: View {
         }
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 0)
+        // A split view's sidebar paints gray behind a plain List; only its rows cover it.
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
         .modifier(chrome)
     }
 
