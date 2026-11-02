@@ -368,6 +368,32 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertTrue(store.load(for: second).isEmpty)
     }
 
+    func testServerRemovalClearsOnlyItsModelLists() async throws {
+        let keychain = InMemoryKeychainStore()
+        let registry = ServerRegistry.inMemory(keychain: keychain)
+        let (manager, _, bAccount) = try await makeTwoServerManager(keychain: keychain, registry: registry)
+        let first = try XCTUnwrap(URL(string: "https://a.test"))
+        let second = try XCTUnwrap(URL(string: "https://b.test"))
+        let option = ModelCatalogOption(id: "gpt", displayName: "GPT", providerID: "openai")
+        defer {
+            for server in [first, second] {
+                ModelFavoritesStore.remove(for: server)
+                ModelRecentsStore.remove(for: server)
+            }
+        }
+        for server in [first, second] {
+            ModelFavoritesStore(server: server).toggleFavorite(for: option)
+            ModelRecentsStore(server: server).recordRecent(option)
+        }
+
+        await manager.removeServer(bAccount)
+
+        XCTAssertEqual(ModelFavoritesStore(server: second).favoriteKeys, [])
+        XCTAssertEqual(ModelRecentsStore(server: second).recentKeys, [])
+        XCTAssertEqual(ModelFavoritesStore(server: first).favoriteKeys, [option.favoriteKey])
+        XCTAssertEqual(ModelRecentsStore(server: first).recentKeys, [option.favoriteKey])
+    }
+
     func testConfiguringASecondServerAddsItAndMakesItActive() async throws {
         let keychain = InMemoryKeychainStore()
         let registry = ServerRegistry.inMemory(keychain: keychain)

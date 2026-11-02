@@ -642,6 +642,7 @@ struct ChatView: View {
             autoStartsVoiceInput: autoStartsVoiceInput,
             apiClient: viewModel.client,
             sessionID: session.sessionId,
+            server: server,
             searchFilePaths: viewModel.offersFilePathSearch ? { await viewModel.searchFilePaths($0) } : nil,
             chipFilePaths: viewModel.fileChipPaths,
             botMentions: viewModel.hermesBotChat?.mentions,

@@ -211,6 +211,8 @@ struct MessageComposerView: View {
     let apiClient: APIClient?
     /// This chat's server-side session. Nil before the session exists.
     let sessionID: String?
+    /// The server whose favorite and recent models this composer lists.
+    let server: URL
     /// Loads one query's rows into `filePathSearch`: the chat's workspace listing, or a
     /// Hermes chat's `complete.path` (#1113). Nil keeps the `@` panel closed.
     let searchFilePaths: ((String) async -> Void)?
@@ -337,8 +339,9 @@ struct MessageComposerView: View {
     /// `ChatView`, which can't appear over the sheet.
     @State private var afterChatSettingsDismiss: (() -> Void)?
     @State private var optimisticWorkspacePath: String?
-    @State private var favoriteModelKeys = ModelFavoritesStore.shared.favoriteKeys
-    @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
+    /// Read on appear: the `server` they belong to isn't known to a property initializer.
+    @State private var favoriteModelKeys: [ModelFavoriteKey] = []
+    @State private var recentModelKeys: [ModelFavoriteKey] = []
     @State private var keyboardIsVisible = false
     @State private var shouldRestoreFocusAfterPresentation = false
     @State private var selectedQuote: ComposerQuote?
@@ -868,11 +871,11 @@ struct MessageComposerView: View {
                     selectModel(option)
                 },
                 onToggleFavorite: { option in
-                    favoriteModelKeys = ModelFavoritesStore.shared.toggleFavorite(for: option)
+                    favoriteModelKeys = ModelFavoritesStore(server: server).toggleFavorite(for: option)
                 },
                 onDeleteSavedCustom: { option in
-                    favoriteModelKeys = ModelFavoritesStore.shared.removeFavorite(for: option)
-                    recentModelKeys = ModelRecentsStore.shared.removeRecent(for: option)
+                    favoriteModelKeys = ModelFavoritesStore(server: server).removeFavorite(for: option)
+                    recentModelKeys = ModelRecentsStore(server: server).removeRecent(for: option)
                 }
             )
             .presentationDetents([.medium, .large])
@@ -976,6 +979,10 @@ struct MessageComposerView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardIsVisible = false
+        }
+        .onAppear {
+            favoriteModelKeys = ModelFavoritesStore(server: server).favoriteKeys
+            recentModelKeys = ModelRecentsStore(server: server).recentKeys
         }
         .onDisappear {
             restoresFocusAfterDictation = false
@@ -1468,7 +1475,7 @@ struct MessageComposerView: View {
     }
 
     private func selectModel(_ option: ModelCatalogOption) {
-        recentModelKeys = ModelRecentsStore.shared.recordRecent(option)
+        recentModelKeys = ModelRecentsStore(server: server).recordRecent(option)
         onSelectModel(option)
     }
 
