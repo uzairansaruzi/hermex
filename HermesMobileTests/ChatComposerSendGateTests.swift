@@ -7,6 +7,21 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
+    /// A run holds configuration but not `+` (#1436); offline and read-only hold both.
+    func testAttachingStaysOpenDuringARunWhereConfigurationIsHeld() {
+        func gate(_ session: SessionSummary = SessionSummary(sessionId: "s"), offline: Bool = false) -> ChatComposerControlGate {
+            ChatComposerControlGate(
+                access: ChatComposerAccess(session: session, isViewingCachedData: offline),
+                isSending: false, isCompressingSession: false, isWaitingForStream: true, isUpdatingConfiguration: false
+            )
+        }
+
+        XCTAssertTrue(gate().allowsAttaching)
+        XCTAssertFalse(gate().allowsConfiguration)
+        XCTAssertFalse(gate(offline: true).allowsAttaching)
+        XCTAssertFalse(gate(SessionSummary(sessionId: "s", readOnly: true)).allowsAttaching)
+    }
+
     func testSendFocusPreservesFailureNewEditingAndNewDraft() {
         XCTAssertEqual(ChatSendFocusPolicy.focusAfterSubmission(
             succeeded: true, dismissKeyboard: true, wasFocused: true,

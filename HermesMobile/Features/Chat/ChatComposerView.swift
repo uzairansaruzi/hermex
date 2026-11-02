@@ -1270,7 +1270,7 @@ struct MessageComposerView: View {
         }
         .buttonStyle(.plain)
         .tint(metaControlColor)
-        .disabled(isConfigurationControlDisabled)
+        .disabled(!controlGate.allowsAttaching)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Composer options")
     }
@@ -1477,8 +1477,15 @@ struct MessageComposerView: View {
         optimisticWorkspacePath ?? selectedWorkspacePath
     }
 
+    private var controlGate: ChatComposerControlGate {
+        ChatComposerControlGate(
+            access: access, isSending: isSending, isCompressingSession: isCompressingSession,
+            isWaitingForStream: isWaitingForStream, isUpdatingConfiguration: isUpdatingConfiguration
+        )
+    }
+
     private var isConfigurationControlDisabled: Bool {
-        holdsHostControls || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration
+        !controlGate.allowsConfiguration
     }
 
     private var isVoiceInputDisabled: Bool {

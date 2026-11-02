@@ -57,6 +57,25 @@ struct ChatComposerAccess: Equatable {
     var allowsHostControls: Bool { allowsEditing && !isOffline }
 }
 
+/// Which composer controls respond while work is in progress.
+struct ChatComposerControlGate {
+    let access: ChatComposerAccess
+    let isSending: Bool
+    let isCompressingSession: Bool
+    let isWaitingForStream: Bool
+    let isUpdatingConfiguration: Bool
+
+    /// `+` only opens the picker, and a pick waits in the draft like a paste, so no
+    /// work in progress holds it (#1436).
+    var allowsAttaching: Bool { access.allowsHostControls }
+
+    /// Model, workspace, Profile, and Fast changes wait for the chat to settle.
+    var allowsConfiguration: Bool {
+        access.allowsHostControls && !isSending && !isCompressingSession
+            && !isWaitingForStream && !isUpdatingConfiguration
+    }
+}
+
 /// Work in progress that holds Send even with a draft to send. VoiceOver reads it
 /// as a dimmed Send's value, so the user knows what they are waiting for.
 enum ChatComposerSendBlock: Equatable {
