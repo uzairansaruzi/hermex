@@ -684,6 +684,10 @@
 		33F9F8D0416B96FCD29BC40F /* BotAvatarVolume.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB2D89005BE829BD964E6EE4 /* BotAvatarVolume.swift */; };
 		7D9E3A68562E7A6ACDEC9680 /* AvatarEngineGoldenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2056FD0C2CB61F520F5BCDCD /* AvatarEngineGoldenTests.swift */; };
 		166EC8C9C3B31DD80922EB9D /* BotAvatarEyeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59214B44D64BC232DBD234C2 /* BotAvatarEyeLayout.swift */; };
+		FC3CC66C856B04D092CC731A /* BotAvatarBodyCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F9317F49B81F2123D289C4 /* BotAvatarBodyCache.swift */; };
+		A6DACCCE2A2A8D328D06AB25 /* BotAvatarDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AD16AFBD0BE2BA300B48F21 /* BotAvatarDrawing.swift */; };
+		6182056F20CD0E770E5B9072 /* AvatarEngineCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033A199304F756695A11961A /* AvatarEngineCacheTests.swift */; };
+		FAAE1CCC2ECA6DCDB5D0D5E9 /* AvatarEngineDrawingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65365692C6EB5F5E4DD6128 /* AvatarEngineDrawingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1407,6 +1411,10 @@
 		CB2D89005BE829BD964E6EE4 /* BotAvatarVolume.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarVolume.swift; sourceTree = "<group>"; };
 		2056FD0C2CB61F520F5BCDCD /* AvatarEngineGoldenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarEngineGoldenTests.swift; sourceTree = "<group>"; };
 		59214B44D64BC232DBD234C2 /* BotAvatarEyeLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarEyeLayout.swift; sourceTree = "<group>"; };
+		C8F9317F49B81F2123D289C4 /* BotAvatarBodyCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarBodyCache.swift; sourceTree = "<group>"; };
+		5AD16AFBD0BE2BA300B48F21 /* BotAvatarDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarDrawing.swift; sourceTree = "<group>"; };
+		033A199304F756695A11961A /* AvatarEngineCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarEngineCacheTests.swift; sourceTree = "<group>"; };
+		C65365692C6EB5F5E4DD6128 /* AvatarEngineDrawingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarEngineDrawingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1561,6 +1569,8 @@
 				A496B07E0000000000000002 /* BotModeGateTests.swift */,
 				A496B07E0000000000000004 /* BotConnectionVersionTests.swift */,
 				A760F1A70000000000000002 /* HermesAgentFixtureTests.swift */,
+				C65365692C6EB5F5E4DD6128 /* AvatarEngineDrawingTests.swift */,
+				033A199304F756695A11961A /* AvatarEngineCacheTests.swift */,
 				2056FD0C2CB61F520F5BCDCD /* AvatarEngineGoldenTests.swift */,
 				A1213000000000000000A006 /* MoveToHermesTransferTests.swift */,
 				A1214000000000000000A004 /* MoveToHermesReconcileTests.swift */,
@@ -2398,6 +2408,8 @@
 			sourceTree = "<group>";
 		};
 A15510000000000000000001 /* AvatarEngine */ = {isa = PBXGroup; children = (
+				C8F9317F49B81F2123D289C4 /* BotAvatarBodyCache.swift */,
+				5AD16AFBD0BE2BA300B48F21 /* BotAvatarDrawing.swift */,
 				59214B44D64BC232DBD234C2 /* BotAvatarEyeLayout.swift */,
 				009E8C2E3F7FFB406DDFAF71 /* AvatarContour.swift */,
 				A79163C9D2E9B962FDD482BB /* AvatarGeometry.swift */,
@@ -2645,6 +2657,8 @@ A15510000000000000000001 /* AvatarEngine */ = {isa = PBXGroup; children = (
 				B48200000000000000000034 /* BotCreateView.swift in Sources */,
 				B48200000000000000000004 /* BotProfileEditor.swift in Sources */,
 				B48200000000000000000022 /* BotFaceMotion.swift in Sources */,
+				A6DACCCE2A2A8D328D06AB25 /* BotAvatarDrawing.swift in Sources */,
+				FC3CC66C856B04D092CC731A /* BotAvatarBodyCache.swift in Sources */,
 				166EC8C9C3B31DD80922EB9D /* BotAvatarEyeLayout.swift in Sources */,
 				33F9F8D0416B96FCD29BC40F /* BotAvatarVolume.swift in Sources */,
 				DB1585A648103DDEDEA82FFE /* BotAvatarRGB.swift in Sources */,
@@ -3091,6 +3105,8 @@ A15510000000000000000001 /* AvatarEngine */ = {isa = PBXGroup; children = (
 				A496B07E0000000000000001 /* BotModeGateTests.swift in Sources */,
 				A496B07E0000000000000003 /* BotConnectionVersionTests.swift in Sources */,
 				A760F1A70000000000000001 /* HermesAgentFixtureTests.swift in Sources */,
+				FAAE1CCC2ECA6DCDB5D0D5E9 /* AvatarEngineDrawingTests.swift in Sources */,
+				6182056F20CD0E770E5B9072 /* AvatarEngineCacheTests.swift in Sources */,
 				7D9E3A68562E7A6ACDEC9680 /* AvatarEngineGoldenTests.swift in Sources */,
 				A1213000000000000000A005 /* MoveToHermesTransferTests.swift in Sources */,
 				A1214000000000000000A003 /* MoveToHermesReconcileTests.swift in Sources */,

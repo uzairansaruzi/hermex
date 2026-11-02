@@ -121,8 +121,8 @@ final class AvatarEngineGoldenTests: XCTestCase {
                 runs.append((CFAbsoluteTimeGetCurrent()-start)*1000)
             }
             times.append((entry.definition.id,runs.sorted()[1]))
+            print("AVATAR prepare \(entry.definition.id): median \(runs.sorted()[1]) ms, worst \(runs.max()!) ms")
         }
-        for (id, ms) in times { print("AVATAR prepare \(id): \(ms) ms") }
         print("AVATAR prepare median \(times.map(\.1).sorted()[times.count/2]) ms worst \(times.max { $0.1 < $1.1 }!)")
         for entry in BotAvatarCatalog.entries where ["barbell","sprout","cat"].contains(entry.definition.id) {
             let v = try BotAvatarVolume.prepare(entry.definition)

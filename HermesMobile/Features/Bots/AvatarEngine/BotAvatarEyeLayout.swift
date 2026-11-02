@@ -39,11 +39,11 @@ nonisolated struct BotAvatarEyeLayout: Sendable {
                     } else {
                         for k in 0..<64 {
                             let a = Double(k)/64 * 2 * .pi, c = cos(a), s = sin(a)
-                            points.append(AvatarPoint(c*radius + (c >= 0 ? 1 : -1)*(w/2-radius), s*radius + (s >= 0 ? 1 : -1)*(height/2-radius)+(h-height)*0.18))
+                            points.append(AvatarPoint(c*radius + (c >= 0 ? 1 : -1)*(w/2-radius), s*radius + (s >= 0 ? 1 : -1)*(height/2-radius)))
                         }
                     }
                     for p in points {
-                        let rx = co*p.x-si*p.y, ry = si*p.x+co*p.y
+                        let rx = co*p.x-si*p.y, ry = si*p.x+co*p.y+(happy ? 0 : (h-height)*0.18)
                         for dx in [-1.5*boost,0,1.5*boost] { for dy in [-1.1*boost,0,1.1*boost] {
                             let point = AvatarPoint(x+rx+dx,center.y+ry+dy)
                             if !AvatarGeometry.inside(polygons,point.x,point.y) || AvatarGeometry.edgeDistance(polygons,point) < 1.5 { return false }

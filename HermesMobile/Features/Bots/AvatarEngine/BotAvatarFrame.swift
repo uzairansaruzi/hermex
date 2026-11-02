@@ -40,7 +40,7 @@ nonisolated struct BotAvatarFrame: Sendable {
     let root: AvatarMatrix
     let shapes: [Item]
     /// Pure evaluation, using only prepared geometry. Caller supplies one pose, including blink closure.
-    static func make(volume v: BotAvatarVolume, pose: BotAvatarPose = .rest) -> Self {
+    static func make(volume v: BotAvatarVolume, pose: BotAvatarPose = .rest, layout: BotAvatarEyeLayout? = nil) -> Self {
         let basis = AvatarViewBasis(pose), pivot = v.body.bounds.center, eyes = v.definition.eyes
         let sweep = hypot(basis.sy, basis.cy*basis.sp), inset = min(abs(basis.cy), abs(basis.cp))
         var items: [Item] = []; items.reserveCapacity(128)
@@ -56,10 +56,12 @@ nonisolated struct BotAvatarFrame: Sendable {
         let s = v.eyeScale, w = 4*s, h = 11*s, r = v.gazeRange
         let dx = pose.gazeX * (pose.gazeX >= 0 ? r[1] : r[0]) * 1.5*s
         let dy = pose.gazeY * (pose.gazeY >= 0 ? r[3] : r[2]) * 1.1*s
+        let fitted = layout?.marks(eyes:eyes,lid:1-pose.blink,gaze:AvatarPoint(dx,dy))
         for (i, c) in eyes.centers.enumerated() where v.eyeNormals[i].allSatisfy({ basis.facing($0) > 0.22 }) {
+            if layout != nil && fitted?.isEmpty == true { continue }
             let squint = i == 0 ? pose.squintL : pose.squintR
             let open = max(h * max(0.09, (1 - pose.blink) * (1 - squint*0.4)), w*0.55), z = v.eyeZ[i] + 1.5
-            let mark = BotAvatarEyeMark(index: i, x: c.x+dx, y: c.y+dy+(pose.happy ? 0 : (h-open)*0.18), width: w, height: pose.happy ? h : open, happy: pose.happy)
+            let mark = fitted?.first(where: { $0.index == i }) ?? BotAvatarEyeMark(index: i, x: c.x+dx, y: c.y+dy+(pose.happy ? 0 : (h-open)*0.18), width: w, height: pose.happy ? h : open, happy: pose.happy)
             items.append(Item(shape: .eye(mark), matrix: basis.plane(z, pivot), depth: basis.depth(eyes.x, eyes.y, z, pivot)+1e-6))
         }
         // Swift's stable sort preserves upstream insertion order for equal depths.
