@@ -7,6 +7,43 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
+    /// A host's level the model's list doesn't name stays on the ladder and stays current.
+    func testThinkingLadderKeepsALevelTheListDoesNotName() {
+        let ladder = ThinkingLadder(levels: ["low", "high"], current: "turbo")
+
+        XCTAssertEqual(ladder.levels, ["low", "high", "turbo"])
+        XCTAssertEqual(ladder.currentIndex, 2)
+    }
+
+    /// A drag lands on the nearest level, past either end included, and sends one change: none
+    /// when it comes back to where it started.
+    func testThinkingLadderSendsOnlyAChangeFromWhereTheDragLands() {
+        let ladder = ThinkingLadder(levels: ["low", "medium", "high"], current: "medium")
+
+        XCTAssertEqual(ladder.index(atX: -50, width: 300), 0)
+        XCTAssertEqual(ladder.index(atX: 140, width: 300), 1)
+        XCTAssertEqual(ladder.index(atX: 900, width: 300), 2)
+        XCTAssertEqual(ladder.commit(at: 2), "high")
+        XCTAssertNil(ladder.commit(at: 1))
+    }
+
+    /// A vertical swipe that starts on the control is the list scrolling, not a level change.
+    func testOnlyASidewaysDragAdjustsTheThinkingLevel() {
+        XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: 40, height: 6)))
+        XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: -40, height: -6)))
+        XCTAssertFalse(ThinkingLadder.isAdjustment(CGSize(width: 6, height: 40)))
+        XCTAssertFalse(ThinkingLadder.isAdjustment(CGSize(width: -6, height: -40)))
+    }
+
+    /// VoiceOver's swipe moves one level and stops at each end.
+    func testThinkingLadderAdjustsOneLevelAndStopsAtTheEnds() {
+        let middle = ThinkingLadder(levels: ["low", "medium", "high"], current: "medium")
+        XCTAssertEqual(middle.adjusted(by: 1), 2)
+        XCTAssertEqual(middle.adjusted(by: -1), 0)
+        XCTAssertNil(ThinkingLadder(levels: ["low", "high"], current: "high").adjusted(by: 1))
+        XCTAssertEqual(ThinkingLadder(levels: ["low", "high"], current: nil).adjusted(by: 1), 0)
+    }
+
     /// The Approvals row shows the state in effect: Off wins, then YOLO, then the mode. A mode
     /// newer than this app still shows, and a webui session has no mode to show.
     func testApprovalsRowShowsTheStateInEffect() {

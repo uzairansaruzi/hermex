@@ -221,7 +221,8 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     }
 
     var title: String {
-        guard let effortTitle else { return model.displayName }
+        // No level reported yet: a placeholder word would only push the model's name out.
+        guard committedEffort != nil, let effortTitle else { return model.displayName }
         return "\(model.displayName) · \(effortTitle)"
     }
 

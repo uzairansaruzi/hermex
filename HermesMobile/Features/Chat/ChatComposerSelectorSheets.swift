@@ -130,6 +130,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
     let allModelsPicker: (@escaping (ModelCatalogOption) -> Void) -> AllModels
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(ThinkingControlStyle.storageKey) private var thinkingStyle = ThinkingControlStyle.warmBars
     @State private var showsAllModels = false
     @State private var lastChanged: ModelSettingsRow?
 
@@ -190,46 +191,45 @@ struct ModelSettingsSheet<AllModels: View>: View {
                         .foregroundStyle(.tertiary)
                 }
                 // Keeps the requested level and the one the host sends apart (#1016).
-                Text(verbatim: [providerName, selection.effortTitle].compactMap { $0 }.joined(separator: " · "))
+                Text(verbatim: [providerName, selection.committedEffort == nil ? nil : selection.effortTitle]
+                    .compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 statusLine(for: .model)
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityHint(Text("All models"))
     }
 
-    /// Stands in for the final Thinking control, whose look waits on the owner's mock pick.
     @ViewBuilder
     private var thinkingRow: some View {
         VStack(alignment: .leading, spacing: 2) {
             if let only = selection.staticEffort {
                 LabeledContent("Thinking", value: only.title)
             } else {
-                LabeledContent("Thinking") {
-                    Menu {
-                        ForEach(selection.effortOptions) { option in
-                            Button {
-                                // Picking the current level asks nothing, so no answer belongs here.
-                                guard selection.committedEffort != option.id else { return }
-                                lastChanged = .thinking
-                                onSelectEffort(option.id)
-                            } label: {
-                                if selection.committedEffort == option.id {
-                                    Label(option.title, systemImage: "checkmark")
-                                } else {
-                                    Text(option.title)
-                                }
-                            }
-                        }
-                    } label: {
-                        Text(selection.committedEffort.map(ReasoningEffortOption.title(for:)) ?? String(localized: "Reasoning"))
-                    }
-                    .disabled(isDisabled)
+                ThinkingControl(selection: selection, isDisabled: isDisabled) { level in
+                    lastChanged = .thinking
+                    onSelectEffort(level)
                 }
+                thinkingStyleSwitcher
             }
             statusLine(for: .thinking)
         }
+    }
+
+    /// Temporary, for comparing the looks on a phone (#1550). Goes with the losing looks.
+    private var thinkingStyleSwitcher: some View {
+        Picker(selection: $thinkingStyle) {
+            ForEach(ThinkingControlStyle.allCases, id: \.self) { style in
+                Text(verbatim: style.rawValue).tag(style)
+            }
+        } label: {
+            Text(verbatim: "Look")
+        }
+        .pickerStyle(.segmented)
+        .padding(.top, 8)
     }
 
     /// Follows the chat's state, so the switch only stays moved once the host answers.
@@ -301,7 +301,9 @@ struct ModelSettingsSheet<AllModels: View>: View {
                         .accessibilityHidden(true)
                 }
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .disabled(isDisabled)
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
@@ -380,6 +382,12 @@ private struct ApprovalChoicesView: View {
                     modeRow(.smart, description: "Automatically assess actions and ask when needed")
                     modeRow(.manual, description: "Ask before actions that require approval")
                     modeRow(.off, description: "Run without approval prompts")
+                        .confirmationDialog("Turn off approval prompts?", isPresented: $confirmsOff, titleVisibility: .visible) {
+                            Button("Turn Off Approvals", role: .destructive) { onSelectMode(.off) }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("Every chat in this Profile will run commands without asking.")
+                        }
                 }
             }
 
@@ -389,12 +397,6 @@ private struct ApprovalChoicesView: View {
         }
         .navigationTitle("Approvals")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog("Turn off approval prompts?", isPresented: $confirmsOff, titleVisibility: .visible) {
-            Button("Turn Off Approvals", role: .destructive) { onSelectMode(.off) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Every chat in this Profile will run commands without asking.")
-        }
     }
 
     private func modeRow(_ mode: HermesApprovalMode, description: LocalizedStringKey) -> some View {
@@ -415,7 +417,9 @@ private struct ApprovalChoicesView: View {
                         .accessibilityHidden(true)
                 }
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .disabled(isDisabled || approvals.isChanging)
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }

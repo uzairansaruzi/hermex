@@ -186,6 +186,8 @@ struct ChatTranscriptView: View {
             } description: {
                 Text("Send a message to start the conversation.")
             }
+            // Centered above the composer, whose new-chat row would otherwise cover it.
+            .padding(.bottom, transcriptBottomInsetHeight)
             .contentShape(Rectangle())
             .onTapGesture {
                 onDismissKeyboard()
