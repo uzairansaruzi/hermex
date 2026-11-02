@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import os
 import OSLog
 import Speech
 import UIKit
@@ -25,13 +26,19 @@ final class ComposerVoiceInputController {
         didSet {
             if state == .listening || state == .serverListening {
                 recordingLease.acquire()
+                startMetering()
             } else {
                 recordingLease.release()
+                stopMetering()
             }
         }
     }
     private(set) var errorMessage: String?
     private(set) var liveTranscript = ""
+    /// When the current capture began, for the dictation row's timer.
+    private(set) var captureStartedAt: Date?
+    /// Held apart from the controller so only the waveform redraws for each level.
+    @ObservationIgnored let levelMeter = ComposerVoiceLevelMeter()
 
     private let speechRecognizerFactory: (Locale) -> (any ComposerSpeechRecognizing)?
     private let supportedLocales: () -> Set<Locale>
@@ -43,13 +50,17 @@ final class ComposerVoiceInputController {
     private let serverRecorder: any ComposerServerRecording
     private var recordingURL: URL?
     private var draftUpdateSession = ComposerVoiceDraftUpdateSession()
-    private var updateDraft: ((String) -> Void)?
+    private var draftState: (() -> ComposerVoiceDraftState)?
+    private var updateDraft: ((ComposerVoiceDraftUpdate) -> Void)?
     private var suppressNextRecognitionError = false
     private var activatedAudioSessionForRecording = false
     private var audioTapInstalled = false
     private var ownsAudioCapture = false
     @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
     @ObservationIgnored private var toggleTask: Task<Void, Never>?
+    @ObservationIgnored private var meteringTask: Task<Void, Never>?
+    /// The on-device tap's latest level. The tap runs on the audio thread.
+    @ObservationIgnored private let onDeviceDecibels = OSAllocatedUnfairLock<Float?>(initialState: nil)
     private var activeTranscriptionID: UUID?
     @ObservationIgnored private let recordingLease = ComposerDictationLease.live()
     private static weak var captureOwner: ComposerVoiceInputController?
@@ -119,22 +130,30 @@ final class ComposerVoiceInputController {
     /// Queue UI input under the same ownership as capture, so teardown can cancel
     /// even a microphone tap whose task has not started executing yet.
     @discardableResult
-    func scheduleToggle(currentDraft: String, updateDraft: @escaping (String) -> Void) -> Task<Void, Never> {
+    func scheduleToggle(
+        draftState: @escaping () -> ComposerVoiceDraftState,
+        updateDraft: @escaping (ComposerVoiceDraftUpdate) -> Void
+    ) -> Task<Void, Never> {
         toggleTask?.cancel()
         let task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
-            await self.toggle(currentDraft: currentDraft, updateDraft: updateDraft)
+            await self.toggle(draftState: draftState, updateDraft: updateDraft)
         }
         toggleTask = task
         return task
     }
 
-    func toggle(currentDraft: String, updateDraft: @escaping (String) -> Void) async {
+    /// `draftState` is read when capture starts and again before every write, so
+    /// the closure must return the composer's live values, not a captured copy.
+    func toggle(
+        draftState: @escaping () -> ComposerVoiceDraftState,
+        updateDraft: @escaping (ComposerVoiceDraftUpdate) -> Void
+    ) async {
         guard !Task.isCancelled else { return }
         if isListening {
             stopKeepingTranscript()
         } else {
-            await start(currentDraft: currentDraft, updateDraft: updateDraft)
+            await start(draftState: draftState, updateDraft: updateDraft)
         }
     }
 
@@ -192,6 +211,19 @@ final class ComposerVoiceInputController {
         }
     }
 
+    /// The dictation row's cancel: drops the recording and takes back any words
+    /// already written, leaving the draft as it was before the mic was tapped.
+    func cancel() {
+        if let draftState, let updateDraft, let restored = draftUpdateSession.restoredDraft(current: draftState()) {
+            updateDraft(restored)
+        }
+        stopBeforeSubmittingDraft()
+    }
+
+    func dismissError() {
+        errorMessage = nil
+    }
+
     func stopBeforeSubmittingDraft() {
         toggleTask?.cancel()
         toggleTask = nil
@@ -204,7 +236,10 @@ final class ComposerVoiceInputController {
         state = .idle
     }
 
-    private func start(currentDraft: String, updateDraft: @escaping (String) -> Void) async {
+    private func start(
+        draftState: @escaping () -> ComposerVoiceDraftState,
+        updateDraft: @escaping (ComposerVoiceDraftUpdate) -> Void
+    ) async {
         guard state == .idle, mayRecord(), !Task.isCancelled else { return }
         if let owner = Self.captureOwner, owner !== self { owner.stopBeforeSubmittingDraft() }
         Self.captureOwner = self
@@ -218,7 +253,8 @@ final class ComposerVoiceInputController {
         suppressNextRecognitionError = false
         cancelServerTranscription()
         discardServerRecording()
-        draftUpdateSession.begin(baseDraft: currentDraft)
+        draftUpdateSession.begin(draftState())
+        self.draftState = draftState
         self.updateDraft = updateDraft
         state = .requestingPermission
 
@@ -532,9 +568,7 @@ final class ComposerVoiceInputController {
             }
             if !transcript.isEmpty {
                 liveTranscript = transcript
-                if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
-                    updateDraft?(composedDraft)
-                }
+                writeTranscript(transcript)
             }
             stopAcceptingDraftUpdates()
             cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
@@ -606,9 +640,7 @@ final class ComposerVoiceInputController {
                 )
                 return
             }
-            if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
-                updateDraft?(composedDraft)
-            }
+            writeTranscript(transcript)
             stopAcceptingDraftUpdates()
             cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
             state = .idle
@@ -717,8 +749,11 @@ final class ComposerVoiceInputController {
         logger.info(
             "Voice input installing audio tap sampleRate=\(recordingFormat.sampleRate, privacy: .public) channels=\(recordingFormat.channelCount, privacy: .public)"
         )
+        let onDeviceDecibels = onDeviceDecibels
         inputNode.installTap(onBus: 0, bufferSize: 1_024, format: recordingFormat) { [weak request] buffer, _ in
             request?.append(buffer)
+            let decibels = ComposerVoiceLevelMeter.decibels(of: buffer)
+            onDeviceDecibels.withLock { $0 = decibels }
         }
         audioTapInstalled = true
         logger.info("Voice input audio tap installed")
@@ -743,8 +778,9 @@ final class ComposerVoiceInputController {
     private func handleRecognition(result: SFSpeechRecognitionResult?, error: Error?) {
         if let result {
             liveTranscript = result.bestTranscription.formattedString
-            if let composedDraft = draftUpdateSession.composedDraft(for: liveTranscript) {
-                updateDraft?(composedDraft)
+            guard writeTranscript(liveTranscript) else {
+                stopKeepingTranscript()
+                return
             }
         }
 
@@ -765,9 +801,52 @@ final class ComposerVoiceInputController {
         }
     }
 
+    /// Writes one result into the span this dictation owns. Returns false when the
+    /// draft changed underneath it: the draft and caret stay as they are, and no
+    /// later result is written.
+    @discardableResult
+    private func writeTranscript(_ transcript: String) -> Bool {
+        guard let draftState, let updateDraft else { return true }
+        guard !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
+        guard let update = draftUpdateSession.update(for: transcript, current: draftState()) else {
+            stopAcceptingDraftUpdates()
+            errorMessage = String(localized: "Dictation stopped because the draft changed.")
+            return false
+        }
+        updateDraft(update)
+        return true
+    }
+
     private func stopAcceptingDraftUpdates() {
         draftUpdateSession.stopAcceptingUpdates()
+        draftState = nil
         updateDraft = nil
+    }
+
+    // MARK: - Metering
+
+    /// Samples the mic for the waveform, only while a capture runs.
+    private func startMetering() {
+        meteringTask?.cancel()
+        levelMeter.reset()
+        captureStartedAt = Date()
+        meteringTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: ComposerVoiceLevelMeter.sampleInterval)
+                guard let self, !Task.isCancelled else { return }
+                let decibels = self.state == .serverListening
+                    ? self.serverRecorder.decibels
+                    : self.onDeviceDecibels.withLock { $0 }
+                self.levelMeter.push(decibels: decibels)
+            }
+        }
+    }
+
+    private func stopMetering() {
+        meteringTask?.cancel()
+        meteringTask = nil
+        captureStartedAt = nil
+        onDeviceDecibels.withLock { $0 = nil }
     }
 
     private func stopAudio(cancelTask: Bool) {
@@ -1098,44 +1177,173 @@ enum ComposerVoiceInputPreflight {
     }
 }
 
+/// The draft as the composer holds it right now.
+struct ComposerVoiceDraftState {
+    let text: String
+    let selection: ComposerSelection
+}
+
+/// One accepted dictation write: the new draft and where the caret goes in it.
+struct ComposerVoiceDraftUpdate: Equatable {
+    let text: String
+    let caret: NSRange
+}
+
 enum ComposerVoiceDraftComposer {
-    static func composedDraft(baseDraft: String, transcript: String) -> String {
-        let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTranscript.isEmpty else {
-            return baseDraft
-        }
+    /// Replaces `range` with the trimmed transcript, leaving everything outside it
+    /// alone, and puts the caret after what it wrote. Nil when `range` is out of
+    /// bounds or splits a composed character.
+    static func replacing(_ range: NSRange, in text: String, with transcript: String) -> ComposerVoiceDraftUpdate? {
+        let draft = text as NSString
+        guard range.location >= 0, range.length >= 0, range.upperBound <= draft.length,
+              isCharacterBoundary(range.location, in: draft),
+              isCharacterBoundary(range.upperBound, in: draft)
+        else { return nil }
 
-        let trimmedTrailingDraft = baseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTrailingDraft.isEmpty else {
-            return trimmedTranscript
-        }
+        let transcript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = transcript.first, let last = transcript.last else { return nil }
 
-        return "\(trimmedTrailingDraft) \(trimmedTranscript)"
+        let before = range.location > 0 ? character(at: range.location - 1, in: draft) : nil
+        let after = range.upperBound < draft.length ? character(at: range.upperBound, in: draft) : nil
+        let leading = before.map { needsSpace(between: $0, and: first) } == true ? " " : ""
+        let trailing = after.map { needsSpace(between: last, and: $0) } == true ? " " : ""
+
+        let insertion = leading + transcript + trailing
+        return ComposerVoiceDraftUpdate(
+            text: draft.replacingCharacters(in: range, with: insertion),
+            caret: NSRange(location: range.location + (insertion as NSString).length, length: 0)
+        )
+    }
+
+    /// A bounded spacing policy, not script detection: word-like text gets a space
+    /// from its neighbour, except beside Chinese or Japanese text, after opening
+    /// punctuation and before closing punctuation. No transcript locale is assumed.
+    private static func needsSpace(between left: Character, and right: Character) -> Bool {
+        guard !isUnspacedScript(left), !isUnspacedScript(right) else { return false }
+        let endsWord = left.isLetter || left.isNumber || left.isSymbol || ".,;:!?)]}\u{201D}\u{2019}\u{2026}".contains(left)
+        // `/`, `@` and `#` start the chips and references a draft can hold.
+        let startsWord = right.isLetter || right.isNumber || right.isSymbol || "/@#([{\u{201C}\u{2018}".contains(right)
+        return endsWord && startsWord
+    }
+
+    private static func isUnspacedScript(_ character: Character) -> Bool {
+        guard let scalar = character.unicodeScalars.first else { return false }
+        switch scalar.value {
+        case 0x2E80...0x303F, // CJK radicals, symbols and punctuation
+             0x3040...0x30FF, // Hiragana, Katakana
+             0x3400...0x4DBF, // CJK extension A
+             0x4E00...0x9FFF, // CJK unified ideographs
+             0xF900...0xFAFF, // CJK compatibility ideographs
+             0xFF00...0xFFEF, // Halfwidth and fullwidth forms
+             0x20000...0x3FFFF: // CJK supplementary planes
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func isCharacterBoundary(_ index: Int, in text: NSString) -> Bool {
+        index == text.length || text.rangeOfComposedCharacterSequence(at: index).location == index
+    }
+
+    private static func character(at index: Int, in text: NSString) -> Character? {
+        text.substring(with: text.rangeOfComposedCharacterSequence(at: index)).first
     }
 }
 
+/// The span of the draft one dictation owns.
+///
+/// Every result replaces that span rather than rebuilding the draft from a base
+/// string, and only while the draft is still exactly what this session last left.
+/// Voice writes never publish a generation, so a user edit, including an edit
+/// undone back to identical text, is what moves it. A write from anywhere else
+/// shows up in the text. A caret that merely moved does not stop dictation.
 struct ComposerVoiceDraftUpdateSession {
-    private var baseDraft = ""
-    private var acceptsUpdates = false
+    private struct Ownership {
+        let original: ComposerVoiceDraftUpdate
+        let generation: Int
+        var expectedText: String
+        var range: NSRange
+    }
 
-    mutating func begin(baseDraft: String) {
-        self.baseDraft = baseDraft
-        acceptsUpdates = true
+    private var ownership: Ownership?
+
+    mutating func begin(_ draft: ComposerVoiceDraftState) {
+        ownership = Ownership(
+            original: ComposerVoiceDraftUpdate(text: draft.text, caret: draft.selection.range),
+            generation: draft.selection.publishGeneration,
+            expectedText: draft.text,
+            range: draft.selection.range
+        )
     }
 
     mutating func stopAcceptingUpdates() {
-        acceptsUpdates = false
+        ownership = nil
     }
 
-    func composedDraft(for transcript: String) -> String? {
-        guard acceptsUpdates else {
-            return nil
-        }
+    /// The draft with `transcript` in the owned span, or nil when the draft is no
+    /// longer this session's to write.
+    mutating func update(for transcript: String, current: ComposerVoiceDraftState) -> ComposerVoiceDraftUpdate? {
+        guard var ownership, Self.isUnchanged(current, since: ownership),
+              let update = ComposerVoiceDraftComposer.replacing(ownership.range, in: current.text, with: transcript)
+        else { return nil }
 
-        return ComposerVoiceDraftComposer.composedDraft(
-            baseDraft: baseDraft,
-            transcript: transcript
-        )
+        ownership.expectedText = update.text
+        ownership.range.length = update.caret.location - ownership.range.location
+        self.ownership = ownership
+        return update
+    }
+
+    /// The draft from before this session's first write, or nil when nothing was
+    /// written or the draft has since moved on.
+    func restoredDraft(current: ComposerVoiceDraftState) -> ComposerVoiceDraftUpdate? {
+        guard let ownership, Self.isUnchanged(current, since: ownership),
+              current.text != ownership.original.text
+        else { return nil }
+        return ownership.original
+    }
+
+    private static func isUnchanged(_ current: ComposerVoiceDraftState, since ownership: Ownership) -> Bool {
+        current.text == ownership.expectedText
+            && current.selection.publishGeneration == ownership.generation
+    }
+}
+
+/// The dictation row's waveform: recent mic levels, newest last.
+@MainActor
+@Observable
+final class ComposerVoiceLevelMeter {
+    static let sampleInterval = Duration.milliseconds(80)
+    private static let sampleCount = 64
+    private static let noiseFloorDecibels: Float = -60
+
+    private(set) var levels = [Float](repeating: 0, count: sampleCount)
+
+    func reset() {
+        levels = [Float](repeating: 0, count: Self.sampleCount)
+    }
+
+    func push(decibels: Float?) {
+        levels.removeFirst()
+        levels.append(Self.level(decibels: decibels))
+    }
+
+    /// Maps decibels to 0...1, on a square root so quiet speech still shows.
+    private static func level(decibels: Float?) -> Float {
+        guard let decibels, decibels.isFinite, decibels > noiseFloorDecibels else { return 0 }
+        guard decibels < 0 else { return 1 }
+        let floor = pow(10, noiseFloorDecibels / 20)
+        return ((pow(10, decibels / 20) - floor) / (1 - floor)).squareRoot()
+    }
+
+    /// One audio buffer's level. Runs on the audio thread.
+    nonisolated static func decibels(of buffer: AVAudioPCMBuffer) -> Float? {
+        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return nil }
+        let count = Int(buffer.frameLength)
+        var sum: Float = 0
+        for index in 0..<count { sum += samples[index] * samples[index] }
+        let rms = (sum / Float(count)).squareRoot()
+        return rms > 0 ? 20 * log10(rms) : nil
     }
 }
 
@@ -1242,6 +1450,8 @@ extension SFSpeechRecognizer: ComposerSpeechRecognizing {}
 @MainActor
 protocol ComposerServerRecording: AnyObject {
     var onFinish: (() -> Void)? { get set }
+    /// The mic's current level, or nil when the recorder has none to report.
+    var decibels: Float? { get }
     func start() throws -> URL
     func stop()
 }
@@ -1269,6 +1479,7 @@ private final class ComposerServerAudioRecorder: NSObject, ComposerServerRecordi
             let recorder = try AVAudioRecorder(url: url, settings: ComposerVoiceInputController.serverRecordingSettings)
             self.recorder = recorder
             recorder.delegate = self
+            recorder.isMeteringEnabled = true
             recorder.prepareToRecord()
             guard recorder.record() else { throw ComposerVoiceInputError.audioRecorderStartFailed }
             return url
@@ -1277,6 +1488,12 @@ private final class ComposerServerAudioRecorder: NSObject, ComposerServerRecordi
             try? FileManager.default.removeItem(at: url)
             throw error
         }
+    }
+
+    var decibels: Float? {
+        guard let recorder else { return nil }
+        recorder.updateMeters()
+        return recorder.averagePower(forChannel: 0)
     }
 
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {

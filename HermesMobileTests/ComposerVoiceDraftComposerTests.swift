@@ -9,44 +9,105 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertTrue(ComposerVoiceInputStartPolicy.canStart(appIsActive: true, appIsLocked: false))
     }
 
-    func testComposedDraftUsesTranscriptWhenDraftIsEmpty() {
-        XCTAssertEqual(
-            ComposerVoiceDraftComposer.composedDraft(baseDraft: "", transcript: "Open the workspace"),
-            "Open the workspace"
+    private func replacing(_ location: Int, _ length: Int = 0, in text: String, with transcript: String) -> String? {
+        ComposerVoiceDraftComposer.replacing(NSRange(location: location, length: length), in: text, with: transcript)?.text
+    }
+
+    private func state(_ text: String, caret: Int, generation: Int = 0) -> ComposerVoiceDraftState {
+        ComposerVoiceDraftState(
+            text: text,
+            selection: ComposerSelection(range: NSRange(location: caret, length: 0), publishGeneration: generation)
         )
     }
 
-    func testComposedDraftAppendsTranscriptToExistingDraft() {
+    func testDictationInsertsAtTheCaretAndLeavesTheCaretAfterIt() throws {
+        let draft = "Fix the bug in the parser and add tests"
+        let update = try XCTUnwrap(ComposerVoiceDraftComposer.replacing(
+            NSRange(location: 25, length: 0), in: draft, with: " for nested lists\n"
+        ))
+        XCTAssertEqual(update.text, "Fix the bug in the parser for nested lists and add tests")
+        XCTAssertEqual(update.caret, NSRange(location: 42, length: 0))
+    }
+
+    func testDictationReplacesTheSelection() {
         XCTAssertEqual(
-            ComposerVoiceDraftComposer.composedDraft(baseDraft: "Please", transcript: "summarize this file"),
-            "Please summarize this file"
+            replacing(4, 7, in: "Fix the bug in the parser", with: "the crash"),
+            "Fix the crash in the parser"
         )
     }
 
-    func testComposedDraftPreservesBaseDraftWhenTranscriptIsBlank() {
-        XCTAssertEqual(
-            ComposerVoiceDraftComposer.composedDraft(baseDraft: "Keep this", transcript: "   \n"),
-            "Keep this"
-        )
+    func testSpacingFollowsTheTextAroundTheCaret() {
+        XCTAssertEqual(replacing(0, in: "", with: "Open the workspace"), "Open the workspace")
+        XCTAssertEqual(replacing(3, in: "foobar", with: "and"), "foo and bar")
+        XCTAssertEqual(replacing(5, in: "Hello.", with: "there"), "Hello there.")
+        XCTAssertEqual(replacing(6, in: "Hello ", with: "there"), "Hello there")
+        XCTAssertEqual(replacing(1, in: "(x)", with: "see"), "(see x)")
+        XCTAssertEqual(replacing(5, in: "Hello/plan", with: "there"), "Hello there /plan")
     }
 
-    func testDraftUpdateSessionIgnoresLateTranscriptAfterStop() {
+    func testChineseAndJapaneseTakeNoSpaces() {
+        XCTAssertEqual(replacing(3, in: "これはテスト", with: "新しい"), "これは新しいテスト")
+        XCTAssertEqual(replacing(5, in: "Hello world", with: "世界"), "Hello世界 world")
+    }
+
+    func testARangeThatSplitsACharacterIsRefused() {
+        XCTAssertNil(replacing(1, in: "😀 hi", with: "words"))
+        XCTAssertNil(replacing(9, in: "short", with: "words"))
+    }
+
+    func testEachResultReplacesOnlyTheOwnedSpan() {
         var session = ComposerVoiceDraftUpdateSession()
+        var draft = state("Fix the parser and add tests", caret: 14)
+        session.begin(draft)
 
-        session.begin(baseDraft: "Send this")
-        session.stopAcceptingUpdates()
+        let first = session.update(for: "for", current: draft)
+        XCTAssertEqual(first?.text, "Fix the parser for and add tests")
 
-        XCTAssertNil(session.composedDraft(for: "late final transcript"))
+        draft = ComposerVoiceDraftState(text: first!.text, selection: draft.selection.moved(to: first!.caret))
+        let second = session.update(for: "for nested lists", current: draft)
+        XCTAssertEqual(second?.text, "Fix the parser for nested lists and add tests")
+        XCTAssertEqual(second?.caret, NSRange(location: 31, length: 0))
     }
 
-    func testDraftUpdateSessionUsesNewBaseDraftAfterRestart() {
+    func testAnEditEndsDictationEvenWhenUndoneBackToTheSameText() {
         var session = ComposerVoiceDraftUpdateSession()
+        session.begin(state("Keep", caret: 4))
+        XCTAssertNil(session.update(for: "late", current: state("Keep", caret: 4, generation: 2)))
+    }
 
-        session.begin(baseDraft: "Old")
-        session.stopAcceptingUpdates()
-        session.begin(baseDraft: "New")
+    func testAWriteFromOutsideTheEditorEndsDictation() {
+        var session = ComposerVoiceDraftUpdateSession()
+        session.begin(state("Keep", caret: 4))
+        XCTAssertNil(session.update(for: "late", current: state("Replaced", caret: 4)))
+    }
 
-        XCTAssertEqual(session.composedDraft(for: "transcript"), "New transcript")
+    func testAMovedCaretDoesNotMoveWhereTheWordsLand() {
+        var session = ComposerVoiceDraftUpdateSession()
+        session.begin(state("one two", caret: 3))
+        XCTAssertEqual(session.update(for: "and", current: state("one two", caret: 0))?.text, "one and two")
+    }
+
+    func testCancelPutsBackTheDraftAndCaretOnlyAfterAWrite() throws {
+        var session = ComposerVoiceDraftUpdateSession()
+        let start = ComposerVoiceDraftState(
+            text: "Fix the bug",
+            selection: ComposerSelection(range: NSRange(location: 4, length: 7))
+        )
+        session.begin(start)
+        XCTAssertNil(session.restoredDraft(current: start))
+
+        let update = try XCTUnwrap(session.update(for: "the crash", current: start))
+        let afterWrite = ComposerVoiceDraftState(text: update.text, selection: start.selection.moved(to: update.caret))
+        XCTAssertEqual(
+            session.restoredDraft(current: afterWrite),
+            ComposerVoiceDraftUpdate(text: "Fix the bug", caret: NSRange(location: 4, length: 7))
+        )
+    }
+
+    func testCancelLeavesADraftThatMovedOn() {
+        var session = ComposerVoiceDraftUpdateSession()
+        session.begin(state("Keep", caret: 4))
+        XCTAssertNil(session.restoredDraft(current: state("Keep and more", caret: 13, generation: 1)))
     }
 
     func testVoiceInputPreflightAcceptsValidInputFormatValues() {
