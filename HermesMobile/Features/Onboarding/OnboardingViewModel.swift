@@ -98,7 +98,7 @@ final class OnboardingViewModel {
     /// The URL session setup for the form's own Hermes connections; tests script the host with it.
     @ObservationIgnored private let hermesConfiguration: () -> URLSessionConfiguration
     // Identity + generation of the probe that produced `authStatus` or `detectedKind`.
-    @ObservationIgnored private var probedConnectionIdentity: ConnectionIdentity?
+    @ObservationIgnored private var probedConnectionIdentity: String?
     @ObservationIgnored private var operationGeneration = 0
 
     init(
@@ -278,14 +278,7 @@ final class OnboardingViewModel {
         return map
     }
 
-    /// What a probe's answer describes: the address it reached and the headers it sent. Each
-    /// part is a canonical string, so equivalent spellings compare equal.
-    struct ConnectionIdentity: Equatable {
-        let address: String
-        let headers: String
-    }
-
-    private func currentConnectionIdentity() -> ConnectionIdentity {
+    private func currentConnectionIdentity() -> String {
         var urlPart: String
         do {
             let url = try AuthManager.normalizedServerURL(from: serverURLString)
@@ -307,7 +300,7 @@ final class OnboardingViewModel {
             }
             .sorted()
             .joined(separator: "|")
-        return ConnectionIdentity(address: urlPart, headers: headerPart)
+        return "\(urlPart)|\(headerPart)"
     }
 
     nonisolated private static func escapeForIdentity(_ raw: String) -> String {
@@ -320,18 +313,19 @@ final class OnboardingViewModel {
     private func invalidateProbedAuthStatusIfNeeded() {
         guard let probed = probedConnectionIdentity else {
             // No probe yet, but an inherited banner (re-login error) still has no
-            // owner — clear it on any edit so stale copy can't survive.
+            // owner — clear it on any edit so stale copy can't survive. A password the
+            // form doesn't show never outlives an edit either.
             if errorMessage != nil { errorMessage = nil }
+            if !showsPasswordField { password = "" }
             return
         }
-        let current = currentConnectionIdentity()
-        if current != probed {
+        if currentConnectionIdentity() != probed {
             forgetProbe()
             // The password field hides until the new inputs answer, and a password typed for
-            // another address, or hidden with the webui field, never goes out with them. A
-            // dashboard's password survives a header-only edit at its address. A saved server's
-            // re-sign-in keeps its field until a probe answered, so this never hides it early.
-            if webuiNeedsPassword || current.address != probed.address { password = "" }
+            // the old ones never goes out with them, whether the address or a header changed.
+            // A saved server's re-sign-in keeps its field until a probe answered, so this
+            // never hides it early.
+            password = ""
             webuiNeedsPassword = false
             errorMessage = nil
         }
@@ -647,7 +641,7 @@ final class OnboardingViewModel {
 
     // MARK: - Testing hooks (issue #285 regression matrix)
 
-    func probeConnectionIdentityForTesting() -> ConnectionIdentity {
+    func probeConnectionIdentityForTesting() -> String {
         currentConnectionIdentity()
     }
 

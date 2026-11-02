@@ -1112,7 +1112,6 @@ final class AuthManagerStateTests: XCTestCase {
             await form.connect(authManager: manager)
             form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first, row.typed))
             form.customHeaders[0].name = "X-Renamed"
-            XCTAssertEqual(form.password, "saved", "\(row.typed): editing a header keeps the sign-in at the same address")
 
             form.serverURLString = row.edited
 

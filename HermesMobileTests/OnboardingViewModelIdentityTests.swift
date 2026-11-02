@@ -436,6 +436,8 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
 
         form.username = "admin"
         form.password = "dashboard-secret"
+        // A header edit first: the password must not survive it to reach the next address.
+        form.customHeaders[0].value = "id.other"
         form.serverURLString = "webui.example"
         await form.connect(authManager: manager)
 
