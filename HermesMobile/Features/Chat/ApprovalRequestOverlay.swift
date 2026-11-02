@@ -212,38 +212,3 @@ extension ApprovalRequestOverlay {
                   onChoice: onChoice, onSkipAll: onSkipAll)
     }
 }
-
-struct ApprovalBypassStatusPill: View {
-    /// Turns the bypass off, on a Hermes session (#1011). Nil where the pill only reports it.
-    var onTurnOff: (() -> Void)?
-
-    var body: some View {
-        if let onTurnOff {
-            Button(action: onTurnOff) {
-                pill(showsTurnOff: true)
-            }
-            .buttonStyle(.chatTactile(.capsule))
-        } else {
-            pill(showsTurnOff: false)
-        }
-    }
-
-    private func pill(showsTurnOff: Bool) -> some View {
-        HStack(spacing: 8) {
-            Label("Approval bypass active", systemImage: "bolt.slash.fill")
-            if showsTurnOff {
-                Text("Turn off")
-                    .foregroundStyle(.tint)
-            }
-        }
-        .font(.caption.weight(.semibold))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke(.primary.opacity(0.10), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
-    }
-}

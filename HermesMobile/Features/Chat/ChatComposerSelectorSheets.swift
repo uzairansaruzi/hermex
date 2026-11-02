@@ -1,16 +1,14 @@
 import SwiftUI
 
-/// Workspace, branch, Profile and context for one chat, opened from the chat header. The
+/// Workspace, Profile and context for one chat, opened from the chat header. The
 /// composer supplies the pickers so they keep the gates they have in the new-chat row.
-struct ChatSettingsSheet<WorkspacePicker: View, BranchControl: View, ProfileControl: View>: View {
+struct ChatSettingsSheet<WorkspacePicker: View, ProfileControl: View>: View {
     let workspaceTitle: String
     let isWorkspaceDisabled: Bool
-    let showsBranch: Bool
     /// What choosing another Profile does, where that differs from changing this chat.
     let profileNote: String?
     let contextSnapshot: ContextWindowSnapshot?
     @ViewBuilder let workspacePicker: () -> WorkspacePicker
-    @ViewBuilder let branchControl: () -> BranchControl
     @ViewBuilder let profileControl: () -> ProfileControl
 
     @Environment(\.dismiss) private var dismiss
@@ -27,14 +25,6 @@ struct ChatSettingsSheet<WorkspacePicker: View, BranchControl: View, ProfileCont
                     }
                 }
                 .disabled(isWorkspaceDisabled)
-
-                if showsBranch {
-                    LabeledContent {
-                        branchControl()
-                    } label: {
-                        Label("Branch", systemImage: "arrow.triangle.branch")
-                    }
-                }
 
                 LabeledContent {
                     profileControl()
@@ -80,10 +70,9 @@ enum ModelSettingsRow: Equatable {
     case approvals
 }
 
-/// What a row shows beside its value after the user changes it. A change never reads as
-/// applied until the host answers: the row's value comes from the chat's state.
+/// What a row shows beside its value once the host has answered the user's change. Nothing
+/// shows while it is out, so the rows never shift under the finger.
 enum ModelSettingsRowStatus: Equatable {
-    case pending
     case failed(String)
     /// The host took the change and applies it later, such as after the running response.
     case notice(String)
@@ -96,8 +85,7 @@ enum ModelSettingsRowStatus: Equatable {
         errorMessage: String?,
         notice: String?
     ) -> Self? {
-        guard row == lastChanged else { return nil }
-        if isUpdating { return .pending }
+        guard row == lastChanged, !isUpdating else { return nil }
         if let errorMessage { return .failed(errorMessage) }
         if let notice { return .notice(notice) }
         return nil
@@ -122,7 +110,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
     /// Nil hides the row, on a composer with no session.
     let approvals: ComposerApprovals?
     let onSelectModel: (ModelCatalogOption) -> Void
-    let onSelectEffort: (String) -> Void
+    let onSelectEffort: (String) async -> Bool
     let onSelectFastMode: (Bool) -> Void
     let onSetYolo: (Bool) -> Void
     let onSelectApprovalMode: (HermesApprovalMode) -> Void
@@ -133,6 +121,12 @@ struct ModelSettingsSheet<AllModels: View>: View {
     @AppStorage(ThinkingControlStyle.storageKey) private var thinkingStyle = ThinkingControlStyle.warmBars
     @State private var showsAllModels = false
     @State private var lastChanged: ModelSettingsRow?
+    @State private var levelSender = ThinkingLevelSender()
+
+    /// The chat's state, with a Thinking level still on its way already showing.
+    private var shownSelection: ComposerModelEffortSelection {
+        levelSender.pendingLevel.map(selection.replacingEffort(with:)) ?? selection
+    }
 
     var body: some View {
         NavigationStack {
@@ -181,8 +175,8 @@ struct ModelSettingsSheet<AllModels: View>: View {
         Button { showsAllModels = true } label: {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 10) {
-                    glyph(for: selection.model)
-                    Text(verbatim: selection.model.displayName)
+                    glyph(for: shownSelection.model)
+                    Text(verbatim: shownSelection.model.displayName)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
@@ -191,7 +185,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
                         .foregroundStyle(.tertiary)
                 }
                 // Keeps the requested level and the one the host sends apart (#1016).
-                Text(verbatim: [providerName, selection.committedEffort == nil ? nil : selection.effortTitle]
+                Text(verbatim: [providerName, shownSelection.committedEffort == nil ? nil : shownSelection.effortTitle]
                     .compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -209,9 +203,9 @@ struct ModelSettingsSheet<AllModels: View>: View {
             if let only = selection.staticEffort {
                 LabeledContent("Thinking", value: only.title)
             } else {
-                ThinkingControl(selection: selection, isDisabled: isDisabled) { level in
+                ThinkingControl(selection: shownSelection, isDisabled: isDisabled) { level in
                     lastChanged = .thinking
-                    onSelectEffort(level)
+                    levelSender.request(level, send: onSelectEffort)
                 }
                 thinkingStyleSwitcher
             }
@@ -239,7 +233,9 @@ struct ModelSettingsSheet<AllModels: View>: View {
                 lastChanged = .fast
                 onSelectFastMode(enabled)
             }))
-            .disabled(isDisabled || !mayChangeFastMode)
+            // While another change is out, `allowsHitTesting` holds it off without a flash of grey.
+            .disabled(isDisabled || !(mayChangeFastMode || isUpdating))
+            .allowsHitTesting(!isUpdating)
             statusLine(for: .fast)
         }
     }
@@ -305,6 +301,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .allowsHitTesting(!isUpdating)
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
@@ -329,14 +326,12 @@ struct ModelSettingsSheet<AllModels: View>: View {
     }
 }
 
-/// A row's pending, failed, or later-applied line. Static text: no spinner repaints here.
+/// A row's failed or later-applied line.
 private struct ModelSettingsStatusLine: View {
     let status: ModelSettingsRowStatus?
 
     var body: some View {
         switch status {
-        case .pending:
-            Text("Applying…").font(.caption).foregroundStyle(.secondary)
         case .failed(let message):
             Text(verbatim: message).font(.caption).foregroundStyle(.red)
         case .notice(let message):

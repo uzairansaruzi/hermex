@@ -62,7 +62,7 @@ struct ComposerTextInputView: View {
     /// every paste inline and leaves Paste as Text out.
     var onPasteLargeText: ((String) -> Void)? = nil
 
-    var placeholder = String(localized: "Ask anything... /commands")
+    var placeholder = String(localized: "Ask anything...")
     /// Text-only clients reject file/image paste and drop before invoking callbacks.
     var acceptsAttachments = true
     /// The collapsed draft's side padding; a composer with controls beside the draft narrows it.

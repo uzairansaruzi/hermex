@@ -233,6 +233,11 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
         return String(localized: "\(model.displayName), \(picked) effort, sent as \(sent)")
     }
 
+    /// The same model with `level` chosen, for a level still on its way to the host.
+    func replacingEffort(with level: String) -> Self {
+        Self(model: model, effort: level, supportedEfforts: supportedEfforts, supportsEffort: supportsEffort)
+    }
+
     /// `sentEffort` when it differs from the committed level.
     private var loweredEffort: String? {
         guard let effort = committedEffort, let sent = normalizedEffort(sentEffort), sent != effort else { return nil }

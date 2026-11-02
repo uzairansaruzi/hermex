@@ -11,6 +11,30 @@ enum ThinkingControlStyle: String, CaseIterable {
     static let storageKey = "composer.thinkingControlStyle"
 }
 
+/// Sends Thinking levels one at a time, keeping the newest. The level shows at once as `pendingLevel`
+/// and clears when the host has answered: the chat's state then has it, or a refused level falls back
+/// to what the chat still holds, with the reason beside the row.
+@MainActor @Observable final class ThinkingLevelSender {
+    private(set) var pendingLevel: String?
+    @ObservationIgnored private var isSending = false
+
+    /// A level asked for while another is out waits, and only the newest goes.
+    func request(_ level: String, send: @escaping (String) async -> Bool) {
+        pendingLevel = level
+        guard !isSending else { return }
+        isSending = true
+        Task {
+            var sent: String?
+            while let next = pendingLevel, next != sent {
+                sent = next
+                _ = await send(next)
+            }
+            pendingLevel = nil
+            isSending = false
+        }
+    }
+}
+
 /// The levels Model settings offers and where the chat is on them. The host's level stays on
 /// the ladder even when the model's list doesn't name it, so a newer host's level still shows.
 struct ThinkingLadder: Equatable {
@@ -54,7 +78,7 @@ struct ThinkingLadder: Equatable {
 
 /// Picks the chat's thinking level. A tap sends that level. A sideways drag previews with a tick
 /// per level and sends one change on release, and a vertical one is left to the list. The value
-/// then comes back from the chat's state, so a refused level never stays shown. VoiceOver adjusts it like a slider, and the largest text sizes get a plain list.
+/// shows at once, and a refused one falls back to what the chat holds. VoiceOver adjusts it like a slider, and the largest text sizes get a plain list.
 struct ThinkingControl: View {
     let selection: ComposerModelEffortSelection
     let isDisabled: Bool

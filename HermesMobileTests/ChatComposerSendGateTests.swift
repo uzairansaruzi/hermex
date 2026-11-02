@@ -71,11 +71,11 @@ final class ChatComposerSendGateTests: XCTestCase {
                                            errorMessage: error, notice: notice)
         }
 
-        XCTAssertEqual(status(.model, .model, updating: true, error: "old"), .pending)
+        XCTAssertNil(status(.model, .model, updating: true, error: "old"), "Nothing shows while a change is out")
         XCTAssertEqual(status(.model, .model, error: "Refused"), .failed("Refused"))
         XCTAssertEqual(status(.model, .model, notice: "After this response"), .notice("After this response"))
         XCTAssertNil(status(.model, .model))
-        XCTAssertNil(status(.thinking, .model, updating: true))
+        XCTAssertNil(status(.thinking, .model, error: "Refused"))
         XCTAssertNil(status(.model, nil, error: "old"))
     }
 
@@ -89,14 +89,51 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 0, isStreaming: true))
     }
 
-    /// The header reads `hermes · main`, and falls back to the Profile without a workspace.
-    func testHeaderSubtitleNamesWorkspaceAndBranch() {
-        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", branch: "main", profileTitle: "Default"),
-                       "hermes · main")
-        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", branch: nil, profileTitle: "Default"),
-                       "hermes")
-        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, branch: "main", profileTitle: "Default"),
-                       "Default")
+    /// The header names the workspace and the Profile, whichever of them there is.
+    func testHeaderSubtitleNamesWorkspaceAndProfile() {
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", profileTitle: "Default"), "hermes · Default")
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", profileTitle: "Profile"), "hermes")
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, profileTitle: "Default"), "Default")
+        XCTAssertNil(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, profileTitle: nil))
+    }
+
+    /// A level shows at once and clears when answered. Levels asked for meanwhile don't pile up:
+    /// only the newest goes, and a refused one falls back to the chat's own.
+    @MainActor
+    func testThinkingLevelsShowAtOnceAndOnlyTheNewestWaitingOneGoes() async {
+        let sender = ThinkingLevelSender()
+        var sent: [String] = []
+        var answers: [CheckedContinuation<Bool, Never>] = []
+        let waiting = expectation(description: "the first level is out")
+        waiting.assertForOverFulfill = false
+        let send: (String) async -> Bool = { level in
+            sent.append(level)
+            return await withCheckedContinuation { answers.append($0); waiting.fulfill() }
+        }
+
+        sender.request("low", send: send)
+        XCTAssertEqual(sender.pendingLevel, "low")
+        await fulfillment(of: [waiting], timeout: 5)
+
+        sender.request("medium", send: send)
+        sender.request("high", send: send)
+        XCTAssertEqual(sender.pendingLevel, "high")
+        XCTAssertEqual(sent, ["low"])
+
+        let second = expectation(description: "the newest level is out")
+        let cleared = expectation(description: "the answers are in")
+        Task { @MainActor in
+            answers.removeFirst().resume(returning: true)
+            while answers.isEmpty { await Task.yield() }
+            second.fulfill()
+            answers.removeFirst().resume(returning: false)
+            while sender.pendingLevel != nil { await Task.yield() }
+            cleared.fulfill()
+        }
+        await fulfillment(of: [second, cleared], timeout: 5)
+
+        XCTAssertEqual(sent, ["low", "high"])
+        XCTAssertNil(sender.pendingLevel)
     }
 
     /// A run holds configuration but not `+` (#1436); offline and read-only hold both.

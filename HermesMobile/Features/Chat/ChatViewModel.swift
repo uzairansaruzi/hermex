@@ -4570,7 +4570,7 @@ final class ChatViewModel {
     }
 
     /// `/yolo` in a Hermes chat (#1036): this session's approval bypass, through the same
-    /// `config.set yolo` as the approval card's Skip all and the bypass pill.
+    /// `config.set yolo` as the approval card's Skip all and Model settings' switch.
     private func toggleHermesApprovalBypassFromSlashCommand() async -> SlashCommandExecutionResult {
         guard let requests = hermesRequests else {
             return .unsupported(friendlyMessage: SlashCommandExecutor.unsupportedMessage(for: "yolo"))

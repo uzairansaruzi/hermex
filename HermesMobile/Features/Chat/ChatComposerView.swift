@@ -243,7 +243,8 @@ struct MessageComposerView: View {
     let onCancel: () -> Void
     let onSelectModel: (ModelCatalogOption) -> Void
     let onModelPickerOpen: () async -> Void
-    let onSelectReasoningEffort: (String) -> Void
+    /// Sends a level; true once the host took it.
+    let onSelectReasoningEffort: (String) async -> Bool
     let onLoadWorkspaceSuggestions: (String) async -> Void
     let onWorkspaceRegistryChanged: () async -> Void
     let onLoadPersonalitySuggestions: () async -> Void
@@ -342,7 +343,6 @@ struct MessageComposerView: View {
     @State private var noticeMessage: String?
     @State private var showsWorkspaceSheet = false
     @State private var showsGitBranchPicker = false
-    @State private var showsChatSettingsBranchPicker = false
     /// Runs once Chat settings has closed: a change that may raise an alert from
     /// `ChatView`, which can't appear over the sheet.
     @State private var afterChatSettingsDismiss: (() -> Void)?
@@ -1091,13 +1091,11 @@ struct MessageComposerView: View {
         HStack(alignment: .center, spacing: 8) {
             workspaceSelector
 
-            gitBranchPicker(showsPicker: $showsGitBranchPicker)
+            gitBranchPicker
 
             profileSelector(onSelect: onSelectProfile)
 
             Spacer(minLength: 0)
-
-            ContextWindowIndicatorView(snapshot: contextWindowSnapshot)
         }
     }
 
@@ -1106,20 +1104,16 @@ struct MessageComposerView: View {
         showsSessionControls || showsModelAndProfileControls
     }
 
-    /// The same controls and gates as the new-chat row. Every change waits for the sheet
-    /// to close, since each can raise an alert from `ChatView`.
+    /// The same controls and gates as the new-chat row, plus the context details. Every change
+    /// waits for the sheet to close, since each can raise an alert from `ChatView`.
     private var chatSettingsSheet: some View {
         ChatSettingsSheet(
             workspaceTitle: workspaceTitle,
             isWorkspaceDisabled: isConfigurationControlDisabled,
-            showsBranch: showsGitBranchControl,
             profileNote: showsSessionControls || isSingleProfileMode
                 ? nil : String(localized: "Choosing another starts a new chat in it"),
             contextSnapshot: contextWindowSnapshot,
             workspacePicker: { workspacePickerSheet(perform: closeChatSettings(then:)) },
-            branchControl: {
-                gitBranchPicker(showsPicker: $showsChatSettingsBranchPicker, perform: closeChatSettings(then:))
-            },
             profileControl: {
                 profileSelector { profile in closeChatSettings { onSelectProfile(profile) } }
             }
@@ -1339,21 +1333,13 @@ struct MessageComposerView: View {
         .accessibilityLabel("Composer options")
     }
 
-    /// One "Git Actions" toggle covers every git control in chat (#189), so the branch
-    /// control goes with the toolbar menu rather than lingering alone.
-    private var showsGitBranchControl: Bool {
-        showsGitControls && gitViewModel.hasRepository && gitViewModel.supportsBranches
-    }
-
-    /// `perform` runs a picked switch or new branch. A Hermes chat creates a branch only
+    /// One "Git Actions" toggle covers every git control in chat (#189), so the branch chip goes
+    /// with the toolbar menu rather than lingering alone. A Hermes chat creates a branch only
     /// through hermex-push (#1236), and nothing switches while another write holds the
     /// repository's lock.
     @ViewBuilder
-    private func gitBranchPicker(
-        showsPicker: Binding<Bool>,
-        perform: @escaping (@escaping () -> Void) -> Void = { $0() }
-    ) -> some View {
-        if showsGitBranchControl {
+    private var gitBranchPicker: some View {
+        if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
                 branches: gitViewModel.branches,
@@ -1361,14 +1347,10 @@ struct MessageComposerView: View {
                 isSwitching: gitViewModel.isSwitchingBranch,
                 isDisabled: holdsHostControls || isWaitingForStream || gitViewModel.isWriteLocked,
                 allowsCreate: gitViewModel.supportsSync,
-                onSelect: { target in
-                    if !holdsHostControls { perform { onSelectGitBranch(target) } }
-                },
-                onCreate: { target in
-                    if !holdsHostControls { perform { onCreateGitBranch(target) } }
-                },
+                onSelect: { if !holdsHostControls { onSelectGitBranch($0) } },
+                onCreate: { if !holdsHostControls { onCreateGitBranch($0) } },
                 onRefresh: onRefreshGitBranches,
-                showsPicker: showsPicker
+                showsPicker: $showsGitBranchPicker
             )
         }
     }
@@ -1434,7 +1416,8 @@ struct MessageComposerView: View {
             recents: ModelRecentsStore.visibleRecentOptions(
                 in: modelGroups, recentKeys: recentModelKeys, favoriteKeys: favoriteModelKeys
             ),
-            isDisabled: isConfigurationControlDisabled,
+            // A change in flight blocks other rows without dimming them; see the sheet.
+            isDisabled: !controlGate.allowsConfigurationIgnoringUpdates,
             isUpdating: isUpdatingConfiguration,
             errorMessage: configurationErrorMessage,
             notice: configurationNotice,
@@ -1540,7 +1523,7 @@ struct MessageComposerView: View {
             return (configurationErrorMessage, true, false, nil, nil, nil)
         } else if let configurationNotice {
             return (configurationNotice, false, false, nil, nil, nil)
-        } else if isUpdatingConfiguration {
+        } else if isUpdatingConfiguration, !isModelSettingsPresented.wrappedValue {
             return (String(localized: "Updating composer settings..."), false, false, nil, nil, nil)
         }
 

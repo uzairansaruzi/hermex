@@ -66,7 +66,7 @@ struct GitBranchPickerButton: View {
     }
 }
 
-private struct GitBranchPickerSheet: View {
+struct GitBranchPickerSheet: View {
     let branches: GitBranches?
     let currentBranch: String
     let isLoading: Bool

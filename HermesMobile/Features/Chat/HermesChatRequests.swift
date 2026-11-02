@@ -119,7 +119,7 @@ import Observation
             || open.contains { if case .desktopTask? = $0.pending { return false }; return true }
     }
 
-    /// The pill may turn the bypass off: only this session's own flag can be.
+    /// Model settings' switch may turn the bypass off: only this session's own flag can be.
     var mayTurnOffApprovalBypass: Bool { approvalBypass && !hostApprovesAll && !bypassOutlivedTurnOff }
 
     /// The open approvals, for the overlay's count.
@@ -264,12 +264,6 @@ import Observation
         // Only a confirmed release counts; an uncertain one keeps the card and its warning.
         let released = await deliver(.approval(.once), action)
         return released == .answered || released == .alreadyResolved
-    }
-
-    /// Turns the session's approval bypass off from its pill, so approvals ask again.
-    func turnOffApprovalBypass() async {
-        guard mayTurnOffApprovalBypass else { return }
-        await setApprovalBypass(false, for: nil)
     }
 
     /// `/yolo` (#1036): turns the session's approval bypass on, or off when only this

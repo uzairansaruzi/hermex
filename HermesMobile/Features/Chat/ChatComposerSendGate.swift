@@ -79,8 +79,12 @@ struct ChatComposerControlGate {
 
     /// Model, workspace, and Profile changes wait for the chat to settle.
     var allowsConfiguration: Bool {
-        access.allowsHostControls && !isSending && !isCompressingSession
-            && !isWaitingForStream && !isUpdatingConfiguration
+        allowsConfigurationIgnoringUpdates && !isUpdatingConfiguration
+    }
+
+    /// The same, for Model settings, whose rows hold off during a change without dimming.
+    var allowsConfigurationIgnoringUpdates: Bool {
+        access.allowsHostControls && !isSending && !isCompressingSession && !isWaitingForStream
     }
 }
 

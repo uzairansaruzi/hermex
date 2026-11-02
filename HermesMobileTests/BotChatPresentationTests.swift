@@ -769,7 +769,7 @@ private struct SessionChatPresentationFixture: View {
             filePathSearch: paths, uploadAttachmentErrorMessage: nil, steerFailure: nil,
             streamingSendBehavior: .steer, onSend: { _ in },
             onSendVoiceNote: { _, _ in }, onCancel: { probe.cancels += 1 }, onSelectModel: { _ in },
-            onModelPickerOpen: {}, onSelectReasoningEffort: { _ in }, onLoadWorkspaceSuggestions: { _ in },
+            onModelPickerOpen: {}, onSelectReasoningEffort: { _ in false }, onLoadWorkspaceSuggestions: { _ in },
             onWorkspaceRegistryChanged: {}, onLoadPersonalitySuggestions: {}, onLoadSkillSuggestions: {},
             onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _ in },
             onPhotoMediaSelected: { _ in }, onFileURLsSelected: { _ in }, onPasteFileProviders: { _ in },

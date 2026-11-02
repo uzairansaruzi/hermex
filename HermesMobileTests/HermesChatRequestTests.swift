@@ -214,8 +214,8 @@ import XCTest
     // MARK: Approval bypass
 
     /// Skip all turns the session's bypass on, then releases the card with `once`, each sent
-    /// once and in that order; the pill turns it off again.
-    func testSkipAllTurnsTheBypassOnAndReleasesTheCardAndThePillTurnsItOff() async throws {
+    /// once and in that order; the switch turns it off again.
+    func testSkipAllTurnsTheBypassOnAndReleasesTheCardAndTheSwitchTurnsItOff() async throws {
         let chat = await openChat()
         chat.host.next("config.set", .init(result: .object(["key": .string("yolo"), "value": .string("1"), "scope": .string("session")])))
         chat.host.next("config.set", .init(result: .object(["key": .string("yolo"), "value": .string("0"), "scope": .string("session")])))
@@ -236,7 +236,7 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen)
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
 
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set").last?["value"], .string("off"))
         XCTAssertFalse(chat.model.isSessionApprovalBypassEnabled)
     }
@@ -259,27 +259,27 @@ import XCTest
     }
 
     /// Turn off clears only the session's flag. A bypass the host sets itself (a `--yolo`
-    /// launch) stays on in the `session.info` written ahead of the reply, so the pill keeps
+    /// launch) stays on in the `session.info` written ahead of the reply, so the row keeps
     /// reporting it and offers no second Turn off.
     func testTurnOffNeverClaimsApprovalsAreBackWhileTheHostStillBypassesThem() async {
         let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("manual")])
         chat.host.next("config.set", .init(result: yoloReply("0"), before: [
             event(1, "session.info", ["yolo": .bool(true), "approval_mode": .string("manual")])
         ]))
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set").map { $0["value"] }, [.string("off")])
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled, "the host still bypasses approvals")
 
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set").count, 1, "a session flag already off cannot clear the host's bypass")
     }
 
     /// A host that approves everything itself (`approvals.mode: off`) shows the bypass, and the
-    /// pill never sends a session-scoped off that cannot clear it.
+    /// switch never sends a session-scoped off that cannot clear it.
     func testAHostWideBypassIsReportedButNotTurnedOff() async {
         let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("off")])
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set"), [])
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
     }
