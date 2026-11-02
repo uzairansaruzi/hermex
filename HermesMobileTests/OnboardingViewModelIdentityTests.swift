@@ -410,8 +410,14 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
     }
 
     func testAHermesStatusRevealsTheDashboardSignInAndNeverReachesTheWebui() async throws {
-        let (gatekeeper, manager) = makeOpenWebui()
-        let form = makeHermesForm()
+        let gatekeeper = OnboardingGateKeeper()
+        gatekeeper.drainEverything()
+        let client = GatedAuthAPIClient(gatekeeper: gatekeeper,
+                                        outcome: .succeed(AuthStatusResponse(authEnabled: true, loggedIn: false)))
+        let manager = makeGatedManager(client)
+        let form = makeHermesForm {
+            $0.url?.host == "webui.example" ? .json(404, .object(["error": .string("Not found")])) : nil
+        }
         form.serverURLString = "hermes.example"
         form.customHeaders = [CustomHeader(name: "CF-Access-Client-Id", value: "id.access"),
                               CustomHeader(name: "CF-Access-Client-Secret", value: " ")]
@@ -427,6 +433,14 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(status.url?.absoluteString, "https://hermes.example/api/status")
         XCTAssertEqual(status.value(forHTTPHeaderField: "CF-Access-Client-Id"), "id.access")
         XCTAssertNil(status.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "A header row without a value is never sent")
+
+        form.username = "admin"
+        form.password = "dashboard-secret"
+        form.serverURLString = "webui.example"
+        await form.connect(authManager: manager)
+
+        XCTAssertEqual(client.configuredPasswords, [], "The dashboard's password never goes to another host")
+        XCTAssertTrue(form.showsPasswordField, "The webui asks for its own password")
     }
 
     /// A dashboard that signs in through the browser (#708) asks for no username or password,
