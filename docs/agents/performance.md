@@ -23,6 +23,7 @@ limit, so read the value there.
 | Signposts carry static names and integer metadata only | `PerformanceSignposts.swift` header | Review only |
 | Launch paints cached rows first, then the host's first page | `LaunchSignpost` | `scripts/benchmark-sim-launch` (`Launch` and `live` medians) |
 | Debug instruments compile out of Release | `HitchMeter` (`#if DEBUG`), `RenderProbe` (Release `hit` is an empty inlined stub) | `HitchMeterTests` covers the hitch math only; the Release compile-out is review only |
+| A drawn bot face does no engine work on the main thread on a cache hit: rest faces are cached bitmaps, a blink repaints only the eye layer, and faces build one at a time at utility priority | `BotAvatarRenderStore`, `BotAvatarBodyCache` (byte limit in its `init`), `BotAvatarEngineFace` | `AvatarEngineCacheTests` (single flight, byte bound, memory warning), `BotAvatarStudioTests` (store count bound). Bitmap-only repaint on a blink is review only. |
 | No continuously repainting animation; every animation respects Reduce Motion | `AGENTS.md` § Taste | Review only. `repeatForever` has zero uses in `HermesMobile/` today. |
 
 ## Guards

@@ -744,7 +744,8 @@ answer for the revision, as Desktop does (`isBackfilledFacePng`), so the face st
 drawn and animated. Hermex marks uploaded photos with `imageKind: photo`, so this rule
 keeps them visible. An unreadable asset is not remembered and is fetched again next load.
 Hermex renders Desktop's compatible classic shape and color metadata; blobatars,
-pets and other Desktop renderers remain Desktop-owned. Drawn faces blink on a
+pets and other Desktop renderers remain Desktop-owned. A bot can also carry a drawn
+avatar (see Avatar engine and studio below). Drawn faces blink on a
 sparse `BotBlinkSchedule` (shut and open entries every 3 to 5 s, phase seeded by
 Profile name) so nothing repaints between blinks; only the open bot's face in the
 chat title takes Desktop's 15 fps working pose, and only while its turn is live.
@@ -760,10 +761,10 @@ only blinks, and after a host-reported failure (`HermesChatActivity.failure`, wh
 the outcome row) it shows Sad eyes until the next send; a user Stop rests.
 These state faces override a pinned expression, and VoiceOver adds "Needs attention" or "Turn failed" after the name. Inbox rows,
 pinned tiles, rooms, chips and the Live Activity avatar keep the pinned expression.
-Reduce Motion, the shape and expression picker tiles, photos and the extensions
+Reduce Motion, the studio's tiles, photos and the extensions
 render one still frame; inbox rows and pinned tiles blink.
-The drawn face's rest `expression` (sixteen Bloub-derived eye geometries in
-`BotAvatarExpression`) is a Hermex-owned key in the same look object: Desktop's
+The drawn face's rest `expression` (sixteen Bloub-derived eye geometries plus
+Open Bot Avatar's arc eyes, in `BotAvatarExpression`) is a Hermex-owned key in the same look object: Desktop's
 `saveBotMeta` spreads server keys into its local copy and re-sends the whole
 object, so the key survives a Desktop save, and Desktop ignores it when drawing.
 Unknown values read as neutral.
@@ -848,8 +849,45 @@ baseline while failed or model-confirmation sections remain visibly unsaved. A
 guarded model is resent by itself with `confirm_expensive_model` only after a
 second user confirmation. A disconnect never causes an automatic retry.
 
+### Avatar engine and studio
+
+`Features/Bots/AvatarEngine/` is a native Swift port of Open Bot Avatar (MIT, pinned in
+`AvatarPath.swift`): a definition is one SVG path and an eye placement, and the engine infers
+a volume from it. `scripts/capture-avatar-goldens` records the upstream output that
+`AvatarEngineGoldenTests` compares against. There is no JS at runtime or in CI.
+
+- **Storage.** A drawn avatar (`BotDrawnAvatar`: definition, whole-number depth 0 to 14, eye
+  color) lives inline under the Hermex-owned `hermexAvatar` key in `ui_meta["hermes-bots"]`.
+  Desktop and older Hermex builds ignore it and keep drawing `shape` in `color`, which saving
+  an avatar leaves alone. A value this build can't read is kept on save until the user picks a
+  face. A classic shape with plain settings stores no key and draws its exact flat path.
+- **Rest tier.** Lists, rows and chips draw `BotAvatarEngineFace`: cached body bitmaps
+  (`BotAvatarBodyCache`) with a separate eye layer, so a blink repaints two eyes. Faces build
+  off the main thread, one at a time at utility priority (`BotAvatarRenderStore`), and a roster
+  load prewarms them. A definition that fails validation draws the classic face.
+- **Live tier.** Only the studio's hero during a touch or a bit (30 fps at most) and the open
+  chat title's 30 s work beat (15 fps, in upstream's `thinking` pose) draw `BotAvatarLiveView`.
+  Upstream's continuous breathing and eye wander are not ported. Reduce Motion is a still face.
+- **Synchronous renders.** Canvas paints nothing inside `ImageRenderer`, so a composer chip
+  and the Live Activity file take `drawnStill`, which draws with Core Graphics from a built
+  face, and fall back to the classic face before it is built.
+- **Studio.** `BotAvatarStudioView`, shared by Edit Bot and the create sheet, edits a copy of
+  the appearance, so Cancel is a clean undo. Done hands it back as a draft for Save. Changing
+  the body on a bot with a photo warns first, and Save then clears the asset; an expression
+  alone leaves the photo. Picking a photo clears the drawn avatar. Eye edits pass the validator
+  off the main thread before they apply, so a drag stops at the last place that fit.
+- **"Describe it".** `BotAvatarGeneration` opens a hidden draft (`session.create`) and sends the
+  upstream design prompt through `prompt.btw`, whose tools are denied at dispatch, then reads
+  `btw.complete` and closes and deletes the draft's empty row. The edited bot's model answers;
+  the create sheet uses the `default` Profile. Bad JSON gets one repair try with the validator's
+  errors. Never use `prompt.submit` here: on a live host (0.22.5) it ran `terminal` and
+  `write_file` with no approval, the turn survived `close_on_disconnect`, `session.resume`
+  auto-continued it, and the agent's background review then created a skill. `llm.oneshot` has
+  no tools, but its 60 s host timeout failed with this prompt three times of three. `prompt.btw`
+  took 198 s on a slow model and can't be stopped, so closing the studio only ignores the answer.
+
 Appearance writes merge the received `ui_meta["hermes-bots"]` object, changing
-only title and compatible static avatar keys while retaining Desktop-owned keys.
+only title and avatar keys while retaining Desktop-owned keys.
 They include `ui_meta_expected_revisions["hermes-bots"]`; a conflict leaves the
 phone's edit dirty until the user explicitly reloads Desktop's latest appearance.
 Avatar bytes are a separate `profiles.set_asset` write after that metadata write

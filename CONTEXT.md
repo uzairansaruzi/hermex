@@ -128,6 +128,12 @@ _Avoid_: Multi-select, bulk mode
 One execution of a Task. On a Hermes server it is a session `cron_<task>_<time>`, and its output is that session's final reply; on a webui server it is an output file.
 _Avoid_: job run, execution
 
+## Bot avatars
+
+- **Drawn avatar**: a bot's face as an SVG path, eye placement, depth and eye color, stored in its look. A photo and a drawn avatar replace each other.
+- **Classic shape**: one of Hermex's eight original faces, the one Hermes Desktop can also draw.
+- **Avatar studio**: the full-screen screen where a user picks and tunes a bot's face.
+
 ## Sessions
 
 **Project**:
