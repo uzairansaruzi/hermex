@@ -54,6 +54,18 @@ import Observation
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("hermes-connection-address")
                 }
+                if setup.offersSignInChoice {
+                    HermesSignInMethodPicker(selection: $setup.signInMethod)
+                }
+                if let rejection = setup.browserHeaderRejection {
+                    Label {
+                        Text(rejection)
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle.fill")
+                    }
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("hermes-connection-headers-rejection")
+                }
                 switch setup.signInMethod {
                 case .browser:
                     Text("This server signs in through your browser.").foregroundStyle(.secondary)
@@ -197,7 +209,7 @@ import Observation
             .accessibilityIdentifier("hermes-connection-headers")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                if let rejection = setup.headerRejection {
+                if let rejection = setup.headerRejection, setup.browserHeaderRejection == nil {
                     Label {
                         Text(rejection)
                     } icon: {
@@ -411,21 +423,54 @@ extension BotHostStatus {
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
-    /// How this Hermes server signs in: as its host's status says, or, until the status answers,
-    /// as its saved sign-in did, through the browser (#708) or without credentials (#1314). Only a
-    /// Hermes server's own sign-in; a webui server's Bots connection keeps the password form.
-    var signInMethod: HermesSignInMethod {
-        guard isServerSignIn else { return .password }
-        if case .reachable(let status) = hostStatus { return status.signInMethod }
-        if saved?.oauth != nil { return .browser }
-        return saved?.hasNoCredentials == true ? .open : .password
+    /// How this Hermes server's host offers to sign in, the default first: as its status says,
+    /// or, until the status answers, as its saved sign-in did, through the browser (#708) or
+    /// without credentials (#1314). Only a Hermes server's own sign-in; a webui server's Bots
+    /// connection keeps the password form.
+    var offeredSignInMethods: [HermesSignInMethod] {
+        guard isServerSignIn else { return [.password] }
+        if case .reachable(let status) = hostStatus { return status.signInMethods }
+        if saved?.oauth != nil { return [.browser] }
+        return saved?.hasNoCredentials == true ? [.open] : [.password]
     }
+
+    /// The Password | Browser picker's choice, while the host offers it.
+    private var pickedSignInMethod: HermesSignInMethod?
+
+    /// How Connect signs in: the picked method, else the browser for a saved browser sign-in
+    /// on a host that offers both, else the host's default. Each saves only its own
+    /// credential, so switching leaves no stale one.
+    var signInMethod: HermesSignInMethod {
+        get {
+            let offered = offeredSignInMethods
+            if let picked = pickedSignInMethod, offered.contains(picked) { return picked }
+            if saved?.oauth != nil, offered.contains(.browser) { return .browser }
+            return offered.first ?? .password
+        }
+        set {
+            guard newValue != signInMethod else { return }
+            pickedSignInMethod = newValue
+            errorMessage = nil
+        }
+    }
+
+    /// The Password | Browser picker, for a host that offers both.
+    var offersSignInChoice: Bool { offeredSignInMethods.count > 1 }
 
     /// Why the edited headers can't be sent to Hermes (`HermesHeaders`), shown under the
     /// Connection Headers row; Connect stays off until it is fixed. Nil when they can.
     var headerRejection: String? {
         do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: signInMethod == .browser); return nil }
         catch { return error.localizedDescription }
+    }
+
+    /// The `headerRejection` that only a browser sign-in makes, an `Authorization` row,
+    /// which the form shows under the sign-in method instead.
+    var browserHeaderRejection: String? {
+        guard signInMethod == .browser else { return nil }
+        do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: true); return nil }
+        catch HermesHeaders.Rejection.authorization { return HermesHeaders.Rejection.authorization.localizedDescription }
+        catch { return nil }
     }
 
     /// Shown under the Connection Headers row when only one of Cloudflare Access's two
@@ -491,8 +536,9 @@ extension BotHostStatus {
 
     /// Signs in with the form's headers and saves the connection with them. The UUID, and
     /// with it drafts, cache and push pairing, is kept when the host reports the saved
-    /// `install_id` or when address and username are unchanged, whatever the headers;
-    /// otherwise the old connection's data is discarded. An unchanged address must still
+    /// `install_id`, when address and username are unchanged, or when a saved browser sign-in
+    /// switches to this one at its address, whatever the headers; otherwise the old
+    /// connection's data is discarded. An unchanged address must still
     /// reach the saved install before the password is sent. `replacingHost` is the user's
     /// answer to `.differentHost`: it drops that expectation and always starts a new connection.
     /// A server that signs in through the browser shows its host's page with `browser` instead,
@@ -520,7 +566,9 @@ extension BotHostStatus {
             guard attempt == id, !Task.isCancelled else { return false }
             let live = wire.serverInstallID
             let sameInstall = live != nil && live == saved?.installID
-            let sameAccount = saved?.address == url && saved?.username == account
+            // A switch from the saved browser sign-in is the same connection: `wire.connect()`
+            // has already refused a host whose `install_id` contradicts the saved one.
+            let sameAccount = saved?.address == url && (saved?.oauth != nil || saved?.username == account)
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
                 password: secret, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID, headers: sent)
@@ -542,8 +590,9 @@ extension BotHostStatus {
 
     /// A Hermes server's sign-in through its host's browser page (#708), shown by `browser`.
     /// The UUID, and with it drafts, cache and push pairing, is kept when the host reports
-    /// the saved `install_id` or the same account signs in again; otherwise the old
-    /// connection's data is discarded, as in `connect`. Closing the sheet shows no error.
+    /// the saved `install_id`, the same account signs in again, or a saved sign-in without the
+    /// browser switches to it at its address; otherwise the old connection's data is
+    /// discarded, as in `connect`. Closing the sheet shows no error.
     private func connectThroughBrowser(_ browser: HermesBrowserSignIn.Presenter, replacingHost: Bool) async -> Bool {
         let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; attempt = nil } }
@@ -560,8 +609,11 @@ extension BotHostStatus {
             guard attempt == id, !Task.isCancelled else { return false }
             let signedIn = http.connection
             let sameInstall = http.serverInstallID != nil && http.serverInstallID == saved?.installID
-            let sameAccount = saved?.address == server && saved?.oauth?.provider == signedIn.oauth?.provider
-                && saved?.oauth?.userID == signedIn.oauth?.userID
+            // A switch to the browser is the same connection: the sign-in has already refused
+            // a host whose `install_id` contradicts the saved one.
+            let sameAccount = saved?.address == server && (saved?.oauth.map {
+                $0.provider == signedIn.oauth?.provider && $0.userID == signedIn.oauth?.userID
+            } ?? true)
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             return await commit(BotConnection(
                 id: kept?.id ?? signedIn.id, name: label, address: server, username: signedIn.username, password: "",
@@ -679,6 +731,20 @@ struct BotConnectionWelcomeView: View {
         } else {
             BotAnimatedFaceView(name: name, appearance: appearance, size: size, motion: .still)
         }
+    }
+}
+
+/// The Password | Browser segment of a sign-in form whose host offers both (#1539).
+struct HermesSignInMethodPicker: View {
+    @Binding var selection: HermesSignInMethod
+
+    var body: some View {
+        Picker("Sign in with", selection: $selection) {
+            Text("Password").tag(HermesSignInMethod.password)
+            Text("Browser").tag(HermesSignInMethod.browser)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("hermes-sign-in-method")
     }
 }
 

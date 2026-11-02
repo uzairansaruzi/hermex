@@ -106,13 +106,13 @@ struct SettingsView: View {
                     }
                 }
 
-                if SettingsDeveloperPage.isAvailable {
-                    NavigationLink {
-                        SettingsDeveloperPage()
-                    } label: {
-                        SettingsLabel(title: "Developer", systemImage: "hammer")
-                    }
+                #if DEBUG
+                NavigationLink {
+                    SettingsDeveloperPage()
+                } label: {
+                    SettingsLabel(title: "Developer", systemImage: "hammer")
                 }
+                #endif
             }
         }
         .listStyle(.insetGrouped)

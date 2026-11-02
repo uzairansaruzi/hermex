@@ -74,8 +74,8 @@ Onboarding's Connect page and Settings → Add Server are one connect form
 (`OnboardingViewModel`, #900). Its first Connect for an address reads the public
 `/api/status` there, parsed by `BotConnection.address(_:)` and sent with the form's
 headers on a `HermesConnection` of its own. A JSON object carrying the `auth_required` flag is a
-Hermes dashboard, and `HermesSignInMethod` reads how it signs in: a password, the browser
-(below) or none (below). For a password, username and password appear, and the next Connect signs in once
+Hermes dashboard, and `HermesSignInMethod.offered(by:)` reads how it offers to sign in: a
+password, the browser (below), both, or none (below). For a password, username and password appear, and the next Connect signs in once
 (`HermesConnection.signIn()`, so the version gate, install check and #880's copy apply),
 then calls `addHermesServer`. Hermes' own Host-header 400 and `.blocked` show their
 advice and stop, and a mode switch keeps that advice. Anything else, including an
@@ -95,10 +95,13 @@ and, for Cloudflare Tunnel, two empty `CF-Access-Client-*` rows; it is not saved
 ### Browser sign-in (#708)
 
 A host whose status offers browser sign-in (`auth_flows ∋ native_pkce`) and no `basic`
-password provider (`HermesBrowserSignIn.isRequired(by:)`) asks for no username or
-password: the connect form and a Hermes server's own sign-in form (`BotConnectionSetup`,
-which reads the server's status even when signed out) show "Sign In with Browser"
-instead. It binds a loopback listener on `127.0.0.1` at an ephemeral port, opens the
+password provider asks for no username or password: the connect form and a Hermes
+server's own sign-in form (`BotConnectionSetup`, which reads the server's status even
+when signed out) show "Sign In with Browser" instead. A host that offers both shows a
+Password | Browser picker (#1539), Password first, except that a saved browser sign-in's
+form opens on Browser. Each method saves only its own credential: a password sign-in saves
+no `oauth`, a browser sign-in no password. An `Authorization` connection header can't go
+with a browser sign-in, so its refusal shows under the picker and Connect stays off. It binds a loopback listener on `127.0.0.1` at an ephemeral port, opens the
 host's `/auth/native/authorize` (S256 PKCE, `state`, every query value percent-encoded,
 no `provider`: the host picks its only interactive provider itself and renders its own
 chooser for several) in an ephemeral `ASWebAuthenticationSession`, and keeps the first
@@ -146,11 +149,6 @@ can't say why. A record saved without credentials meeting the host with its sign
 or one saved with credentials meeting it without, fails with `.signInChanged`, which signs
 the active Hermes server out to its sign-in form, as a refused password does. The form saves
 what the host now asks for, so only a record without credentials shows the open warning.
-
-Debug and Hermex Branch builds have Settings → Testing → "Browser sign-in on password
-hosts" (`HermesBrowserSignIn.isForcedForTesting`): a host that also offers `basic` then
-signs in through the browser too, its `/login` form inside the sheet, which exercises
-the whole path against a password host. It applies the next time a form reads the status.
 
 The same connection form serves Bots, Settings and push setup. A schemeless
 address defaults to HTTPS, except recognizable private/local IPs (including

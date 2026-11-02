@@ -214,10 +214,10 @@ import OSLog
                 update(record) { $0.reportedRelease = self.serverVersion }
                 if let version = serverVersion, !HermesCompatibility.isSupported(version) { throw BotFailure.outdated(version) }
                 try connection.requireSameInstall(serverInstallID)
-                guard let method = HermesSignInMethod(status) else { throw BotFailure.unsupported }
+                guard let methods = HermesSignInMethod.offered(by: status) else { throw BotFailure.unsupported }
                 update(record) { $0[.status] = .passed }
                 stage = .signIn
-                if method == .open {
+                if methods == [.open] {
                     guard connection.hasNoCredentials else { throw BotFailure.signInChanged }
                     step = "page"
                     let page = try await Self.send(prepared(try HermesREST.dashboardPage.request(base: connection.address)),

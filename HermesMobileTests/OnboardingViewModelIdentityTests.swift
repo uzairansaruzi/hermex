@@ -469,6 +469,39 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(saved.hermesVersion, "0.21.5")
     }
 
+    /// A dashboard offering both a password and browser sign-in (#1539) asks for the password
+    /// first; picking Browser shows its page instead and never sends a password.
+    func testPickingBrowserOnAHostWithBothSignsInThroughThePresenter() async throws {
+        let keychain = InMemoryKeychainStore()
+        let gatekeeper = OnboardingGateKeeper()
+        gatekeeper.drainEverything()
+        let manager = makeGatedManager(GatedAuthAPIClient(gatekeeper: gatekeeper, outcome: .succeed(
+            AuthStatusResponse(authEnabled: true, loggedIn: false))), keychain: keychain)
+        let form = makeHermesForm(entry: .addServer) { request in
+            switch request.url?.path {
+            case "/api/status": return .json(200, HermesBrowserSignInTests.bothStatus)
+            case "/auth/native/token": return .json(200, HermesBrowserSignInTests.tokens)
+            case "/api/auth/me": return .json(200, .object(["provider": .string("nous"), "user_id": .string("u1")]))
+            default: return nil
+            }
+        }
+        form.serverURLString = "hermes.example"
+
+        await form.connect(authManager: manager)
+        XCTAssertTrue(form.offersSignInChoice)
+        XCTAssertEqual(form.signInMethod, .password)
+
+        form.signInMethod = .browser
+        XCTAssertFalse(form.showsPasswordField)
+        let presenter = HermesBrowserSignIn.Presenter { url in _ = try await HermesBrowserSignInTests.callback(url, code: "code-1") }
+        let added = await form.connect(authManager: manager, browser: presenter)
+
+        let server = URL(string: "https://hermes.example")!
+        XCTAssertEqual(added, server)
+        XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: server)?.oauth?.refreshToken, "refresh-1")
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
+    }
+
     /// A dashboard with no sign-in (#1314) asks for no username or password, and Connect adds it
     /// with none saved, whatever was typed before it answered.
     func testAnOpenHostIsAddedWithoutCredentials() async throws {
