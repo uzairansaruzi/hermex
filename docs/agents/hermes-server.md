@@ -70,17 +70,21 @@ server is #707's; a copy gets a fresh UUID.
 
 ## Connect form
 
-Onboarding's Connect page and Settings → Add Server are one connect form
-(`OnboardingViewModel`, #900). Its first Connect for an address reads the public
+First launch and Settings → Add Server open one sheet, `AddServerView` over
+`OnboardingViewModel` (#900, #1540): onboarding is a welcome page whose "Add your server"
+opens it (the setup prompt and private-network pages sit behind "I don't have one yet"),
+and a webui server signing in again opens it with its address filled in. The address comes
+first: its first tap, Continue, reads the public
 `/api/status` there, parsed by `BotConnection.address(_:)` and sent with the form's
 headers on a `HermesConnection` of its own. A JSON object carrying the `auth_required` flag is a
 Hermes dashboard, and `HermesSignInMethod.offered(by:)` reads how it offers to sign in: a
 password, the browser (below), both, or none (below). For a password, username and password appear, and the next Connect signs in once
 (`HermesConnection.signIn()`, so the version gate, install check and #880's copy apply),
-then calls `addHermesServer`. Hermes' own Host-header 400 and `.blocked` show their
-advice and stop, and a mode switch keeps that advice. Anything else, including an
+then calls `addHermesServer`; the status line under the address shows "Hermes <version>".
+Hermes' own Host-header 400 and `.blocked` show their advice and stop. Anything else, including an
 address or headers only the webui path accepts, goes on to the webui path unchanged:
-onboarding's `configure`, Add Server's `addServer`. Once a webui answered, the "Will
+onboarding's `configure`, Add Server's `addServer`, each showing the password field only
+once the webui asks for one. Once a webui answered, the "Will
 connect to" line shows `AuthManager.normalizedServerURL`'s URL instead of the Hermes
 parser's. Header rows without a value are never sent or saved. When a webui server's own
 Hermes connection uses exactly the same parsed address, the form offers "Use the sign-in
@@ -88,9 +92,9 @@ saved on <server>": it fills username, password and headers, and the sign-in sti
 expects that record's `install_id`. The copies stay until the address parses to another
 URL, even one differing only in scheme, or a webui answers there; then the unedited
 username and password and every header row still carrying a copied value leave the form.
-It is never matched by `install_id`, which any host can report. The connection mode
-(Same Wi-Fi, Private network, Cloudflare Tunnel) changes only the placeholder, the help
-and, for Cloudflare Tunnel, two empty `CF-Access-Client-*` rows; it is not saved.
+It is never matched by `install_id`, which any host can report. Connection Options holds
+Cloudflare Access's Client ID and Secret (the `CF-Access-Client-*` rows, edited as two
+fields), the other header rows, and the server's name, initials and color.
 
 ### Browser sign-in (#708)
 

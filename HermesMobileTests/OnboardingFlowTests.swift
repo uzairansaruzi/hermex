@@ -27,11 +27,19 @@ final class OnboardingFlowTests: XCTestCase {
         )
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldShowCopyReminder(
-                page: OnboardingFlowPolicy.connectPageIndex,
+                page: OnboardingFlowPolicy.agentPromptPageIndex + 1,
                 shownPrompt: .hermes,
                 copiedPrompts: []
             )
         )
+    }
+
+    /// "I don't have one yet" shows the setup prompt, then the private-network page, and its
+    /// last Continue opens the Add Server sheet (#1540).
+    func testSetupEndsOnTheAddServerSheet() {
+        let next = OnboardingFlowPolicy.page(after: OnboardingFlowPolicy.agentPromptPageIndex)
+        XCTAssertEqual(next, 1)
+        XCTAssertNil(OnboardingFlowPolicy.page(after: 1))
     }
 
     func testCopyReminderFollowsThePromptShown() {
@@ -60,7 +68,7 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
-                to: 3,
+                to: OnboardingFlowPolicy.agentPromptPageIndex + 1,
                 shownPrompt: .webUI,
                 copiedPrompts: [.hermes]
             )
@@ -68,7 +76,7 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
-                to: 3,
+                to: OnboardingFlowPolicy.agentPromptPageIndex + 1,
                 shownPrompt: .webUI,
                 copiedPrompts: [.webUI]
             )
@@ -79,7 +87,7 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
-                to: 3,
+                to: OnboardingFlowPolicy.agentPromptPageIndex + 1,
                 shownPrompt: .hermes,
                 copiedPrompts: []
             )
@@ -87,7 +95,7 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
-                to: 3,
+                to: OnboardingFlowPolicy.agentPromptPageIndex + 1,
                 shownPrompt: .hermes,
                 copiedPrompts: [.hermes]
             )
@@ -95,18 +103,10 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
-                to: 3,
+                to: OnboardingFlowPolicy.agentPromptPageIndex + 1,
                 shownPrompt: .hermes,
                 copiedPrompts: [],
                 bypassedPrompts: [.hermes]
-            )
-        )
-        XCTAssertFalse(
-            OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
-                from: OnboardingFlowPolicy.agentPromptPageIndex,
-                to: 1,
-                shownPrompt: .hermes,
-                copiedPrompts: []
             )
         )
     }
@@ -124,7 +124,7 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
-                to: 3,
+                to: OnboardingFlowPolicy.agentPromptPageIndex + 1,
                 shownPrompt: .webUI,
                 copiedPrompts: [],
                 bypassedPrompts: [.hermes]

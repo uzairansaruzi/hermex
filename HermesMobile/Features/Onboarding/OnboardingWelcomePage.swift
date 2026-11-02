@@ -1,6 +1,11 @@
 import SwiftUI
 
+/// Onboarding's one page (#1540): "Add your server" opens the Add Server sheet, and "I don't
+/// have one yet" the setup pages.
 struct OnboardingWelcomePage: View {
+    let addServer: () -> Void
+    let setUp: () -> Void
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var iconSize: CGFloat {
@@ -12,9 +17,43 @@ struct OnboardingWelcomePage: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+        GeometryReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                content
+                    .frame(minHeight: proxy.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .background(Color.black.ignoresSafeArea())
+        // The buttons stay in reach while large text scrolls the page.
+        .safeAreaInset(edge: .bottom, spacing: 0) { actions }
+    }
 
+    private var actions: some View {
+        VStack(spacing: 8) {
+            Button(action: addServer) {
+                Text("Add your server")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnboardingPrimaryButtonStyle())
+
+            Button(action: setUp) {
+                Text("I don’t have one yet")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.white.opacity(0.55))
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+        .background(Color.black)
+    }
+
+    private var content: some View {
+        ZStack {
             VStack(spacing: 0) {
                 Spacer(minLength: 24)
 

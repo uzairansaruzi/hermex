@@ -1,18 +1,24 @@
 import AuthenticationServices
 import SwiftUI
 
-/// Add Server: onboarding's connect form (`OnboardingViewModel`, #900) in a sheet, plus
-/// the new server's identity. A webui address goes through `AuthManager.addServer`, which
-/// never disturbs the active server on failure (#17); a Hermes dashboard gets its sign-in
-/// (username and password, its browser page, or a pick of the two) and becomes a Hermes server. Presented from Settings and from the
-/// avatar's long-press switcher on every home (#283, #899), and as "Sign In to Hermes" from
-/// Move to Hermes's host choice (#1266), which adds the server without switching to it.
+/// Add Server: the one sheet that adds a server (#1540), from first launch (`entry: .onboarding`,
+/// which also signs a webui server in again with its address filled in), Settings, the avatar's
+/// long-press switcher on every home (#283, #899), and Move to Hermes's "Sign In to Hermes"
+/// (#1266, with `moveSource`). The address comes first: Continue reads what answers there
+/// (`OnboardingViewModel`, #900), and only then does the sign-in show: a Hermes dashboard's
+/// username and password, its browser sign-in, or a pick of the two (#1539); a webui's password
+/// once it asks for one. Headers, Cloudflare Access and the new server's name, initials and color
+/// wait under Connection Options. Adding never disturbs the active server on failure (#17), and
+/// Move to Hermes adds without switching.
 struct AddServerView: View {
     @Bindable var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     /// Told the address of the server it added, before the sheet closes.
     private let onAdded: (URL) -> Void
+    /// Onboarding opened the sheet to sign a saved webui server in again.
+    private let isSigningInAgain: Bool
     @State private var form: OnboardingViewModel
     /// The Add in flight; closing the sheet cancels it before a Hermes server is added.
     @State private var operation: Task<Void, Never>?
@@ -21,75 +27,86 @@ struct AddServerView: View {
     @State private var initials = ""
     @State private var colorHex = HeaderLogoColor.defaultHex
 
-    init(authManager: AuthManager, moveSource: OnboardingViewModel.MoveSource? = nil, onAdded: @escaping (URL) -> Void = { _ in }) {
+    /// `savedServer` is onboarding's webui server signing in again; its address, headers and the
+    /// error that signed it out come back with it.
+    init(authManager: AuthManager, entry: OnboardingViewModel.Entry = .addServer, savedServer: URL? = nil,
+         moveSource: OnboardingViewModel.MoveSource? = nil, onAdded: @escaping (URL) -> Void = { _ in }) {
         self.authManager = authManager
         self.onAdded = onAdded
-        _form = State(initialValue: OnboardingViewModel(entry: .addServer, moveSource: moveSource))
+        isSigningInAgain = savedServer != nil
+        _form = State(initialValue: OnboardingViewModel(
+            entry: entry,
+            moveSource: moveSource,
+            savedServer: savedServer,
+            // Headers survive a session-expiry sign-out, so onboarding fills them in again (empty on
+            // first run or after a full sign-out). Settings never sees the active server's.
+            savedHeaders: entry == .onboarding ? authManager.currentCustomHeaders : [],
+            initialErrorMessage: savedServer == nil ? nil : authManager.lastErrorMessage
+        ))
     }
 
     private var canSubmit: Bool { form.canSubmit && !form.isWorking }
     private var isMoveSignIn: Bool { form.moveSource != nil }
-    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
+
+    private var title: String {
+        if isMoveSignIn { return String(localized: "Sign In to Hermes") }
+        return isSigningInAgain ? String(localized: "Sign In") : String(localized: "Add Server")
+    }
+
+    /// Continue until something answered at the address (or a webui's password is already
+    /// asked for), then what the tap signs in with.
+    private var submitTitle: String {
+        if form.showsHermesSignIn, form.signInMethod == .browser { return String(localized: "Sign In with Browser") }
+        if form.detectedKind == nil, !form.showsPasswordField { return String(localized: "Continue") }
+        return String(localized: "Connect")
+    }
+
+    /// The sign-in section, once there is something to sign in with.
+    private var showsSignIn: Bool {
+        form.offersSignInChoice || form.browserHeaderRejection != nil || form.showsPasswordField
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    SettingsCard(title: String(localized: "Network")) {
-                        ConnectionModePicker(selection: $form.connectionMode)
-                        SettingsFootnote(form.connectionMode.help)
-                    }
-                    .disabled(form.isConnectionLocked)
-
                     VStack(alignment: .leading, spacing: 10) {
                         SettingsCard(title: String(localized: "Server")) {
-                            serverFields
+                            addressFields
                         }
                         .disabled(form.isConnectionLocked)
 
-                        statusBanner
+                        statusLine
                             .padding(.horizontal, 4)
                     }
 
-                    SettingsCard(title: String(localized: "Connection Headers")) {
-                        if let source = form.moveSource, form.offersMoveSourceHeaders {
-                            moveSourceHeadersRow(source)
+                    if showsSignIn {
+                        SettingsCard(title: String(localized: "Sign In")) {
+                            signInFields
                         }
-                        if form.connectionMode == .cloudflareTunnel {
-                            SettingsFootnote(String(localized: "Cloudflare Access: paste your service token’s Client ID and Client Secret as the values. Leave both empty if Access is off."))
-                        }
-                        CustomHeadersEditor(headers: $form.customHeaders)
-                        if let source = form.moveSource, !source.headers.isEmpty {
-                            SettingsFootnote(form.usedMoveSourceHeaders
-                                ? String(localized: "Copied from \(source.name). Edit or remove them if this host uses a different token.")
-                                : String(localized: "If the same Cloudflare Access protects both hosts, \(source.name)’s service token works here too."))
-                        }
+                        .disabled(form.isConnectionLocked)
                     }
-                    .disabled(form.isConnectionLocked)
 
-                    SettingsCard(title: String(localized: "Identity")) {
-                        ServerIdentityEditor(
-                            displayName: $displayName,
-                            initials: $initials,
-                            colorHex: $colorHex,
-                            fallbackName: form.addressPreview?.host ?? ""
-                        )
+                    SettingsCard {
+                        if let source = form.moveSource, !source.headers.isEmpty {
+                            moveSourceHeaders(source)
+                                .disabled(form.isConnectionLocked)
+                            SettingsDivider()
+                        }
+                        connectionOptionsRow
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
-                .padding(.bottom, 36)
+                .padding(.bottom, 24)
             }
             .background(Color(.systemBackground))
-            .navigationTitle(isMoveSignIn ? String(localized: "Sign In to Hermes") : String(localized: "Add Server"))
+            .safeAreaInset(edge: .bottom, spacing: 0) { submitButton }
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isMoveSignIn ? String(localized: "Sign In") : String(localized: "Add"), action: submit)
-                        .disabled(!canSubmit)
                 }
             }
         }
@@ -103,11 +120,11 @@ struct AddServerView: View {
     }
 
     @ViewBuilder
-    private var serverFields: some View {
+    private var addressFields: some View {
         SettingsTextFieldRow(
             title: String(localized: "URL"),
             text: $form.serverURLString,
-            placeholder: form.connectionMode.placeholder,
+            placeholder: "https://hermes.example.com",
             keyboardType: .URL,
             autocapitalization: .never,
             submitLabel: .go,
@@ -123,10 +140,51 @@ struct AddServerView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
 
+    /// The one line under the address: checking, the error with its Details, or what answered.
+    @ViewBuilder
+    private var statusLine: some View {
+        if form.isWorking {
+            SettingsFootnote(String(localized: "Checking server…"))
+        } else if let errorMessage = form.errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                .font(AppFont.footnote())
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let attempt = form.failedAttempt {
+                ConnectionAttemptDetails(attempt: attempt)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if form.offersWebuiReplace {
+                SettingsButton(String(localized: "Replace…")) { isConfirmingReplace = true }
+                    .disabled(form.isConnectionLocked)
+            }
+        } else if form.showsHermesSignIn, form.signInMethod == .open {
+            Label(HermesSignInMethod.openWarning, systemImage: "exclamationmark.triangle.fill")
+                .font(AppFont.footnote())
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("hermes-open-dashboard-warning")
+        } else if form.showsHermesSignIn {
+            // A product name and its release: nothing to translate.
+            Label {
+                Text(verbatim: ["Hermes", form.hermesVersion].compactMap { $0 }.joined(separator: " "))
+            } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            }
+            .font(AppFont.footnote(weight: .medium))
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if form.showsPasswordField {
+            SettingsFootnote(String(localized: "This server requires a password."))
+        }
+    }
+
+    @ViewBuilder
+    private var signInFields: some View {
         if form.offersSignInChoice {
-            SettingsDivider()
-
             HermesSignInMethodPicker(selection: $form.signInMethod)
         }
 
@@ -140,8 +198,6 @@ struct AddServerView: View {
         if form.showsHermesCredentials {
             savedSignInRows
 
-            SettingsDivider()
-
             SettingsTextFieldRow(
                 title: String(localized: "Username"),
                 text: $form.username,
@@ -149,11 +205,11 @@ struct AddServerView: View {
                 autocapitalization: .never,
                 submitLabel: .next
             )
+
+            SettingsDivider()
         }
 
         if form.showsPasswordField {
-            SettingsDivider()
-
             SettingsTextFieldRow(
                 title: String(localized: "Password"),
                 text: $form.password,
@@ -175,6 +231,7 @@ struct AddServerView: View {
             Label("Filled in from \(reused.serverName)’s Hermes connection.", systemImage: "checkmark.circle")
                 .font(AppFont.footnote())
                 .foregroundStyle(.secondary)
+            SettingsDivider()
         } else {
             ForEach(form.savedSignIns, id: \.connection.id) { saved in
                 Button {
@@ -201,89 +258,117 @@ struct AddServerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Use the sign-in saved on \(saved.serverName)"))
                 .accessibilityHint(Text("Fills in the username, password and headers."))
+
+                SettingsDivider()
             }
         }
     }
 
-    /// "Use <webui server>'s Headers" (#1266): one tap fills the move source's headers in, visibly.
-    private func moveSourceHeadersRow(_ source: OnboardingViewModel.MoveSource) -> some View {
-        Button {
-            form.useMoveSourceHeaders()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "arrow.down.doc.fill")
-                    .font(AppFont.subheadline(weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Use \(source.name)’s Headers")
+    /// Move to Hermes's "Use <webui server>'s Headers" (#1266): one tap fills the move source's
+    /// headers in, visibly, before Continue reads the host behind them.
+    @ViewBuilder
+    private func moveSourceHeaders(_ source: OnboardingViewModel.MoveSource) -> some View {
+        if form.offersMoveSourceHeaders {
+            Button {
+                form.useMoveSourceHeaders()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.down.doc.fill")
                         .font(AppFont.subheadline(weight: .medium))
                         .foregroundStyle(Color.accentColor)
-                    Text("\(source.headers.count) headers")
-                        .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use \(source.name)’s Headers")
+                            .font(AppFont.subheadline(weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                        Text("\(source.headers.count) headers")
+                            .font(AppFont.caption())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+        }
+        SettingsFootnote(form.usedMoveSourceHeaders
+            ? String(localized: "Copied from \(source.name). Edit or remove them if this host uses a different token.")
+            : String(localized: "If the same Cloudflare Access protects both hosts, \(source.name)’s service token works here too."))
+    }
+
+    /// How many options differ from their default: each header sent, and a chosen name,
+    /// initials or color.
+    private var changedOptionCount: Int {
+        form.customHeaders.filter { !$0.sanitizedName.isEmpty && !$0.sanitizedValue.isEmpty }.count
+            + (displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1)
+            + (initials.isEmpty ? 0 : 1)
+            + (colorHex == HeaderLogoColor.defaultHex ? 0 : 1)
+    }
+
+    private var connectionOptionsRow: some View {
+        NavigationLink {
+            ConnectionOptionsPage(form: form, displayName: $displayName, initials: $initials, colorHex: $colorHex)
+        } label: {
+            HStack(spacing: 12) {
+                Text("Connection Options")
+                    .font(AppFont.subheadline())
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 12)
+                Group {
+                    if changedOptionCount == 0 {
+                        Text("Default")
+                    } else {
+                        Text(changedOptionCount, format: .number)
+                    }
+                }
+                .font(AppFont.subheadline())
+                .foregroundStyle(.secondary)
+                Image(systemName: "chevron.forward")
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 30)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
     }
 
-    /// What the last Add found, under the address it is about.
-    @ViewBuilder
-    private var statusBanner: some View {
-        if form.isWorking {
-            SettingsFootnote(String(localized: "Checking server…"))
-        } else if form.showsHermesSignIn, form.errorMessage == nil {
-            switch form.signInMethod {
-            case .password:
-                SettingsFootnote(String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."))
-            case .browser:
-                SettingsFootnote(String(localized: "Hermes dashboard found. It signs in through your browser."))
-            case .open:
-                Label(HermesSignInMethod.openWarning, systemImage: "exclamationmark.triangle.fill")
-                    .font(AppFont.footnote())
-                    .foregroundStyle(.orange)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("hermes-open-dashboard-warning")
-            }
-        } else if form.showsPasswordField, form.detectedKind != .hermes, form.errorMessage == nil {
-            SettingsFootnote(String(localized: "This server requires a password."))
+    /// Continue, then Connect or Sign In with Browser, pinned under the form so it stays in
+    /// reach at every text size.
+    private var submitButton: some View {
+        Button(action: submit) {
+            Text(submitTitle)
+                .font(AppFont.subheadline(weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 30)
         }
-
-        if let errorMessage = form.errorMessage {
-            Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                .font(AppFont.footnote())
-                .foregroundStyle(.orange)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-
-        if let attempt = form.failedAttempt {
-            ConnectionAttemptDetails(attempt: attempt)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-
-        if form.offersWebuiReplace {
-            SettingsButton(String(localized: "Replace…")) { isConfirmingReplace = true }
-                .disabled(form.isConnectionLocked)
-        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(!canSubmit)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(Color(.systemBackground))
     }
 
     private func submit() { submit(replacingWebuiServer: false) }
 
     private func submit(replacingWebuiServer: Bool) {
         guard canSubmit, !form.isConnectionLocked else { return }
+        let savedServers = Set(authManager.servers.map(\.id))
         operation = Task {
-            // A URL means the server is already saved, so its chosen identity applies even
-            // when the sheet closed meanwhile.
+            // A URL means the server is saved, so its chosen identity applies even when the
+            // sheet closed meanwhile.
             guard let url = await form.connect(authManager: authManager, replacingWebuiServer: replacingWebuiServer,
                                                browser: .init(webAuthenticationSession)) else { return }
-            // A replaced webui server's name, initials and color stay unless new ones were chosen.
+            // A server saved before, such as a replaced webui server or one signing in again,
+            // keeps its name, initials and color unless new ones were chosen.
             let choseIdentity = !displayName.isEmpty || !initials.isEmpty || colorHex != HeaderLogoColor.defaultHex
-            if !replacingWebuiServer || choseIdentity { applyIdentity(to: url) }
+            if !savedServers.contains(url.absoluteString) || choseIdentity { applyIdentity(to: url) }
             if !Task.isCancelled { onAdded(url) }
             dismiss()
         }
@@ -308,6 +393,64 @@ struct AddServerView: View {
             initials: finalInitials,
             headerLogoColorHex: colorHex
         )
+    }
+}
+
+/// Connection Options (#1540): everything Add Server can leave at its default. Cloudflare
+/// Access's service token, other connection headers, and the new server's name, initials and
+/// color. Header rows without a value are never sent or saved.
+private struct ConnectionOptionsPage: View {
+    @Bindable var form: OnboardingViewModel
+    @Binding var displayName: String
+    @Binding var initials: String
+    @Binding var colorHex: String
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 18) {
+                SettingsCard(title: "Cloudflare Access") {
+                    SettingsTextFieldRow(
+                        title: String(localized: "Client ID"),
+                        text: $form.accessClientID,
+                        placeholder: "",
+                        autocapitalization: .never
+                    )
+
+                    SettingsDivider()
+
+                    SettingsTextFieldRow(
+                        title: String(localized: "Client Secret"),
+                        text: $form.accessClientSecret,
+                        placeholder: "",
+                        autocapitalization: .never,
+                        isSecure: true
+                    )
+
+                    SettingsFootnote(String(localized: "Cloudflare Access: paste your service token’s Client ID and Client Secret as the values. Leave both empty if Access is off."))
+                }
+                .disabled(form.isConnectionLocked)
+
+                SettingsCard(title: String(localized: "Connection Headers")) {
+                    CustomHeadersEditor(headers: $form.otherHeaders)
+                }
+                .disabled(form.isConnectionLocked)
+
+                SettingsCard(title: String(localized: "Identity")) {
+                    ServerIdentityEditor(
+                        displayName: $displayName,
+                        initials: $initials,
+                        colorHex: $colorHex,
+                        fallbackName: form.addressPreview?.host ?? ""
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 36)
+        }
+        .background(Color(.systemBackground))
+        .navigationTitle(String(localized: "Connection Options"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -380,10 +523,10 @@ private struct SettingsCard<Content: View>: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @ScaledMetric(relativeTo: .body) private var contentSpacing: CGFloat = 12
 
-    let title: String
+    var title: String?
     @ViewBuilder let content: Content
 
-    init(title: String, @ViewBuilder content: () -> Content) {
+    init(title: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.content = content()
     }
@@ -392,12 +535,14 @@ private struct SettingsCard<Content: View>: View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
 
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .textCase(.uppercase)
-                .font(AppFont.caption(weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 4)
-                .padding(.bottom, 8)
+            if let title {
+                Text(title)
+                    .textCase(.uppercase)
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 8)
+            }
 
             VStack(alignment: .leading, spacing: contentSpacing) {
                 content

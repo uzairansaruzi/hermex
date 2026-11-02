@@ -12,9 +12,9 @@ _Avoid_: server (alone, when the kind matters), WebUI
 A configured Hermes dashboard that Hermex reaches directly, and the default kind when adding a server. Its sign-in is its own Hermes connection, and it opens on the Bots inbox.
 _Avoid_: Hermes connection (that is the sign-in), bot server
 
-**Connection mode**:
-How this iPhone reaches the server, chosen in the connect form: Same Wi-Fi, Private network or Cloudflare Tunnel. It changes only the form's placeholder, help and header rows, and is not saved.
-_Avoid_: network type, connection type
+**Connection Options**:
+The Add Server sheet's page for everything optional: Cloudflare Access's service token, other connection headers, and the new server's name, initials and color. Network hints appear only in a failed connection's advice.
+_Avoid_: Advanced, connection mode, network type
 
 **Move to Hermes**:
 Copying a webui server's chats to a Hermes server and routing its old links, Shortcuts and notifications there. The webui server stays configured and usable, marked **Moved**, until the user removes it.
