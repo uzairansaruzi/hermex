@@ -279,6 +279,7 @@ enum TranscriptMediaParser {
             }
 
             if line[cursor...].hasPrefix("MEDIA:"),
+               !inlineCodeRanges.contains(where: { $0.contains(cursor) }),
                let referenceRange = referenceRange(
                    in: line,
                    markerStart: cursor,

@@ -144,6 +144,26 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertTrue(text.contains("file:///tmp/fenced.png"))
     }
 
+    /// A `MEDIA:` mention inside inline code or a fenced block is prose, not a
+    /// file reference — matching the `![` and `file://` branches and the webui's
+    /// delimiter-evidence gate, which keeps a bare backtick-wrapped token literal.
+    func testMediaTokenInsideInlineOrFencedCodeStaysLiteral() {
+        let markdown = """
+        Before `MEDIA:` then `MEDIA:/tmp/inline.png` bare MEDIA:/tmp/outside.png
+        ```text
+        MEDIA:/tmp/fenced.png
+        ```
+        """
+
+        let segments = TranscriptMediaParser.segments(in: markdown)
+
+        XCTAssertEqual(mediaReferences(in: segments).map(\.rawReference), ["/tmp/outside.png"])
+        let text = textSegments(in: segments).joined()
+        XCTAssertTrue(text.contains("`MEDIA:`"))
+        XCTAssertTrue(text.contains("`MEDIA:/tmp/inline.png`"))
+        XCTAssertTrue(text.contains("MEDIA:/tmp/fenced.png"))
+    }
+
     func testUnsupportedSVGIsNotRasterImageCandidate() {
         let segments = TranscriptMediaParser.segments(in: "MEDIA:/tmp/vector.svg")
         let media = mediaReferences(in: segments).first
