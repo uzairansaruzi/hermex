@@ -1,0 +1,71 @@
+#!/usr/bin/env -S node --experimental-strip-types --no-warnings
+// Open Bot Avatar MIT oracle. No install/build, no runtime or CI JavaScript dependency.
+import {readFileSync, readdirSync, mkdirSync, writeFileSync} from 'node:fs';
+import {join, resolve, dirname} from 'node:path';
+import {pathToFileURL, fileURLToPath} from 'node:url';
+import {execFileSync} from 'node:child_process';
+const pin = '3a5119877844165eebafe57d3100da475f67d0a8';
+const repo = process.argv[2];
+if (!repo) throw new Error('Usage: scripts/capture-avatar-goldens <read-only upstream clone>');
+const head = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
+if (head !== pin) throw new Error(`Expected Open Bot Avatar ${pin}; found ${head}`);
+const source = name => import(pathToFileURL(join(resolve(repo), 'packages/core/src', name + '.ts')).href);
+const {avatarFrame, preparedVolume} = await source('render');
+const {validateAvatar} = await source('validate');
+const {computePose, hashString} = await source('motion');
+const {examples} = await source('examples');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const dir = join(root, 'HermesMobileTests/Fixtures/AvatarEngine'); mkdirSync(dir, {recursive:true});
+const gallery = readdirSync(join(repo,'gallery')).filter(f => f.endsWith('.json') && f !== 'colors.json').sort().map(f => JSON.parse(readFileSync(join(repo,'gallery',f),'utf8')));
+const definitions = [...gallery, ...examples.filter(e => !gallery.some(d => d.id === e.id))];
+if (definitions.length !== 22) throw new Error(`Expected 22 definitions, found ${definitions.length}`);
+const colors = JSON.parse(readFileSync(join(repo,'gallery/colors.json'),'utf8'));
+const round = n => Math.round(n * 1e7) / 1e7;
+const summary = polys => {
+ const pts = polys.flat(), xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+ const bounds=[Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)];
+ const samples=[[0.17,0.23],[0.38,0.71],[0.59,0.47],[0.73,0.19],[0.89,0.83]].map(([u,v])=>{
+  const x=bounds[0]+u*(bounds[2]-bounds[0]),y=bounds[1]+v*(bounds[3]-bounds[1]);
+  let inside=false, distance=Infinity;
+  for(const poly of polys) for(let i=0,j=poly.length-1;i<poly.length;j=i++) {
+   const a=poly[j],b=poly[i],dx=b[0]-a[0],dy=b[1]-a[1],len=dx*dx+dy*dy;
+   const t=len>0?Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/len)):0;
+   distance=Math.min(distance,Math.hypot(a[0]+t*dx-x,a[1]+t*dy-y));
+   if((a[1]>y)!==(b[1]>y) && x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]) inside=!inside;
+  }
+  return inside?distance:-distance;
+ });
+ return [polys.length,pts.length,...bounds,...samples].map(round);
+};
+const frames = [];
+for (const definition of definitions) for (const depth of [0,6,14]) {
+ const {vol} = preparedVolume(definition,depth);
+ const cases = [{depth,reducedMotion:true}];
+ if (depth === 6 && ['barbell','sprout','cat','witch-hat','mug','chat'].includes(definition.id)) {
+   for (const motion of ['thinking','happy']) {
+     let time = 0.73;
+     while (computePose({seed:hashString(definition.id),time,motion,reducedMotion:false}).blink !== 0) time += 0.23;
+     cases.push({depth,motion,time});
+   }
+   cases.push({depth,reducedMotion:true,gaze:{x:1,y:-1}}, {depth,reducedMotion:true,view:{yaw:1.8,pitch:-0.4}}, {depth,reducedMotion:true,view:{yaw:3.2,pitch:0.6}},
+     {depth,motion:'thinking',time:0.1,gaze:{x:-0.7,y:0.8,weight:0.6},reducedMotion:true});
+ }
+ for (const options of cases) {
+   const f = avatarFrame(definition,options);
+   frames.push({id:definition.id,options,root:f.root,shapes:f.shapes.map(s=>({key:s.key,matrix:s.matrix,mark:s.kind==='eye'?s.mark:undefined})),
+    parts:vol.parts.map(p=>({kind:p.kind,depth:p.depth,thickness:p.thickness,z:p.zSlices.map(s=>[s.at,s.inset,...summary(s.loops)]),x:p.xSlices.map(s=>[s.at,s.inset,...summary(s.loops)])})),eyeZ:vol.eyeZ,eyeScale:vol.eyeScale});
+ }
+}
+const base = definitions.find(d=>d.id==='controller');
+const cases = [];
+const add = (label, input) => { const result=validateAvatar(input); cases.push({label,input,valid:result.ok,normalized:result.ok?result.value:undefined}); };
+add('valid',base); add('unknown top',{...base,evil:true}); add('unknown body',{...base,body:{...base.body,fill:'red'}}); add('unknown eyes',{...base,eyes:{...base.eyes,z:0}});
+add('bad version',{...base,version:2}); add('bad slug',{...base,id:'Bad ID'}); add('bad name',{...base,name:'<script>'}); add('bad scale',{...base,eyes:{...base.eyes,scale:0.1}}); add('bad spacing',{...base,eyes:{...base.eyes,spacing:2}});
+for (const [label,path] of Object.entries({maxChars:'M'+ ' '.repeat(6000),maxSegments:'M10 10'+ 'L20 20'.repeat(401)+'Z',maxSubpaths:'M10 10L20 20L10 20Z'.repeat(17),coordMin:'M-21 10L90 10L90 90Z',coordMax:'M10 10L121 10L90 90Z',radii:'M10 10A-1 2 0 0 1 20 20Z',flags:'M10 10A10 10 0 2 1 20 20Z',nonfinite:'M1e999 10L90 90Z',unsupported:'M10 10R20 20Z',truncated:'M10',numbersAfterClose:'M10 10Z 12',safeArea:'M1 1H99V99H1Z',tooSmall:'M40 40H60V60H40Z',tooThin:'M10 10L90 10L90 24Z',hole:'M10 10H90V90H10ZM20 20V80H80V20Z'})) add(label,{...base,body:{path}});
+add('relative and shorthand',{...base,body:{path:'m10 10h80v80h-80z'}});
+writeFileSync(join(dir,'goldens.json'),JSON.stringify({pin,definitions,frames,validation:cases},(_,v)=>typeof v==='number'?round(v):v));
+// A compact typed literal avoids resource lookup and generic-expression type-checking costs.
+const quote = s => JSON.stringify(s);
+const catalog = `// Open Bot Avatar (Dominik Scholz), MIT. Generated from pin ${pin}.\nimport Foundation\n\nnonisolated enum BotAvatarCatalog {\n    struct Entry: Sendable { let definition: BotAvatarDefinition; let color: String }\n    static let entries: [Entry] = [\n` + definitions.map(d=>`        Entry(definition: BotAvatarDefinition(version: 1, id: ${quote(d.id)}, name: ${quote(d.name)}, body: .init(path: ${quote(d.body.path)}), eyes: .init(x: ${d.eyes.x}, y: ${d.eyes.y}, spacing: ${d.eyes.spacing}, scale: ${d.eyes.scale})), color: ${quote(colors[d.id]??'#ff6a1a')})`).join(',\n') + '\n    ]\n}\n';
+writeFileSync(join(root,'HermesMobile/Features/Bots/AvatarEngine/BotAvatarCatalog.swift'),catalog);
+console.log(`Captured ${definitions.length} definitions, ${frames.length} frames, ${cases.length} validation cases at ${pin}`);

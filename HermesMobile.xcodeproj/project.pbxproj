@@ -673,6 +673,17 @@
 		559000000000000000000006 /* PushPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000016 /* PushPreviewTests.swift */; };
 		C0DE88500000000000000003 /* AppLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE88500000000000000004 /* AppLockTests.swift */; };
 		559000000000000000000007 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
+		1B7A1EB6FE764155A0F2D94A /* AvatarContour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 009E8C2E3F7FFB406DDFAF71 /* AvatarContour.swift */; };
+		C407BD3A96EDA9F6FEA6953F /* AvatarGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79163C9D2E9B962FDD482BB /* AvatarGeometry.swift */; };
+		57D39CEAA070F94DED9BF9EF /* AvatarPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = E818AF53363AACEC49FE6506 /* AvatarPath.swift */; };
+		DF86F483F282ADBAF0DFE036 /* BotAvatarCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3941E8D7D212A9851D12D57 /* BotAvatarCatalog.swift */; };
+		6B1D1C19100AFF6D2F6CC025 /* BotAvatarDefinition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F4FC0FE7E1F57469668E6E /* BotAvatarDefinition.swift */; };
+		BEA210D522087AE56A197BC0 /* BotAvatarFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB018DB48265930863B0FD8 /* BotAvatarFrame.swift */; };
+		D35FF5B23B1347CFEB12E1DD /* BotAvatarPose.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DC6AE2F9A8F1BF19E2DF45B /* BotAvatarPose.swift */; };
+		DB1585A648103DDEDEA82FFE /* BotAvatarRGB.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3846615D80478CEA2F8A6503 /* BotAvatarRGB.swift */; };
+		33F9F8D0416B96FCD29BC40F /* BotAvatarVolume.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB2D89005BE829BD964E6EE4 /* BotAvatarVolume.swift */; };
+		7D9E3A68562E7A6ACDEC9680 /* AvatarEngineGoldenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2056FD0C2CB61F520F5BCDCD /* AvatarEngineGoldenTests.swift */; };
+		166EC8C9C3B31DD80922EB9D /* BotAvatarEyeLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59214B44D64BC232DBD234C2 /* BotAvatarEyeLayout.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1385,6 +1396,17 @@
 		559000000000000000000015 /* PushNotificationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationRouter.swift; sourceTree = "<group>"; };
 		559000000000000000000016 /* PushPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPreviewTests.swift; sourceTree = "<group>"; };
 		C0DE88500000000000000004 /* AppLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockTests.swift; sourceTree = "<group>"; };
+		009E8C2E3F7FFB406DDFAF71 /* AvatarContour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarContour.swift; sourceTree = "<group>"; };
+		A79163C9D2E9B962FDD482BB /* AvatarGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarGeometry.swift; sourceTree = "<group>"; };
+		E818AF53363AACEC49FE6506 /* AvatarPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarPath.swift; sourceTree = "<group>"; };
+		B3941E8D7D212A9851D12D57 /* BotAvatarCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarCatalog.swift; sourceTree = "<group>"; };
+		51F4FC0FE7E1F57469668E6E /* BotAvatarDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarDefinition.swift; sourceTree = "<group>"; };
+		BFB018DB48265930863B0FD8 /* BotAvatarFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarFrame.swift; sourceTree = "<group>"; };
+		0DC6AE2F9A8F1BF19E2DF45B /* BotAvatarPose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarPose.swift; sourceTree = "<group>"; };
+		3846615D80478CEA2F8A6503 /* BotAvatarRGB.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarRGB.swift; sourceTree = "<group>"; };
+		CB2D89005BE829BD964E6EE4 /* BotAvatarVolume.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarVolume.swift; sourceTree = "<group>"; };
+		2056FD0C2CB61F520F5BCDCD /* AvatarEngineGoldenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AvatarEngineGoldenTests.swift; sourceTree = "<group>"; };
+		59214B44D64BC232DBD234C2 /* BotAvatarEyeLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarEyeLayout.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1539,6 +1561,7 @@
 				A496B07E0000000000000002 /* BotModeGateTests.swift */,
 				A496B07E0000000000000004 /* BotConnectionVersionTests.swift */,
 				A760F1A70000000000000002 /* HermesAgentFixtureTests.swift */,
+				2056FD0C2CB61F520F5BCDCD /* AvatarEngineGoldenTests.swift */,
 				A1213000000000000000A006 /* MoveToHermesTransferTests.swift */,
 				A1214000000000000000A004 /* MoveToHermesReconcileTests.swift */,
 				A1216000000000000000A006 /* MoveToHermesRunnerTests.swift */,
@@ -1864,6 +1887,7 @@
 				B48200000000000000000033 /* BotCreateView.swift */,
 				B48200000000000000000003 /* BotProfileEditor.swift */,
 				B48200000000000000000021 /* BotFaceMotion.swift */,
+				A15510000000000000000001 /* AvatarEngine */,
 				B48200000000000000000005 /* BotProfileEditorView.swift */,
 				9FE221A56F264309AF71E18B /* BotsInboxView.swift */,
 				AF0AA6F787074B4A8DC903FF /* BotSearchView.swift */,
@@ -2373,6 +2397,18 @@
 			path = Insights;
 			sourceTree = "<group>";
 		};
+A15510000000000000000001 /* AvatarEngine */ = {isa = PBXGroup; children = (
+				59214B44D64BC232DBD234C2 /* BotAvatarEyeLayout.swift */,
+				009E8C2E3F7FFB406DDFAF71 /* AvatarContour.swift */,
+				A79163C9D2E9B962FDD482BB /* AvatarGeometry.swift */,
+				E818AF53363AACEC49FE6506 /* AvatarPath.swift */,
+				B3941E8D7D212A9851D12D57 /* BotAvatarCatalog.swift */,
+				51F4FC0FE7E1F57469668E6E /* BotAvatarDefinition.swift */,
+				BFB018DB48265930863B0FD8 /* BotAvatarFrame.swift */,
+				0DC6AE2F9A8F1BF19E2DF45B /* BotAvatarPose.swift */,
+				3846615D80478CEA2F8A6503 /* BotAvatarRGB.swift */,
+				CB2D89005BE829BD964E6EE4 /* BotAvatarVolume.swift */,
+); path = Bots/AvatarEngine; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -2609,6 +2645,16 @@
 				B48200000000000000000034 /* BotCreateView.swift in Sources */,
 				B48200000000000000000004 /* BotProfileEditor.swift in Sources */,
 				B48200000000000000000022 /* BotFaceMotion.swift in Sources */,
+				166EC8C9C3B31DD80922EB9D /* BotAvatarEyeLayout.swift in Sources */,
+				33F9F8D0416B96FCD29BC40F /* BotAvatarVolume.swift in Sources */,
+				DB1585A648103DDEDEA82FFE /* BotAvatarRGB.swift in Sources */,
+				D35FF5B23B1347CFEB12E1DD /* BotAvatarPose.swift in Sources */,
+				BEA210D522087AE56A197BC0 /* BotAvatarFrame.swift in Sources */,
+				6B1D1C19100AFF6D2F6CC025 /* BotAvatarDefinition.swift in Sources */,
+				DF86F483F282ADBAF0DFE036 /* BotAvatarCatalog.swift in Sources */,
+				57D39CEAA070F94DED9BF9EF /* AvatarPath.swift in Sources */,
+				C407BD3A96EDA9F6FEA6953F /* AvatarGeometry.swift in Sources */,
+				1B7A1EB6FE764155A0F2D94A /* AvatarContour.swift in Sources */,
 				B48200000000000000000006 /* BotProfileEditorView.swift in Sources */,
 				D4E8321C0A744DE3A5B8C997 /* ChatComposerPresentation.swift in Sources */,
 				A990ABE1D2654992AD262B77 /* BotProtocol.swift in Sources */,
@@ -3045,6 +3091,7 @@
 				A496B07E0000000000000001 /* BotModeGateTests.swift in Sources */,
 				A496B07E0000000000000003 /* BotConnectionVersionTests.swift in Sources */,
 				A760F1A70000000000000001 /* HermesAgentFixtureTests.swift in Sources */,
+				7D9E3A68562E7A6ACDEC9680 /* AvatarEngineGoldenTests.swift in Sources */,
 				A1213000000000000000A005 /* MoveToHermesTransferTests.swift in Sources */,
 				A1214000000000000000A003 /* MoveToHermesReconcileTests.swift in Sources */,
 				A1216000000000000000A005 /* MoveToHermesRunnerTests.swift in Sources */,
