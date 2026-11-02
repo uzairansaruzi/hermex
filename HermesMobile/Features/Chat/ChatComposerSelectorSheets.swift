@@ -72,6 +72,215 @@ struct ChatSettingsSheet<WorkspacePicker: View, BranchControl: View, ProfileCont
     }
 }
 
+/// The rows of Model settings that change a setting on the host.
+enum ModelSettingsRow: Equatable {
+    case model
+    case thinking
+}
+
+/// What a row shows beside its value after the user changes it. A change never reads as
+/// applied until the host answers: the row's value comes from the chat's state.
+enum ModelSettingsRowStatus: Equatable {
+    case pending
+    case failed(String)
+    /// The host took the change and applies it later, such as after the running response.
+    case notice(String)
+
+    /// Only the row that asked hears the answer, and only since this sheet opened.
+    static func resolve(
+        row: ModelSettingsRow,
+        lastChanged: ModelSettingsRow?,
+        isUpdating: Bool,
+        errorMessage: String?,
+        notice: String?
+    ) -> Self? {
+        guard row == lastChanged else { return nil }
+        if isUpdating { return .pending }
+        if let errorMessage { return .failed(errorMessage) }
+        if let notice { return .notice(notice) }
+        return nil
+    }
+}
+
+/// The chat's model and how it runs, opened from the composer's model label. Each change
+/// applies on its own, so there is no Save. Picking a model can raise the host's
+/// expensive-model question, which the composer attaches over this sheet.
+struct ModelSettingsSheet<AllModels: View>: View {
+    let selection: ComposerModelEffortSelection
+    let providerName: String?
+    let favorites: [ModelCatalogOption]
+    let recents: [ModelCatalogOption]
+    let isDisabled: Bool
+    let isUpdating: Bool
+    let errorMessage: String?
+    let notice: String?
+    let onSelectModel: (ModelCatalogOption) -> Void
+    let onSelectEffort: (String) -> Void
+    /// All models, given the commit that keeps this sheet's status in step.
+    let allModelsPicker: (@escaping (ModelCatalogOption) -> Void) -> AllModels
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var showsAllModels = false
+    @State private var lastChanged: ModelSettingsRow?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    currentModelRow
+                    if selection.showsEffortControl { thinkingRow }
+                }
+
+                if !favorites.isEmpty {
+                    Section {
+                        ForEach(favorites, id: \.self, content: modelRow)
+                    } header: {
+                        HStack {
+                            Text("Favorites")
+                            Spacer(minLength: 8)
+                            Button("All models") { showsAllModels = true }
+                                .font(.caption.weight(.semibold))
+                                .textCase(nil)
+                        }
+                    }
+                }
+
+                if !recents.isEmpty {
+                    Section("Recent") {
+                        ForEach(recents, id: \.self, content: modelRow)
+                    }
+                }
+            }
+            .navigationTitle("Model settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showsAllModels) { allModelsPicker(select) }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var currentModelRow: some View {
+        Button { showsAllModels = true } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 10) {
+                    glyph(for: selection.model)
+                    Text(verbatim: selection.model.displayName)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.forward")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                // Keeps the requested level and the one the host sends apart (#1016).
+                Text(verbatim: [providerName, selection.effortTitle].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                statusLine(for: .model)
+            }
+        }
+        .accessibilityHint(Text("All models"))
+    }
+
+    /// Stands in for the final Thinking control, whose look waits on the owner's mock pick.
+    @ViewBuilder
+    private var thinkingRow: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let only = selection.staticEffort {
+                LabeledContent("Thinking", value: only.title)
+            } else {
+                LabeledContent("Thinking") {
+                    Menu {
+                        ForEach(selection.effortOptions) { option in
+                            Button {
+                                // Picking the current level asks nothing, so no answer belongs here.
+                                guard selection.committedEffort != option.id else { return }
+                                lastChanged = .thinking
+                                onSelectEffort(option.id)
+                            } label: {
+                                if selection.committedEffort == option.id {
+                                    Label(option.title, systemImage: "checkmark")
+                                } else {
+                                    Text(option.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(selection.committedEffort.map(ReasoningEffortOption.title(for:)) ?? String(localized: "Reasoning"))
+                    }
+                    .disabled(isDisabled)
+                }
+            }
+            statusLine(for: .thinking)
+        }
+    }
+
+    private func isCurrent(_ option: ModelCatalogOption) -> Bool {
+        option.matchesSelection(modelID: selection.model.id, providerID: selection.modelProviderID)
+    }
+
+    private func modelRow(_ option: ModelCatalogOption) -> some View {
+        let isCurrent = isCurrent(option)
+        return Button { select(option) } label: {
+            HStack(spacing: 10) {
+                glyph(for: option)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(verbatim: option.displayName)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(verbatim: option.id)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if isCurrent {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .disabled(isDisabled)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private func glyph(for option: ModelCatalogOption) -> some View {
+        if ProviderGlyphKind.resolve(providerID: option.providerID ?? option.id.modelIDProviderPrefix) != nil {
+            ProviderGlyph(providerID: option.providerID ?? option.id.modelIDProviderPrefix)
+                .frame(width: 17, height: 17)
+        }
+    }
+
+    private func select(_ option: ModelCatalogOption) {
+        guard !isCurrent(option) else { return }
+        lastChanged = .model
+        onSelectModel(option)
+    }
+
+    @ViewBuilder
+    private func statusLine(for row: ModelSettingsRow) -> some View {
+        switch ModelSettingsRowStatus.resolve(
+            row: row, lastChanged: lastChanged, isUpdating: isUpdating, errorMessage: errorMessage, notice: notice
+        ) {
+        case .pending:
+            Text("Applying…").font(.caption).foregroundStyle(.secondary)
+        case .failed(let message):
+            Text(verbatim: message).font(.caption).foregroundStyle(.red)
+        case .notice(let message):
+            Text(verbatim: message).font(.caption).foregroundStyle(.secondary)
+        case nil:
+            EmptyView()
+        }
+    }
+}
+
 struct ComposerWorkspacePickerSheet: View {
     /// Direct-Hermes validates a typed path itself; webui uses trusted suggestions.
     var allowsCustomPath = false

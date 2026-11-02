@@ -309,6 +309,11 @@ struct MessageComposerView: View {
     /// Chat settings, which the header opens. The composer presents it because its pickers
     /// and their gates live here.
     var isChatSettingsPresented: Binding<Bool> = .constant(false)
+    /// Model settings, which the model label opens. `ChatView` owns it so its own
+    /// expensive-model question can stand down while the sheet is up.
+    var isModelSettingsPresented: Binding<Bool> = .constant(false)
+    /// Where Model settings asks the host's expensive-model question. Nil outside Hermes.
+    var modelConfirmationControls: BotChatControls?
     /// Nothing is sent yet: workspace, branch, Profile and context sit above the composer.
     var showsNewChatControls = false
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
@@ -331,7 +336,6 @@ struct MessageComposerView: View {
     /// clears it, so coming back to the same spot opens the panel again.
     @State private var dismissedSuggestionsAnchor: SuggestionAnchor?
     @State private var noticeMessage: String?
-    @State private var showsAllModelsSheet = false
     @State private var showsWorkspaceSheet = false
     @State private var showsGitBranchPicker = false
     @State private var showsChatSettingsBranchPicker = false
@@ -853,36 +857,11 @@ struct MessageComposerView: View {
 
     var body: some View {
         composerWithLifecycle
-        .sheet(isPresented: $showsAllModelsSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
-            ModelPickerSheet(
-                configuration: .composer,
-                modelGroups: modelGroups,
-                selectedModelID: selectedModelID,
-                selectedModelProviderID: selectedModelProviderID,
-                favoriteModelKeys: favoriteModelKeys,
-                recentModelKeys: recentModelKeys,
-                isSelected: { option in
-                    option.matchesSelection(
-                        modelID: selectedModelID,
-                        providerID: selectedModelProviderID
-                    )
-                },
-                onSelect: { option in
-                    selectModel(option)
-                },
-                onToggleFavorite: { option in
-                    favoriteModelKeys = ModelFavoritesStore(server: server).toggleFavorite(for: option)
-                },
-                onDeleteSavedCustom: { option in
-                    favoriteModelKeys = ModelFavoritesStore(server: server).removeFavorite(for: option)
-                    recentModelKeys = ModelRecentsStore(server: server).removeRecent(for: option)
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .task {
-                await onModelPickerOpen()
-            }
+        .sheet(isPresented: isModelSettingsPresented, onDismiss: restoreFocusAfterPresentationIfNeeded) {
+            modelSettingsSheet
+        }
+        .onChange(of: isModelSettingsPresented.wrappedValue) { _, isPresented in
+            if isPresented { prepareForComposerPresentation() }
         }
         .sheet(isPresented: $showsWorkspaceSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
             workspacePickerSheet()
@@ -1431,20 +1410,68 @@ struct MessageComposerView: View {
 
     /// `showsTitle` is false in the pill, where the logo is the only model identity.
     private func modelEffortControl(showsTitle: Bool) -> some View {
-        ComposerModelEffortMenu(
+        ComposerModelLabelButton(
             showsTitle: showsTitle,
             selection: currentModelEffortSelection,
-            modelGroups: modelGroups,
-            favoriteModelKeys: favoriteModelKeys,
-            recentModelKeys: recentModelKeys,
             isDisabled: isConfigurationControlDisabled,
             color: metaControlColor,
             controlFont: metaControlFont,
-            chevronFont: metaChevronFont,
+            chevronFont: metaChevronFont
+        ) {
+            isModelSettingsPresented.wrappedValue = true
+        }
+    }
+
+    private var modelSettingsSheet: some View {
+        ModelSettingsSheet(
+            selection: currentModelEffortSelection,
+            providerName: modelGroups.first { $0.allModels.contains(selectedModelOption) }?.name,
+            favorites: ModelFavoritesStore.visibleFavoriteOptions(in: modelGroups, favoriteKeys: favoriteModelKeys),
+            recents: ModelRecentsStore.visibleRecentOptions(
+                in: modelGroups, recentKeys: recentModelKeys, favoriteKeys: favoriteModelKeys
+            ),
+            isDisabled: isConfigurationControlDisabled,
+            isUpdating: isUpdatingConfiguration,
+            errorMessage: configurationErrorMessage,
+            notice: configurationNotice,
             onSelectModel: selectModel,
             onSelectEffort: onSelectReasoningEffort,
-            onShowAllModels: showAllModels
+            allModelsPicker: allModelsPicker
         )
+        // Over this sheet while it is up; `ChatView`'s own stands down until it closes.
+        .modifier(HermesModelConfirmationModifier(controls: modelConfirmationControls))
+    }
+
+    private func allModelsPicker(onSelect: @escaping (ModelCatalogOption) -> Void) -> some View {
+        ModelPickerSheet(
+            configuration: .composer,
+            modelGroups: modelGroups,
+            selectedModelID: selectedModelID,
+            selectedModelProviderID: selectedModelProviderID,
+            favoriteModelKeys: favoriteModelKeys,
+            recentModelKeys: recentModelKeys,
+            isSelected: { option in
+                option.matchesSelection(
+                    modelID: selectedModelID,
+                    providerID: selectedModelProviderID
+                )
+            },
+            // The current model's row opens this while another change is still out.
+            isSelectionDisabled: isConfigurationControlDisabled,
+            onSelect: onSelect,
+            onToggleFavorite: { option in
+                favoriteModelKeys = ModelFavoritesStore(server: server).toggleFavorite(for: option)
+            },
+            onDeleteSavedCustom: { option in
+                favoriteModelKeys = ModelFavoritesStore(server: server).removeFavorite(for: option)
+                recentModelKeys = ModelRecentsStore(server: server).removeRecent(for: option)
+            }
+        )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .task {
+            await onModelPickerOpen()
+        }
     }
 
     private var currentModelEffortSelection: ComposerModelEffortSelection {
@@ -1477,11 +1504,6 @@ struct MessageComposerView: View {
     private func selectModel(_ option: ModelCatalogOption) {
         recentModelKeys = ModelRecentsStore(server: server).recordRecent(option)
         onSelectModel(option)
-    }
-
-    private func showAllModels() {
-        prepareForComposerPresentation()
-        showsAllModelsSheet = true
     }
 
     private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?, fixPrompt: String?,

@@ -126,27 +126,19 @@ struct ComposerProfileSelectorMenu: View {
     }
 }
 
-struct ComposerModelEffortMenu: View {
-    /// Allows a caller to disable effort while retaining access to the model menu.
-    var allowsEffortChanges = true
-    /// False leaves only the logo and chevron, for the keyboard-down pill.
-    var showsTitle = true
+/// The composer's model label, which opens Model settings. Keyboard down it is only the
+/// provider's logo and a chevron; keyboard up the title takes the row's spare width and truncates.
+struct ComposerModelLabelButton: View {
+    let showsTitle: Bool
     let selection: ComposerModelEffortSelection
-    let modelGroups: [ModelCatalogGroup]
-    let favoriteModelKeys: [ModelFavoriteKey]
-    let recentModelKeys: [ModelFavoriteKey]
     let isDisabled: Bool
     let color: Color
     let controlFont: Font
     let chevronFont: Font
-    let onSelectModel: (ModelCatalogOption) -> Void
-    let onSelectEffort: (String) -> Void
-    let onShowAllModels: () -> Void
+    let onTap: () -> Void
 
     var body: some View {
-        // UIKit needs the nested menu's full geometry before presentation. Deferring
-        // this tree makes the first submenu expansion visibly re-anchor.
-        ChatUIKitMenuButton(loadsMenuEagerly: true) {
+        Button(action: onTap) {
             HStack(spacing: 5) {
                 if ProviderGlyphKind.resolve(providerID: selection.modelProviderID) != nil {
                     ProviderGlyph(providerID: selection.modelProviderID)
@@ -174,110 +166,11 @@ struct ComposerModelEffortMenu: View {
             .transaction { transaction in
                 transaction.animation = nil
             }
-        } menu: {
-            makeMenu()
         }
-        .tint(color)
+        .buttonStyle(.chatTactile(.compactControl))
         .disabled(isDisabled)
         .accessibilityLabel(Text(verbatim: selection.accessibilityTitle))
-    }
-
-    private func makeMenu() -> UIMenu {
-        var children: [UIMenuElement] = [modelMenu]
-        if selection.showsEffortControl {
-            children.append(effortMenu)
-        }
-        return UIMenu(children: children)
-    }
-
-    private var modelMenu: UIMenu {
-        var children: [UIMenuElement] = []
-
-        if !favoriteOptions.isEmpty {
-            children.append(modelSection(title: String(localized: "Favorites"), options: favoriteOptions))
-        }
-        if !recentOptions.isEmpty {
-            children.append(modelSection(title: String(localized: "Recent"), options: recentOptions))
-        }
-        // The active model always has a checked row, even when it is neither a
-        // favorite nor a recent, so the submenu never opens with nothing selected.
-        let listedKeys = Set((favoriteOptions + recentOptions).map(\.favoriteKey))
-        if !listedKeys.contains(selection.model.favoriteKey) {
-            children.append(modelSection(title: "", options: [selection.model]))
-        }
-
-        children.append(UIMenu(
-            options: [.displayInline],
-            children: [
-                UIAction(title: String(localized: "All Models...")) { _ in
-                    Task { @MainActor in
-                        await Task.yield()
-                        onShowAllModels()
-                    }
-                }
-            ]
-        ))
-
-        return UIMenu(
-            title: String(localized: "Model"),
-            subtitle: selection.model.displayName,
-            children: children
-        )
-    }
-
-    private var effortMenu: UIMenu {
-        UIMenu(
-            title: String(localized: "Effort"),
-            subtitle: selection.effortTitle,
-            children: selection.effortOptions.map { option in
-                UIAction(
-                    title: option.title,
-                    attributes: allowsEffortChanges ? [] : [.disabled],
-                    state: selection.committedEffort == option.id ? .on : .off
-                ) { _ in
-                    Task { @MainActor in
-                        onSelectEffort(option.id)
-                    }
-                }
-            }
-        )
-    }
-
-    private func modelSection(title: String, options: [ModelCatalogOption]) -> UIMenu {
-        UIMenu(
-            title: title,
-            options: [.displayInline],
-            children: options.map(modelAction)
-        )
-    }
-
-    private func modelAction(_ option: ModelCatalogOption) -> UIAction {
-        UIAction(
-            title: option.displayName,
-            state: option.matchesSelection(
-                modelID: selection.model.id,
-                providerID: selection.modelProviderID
-            ) ? .on : .off
-        ) { _ in
-            Task { @MainActor in
-                onSelectModel(option)
-            }
-        }
-    }
-
-    private var favoriteOptions: [ModelCatalogOption] {
-        ModelFavoritesStore.visibleFavoriteOptions(
-            in: modelGroups,
-            favoriteKeys: favoriteModelKeys
-        )
-    }
-
-    private var recentOptions: [ModelCatalogOption] {
-        ModelRecentsStore.visibleRecentOptions(
-            in: modelGroups,
-            recentKeys: recentModelKeys,
-            favoriteKeys: favoriteModelKeys
-        )
+        .accessibilityHint(Text("Model settings"))
     }
 }
 

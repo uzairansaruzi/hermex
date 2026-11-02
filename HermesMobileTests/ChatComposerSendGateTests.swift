@@ -7,6 +7,23 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
+    /// A change's answer shows beside the row that asked, never on another row, and an
+    /// old error doesn't show on a row nobody touched since the sheet opened.
+    func testModelSettingsShowsAnswersOnlyBesideTheRowThatAsked() {
+        func status(_ row: ModelSettingsRow, _ lastChanged: ModelSettingsRow?, updating: Bool = false,
+                    error: String? = nil, notice: String? = nil) -> ModelSettingsRowStatus? {
+            ModelSettingsRowStatus.resolve(row: row, lastChanged: lastChanged, isUpdating: updating,
+                                           errorMessage: error, notice: notice)
+        }
+
+        XCTAssertEqual(status(.model, .model, updating: true, error: "old"), .pending)
+        XCTAssertEqual(status(.model, .model, error: "Refused"), .failed("Refused"))
+        XCTAssertEqual(status(.model, .model, notice: "After this response"), .notice("After this response"))
+        XCTAssertNil(status(.model, .model))
+        XCTAssertNil(status(.thinking, .model, updating: true))
+        XCTAssertNil(status(.model, nil, error: "old"))
+    }
+
     /// A chat's settings leave the composer after its first message, and an existing chat
     /// that hasn't loaded yet never shows them.
     func testNewChatControlsShowOnlyBeforeTheFirstMessage() {

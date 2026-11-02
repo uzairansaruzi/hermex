@@ -445,6 +445,7 @@ struct ChatView: View {
     /// A bot's chat's pill opened the bot's profile (#1145).
     @State private var showsBotProfileEditor = false
     @State private var showsChatSettings = false
+    @State private var showsModelSettings = false
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -787,6 +788,8 @@ struct ChatView: View {
                 }
             },
             isChatSettingsPresented: $showsChatSettings,
+            isModelSettingsPresented: $showsModelSettings,
+            modelConfirmationControls: viewModel.hermesSettings?.controls,
             showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
@@ -1451,7 +1454,10 @@ struct ChatView: View {
                 )
             )
             .notificationOfferAlert($pendingNotificationOffer)
-            .modifier(HermesModelConfirmationModifier(controls: viewModel.hermesSettings?.controls))
+            // Model settings asks over itself while it is up.
+            .modifier(HermesModelConfirmationModifier(
+                controls: showsModelSettings ? nil : viewModel.hermesSettings?.controls
+            ))
             .modifier(HermesPersonalityConfirmationModifier(
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
@@ -4594,7 +4600,7 @@ struct ChatNavigationBackground: ViewModifier {
 
 /// The host's expensive-model question for a Hermes session's model pick (#1015), as Bot
 /// Chat asks it: Change model resends the pick confirmed, Cancel sends nothing.
-private struct HermesModelConfirmationModifier: ViewModifier {
+struct HermesModelConfirmationModifier: ViewModifier {
     let controls: BotChatControls?
 
     func body(content: Content) -> some View {
