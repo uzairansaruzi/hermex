@@ -586,8 +586,12 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             XCTAssertEqual(form.addressPreview?.absoluteString, "https://192.168.1.5:8787",
                            "Once a webui answers, the line shows the URL the webui path saves")
 
+            form.password = "wrong"
             form.serverURLString = "192.168.1.6:8787"
             XCTAssertFalse(form.showsPasswordField, "\(reply): another address answers first")
+
+            await form.connect(authManager: manager)
+            XCTAssertTrue(form.showsPasswordField, "\(reply): the new address asks for its own password, never a hidden one")
         }
     }
 
