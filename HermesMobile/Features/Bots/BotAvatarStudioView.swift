@@ -14,6 +14,7 @@ import UniformTypeIdentifiers
     @State private var pastedText = ""
     @State private var showsPaste = false
     @State private var showsFileImporter = false
+    @State private var finishing: Task<Void, Never>?
 
     private static let heroSize: CGFloat = 148
     private static let tileFace: CGFloat = 42
@@ -34,7 +35,7 @@ import UniformTypeIdentifiers
             .navigationTitle("Avatar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { finishing?.cancel(); dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { finish() }.fontWeight(.semibold)
                 }
@@ -48,14 +49,17 @@ import UniformTypeIdentifiers
             .sheet(isPresented: $showsPaste) { pasteSheet }
             .fileImporter(isPresented: $showsFileImporter, allowedContentTypes: [.json]) { importFile($0) }
         }
-        .onDisappear { studio.stopWaiting() }
+        .onDisappear { finishing?.cancel(); studio.stopWaiting() }
         // The editor closes its connection in the background, so no answer can arrive.
         .onChange(of: scenePhase) { if scenePhase == .background { studio.stopWaiting() } }
     }
 
+    /// Waits for the last eye movement first. Cancel stops the wait, so it never applies a thing.
     private func finish() {
-        Task {
+        finishing?.cancel()
+        finishing = Task {
             await studio.settleEyes()
+            guard !Task.isCancelled else { return }
             if studio.replacesPhoto { confirmsPhoto = true } else { commit() }
         }
     }

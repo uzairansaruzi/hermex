@@ -64,6 +64,18 @@ import XCTest
         XCTAssertEqual(abs(marks[0].x - marks[1].x), layout.spacing, accuracy: 0.001, "the eyes stay on the body, not in the hole")
     }
 
+    func testAWideExpressionFallsBackToTheAcceptedPlacement() throws {
+        let definition = BotAvatarDefinition(version: 1, id: "ring", name: "Ring", body: .init(path: "M24 10H76V90H24ZM34 20V80H66V20Z"),
+                                             eyes: .init(x: 50, y: 50, spacing: 40, scale: 1))
+        guard case .valid = BotAvatarValidator.validate(definition) else { return XCTFail("the import check accepts this") }
+        let volume = try BotAvatarVolume.prepare(definition, depth: 6)
+        let layout = BotAvatarEyeLayout.fit(volume: volume, geometry: BotAvatarExpression.scared.geometry)
+        let marks = layout.marks(eyes: definition.eyes).sorted { $0.x < $1.x }
+        XCTAssertEqual(marks.count, 2)
+        XCTAssertGreaterThan(marks[0].x - marks[0].width / 2, 24)
+        XCTAssertLessThan(marks[1].x + marks[1].width / 2, 76)
+    }
+
     func testDoneWaitsForTheLastEyeMovement() async {
         let studio = studio()
         studio.pick(cat)

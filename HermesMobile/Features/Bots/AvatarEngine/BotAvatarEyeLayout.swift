@@ -95,16 +95,19 @@ nonisolated struct BotAvatarEyeLayout: Sendable {
         }
         var scale = largestFit { $0 }
         var gapScale = scale
-        // Eyes either side of a hole can't move inward, so they shrink where they stand. The
-        // validator accepted this placement at full size, so a face always keeps its eyes.
+        // Eyes either side of a hole can't move inward, so they shrink where they stand. The last
+        // resort is the placement the validator accepted: its own centers, at its own eye size.
         if scale == 0 {
             scale = largestFit { _ in 1 }
-            if scale == 0 { scale = minimumScale }
             gapScale = 1
+        }
+        if scale == 0 {
+            let eyes = volume.definition.eyes
+            gapScale = eyes.spacing / spacing
+            scale = [left, right].map { min(1, min(4 * eyes.scale / $0.width, 11 * eyes.scale / $0.height)) }.min() ?? 1
         }
         return Self(left: left, right: right, spacing: spacing, scale: scale, gapScale: gapScale, happy: happy)
     }
-    private static let minimumScale = 0.5
     func marks(eyes: BotAvatarDefinition.Eyes, lid: Double = 1, gaze: AvatarPoint = AvatarPoint(0, 0)) -> [BotAvatarEyeMark] {
         guard scale > 0 else { return [] }
         return [left, right].enumerated().map { i, e in
