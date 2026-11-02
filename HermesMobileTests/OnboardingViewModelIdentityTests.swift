@@ -585,6 +585,9 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             XCTAssertFalse(form.showsHermesSignIn, "\(reply)")
             XCTAssertEqual(form.addressPreview?.absoluteString, "https://192.168.1.5:8787",
                            "Once a webui answers, the line shows the URL the webui path saves")
+
+            form.serverURLString = "192.168.1.6:8787"
+            XCTAssertFalse(form.showsPasswordField, "\(reply): another address answers first")
         }
     }
 

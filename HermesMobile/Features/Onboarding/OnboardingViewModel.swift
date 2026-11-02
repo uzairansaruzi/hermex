@@ -319,6 +319,9 @@ final class OnboardingViewModel {
         }
         if currentConnectionIdentity() != probed {
             forgetProbe()
+            // Another address answers before it gets a password field. A saved server's
+            // re-sign-in keeps its field until a probe answered, so this never hides it early.
+            webuiNeedsPassword = false
             errorMessage = nil
         }
     }
