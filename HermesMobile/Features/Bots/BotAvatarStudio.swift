@@ -24,17 +24,23 @@ import SwiftUI
     let canGenerate: Bool
     private let initial: BotProfileAppearance
     private let hadPhoto: Bool
-    private let openedEyes: BotAvatarDefinition.Eyes?
+    /// The placement Reset Eyes returns to and expression tiles draw, so a drag never rebuilds them.
+    private(set) var baseEyes: BotAvatarDefinition.Eyes?
     private let sendPrompt: ((String) async throws -> String)?
     private var generationTask: Task<Void, Never>?
-    private var eyeProposal = 0
+    /// Bumped by anything that replaces the body, so a check still running can't overwrite it.
+    private var eyeGeneration = 0
+    private var pendingEyes: BotAvatarDefinition.Eyes?
+    private var eyeWorker: Task<Void, Never>?
+    /// The most often a drag rebuilds the face.
+    private static let eyeInterval: Duration = .milliseconds(150)
 
     /// `sendPrompt` runs one tool-free model call on the host and returns its text; nil when
     /// nothing is connected to ask.
     init(name: String, appearance: BotProfileAppearance, hadPhoto: Bool,
          sendPrompt: ((String) async throws -> String)?) {
         self.name = name; self.appearance = appearance; initial = appearance; self.hadPhoto = hadPhoto
-        openedEyes = appearance.drawn?.definition.eyes
+        baseEyes = appearance.drawn?.definition.eyes
         self.sendPrompt = sendPrompt; canGenerate = sendPrompt != nil
     }
 
@@ -71,10 +77,9 @@ import SwiftUI
     func pick(_ shape: BotAvatarShape) {
         appearance.shape = shape.rawValue
         markCustom()
-        if appearance.drawn != nil {
-            let keeps = appearance.drawn?.eyeColor
-            appearance.drawn = keeps == nil ? nil : BotDrawnAvatar(definition: BotAvatarClassic.definition(shape), depth: 0, eyeColor: keeps)
-        }
+        let keeps = appearance.drawn?.eyeColor
+        appearance.drawn = keeps == nil ? nil : BotDrawnAvatar(definition: BotAvatarClassic.definition(shape), depth: 0, eyeColor: keeps)
+        replacedBody(eyes: BotAvatarClassic.definition(shape).eyes)
         cue = BotFaceCue(.hop)
     }
 
@@ -84,6 +89,7 @@ import SwiftUI
                                           eyeColor: appearance.drawn?.eyeColor)
         appearance.color = entry.color
         markCustom()
+        replacedBody(eyes: entry.definition.eyes)
         cue = BotFaceCue(.hop)
     }
 
@@ -126,43 +132,59 @@ import SwiftUI
         appearance.drawn?.definition.eyes ?? BotAvatarClassic.definition(currentShape).eyes
     }
 
-    /// Takes new eyes only if they pass the validator, checked off the main thread with the
-    /// latest proposal winning, so a drag past the body's edge simply stops at the last place
-    /// that fit.
+    /// Takes new eyes only if they pass the validator, checked off the main thread, so a drag past
+    /// the body's edge simply stops at the last place that fit. One worker runs at a time and takes
+    /// only the latest proposal, so a fast drag can't queue up rebuilds of the face.
     @discardableResult func propose(eyes proposed: BotAvatarDefinition.Eyes) -> Task<Void, Never> {
-        var drawn = drawnForEditing()
-        drawn.definition.eyes = proposed
-        eyeProposal += 1
-        let token = eyeProposal, definition = drawn.definition
-        return Task {
-            let valid = await Task.detached(priority: .userInitiated) { () -> Bool in
-                if case .valid = BotAvatarValidator.validate(definition) { return true }
-                return false
-            }.value
-            guard valid, token == eyeProposal else { return }
-            store(drawn)
+        pendingEyes = proposed
+        if let eyeWorker { return eyeWorker }
+        let worker = Task { [weak self] in
+            while let self, let next = self.pendingEyes {
+                self.pendingEyes = nil
+                await self.apply(eyes: next)
+                try? await Task.sleep(for: Self.eyeInterval)
+            }
+            self?.eyeWorker = nil
         }
+        eyeWorker = worker
+        return worker
     }
 
-    /// Back to the ready-made or classic placement, or for an imported avatar where it was
-    /// when the studio opened.
-    func resetEyes() {
-        guard var drawn = appearance.drawn else { return }
-        eyeProposal += 1
-        if let shape = BotAvatarClassic.shape(of: drawn.definition) {
-            drawn.definition.eyes = BotAvatarClassic.definition(shape).eyes
-        } else if let entry = BotAvatarCatalog.entries.first(where: { $0.definition.id == drawn.definition.id }) {
-            drawn.definition.eyes = entry.definition.eyes
-        } else if let openedEyes {
-            drawn.definition.eyes = openedEyes
-        }
+    private func apply(eyes: BotAvatarDefinition.Eyes) async {
+        var definition = appearance.drawn?.definition ?? BotAvatarClassic.definition(currentShape)
+        definition.eyes = eyes
+        let generation = eyeGeneration, candidate = definition
+        let valid = await Task.detached(priority: .userInitiated) { () -> Bool in
+            if case .valid = BotAvatarValidator.validate(candidate) { return true }
+            return false
+        }.value
+        guard valid, generation == eyeGeneration else { return }
+        var drawn = drawnForEditing()
+        drawn.definition.eyes = eyes
         store(drawn)
+    }
+
+    /// Back to where this body's eyes started: its ready-made or classic placement, or for an
+    /// imported avatar where they were when it arrived.
+    func resetEyes() {
+        guard var drawn = appearance.drawn, let baseEyes else { return }
+        pendingEyes = nil
+        eyeGeneration += 1
+        drawn.definition.eyes = baseEyes
+        store(drawn)
+    }
+
+    private func replacedBody(eyes: BotAvatarDefinition.Eyes) {
+        pendingEyes = nil
+        eyeGeneration += 1
+        baseEyes = eyes
     }
 
     // MARK: Reset
 
     /// Returns to the name-seeded classic face.
     func reset() {
+        replacedBody(eyes: BotAvatarClassic.definition(BotAvatarPresentation(name: name, appearance: appearance.withoutDrawnAvatar).shape).eyes)
         appearance.drawn = nil; appearance.shape = nil; appearance.color = nil
         appearance.expression = nil; appearance.custom = false; appearance.imageKind = nil
     }
@@ -220,6 +242,7 @@ import SwiftUI
         appearance.drawn = BotDrawnAvatar(definition: definition, depth: BotDrawnAvatar.naturalDepth,
                                           eyeColor: appearance.drawn?.eyeColor)
         markCustom()
+        replacedBody(eyes: definition.eyes)
         importErrors = []
         tool = .avatar
         cue = BotFaceCue(.hop)
@@ -240,6 +263,7 @@ import SwiftUI
     private func drawnForEditing() -> BotDrawnAvatar {
         if let drawn = appearance.drawn { return drawn }
         let shape = currentShape, hex = presentation.hex
+        baseEyes = BotAvatarClassic.definition(shape).eyes
         appearance.shape = shape.rawValue
         appearance.color = hex
         return BotDrawnAvatar(definition: BotAvatarClassic.definition(shape), depth: 0)
@@ -261,8 +285,9 @@ import SwiftUI
 extension BotProfileAppearance {
     /// Takes the face a studio ended with, keeping this appearance's own title.
     mutating func adoptFace(of other: BotProfileAppearance) {
-        shape = other.shape; color = other.color; custom = other.custom; imageKind = other.imageKind
-        expression = other.expression; drawn = other.drawn
+        let title = title
+        self = other
+        self.title = title
     }
 }
 

@@ -26,9 +26,18 @@ import XCTest
         XCTAssertNil(appearance.drawn)
         XCTAssertEqual(appearance.merging(into: stored)[BotDrawnAvatar.lookKey], stored[BotDrawnAvatar.lookKey])
 
-        var picked = appearance
-        picked.drawn = nil
-        XCTAssertNil(picked.merging(into: stored)[BotDrawnAvatar.lookKey])
+        // An untouched studio hands the value back, even when only the expression changed.
+        let studio = BotAvatarStudio(name: "scout", appearance: appearance, hadPhoto: false, sendPrompt: nil)
+        studio.setExpression(.sad)
+        var saved = appearance
+        saved.title = "Renamed"
+        saved.adoptFace(of: studio.appearance)
+        XCTAssertEqual(saved.title, "Renamed")
+        XCTAssertEqual(saved.merging(into: stored)[BotDrawnAvatar.lookKey], stored[BotDrawnAvatar.lookKey])
+
+        studio.pick(.pill)
+        saved.adoptFace(of: studio.appearance)
+        XCTAssertNil(saved.merging(into: stored)[BotDrawnAvatar.lookKey])
     }
 
     func testPickingAvatarsAndClassicsKeepsTheStoredShapeForDesktop() {
@@ -88,6 +97,25 @@ import XCTest
 
         studio.resetEyes()
         XCTAssertEqual(studio.eyes, start)
+    }
+
+    func testResetEyesFollowsTheBodyAndACheckInFlightCannotOverwriteAPick() async throws {
+        let studio = studio()
+        studio.pick(cat)
+        let inFlight = studio.propose(eyes: .init(x: studio.eyes.x + 1, y: studio.eyes.y, spacing: studio.eyes.spacing, scale: studio.eyes.scale))
+        let book = try XCTUnwrap(BotAvatarCatalog.entries.first { $0.definition.id == "book" })
+        studio.pick(book)
+        await inFlight.value
+        XCTAssertEqual(studio.appearance.drawn?.definition, book.definition)
+
+        let imported = BotAvatarDefinition(version: 1, id: "box", name: "Box", body: .init(path: "M20 20 H80 V80 H20 Z"),
+                                           eyes: .init(x: 40, y: 50, spacing: 15, scale: 1))
+        let data = try JSONEncoder().encode(imported)
+        let taken = await studio.importDefinition(data)
+        XCTAssertTrue(taken)
+        await studio.propose(eyes: .init(x: 55, y: 50, spacing: 15, scale: 1)).value
+        studio.resetEyes()
+        XCTAssertEqual(studio.eyes, imported.eyes, "not the eyes of whatever the studio opened on")
     }
 
     func testImportShowsTheValidatorsErrorsAndExportReadsBack() async throws {
@@ -241,6 +269,24 @@ import XCTest
         XCTAssertTrue(wire.methods.contains("session.close"))
     }
 
+    func testStoppingWhileTheDraftOpensNeverSendsThePromptOrCancelsACall() async throws {
+        let wire = GenerationWire()
+        let opening = expectation(description: "the draft is opening")
+        wire.onCreate = { opening.fulfill() }
+        wire.holdsCreate = true
+        let task = Task { try await BotAvatarGeneration.ask("prompt", profile: "scout", transport: wire, validateDispatch: nil) }
+        await fulfillment(of: [opening], timeout: 5)
+
+        task.cancel()
+        await Task.yield()
+        XCTAssertFalse(wire.createWasCancelled, "cancelling a call ends the screen's connection")
+        wire.releaseCreate()
+
+        do { _ = try await task.value; XCTFail("should stop") } catch { XCTAssertTrue(error is CancellationError) }
+        await wire.waitForCleanup()
+        XCTAssertEqual(wire.methods, ["session.create", "session.close", "session.delete"])
+    }
+
     func testADroppedSocketFailsTheWait() async throws {
         let wire = GenerationWire()
         wire.onBtw = { $0.onDisconnect?(BotFailure.stale) }
@@ -258,6 +304,10 @@ import XCTest
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var onBtw: ((GenerationWire) -> Void)?
+    var onCreate: (() -> Void)?
+    var holdsCreate = false
+    var createWasCancelled = false
+    private var heldCreate: CheckedContinuation<Void, Never>?
     var methods: [String] = []
     var params: [[String: BotJSON]] = []
     private var cleanup: CheckedContinuation<Void, Never>?
@@ -271,6 +321,8 @@ import XCTest
                           "payload": .object(["task_id": .string(task), "text": .string(text)])]))
     }
 
+    func releaseCreate() { heldCreate?.resume(); heldCreate = nil }
+
     func waitForCleanup() async {
         if cleaned { return }
         await withCheckedContinuation { cleanup = $0 }
@@ -280,7 +332,11 @@ import XCTest
         methods.append(call.method)
         params.append(try call.params())
         switch call.method {
-        case "session.create": return .object(["session_id": .string("draft-1"), "stored_session_id": .string("stored-1")])
+        case "session.create":
+            onCreate?()
+            if holdsCreate { await withCheckedContinuation { heldCreate = $0 } }
+            createWasCancelled = Task.isCancelled
+            return .object(["session_id": .string("draft-1"), "stored_session_id": .string("stored-1")])
         case "prompt.btw":
             onBtw?(self)
             return .object(["task_id": .string("t1")])

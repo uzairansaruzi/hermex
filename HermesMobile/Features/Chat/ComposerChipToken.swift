@@ -29,9 +29,13 @@ enum ComposerChipIcon: Equatable {
             return "asset:\(name)" as NSString
         case let .bot(reference):
             let look = BotProfileAppearance(profile: reference.profile)
+            // A drawn avatar's whole value, and whether it is built yet: a chip drawn before it
+            // was built shows the classic face and must not stand in for the finished one.
             return ["kind": "bot", "profile": reference.profile.id,
                     "shape": look.shape ?? "", "color": look.color ?? "", "custom": look.custom,
-                    "expression": look.expression ?? "", "image": (reference.avatar as NSObject?) ?? NSNull()] as NSDictionary
+                    "expression": look.expression ?? "", "image": (reference.avatar as NSObject?) ?? NSNull(),
+                    "drawn": look.drawn.map { String(describing: $0) } ?? "",
+                    "built": look.renderKey.map { BotAvatarRenderStore.shared.cached($0) != nil } ?? false] as NSDictionary
         }
     }
 }

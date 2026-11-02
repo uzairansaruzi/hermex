@@ -214,15 +214,8 @@ import UniformTypeIdentifiers
                      custom: Binding(get: { Color.botBody(studio.appearance.color ?? BotAvatarColor.adaptiveHex) },
                                      set: { if let hex = $0.botHex { studio.setBodyColor(hex) } }))
             label("Eyes")
-            HStack {
-                Button("Auto") { studio.setEyeColor(nil) }
-                    .buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
-                    .tint(studio.appearance.drawn?.eyeColor == nil ? Color.accentColor : .secondary)
-                    .accessibilityAddTraits(studio.appearance.drawn?.eyeColor == nil ? .isSelected : [])
-                Spacer()
-            }
-            swatches(selected: studio.appearance.drawn?.eyeColor,
-                     pick: { studio.setEyeColor($0 == BotAvatarColor.adaptiveHex ? "#ffffff" : $0) },
+            swatches(selected: studio.appearance.drawn?.eyeColor ?? BotAvatarColor.adaptiveHex,
+                     pick: { studio.setEyeColor($0 == BotAvatarColor.adaptiveHex ? nil : $0) },
                      custom: Binding(get: { studio.appearance.drawn?.eyeColor.flatMap(Color.init(botHex:)) ?? .black },
                                      set: { if let hex = $0.botHex { studio.setEyeColor(hex) } }))
             HStack {
@@ -297,6 +290,7 @@ import UniformTypeIdentifiers
     private func expressionTile(_ expression: BotAvatarExpression) -> BotProfileAppearance {
         var appearance = studio.appearance
         appearance.expression = expression.rawValue
+        if let baseEyes = studio.baseEyes { appearance.drawn?.definition.eyes = baseEyes }
         return appearance
     }
 

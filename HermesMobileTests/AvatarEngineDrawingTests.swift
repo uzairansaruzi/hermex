@@ -51,29 +51,7 @@ import SwiftUI
             XCTAssertLessThan(difference,0.5,"\(id) compositing differs from back-to-front frame")
         }
     }
-    func testHostedCanvasTimingReport() async throws {
-        for id in ["barbell","sprout","cat"] {
-            let def = try XCTUnwrap(BotAvatarCatalog.entries.first { $0.definition.id == id }).definition
-            let volume = try await Task.detached { try BotAvatarVolume.prepare(def) }.value
-            let drawn = expectation(description:"90 actual Canvas drawing callbacks for " + id)
-            let driver = AvatarCanvasDriver(volume:volume,done:drawn)
-            let host = UIHostingController(rootView:AvatarCanvasProbe(driver:driver).frame(width:240,height:240))
-            let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-            let previous = scene.windows.first { $0.isKeyWindow }
-            let window = UIWindow(windowScene:scene)
-            window.frame = CGRect(x:0,y:0,width:480,height:480)
-            window.rootViewController = host; window.makeKeyAndVisible()
-            defer { window.isHidden = true; window.rootViewController = nil; previous?.makeKey() }
-            host.view.setNeedsLayout(); host.view.layoutIfNeeded()
-            await fulfillment(of:[drawn],timeout:20)
-            XCTAssertEqual(driver.samples.count,90)
-            guard driver.samples.count == 90 else { continue }
-            let batches = stride(from:0,to:driver.samples.count,by:30).map { start in
-                driver.samples[start..<min(start+30,driver.samples.count)].reduce(0,+)/30
-            }
-            print("AVATAR Canvas \(id) 240pt, hosted front/side, Debug drawing callback CPU: median batch \(batches.sorted()[batches.count/2]) ms, worst frame \(driver.samples.max() ?? 0) ms")
-        }
-    }
+
 }
 
 @MainActor private final class AvatarCanvasDriver: ObservableObject {

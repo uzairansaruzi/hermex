@@ -348,7 +348,9 @@ extension BotProfileAppearance {
     func drawnStill(name: String, pointSize: CGFloat, scale: CGFloat, dark: Bool) -> UIImage? {
         guard let drawn, let key = renderKey else { return nil }
         let palette = BotDrawnPalette(appearance: self, drawn: drawn, name: name, scheme: dark ? .dark : .light)
-        let eyes = drawn.eyeColor.flatMap(BotAvatarRGB.init(hex:)) ?? palette.bodyRGB.autoEyeColor
+        // The automatic eyes `Color.botEyes` draws everywhere else, flattened onto the body.
+        let ink = Color.botHexIsDark(palette.bodyHex) ? BotAvatarRGB(255, 255, 255) : BotAvatarRGB(0, 0, 0)
+        let eyes = drawn.eyeColor.flatMap(BotAvatarRGB.init(hex:)) ?? ink.mix(palette.bodyRGB, 0.12)
         return BotAvatarRenderStore.shared.stillImage(key, body: palette.bodyRGB, eyes: eyes, pointSize: pointSize, scale: scale)
     }
 }
@@ -415,9 +417,22 @@ struct BotAvatarPresentation {
 private struct BotAvatarClassicBody: Shape {
     let shape: BotAvatarShape
 
+    /// Circle, squircle and pill stay primitives: SwiftUI draws those far more cheaply than
+    /// curves, and a list of faces redraws them on every blink.
     func path(in rect: CGRect) -> Path {
-        BotAvatarClassic.flatPath(shape).applying(CGAffineTransform(scaleX: rect.width / 100, y: rect.height / 100))
-            .offsetBy(dx: rect.minX, dy: rect.minY)
+        let inset = rect.insetBy(dx: rect.width * 0.08, dy: rect.height * 0.08)
+        switch shape {
+        case .circle:
+            return Path(ellipseIn: inset)
+        case .squircle:
+            return Path(roundedRect: inset, cornerRadius: rect.width * 0.28)
+        case .pill:
+            let pill = CGRect(x: inset.minX, y: rect.midY - rect.height * 0.27, width: inset.width, height: rect.height * 0.54)
+            return Path(roundedRect: pill, cornerRadius: pill.height / 2)
+        case .blob, .triangle, .hexagon, .cloud, .drop:
+            return BotAvatarClassic.flatPath(shape).applying(CGAffineTransform(scaleX: rect.width / 100, y: rect.height / 100))
+                .offsetBy(dx: rect.minX, dy: rect.minY)
+        }
     }
 }
 
@@ -448,7 +463,7 @@ extension Color {
                   blue: Double(rgb & 0xff) / 255)
     }
 
-    fileprivate static func botHexIsDark(_ botHex: String) -> Bool {
+    static func botHexIsDark(_ botHex: String) -> Bool {
         let value = botHex.trimmingCharacters(in: .whitespacesAndNewlines)
         guard value.count == 7, value.first == "#", let rgb = UInt64(value.dropFirst(), radix: 16) else { return false }
         let red = Double((rgb >> 16) & 0xff)

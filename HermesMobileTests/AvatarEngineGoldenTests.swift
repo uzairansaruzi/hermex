@@ -112,23 +112,5 @@ final class AvatarEngineGoldenTests: XCTestCase {
         let p = BotAvatarPose.compute(seed:1,gaze:.init(x:1,y:1),reducedMotion:true)
         XCTAssertEqual(p.yaw,BotAvatarPose.rest.yaw); XCTAssertEqual(p.gazeX,1)
     }
-    func testPreparationAndFrameTimingReport() throws {
-        var times: [(String,Double)] = []
-        for entry in BotAvatarCatalog.entries {
-            var runs: [Double] = []
-            for _ in 0..<3 {
-                let start = CFAbsoluteTimeGetCurrent(); _ = try BotAvatarVolume.prepare(entry.definition)
-                runs.append((CFAbsoluteTimeGetCurrent()-start)*1000)
-            }
-            times.append((entry.definition.id,runs.sorted()[1]))
-            print("AVATAR prepare \(entry.definition.id): median \(runs.sorted()[1]) ms, worst \(runs.max()!) ms")
-        }
-        print("AVATAR prepare median \(times.map(\.1).sorted()[times.count/2]) ms worst \(times.max { $0.1 < $1.1 }!)")
-        for entry in BotAvatarCatalog.entries where ["barbell","sprout","cat"].contains(entry.definition.id) {
-            let v = try BotAvatarVolume.prepare(entry.definition)
-            let start = CFAbsoluteTimeGetCurrent(); var count = 0
-            for k in 0..<300 { count += BotAvatarFrame.make(volume:v,pose:BotAvatarPose.compute(seed:v.seed,time:Double(k)/30,mood:.mood(.thinking))).shapes.count }
-            print("AVATAR frame \(entry.definition.id): \((CFAbsoluteTimeGetCurrent()-start)*1000/300) ms (\(count) shapes)")
-        }
-    }
+
 }

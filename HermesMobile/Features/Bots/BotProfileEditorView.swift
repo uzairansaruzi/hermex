@@ -66,7 +66,7 @@ import SwiftUI
         .sheet(isPresented: $showsModels) { modelPicker }
         .fullScreenCover(isPresented: $showsStudio) {
             BotAvatarStudioView(studio: BotAvatarStudio(
-                name: editor.profile.id, appearance: editor.draft.appearance, hadPhoto: editor.avatar != nil,
+                name: editor.profile.id, appearance: editor.draft.appearance, hadPhoto: editor.hasPhoto,
                 sendPrompt: editor.holdsConnection ? { [editor] prompt in try await editor.sendAvatarPrompt(prompt) } : nil
             )) { studio in editor.applyStudio(studio); cue = BotFaceCue(.hop) }
         }

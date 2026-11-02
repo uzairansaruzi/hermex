@@ -213,6 +213,13 @@ struct BotProfileDetails: Equatable, Sendable {
         clearOutcome(.appearance)
     }
 
+    /// Whether a photo would be lost, including one the inbox hasn't finished fetching.
+    var hasPhoto: Bool {
+        if avatar != nil { return true }
+        if case .remove = avatarChange { return false }
+        return profile.hasAvatar && profile.isPhoto
+    }
+
     /// One tool-free model call under this bot, for the studio's "Describe it".
     func sendAvatarPrompt(_ prompt: String) async throws -> String {
         guard let client = wire else { throw BotFailure.stale }

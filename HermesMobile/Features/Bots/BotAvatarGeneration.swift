@@ -63,12 +63,28 @@ enum BotAvatarGeneration {
     /// One tool-free model call in a hidden draft session under `profile`. The draft is closed and
     /// its empty stored row deleted afterwards, even when the caller stopped waiting, unless the
     /// socket itself has gone. Reads the shared socket's events for its own task only.
+    ///
+    /// The calls run in their own task: cancelling a call that isn't cancellation-safe ends the
+    /// screen's whole connection, so stopping only stops the waiting.
     @MainActor static func ask(_ prompt: String, profile: String, transport: any BotTransport,
                                validateDispatch: (() throws -> Void)?) async throws -> String {
+        let waiter = AnswerWaiter()
+        let work = Task { @MainActor in
+            try await run(prompt, profile: profile, transport: transport, waiter: waiter, validateDispatch: validateDispatch)
+        }
+        return try await withTaskCancellationHandler {
+            try await work.value
+        } onCancel: {
+            Task { @MainActor in waiter.finish(throwing: CancellationError()) }
+        }
+    }
+
+    @MainActor private static func run(_ prompt: String, profile: String, transport: any BotTransport, waiter: AnswerWaiter,
+                                       validateDispatch: (() throws -> Void)?) async throws -> String {
         let draft = try await transport.call(.sessionDraft(profile: profile), validateDispatch: validateDispatch)
         guard let runtime = draft["session_id"].text else { throw BotFailure.unsupported }
         let stored = draft["stored_session_id"].text
-        let waiter = AnswerWaiter(runtime: runtime)
+        waiter.runtime = runtime
         let priorEvent = transport.onEvent, priorDisconnect = transport.onDisconnect
         transport.onEvent = { event in priorEvent?(event); waiter.receive(event) }
         transport.onDisconnect = { error in priorDisconnect?(error); waiter.finish(throwing: Failure.disconnected) }
@@ -80,6 +96,8 @@ enum BotAvatarGeneration {
                 if let stored { _ = try? await transport.call(.sessionDelete(profile: profile, storedKey: stored), validateDispatch: nil) }
             }
         }
+        // Stopped while the draft was opening: nothing more goes to the host.
+        guard !waiter.isFinished else { return try await waiter.answer(within: answerDeadline) }
         let accepted = try await transport.call(.promptBtw(sessionID: runtime, text: prompt), validateDispatch: validateDispatch)
         guard let task = accepted["task_id"].text else { throw BotFailure.unsupported }
         waiter.expect(task)
@@ -89,13 +107,13 @@ enum BotAvatarGeneration {
     /// Holds the one continuation an answer resolves. Everything runs on the main actor, and only
     /// the first of the answer, the deadline, a disconnect or a cancel takes effect.
     @MainActor private final class AnswerWaiter {
-        private let runtime: String
+        var runtime: String?
         private var taskID: String?
         private var early: [String: String] = [:]
         private var continuation: CheckedContinuation<String, Error>?
         private var result: Result<String, Error>?
 
-        init(runtime: String) { self.runtime = runtime }
+        var isFinished: Bool { result != nil }
 
         func expect(_ task: String) {
             taskID = task
@@ -138,12 +156,8 @@ enum BotAvatarGeneration {
                 self?.finish(throwing: Failure.timedOut)
             }
             defer { timer.cancel() }
-            return try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { continuation in
-                    if let result { continuation.resume(with: result) } else { self.continuation = continuation }
-                }
-            } onCancel: {
-                Task { @MainActor [weak self] in self?.finish(throwing: CancellationError()) }
+            return try await withCheckedThrowingContinuation { continuation in
+                if let result { continuation.resume(with: result) } else { self.continuation = continuation }
             }
         }
     }
