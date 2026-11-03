@@ -319,6 +319,47 @@ final class ChatTranscriptReflowTests: XCTestCase {
         XCTAssertEqual(onPlan, 0.4, accuracy: 0.02, "Rotation moved the reader off the plan they were reading")
     }
 
+    /// A forced-LTR code block must not stretch an RTL reply past its column (#1068):
+    /// the prose around it would land off-screen, leaving only the middle of the row.
+    func testRightToLeftReplyWithCodeStaysOnScreen() async throws {
+        let viewModel = try makeViewModel(turns: 1, reply: "שלום עולם\\n\\n```\\nls -la\\n```\\n\\nעוד טקסט")
+        await viewModel.loadMessages()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = UIHostingController(
+            rootView: BudgetTranscriptHost(viewModel: viewModel).environment(\.layoutDirection, .rightToLeft)
+        )
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await layOut(window)
+
+        func replies(in view: UIView) -> [UIView] {
+            (view is ResponseSelectionInput ? [view] : []) + view.subviews.flatMap(replies(in:))
+        }
+        let reply = try XCTUnwrap(replies(in: window).first)
+        let frame = reply.convert(reply.bounds, to: window)
+        XCTAssertGreaterThanOrEqual(frame.minX, 0)
+        XCTAssertLessThanOrEqual(frame.maxX, window.bounds.width)
+    }
+
+    /// Narrow forced-LTR content (an image thumbnail) still starts at the RTL column's
+    /// leading edge, on the right.
+    func testNarrowForcedLeftToRightContentHugsTheRightToLeftLeadingEdge() async throws {
+        var frame = CGRect.null
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = UIHostingController(rootView: VStack(alignment: .leading) {
+            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+            Color.clear.frame(width: 100, height: 10)
+                .forcedLeftToRight()
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+        }
+        .environment(\.layoutDirection, .rightToLeft))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await layOut(window)
+
+        XCTAssertEqual(frame.maxX, window.bounds.width, accuracy: 0.5)
+    }
+
     // MARK: - Helpers
 
     /// Lets SwiftUI apply pending updates, then lays the window out.
@@ -340,9 +381,9 @@ final class ChatTranscriptReflowTests: XCTestCase {
 
     /// A webui session of `turns` short prompts, each answered by a five-paragraph
     /// reply that wraps very differently at phone width and at the capped column.
-    private func makeViewModel(turns count: Int) throws -> ChatViewModel {
+    private func makeViewModel(turns count: Int, reply customReply: String? = nil) throws -> ChatViewModel {
         let paragraph = "This settled reply wraps across many lines at phone width and far fewer at the capped reading width, so a rewrap changes every row height above the reader."
-        let reply = (0..<5).map { "Paragraph \($0). " + paragraph }.joined(separator: "\\n\\n")
+        let reply = customReply ?? (0..<5).map { "Paragraph \($0). " + paragraph }.joined(separator: "\\n\\n")
         let turns = (0..<count).map { index in
             """
             {"role": "user", "content": "Question \(index)", "timestamp": \(1_770_000_000 + index * 10), "message_id": "user-\(index)"},
