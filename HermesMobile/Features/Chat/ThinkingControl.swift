@@ -16,7 +16,7 @@ enum ThinkingControlStyle: String, CaseIterable {
 /// to what the chat still holds, with the reason beside the row.
 @MainActor @Observable final class ThinkingLevelSender {
     private(set) var pendingLevel: String?
-    @ObservationIgnored private var isSending = false
+    private(set) var isSending = false
 
     /// A level asked for while another is out waits, and only the newest goes.
     func request(_ level: String, send: @escaping (String) async -> Bool) {

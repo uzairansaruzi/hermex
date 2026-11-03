@@ -494,11 +494,19 @@ import XCTest
         await settle(window)
         XCTAssertFalse(focus.isFocused, "Settings opened from an idle composer must not raise the keyboard")
 
+        // Focus opens the card, keyboard or not, and it stays open across the sheet: the editor
+        // is only about one line tall while collapsed.
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        let cardHeight: CGFloat = 40
+        XCTAssertLessThan(editor.bounds.height, cardHeight)
         focus.isFocused = true
-        await settle(window)
+        await waitUntil(window) { editor.bounds.height > cardHeight }
+        XCTAssertGreaterThan(editor.bounds.height, cardHeight)
         await openAndCloseSettings()
+        XCTAssertGreaterThan(editor.bounds.height, cardHeight, "Closing the sheet must not flash the pill")
         await waitUntil(window) { focus.isFocused }
         XCTAssertTrue(focus.isFocused)
+        XCTAssertGreaterThan(editor.bounds.height, cardHeight)
     }
 
     /// Esc (#1380) closes the `/` panel first and keeps it closed only until the draft changes,

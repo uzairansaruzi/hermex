@@ -1339,6 +1339,7 @@ struct ChatView: View {
             // running there, and its toast or alert, belong to the old repository (#1115).
             .onChange(of: viewModel.hermesWorkspace) {
                 openedFileReference = nil
+                pendingBranchCheckout = nil
                 activeGitSheet = nil
                 turnDiffPresentation = nil
                 gitAvailabilityViewModel.retire()
@@ -1639,7 +1640,8 @@ struct ChatView: View {
             hidesSync: gitWriteAvailability.hidesSync,
             pullRequest: gitAvailabilityViewModel.pullRequest,
             isRunningAction: gitAvailabilityViewModel.isRunningGitAction,
-            branchesDisabled: viewModel.activeStreamID != nil || gitAvailabilityViewModel.isWriteLocked
+            branchesDisabled: session.isSessionReadOnly || viewModel.activeStreamID != nil
+                || gitAvailabilityViewModel.isWriteLocked
                 || gitAvailabilityViewModel.isLoadingBranches || gitAvailabilityViewModel.isSwitchingBranch,
             onBranches: gitAvailabilityViewModel.supportsBranches ? { activeGitSheet = .branches } : nil,
             onTap: {

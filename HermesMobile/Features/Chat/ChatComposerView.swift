@@ -1826,6 +1826,7 @@ struct MessageComposerView: View {
     private func restoreFocusAfterDictation() {
         guard restoresFocusAfterDictation else { return }
         restoresFocusAfterDictation = false
+        isCardOpen = true
         isFocused = true
     }
 
@@ -1932,12 +1933,17 @@ struct MessageComposerView: View {
         requestTextViewFocusIfPossible()
     }
 
+    /// The card stays open across this, so returning from a sheet never flashes the pill.
     private func requestTextViewFocusIfPossible() {
         guard canFocusTextView else { return }
+        isCardOpen = true
 
         Task { @MainActor in
             await Task.yield()
-            guard canFocusTextView else { return }
+            guard canFocusTextView else {
+                isCardOpen = isFocused
+                return
+            }
             isFocused = true
         }
     }

@@ -204,9 +204,14 @@ struct ModelSettingsSheet<AllModels: View>: View {
                 LabeledContent("Thinking", value: only.title)
             } else {
                 ThinkingControl(selection: shownSelection, isDisabled: isDisabled) { level in
+                    // VoiceOver's adjustment arrives here past the hit test below.
+                    guard !isUpdating || levelSender.isSending else { return }
                     lastChanged = .thinking
                     levelSender.request(level, send: onSelectEffort)
                 }
+                // The host refuses a level while another kind of change is out. Its own sends
+                // stay open, since the sender keeps the newest of them.
+                .allowsHitTesting(!isUpdating || levelSender.isSending)
                 thinkingStyleSwitcher
             }
             statusLine(for: .thinking)
