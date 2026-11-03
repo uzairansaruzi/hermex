@@ -351,6 +351,12 @@ struct MessageComposerView: View {
     @State private var favoriteModelKeys: [ModelFavoriteKey] = []
     @State private var recentModelKeys: [ModelFavoriteKey] = []
     @State private var keyboardIsVisible = false
+    /// The card's shape and controls, which open with the keyboard rather than with focus. Focus
+    /// flips while UIKit takes first responder, which stalls the main thread, so a SwiftUI animation
+    /// started then jumps while the keyboard, on the render server, keeps moving smoothly.
+    @State private var isCardOpen = false
+    /// Opens the card for a focus no keyboard answers, such as with a hardware keyboard.
+    @State private var cardFallback: DispatchWorkItem?
     @State private var shouldRestoreFocusAfterPresentation = false
     @State private var selectedQuote: ComposerQuote?
     /// True while the send-choice card is up after a hold on Send mid-run.
@@ -694,7 +700,11 @@ struct MessageComposerView: View {
                         if isDictating {
                             dictationRow.transition(.opacity)
                         } else {
-                            toolbarRow.transition(.opacity)
+                            // Waits for the card to rise past where the row lands.
+                            toolbarRow.transition(.asymmetric(
+                                insertion: .opacity.animation(reduceMotion ? nil : .easeIn(duration: 0.12).delay(0.14)),
+                                removal: .opacity
+                            ))
                         }
                     }
                         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isDictating)
@@ -713,12 +723,14 @@ struct MessageComposerView: View {
                                 .padding(.bottom, -12)
                                 .ignoresSafeArea(edges: .bottom)
                         )
-                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                        .transition(.opacity)
                 }
             }
             // Focus flips arrive from UIKit outside any withAnimation, so the
-            // morph and the row's insertion take their animation from here.
-            .animation(ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
+            // morph and the row's insertion take their animation from here: the
+            // keyboard's curve going up, so they move as one.
+            .animation(isExpanded ? ChatMotion.keyboard(reduceMotion: reduceMotion)
+                : ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
         }
         .background(
             GeometryReader { proxy in
@@ -957,8 +969,25 @@ struct MessageComposerView: View {
                 deferredUploadFocusPhase = .none
             }
         }
+        .onAppear { isCardOpen = isFocused }
+        .onChange(of: isFocused) { _, focused in
+            cardFallback?.cancel()
+            guard focused else {
+                isCardOpen = false
+                return
+            }
+            if keyboardIsVisible {
+                isCardOpen = true
+            } else {
+                let fallback = DispatchWorkItem { isCardOpen = isFocused }
+                cardFallback = fallback
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: fallback)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             keyboardIsVisible = true
+            cardFallback?.cancel()
+            if isFocused { isCardOpen = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
             keyboardIsVisible = false
@@ -972,15 +1001,17 @@ struct MessageComposerView: View {
             voiceInput.stopBeforeSubmittingDraft()
             cancelVoiceNote()
             cancelScheduledSendChoices()
+            cardFallback?.cancel()
         }
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
+        .animation(ChatMotion.keyboard(reduceMotion: reduceMotion), value: keyboardIsVisible)
     }
 
     /// Pill while the editor is idle; card while it is focused. Controls in the pill
     /// open their sheets without expanding it. `shouldRestoreFocus…` keeps a focused
     /// card open while its sheet is up, until focus comes back.
     private var isExpanded: Bool {
-        isFocused
+        isCardOpen
             || isDictating
             || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
