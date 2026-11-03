@@ -18,8 +18,8 @@ enum BotAvatarGeneration {
             case .said(let message): return message
             case .timedOut: return String(localized: "The host took too long to answer.")
             case .disconnected: return String(localized: "The connection dropped before the host answered.")
-            case .unreadable(let problems):
-                return ([String(localized: "The answer was not a usable avatar.")] + problems.prefix(1)).joined(separator: "\n")
+            // The problems are English, for the repair prompt, so they stay off the screen.
+            case .unreadable: return String(localized: "The answer was not a usable avatar.")
             }
         }
     }
