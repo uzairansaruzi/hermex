@@ -79,7 +79,7 @@ import XCTest
 
     func testABadAnswerGetsOneRepairWithItsProblems() async throws {
         var prompts: [String] = []
-        let answers = ["not json", valid]
+        let answers = ["{}", valid]
         let avatar = try await BotAvatarGeneration.avatar(description: "a box") { prompt in
             prompts.append(prompt)
             return answers[prompts.count - 1]
@@ -90,10 +90,35 @@ import XCTest
         XCTAssertTrue(prompts[1].contains("not the requested JSON"))
     }
 
+    func testAHostsPlainTextAnswerReachesTheUserWithNoRepairTry() async {
+        let said = "OpenCode Go rejected your API key, so the model can't be reached."
+        var asks = 0
+        do {
+            _ = try await BotAvatarGeneration.avatar(description: "a box") { _ in asks += 1; return said }
+            XCTFail("should fail")
+        } catch {
+            XCTAssertEqual(asks, 1, "a repair try can't fix this, and costs another call")
+            XCTAssertEqual((error as? LocalizedError)?.errorDescription, said)
+        }
+    }
+
+    func testAProviderFailureHoldingJSONIsStillTheHostsWords() {
+        let said = "OpenCode Go rejected your API key.\n\nProvider said: HTTP 401: {\"error\":\"expired\"}"
+        guard case .failure(.said(let text)) = BotGeneratedAvatar.read(answer: said) else { return XCTFail("not an avatar to repair") }
+        XCTAssertEqual(text, said)
+    }
+
+    func testARealAnswerFromTheModelIsAccepted() throws {
+        let answer = #"""
+        {"name":"Pumpkin","path":"M 32 72 C 30 58 38 53 44 54 C 46 51 48 50 50 50 C 52 50 54 51 56 54 C 62 53 70 58 68 72 C 67 82 60 85 50 85 C 40 85 33 82 32 72 Z M 45 54 L 45 47 C 45 43 50 41 54 42 C 56 43 55 49 55 54 Z","eyes":{"x":50,"y":66,"spacing":14,"scale":1.15}}
+        """#
+        XCTAssertEqual(try BotGeneratedAvatar.read(answer: answer).get().name, "Pumpkin")
+    }
+
     func testTwoBadAnswersFailWithoutAThirdTry() async {
         var asks = 0
         do {
-            _ = try await BotAvatarGeneration.avatar(description: "a box") { _ in asks += 1; return "nope" }
+            _ = try await BotAvatarGeneration.avatar(description: "a box") { _ in asks += 1; return "{}" }
             XCTFail("should fail")
         } catch {
             XCTAssertEqual(asks, 2)

@@ -7,15 +7,19 @@ import SwiftUI
 /// approval request, a dropped socket does not stop it, and `session.resume` can auto-continue it.
 enum BotAvatarGeneration {
     enum Failure: LocalizedError, Equatable {
-        case host(String), timedOut, disconnected, unreadable([String])
+        /// `said` is the host's own words when it answered with no JSON at all, such as a provider
+        /// rejecting the bot's API key. `unreadable` is a JSON answer that failed the checks.
+        case host(String), said(String), timedOut, disconnected, unreadable([String])
 
         var errorDescription: String? {
             switch self {
             case .host(let message):
                 return message.isEmpty ? String(localized: "The host could not generate an avatar.") : message
+            case .said(let message): return message
             case .timedOut: return String(localized: "The host took too long to answer.")
             case .disconnected: return String(localized: "The connection dropped before the host answered.")
-            case .unreadable: return String(localized: "The answer was not a usable avatar.")
+            case .unreadable(let problems):
+                return ([String(localized: "The answer was not a usable avatar.")] + problems.prefix(1)).joined(separator: "\n")
             }
         }
     }
@@ -63,7 +67,8 @@ enum BotAvatarGeneration {
             + problems.map { "- \($0)" } + ["", "Last answer:", answer]).joined(separator: "\n")
     }
 
-    /// Turns a description into a checked avatar, with one repair try on a bad answer.
+    /// Turns a description into a checked avatar. A bad avatar gets one repair try. An answer with no
+    /// JSON at all is the host saying why it can't, so it goes straight to the user.
     static func avatar(description: String, send: (String) async throws -> String) async throws -> BotGeneratedAvatar {
         let first = try await send(prompt(description: description))
         guard case .failure(.unreadable(let problems)) = BotGeneratedAvatar.read(answer: first) else {

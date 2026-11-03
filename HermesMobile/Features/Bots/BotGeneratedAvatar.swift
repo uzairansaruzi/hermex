@@ -6,6 +6,10 @@ import SwiftUI
 /// Desktop and older Hermex builds ignore the key and keep drawing the stored `shape`.
 struct BotGeneratedAvatar: Equatable, Sendable {
     static let lookKey = "hermexAvatar"
+    /// How much of a host's plain-text answer the sheet shows.
+    private static let maxSaidCharacters = 400
+    /// The trailing line of the host's failure copy (`agent/turn_failure_copy.py`).
+    private static let hostFailureMarkers = ["\n\nProvider said:", "\n\nDetails:"]
 
     var name: String
     var path: String
@@ -30,11 +34,16 @@ struct BotGeneratedAvatar: Equatable, Sendable {
         ])
     }
 
-    /// Reads a model's answer, which may be wrapped in prose or a code fence. Returns the avatar,
-    /// or the problems in words a repair prompt can act on.
+    /// Reads a model's answer, which may be wrapped in prose or a code fence. Returns the avatar, the
+    /// problems in words a repair prompt can act on, or what the host said if it sent no JSON.
     static func read(answer: String) -> Result<BotGeneratedAvatar, BotAvatarGeneration.Failure> {
-        guard let open = answer.firstIndex(of: "{"), let close = answer.lastIndex(of: "}"), open < close,
-              let json = try? JSONDecoder().decode(BotJSON.self, from: Data(answer[open...close].utf8)),
+        // A failed call comes back as ordinary text, and its provider detail can hold JSON of its own.
+        let isHostFailure = hostFailureMarkers.contains { answer.contains($0) }
+        guard !isHostFailure, let open = answer.firstIndex(of: "{"), let close = answer.lastIndex(of: "}"), open < close else {
+            let said = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .failure(said.isEmpty ? .host("") : .said(String(said.prefix(maxSaidCharacters))))
+        }
+        guard let json = try? JSONDecoder().decode(BotJSON.self, from: Data(answer[open...close].utf8)),
               let avatar = BotGeneratedAvatar(json: json) else {
             return .failure(.unreadable(["the answer is not the requested JSON object"]))
         }

@@ -156,6 +156,14 @@ struct BotProfileDetails: Equatable, Sendable {
             try ensureOwner(owner, client)
             let details = BotProfileDetails(detailsPayload, expectedName: profile.id)
             guard details.name == profile.id else { throw BotFailure.wrongIdentity }
+            // A bot chat's pill opens this with a bare row until its roster read answers. Saving
+            // that would claim revision 0 and read as a change made elsewhere, so read the real one.
+            if lookRevision == nil, let roster = try? await client.call(.profilesList(includeSessions: false), validateDispatch: validate(owner)) {
+                try ensureOwner(owner, client)
+                if let row = roster["profiles"].list?.first(where: { $0["name"].text == profile.id }), let fresh = BotProfile(row) {
+                    profile = fresh; receivedLook = fresh.look; lookRevision = fresh.lookRevision
+                }
+            }
             if let options = try? await client.call(.configuredModelOptions, validateDispatch: validate(owner)) {
                 try ensureOwner(owner, client)
                 modelGroups = HermesModelCatalog(options).groups

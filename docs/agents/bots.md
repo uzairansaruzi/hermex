@@ -856,8 +856,10 @@ second user confirmation. A disconnect never causes an automatic retry.
 flat design prompt through `prompt.btw`, whose tools are denied at dispatch, reads
 `btw.complete`, then closes the draft and deletes its empty row. The edited bot's model answers;
 the create sheet uses the `default` Profile. `BotGeneratedAvatar` checks the answer (a small path
-grammar, and both eyes on the body), bad JSON gets one repair try, and the result is a draft
-stored under the Hermex-owned `hermexAvatar` look key until Save. A stored value is written back
+grammar, and both eyes on the body), a bad avatar gets one repair try, and the result is a draft
+stored under the Hermex-owned `hermexAvatar` look key until Save. `prompt.btw` reports a failed model
+call as ordinary text, such as a provider rejecting the Profile's key (Profiles keep their own
+`.env`), so an answer with no JSON is shown as the host's own words with no repair try. A stored value is written back
 untouched until the user picks a face. Never use `prompt.submit` here: on a live host (0.22.5) it
 ran `terminal` and `write_file` with no approval, survived `close_on_disconnect`, auto-continued
 on `session.resume`, and the agent's background review then created a skill. `llm.oneshot` has no
