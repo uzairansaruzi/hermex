@@ -2512,26 +2512,38 @@ screen (a webui session ID, or a Hermes session's current stored key) and, when 
 muting replies for up to two minutes after the user leaves. Local completion alerts are
 still never shown in the foreground.
 
-## Desktop viewing
+## Bot computer
 
-Bot Chat's desktop button and the bot profile's Computer row open a profile-scoped,
-view-only desktop sheet. `BotDesktopSession` probes the host capability instead of
-requiring a new Hermes version. Unsupported hosts and missing desktop dependencies
-show an explanation. Opening a stopped desktop does not start it: Start Desktop is
-an explicit action. The app never installs desktop dependencies, changes host setup,
-stops the desktop, acquires a control lease, sends keyboard/pointer input, or shares
-clipboard contents. The fitted screen can be pinched and panned locally in WebKit;
-those gestures are not remote input.
+Bot Chat and the Profile's Computer row open the same full-screen viewer. The
+chat shows a thumbnail while a live turn uses a computer or browser tool and
+offers takeover after the turn. Auto-open is off by default and is a per-connection,
+per-Profile preference. Opening the viewer starts an installed, stopped desktop
+once. Reconnecting or returning from the background checks status without starting
+it again. Missing packages show the host's installation command for the user to
+run. Stopping the desktop requires confirmation, with a separate confirmation
+before interrupting someone who holds control.
 
-`HermesCall` owns the display RPCs. Each connect/reconnect observes for a fresh
-single-use ticket; the URL stays in native memory. A native URLSession WebSocket
-carries the saved connection's proxy headers and rejects redirects. Only binary RFB
-bytes cross the bounded WebKit bridge. Bundled noVNC runs without network access or
-persistent website storage. Its upstream source, licenses, modifications and rebuild
-instructions live in `Resources/BotDesktop.bundle/novnc` and its provenance file.
+The viewer starts in watch mode. Local zoom and pan never send remote input.
+Only a confirmed lease for the current viewer enables touch, trackpad, keyboard
+and clipboard actions. Hold one finger still and release, or tap with two fingers,
+to right-click. Slide two fingers together to scroll the remote desktop, and
+pinch to change the local zoom. A voluntary exit hands back control. Leaving a takeover
+requested in chat preserves the lease so the Bot stays paused until the user
+returns and hands it back. Losing the lease clears remote clipboard data and
+disables input. The app hides the controlled screen while the scene is captured
+or inactive.
 
-Backgrounding or dismissing the sheet cancels work and clears the socket and frame.
-Foregrounding reads status again, without restarting the host. Late RPC replies and
-viewer callbacks are ignored by generation. Failed sockets retry with bounded
-backoff; a rejected ticket is renewed once. A stopped desktop is rechecked, never
-automatically restarted. Main-app-only resources and tests do not join extensions.
+`HermesCall` owns the display RPCs. A reconnect observes for a fresh single-use
+ticket and presents the previous viewer id, which the gateway recognizes only
+on its own connection. The native WebSocket carries the saved proxy headers and
+rejects redirects. Tickets and credentials stay native. WebKit receives bounded
+RFB bytes and lease-gated input commands. Bundled noVNC has no browser networking
+or persistent website storage. Its source, notices and rebuild instructions live
+in `Resources/BotDesktop.bundle`.
+
+Backgrounding clears the socket and rendered frame without handing back control.
+Late replies and callbacks are fenced by generation. A rejected ticket is renewed
+once and an HTTP 403 ends the attempt immediately. Try Again replaces a failed
+local renderer before reconnecting. The app waits for the first rendered
+frame before revealing the viewer. Resources and tests belong to the main app,
+with no share, widget or notification extension changes.

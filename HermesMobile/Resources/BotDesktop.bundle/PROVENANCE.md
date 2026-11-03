@@ -22,7 +22,7 @@ https://github.com/novnc/noVNC/archive/63107bd06d9e1f6136ff21aeda8cd62cbf0d433e.
 - The upstream-vendored ES-module adaptation of pako 1.0.3 is included under
   the MIT license at `novnc/vendor/pako/LICENSE`. Its provenance is in
   `novnc/vendor/pako/README.md`.
-- Hermex's bridge, HTML, CSS and build/test scripts use the repository's MIT
+- Hermex's bridge, input adapter, HTML, CSS and build/test scripts use the repository's MIT
   license. The noVNC source files remain governed by their original licenses.
 
 ## Hermex modifications to noVNC
@@ -61,24 +61,25 @@ This is not a substitute for the signed iOS/WKWebView integration test.
 
 ## Native boundary
 
-Native code owns endpoint URLs, proxy authorization, cookies, tickets and
-URLSessionWebSocketTask. The JavaScript API accepts only an integer session
-generation and bounded base64 RFB bytes:
+Native code owns endpoint URLs, proxy authorization, cookies, viewer ids,
+tickets and the URLSessionWebSocketTask. The page receives RFB bytes and
+generation-scoped commands:
 
 - `HermexDesktop.open(generation)`
 - `HermexDesktop.receive(base64, generation)`
+- `HermexDesktop.input(command, args, generation)`
 - `HermexDesktop.disconnect()` (silent native teardown)
 
 The `desktop` WKScriptMessageHandler receives `ready`, or session-scoped
-`send` (base64 `data`), `close`, `connected`, and `failed` messages with
-`generation`. `connected` is the actual RFB handshake event, not socket-open.
-A stale generation cannot inject data into the current connection.
+`send` (base64 `data`), `close`, `connected`, `frame`,
+`clipboard` and `failed` messages. `connected` reports the RFB
+handshake and `frame` reports the first complete framebuffer update after
+drawing. The `input.js` overlay owns gestures and input; noVNC's canvas
+does not receive touch events. It starts view-only. Only a server-confirmed
+lease enables remote input or clipboard, and the Hermes server also filters
+these messages by lease at the RFB boundary.
 
-The RFB instance is private. View-only, scaling and quality/compression are
-fixed, remote resize and focus-on-click are disabled, and there is no
-clipboard or input API. Browser networking is blocked by CSP. Native code
-must validate message shape/generation, bound outgoing queues and incoming
-WebSocket messages, serialize receive calls, and tear down on backgrounding
-or server/profile changes. Receive chunks are limited to 4 MiB, send chunks
-to 64 KiB. No viewer polling/render timer is added; upstream noVNC renders
-only received changes and uses its standard bounded receive queue.
+Browser networking is blocked by CSP. Native code validates message shape and
+generation, bounds outgoing queues and incoming WebSocket messages, and awaits
+delivery of each receive chunk. Receive chunks are limited to 4 MiB and send
+chunks to 64 KiB. Only received changes drive noVNC rendering.

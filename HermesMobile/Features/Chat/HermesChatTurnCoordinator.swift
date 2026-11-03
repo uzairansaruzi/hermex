@@ -351,6 +351,8 @@ struct HermesChatTranscript: Equatable {
 
     // MARK: Bot Chat (#1145)
 
+    private(set) var desktopUse: BotDesktopUse = .none
+
     /// The bot whose Bot Chat this is, from the latest roster read, or a bare row for its
     /// Profile until one answers. Nil in a session.
     var botProfile: BotProfile? {
@@ -1044,6 +1046,7 @@ struct HermesChatTranscript: Equatable {
     // MARK: Turns
 
     private func beginTurn(startedAt: Double?, prompt: String?) {
+        if desktopUse != .none { desktopUse = .none }
         turnsStarted += 1
         // A send's own turn can begin from its start frame, ahead of the reply; any other has no base.
         let base = isSubmittingSend ? pendingBase : nil
@@ -1081,6 +1084,7 @@ struct HermesChatTranscript: Equatable {
     /// same outcome, haptic and alert.
     private func finish(_ ending: TranscriptTurnRunOutcome.Ending) {
         guard let streamID = activeStreamID else { return }
+        if desktopUse == .active { desktopUse = .ended }
         let startedAt = turnStartedAt
         endLiveActivity(ending)
         liveActivity = nil
@@ -1125,7 +1129,7 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// One event of this runtime, in `seq` order.
-    private func apply(_ frame: BotJSON) {
+    private func apply(_ frame: BotJSON, live: Bool = false) {
         let payload = frame["payload"]
         switch frame["type"].text ?? "" {
         case "message.start":
@@ -1160,6 +1164,9 @@ struct HermesChatTranscript: Equatable {
         case "tool.start":
             ensureTurn()
             let tool = Self.toolEvent(payload, completed: false)
+            if live, policy == .botChat, let name = tool.name, BotDesktopUse.matches(tool: name), desktopUse != .active {
+                desktopUse = .active
+            }
             drivenLiveActivity?.update(.toolStarted(name: tool.name))
             delegate?.streamCoordinatorAppendToolCall(tool)
         case "tool.complete":
@@ -1916,7 +1923,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
             replayedReply = Self.replyText(frames)
             return
         }
-        frames.forEach(apply)
+        frames.forEach { apply($0) }
     }
 
     /// A rebuild reads the newest history rows first, while the engine still holds the frames.
@@ -1966,7 +1973,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
             sideTasks.receive(frame)
             return rebuildAfterGap()
         }
-        apply(frame)
+        apply(frame, live: true)
     }
 
     func conversationDidLoseFrames() { rebuildAfterGap() }
@@ -1990,6 +1997,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
+        if desktopUse == .active { desktopUse = .ended }
         drivenLiveActivity?.markStale()
         if failure == .rejected(401) { needsSignIn = true }
         guard !retrying else { return }

@@ -128,6 +128,7 @@ struct ChatTranscriptView: View {
     var settledPlanAfterRenderID: String? = nil
     /// How a Hermes chat's last turn ended (#1139), under that turn.
     var turnOutcome: HermesTurnOutcomeRow? = nil
+    var botComputerCard: AnyView? = nil
     /// A Hermes chat's queued prompt (`ChatViewModel.queuedPromptMessage`, #1379), drawn last
     /// as a pending bubble whose only action is `onCopyQueuedPrompt`.
     var queuedPrompt: ChatMessage? = nil
@@ -463,6 +464,7 @@ struct ChatTranscriptView: View {
             transcriptLooseBlocks
             liveResponseBlocks
             workingRow
+            botComputerCard
             turnOutcome
             if let requestWithdrawal {
                 BotRequestWithdrawalNote(withdrawal: requestWithdrawal)

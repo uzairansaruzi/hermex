@@ -11,6 +11,8 @@ function fixture() {
     const messages = [];
     const instances = [];
     const microtasks = [];
+    const handlers = new Map(), animationFrames = new Map(), pointerMasks = [];
+    let frameID = 0, time = 0;
     let clears = 0;
     class RFB {
         constructor(screen, channel, options) {
@@ -18,20 +20,30 @@ function fixture() {
             this.options = options;
             this.events = {};
             this.frames = [];
+            this.keys = [];
             this.disconnected = false;
             channel.onmessage = event => this.frames.push(new Uint8Array(event.data));
             channel.onclose = () => this.emit('disconnect');
             instances.push(this);
         }
         addEventListener(type, listener) { this.events[type] = listener; }
-        emit(type) { this.events[type]?.({ detail: { reason: 'secret server text' } }); }
+        emit(type, detail = { reason: 'secret server text' }) {
+            if (type === 'connect') this._rfbConnectionState = 'connected';
+            this.events[type]?.({ detail });
+        }
+        sendKey(...args) { this.keys.push(args); }
         disconnect() { this.disconnected = true; this.channel.close(); }
     }
+    RFB.messages = { pointerEvent: (_sock, _x, _y, mask) => pointerMasks.push(mask) };
+    const canvas = { width: 200, height: 200, getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 200 }) };
     const window = { webkit: { messageHandlers: { desktop: {
         postMessage: message => messages.push(JSON.parse(JSON.stringify(message)))
     } } } };
     const context = vm.createContext({
-        window, RFB, ArrayBuffer, Uint8Array,
+        window, RFB, ArrayBuffer, Uint8Array, AbortController,
+        performance: { now: () => time },
+        requestAnimationFrame: callback => { animationFrames.set(++frameID, callback); return frameID; },
+        cancelAnimationFrame: id => animationFrames.delete(id),
         initLogging: level => assert.equal(level, 'none'),
         btoa: value => Buffer.from(value, 'binary').toString('base64'),
         atob: value => {
@@ -40,13 +52,25 @@ function fixture() {
         },
         queueMicrotask: callback => microtasks.push(callback),
         document: { getElementById: id => {
-            assert.equal(id, 'screen');
-            return { replaceChildren: () => { clears++; } };
+            assert(['screen', 'input', 'pointer'].includes(id));
+            return {
+                replaceChildren: () => { clears++; },
+                addEventListener: (type, callback) => { if (id === 'input') handlers.set(type, callback); },
+                setPointerCapture() {}, querySelector: () => canvas, style: {}, clientWidth: 200, clientHeight: 200
+            };
         } }
     });
+    const input = fs.readFileSync(path.join(bundle, 'input.js'), 'utf8')
+        .replace(/^import .*;\n/gm, '').replace('export function', 'function');
+    vm.runInContext(input, context);
     const source = fs.readFileSync(path.join(bundle, 'bridge.js'), 'utf8').replace(/^import .*;\n/gm, '');
     vm.runInContext(source, context);
-    return { api: window.HermexDesktop, instances, messages, flush: () => {
+    return { api: window.HermexDesktop, instances, messages, pointerMasks,
+        fire: (type, event = {}) => handlers.get(type)({ type, pointerId: 1, pointerType: 'touch',
+            clientX: 50, clientY: 50, preventDefault() {}, ...event }),
+        advance: ms => { time += ms; },
+        frame: () => { for (const [id, callback] of animationFrames) { animationFrames.delete(id); callback(); } },
+        flush: () => {
         while (microtasks.length) microtasks.shift()();
     }, get clears() { return clears; } };
 }
@@ -54,7 +78,7 @@ function fixture() {
 test('exposes only a fixed native lifecycle API and view-only settings', () => {
     const f = fixture();
     assert.deepEqual(f.messages, [{ type: 'ready' }]);
-    assert.deepEqual(Object.keys(f.api).sort(), ['disconnect', 'open', 'receive']);
+    assert.deepEqual(Object.keys(f.api).sort(), ['disconnect', 'input', 'open', 'receive']);
     assert(Object.isFrozen(f.api));
     f.api.open(1);
     const rfb = f.instances[0];
@@ -69,6 +93,93 @@ test('exposes only a fixed native lifecycle API and view-only settings', () => {
     assert.equal(f.messages.length, 1, 'opening transport is not RFB connection success');
     rfb.emit('connect');
     assert.deepEqual(f.messages.at(-1), { type: 'connected', generation: 1 });
+});
+
+test('secondary mouse clicks work with or without a contextmenu companion event', () => {
+    const f = fixture();
+    f.api.open(1);
+    f.instances[0].emit('connect');
+    const mouse = { pointerType: 'mouse', button: 2 };
+    f.fire('contextmenu', mouse);
+    assert.deepEqual(f.pointerMasks, [], 'a watcher cannot right click');
+    f.api.input('control', { enabled: true }, 1);
+
+    f.fire('contextmenu', mouse);
+    assert.deepEqual(f.pointerMasks.splice(0), [4, 0], 'WebKit can send only contextmenu');
+    f.fire('pointerdown', { ...mouse, buttons: 0 });
+    f.fire('pointerup', mouse);
+    f.fire('contextmenu', mouse);
+    assert.deepEqual(f.pointerMasks.splice(0), [4, 0], 'button identifies secondary even with an empty buttons mask');
+    f.fire('pointerdown', { ...mouse, buttons: 2 });
+    f.fire('contextmenu', mouse);
+    f.fire('pointerup', mouse);
+    assert.deepEqual(f.pointerMasks, [4, 0], 'a contextmenu before release does not duplicate the click');
+});
+
+test('a long press or a two-finger tap right-clicks the desktop once', () => {
+    const f = fixture();
+    f.api.open(1);
+    f.instances[0].emit('connect');
+    f.api.input('control', { enabled: true }, 1);
+    f.fire('pointerdown');
+    f.advance(550);
+    f.fire('contextmenu');
+    f.fire('pointerup');
+    assert.deepEqual(f.pointerMasks.splice(0), [4, 0]);
+    f.fire('pointerdown');
+    f.fire('pointerdown', { pointerId: 2, clientX: 110 });
+    f.fire('pointerup');
+    f.fire('pointerup', { pointerId: 2 });
+    assert.deepEqual(f.pointerMasks, [4, 0]);
+});
+
+test('two fingers moving together scroll the remote desktop even when zoomed', () => {
+    const f = fixture();
+    f.api.open(1);
+    f.instances[0].emit('connect');
+    f.api.input('control', { enabled: true }, 1);
+    f.fire('pointerdown');
+    f.fire('pointerdown', { pointerId: 2, clientX: 110 });
+    f.fire('pointermove', { clientX: 30 });
+    f.fire('pointermove', { pointerId: 2, clientX: 130 });
+    f.frame();
+    f.fire('pointerup');
+    f.fire('pointerup', { pointerId: 2 });
+    assert.deepEqual(f.pointerMasks, [], 'pinching only zooms locally');
+
+    f.fire('pointerdown');
+    f.fire('pointerdown', { pointerId: 2, clientX: 110 });
+    f.fire('pointermove', { clientX: 18 });
+    f.fire('pointermove', { pointerId: 2, clientX: 78 });
+    f.frame();
+    f.fire('pointerup');
+    f.fire('pointerup', { pointerId: 2 });
+    assert.deepEqual(f.pointerMasks, [64, 0, 64, 0]);
+});
+
+test('remote input and clipboard are gated by current generation and control', () => {
+    const f = fixture();
+    f.api.open(7);
+    const rfb = f.instances[0];
+    rfb.emit('connect');
+    f.api.input('key', { key: 0xff0d }, 7);
+    f.api.input('control', { enabled: true }, 6);
+    rfb.emit('clipboard', { text: 'private' });
+    assert.equal(rfb.keys.length, 0);
+    assert.equal(f.messages.at(-1).type, 'connected');
+
+    f.api.input('control', { enabled: true }, 7);
+    f.api.input('modifier', { key: 0xffe3 }, 7);
+    f.api.input('key', { key: 0x61 }, 7);
+    assert.deepEqual(rfb.keys, [[0xffe3, null, true], [0x61], [0xffe3, null, false]]);
+    rfb.emit('clipboard', { text: 'allowed' });
+    assert.deepEqual(f.messages.at(-1), { type: 'clipboard', generation: 7, text: 'allowed' });
+
+    f.api.input('control', { enabled: false }, 7);
+    f.api.input('type', { text: 'blocked' }, 7);
+    rfb.emit('clipboard', { text: 'blocked' });
+    assert.equal(rfb.keys.length, 3);
+    assert.equal(f.messages.at(-1).text, 'allowed');
 });
 
 test('binary transport preserves arbitrary bytes and typed-array slice boundaries', () => {

@@ -9,4 +9,7 @@ html, body, #screen {
     pointer-events: none;
     user-select: none;
     -webkit-user-select: none;
+    transform-origin: 0 0;
 }
+#input { position: absolute; inset: 0; touch-action: none; user-select: none; -webkit-touch-callout: none; }
+#pointer { position: absolute; top: 0; left: 0; pointer-events: none; color: white; text-shadow: 0 1px 2px black; }

@@ -1,5 +1,6 @@
 import RFB from './novnc/core/rfb.js';
 import { initLogging } from './novnc/core/util/logging.js';
+import { desktopInput } from './input.js';
 
 // Protocol errors and desktop names must never reach console or native logs.
 initLogging('none');
@@ -26,6 +27,7 @@ function dispose() {
     if (!session) return;
     // Silence native notifications before noVNC closes its transport.
     session.silent = true;
+    session.input?.dispose();
     session.rfb?.disconnect();
     session.channel.readyState = 3;
     session.channel.onmessage = null;
@@ -41,7 +43,7 @@ function fail(session) {
 function open(generation) {
     if (!Number.isSafeInteger(generation) || generation < 0) return;
     dispose();
-    const session = { generation, silent: false, rfb: null, channel: null };
+    const session = { generation, silent: false, rfb: null, channel: null, input: null };
     active = session;
     const channel = {
         readyState: 1,
@@ -81,8 +83,28 @@ function open(generation) {
         rfb.focusOnClick = false;
         rfb.qualityLevel = 7;
         rfb.compressionLevel = 2;
+        session.input = desktopInput(rfb);
+        const update = rfb._framebufferUpdate;
+        if (typeof update === 'function') {
+            rfb._framebufferUpdate = function () {
+                const complete = update.call(this);
+                if (complete) {
+                    rfb._framebufferUpdate = update;
+                    rfb._display.flush().then(() => {
+                        if (active === session) post({ type: 'frame', generation });
+                    }).catch(() => fail(session));
+                }
+                return complete;
+            };
+        }
         rfb.addEventListener('connect', () => {
             if (active === session) post({ type: 'connected', generation });
+        });
+        rfb.addEventListener('clipboard', event => {
+            const text = event.detail?.text;
+            if (active === session && !rfb.viewOnly && typeof text === 'string' && text.length <= 262144) {
+                post({ type: 'clipboard', text, generation });
+            }
         });
         for (const type of ['disconnect', 'securityfailure', 'credentialsrequired', 'serververification']) {
             rfb.addEventListener(type, () => fail(session));
@@ -90,6 +112,10 @@ function open(generation) {
     } catch (_) {
         fail(session);
     }
+}
+
+function input(command, args, generation) {
+    if (active?.generation === generation) active.input?.command(command, args);
 }
 
 function receive(base64, generation) {
@@ -113,10 +139,10 @@ function receive(base64, generation) {
     }
 }
 
-// Only native lifecycle and incoming bytes are exposed. No RFB object, input,
-// clipboard, credentials, server URL or authentication ticket enters this API.
+// Only lifecycle, RFB bytes and explicit input cross the bridge. The socket URL,
+// credentials, viewer identity and ticket stay native.
 Object.defineProperty(window, 'HermexDesktop', {
-    value: Object.freeze({ open, receive, disconnect: dispose }),
+    value: Object.freeze({ open, receive, input, disconnect: dispose }),
     writable: false,
     configurable: false
 });
