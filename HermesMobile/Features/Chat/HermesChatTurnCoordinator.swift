@@ -1896,6 +1896,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         requests.reset()
         settings.disconnect()
         activity.delegatedWork.disconnect()
+        activity.backgroundProcesses.disconnect()
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
     }
 
@@ -1958,6 +1959,12 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
             guard let self, self.engine.generation == attempt else { return }
             await self.activity.delegatedWork.connect(workers)
         }
+        let processes = HermesBackgroundProcesses.Context(connectionID: engine.connection.id, runtime: runtime, generation: attempt)
+        Task { [weak self] in
+            // Not for an attach a reset already replaced.
+            guard let self, self.engine.generation == attempt else { return }
+            await self.activity.backgroundProcesses.connect(processes)
+        }
     }
 
     func conversation(didReceive frame: BotJSON, afterGap: Bool) {
@@ -1987,6 +1994,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         requests.willLeave()
         requests.disconnect()
         activity.delegatedWork.disconnect()
+        activity.backgroundProcesses.disconnect()
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {

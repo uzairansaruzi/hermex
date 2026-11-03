@@ -521,7 +521,7 @@ private extension HermesCall {
         switch self {
         case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
              .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
-             .commitMessage, .approvalSummary: return true
+             .commitMessage, .approvalSummary, .processList: return true
         default: return false
         }
     }
@@ -534,7 +534,7 @@ private extension HermesCall {
         switch self {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
-             .approvalSummary: return true
+             .approvalSummary, .processList: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }

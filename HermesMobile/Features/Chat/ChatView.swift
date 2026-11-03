@@ -443,6 +443,8 @@ struct ChatView: View {
     @State private var shortcutNoticeHeight: CGFloat = 0
     /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
     @State private var showsDelegatedWork = false
+    /// The background-processes sheet a Hermes chat's processes button opens (#1420).
+    @State private var showsBackgroundProcesses = false
     /// A bot's chat's pill opened the bot's profile (#1145).
     @State private var showsBotProfileEditor = false
     @State private var showsChatSettings = false
@@ -1267,6 +1269,8 @@ struct ChatView: View {
                 }
 
                 delegatedWorkToolbarItem
+
+                backgroundProcessesToolbarItem
             }
             .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
@@ -1368,6 +1372,13 @@ struct ChatView: View {
             .sheet(isPresented: $showsDelegatedWork) {
                 if let work = viewModel.hermesActivity?.delegatedWork {
                     HermesDelegatedWorkView(work: work)
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                }
+            }
+            .sheet(isPresented: $showsBackgroundProcesses) {
+                if let processes = viewModel.hermesActivity?.backgroundProcesses {
+                    HermesBackgroundProcessesView(processes: processes)
                         .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
                 }
@@ -2189,6 +2200,24 @@ struct ChatView: View {
                 HermesDelegatedWorkButton(count: work.activeCount) {
                     showsDelegatedWork = true
                     Task { await work.refresh() }
+                }
+            }
+        }
+    }
+
+    /// A Hermes chat's background-commands button (#1420), its own glass beside the workers'
+    /// while the session has rows to inspect, the running count its label. Hidden on the
+    /// offline cache's copy, which lists no processes.
+    @ToolbarContentBuilder
+    private var backgroundProcessesToolbarItem: some ToolbarContent {
+        if !viewModel.isViewingCachedData,
+           let processes = viewModel.hermesActivity?.backgroundProcesses,
+           processes.availability != .unsupported, !processes.processes.isEmpty {
+            if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+            ToolbarItem(placement: .topBarTrailing) {
+                HermesBackgroundProcessesButton(count: processes.runningCount) {
+                    showsBackgroundProcesses = true
+                    Task { await processes.refresh() }
                 }
             }
         }
