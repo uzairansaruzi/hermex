@@ -184,52 +184,45 @@ final class ChatComposerSendGateTests: XCTestCase {
         let sender = ThinkingLevelSender()
         var sent: [String] = []
         var answers: [CheckedContinuation<Bool, Never>] = []
-        let waiting = expectation(description: "the first level is out")
-        waiting.assertForOverFulfill = false
+        let firstOut = expectation(description: "the first level is out")
+        let newestOut = expectation(description: "the newest level is out")
         let send: (String) async -> Bool = { level in
             sent.append(level)
-            return await withCheckedContinuation { answers.append($0); waiting.fulfill() }
+            return await withCheckedContinuation {
+                answers.append($0)
+                (level == "low" ? firstOut : newestOut).fulfill()
+            }
         }
 
         sender.request("low", send: send)
         XCTAssertEqual(sender.pendingLevel, "low")
-        await fulfillment(of: [waiting], timeout: 5)
+        await fulfillment(of: [firstOut], timeout: 5)
 
         sender.request("medium", send: send)
         sender.request("high", send: send)
         XCTAssertEqual(sender.pendingLevel, "high")
         XCTAssertEqual(sent, ["low"])
 
-        let cleared = expectation(description: "the answers are in")
-        Task { @MainActor in
-            answers.removeFirst().resume(returning: true)
-            while answers.isEmpty { await Task.yield() }
-            answers.removeFirst().resume(returning: false)
-            while sender.pendingLevel != nil { await Task.yield() }
-            cleared.fulfill()
-        }
-        await fulfillment(of: [cleared], timeout: 5)
+        answers.removeFirst().resume(returning: true)
+        await fulfillment(of: [newestOut], timeout: 5)
+        answers.removeFirst().resume(returning: false)
+        await waitUntil("a refused level clears") { sender.pendingLevel == nil }
 
         XCTAssertEqual(sent, ["low", "high"])
-        XCTAssertNil(sender.pendingLevel)
     }
 
     /// An accepted level outlasts the host's answer, since clearing on the answer flashes the old
-    /// level before the chat's own value reaches the screen.
+    /// level before the chat's own value reaches the screen. It then lets go.
     @MainActor
     func testAnAcceptedThinkingLevelOutlastsTheAnswer() async {
-        let sender = ThinkingLevelSender(settleDelay: .milliseconds(300))
-        let answered = expectation(description: "the host answered")
-        sender.request("high") { _ in
-            answered.fulfill()
-            return true
-        }
-        await fulfillment(of: [answered], timeout: 5)
-        for _ in 0..<5 { await Task.yield() }
-        XCTAssertFalse(sender.isSending)
-        XCTAssertEqual(sender.pendingLevel, "high")
+        let holding = ThinkingLevelSender(settleDelay: .seconds(60))
+        holding.request("high") { _ in true }
+        await waitUntil("the host answered") { !holding.isSending }
+        XCTAssertEqual(holding.pendingLevel, "high")
 
-        while sender.pendingLevel != nil { await Task.yield() }
+        let settled = ThinkingLevelSender(settleDelay: .zero)
+        settled.request("high") { _ in true }
+        await waitUntil("the level lets go") { settled.pendingLevel == nil }
     }
 
     /// A run holds configuration but not `+` (#1436); offline and read-only hold both.
