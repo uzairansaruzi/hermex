@@ -8,6 +8,7 @@ import SwiftUI
     @State private var creator: BotCreator
     @State private var showsModels = false
     @State private var showsExpressions = false
+    @State private var showsDescribe = false
     /// What the face should do about the last edit: a hop for a shape, a wobble
     /// for a color, a glance down while the name is typed.
     @State private var cue: BotFaceCue?
@@ -105,6 +106,11 @@ import SwiftUI
                 }
             }
             .navigationDestination(isPresented: $showsExpressions) { expressionPicker }
+            .sheet(isPresented: $showsDescribe) {
+                BotAvatarDescribeSheet(send: { [creator] prompt in try await creator.sendAvatarPrompt(prompt) }) { generated in
+                    creator.setGenerated(generated); cue = BotFaceCue(.hop)
+                }
+            }
         }
         .interactiveDismissDisabled(creator.phase == .creating)
         .sheet(isPresented: $showsModels) { modelPicker }
@@ -158,23 +164,9 @@ import SwiftUI
 
     private var lookCard: some View {
         card {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
-                ForEach(BotAvatarShape.allCases) { shape in
-                    Button { creator.setShape(shape); cue = BotFaceCue(.hop) } label: {
-                        BotAvatarMarkView(name: creator.name, appearance: appearance(for: shape), size: 42)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .overlay {
-                                if creator.draft.appearance.shape == shape.rawValue {
-                                    RoundedRectangle(cornerRadius: 12).stroke(.secondary, lineWidth: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(shape.localizedName)
-                    .accessibilityAddTraits(creator.draft.appearance.shape == shape.rawValue ? .isSelected : [])
-                }
+            BotAvatarShapePicker(name: creator.name, appearance: creator.draft.appearance) { shape in
+                creator.setShape(shape); cue = BotFaceCue(.hop)
             }
-            .padding(16)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
                 ForEach(BotAvatarColor.palette) { color in
                     Button { creator.setColor(color.hex); cue = BotFaceCue(.wobble) } label: {
@@ -188,6 +180,9 @@ import SwiftUI
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 10)
+            Divider().padding(.leading, 16)
+            navigationRow(String(localized: "Describe It"), subtitle: nil, value: "", systemImage: "sparkles") { showsDescribe = true }
+                .disabled(!creator.holdsConnection)
             Divider().padding(.leading, 16)
             navigationRow(String(localized: "Expression"), subtitle: nil,
                           value: BotAvatarExpression.resolve(creator.draft.appearance.expression).localizedName,
@@ -273,12 +268,6 @@ import SwiftUI
             .padding(16).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func appearance(for shape: BotAvatarShape) -> BotProfileAppearance {
-        var appearance = creator.draft.appearance
-        appearance.shape = shape.rawValue; appearance.custom = true; appearance.imageKind = "shape"
-        return appearance
     }
 
     private func appearance(expression: BotAvatarExpression) -> BotProfileAppearance {
