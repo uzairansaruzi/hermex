@@ -1,4 +1,5 @@
 import AVFoundation
+import SwiftUI
 import UIKit
 import XCTest
 @testable import HermesMobile
@@ -20,9 +21,9 @@ final class ChatComposerSendGateTests: XCTestCase {
     func testThinkingLadderSendsOnlyAChangeFromWhereTheDragLands() {
         let ladder = ThinkingLadder(levels: ["low", "medium", "high"], current: "medium")
 
-        XCTAssertEqual(ladder.index(atX: -50, width: 300), 0)
-        XCTAssertEqual(ladder.index(atX: 140, width: 300), 1)
-        XCTAssertEqual(ladder.index(atX: 900, width: 300), 2)
+        XCTAssertEqual(ladder.index(atPosition: ThinkingLadder.position(atX: -50, width: 300)), 0)
+        XCTAssertEqual(ladder.index(atPosition: ThinkingLadder.position(atX: 140, width: 300)), 1)
+        XCTAssertEqual(ladder.index(atPosition: ThinkingLadder.position(atX: 900, width: 300)), 2)
         XCTAssertEqual(ladder.commit(at: 2), "high")
         XCTAssertNil(ladder.commit(at: 1))
     }
@@ -33,6 +34,60 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: -40, height: -6)))
         XCTAssertFalse(ThinkingLadder.isAdjustment(CGSize(width: 6, height: 40)))
         XCTAssertFalse(ThinkingLadder.isAdjustment(CGSize(width: -6, height: -40)))
+    }
+
+    /// Reduce Motion lands on the level with no time passing, so a look never moves.
+    func testThinkingSliderSnapsWithNoTimePassingUnderReduceMotion() {
+        let store = ThinkingSliderStore(), size = CGSize(width: 348, height: 56)
+        _ = store.advance(time: 100, target: 0, followsFinger: false, size: size, isStill: true)
+        let frame = store.advance(time: 200, target: 1, followsFinger: false, size: size, isStill: true)
+
+        XCTAssertEqual(frame.level, 1)
+        XCTAssertEqual(frame.delta, 0)
+        XCTAssertEqual(frame.thumbX, 348 - ThinkingSliderMetrics.inset)
+    }
+
+    /// The thumb keeps up with a finger more closely than it eases to a tapped level, and a
+    /// paused track resumes without a jump, however long it was held.
+    func testThinkingSliderFollowsTheFingerAndResumesWithoutAJump() {
+        let size = CGSize(width: 348, height: 56)
+        func step(followsFinger: Bool) -> Double {
+            let store = ThinkingSliderStore()
+            _ = store.advance(time: 100, target: 0, followsFinger: followsFinger, size: size, isStill: false)
+            return store.advance(time: 100 + 1.0 / 60, target: 1, followsFinger: followsFinger, size: size, isStill: false).level
+        }
+        XCTAssertGreaterThan(step(followsFinger: true), step(followsFinger: false))
+
+        let store = ThinkingSliderStore()
+        _ = store.advance(time: 100, target: 0, followsFinger: false, size: size, isStill: false)
+        let resumed = store.advance(time: 1000, target: 0, followsFinger: false, size: size, isStill: false)
+        XCTAssertEqual(resumed.delta, 0.05)
+    }
+
+    /// Every look draws its whole ladder without trapping, and paints something, at the real width
+    /// and at the sliver a first layout can pass. Particle counts rise and fall between frames.
+    @MainActor
+    func testEveryThinkingSliderLookDrawsAtAnyLevelAndWidth() throws {
+        for look in ThinkingSliderLook.allCases {
+            for width in [348.0, 1.0] {
+                let store = ThinkingSliderStore()
+                let levels = [0.0, 1, 0.5, 0, 1, 0.14]
+                let canvas = Canvas { context, size in
+                    for (step, level) in levels.enumerated() {
+                        let frame = store.advance(
+                            time: Double(step) * 0.04, target: level, followsFinger: true, size: size, isStill: false
+                        )
+                        var track = context
+                        look.drawTrack(&track, frame, store)
+                        look.drawThumb(&track, frame)
+                    }
+                }
+                .frame(width: width, height: ThinkingSliderMetrics.height)
+                let image = try XCTUnwrap(ImageRenderer(content: canvas).uiImage, look.name)
+                XCTAssertEqual(image.size.width, width, look.name)
+                XCTAssertNotNil(store.level, "\(look.name) never drew")
+            }
+        }
     }
 
     /// VoiceOver's swipe moves one level and stops at each end.

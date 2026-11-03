@@ -312,6 +312,15 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
             ?? effort.capitalized
     }
 
+    /// `title`, shortened where eight of them share a line under the Thinking control.
+    static func shortTitle(for effort: String) -> String {
+        switch effort {
+        case "minimal": String(localized: "Min")
+        case "medium": String(localized: "Med")
+        default: title(for: effort)
+        }
+    }
+
     /// Menu options for a server-provided effort vocabulary (issue #18).
     /// `nil` or empty → the full static list (older servers / defensive fallback;
     /// an empty list also means `supports_reasoning_effort == false`, which hides

@@ -22,6 +22,12 @@ struct SettingsAppearancePage: View {
                 Toggle(isOn: $tintsPrimaryActions) {
                     SettingsLabel(title: String(localized: "Tint New Chat & Send"), systemImage: "paintbrush.pointed")
                 }
+
+                NavigationLink {
+                    ThinkingSliderPickerView()
+                } label: {
+                    SettingsLabel(title: String(localized: "Thinking Slider"), systemImage: "slider.horizontal.below.rectangle")
+                }
             }
 
             Section {

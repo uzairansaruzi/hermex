@@ -118,7 +118,6 @@ struct ModelSettingsSheet<AllModels: View>: View {
     let allModelsPicker: (@escaping (ModelCatalogOption) -> Void) -> AllModels
 
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(ThinkingControlStyle.storageKey) private var thinkingStyle = ThinkingControlStyle.warmBars
     @State private var showsAllModels = false
     @State private var lastChanged: ModelSettingsRow?
     @State private var levelSender = ThinkingLevelSender()
@@ -203,7 +202,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
             if let only = selection.staticEffort {
                 LabeledContent("Thinking", value: only.title)
             } else {
-                ThinkingControl(selection: shownSelection, isDisabled: isDisabled) { level in
+                ThinkingControl(selection: shownSelection, isDisabled: isDisabled, isCovered: showsAllModels) { level in
                     // VoiceOver's adjustment arrives here past the hit test below.
                     guard !isUpdating || levelSender.isSending else { return }
                     lastChanged = .thinking
@@ -212,23 +211,9 @@ struct ModelSettingsSheet<AllModels: View>: View {
                 // The host refuses a level while another kind of change is out. Its own sends
                 // stay open, since the sender keeps the newest of them.
                 .allowsHitTesting(!isUpdating || levelSender.isSending)
-                thinkingStyleSwitcher
             }
             statusLine(for: .thinking)
         }
-    }
-
-    /// Temporary, for comparing the looks on a phone (#1550). Goes with the losing looks.
-    private var thinkingStyleSwitcher: some View {
-        Picker(selection: $thinkingStyle) {
-            ForEach(ThinkingControlStyle.allCases, id: \.self) { style in
-                Text(verbatim: style.rawValue).tag(style)
-            }
-        } label: {
-            Text(verbatim: "Look")
-        }
-        .pickerStyle(.segmented)
-        .padding(.top, 8)
     }
 
     /// Follows the chat's state, so the switch only stays moved once the host answers.
