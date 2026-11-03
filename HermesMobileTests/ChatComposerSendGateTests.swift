@@ -9,6 +9,15 @@ import XCTest
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
     /// A host's level the model's list doesn't name stays on the ladder and stays current.
+    /// iPhone Duo's displays leave about 300 pt above the keyboard with a regular size class. An
+    /// editor that kept growing there pushed Send behind the keyboard.
+    func testAShortViewportHoldsTheEditorToItsMinimumWhateverTheSizeClass() {
+        XCTAssertEqual(
+            ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .regular, isViewportShort: true),
+            ComposerTextInputHeight.shortViewportMinimum)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .regular, isViewportShort: false), 160)
+    }
+
     func testThinkingLadderKeepsALevelTheListDoesNotName() {
         let ladder = ThinkingLadder(levels: ["low", "high"], current: "turbo")
 

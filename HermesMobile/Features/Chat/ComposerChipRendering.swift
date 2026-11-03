@@ -127,6 +127,7 @@ struct ComposerChipMetrics: Equatable {
             String(describing: metrics.height) as NSString,
             String(traits.userInterfaceStyle.rawValue) as NSString,
             String(traits.accessibilityContrast.rawValue) as NSString,
+            NSNumber(value: Double(traits.displayScale)),
             (isRightToLeft ? "rtl" : "ltr") as NSString,
             (maximumWidth.map(String.init(describing:)) ?? "unbounded") as NSString,
             (usesAccentIcon ? "accent" : "secondary") as NSString
@@ -176,7 +177,8 @@ struct ComposerChipMetrics: Equatable {
             let view = BotAvatarView(profile: reference.profile, avatar: reference.avatar, size: metrics.iconSize, motion: .still)
                 .environment(\.colorScheme, traits.userInterfaceStyle == .dark ? .dark : .light)
             let renderer = ImageRenderer(content: view)
-            renderer.scale = traits.displayScale > 0 ? traits.displayScale : UIScreen.main.scale
+            // Traits report 0 before the view reaches a window; the real scale is a new cache key.
+            renderer.scale = max(traits.displayScale, 1)
             return renderer.uiImage
         }
     }
@@ -214,7 +216,7 @@ struct ComposerChipMetrics: Equatable {
         let width = maximumWidth.map { min(naturalWidth, max(metrics.height * 2, $0)) } ?? naturalWidth
         let textWidth = max(0, width - metrics.horizontalPadding * 2 - iconWidth)
 
-        let format = UIGraphicsImageRendererFormat.preferred()
+        let format = UIGraphicsImageRendererFormat(for: traits)
         format.opaque = false
         let renderer = UIGraphicsImageRenderer(
             size: CGSize(width: width, height: metrics.height),
@@ -278,13 +280,15 @@ struct ComposerChipTextStyle {
         colorScheme: ColorScheme,
         contrast: ColorSchemeContrast,
         layoutDirection: LayoutDirection,
-        dynamicTypeSize: DynamicTypeSize
+        dynamicTypeSize: DynamicTypeSize,
+        displayScale: CGFloat
     ) {
         // Reading the size is what ties this value to Dynamic Type; the font
         // itself comes from the same body style the editor uses.
         _ = dynamicTypeSize
         metrics = ComposerChipMetrics(editorFont: .preferredFont(forTextStyle: .body))
         traits = UITraitCollection { traits in
+            traits.displayScale = displayScale
             traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
             traits.accessibilityContrast = contrast == .increased ? .high : .normal
         }

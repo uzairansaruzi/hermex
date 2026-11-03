@@ -8,30 +8,57 @@ enum HermesHomeLayout {
     }
 }
 
-/// The regular-width shell (iPad, landscape Plus/Max). A sidebar root selection
-/// bumps `rootRevision`, which rebuilds only the detail root and pops any screen
-/// pushed above it (#116). The sidebar keeps its identity, scroll position, and
-/// row state across selections (#689); its visibility follows `afterRootSelection`.
+/// The regular-width shell (iPad, iPhone Duo's inner display, landscape Plus/Max). A sidebar root
+/// selection bumps `rootRevision`, which rebuilds only the detail root and pops any screen pushed
+/// above it (#116). The sidebar keeps its identity, scroll position, and row state across selections
+/// (#689); its visibility follows `settled(isRoomy:isCollapsedByUser:)` as selections land and the
+/// width changes.
 struct SessionSplitView<Sidebar: View, Detail: View>: View {
     let rootRevision: Int
+    /// The Hermes home's sidebar hides its top bar, and the system's toggle with it, so the detail
+    /// carries a way to hide an open sidebar.
+    var offersHideSidebar = false
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var isRoomy = false
+    /// Tracked apart from `columnVisibility`, where the system also writes `.detailOnly` for a
+    /// hidden `.automatic` sidebar.
+    @State private var isCollapsedByUser = false
     @State private var detailColumn = DetailColumnNavigation()
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
+                .navigationSplitViewColumnWidth(min: 280, ideal: 380, max: 420)
         } detail: {
             NavigationStack {
                 detail
                     .background { DetailColumnNavigationReader(column: detailColumn) }
+                    .toolbar {
+                        if offersHideSidebar && columnVisibility.showsSidebar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Hide Sidebar", systemImage: "sidebar.left") {
+                                    withAnimation(reduceMotion ? nil : .default) { columnVisibility = .detailOnly }
+                                }
+                            }
+                        }
+                    }
             }
             .id(rootRevision)
         }
         .navigationSplitViewStyle(.balanced)
+        // Fires for the first layout too, so a roomy launch or unfold opens with the sidebar out.
+        .onGeometryChange(for: Bool.self) { $0.size.width >= NavigationSplitViewVisibility.roomyWidth } action: { isRoomy in
+            self.isRoomy = isRoomy
+            columnVisibility = .settled(isRoomy: isRoomy, isCollapsedByUser: isCollapsedByUser)
+        }
+        .onChange(of: columnVisibility) { old, new in
+            isCollapsedByUser = new.isCollapsedByUser(after: old, was: isCollapsedByUser)
+        }
         .onChange(of: rootRevision) {
-            columnVisibility = columnVisibility.afterRootSelection
+            columnVisibility = .settled(isRoomy: isRoomy, isCollapsedByUser: isCollapsedByUser)
             detailColumn.popToRoot()
         }
     }
@@ -83,12 +110,28 @@ private struct DetailColumnNavigationReader: UIViewControllerRepresentable {
 }
 
 extension NavigationSplitViewVisibility {
-    /// The sidebar visibility after a root selection. An opened sidebar returns to
-    /// the system default, which hides it where it covers the detail (portrait) and
-    /// keeps it where it sits beside the detail (landscape). A sidebar the user
-    /// collapsed stays collapsed.
-    var afterRootSelection: Self {
-        self == .detailOnly ? .detailOnly : .automatic
+    /// The split's width that fits the sidebar beside a phone-width detail, so the sidebar stays
+    /// out: iPhone Duo's inner display and landscape iPads, not a portrait iPad.
+    static let roomyWidth: CGFloat = 850
+
+    /// The sidebar visibility after a root selection or a width change. A sidebar the user
+    /// collapsed stays collapsed. Otherwise a roomy split keeps it beside the detail, and any other
+    /// returns it to the system default, which hides it where it would cover the detail.
+    static func settled(isRoomy: Bool, isCollapsedByUser: Bool) -> Self {
+        if isCollapsedByUser { return .detailOnly }
+        return isRoomy ? .doubleColumn : .automatic
+    }
+
+    var showsSidebar: Bool {
+        self == .doubleColumn || self == .all
+    }
+
+    /// Whether the user has collapsed the sidebar once visibility moves here from `old`. The system
+    /// only hides a sidebar that's out when the user asks it to; it also writes `.detailOnly` for
+    /// a sidebar `.automatic` hid, which isn't a collapse.
+    func isCollapsedByUser(after old: Self, was wasCollapsed: Bool) -> Bool {
+        if showsSidebar { return false }
+        return wasCollapsed || (old.showsSidebar && self == .detailOnly)
     }
 }
 

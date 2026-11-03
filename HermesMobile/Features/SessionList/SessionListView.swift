@@ -574,7 +574,6 @@ struct SessionListView: View {
         if horizontalSizeClass == .regular {
             SessionSplitView(rootRevision: navigationState.rootRevision) {
                 sessionListSurface
-                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
             } detail: {
                 regularWidthDetail
             }

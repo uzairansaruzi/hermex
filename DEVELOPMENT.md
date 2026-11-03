@@ -232,6 +232,22 @@ while things hang. Exit 0 means nothing needs clearing; 1 prints a `FIX:` line.
   `lldb -p <pid> --batch -o continue -k "thread backtrace all" -k kill`, and
   don't `simctl terminate` the app while lldb holds it.
 
+## iPhone Duo
+
+The iPhone Duo simulator (iOS 27.1) is the only full test of a fold. The app fills
+466x678 closed, compact, with the status bar and toolbar buttons in a vertical
+bar on the trailing edge, and 951x669 open, regular width, in the split.
+
+- `agent-device fold closed|open` changes the pose. Wait for the panel to settle
+  before a screenshot, and take a new snapshot: refs and coordinates don't carry
+  over. Simulated rotation did not change either pose when this was written.
+- A fold swaps the compact stack for the split, so screens rebuild. What must
+  survive one lives above them, as the open chat does in
+  `HermesSessionListNavigation`, or in a store, as drafts do. Dictation stops and
+  keeps what it heard.
+- The detail column spans the window behind the sidebar. Anything measured or
+  pinned to it uses its safe area, not its bounds.
+
 ## PR CI
 
 `.github/workflows/pr-ci.yml` pins the hosted Xcode path, iOS runtime, and phone

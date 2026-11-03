@@ -509,6 +509,23 @@ final class ComposerChipGestureTests: XCTestCase {
 
 @MainActor
 final class ComposerChipPresentationTests: XCTestCase {
+    func testChipRenderingTracksDisplayScaleWithoutChangingPointSize() {
+        let metrics = ComposerChipMetrics(editorFont: .systemFont(ofSize: 17))
+        func render(scale: CGFloat) -> UIImage {
+            ComposerChipRenderer.image(
+                label: "Workspace", icon: .symbol("folder"),
+                metrics: metrics,
+                traits: UITraitCollection { $0.displayScale = scale },
+                isRightToLeft: false
+            )
+        }
+        let first = render(scale: 2)
+        let second = render(scale: 3)
+        XCTAssertEqual(first.scale, 2)
+        XCTAssertEqual(second.scale, 3)
+        XCTAssertEqual(first.size, second.size)
+    }
+
     func testHostedRedundantUpdateKeepsFocusedManualScrollOffset() async throws {
         let state = ComposerPresentationHarnessState()
         let host = UIHostingController(

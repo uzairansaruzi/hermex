@@ -186,13 +186,17 @@ struct ChatTranscriptView: View {
                 }
             }
         case .startPrompt?:
-            ContentUnavailableView {
-                Image(systemName: "bubble.left.and.bubble.right")
-            } description: {
-                Text("Send a message to start the conversation.")
+            // An overlay takes no layout: above a keyboard on a short display (iPhone Duo), the
+            // prompt's height would stretch the screen and push the composer behind the keyboard.
+            Color.clear.overlay {
+                ContentUnavailableView {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                } description: {
+                    Text("Send a message to start the conversation.")
+                }
+                // Centered above the composer, whose new-chat row would otherwise cover it.
+                .padding(.bottom, transcriptBottomInsetHeight)
             }
-            // Centered above the composer, whose new-chat row would otherwise cover it.
-            .padding(.bottom, transcriptBottomInsetHeight)
             .contentShape(Rectangle())
             .onTapGesture {
                 onDismissKeyboard()
