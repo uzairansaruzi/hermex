@@ -171,6 +171,10 @@ struct ComposerApprovals: Equatable {
     /// YOLO is on and this chat can't turn it off: the mode or a `--yolo` launch holds it.
     var isYoloLocked: Bool { isYoloOn && !mayTurnOffYolo }
 
+    /// YOLO is on and this chat can turn it off. This stays open during a run: stopping a bypass
+    /// can't wait for the work it's letting through.
+    var canTurnOffYolo: Bool { isYoloOn && mayTurnOffYolo }
+
     static func title(for mode: HermesApprovalMode) -> String {
         switch mode {
         case .smart: return String(localized: "Smart")

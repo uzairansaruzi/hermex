@@ -1202,10 +1202,13 @@ struct MessageComposerView: View {
             isRecordingVoiceNote: voiceNoteRecorder.isRecording,
             onTap: toggleVoiceInput,
             onRecordingStart: { startVoiceNoteRecording() },
+            // A note started from `+` ends at its bar's buttons, so a hold on the mic can't touch it.
             onRecordingDragChanged: { height in
+                guard voiceNoteIsHeld else { return }
                 voiceNoteCancelArmed = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: height)
             },
             onRecordingEnd: { height in
+                guard voiceNoteIsHeld else { return }
                 finishVoiceNote(translationHeight: height)
             }
         )
@@ -1430,7 +1433,7 @@ struct MessageComposerView: View {
         ComposerModelLabelButton(
             showsTitle: showsTitle,
             selection: currentModelEffortSelection,
-            isDisabled: isConfigurationControlDisabled,
+            isDisabled: !controlGate.allowsModelSettings(approvals: approvals),
             color: metaControlColor,
             controlFont: metaControlFont,
             chevronFont: metaChevronFont

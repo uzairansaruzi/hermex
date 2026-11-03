@@ -357,7 +357,7 @@ private struct ApprovalChoicesView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .disabled(isDisabled || approvals.isChanging || approvals.isYoloLocked)
+                .disabled((isDisabled && !approvals.canTurnOffYolo) || approvals.isChanging || approvals.isYoloLocked)
             } footer: {
                 if approvals.isYoloLocked {
                     Text("The host runs without approval prompts, so this chat can't turn YOLO off.")

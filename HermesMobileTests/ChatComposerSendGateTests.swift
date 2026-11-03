@@ -240,6 +240,26 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(gate(SessionSummary(sessionId: "s", readOnly: true)).allowsAttaching)
     }
 
+    /// During a run Model settings still opens to turn YOLO off, the only way to stop a bypass
+    /// without stopping the work. Nothing else reopens it.
+    func testModelSettingsOpensDuringARunOnlyToTurnYoloOff() {
+        func allows(yolo: Bool, mayTurnOff: Bool = true, offline: Bool = false, running: Bool = true) -> Bool {
+            ChatComposerControlGate(
+                access: ChatComposerAccess(session: SessionSummary(sessionId: "s"), isViewingCachedData: offline),
+                isSending: false, isCompressingSession: false, isWaitingForStream: running, isUpdatingConfiguration: false
+            ).allowsModelSettings(approvals: ComposerApprovals(
+                isYoloOn: yolo, offersModes: true, mode: "manual", mayTurnOffYolo: mayTurnOff,
+                isChanging: false, errorMessage: nil
+            ))
+        }
+
+        XCTAssertTrue(allows(yolo: false, running: false))
+        XCTAssertTrue(allows(yolo: true))
+        XCTAssertFalse(allows(yolo: false), "Nothing to turn off, so the run holds it")
+        XCTAssertFalse(allows(yolo: true, mayTurnOff: false), "The host holds YOLO on")
+        XCTAssertFalse(allows(yolo: true, offline: true))
+    }
+
     func testSendFocusPreservesFailureNewEditingAndNewDraft() {
         XCTAssertEqual(ChatSendFocusPolicy.focusAfterSubmission(
             succeeded: true, dismissKeyboard: true, wasFocused: true,

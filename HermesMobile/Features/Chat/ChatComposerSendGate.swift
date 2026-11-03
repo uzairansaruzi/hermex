@@ -86,6 +86,12 @@ struct ChatComposerControlGate {
     var allowsConfigurationIgnoringUpdates: Bool {
         access.allowsHostControls && !isSending && !isCompressingSession && !isWaitingForStream
     }
+
+    /// Whether the model label opens Model settings. During a run it still opens to turn YOLO off,
+    /// with every other row held.
+    func allowsModelSettings(approvals: ComposerApprovals?) -> Bool {
+        allowsConfiguration || (access.allowsHostControls && approvals?.canTurnOffYolo == true)
+    }
 }
 
 /// Work in progress that holds Send even with a draft to send. VoiceOver reads it
