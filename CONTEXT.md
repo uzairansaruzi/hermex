@@ -144,6 +144,18 @@ _Avoid_: session id (when the kind matters)
 
 ## Chat
 
+**Model settings**:
+The sheet the composer's model label opens: the current model, Thinking, Fast, Approvals, Favorites and Recent. Each change applies on its own and shows pending or failed beside its row.
+_Avoid_: model menu, composer options
+
+**Chat settings**:
+The sheet the chat header opens: workspace, branch, Profile and context. A chat with nothing sent yet has the same controls in a row above the composer.
+_Avoid_: session settings
+
+**Approval mode**:
+A Profile's `approvals.mode` on the host: Smart, Manual or Off, for every chat in that Profile. YOLO is the same idea for one chat. A webui server has only YOLO.
+_Avoid_: YOLO (for the mode)
+
 **Fork**:
 A chat created from another chat's history by Fork From Here or `/branch` (`/api/session/branch`). The server marks it `session_source: fork` with a `parent_session_id`, and Hermex shows a "Forked from" row that opens the parent. Agent child sessions (subagents, cron, CLI `/new`) also carry a parent but are not Forks. On a Hermes host it is `session.branch`'s copy, marked by `_branched_from` in its row's `model_config`; a Hermes Duplicate is an independent copy with no parent, and no Fork.
 _Avoid_: Branch (for the chat), child session

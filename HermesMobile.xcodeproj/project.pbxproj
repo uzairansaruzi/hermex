@@ -161,10 +161,13 @@
 		C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000002 /* ChatComposerSelectorControls.swift */; };
 		C040F000000000000000001 /* ProviderGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000002 /* ProviderGlyph.swift */; };
 		C040F000000000000000003 /* ProviderLogos.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000004 /* ProviderLogos.bundle */; };
-		C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */; };
 		C08730000000000000000B05 /* ForkOrigin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F05 /* ForkOrigin.swift */; };
 		C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */; };
 		C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000004 /* ChatComposerSelectorSheets.swift */; };
+		C15500000000000000000001 /* ThinkingControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000002 /* ThinkingControl.swift */; };
+		C15500000000000000000003 /* ThinkingSliderLooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000004 /* ThinkingSliderLooks.swift */; };
+		C15500000000000000000005 /* ThinkingSliderLooksGeometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000006 /* ThinkingSliderLooksGeometric.swift */; };
+		C15500000000000000000007 /* ThinkingSliderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000008 /* ThinkingSliderPickerView.swift */; };
 		C04900000000000000000001 /* ChatComposerTextInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04900000000000000000002 /* ChatComposerTextInputView.swift */; };
 		C04900000000000000000003 /* ChatComposerVoiceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04900000000000000000004 /* ChatComposerVoiceControls.swift */; };
 		C04700000000000000000001 /* ChatPendingActionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04700000000000000000002 /* ChatPendingActionCoordinator.swift */; };
@@ -868,10 +871,13 @@
 		C042A000000000000000002 /* ChatComposerSelectorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorControls.swift; sourceTree = "<group>"; };
 		C040F000000000000000002 /* ProviderGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyph.swift; sourceTree = "<group>"; };
 		C040F000000000000000004 /* ProviderLogos.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = ProviderLogos.bundle; sourceTree = "<group>"; };
-		C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerToolbarScroller.swift; sourceTree = "<group>"; };
 		C08730000000000000000F05 /* ForkOrigin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForkOrigin.swift; sourceTree = "<group>"; };
 		C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFades.swift; sourceTree = "<group>"; };
 		C042A000000000000000004 /* ChatComposerSelectorSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorSheets.swift; sourceTree = "<group>"; };
+		C15500000000000000000002 /* ThinkingControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingControl.swift; sourceTree = "<group>"; };
+		C15500000000000000000004 /* ThinkingSliderLooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingSliderLooks.swift; sourceTree = "<group>"; };
+		C15500000000000000000006 /* ThinkingSliderLooksGeometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingSliderLooksGeometric.swift; sourceTree = "<group>"; };
+		C15500000000000000000008 /* ThinkingSliderPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingSliderPickerView.swift; sourceTree = "<group>"; };
 		C04900000000000000000002 /* ChatComposerTextInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerTextInputView.swift; sourceTree = "<group>"; };
 		C04900000000000000000004 /* ChatComposerVoiceControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerVoiceControls.swift; sourceTree = "<group>"; };
 		C04700000000000000000002 /* ChatPendingActionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPendingActionCoordinator.swift; sourceTree = "<group>"; };
@@ -2029,10 +2035,12 @@
 				C04900000000000000000004 /* ChatComposerVoiceControls.swift */,
 				C042A000000000000000002 /* ChatComposerSelectorControls.swift */,
 				C040F000000000000000002 /* ProviderGlyph.swift */,
-				C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */,
 				C08730000000000000000F05 /* ForkOrigin.swift */,
 				C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */,
 				C042A000000000000000004 /* ChatComposerSelectorSheets.swift */,
+				C15500000000000000000002 /* ThinkingControl.swift */,
+				C15500000000000000000004 /* ThinkingSliderLooks.swift */,
+				C15500000000000000000006 /* ThinkingSliderLooksGeometric.swift */,
 				C0DE20000000000000000002 /* ChatTactileButtonStyle.swift */,
 				C0DE21000000000000000002 /* ChatMotion.swift */,
 				C0DE25000000000000000002 /* ChatScrollPolicy.swift */,
@@ -2199,6 +2207,7 @@
 				1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */,
 				125200000000000000000001 /* SettingsRows.swift */,
 				125200000000000000000003 /* SettingsAppPages.swift */,
+				C15500000000000000000008 /* ThinkingSliderPickerView.swift */,
 				125200000000000000000005 /* SettingsAboutPage.swift */,
 				139600000000000000000002 /* SupportReport.swift */,
 				139700000000000000000002 /* DiagnosticsLog.swift */,
@@ -2865,10 +2874,13 @@
 					C04900000000000000000003 /* ChatComposerVoiceControls.swift in Sources */,
 					C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */,
 					C040F000000000000000001 /* ProviderGlyph.swift in Sources */,
-					C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */,
 					C08730000000000000000B05 /* ForkOrigin.swift in Sources */,
 					C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */,
 					C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */,
+					C15500000000000000000001 /* ThinkingControl.swift in Sources */,
+					C15500000000000000000003 /* ThinkingSliderLooks.swift in Sources */,
+					C15500000000000000000005 /* ThinkingSliderLooksGeometric.swift in Sources */,
+					C15500000000000000000007 /* ThinkingSliderPickerView.swift in Sources */,
 					105050000000000000000001 /* ComposerModelPickerSectionExpansionState.swift in Sources */,
 				1A2B3C4D5E6F7000000000D8 /* MessageBubbleView.swift in Sources */,
 				C87100000000000000000001 /* UserBubbleFoldPolicy.swift in Sources */,

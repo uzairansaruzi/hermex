@@ -33,6 +33,7 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 | Workspace registry (add, remove, rename, reorder) | dropped | No registry: a chat's workspace is its session's `cwd`. |
 | Session project tags, Move to Project | shipped | Projects are host folders; Move to Project changes the working folder (#1052, `CONTEXT.md` Project). |
 | Kanban tenant edit | accepted | Tenant is set on create and read-only after (`kanban.md`). |
+| Approval mode | shipped | `config.set` key `approvals.mode` in Model settings, which `session.info`'s `approval_mode` reports. It writes that Profile's `config.yaml`, verified at `ca678285` with two Profiles (#1550). |
 | Provider quota | shipped | hermex-push `GET /provider-quota` (#1237) in Usage. The Limits widget (#1409) shows what Usage last loaded: opening or refreshing Usage is its only refresh, with no polling, foreground or background read, and no read from the widget. |
 | Skill tags and related skills | dropped | The host sends no tags. |
 | Reasoning levels per model | accepted | A fixed ladder plus the model's capability flags; the host clamps. |
