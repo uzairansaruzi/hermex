@@ -21,3 +21,5 @@ with the iOS app.
   See swift-cmark-COPYING.txt.
 - Lucide icons
   See LucideIcons-LICENSE.txt.
+- Open Bot Avatar (avatar paths and eye positions, design prompt adapted)
+  See OpenBotAvatar-LICENSE.txt.

@@ -78,13 +78,18 @@ enum BotAvatarGeneration {
     /// socket itself has gone. Reads the shared socket's events for its own task only.
     ///
     /// The calls run in their own task: cancelling a call that isn't cancellation-safe ends the
-    /// screen's whole connection, so stopping only stops the waiting.
+    /// screen's whole connection, so stopping only stops the waiting. One runs at a time: a call
+    /// nobody is waiting for may still hold the socket's handlers until its reply lands, even after
+    /// its sheet has closed, so the next starts once it has let them go.
     @MainActor static func ask(_ prompt: String, profile: String, transport: any BotTransport,
                                validateDispatch: (() throws -> Void)?) async throws -> String {
         let waiter = AnswerWaiter()
+        let previous = lastCall
         let work = Task { @MainActor in
-            try await run(prompt, profile: profile, transport: transport, waiter: waiter, validateDispatch: validateDispatch)
+            await previous?.value
+            return try await run(prompt, profile: profile, transport: transport, waiter: waiter, validateDispatch: validateDispatch)
         }
+        lastCall = Task { @MainActor in _ = try? await work.value }
         return try await withTaskCancellationHandler {
             try await work.value
         } onCancel: {
@@ -92,8 +97,12 @@ enum BotAvatarGeneration {
         }
     }
 
+    @MainActor private static var lastCall: Task<Void, Never>?
+
     @MainActor private static func run(_ prompt: String, profile: String, transport: any BotTransport, waiter: AnswerWaiter,
                                        validateDispatch: (() throws -> Void)?) async throws -> String {
+        // Stopped while waiting its turn: nothing goes to the host.
+        guard !waiter.isFinished else { return try await waiter.answer(within: answerDeadline) }
         let draft = try await transport.call(.sessionDraft(profile: profile), validateDispatch: validateDispatch)
         guard let runtime = draft["session_id"].text else { throw BotFailure.unsupported }
         let stored = draft["stored_session_id"].text
@@ -199,12 +208,7 @@ enum BotAvatarGeneration {
         let description = description.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !description.isEmpty, state != .running else { return }
         state = .running
-        // A call the user stopped waiting for may still hold the socket's handlers until its
-        // reply lands, so the next one starts after it has let them go.
-        let previous = task
         task = Task { [weak self, send] in
-            await previous?.value
-            guard !Task.isCancelled else { return }
             do {
                 let avatar = try await BotAvatarGeneration.avatar(description: description, send: send)
                 guard let self, !Task.isCancelled else { return }

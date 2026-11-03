@@ -50,6 +50,22 @@ import XCTest
         XCTAssertNil(appearance.merging(into: look)[BotGeneratedAvatar.lookKey])
     }
 
+    func testChipsRedrawWhenOnlyAGeneratedAvatarsEyesChange() {
+        func token(x: Double) -> NSObject {
+            let avatar = BotGeneratedAvatar(name: "Box", path: "M20 20 L80 20 L80 80 L20 80 Z", eyes: BotAvatarEyes(x: x, y: 46, spacing: 16, scale: 1.2))
+            let row = BotJSON.object(["name": .string("scout"), "ui_meta": .object(["hermes-bots": .object([BotGeneratedAvatar.lookKey: avatar.json])])])
+            return ComposerChipIcon.bot(ComposerBotReference(profile: BotProfile(row)!, avatar: nil)).cacheKey
+        }
+        XCTAssertNotEqual(token(x: 50), token(x: 48))
+    }
+
+    func testStoredEyesOutOfRangeDrawTheShapeButSurviveASave() {
+        let bad = BotGeneratedAvatar(name: "Box", path: "M20 20 L80 20 L80 80 L20 80 Z", eyes: BotAvatarEyes(x: 50, y: 46, spacing: 16, scale: -3))
+        XCTAssertFalse(bad.hasDrawableEyes)
+        let look: [String: BotJSON] = [BotGeneratedAvatar.lookKey: bad.json]
+        XCTAssertEqual(BotProfileAppearance(look: look, fallbackTitle: "Scout").merging(into: look)[BotGeneratedAvatar.lookKey], bad.json)
+    }
+
     func testABadPathOrAnUnreadableValueNeverBlocksTheFace() {
         XCTAssertNil(BotAvatarPathData.path("M10 10 X5 5"))
         XCTAssertNil(BotAvatarPathData.path("L10 10 Z"), "a line needs a move first")
@@ -156,44 +172,25 @@ import XCTest
         }
     }
 
-    func testARetryWaitsForTheStoppedCallToLetGoOfTheSocket() async throws {
-        let held = HeldSend()
-        let describer = BotAvatarDescriber(send: { try await held.send($0) }, onResult: { _ in })
-        let first = expectation(description: "the first call is out")
-        held.onSend = { first.fulfill() }
-        describer.generate(description: "a box")
-        await fulfillment(of: [first], timeout: 5)
+    func testASecondCallWaitsForAStoppedOneToLetGoOfTheSocket() async throws {
+        let wire = GenerationWire()
+        let opening = expectation(description: "the first draft is opening")
+        wire.onCreate = { opening.fulfill() }
+        wire.holdsCreate = true
+        let first = Task { try await BotAvatarGeneration.ask("first", profile: "scout", transport: wire, validateDispatch: nil) }
+        await fulfillment(of: [opening], timeout: 5)
+        first.cancel()
 
-        describer.stopWaiting()
-        describer.generate(description: "a ball")
+        wire.holdsCreate = false
+        wire.onCreate = nil
+        wire.onBtw = { $0.send("draft-1", task: "t1", text: "the answer") }
+        let second = Task { try await BotAvatarGeneration.ask("second", profile: "scout", transport: wire, validateDispatch: nil) }
         await Task.yield()
-        XCTAssertEqual(held.calls, 1, "the retry must not start while the first holds the handlers")
+        XCTAssertEqual(wire.methods, ["session.create"], "the second must not start while the first holds the socket")
 
-        let second = expectation(description: "the retry starts")
-        held.onSend = { second.fulfill() }
-        held.release(throwing: CancellationError())
-        await fulfillment(of: [second], timeout: 5)
-        XCTAssertEqual(held.calls, 2)
-        describer.stopWaiting()
-        held.release(throwing: CancellationError())
-    }
-}
-
-/// A model call that stays out until the test lets it go.
-@MainActor private final class HeldSend {
-    var onSend: (() -> Void)?
-    private(set) var calls = 0
-    private var held: CheckedContinuation<String, Error>?
-
-    func send(_ prompt: String) async throws -> String {
-        calls += 1
-        onSend?()
-        return try await withCheckedThrowingContinuation { held = $0 }
-    }
-
-    func release(throwing error: Error) {
-        held?.resume(throwing: error)
-        held = nil
+        wire.releaseCreate()
+        let answer = try await second.value
+        XCTAssertEqual(answer, "the answer")
     }
 }
 

@@ -48,6 +48,13 @@ struct BotGeneratedAvatar: Equatable, Sendable {
         return copy
     }
 
+    /// Whether the eye numbers are sane. A damaged or newer stored value that fails this draws
+    /// the bot's shape instead, and a save still writes the value back unchanged.
+    var hasDrawableEyes: Bool {
+        (0.6...1.8).contains(eyes.scale) && eyes.spacing >= 7 * eyes.scale && eyes.spacing <= 40
+            && (0...100).contains(eyes.x) && (0...100).contains(eyes.y)
+    }
+
     /// What stops this avatar drawing properly. The path must parse and fill most of the box's
     /// safe area, and both neutral eyes must sit fully on the body.
     var problems: [String] {
@@ -58,7 +65,7 @@ struct BotGeneratedAvatar: Equatable, Sendable {
         let box = body.boundingRect
         if box.minX < 6 || box.minY < 6 || box.maxX > 94 || box.maxY > 94 { found.append("path must stay between 8 and 92") }
         if max(box.width, box.height) < 40 || min(box.width, box.height) < 14 { found.append("body must be at least 40 units long and 14 wide") }
-        guard eyes.scale >= 0.6, eyes.scale <= 1.8, eyes.spacing >= 7 * eyes.scale, eyes.spacing <= 40 else {
+        guard hasDrawableEyes else {
             return found + ["eyes.scale must be 0.6 to 1.8, and eyes.spacing at least 7 x scale and at most 40"]
         }
         let halfWidth = 2 * eyes.scale, halfHeight = 5.5 * eyes.scale

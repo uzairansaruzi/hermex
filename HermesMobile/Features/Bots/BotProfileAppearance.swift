@@ -384,7 +384,7 @@ private struct BotAvatarPresentation {
     let eyeLayout: BotAvatarEyeLayout
 
     init(name: String, appearance: BotProfileAppearance) {
-        let generatedPath = appearance.generated.flatMap { BotAvatarPathData.path($0.path) }
+        let generatedPath = appearance.generated.flatMap { $0.hasDrawableEyes ? BotAvatarPathData.path($0.path) : nil }
         self.generatedPath = generatedPath
         let resolved = appearance.shape.flatMap(BotAvatarShape.init(rawValue:))
         if generatedPath != nil, let eyes = appearance.generated?.eyes {
