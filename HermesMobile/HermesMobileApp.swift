@@ -81,9 +81,11 @@ struct HermesMobileApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @State private var authManager = AuthManager()
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
+    private let cacheContainer: ModelContainer
 
     init() {
         LaunchSignpost.begin()
+        cacheContainer = CacheContainer.open()
         // Record installation age even before a server has been configured.
         _ = RatingPromptState.shared
         ChatTranscriptDisplaySettings.migrateThinkingAndToolCards()
@@ -109,7 +111,7 @@ struct HermesMobileApp: App {
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
             #endif
         }
-        .modelContainer(for: [CachedSession.self, CachedMessage.self])
+        .modelContainer(cacheContainer)
         .commands {
             HermexCommands()
             SidebarCommands()

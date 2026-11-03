@@ -977,9 +977,9 @@ extension SharedImportReservation {
             let isEmpty = HermesShareDraft.composerDraft(from: sharedImport.draft).isEmpty && sharedImport.attachments.isEmpty
             return isEmpty ? .nothing : .chat(chat)
         }
-        guard shortcut.server == entry.server else { return nil }
+        guard shortcut.opens(on: entry.server) else { return nil }
         guard Date().timeIntervalSince(createdAt) < HermesShareDraft.shortcutTextLifetime else { return .nothing }
-        return HermesNewChatDestination(server: shortcut.server, profile: shortcut.profile)
+        return HermesNewChatDestination(server: entry.server, profile: shortcut.profile)
             .chat(on: entry, listed: listed, isLive: isLive).map { .chat($0) }
     }
 

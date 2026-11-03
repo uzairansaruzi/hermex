@@ -39,22 +39,19 @@ struct ContentView: View {
             .onChange(of: shares.pending?.reservationID) {
                 switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
             }
-            .alert((unopenableShortcut?.share.sharedImport.shortcut?.origin ?? .shortcut).cantOpenTitle,
+            .alert((unopenableShortcut?.sharedImport.shortcut?.origin ?? .shortcut).cantOpenTitle,
                    isPresented: Binding(get: { unopenableShortcut != nil }, set: { isPresented in
                 // Dismissed without a button (Escape, VoiceOver's escape) is Not Now. A button's
                 // action may run after this, so the release waits a turn and skips a settled text.
-                guard !isPresented, let share = unopenableShortcut?.share else { return }
+                guard !isPresented, let share = unopenableShortcut else { return }
                 Task { @MainActor in
                     if shares.pending?.reservationID == share.reservationID { releasePendingSharedImport(share) }
                 }
-            }), presenting: unopenableShortcut) { shortcut in
-                Button("Discard", role: .destructive) { consumePendingSharedImport(shortcut.share) }
-                Button("Not Now", role: .cancel) { releasePendingSharedImport(shortcut.share) }
-            } message: { shortcut in
-                switch shortcut.share.sharedImport.shortcut?.origin ?? .shortcut {
-                case .shortcut: Text("\(shortcut.server) was removed from Hermex, so the text from Shortcuts can’t open there.")
-                case .troubleshooting: Text("\(shortcut.server) was removed from Hermex, so the troubleshooting text can’t open there.")
-                }
+            }), presenting: unopenableShortcut) { share in
+                Button("Discard", role: .destructive) { consumePendingSharedImport(share) }
+                Button("Not Now", role: .cancel) { releasePendingSharedImport(share) }
+            } message: { _ in
+                Text("The server for this text was removed from Hermex, so it can’t open.")
             }
             .task {
                 // #246: on cold launch, end any Live Activity left "running" by a
@@ -326,13 +323,8 @@ struct ContentView: View {
         )
     }
 
-    /// The Shortcut text waiting for a server that is no longer configured (#1402), and that
-    /// server's host: it opens nowhere else unasked, so the user discards it or keeps it for later.
-    private var unopenableShortcut: (share: SharedImportReservation, server: String)? {
-        guard let share = shares.pending, let shortcut = share.sharedImport.shortcut,
-              HermesNewChatDestination(server: shortcut.server, profile: shortcut.profile)
-                .route(state: authManager.state, servers: authManager.servers) == .ignore else { return nil }
-        return (share, shortcut.server.host ?? shortcut.server.absoluteString)
+    private var unopenableShortcut: SharedImportReservation? {
+        shares.unopenableShortcut(servers: authManager.servers)
     }
 }
 
@@ -465,15 +457,22 @@ struct SharedImportQueue {
     /// only on the server it named (#1402).
     func offered(to server: URL) -> SharedImportReservation? {
         guard let shortcut = pending?.sharedImport.shortcut else { return pending }
-        return shortcut.server == server ? pending : nil
+        return shortcut.opens(on: server) ? pending : nil
     }
 
     /// The server to make active for the pending Shortcut text, when it names one that isn't (#1402).
     @MainActor func shortcutRoute(state: AuthManager.State, servers: [ServerAccount]) -> ServerAccount? {
         guard let shortcut = pending?.sharedImport.shortcut,
-              case .switchServer(let account) = HermesNewChatDestination(server: shortcut.server, profile: shortcut.profile)
-                .route(state: state, servers: servers) else { return nil }
+              case .switchServer(let account) = shortcut.newChat(in: servers)?.route(state: state, servers: servers)
+        else { return nil }
         return account
+    }
+
+    /// The Shortcut text waiting for a server that is no longer configured (#1402): it opens
+    /// nowhere else unasked, so the user discards it or keeps it for later.
+    func unopenableShortcut(servers: [ServerAccount]) -> SharedImportReservation? {
+        guard let shortcut = pending?.sharedImport.shortcut, shortcut.newChat(in: servers) == nil else { return nil }
+        return pending
     }
 
     private mutating func settle(_ reservation: SharedImportReservation) {

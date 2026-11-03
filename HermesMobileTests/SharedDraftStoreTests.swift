@@ -1066,6 +1066,34 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(again.sharedImport.draft, text, "A released record comes back exactly")
     }
 
+    /// The queued record holds no server URL (#1509): it names its server by digest.
+    func testAShortcutTextWritesNoServerURL() throws {
+        let inbox = try temporaryDirectory()
+        try HermesShareDraft.saveShortcutText("Hi", for: SharedShortcutDestination(server: studio, profile: nil), in: inbox)
+
+        let files = try XCTUnwrap(FileManager.default.enumerator(at: inbox, includingPropertiesForKeys: nil))
+            .compactMap { $0 as? URL }.filter { !$0.hasDirectoryPath }
+        XCTAssertFalse(files.isEmpty)
+        for file in files {
+            XCTAssertFalse(String(decoding: try Data(contentsOf: file), as: UTF8.self).contains("other.example"), file.path)
+        }
+    }
+
+    /// A text queued by a build before #1509 stored the URL, and still opens on that server.
+    func testAShortcutTextQueuedWithAServerURLStillOpensThere() throws {
+        let inbox = try temporaryDirectory()
+        try HermesShareDraft.saveShortcutText("Hi", for: SharedShortcutDestination(server: studio, profile: nil), in: inbox)
+        let payload = try XCTUnwrap(FileManager.default.enumerator(at: inbox, includingPropertiesForKeys: nil))
+            .compactMap { $0 as? URL }.first { $0.lastPathComponent == "payload.json" }
+        var record = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: XCTUnwrap(payload))) as? [String: Any])
+        record["serverKey"] = nil
+        record["server"] = studio.absoluteString
+        try JSONSerialization.data(withJSONObject: record).write(to: XCTUnwrap(payload))
+
+        let queued = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(queued.sharedImport.shortcut, SharedShortcutDestination(server: studio, profile: nil))
+    }
+
     func testTheSameShortcutRunTwiceIsTwoTextsInOrder() throws {
         let inbox = try temporaryDirectory()
         let destination = SharedShortcutDestination(server: studio, profile: nil)
@@ -1172,6 +1200,8 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(queue.shortcutRoute(state: .loggedIn(server: hermes), servers: servers), account(studio, .hermes))
         XCTAssertNil(queue.shortcutRoute(state: .loggedOut(server: studio), servers: servers), "Waits for its sign-in")
         XCTAssertEqual(queue.offered(to: studio)?.sharedImport.draft, "Hi")
+        XCTAssertNil(queue.unopenableShortcut(servers: servers))
+        XCTAssertNotNil(queue.unopenableShortcut(servers: [account(hermes, .hermes)]), "Its server was removed")
     }
 
     /// Later Shortcut texts wait while the first one's chat shows it, never replacing it on their
