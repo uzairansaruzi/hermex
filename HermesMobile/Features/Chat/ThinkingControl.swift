@@ -60,10 +60,10 @@ struct ThinkingLadder: Equatable {
         return levels[index]
     }
 
-    /// Whether a drag is adjusting the level. A mostly vertical one is the list scrolling, and
-    /// must neither preview nor send a level from wherever the finger happened to be.
-    static func isAdjustment(_ translation: CGSize) -> Bool {
-        abs(translation.width) >= abs(translation.height)
+    /// Whether a touch's first movement is adjusting the level. A mostly vertical one is the list
+    /// scrolling, and must neither preview nor send a level from wherever the finger happened to be.
+    static func isAdjustment(_ movement: CGSize) -> Bool {
+        abs(movement.width) >= abs(movement.height)
     }
 
     /// VoiceOver's swipe: one level along, or nothing at either end. With no current level,
@@ -75,8 +75,8 @@ struct ThinkingLadder: Equatable {
 }
 
 /// Picks the chat's thinking level. A tap on the track or a label sends that level. A sideways drag
-/// follows the finger with a tick per level and sends one change on release, and a vertical one is
-/// left to the list. A chosen level shows at once, and a refused one falls back to what the chat holds.
+/// follows the finger with a tick per level and sends one change on release, and a vertical swipe
+/// scrolls the list instead. A chosen level shows at once, and a refused one falls back to what the chat holds.
 /// VoiceOver adjusts it like a slider, and the largest text sizes get a plain list.
 struct ThinkingControl: View {
     let selection: ComposerModelEffortSelection
@@ -88,10 +88,7 @@ struct ThinkingControl: View {
     @AppStorage(ThinkingSliderLook.storageKey) private var look = ThinkingSliderLook.defaultLook
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @GestureState private var isDragging = false
-    /// Where the finger is along the track, 0 to 1, during a drag.
-    @State private var dragPosition: Double?
-    @State private var lastTickIndex: Int?
+    @State private var drag = ThinkingSliderDrag()
 
     private var ladder: ThinkingLadder {
         ThinkingLadder(levels: selection.effortOptions.map(\.id), current: selection.committedEffort)
@@ -99,14 +96,7 @@ struct ThinkingControl: View {
 
     /// The level to name: the finger's while one is down, else the chat's.
     private var shownIndex: Int? {
-        guard isDragging, let dragPosition else { return ladder.currentIndex }
-        return ladder.index(atPosition: dragPosition)
-    }
-
-    /// Where the thumb goes. With no level reported it rests at the bottom of the ladder.
-    private var shownPosition: Double {
-        if isDragging, let dragPosition { return dragPosition }
-        return ladder.currentIndex.map(ladder.position(of:)) ?? 0
+        drag.position.map(ladder.index(atPosition:)) ?? ladder.currentIndex
     }
 
     var body: some View {
@@ -122,7 +112,11 @@ struct ThinkingControl: View {
                 // A look draws left to right and reads touches the same way, so its labels stay in
                 // that order too, in right-to-left languages as well.
                 VStack(spacing: 8) {
-                    track
+                    ThinkingInteractiveTrack(look: look, ladder: ladder, isPaused: isCovered, drag: $drag) { index in
+                        if let level = ladder.commit(at: index) { onCommit(level) }
+                    }
+                    // A new look starts from fresh state, not another look's particles.
+                    .id(look)
                     labels
                 }
                 .environment(\.layoutDirection, .leftToRight)
@@ -142,49 +136,6 @@ struct ThinkingControl: View {
 
     private var valueTitle: String {
         shownIndex.map { ReasoningEffortOption.title(for: ladder.levels[$0]) } ?? String(localized: "Default")
-    }
-
-    /// The drag waits for movement and isn't high priority, so a vertical swipe that starts here
-    /// still scrolls the list and moves the sheet.
-    private var track: some View {
-        ThinkingSliderTrack(look: look, level: shownPosition, followsFinger: isDragging, isPaused: isCovered)
-            // A new look starts from fresh state, not another look's particles.
-            .id(look)
-            .overlay {
-                GeometryReader { proxy in
-                    let width = proxy.size.width
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture(coordinateSpace: .local) { location in
-                            send(ladder.index(atPosition: ThinkingLadder.position(atX: location.x, width: width)))
-                        }
-                        .gesture(dragGesture(width: width))
-                }
-            }
-    }
-
-    private func dragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 10)
-            .updating($isDragging) { value, dragging, _ in
-                dragging = ThinkingLadder.isAdjustment(value.translation)
-            }
-            .onChanged { value in
-                guard ThinkingLadder.isAdjustment(value.translation) else { return }
-                let position = ThinkingLadder.position(atX: value.location.x, width: width)
-                dragPosition = position
-                let index = ladder.index(atPosition: position)
-                if index != (lastTickIndex ?? ladder.currentIndex) {
-                    ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
-                }
-                lastTickIndex = index
-            }
-            .onEnded { value in
-                dragPosition = nil
-                lastTickIndex = nil
-                guard ThinkingLadder.isAdjustment(value.translation) else { return }
-                let position = ThinkingLadder.position(atX: value.location.x, width: width)
-                if let level = ladder.commit(at: ladder.index(atPosition: position)) { onCommit(level) }
-            }
     }
 
     private var labels: some View {
@@ -231,6 +182,122 @@ struct ThinkingControl: View {
                 .disabled(isDisabled)
                 .accessibilityAddTraits(position == ladder.currentIndex ? .isSelected : [])
             }
+        }
+    }
+}
+
+/// A drag along a Thinking slider. It keeps only where the finger is, so the level it names always
+/// comes from the ladder as it is now.
+struct ThinkingSliderDrag: Equatable {
+    /// 0 to 1 along the track, while a finger is down.
+    private(set) var position: Double?
+    private var lastTickIndex: Int?
+
+    /// Moves the finger. True when it crossed onto another level, for a tick.
+    mutating func move(to position: Double, on ladder: ThinkingLadder) -> Bool {
+        self.position = position
+        let index = ladder.index(atPosition: position)
+        defer { lastTickIndex = index }
+        return index != (lastTickIndex ?? ladder.currentIndex)
+    }
+
+    /// Lifts the finger, once. The level it landed on, unless that's the current one.
+    mutating func end(on ladder: ThinkingLadder) -> Int? {
+        defer { cancel() }
+        guard let position else { return nil }
+        let index = ladder.index(atPosition: position)
+        return index == ladder.currentIndex ? nil : index
+    }
+
+    mutating func cancel() {
+        position = nil
+        lastTickIndex = nil
+    }
+}
+
+/// A look you can tap and drag, shared by the Thinking control and the Settings picker. A sideways
+/// drag follows the finger with a tick per level and picks a level on release.
+struct ThinkingInteractiveTrack: View {
+    let look: ThinkingSliderLook
+    let ladder: ThinkingLadder
+    var isPaused = false
+    @Binding var drag: ThinkingSliderDrag
+    /// A level picked by a tap or a release. Never the current one.
+    let onSelect: (Int) -> Void
+
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+
+    /// With no current level the thumb rests at the bottom of the ladder.
+    private var shownPosition: Double {
+        drag.position ?? ladder.currentIndex.map(ladder.position(of:)) ?? 0
+    }
+
+    var body: some View {
+        ThinkingSliderTrack(look: look, level: shownPosition, followsFinger: drag.position != nil, isPaused: isPaused)
+            .overlay {
+                GeometryReader { proxy in
+                    let width = proxy.size.width
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture(coordinateSpace: .local) { location in
+                            select(ladder.index(atPosition: ThinkingLadder.position(atX: location.x, width: width)))
+                        }
+                        .gesture(ThinkingSidewaysPan(
+                            onMove: { x in
+                                if drag.move(to: ThinkingLadder.position(atX: x, width: width), on: ladder) {
+                                    ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+                                }
+                            },
+                            onEnd: {
+                                if let index = drag.end(on: ladder) { onSelect(index) }
+                            },
+                            onCancel: { drag.cancel() }
+                        ))
+                }
+            }
+            .environment(\.layoutDirection, .leftToRight)
+    }
+
+    private func select(_ index: Int) {
+        guard index != ladder.currentIndex else { return }
+        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+        onSelect(index)
+    }
+}
+
+/// A pan that begins only if the finger first moves sideways, and otherwise fails at once so the list
+/// or sheet around it scrolls. SwiftUI's `DragGesture` can't decline a touch like that: it holds the
+/// touch whichever way the finger goes, which stops a swipe that starts on a slider from scrolling.
+private struct ThinkingSidewaysPan: UIGestureRecognizerRepresentable {
+    let onMove: (CGFloat) -> Void
+    let onEnd: () -> Void
+    let onCancel: () -> Void
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let velocity = pan.velocity(in: pan.view)
+            return ThinkingLadder.isAdjustment(CGSize(width: velocity.x, height: velocity.y))
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began, .changed: onMove(context.converter.localLocation.x)
+        case .ended:
+            // The lift can land past the last movement sample, on another level.
+            onMove(context.converter.localLocation.x)
+            onEnd()
+        case .cancelled, .failed: onCancel()
+        default: break
         }
     }
 }

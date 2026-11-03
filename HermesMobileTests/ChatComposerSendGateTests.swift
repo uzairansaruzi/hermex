@@ -28,6 +28,30 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(ladder.commit(at: 1))
     }
 
+    /// A drag ticks once per level crossed and picks one level on release. Coming back to where it
+    /// started picks nothing, and a cancelled touch leaves nothing behind.
+    func testThinkingSliderDragTicksPerLevelAndPicksOnceOnRelease() {
+        let ladder = ThinkingLadder(levels: ["low", "medium", "high"], current: "low")
+        var drag = ThinkingSliderDrag()
+
+        XCTAssertFalse(drag.move(to: 0.1, on: ladder), "Still on the current level")
+        XCTAssertTrue(drag.move(to: 0.5, on: ladder))
+        XCTAssertFalse(drag.move(to: 0.6, on: ladder), "Still on the same level")
+        XCTAssertTrue(drag.move(to: 1, on: ladder))
+        XCTAssertEqual(drag.end(on: ladder), 2)
+        XCTAssertNil(drag.position)
+        XCTAssertNil(drag.end(on: ladder), "One release, one pick")
+
+        _ = drag.move(to: 1, on: ladder)
+        _ = drag.move(to: 0, on: ladder)
+        XCTAssertNil(drag.end(on: ladder), "Back on the current level")
+
+        _ = drag.move(to: 1, on: ladder)
+        drag.cancel()
+        XCTAssertNil(drag.position)
+        XCTAssertNil(drag.end(on: ladder))
+    }
+
     /// A vertical swipe that starts on the control is the list scrolling, not a level change.
     func testOnlyASidewaysDragAdjustsTheThinkingLevel() {
         XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: 40, height: 6)))
