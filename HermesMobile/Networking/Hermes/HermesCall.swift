@@ -31,6 +31,11 @@ enum HermesCall: Equatable, Sendable {
     /// protocol `gui` means Desktop.
     static let source = "gui"
 
+    // Bot desktop viewing; no control-lease or clipboard operations.
+    case displayStatus(profile: String)
+    case displayStart(profile: String)
+    case displayObserve(profile: String)
+
     // Profiles
     case profilesList(includeSessions: Bool)
     case profilesDescribe(name: String)
@@ -296,6 +301,9 @@ enum HermesCall: Equatable, Sendable {
 
     var method: String {
         switch self {
+        case .displayStatus: return "display.status"
+        case .displayStart: return "display.start"
+        case .displayObserve: return "display.observe"
         case .profilesList: return "profiles.list"
         case .profilesDescribe: return "profiles.describe"
         case .profilesGetAsset: return "profiles.get_asset"
@@ -366,6 +374,8 @@ enum HermesCall: Equatable, Sendable {
     func params(hostVersion: String? = nil) throws -> [String: BotJSON] {
         try admit()
         switch self {
+        case .displayStatus(let profile), .displayStart(let profile), .displayObserve(let profile):
+            return ["profile": .string(profile)]
         case .profilesList(let includeSessions): return ["include_sessions": .bool(includeSessions)]
         case .profilesDescribe(let name): return ["name": .string(name)]
         case .profilesGetAsset(let name): return ["name": .string(name), "asset": .string("avatar")]
@@ -560,6 +570,8 @@ enum HermesCall: Equatable, Sendable {
     private func admit() throws {
         let valid: Bool
         switch self {
+        case .displayStatus(let profile), .displayStart(let profile), .displayObserve(let profile):
+            valid = !Self.isBlank(profile)
         case .profilesDescribe(let name): valid = !name.isEmpty
         case .profilesSetAsset(let name, let avatar):
             // Base64 for the server's 2 MB decoded cap, with small data-URL headroom.

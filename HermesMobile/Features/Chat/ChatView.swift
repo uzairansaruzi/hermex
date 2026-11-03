@@ -445,6 +445,7 @@ struct ChatView: View {
     @State private var showsDelegatedWork = false
     /// A bot's chat's pill opened the bot's profile (#1145).
     @State private var showsBotProfileEditor = false
+    @State private var showsBotDesktop = false
     @State private var showsChatSettings = false
     @State private var showsModelSettings = false
     /// Measured height of the pinned notice stack, which grows with each
@@ -1228,6 +1229,12 @@ struct ChatView: View {
                         // A bot's chat has no subtitle to tap, since the pill opens its bot.
                         if viewModel.hermesBotChat != nil {
                             ChatToolbarActionSlot {
+                                Button { showsBotDesktop = true } label: {
+                                    Label("View Desktop", systemImage: "desktopcomputer")
+                                }
+                                .accessibilityLabel("View Desktop")
+                            }
+                            ChatToolbarActionSlot {
                                 Button { showsChatSettings = true } label: {
                                     Label("Chat settings", systemImage: "slider.horizontal.3")
                                 }
@@ -1279,6 +1286,7 @@ struct ChatView: View {
                 HermesSessionListView(entry: entry).id(entry.id)
             }
             .navigationDestination(isPresented: $showsBotProfileEditor) { botProfileEditor }
+            .sheet(isPresented: $showsBotDesktop) { botDesktop }
             .onChange(of: showsBotProfileEditor) { _, isShown in
                 if !isShown, let botChat = viewModel.hermesBotChat { Task { await botChat.settings.refreshProfiles() } }
             }
@@ -2176,6 +2184,20 @@ struct ChatView: View {
             BotProfileEditorView(server: botChat.engine.server, connection: connection, profile: profile,
                                  avatar: botChat.settings.avatars[profile.id])
                 .id(connection.id.uuidString + profile.id)
+        }
+    }
+
+    @ViewBuilder private var botDesktop: some View {
+        if let botChat = viewModel.hermesBotChat, let profile = botChat.botProfile {
+            NavigationStack {
+                BotDesktopView(server: botChat.engine.server, connection: botChat.engine.connection,
+                               profile: profile.id, name: profile.name)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showsBotDesktop = false }
+                        }
+                    }
+            }
         }
     }
 

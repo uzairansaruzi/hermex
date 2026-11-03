@@ -5,6 +5,7 @@ import SwiftUI
     @State private var editor: BotProfileEditor
     @State private var capabilitySheet: BotProfileEditor.Field?
     @State private var showsModels = false
+    @State private var showsDesktop = false
     @State private var photoItem: PhotosPickerItem?
     @State private var showsPhotoPicker = false
     @State private var showsExpressions = false
@@ -64,6 +65,17 @@ import SwiftUI
         }
         .sheet(item: $capabilitySheet) { field in capabilityPicker(field) }
         .sheet(isPresented: $showsModels) { modelPicker }
+        .sheet(isPresented: $showsDesktop) {
+            NavigationStack {
+                BotDesktopView(server: editor.server, connection: editor.connection,
+                               profile: editor.profile.id, name: editor.profile.name)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showsDesktop = false }
+                        }
+                    }
+            }
+        }
         .navigationDestination(isPresented: $showsExpressions) { BotExpressionPickerView(editor: editor) }
         .photosPicker(isPresented: $showsPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in loadPhoto(item) }
@@ -127,6 +139,11 @@ import SwiftUI
                     capabilityRow(.toolsets, systemImage: "wrench.and.screwdriver")
                     Divider().padding(.leading, 52)
                     capabilityRow(.mcpServers, systemImage: "server.rack")
+                }
+                sectionLabel("Computer")
+                card {
+                    navigationRow(String(localized: "View Desktop"), subtitle: nil, value: "",
+                                  systemImage: "desktopcomputer") { showsDesktop = true }
                 }
                 sectionLabel("Server")
                 card {

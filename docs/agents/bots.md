@@ -2511,3 +2511,27 @@ screen (a webui session ID, or a Hermes session's current stored key) and, when 
 `active_until` lease: the app knows exactly what is on screen, and a lease would keep
 muting replies for up to two minutes after the user leaves. Local completion alerts are
 still never shown in the foreground.
+
+## Desktop viewing
+
+Bot Chat's desktop button and the bot profile's Computer row open a profile-scoped,
+view-only desktop sheet. `BotDesktopSession` probes the host capability instead of
+requiring a new Hermes version. Unsupported hosts and missing desktop dependencies
+show an explanation. Opening a stopped desktop does not start it: Start Desktop is
+an explicit action. The app never installs desktop dependencies, changes host setup,
+stops the desktop, acquires a control lease, sends keyboard/pointer input, or shares
+clipboard contents. The fitted screen can be pinched and panned locally in WebKit;
+those gestures are not remote input.
+
+`HermesCall` owns the display RPCs. Each connect/reconnect observes for a fresh
+single-use ticket; the URL stays in native memory. A native URLSession WebSocket
+carries the saved connection's proxy headers and rejects redirects. Only binary RFB
+bytes cross the bounded WebKit bridge. Bundled noVNC runs without network access or
+persistent website storage. Its upstream source, licenses, modifications and rebuild
+instructions live in `Resources/BotDesktop.bundle/novnc` and its provenance file.
+
+Backgrounding or dismissing the sheet cancels work and clears the socket and frame.
+Foregrounding reads status again, without restarting the host. Late RPC replies and
+viewer callbacks are ignored by generation. Failed sockets retry with bounded
+backoff; a rejected ticket is renewed once. A stopped desktop is rechecked, never
+automatically restarted. Main-app-only resources and tests do not join extensions.
