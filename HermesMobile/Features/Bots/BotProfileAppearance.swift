@@ -12,6 +12,11 @@ struct BotProfileAppearance: Equatable, Sendable {
     var imageKind: String?
     /// A `BotAvatarExpression` raw value. Hermex-owned: Desktop keeps the key but renders its own eyes.
     var expression: String?
+    /// An avatar the host's model drew from a description. Hermex-owned, like `expression`.
+    var generated: BotGeneratedAvatar? { didSet { storedGenerated = nil } }
+    /// The value as the host stored it, until the user picks a face. A save writes it back as it
+    /// was, so a newer build's fields, or a format this build can't read, are never lost.
+    private var storedGenerated: BotJSON?
 
     init(profile: BotProfile) { self.init(look: profile.look, fallbackTitle: profile.name) }
 
@@ -25,6 +30,10 @@ struct BotProfileAppearance: Equatable, Sendable {
         custom = look["custom"]?.flag == true || shape != nil || color != nil
         imageKind = look["imageKind"]?.text
         expression = look["expression"]?.text
+        if let stored = look[BotGeneratedAvatar.lookKey] {
+            generated = BotGeneratedAvatar(json: stored)
+            storedGenerated = stored
+        }
     }
 
     /// Applies only the compatible static appearance fields while retaining
@@ -33,6 +42,9 @@ struct BotProfileAppearance: Equatable, Sendable {
         var result = received
         Self.set(title, key: "title", in: &result)
         if let expression { result["expression"] = .string(expression) } else { result.removeValue(forKey: "expression") }
+        if let storedGenerated { result[BotGeneratedAvatar.lookKey] = storedGenerated }
+        else if let generated { result[BotGeneratedAvatar.lookKey] = generated.json }
+        else { result.removeValue(forKey: BotGeneratedAvatar.lookKey) }
         if custom {
             result["custom"] = .bool(true)
             if let shape { result["shape"] = .string(shape) } else { result.removeValue(forKey: "shape") }
@@ -77,7 +89,15 @@ struct BotAvatarColor: Identifiable {
 
 enum BotAvatarShape: String, CaseIterable, Identifiable, Sendable {
     case circle, blob, squircle, pill, triangle, hexagon, cloud, drop
+    case book, brain, bull, bunny, camera, cat, ghost, magnifier
+    case paintBrush = "paint-brush", palette, rocket, shield, star, witchHat = "witch-hat"
+    case controller, barbell, mug, lightbulb, chat, sprout, wateringCan = "watering-can"
     var id: String { rawValue }
+
+    /// The original shapes. Name-seeded faces pick only from these, so adding an avatar never
+    /// changes a bot that nobody customized.
+    static let classic: [BotAvatarShape] = [.circle, .blob, .squircle, .pill, .triangle, .hexagon, .cloud, .drop]
+
     var localizedName: String {
         switch self {
         case .circle: return String(localized: "Circle")
@@ -88,6 +108,27 @@ enum BotAvatarShape: String, CaseIterable, Identifiable, Sendable {
         case .hexagon: return String(localized: "Hexagon")
         case .cloud: return String(localized: "Cloud")
         case .drop: return String(localized: "Drop")
+        case .book: return String(localized: "Book")
+        case .brain: return String(localized: "Brain")
+        case .bull: return String(localized: "Bull")
+        case .bunny: return String(localized: "Bunny")
+        case .camera: return String(localized: "Camera")
+        case .cat: return String(localized: "Cat")
+        case .ghost: return String(localized: "Ghost")
+        case .magnifier: return String(localized: "Magnifier")
+        case .paintBrush: return String(localized: "Paint Brush")
+        case .palette: return String(localized: "Palette")
+        case .rocket: return String(localized: "Rocket")
+        case .shield: return String(localized: "Shield")
+        case .star: return String(localized: "Star")
+        case .witchHat: return String(localized: "Witch Hat")
+        case .controller: return String(localized: "Controller")
+        case .barbell: return String(localized: "Barbell")
+        case .mug: return String(localized: "Mug")
+        case .lightbulb: return String(localized: "Lightbulb")
+        case .chat: return String(localized: "Chat Bubble")
+        case .sprout: return String(localized: "Sprout")
+        case .wateringCan: return String(localized: "Watering Can")
         }
     }
 }
@@ -166,14 +207,15 @@ struct BotAvatarMarkView: View {
 
     var body: some View {
         ZStack {
-            BotAvatarBody(shape: presentation.shape)
+            BotAvatarBody(shape: presentation.shape, generatedPath: presentation.generatedPath)
                 .fill(presentation.color)
             let geometry = BotAvatarExpression.resolve(appearance.expression).geometry
-            HStack(spacing: size * 0.1 * geometry.split / 15.46) {
-                eye(geometry.left)
-                eye(geometry.right)
+            let layout = presentation.eyeLayout
+            HStack(spacing: size * layout.gap * geometry.split / 15.46) {
+                eye(geometry.left, layout)
+                eye(geometry.right, layout)
             }
-            .offset(x: size * (0.12 + pose.gazeX), y: size * (-0.08 + pose.gazeY))
+            .offset(x: size * (layout.x + pose.gazeX * layout.travel), y: size * (layout.y + pose.gazeY * layout.travel))
         }
         .rotationEffect(.degrees(pose.roll))
         .scaleEffect(x: pose.scaleX, y: pose.scaleY, anchor: .bottom)
@@ -183,11 +225,11 @@ struct BotAvatarMarkView: View {
     }
 
     /// Bloub measures eyes against the body radius; the neutral eye maps onto the
-    /// mark's original 0.075 x 0.22 capsule with its 18 degree lean.
-    private func eye(_ eye: BotAvatarExpression.Eye) -> some View {
+    /// layout's capsule, with its lean.
+    private func eye(_ eye: BotAvatarExpression.Eye, _ layout: BotAvatarEyeLayout) -> some View {
         Capsule().fill(presentation.eyeColor)
-            .frame(width: size * 0.075 * eye.width / 0.186, height: size * 0.22 * eye.height / 0.412 * pose.lid)
-            .rotationEffect(.degrees(-18 + eye.tilt))
+            .frame(width: size * layout.width * eye.width / 0.186, height: size * layout.height * eye.height / 0.412 * pose.lid)
+            .rotationEffect(.degrees(layout.lean + eye.tilt))
     }
 }
 
@@ -313,12 +355,43 @@ struct BotAvatarView: View {
     }
 }
 
+/// Where a face's eyes sit, as fractions of the mark: center offset, neutral eye size, lean,
+/// the gap between the eyes, and how much of a look's travel they take.
+struct BotAvatarEyeLayout: Equatable {
+    let x: Double, y: Double, width: Double, height: Double, lean: Double, gap: Double, travel: Double
+
+    /// The classic mark's leaning eyes, off to one side.
+    static let classic = BotAvatarEyeLayout(x: 0.12, y: -0.08, width: 0.075, height: 0.22, lean: -18, gap: 0.1, travel: 1)
+
+    /// Upright eyes at a placement. A smaller travel keeps a look inside a narrow body.
+    init(_ eyes: BotAvatarEyes) {
+        let width = 0.04 * eyes.scale
+        self.init(x: eyes.x / 100 - 0.5, y: eyes.y / 100 - 0.5, width: width, height: 0.11 * eyes.scale, lean: 0,
+                  gap: max(0, eyes.spacing / 100 - width), travel: 0.4)
+    }
+
+    private init(x: Double, y: Double, width: Double, height: Double, lean: Double, gap: Double, travel: Double) {
+        self.x = x; self.y = y; self.width = width; self.height = height; self.lean = lean; self.gap = gap; self.travel = travel
+    }
+}
+
 private struct BotAvatarPresentation {
     let shape: BotAvatarShape
     let color: Color
     let eyeColor: Color
+    /// A generated avatar's body, parsed once. Nil for a bad stored path, which draws the shape.
+    let generatedPath: Path?
+    let eyeLayout: BotAvatarEyeLayout
 
     init(name: String, appearance: BotProfileAppearance) {
+        let generatedPath = appearance.generated.flatMap { BotAvatarPathData.path($0.path) }
+        self.generatedPath = generatedPath
+        let resolved = appearance.shape.flatMap(BotAvatarShape.init(rawValue:))
+        if generatedPath != nil, let eyes = appearance.generated?.eyes {
+            eyeLayout = BotAvatarEyeLayout(eyes)
+        } else {
+            eyeLayout = resolved?.readyMade.map { BotAvatarEyeLayout($0.eyes) } ?? .classic
+        }
         if name.lowercased() == "default", !appearance.custom {
             shape = .squircle
             color = Color(botHex: "#8b5cf6") ?? .purple
@@ -326,9 +399,9 @@ private struct BotAvatarPresentation {
             return
         }
         let hash = name.utf8.reduce(UInt64(1_469_598_103_934_665_603)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }
-        let shapes = BotAvatarShape.allCases.filter { $0 != .blob }
+        let shapes = BotAvatarShape.classic.filter { $0 != .blob }
         let colors = ["#8b5cf6", "#38bdf8", "#14b8a6", "#22c55e", "#f59e0b", "#f97316", "#ef4444", "#ec4899"]
-        shape = appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) ?? shapes[Int(hash % UInt64(shapes.count))]
+        shape = resolved ?? shapes[Int(hash % UInt64(shapes.count))]
         let hex = appearance.color ?? colors[Int(hash % UInt64(colors.count))]
         color = Color.botBody(hex)
         eyeColor = Color.botEyes(on: hex)
@@ -337,8 +410,14 @@ private struct BotAvatarPresentation {
 
 private struct BotAvatarBody: Shape {
     let shape: BotAvatarShape
+    var generatedPath: Path?
 
     func path(in rect: CGRect) -> Path {
+        let stored = generatedPath ?? shape.readyMade.flatMap { BotAvatarPathData.path($0.path) }
+        if let stored {
+            return stored.applying(CGAffineTransform(scaleX: rect.width / 100, y: rect.height / 100))
+                .offsetBy(dx: rect.minX, dy: rect.minY)
+        }
         let inset = rect.insetBy(dx: rect.width * 0.08, dy: rect.height * 0.08)
         switch shape {
         case .circle:
@@ -402,6 +481,9 @@ private struct BotAvatarBody: Shape {
                           control1: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.6),
                           control2: CGPoint(x: rect.minX, y: rect.minY + rect.height * 0.3))
             return path
+        case .book, .brain, .bull, .bunny, .camera, .cat, .ghost, .magnifier, .paintBrush, .palette, .rocket, .shield,
+             .star, .witchHat, .controller, .barbell, .mug, .lightbulb, .chat, .sprout, .wateringCan:
+            return Path()
         }
     }
 }

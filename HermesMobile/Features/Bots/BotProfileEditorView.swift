@@ -8,6 +8,7 @@ import SwiftUI
     @State private var photoItem: PhotosPickerItem?
     @State private var showsPhotoPicker = false
     @State private var showsExpressions = false
+    @State private var showsDescribe = false
     @State private var imageError: String?
     /// What the face should do about the last edit; see `BotCreateView`.
     @State private var cue: BotFaceCue?
@@ -65,6 +66,11 @@ import SwiftUI
         .sheet(item: $capabilitySheet) { field in capabilityPicker(field) }
         .sheet(isPresented: $showsModels) { modelPicker }
         .navigationDestination(isPresented: $showsExpressions) { BotExpressionPickerView(editor: editor) }
+        .sheet(isPresented: $showsDescribe) {
+            BotAvatarDescribeSheet(send: { [editor] prompt in try await editor.sendAvatarPrompt(prompt) }) { generated in
+                editor.setGenerated(generated); cue = BotFaceCue(.hop)
+            }
+        }
         .photosPicker(isPresented: $showsPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in loadPhoto(item) }
         .alert("Could not decode this image.", isPresented: Binding(
@@ -202,23 +208,9 @@ import SwiftUI
 
     private var characterCard: some View {
         card {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
-                ForEach(BotAvatarShape.allCases) { shape in
-                    Button { editor.setShape(shape); cue = BotFaceCue(.hop) } label: {
-                        BotAvatarMarkView(name: editor.profile.id, appearance: appearance(for: shape), size: 42)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .overlay {
-                                if editor.draft.appearance.shape == shape.rawValue {
-                                    RoundedRectangle(cornerRadius: 12).stroke(.secondary, lineWidth: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(shape.localizedName)
-                    .accessibilityAddTraits(editor.draft.appearance.shape == shape.rawValue ? .isSelected : [])
-                }
+            BotAvatarShapePicker(name: editor.profile.id, appearance: editor.draft.appearance) { shape in
+                editor.setShape(shape); cue = BotFaceCue(.hop)
             }
-            .padding(16)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
                 ForEach(colors) { color in
                     Button { editor.setColor(color.hex); cue = BotFaceCue(.wobble) } label: {
@@ -232,6 +224,9 @@ import SwiftUI
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 10)
+            Divider().padding(.leading, 16)
+            navigationRow(String(localized: "Describe It"), subtitle: nil, value: "", systemImage: "sparkles") { showsDescribe = true }
+                .disabled(!editor.holdsConnection)
             Divider().padding(.leading, 16)
             navigationRow(String(localized: "Expression"), subtitle: nil,
                           value: BotAvatarExpression.resolve(editor.draft.appearance.expression).localizedName,
@@ -339,12 +334,6 @@ import SwiftUI
             .padding(16).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func appearance(for shape: BotAvatarShape) -> BotProfileAppearance {
-        var appearance = editor.draft.appearance
-        appearance.shape = shape.rawValue; appearance.custom = true; appearance.imageKind = "shape"
-        return appearance
     }
 
     private func capabilities(_ field: BotProfileEditor.Field) -> [BotProfileCapability] {

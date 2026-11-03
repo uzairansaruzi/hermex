@@ -744,7 +744,11 @@ answer for the revision, as Desktop does (`isBackfilledFacePng`), so the face st
 drawn and animated. Hermex marks uploaded photos with `imageKind: photo`, so this rule
 keeps them visible. An unreadable asset is not remembered and is fetched again next load.
 Hermex renders Desktop's compatible classic shape and color metadata; blobatars,
-pets and other Desktop renderers remain Desktop-owned. Drawn faces blink on a
+pets and other Desktop renderers remain Desktop-owned. `BotAvatarShape` also has 21
+ready-made avatars (`BotAvatarLibrary.swift`, flat paths and upright eyes from Open Bot
+Avatar, MIT), stored in `shape` like any other. Name-seeded faces only use
+`BotAvatarShape.classic`, so a new avatar never changes a bot nobody customized. Desktop's
+source draws a circle for a shape it doesn't know, in the bot's color. Drawn faces blink on a
 sparse `BotBlinkSchedule` (shut and open entries every 3 to 5 s, phase seeded by
 Profile name) so nothing repaints between blinks; only the open bot's face in the
 chat title takes Desktop's 15 fps working pose, and only while its turn is live.
@@ -847,6 +851,19 @@ sections and interprets `applied` per section, so successes advance their own
 baseline while failed or model-confirmation sections remain visibly unsaved. A
 guarded model is resent by itself with `confirm_expensive_model` only after a
 second user confirmation. A disconnect never causes an automatic retry.
+
+**Describe It.** `BotAvatarGeneration` opens a hidden draft (`session.create`) and sends a short
+flat design prompt through `prompt.btw`, whose tools are denied at dispatch, reads
+`btw.complete`, then closes the draft and deletes its empty row. The edited bot's model answers;
+the create sheet uses the `default` Profile. `BotGeneratedAvatar` checks the answer (a small path
+grammar, and both eyes on the body), bad JSON gets one repair try, and the result is a draft
+stored under the Hermex-owned `hermexAvatar` look key until Save. A stored value is written back
+untouched until the user picks a face. Never use `prompt.submit` here: on a live host (0.22.5) it
+ran `terminal` and `write_file` with no approval, survived `close_on_disconnect`, auto-continued
+on `session.resume`, and the agent's background review then created a skill. `llm.oneshot` has no
+tools, but its 60 s host timeout failed with a long prompt. On a slow model `prompt.btw` took 12 s
+and 40 s with this prompt against 198 s with upstream's 15 KB one. It can't be stopped, so closing
+the sheet only ignores the answer.
 
 Appearance writes merge the received `ui_meta["hermes-bots"]` object, changing
 only title and compatible static avatar keys while retaining Desktop-owned keys.

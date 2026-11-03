@@ -673,6 +673,10 @@
 		559000000000000000000006 /* PushPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000016 /* PushPreviewTests.swift */; };
 		C0DE88500000000000000003 /* AppLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE88500000000000000004 /* AppLockTests.swift */; };
 		559000000000000000000007 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
+		D99CEF90BA3948E3D90239C6 /* BotAvatarLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65390EF87632CA0D99CEF90 /* BotAvatarLibrary.swift */; };
+		131D47952016B290FA56B00F /* BotGeneratedAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */; };
+		FD3E09513D0737A13DCBCDB2 /* BotAvatarGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */; };
+		DC0447FD714D103048C79835 /* BotAvatarLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1385,6 +1389,10 @@
 		559000000000000000000015 /* PushNotificationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationRouter.swift; sourceTree = "<group>"; };
 		559000000000000000000016 /* PushPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPreviewTests.swift; sourceTree = "<group>"; };
 		C0DE88500000000000000004 /* AppLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockTests.swift; sourceTree = "<group>"; };
+		C65390EF87632CA0D99CEF90 /* BotAvatarLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarLibrary.swift; sourceTree = "<group>"; };
+		DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotGeneratedAvatar.swift; sourceTree = "<group>"; };
+		D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarGeneration.swift; sourceTree = "<group>"; };
+		B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarLibraryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1505,6 +1513,7 @@
 		1A2B3C4D5E6F700000000034 /* HermesMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */,
 				B48200000000000000000007 /* BotProfileEditorTests.swift */,
 				B48200000000000000000035 /* BotLifecycleTests.swift */,
 				B48200000000000000000023 /* BotFaceMotionTests.swift */,
@@ -1858,6 +1867,9 @@
 		1A2B3C4D5E6F7000000000C3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */,
+				DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */,
+				C65390EF87632CA0D99CEF90 /* BotAvatarLibrary.swift */,
 				B48200000000000000000001 /* BotProfileAppearance.swift */,
 				B48200000000000000000011 /* BotExpressionPickerView.swift */,
 				B48200000000000000000031 /* BotCreator.swift */,
@@ -2608,6 +2620,9 @@
 				B48200000000000000000032 /* BotCreator.swift in Sources */,
 				B48200000000000000000034 /* BotCreateView.swift in Sources */,
 				B48200000000000000000004 /* BotProfileEditor.swift in Sources */,
+				D99CEF90BA3948E3D90239C6 /* BotAvatarLibrary.swift in Sources */,
+				131D47952016B290FA56B00F /* BotGeneratedAvatar.swift in Sources */,
+				FD3E09513D0737A13DCBCDB2 /* BotAvatarGeneration.swift in Sources */,
 				B48200000000000000000022 /* BotFaceMotion.swift in Sources */,
 				B48200000000000000000006 /* BotProfileEditorView.swift in Sources */,
 				D4E8321C0A744DE3A5B8C997 /* ChatComposerPresentation.swift in Sources */,
@@ -3050,6 +3065,7 @@
 				A1216000000000000000A005 /* MoveToHermesRunnerTests.swift in Sources */,
 				A1218000000000000000A005 /* MoveToHermesModelTests.swift in Sources */,
 				1331AA23B3B0713A5896D0A3 /* HermexPushProvisioningTests.swift in Sources */,
+				DC0447FD714D103048C79835 /* BotAvatarLibraryTests.swift in Sources */,
 				A4730000000000000000A003 /* BotAvatarTests.swift in Sources */,
 				A4770000000000000000D005 /* HermesDelegatedWorkTests.swift in Sources */,
 				A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */,
