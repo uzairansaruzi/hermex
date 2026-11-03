@@ -28,14 +28,17 @@ struct HermesDelegatedWorkButton: View {
 
 /// A bounded preview at the live end of the transcript. Observing the roster here keeps tool
 /// updates in this leaf; the transcript only needs to observe whether any workers are active.
-struct HermesDelegatedWorkInlineView: View {
+/// Equal by `work`, which `onOpen` opens, so a stream tick above it skips this body.
+struct HermesDelegatedWorkInlineView: View, Equatable {
     let work: HermesDelegatedWork
     let onOpen: () -> Void
 
     private let maximumPreviewCount = 3
 
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.work === rhs.work }
+
     var body: some View {
-        if work.availability == .supported, work.activeCount > 0 {
+        if work.activeCount > 0 {
             Button(action: onOpen) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
@@ -95,11 +98,20 @@ struct HermesDelegatedWorkInlineView: View {
 
     @ViewBuilder private func workerTool(_ worker: HermesDelegatedWorker) -> some View {
         if let tool = worker.lastTool {
-            Label { Text(verbatim: tool) } icon: { Image(systemName: "hammer") }
+            toolRow(Text(verbatim: tool))
+        } else if let count = worker.toolCount {
+            toolRow(Text("\(count) tools"))
+        }
+    }
+
+    /// A plain row rather than a `Label`, which truncates beside free space at accessibility sizes.
+    private func toolRow(_ title: Text) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "hammer")
+                .accessibilityHidden(true)
+            title
                 .lineLimit(1)
                 .truncationMode(.middle)
-        } else if let count = worker.toolCount {
-            Label("\(count) tools", systemImage: "hammer")
         }
     }
 }

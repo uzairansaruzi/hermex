@@ -139,7 +139,8 @@ struct ChatTranscriptView: View {
     var waitingSend: ChatMessage? = nil
     var onCancelWaitingSend: () -> Void = {}
 
-    /// The session's live workers. The preview observes roster changes independently of rows.
+    /// The session's live workers, nil on the offline cache's copy. The preview observes roster
+    /// changes itself, so this view only redraws when the count does.
     var delegatedWork: HermesDelegatedWork? = nil
     var onOpenDelegatedWork: () -> Void = {}
 
@@ -170,7 +171,7 @@ struct ChatTranscriptView: View {
         switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
                            showsTurnOutcome: turnOutcome != nil,
                            showsQueuedPrompt: queuedPrompt != nil || waitingSend != nil,
-                           showsDelegatedWork: !isViewingCachedData && (delegatedWork?.activeCount ?? 0) > 0) {
+                           showsDelegatedWork: (delegatedWork?.activeCount ?? 0) > 0) {
         case .loading?:
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -308,13 +309,12 @@ struct ChatTranscriptView: View {
                     releasingHold { onScrollToLatestContent(proxy, false) }
                 }
                 .onChange(of: [queuedPrompt?.content, waitingSend?.content]) {
-                    // A pending bubble came, grew with a merged prompt, or went without
-                    // the transcript gaining a row: follow it only from the live edge.
-                    guard isFollowingLatestContent else {
-                        pinReader(proxy: proxy)
-                        return
-                    }
-                    releasingHold { onScrollToLatestContent(proxy, false) }
+                    // A pending bubble came, grew with a merged prompt, or went.
+                    followLiveEndChange(proxy: proxy)
+                }
+                .onChange(of: delegatedWork?.activeCount) {
+                    // The worker preview came, gained or lost a row, or went.
+                    followLiveEndChange(proxy: proxy)
                 }
                 .onChange(of: clarificationPromptID) {
                     // The bar above the composer just grew the bottom inset; keep
@@ -329,6 +329,16 @@ struct ChatTranscriptView: View {
                 }
             }
         }
+    }
+
+    /// A row at the live end changed height without the transcript gaining a message: follow it
+    /// only from the live edge, and leave a reader up in history where they are.
+    private func followLiveEndChange(proxy: ScrollViewProxy) {
+        guard isFollowingLatestContent else {
+            pinReader(proxy: proxy)
+            return
+        }
+        releasingHold { onScrollToLatestContent(proxy, false) }
     }
 
     /// Follow-driven scrolls run only while the latch is on and no disclosure
@@ -466,8 +476,9 @@ struct ChatTranscriptView: View {
 
             transcriptLooseBlocks
             liveResponseBlocks
-            if !isViewingCachedData, let delegatedWork {
+            if let delegatedWork {
                 HermesDelegatedWorkInlineView(work: delegatedWork, onOpen: onOpenDelegatedWork)
+                    .equatable()
             }
             workingRow
             turnOutcome
