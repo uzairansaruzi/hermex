@@ -4076,9 +4076,10 @@ struct ChatView: View {
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
-        // An empty chat still draws the transcript for a queued prompt (#1379) or a waiting send (#1407).
+        // An empty chat still draws the transcript for a queued prompt (#1379), a waiting send (#1407)
+        // or live workers.
         guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil
-            || viewModel.waitingSendMessage != nil else { return }
+            || viewModel.waitingSendMessage != nil || (delegatedWork?.activeCount ?? 0) > 0 else { return }
 
         scheduleFollowScroll(
             proxy,
