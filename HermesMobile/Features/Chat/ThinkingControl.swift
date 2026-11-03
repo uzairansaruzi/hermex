@@ -1,11 +1,17 @@
 import SwiftUI
 
-/// Sends Thinking levels one at a time, keeping the newest. The level shows at once as `pendingLevel`
-/// and clears when the host has answered: the chat's state then has it, or a refused level falls back
-/// to what the chat still holds, with the reason beside the row.
+/// Sends Thinking levels one at a time, keeping the newest. The level shows at once and stays up a
+/// moment past the host's answer, since the chat's own value reaches this sheet through the views
+/// around it, an update later. Clearing on the answer flashes the old level. A refused level clears
+/// at once, falling back to what the chat holds with the reason beside the row.
 @MainActor @Observable final class ThinkingLevelSender {
     private(set) var pendingLevel: String?
     private(set) var isSending = false
+    @ObservationIgnored private let settleDelay: Duration
+
+    init(settleDelay: Duration = .milliseconds(250)) {
+        self.settleDelay = settleDelay
+    }
 
     /// A level asked for while another is out waits, and only the newest goes.
     func request(_ level: String, send: @escaping (String) async -> Bool) {
@@ -14,12 +20,15 @@ import SwiftUI
         isSending = true
         Task {
             var sent: String?
+            var accepted = false
             while let next = pendingLevel, next != sent {
                 sent = next
-                _ = await send(next)
+                accepted = await send(next)
             }
-            pendingLevel = nil
             isSending = false
+            if accepted { try? await Task.sleep(for: settleDelay) }
+            // Another request may have started while this one waited, and now owns the level.
+            if !isSending, pendingLevel == sent { pendingLevel = nil }
         }
     }
 }
@@ -189,13 +198,18 @@ struct ThinkingControl: View {
 /// A drag along a Thinking slider. It keeps only where the finger is, so the level it names always
 /// comes from the ladder as it is now.
 struct ThinkingSliderDrag: Equatable {
-    /// 0 to 1 along the track, while a finger is down.
+    /// 0 to 1 along the track, while a finger is down and for a moment after it lands on a new level.
     private(set) var position: Double?
+    /// The finger is gone and `position` holds where it landed. The picked level reaches the ladder
+    /// through the screen around the track, an update after this state changes, and for that update
+    /// the thumb would otherwise jump back toward the old level.
+    private(set) var isLanded = false
     private var lastTickIndex: Int?
 
     /// Moves the finger. True when it crossed onto another level, for a tick.
     mutating func move(to position: Double, on ladder: ThinkingLadder) -> Bool {
         self.position = position
+        isLanded = false
         let index = ladder.index(atPosition: position)
         defer { lastTickIndex = index }
         return index != (lastTickIndex ?? ladder.currentIndex)
@@ -203,14 +217,21 @@ struct ThinkingSliderDrag: Equatable {
 
     /// Lifts the finger, once. The level it landed on, unless that's the current one.
     mutating func end(on ladder: ThinkingLadder) -> Int? {
-        defer { cancel() }
-        guard let position else { return nil }
+        guard let position, !isLanded else { return nil }
         let index = ladder.index(atPosition: position)
-        return index == ladder.currentIndex ? nil : index
+        guard index != ladder.currentIndex else {
+            cancel()
+            return nil
+        }
+        self.position = ladder.position(of: index)
+        isLanded = true
+        lastTickIndex = nil
+        return index
     }
 
     mutating func cancel() {
         position = nil
+        isLanded = false
         lastTickIndex = nil
     }
 }
@@ -233,7 +254,7 @@ struct ThinkingInteractiveTrack: View {
     }
 
     var body: some View {
-        ThinkingSliderTrack(look: look, level: shownPosition, followsFinger: drag.position != nil, isPaused: isPaused)
+        ThinkingSliderTrack(look: look, level: shownPosition, followsFinger: drag.position != nil && !drag.isLanded, isPaused: isPaused)
             .overlay {
                 GeometryReader { proxy in
                     let width = proxy.size.width
@@ -256,6 +277,11 @@ struct ThinkingInteractiveTrack: View {
                 }
             }
             .environment(\.layoutDirection, .leftToRight)
+            .task(id: drag.isLanded) {
+                guard drag.isLanded else { return }
+                try? await Task.sleep(for: .milliseconds(250))
+                if !Task.isCancelled { drag.cancel() }
+            }
     }
 
     private func select(_ index: Int) {

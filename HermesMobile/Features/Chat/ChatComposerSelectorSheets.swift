@@ -188,6 +188,8 @@ struct ModelSettingsSheet<AllModels: View>: View {
                     .compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    // One line, so a level's "sent as" never moves the rows below it.
+                    .lineLimit(1)
                 statusLine(for: .model)
             }
             .contentShape(Rectangle())

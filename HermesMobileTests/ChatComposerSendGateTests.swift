@@ -39,12 +39,13 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(drag.move(to: 0.6, on: ladder), "Still on the same level")
         XCTAssertTrue(drag.move(to: 1, on: ladder))
         XCTAssertEqual(drag.end(on: ladder), 2)
-        XCTAssertNil(drag.position)
+        XCTAssertEqual(drag.position, 1, "The thumb must not head back before the pick reaches the ladder")
         XCTAssertNil(drag.end(on: ladder), "One release, one pick")
 
         _ = drag.move(to: 1, on: ladder)
         _ = drag.move(to: 0, on: ladder)
         XCTAssertNil(drag.end(on: ladder), "Back on the current level")
+        XCTAssertNil(drag.position)
 
         _ = drag.move(to: 1, on: ladder)
         drag.cancel()
@@ -176,8 +177,8 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, profileTitle: nil))
     }
 
-    /// A level shows at once and clears when answered. Levels asked for meanwhile don't pile up:
-    /// only the newest goes, and a refused one falls back to the chat's own.
+    /// A level shows at once. Levels asked for meanwhile don't pile up: only the newest goes, and
+    /// a refused one clears at once so the chat's own level shows.
     @MainActor
     func testThinkingLevelsShowAtOnceAndOnlyTheNewestWaitingOneGoes() async {
         let sender = ThinkingLevelSender()
@@ -199,20 +200,36 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertEqual(sender.pendingLevel, "high")
         XCTAssertEqual(sent, ["low"])
 
-        let second = expectation(description: "the newest level is out")
         let cleared = expectation(description: "the answers are in")
         Task { @MainActor in
             answers.removeFirst().resume(returning: true)
             while answers.isEmpty { await Task.yield() }
-            second.fulfill()
             answers.removeFirst().resume(returning: false)
             while sender.pendingLevel != nil { await Task.yield() }
             cleared.fulfill()
         }
-        await fulfillment(of: [second, cleared], timeout: 5)
+        await fulfillment(of: [cleared], timeout: 5)
 
         XCTAssertEqual(sent, ["low", "high"])
         XCTAssertNil(sender.pendingLevel)
+    }
+
+    /// An accepted level outlasts the host's answer, since clearing on the answer flashes the old
+    /// level before the chat's own value reaches the screen.
+    @MainActor
+    func testAnAcceptedThinkingLevelOutlastsTheAnswer() async {
+        let sender = ThinkingLevelSender(settleDelay: .milliseconds(300))
+        let answered = expectation(description: "the host answered")
+        sender.request("high") { _ in
+            answered.fulfill()
+            return true
+        }
+        await fulfillment(of: [answered], timeout: 5)
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertFalse(sender.isSending)
+        XCTAssertEqual(sender.pendingLevel, "high")
+
+        while sender.pendingLevel != nil { await Task.yield() }
     }
 
     /// A run holds configuration but not `+` (#1436); offline and read-only hold both.
