@@ -2303,6 +2303,51 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "current-approval")
     }
 
+    /// Model settings' YOLO switch on a webui session: the row follows the server's answer both
+    /// ways, and a failure leaves it where it was with the reason beside it.
+    @MainActor
+    func testYoloSwitchFollowsTheServersAnswer() async throws {
+        var bodies: [[String: Any]] = []
+        var refuses = false
+        let viewModel = try makeViewModel(
+            streamClient: SpySSEStreamingClient(),
+            handler: routes([
+                "/api/chat/start": chatStarted(),
+                "/api/approval/pending": jsonReply(
+                    #"{"pending":{"approval_id":"a1","command":"make install","description":"Install","pattern_key":"install"},"pending_count":1}"#
+                ),
+                "/api/session/yolo": { request in
+                    if refuses { throw URLError(.notConnectedToInternet) }
+                    let body = try XCTUnwrap(apiTestJSONBody(from: request))
+                    bodies.append(body)
+                    let enabled = body["enabled"] as? Bool ?? false
+                    return apiTestJSONResponse(#"{"ok": true, "yolo_enabled": \#(enabled)}"#, for: request)
+                },
+            ])
+        )
+        let didStart = await viewModel.sendMessage("Run setup")
+        XCTAssertTrue(didStart)
+        XCTAssertFalse(viewModel.composerApprovals.offersModes)
+
+        await viewModel.setSessionApprovalBypass(true)
+        XCTAssertEqual(viewModel.composerApprovals.value, "YOLO")
+        XCTAssertFalse(viewModel.composerApprovals.isYoloLocked)
+        XCTAssertNil(viewModel.approvalPrompt)
+
+        refuses = true
+        await viewModel.setSessionApprovalBypass(false)
+        XCTAssertEqual(viewModel.composerApprovals.value, "YOLO", "A failed change never reads as applied")
+        XCTAssertNotNil(viewModel.composerApprovals.errorMessage)
+
+        refuses = false
+        await viewModel.setSessionApprovalBypass(false)
+        XCTAssertNil(viewModel.composerApprovals.value)
+        XCTAssertNil(viewModel.composerApprovals.errorMessage)
+        XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "a1", "Turning YOLO off asks again for what the server holds")
+        XCTAssertEqual(bodies.map { $0["enabled"] as? Bool }, [true, false])
+        XCTAssertEqual(bodies.last?["session_id"] as? String, "session-abc")
+    }
+
     @MainActor
     func testSkipAllThisSessionEnablesYoloAndClearsPrompt() async throws {
         let streamClient = SpySSEStreamingClient()

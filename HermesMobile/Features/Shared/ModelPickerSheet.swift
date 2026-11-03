@@ -102,7 +102,7 @@ struct ModelPickerSheet: View {
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search models"
+                prompt: configuration.searchPrompt
             )
             .onAppear {
                 initializeCustomProviderIfNeeded()

@@ -36,6 +36,7 @@ private extension ActionToast {
 private enum ActiveGitSheet: Identifiable {
     case changes
     case commit
+    case branches
 
     var id: Self { self }
 }
@@ -288,7 +289,6 @@ struct ChatView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
     private let transcriptSpacing: CGFloat = 8
     private let composerAccessoryVerticalSpacing: CGFloat = 8
-    private let approvalBypassStatusSpacerHeight: CGFloat = 38
     /// The composer and its status stack keep 16 pt side insets of their own;
     /// this cap lines those insets up with the transcript's reading column.
     private let composerMaximumWidth = ChatReadingWidth.maximumWidth(horizontalPadding: 16)
@@ -410,6 +410,7 @@ struct ChatView: View {
     @State private var goalDraft = ""
     @State private var showsGoalSheet = false
     @State private var activeGitSheet: ActiveGitSheet?
+    @State private var pendingBranchCheckout: GitCheckoutTarget?
     @State private var turnDiffPresentation: TurnDiffPresentation?
     /// Folds and viewed marks the Changes sheet and turn diffs share for as long as this chat is open.
     @State private var reviewProgress = ReviewProgressStore()
@@ -444,6 +445,8 @@ struct ChatView: View {
     @State private var showsDelegatedWork = false
     /// A bot's chat's pill opened the bot's profile (#1145).
     @State private var showsBotProfileEditor = false
+    @State private var showsChatSettings = false
+    @State private var showsModelSettings = false
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -641,6 +644,7 @@ struct ChatView: View {
             autoStartsVoiceInput: autoStartsVoiceInput,
             apiClient: viewModel.client,
             sessionID: session.sessionId,
+            server: server,
             searchFilePaths: viewModel.offersFilePathSearch ? { await viewModel.searchFilePaths($0) } : nil,
             chipFilePaths: viewModel.fileChipPaths,
             botMentions: viewModel.hermesBotChat?.mentions,
@@ -674,12 +678,7 @@ struct ChatView: View {
                 await viewModel.refreshModelCatalogForPickerOpen()
             },
             onSelectReasoningEffort: { effort in
-                Task {
-                    let didSelect = await viewModel.selectReasoningEffort(effort)
-                    if didSelect {
-                        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
-                    }
-                }
+                await viewModel.selectReasoningEffort(effort)
             },
             onLoadWorkspaceSuggestions: { prefix in
                 await viewModel.loadWorkspaceSuggestions(prefix: prefix)
@@ -784,6 +783,17 @@ struct ChatView: View {
                     }
                 }
             },
+            isChatSettingsPresented: $showsChatSettings,
+            isModelSettingsPresented: $showsModelSettings,
+            modelConfirmationControls: viewModel.hermesSettings?.controls,
+            approvals: viewModel.composerApprovals,
+            onSetYolo: { enabled in
+                Task { await viewModel.setSessionApprovalBypass(enabled) }
+            },
+            onSelectApprovalMode: { mode in
+                Task { await viewModel.selectApprovalMode(mode) }
+            },
+            showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber
@@ -1204,15 +1214,27 @@ struct ChatView: View {
                     }
                 } else {
                     ToolbarItem(placement: .principal) {
-                        ChatToolbarTitleLabel(
-                            title: displayTitle,
-                            subtitle: headerSubtitle
-                        )
+                        Button { showsChatSettings = true } label: {
+                            ChatToolbarTitleLabel(title: displayTitle, subtitle: headerSubtitle)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(Text("Chat settings"))
                     }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     ChatToolbarActionCluster {
+                        // A bot's chat has no subtitle to tap, since the pill opens its bot.
+                        if viewModel.hermesBotChat != nil {
+                            ChatToolbarActionSlot {
+                                Button { showsChatSettings = true } label: {
+                                    Label("Chat settings", systemImage: "slider.horizontal.3")
+                                }
+                                .accessibilityLabel("Chat settings")
+                            }
+                        }
+
                         if viewModel.showsGoalControls {
                             ChatToolbarActionSlot {
                                 goalControlMenu
@@ -1317,6 +1339,7 @@ struct ChatView: View {
             // running there, and its toast or alert, belong to the old repository (#1115).
             .onChange(of: viewModel.hermesWorkspace) {
                 openedFileReference = nil
+                pendingBranchCheckout = nil
                 activeGitSheet = nil
                 turnDiffPresentation = nil
                 gitAvailabilityViewModel.retire()
@@ -1324,7 +1347,7 @@ struct ChatView: View {
                 gitAlert = nil
                 Task { await loadInitialGitAvailability() }
             }
-            .sheet(item: $activeGitSheet, content: gitSheet)
+            .sheet(item: $activeGitSheet, onDismiss: runPendingBranchCheckout, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
             // These sheets come from the chat, not the composer, so the composer reads their
             // transition as a navigation one and keeps its focus intent. A focused composer
@@ -1431,7 +1454,10 @@ struct ChatView: View {
                 )
             )
             .notificationOfferAlert($pendingNotificationOffer)
-            .modifier(HermesModelConfirmationModifier(controls: viewModel.hermesSettings?.controls))
+            // Model settings asks over itself while it is up.
+            .modifier(HermesModelConfirmationModifier(
+                controls: showsModelSettings ? nil : viewModel.hermesSettings?.controls
+            ))
             .modifier(HermesPersonalityConfirmationModifier(
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
@@ -1532,7 +1558,32 @@ struct ChatView: View {
                     Task { await gitAvailabilityViewModel.refreshAfterExternalMutation() }
                 }
             )
+        case .branches:
+            GitBranchPickerSheet(
+                branches: gitAvailabilityViewModel.branches,
+                currentBranch: gitAvailabilityViewModel.currentBranchName,
+                isLoading: gitAvailabilityViewModel.isLoadingBranches,
+                isSwitching: gitAvailabilityViewModel.isSwitchingBranch,
+                allowsCreate: gitAvailabilityViewModel.supportsSync,
+                onSelect: closeBranchPicker(checkingOut:),
+                onCreate: closeBranchPicker(checkingOut:),
+                onRefresh: { Task { await gitAvailabilityViewModel.loadBranches() } }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
+    }
+
+    /// The checkout waits for the sheet to close, since a dirty tree raises an alert from here.
+    private func closeBranchPicker(checkingOut target: GitCheckoutTarget) {
+        pendingBranchCheckout = target
+        activeGitSheet = nil
+    }
+
+    private func runPendingBranchCheckout() {
+        guard let target = pendingBranchCheckout else { return }
+        pendingBranchCheckout = nil
+        Task { await performGitCheckout(target) }
     }
 
     @ViewBuilder
@@ -1589,6 +1640,10 @@ struct ChatView: View {
             hidesSync: gitWriteAvailability.hidesSync,
             pullRequest: gitAvailabilityViewModel.pullRequest,
             isRunningAction: gitAvailabilityViewModel.isRunningGitAction,
+            branchesDisabled: session.isSessionReadOnly || viewModel.activeStreamID != nil
+                || gitAvailabilityViewModel.isWriteLocked
+                || gitAvailabilityViewModel.isLoadingBranches || gitAvailabilityViewModel.isSwitchingBranch,
+            onBranches: gitAvailabilityViewModel.supportsBranches ? { activeGitSheet = .branches } : nil,
             onTap: {
                 HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
                 gitAvailabilityViewModel.refreshPullRequest()
@@ -2028,11 +2083,6 @@ struct ChatView: View {
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
 
-                if showsApprovalBypassStatus {
-                    approvalBypassStatusPill
-                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-                }
-
                 // Nearest the composer and its request card, under the run-status pill (#1139).
                 if let pinnedPlan {
                     HermesPlanStrip(plan: pinnedPlan) { height in
@@ -2071,7 +2121,6 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerAccessoryVisibleItemCount)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
-            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
         }
@@ -2165,21 +2214,6 @@ struct ChatView: View {
             offersRetry: activity.retryTarget != nil, mayRetry: viewModel.mayRetryHermesTurn,
             onRetry: { Task { await viewModel.retryHermesFailedTurn() } }
         )
-    }
-
-    /// Reports the bypass; on a Hermes session it also turns off the session's own flag
-    /// (#1011). A bypass the host sets itself only reports.
-    @ViewBuilder
-    private var approvalBypassStatusPill: some View {
-        if let requests = viewModel.hermesRequests, requests.mayTurnOffApprovalBypass {
-            ApprovalBypassStatusPill(onTurnOff: {
-                Task { await requests.turnOffApprovalBypass() }
-            })
-            .disabled(requests.isChangingApprovalBypass)
-        } else {
-            ApprovalBypassStatusPill()
-                .allowsHitTesting(false)
-        }
     }
 
     @ViewBuilder
@@ -2467,21 +2501,12 @@ struct ChatView: View {
         )
     }
 
-    private var showsApprovalBypassStatus: Bool {
-        guard viewModel.isSessionApprovalBypassEnabled, viewModel.approvalPrompt == nil else { return false }
-        if case .approval? = viewModel.hermesRequests?.onScreen { return false }
-        return true
-    }
-
     private var composerAccessorySpacerHeight: CGFloat {
         var height = pinnedNoticeSpacerHeight
         if activeRunStatusPresentation != nil {
             // The measured pill plus one accessory gap: 36 pt at the default
             // size, and a full wrapped pill at accessibility sizes.
             height += activeRunStatusHeight + composerAccessoryVerticalSpacing
-        }
-        if showsApprovalBypassStatus {
-            height += approvalBypassStatusSpacerHeight
         }
         if pinnedPlan != nil {
             height += planStripHeight
@@ -2508,9 +2533,6 @@ struct ChatView: View {
         if activeRunStatusPresentation != nil {
             count += 1
         }
-        if showsApprovalBypassStatus {
-            count += 1
-        }
         if pinnedPlan != nil {
             count += 1
         }
@@ -2531,6 +2553,14 @@ struct ChatView: View {
         ChatToolbarSubtitleResolver.subtitle(
             workspacePath: viewModel.selectedWorkspacePath,
             profileTitle: viewModel.selectedProfileTitle
+        )
+    }
+
+    private var showsNewChatControls: Bool {
+        ChatComposerNewChatPolicy.showsControls(
+            hasMessages: !viewModel.messages.isEmpty,
+            serverMessageCount: session.messageCount,
+            isStreaming: viewModel.activeStreamID != nil
         )
     }
 
@@ -4412,16 +4442,12 @@ struct ChatToolbarActionSlot<Content: View>: View {
 }
 
 enum ChatToolbarSubtitleResolver {
+    /// `hermes · Default`: the workspace and the Profile, whichever of them there is.
     static func subtitle(workspacePath: String?, profileTitle: String?) -> String? {
-        if let workspace = nonEmpty(workspacePath) {
-            return workspace.lastPathComponentFallback
-        }
-
-        guard let profile = nonEmpty(profileTitle), profile != "Profile" else {
-            return nil
-        }
-
-        return profile
+        let workspace = nonEmpty(workspacePath)?.lastPathComponentFallback
+        let profile = nonEmpty(profileTitle).flatMap { $0 == "Profile" ? nil : $0 }
+        let parts = [workspace, profile].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private static func nonEmpty(_ value: String?) -> String? {
@@ -4562,7 +4588,7 @@ struct ChatNavigationBackground: ViewModifier {
 
 /// The host's expensive-model question for a Hermes session's model pick (#1015), as Bot
 /// Chat asks it: Change model resends the pick confirmed, Cancel sends nothing.
-private struct HermesModelConfirmationModifier: ViewModifier {
+struct HermesModelConfirmationModifier: ViewModifier {
     let controls: BotChatControls?
 
     func body(content: Content) -> some View {

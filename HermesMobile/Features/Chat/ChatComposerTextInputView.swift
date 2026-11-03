@@ -62,9 +62,11 @@ struct ComposerTextInputView: View {
     /// every paste inline and leaves Paste as Text out.
     var onPasteLargeText: ((String) -> Void)? = nil
 
-    var placeholder = String(localized: "Ask anything... /commands")
+    var placeholder = String(localized: "Ask anything...")
     /// Text-only clients reject file/image paste and drop before invoking callbacks.
     var acceptsAttachments = true
+    /// The collapsed draft's side padding; a composer with controls beside the draft narrows it.
+    var collapsedHorizontalPadding: CGFloat = 16
     private let collapsedLineHeight: CGFloat = 22
 
     var body: some View {
@@ -110,7 +112,7 @@ struct ComposerTextInputView: View {
                     chips: renderedChips,
                     placeholder: placeholder
                 )
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, collapsedHorizontalPadding)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture {

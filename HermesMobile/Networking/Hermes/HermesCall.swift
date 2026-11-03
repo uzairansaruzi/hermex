@@ -1,5 +1,10 @@
 import Foundation
 
+/// The host's `approvals.mode`, the three values `config.set` accepts at the pinned commit.
+enum HermesApprovalMode: String, CaseIterable, Sendable {
+    case smart, manual, off
+}
+
 /// Every JSON-RPC request Hermex sends to a direct Hermes gateway: one case per
 /// operation the app uses, and deliberately none for any other upstream method.
 /// A case carries only what its callers vary. Values the contract fixes for
@@ -250,8 +255,9 @@ enum HermesCall: Equatable, Sendable {
         case answer(String)
     }
 
-    /// The writes `config.set` may carry. All are runtime-scoped except `personality`. The
-    /// host still has a missing-runtime fallback for effort/fast; never send global or display writes.
+    /// The writes `config.set` may carry. All are runtime-scoped except `personality` and
+    /// `approvalMode`. The host still has a missing-runtime fallback for effort/fast; never send
+    /// global or display writes.
     enum SessionSetting: Equatable, Sendable {
         /// `value` must end in `--session` so the host never writes the Profile's default.
         case model(value: String, confirmExpensive: Bool)
@@ -263,6 +269,9 @@ enum HermesCall: Equatable, Sendable {
         /// session-only personality, so it always writes the Profile's default and switches
         /// this session too. `none` clears it. Sent without a scope, which the host ignores here.
         case personality(String)
+        /// Writes the Profile's `approvals.mode`, deliberately, and the host re-reports
+        /// `session.info` to its sessions. Sent without a scope, which the host ignores here.
+        case approvalMode(HermesApprovalMode)
     }
 
     /// One immutable room creation. A deliberate retry resends the same value.
@@ -450,7 +459,10 @@ enum HermesCall: Equatable, Sendable {
         case .profileModelOptions(let profile): return ["profile": .string(profile)]
         case .configSet(let sessionID, let profile, let setting):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "profile": .string(profile)]
-            if case .personality = setting {} else { params["scope"] = .string("session") }
+            switch setting {
+            case .personality, .approvalMode: break
+            default: params["scope"] = .string("session")
+            }
             switch setting {
             case .model(let value, let confirmExpensive):
                 params["key"] = .string("model"); params["value"] = .string(value)
@@ -463,6 +475,8 @@ enum HermesCall: Equatable, Sendable {
                 params["key"] = .string("yolo"); params["value"] = .string(enabled ? "on" : "off")
             case .personality(let name):
                 params["key"] = .string("personality"); params["value"] = .string(name)
+            case .approvalMode(let mode):
+                params["key"] = .string("approvals.mode"); params["value"] = .string(mode.rawValue)
             }
             return params
         case .sessionCwdSet(let sessionID, let profile, let cwd):
@@ -579,7 +593,7 @@ enum HermesCall: Equatable, Sendable {
             switch setting {
             case .model(let value, _): valid = !sessionID.isEmpty && value.hasSuffix(" --session")
             case .reasoning(let value): valid = !sessionID.isEmpty && HermesModelCatalog.effortLevels.contains(value)
-            case .fast, .yolo: valid = !sessionID.isEmpty
+            case .fast, .yolo, .approvalMode: valid = !sessionID.isEmpty
             case .personality(let name):
                 valid = !sessionID.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }

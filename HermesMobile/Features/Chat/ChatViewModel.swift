@@ -631,6 +631,37 @@ final class ChatViewModel {
     var isSessionApprovalBypassEnabled: Bool {
         hermesRequests?.approvalBypass ?? pendingActionCoordinator.isSessionApprovalBypassEnabled
     }
+    /// Model settings' Approvals row. A webui session has only its yolo route, and no mode.
+    var composerApprovals: ComposerApprovals {
+        if let requests = hermesRequests {
+            return ComposerApprovals(
+                isYoloOn: requests.approvalBypass, offersModes: true, mode: requests.approvalMode,
+                mayTurnOffYolo: requests.mayTurnOffApprovalBypass,
+                isChanging: requests.isChangingApprovalBypass, errorMessage: requests.errorMessage
+            )
+        }
+        return ComposerApprovals(
+            isYoloOn: pendingActionCoordinator.isSessionApprovalBypassEnabled, offersModes: false, mode: nil,
+            mayTurnOffYolo: true,
+            isChanging: pendingActionCoordinator.isChangingApprovalBypass,
+            errorMessage: pendingActionCoordinator.approvalBypassErrorMessage
+        )
+    }
+
+    /// Sets this chat's approval bypass from Model settings.
+    func setSessionApprovalBypass(_ enabled: Bool) async {
+        if let requests = hermesRequests {
+            await requests.setApprovalBypass(enabled)
+        } else {
+            await pendingActionCoordinator.setApprovalBypass(enabled)
+        }
+    }
+
+    /// Sets the Profile's approval mode. Only a Hermes session has one.
+    func selectApprovalMode(_ mode: HermesApprovalMode) async {
+        await hermesRequests?.setApprovalMode(mode)
+    }
+
     var clarificationPrompt: ClarificationPromptState? { pendingActionCoordinator.clarificationPrompt }
     var isRespondingToClarification: Bool { pendingActionCoordinator.isRespondingToClarification }
     var clarificationErrorMessage: String? { pendingActionCoordinator.clarificationErrorMessage }
@@ -973,7 +1004,7 @@ final class ChatViewModel {
     /// The level a Hermes host sends when the model takes less than the one picked (#1016).
     var composerSentReasoningEffort: String? { hermesSettings?.sentEffort }
 
-    /// A Hermes session's Fast mode (#1142); nil hides the chip, as on a webui session.
+    /// A Hermes session's Fast mode (#1142); nil hides its row, as on a webui session.
     var composerFastMode: Bool? { hermesSettings?.fast }
 
     /// Whether that Fast mode can change now (#1142).
@@ -4539,7 +4570,7 @@ final class ChatViewModel {
     }
 
     /// `/yolo` in a Hermes chat (#1036): this session's approval bypass, through the same
-    /// `config.set yolo` as the approval card's Skip all and the bypass pill.
+    /// `config.set yolo` as the approval card's Skip all and Model settings' switch.
     private func toggleHermesApprovalBypassFromSlashCommand() async -> SlashCommandExecutionResult {
         guard let requests = hermesRequests else {
             return .unsupported(friendlyMessage: SlashCommandExecutor.unsupportedMessage(for: "yolo"))

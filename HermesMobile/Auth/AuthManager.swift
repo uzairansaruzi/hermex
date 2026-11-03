@@ -97,7 +97,7 @@ final class AuthManager {
     private let logoutTimeout: Duration
     let serverRegistry: ServerRegistry
     private let hermesConnections: HermesConnections
-    /// Where a removed server's Profile choice is cleared (`HermesProfilePreference`).
+    /// Where a removed server's Profile choice and model lists are cleared.
     private let preferences: UserDefaults
     /// Tears down a server's push pairing when it is signed out of or removed.
     private let forgetPush: @MainActor (URL) async -> Void
@@ -658,10 +658,12 @@ final class AuthManager {
     }
 
     /// Deletes `server`'s Bot connection record with that connection's cached avatars,
-    /// which also retires its shared sign-in (`BotConnectionStore.remove`), and the Profile
-    /// its New Session remembers (#1015), whether its Sessions list shows every Profile (#709),
-    /// and the Profile that list last read.
+    /// which also retires its shared sign-in (`BotConnectionStore.remove`), the Profile its
+    /// New Session remembers (#1015), whether its Sessions list shows every Profile (#709),
+    /// the Profile that list last read, and its favorite and recent models.
     private func removeBotConnection(for server: URL) {
+        ModelFavoritesStore.remove(for: server, in: preferences)
+        ModelRecentsStore.remove(for: server, in: preferences)
         HermesProfilePreference.save(nil, for: server, in: preferences)
         HermesProfilePreference.saveShowsAllProfiles(false, for: server, in: preferences)
         HermesProfilePreference.saveLastListed(nil, for: server, in: preferences)

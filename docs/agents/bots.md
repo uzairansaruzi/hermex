@@ -264,7 +264,7 @@ reply warns on the card and reconnects. Account operations' global `connection.u
 reaches a session. Password-vault prompts and unknown methods get no card and are never answered (#1148). A batch question never
 gets a bare answer: Skip locks each outstanding `qid` empty. Skip all is `config.set {key:
 "yolo", value: "on", scope: "session"}`, then `approval.respond once` for the card on
-screen. The bypass pill reads `session.info`'s `yolo`, which the host also sets for its own
+screen. Model settings' Approvals row reads `session.info`'s `yolo`, which the host also sets for its own
 bypass (`approval_mode: off` or a `--yolo` launch), and the `session.info` written ahead of
 the `config.set` reply moves it, not the reply. Turn off sends `value: "off"` only for the
 session's own flag: a host-wide bypass only reports. `request.cancel` leaves the

@@ -18,7 +18,7 @@ struct DefaultModelPickerView: View {
     @State private var activeProvider: String?
     @State private var selectedModel: String?
     @State private var selectedProvider: String?
-    @State private var favoriteModelKeys: [ModelFavoriteKey] = ModelFavoritesStore.shared.favoriteKeys
+    @State private var favoriteModelKeys: [ModelFavoriteKey] = []
     @State private var errorMessage: String?
     @State private var isSaving = false
     @State private var isSavingCustom = false
@@ -44,10 +44,11 @@ struct DefaultModelPickerView: View {
                 Task { await save(option.id, providerID: option.providerID, isCustom: true) }
             },
             onToggleFavorite: { option in
-                favoriteModelKeys = ModelFavoritesStore.shared.toggleFavorite(for: option)
+                favoriteModelKeys = ModelFavoritesStore(server: server).toggleFavorite(for: option)
             }
         )
         .task {
+            favoriteModelKeys = ModelFavoritesStore(server: server).favoriteKeys
             await loadModels()
         }
     }

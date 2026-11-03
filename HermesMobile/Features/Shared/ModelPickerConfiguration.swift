@@ -36,9 +36,10 @@ struct ModelPickerConfiguration {
     /// Whether committing a model closes the sheet. The server default stays
     /// open until the server confirms the save.
     let dismissesOnCommit: Bool
+    var searchPrompt: LocalizedStringKey = "Search models"
 
     static let composer = ModelPickerConfiguration(
-        navigationTitle: "Choose Model",
+        navigationTitle: "All models",
         dismissTitle: "Done",
         dismissPlacement: .topBarTrailing,
         customActionTitle: "Use Custom",
@@ -47,7 +48,8 @@ struct ModelPickerConfiguration {
         showsModelFavoriteStars: true,
         showsCurrentCustomModelGroup: true,
         showsSavedCustomModelGroup: true,
-        dismissesOnCommit: true
+        dismissesOnCommit: true,
+        searchPrompt: "Search all models"
     )
 
     static let serverDefault = ModelPickerConfiguration(
