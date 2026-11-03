@@ -139,23 +139,27 @@ struct ChatTranscriptView: View {
     var waitingSend: ChatMessage? = nil
     var onCancelWaitingSend: () -> Void = {}
 
-    /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
-    /// turn that failed before the host saved any row, whose outcome row still shows (#1139),
-    /// or a prompt queued behind another client's first turn, or a waiting send, whose bubble
-    /// still shows (#1379, #1407).
+    /// The session's live workers, nil on the offline cache's copy. The preview observes roster
+    /// changes itself, so this view only redraws when the count does.
+    var delegatedWork: HermesDelegatedWork? = nil
+    var onOpenDelegatedWork: () -> Void = {}
+
+    /// What stands in for a transcript with no rows. Nil draws the transcript when a Hermes
+    /// turn's outcome, a queued prompt, a waiting send or live workers still need to show before
+    /// rows were saved (#1139, #1379, #1407).
     enum Placeholder: Equatable {
         case loading
         case loadFailed(String)
         case startPrompt
 
         init?(isLoading: Bool, errorMessage: String?, isEmpty: Bool, showsTurnOutcome: Bool,
-              showsQueuedPrompt: Bool) {
+              showsQueuedPrompt: Bool, showsDelegatedWork: Bool = false) {
             guard isEmpty else { return nil }
             if isLoading {
                 self = .loading
             } else if let errorMessage {
                 self = .loadFailed(errorMessage)
-            } else if showsTurnOutcome || showsQueuedPrompt {
+            } else if showsTurnOutcome || showsQueuedPrompt || showsDelegatedWork {
                 return nil
             } else {
                 self = .startPrompt
@@ -166,7 +170,8 @@ struct ChatTranscriptView: View {
     var body: some View {
         switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
                            showsTurnOutcome: turnOutcome != nil,
-                           showsQueuedPrompt: queuedPrompt != nil || waitingSend != nil) {
+                           showsQueuedPrompt: queuedPrompt != nil || waitingSend != nil,
+                           showsDelegatedWork: (delegatedWork?.activeCount ?? 0) > 0) {
         case .loading?:
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -304,13 +309,12 @@ struct ChatTranscriptView: View {
                     releasingHold { onScrollToLatestContent(proxy, false) }
                 }
                 .onChange(of: [queuedPrompt?.content, waitingSend?.content]) {
-                    // A pending bubble came, grew with a merged prompt, or went without
-                    // the transcript gaining a row: follow it only from the live edge.
-                    guard isFollowingLatestContent else {
-                        pinReader(proxy: proxy)
-                        return
-                    }
-                    releasingHold { onScrollToLatestContent(proxy, false) }
+                    // A pending bubble came, grew with a merged prompt, or went.
+                    followLiveEndChange(proxy: proxy)
+                }
+                .onChange(of: delegatedWork?.activeCount) {
+                    // The worker preview came, gained or lost a row, or went.
+                    followLiveEndChange(proxy: proxy)
                 }
                 .onChange(of: clarificationPromptID) {
                     // The bar above the composer just grew the bottom inset; keep
@@ -325,6 +329,16 @@ struct ChatTranscriptView: View {
                 }
             }
         }
+    }
+
+    /// A row at the live end changed height without the transcript gaining a message: follow it
+    /// only from the live edge, and leave a reader up in history where they are.
+    private func followLiveEndChange(proxy: ScrollViewProxy) {
+        guard isFollowingLatestContent else {
+            pinReader(proxy: proxy)
+            return
+        }
+        releasingHold { onScrollToLatestContent(proxy, false) }
     }
 
     /// Follow-driven scrolls run only while the latch is on and no disclosure
@@ -462,6 +476,10 @@ struct ChatTranscriptView: View {
 
             transcriptLooseBlocks
             liveResponseBlocks
+            if let delegatedWork {
+                HermesDelegatedWorkInlineView(work: delegatedWork, onOpen: onOpenDelegatedWork)
+                    .equatable()
+            }
             workingRow
             turnOutcome
             if let requestWithdrawal {
