@@ -1055,7 +1055,9 @@ final class CacheStoreTests: XCTestCase {
 
     /// The cache names its servers' URLs, so it stays out of the app group (#1509).
     func testTheCacheIsNotStoredInTheAppGroup() throws {
-        let group = try XCTUnwrap(HermesShareDraft.containerURL())
+        guard let group = HermesShareDraft.containerURL() else {
+            throw XCTSkip("An unsigned build, as on CI, has no app group.")
+        }
         XCTAssertFalse(CacheContainer.configuration.url.path.hasPrefix(group.path))
     }
 
