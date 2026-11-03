@@ -23,3 +23,5 @@ with the iOS app.
   See LucideIcons-LICENSE.txt.
 - noVNC 1.7.0
   See noVNC-LICENSE.txt and BotDesktop.bundle/PROVENANCE.md.
+- Open Bot Avatar (avatar paths and eye positions, design prompt adapted)
+  See OpenBotAvatar-LICENSE.txt.

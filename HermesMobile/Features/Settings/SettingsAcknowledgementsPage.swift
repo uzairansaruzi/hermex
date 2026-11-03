@@ -22,6 +22,7 @@ struct AcknowledgementNotice: Hashable {
         case "KeychainAccess": URL(staticString: "https://github.com/kishikawakatsumi/KeychainAccess")
         case "LDSwiftEventSource": URL(staticString: "https://github.com/LaunchDarkly/swift-eventsource")
         case "Lucide icons": URL(staticString: "https://github.com/lucide-icons/lucide")
+        case "Open Bot Avatar": URL(staticString: "https://github.com/DominikScholz/open-bot-avatar")
         case "MarkdownUI": URL(staticString: "https://github.com/gonzalezreal/swift-markdown-ui")
         case "NetworkImage": URL(staticString: "https://github.com/gonzalezreal/NetworkImage")
         case "Splash": URL(staticString: "https://github.com/JohnSundell/Splash")
@@ -37,7 +38,11 @@ struct AcknowledgementNotice: Hashable {
         for suffix in ["-LICENSE", "-COPYING"] where name.hasSuffix(suffix) {
             name.removeLast(suffix.count)
         }
-        return name == "LucideIcons" ? "Lucide icons" : name
+        switch name {
+        case "LucideIcons": return "Lucide icons"
+        case "OpenBotAvatar": return "Open Bot Avatar"
+        default: return name
+        }
     }
 }
 

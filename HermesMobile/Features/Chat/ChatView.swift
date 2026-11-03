@@ -2235,19 +2235,27 @@ struct ChatView: View {
             }).id(scope))
     }
 
+    /// A Hermes chat's delegated workers (#1140). Nil on the offline cache's copy, which lists none.
+    private var delegatedWork: HermesDelegatedWork? {
+        viewModel.isViewingCachedData ? nil : viewModel.hermesActivity?.delegatedWork
+    }
+
     /// A Hermes chat's workers button (#1140), its own glass beside the cluster while any
-    /// worker is active. Hidden on the offline cache's copy, which lists no workers.
+    /// worker is active.
     @ToolbarContentBuilder
     private var delegatedWorkToolbarItem: some ToolbarContent {
-        if !viewModel.isViewingCachedData, let work = viewModel.hermesActivity?.delegatedWork, work.activeCount > 0 {
+        if let work = delegatedWork, work.activeCount > 0 {
             if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {
-                HermesDelegatedWorkButton(count: work.activeCount) {
-                    showsDelegatedWork = true
-                    Task { await work.refresh() }
-                }
+                HermesDelegatedWorkButton(count: work.activeCount, action: openDelegatedWork)
             }
         }
+    }
+
+    private func openDelegatedWork() {
+        guard let work = delegatedWork else { return }
+        showsDelegatedWork = true
+        Task { await work.refresh() }
     }
 
     /// A Hermes chat's running plan, pinned above the composer while it has an open step
@@ -2398,7 +2406,9 @@ struct ChatView: View {
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)
             },
             waitingSend: viewModel.waitingSendMessage,
-            onCancelWaitingSend: viewModel.cancelWaitingSend
+            onCancelWaitingSend: viewModel.cancelWaitingSend,
+            delegatedWork: delegatedWork,
+            onOpenDelegatedWork: openDelegatedWork
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
@@ -4124,9 +4134,10 @@ struct ChatView: View {
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
-        // An empty chat still draws the transcript for a queued prompt (#1379) or a waiting send (#1407).
+        // An empty chat still draws the transcript for a queued prompt (#1379), a waiting send (#1407)
+        // or live workers.
         guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil
-            || viewModel.waitingSendMessage != nil else { return }
+            || viewModel.waitingSendMessage != nil || (delegatedWork?.activeCount ?? 0) > 0 else { return }
 
         scheduleFollowScroll(
             proxy,
