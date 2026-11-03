@@ -664,6 +664,20 @@ enum SharedImportGate {
 /// chat at once while they refresh. It opens on the side last shown, Sessions at first, and a Bot
 /// link (a push tap, a search hit) turns it to Bots, where the inbox opens it. A session link (#1176), a Shortcut's new session (#1180), a share
 /// (#1181) or a Limits widget's Usage link (#1409) turns it to Sessions, where the list opens it.
+/// Settings opens as a sheet beside a split and pushes at compact width. A sheet stays one when the
+/// width changes: pushing it above an open chat (a fold) would clear both.
+enum HermesSettingsPresentation {
+    case sheet, pushed
+
+    init(usesSplit: Bool) {
+        self = usesSplit ? .sheet : .pushed
+    }
+
+    func afterWidthChange(usesSplit: Bool) -> Self {
+        usesSplit ? .sheet : self
+    }
+}
+
 struct HermesServerHome: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Bindable var authManager: AuthManager
@@ -689,7 +703,7 @@ struct HermesServerHome: View {
     /// The Sessions side's list on the saved Bot connection, read again each time a side shows,
     /// so a sign-in changed in Settings or the inbox gets a fresh list.
     @State private var sessions: HermesSessionsSide?
-    @State private var isShowingSettings = false
+    @State private var settings: HermesSettingsPresentation?
     @State private var isPresentingAddServer = false
 
     init(authManager: AuthManager, server: URL, pendingBotDestination: Binding<BotDestination?>,
@@ -705,7 +719,7 @@ struct HermesServerHome: View {
         self.authManager = authManager
         self.server = server
         self.loadConnection = loadConnection
-        _isShowingSettings = State(initialValue: initiallyShowingSettings)
+        _settings = State(initialValue: initiallyShowingSettings ? .pushed : nil)
         _pendingBotDestination = pendingBotDestination
         _pendingSessionDestination = pendingSessionDestination
         _pendingNewChat = pendingNewChat
@@ -724,27 +738,29 @@ struct HermesServerHome: View {
         let identity = HermesServerIdentity(account: authManager.activeServer, server: server)
         let home = HermesHome(title: identity.title, avatar: avatar(identity), tab: $tab)
         Group {
-            if HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass) {
+            if usesSplit {
                 homeContent(home)
-                    .sheet(isPresented: $isShowingSettings, onDismiss: readConnection) {
-                        NavigationStack {
-                            SettingsView(authManager: authManager, server: server)
-                                .toolbar {
-                                    ToolbarItem(placement: .confirmationAction) {
-                                        Button("Done") { isShowingSettings = false }
-                                    }
-                                }
-                        }
-                    }
             } else {
                 NavigationStack {
                     homeContent(home)
-                        .navigationDestination(isPresented: $isShowingSettings) {
+                        .navigationDestination(isPresented: isPresenting(.pushed)) {
                             SettingsView(authManager: authManager, server: server)
                         }
                 }
             }
         }
+        // Outside the branches, so the sheet outlives the switch between them.
+        .sheet(isPresented: isPresenting(.sheet), onDismiss: readConnection) {
+            NavigationStack {
+                SettingsView(authManager: authManager, server: server)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { settings = nil }
+                        }
+                    }
+            }
+        }
+        .onChange(of: usesSplit, initial: true) { settings = settings?.afterWidthChange(usesSplit: usesSplit) }
         // A Hermes chat's Update sign-in (#942) signs the server out to its sign-in form, which
         // keeps the saved values and focuses the password; saving signs it back in.
         .modifier(HermesUpdateSignInModifier { authManager.hermesSignInRejected(server: server) })
@@ -753,13 +769,13 @@ struct HermesServerHome: View {
         // later return doesn't push that side's old chat again.
         .onChange(of: tab) {
             readConnection()
-            guard !HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass) else { return }
+            guard !usesSplit else { return }
             if tab == .sessions { inbox.selection = BotInboxSelection() } else { sessions?.navigation.covers.bringForward() }
         }
         // A bot route lands on the inbox, so Settings (and an Archived screen pushed from it, #1146)
         // closes first, as a Sessions list's pushed screens do when its tab goes.
         .onChange(of: pendingBotDestination, initial: true) {
-            if pendingBotDestination != nil { tab = .bots; isShowingSettings = false }
+            if pendingBotDestination != nil { tab = .bots; settings = nil }
         }
         // A session link lands on the Sessions list the same way, with Add Server closed too, and
         // the list closes what covers its rows; without a saved connection there is no list to
@@ -767,29 +783,37 @@ struct HermesServerHome: View {
         .onChange(of: pendingSessionDestination, initial: true) {
             guard pendingSessionDestination != nil else { return }
             if sessions == nil { pendingSessionDestination = nil; return }
-            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+            tab = .sessions; settings = nil; isPresentingAddServer = false
         }
         // So does a Shortcut's new session (#1180), which the list opens.
         .onChange(of: pendingNewChat, initial: true) {
             guard pendingNewChat != nil else { return }
             if sessions == nil { pendingNewChat = nil; return }
-            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+            tab = .sessions; settings = nil; isPresentingAddServer = false
         }
         // So does a Limits widget's Usage link (#1409), only on the connection it was read through.
         .onChange(of: pendingUsage, initial: true) {
             guard let pendingUsage else { return }
             if sessions?.entry.connection.id != pendingUsage.connectionID { self.pendingUsage = nil; return }
-            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+            tab = .sessions; settings = nil; isPresentingAddServer = false
         }
         // And a share (#1181), which stays queued while there is no list to open it.
         .onChange(of: pendingShare?.reservationID, initial: true) {
             guard let pendingShare else { return }
             if sessions == nil { didDeclineShare(pendingShare); return }
-            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+            tab = .sessions; settings = nil; isPresentingAddServer = false
         }
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)
         }
+    }
+
+    private var usesSplit: Bool {
+        HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass)
+    }
+
+    private func isPresenting(_ presentation: HermesSettingsPresentation) -> Binding<Bool> {
+        Binding(get: { settings == presentation }, set: { if !$0 { settings = nil } })
     }
 
     @ViewBuilder private func homeContent(_ home: HermesHome) -> some View {
@@ -826,10 +850,10 @@ struct HermesServerHome: View {
             color: HeaderLogoColor.color(for: identity.colorHex),
             foreground: HeaderLogoColor.prefersDarkForeground(for: identity.colorHex) ? .black : .white,
             servers: AvatarServerSwitcherModel(servers: authManager.servers, activeServerID: authManager.activeServerID),
-            openSettings: { isShowingSettings = true },
+            openSettings: { settings = HermesSettingsPresentation(usesSplit: usesSplit) },
             switchToServer: { authManager.switchActiveServer(to: $0) },
             addServer: { isPresentingAddServer = true },
-            manageServers: { isShowingSettings = true }
+            manageServers: { settings = HermesSettingsPresentation(usesSplit: usesSplit) }
         )
     }
 }

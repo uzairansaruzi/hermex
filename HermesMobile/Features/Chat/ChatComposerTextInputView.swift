@@ -4,17 +4,31 @@ import UniformTypeIdentifiers
 
 /// The card editor's height, shared by the Sessions, Bot Chat and Bot room
 /// composers. It grows with the text from `expandedMinimum` up to the text
-/// view's 160 pt measure cap. In compact height (iPhone landscape) it stays at
-/// the minimum and scrolls inside, so with the keyboard up the transcript stays
-/// visible. A nil size class counts as regular.
+/// view's 160 pt measure cap. Where height is limited (iPhone landscape, or a
+/// short viewport above the keyboard) it holds a fixed minimum and scrolls inside,
+/// so the transcript or the composer's own controls stay visible. A nil size
+/// class counts as regular.
 enum ComposerTextInputHeight {
     /// At least 72 pt of real text view, so a tap anywhere in the card lands
     /// on the editor rather than dead space; about three lines at default size.
     static let expandedMinimum: CGFloat = 72
 
-    static func expanded(measured: CGFloat, verticalSizeClass: UserInterfaceSizeClass?) -> CGFloat {
-        verticalSizeClass == .compact ? expandedMinimum : max(expandedMinimum, measured)
+    /// The chat viewport below which a full composer can overflow behind the keyboard: iPhone
+    /// Duo's displays leave about 300 pt, where a size class still says regular.
+    static let shortViewportHeight: CGFloat = 360
+    /// About two lines, which keeps Send above the keyboard with an attachment in the card.
+    static let shortViewportMinimum: CGFloat = 48
+
+    static func expanded(measured: CGFloat, verticalSizeClass: UserInterfaceSizeClass?, isViewportShort: Bool) -> CGFloat {
+        if isViewportShort { return shortViewportMinimum }
+        return verticalSizeClass == .compact ? expandedMinimum : max(expandedMinimum, measured)
     }
+}
+
+extension EnvironmentValues {
+    /// The chat viewport is below `ComposerTextInputHeight.shortViewportHeight`, so the composer
+    /// keeps to what it needs for sending.
+    @Entry var composerViewportIsShort = false
 }
 
 struct ComposerTextInputView: View {
@@ -24,8 +38,9 @@ struct ComposerTextInputView: View {
     @Binding var inputHeight: CGFloat
     @Binding var measuredHeight: CGFloat
 
-    /// Compact in iPhone landscape, where the card editor stops growing.
+    /// Compact in iPhone landscape, where the card editor stops growing, as it does in a short viewport.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.composerViewportIsShort) private var viewportIsShort
 
     /// The chips the editor has drawn. The collapsed pill draws this same set
     /// rather than deriving its own, because a trailing chip whose space was
@@ -96,10 +111,11 @@ struct ComposerTextInputView: View {
                 accessibilityLabel: placeholder
             )
             // The card editor runs 72–160 pt with the text, and stays at 72 pt
-            // in iPhone landscape, where the text scrolls inside it.
+            // where height is limited, and the text scrolls inside it.
             .frame(height: isCollapsed
                 ? collapsedLineHeight
-                : ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass))
+                : ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass,
+                                                   isViewportShort: viewportIsShort))
             .padding(.vertical, isCollapsed ? 0 : verticalPadding)
             .padding(.horizontal, 16)
             .opacity(isCollapsed ? 0 : 1)
@@ -159,6 +175,7 @@ private struct ComposerCollapsedDraft: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         line
@@ -193,7 +210,8 @@ private struct ComposerCollapsedDraft: View {
             colorScheme: colorScheme,
             contrast: colorSchemeContrast,
             layoutDirection: layoutDirection,
-            dynamicTypeSize: dynamicTypeSize
+            dynamicTypeSize: dynamicTypeSize,
+            displayScale: displayScale
         )
     }
 }

@@ -57,49 +57,52 @@ struct OnboardingWelcomePage: View {
             VStack(spacing: 0) {
                 Spacer(minLength: 24)
 
-                ZStack {
-                    RadialGradient(
-                        colors: [
-                            Color(red: 1.0, green: 0.74, blue: 0.10).opacity(0.55),
-                            Color(red: 1.0, green: 0.62, blue: 0.08).opacity(0.22),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: 8,
-                        endRadius: iconSize * 1.45
+                Image("HermesAppIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: iconSize, height: iconSize)
+                    .clipShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.25), .white.opacity(0.04)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
                     )
-                    .frame(width: iconSize * 2.6, height: iconSize * 2.6)
-                    .blur(radius: 18)
+                    .shadow(color: Color(red: 1.0, green: 0.62, blue: 0.08).opacity(0.35), radius: 24, y: 10)
+                    // A background takes no layout, so a short display (iPhone Duo folded) gives the
+                    // glow's overflow to the copy instead of scrolling it behind the buttons.
+                    .background {
+                        ZStack {
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.74, blue: 0.10).opacity(0.55),
+                                    Color(red: 1.0, green: 0.62, blue: 0.08).opacity(0.22),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: 8,
+                                endRadius: iconSize * 1.45
+                            )
+                            .frame(width: iconSize * 2.6, height: iconSize * 2.6)
+                            .blur(radius: 18)
 
-                    RadialGradient(
-                        colors: [
-                            Color(red: 1.0, green: 0.78, blue: 0.18).opacity(0.35),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: 4,
-                        endRadius: iconSize * 0.95
-                    )
-                    .frame(width: iconSize * 1.8, height: iconSize * 1.8)
-
-                    Image("HermesAppIcon")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: iconSize, height: iconSize)
-                        .clipShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
-                                .stroke(
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.25), .white.opacity(0.04)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 1
-                                )
-                        )
-                        .shadow(color: Color(red: 1.0, green: 0.62, blue: 0.08).opacity(0.35), radius: 24, y: 10)
-                }
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 1.0, green: 0.78, blue: 0.18).opacity(0.35),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: 4,
+                                endRadius: iconSize * 0.95
+                            )
+                            .frame(width: iconSize * 1.8, height: iconSize * 1.8)
+                        }
+                    }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Hermex")
 

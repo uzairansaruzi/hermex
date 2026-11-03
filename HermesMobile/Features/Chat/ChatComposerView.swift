@@ -140,6 +140,7 @@ private struct ComposerQuoteDetailView: View {
 }
 
 struct MessageComposerView: View {
+    @Environment(\.composerViewportIsShort) private var viewportIsShort
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -686,7 +687,8 @@ struct MessageComposerView: View {
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
 
-                if showsNewChatControls, showsConfigurationControls {
+                // Back when the keyboard goes and the viewport has room again.
+                if showsNewChatControls, showsConfigurationControls, !viewportIsShort {
                     newChatControlsRow
                         .padding(.horizontal)
                         .transition(.opacity)

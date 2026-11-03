@@ -1073,6 +1073,7 @@ struct ChatView: View {
 
                 messageComposer
                     .frame(maxWidth: composerMaximumWidth)
+                    .environment(\.composerViewportIsShort, viewport.size.height < ComposerTextInputHeight.shortViewportHeight)
 
                 ActionToastView(state: toastState)
                     .frame(maxWidth: 420)

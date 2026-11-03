@@ -383,7 +383,8 @@ private struct HermexAttachmentPickerLayout {
 
 /// Hosts the picker inside the app's existing window instead of presenting a
 /// new controller. Its bottom follows the keyboard, so the composer remains
-/// first responder and the picker always occupies the space above it.
+/// first responder and the picker always occupies the space above it, in the
+/// composer's column.
 enum HermexAttachmentPickerPresentation {
     static let overlayHostAccessibilityIdentifier = "HermexAttachmentPickerOverlay"
 }
@@ -449,7 +450,7 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
                 }
                 return
             }
-            attach(to: root)
+            attach(to: root, anchor: anchor)
         }
 
         private func attachIfPossible(to anchor: UIViewController) {
@@ -457,10 +458,12 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
                   wantsPresentation,
                   let root = anchor.view.window?.rootViewController
             else { return }
-            attach(to: root)
+            attach(to: root, anchor: anchor)
         }
 
-        private func attach(to root: UIViewController) {
+        /// Spans the owner's column, so beside a sidebar the card stays by the composer that opened
+        /// it, and follows the column as the sidebar moves or the device folds.
+        private func attach(to root: UIViewController, anchor: UIViewController) {
             guard let container = root.view.superview ?? root.view.window else { return }
 
             let host = UIHostingController(rootView: latestOverlay)
@@ -473,10 +476,12 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
             // Install the overlay beside it in their common container instead.
             container.addSubview(host.view)
             root.view.keyboardLayoutGuide.followsUndockedKeyboard = true
+            // Sidebars and vertical bars cover the column, so its safe area marks what shows.
+            let column = (anchor.parent ?? root).view.safeAreaLayoutGuide
             NSLayoutConstraint.activate([
                 host.view.topAnchor.constraint(equalTo: root.view.topAnchor),
-                host.view.leadingAnchor.constraint(equalTo: root.view.leadingAnchor),
-                host.view.trailingAnchor.constraint(equalTo: root.view.trailingAnchor),
+                host.view.leadingAnchor.constraint(equalTo: column.leadingAnchor),
+                host.view.trailingAnchor.constraint(equalTo: column.trailingAnchor),
                 host.view.bottomAnchor.constraint(equalTo: root.view.keyboardLayoutGuide.topAnchor)
             ])
             self.host = host

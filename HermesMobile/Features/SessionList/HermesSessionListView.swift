@@ -371,9 +371,8 @@ struct HermesSessionListView: View {
 
     @ViewBuilder private var navigationSurface: some View {
         if usesSplit {
-            SessionSplitView(rootRevision: covers.detailIdentity.hashValue) {
+            SessionSplitView(rootRevision: covers.detailIdentity.hashValue, offersHideSidebar: true) {
                 sessionRows
-                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
             } detail: {
                 regularWidthDetail
             }

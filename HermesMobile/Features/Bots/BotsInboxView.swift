@@ -93,9 +93,8 @@ import SwiftUI
 
     @ViewBuilder private var navigationSurface: some View {
         if usesSplit {
-            SessionSplitView(rootRevision: inbox.selection.pick.hashValue) {
+            SessionSplitView(rootRevision: inbox.selection.pick.hashValue, offersHideSidebar: true) {
                 list
-                    .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
             } detail: {
                 regularWidthDetail
             }

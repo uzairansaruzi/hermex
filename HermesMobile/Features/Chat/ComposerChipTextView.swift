@@ -144,6 +144,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         let fontPointSize: CGFloat
         let userInterfaceStyle: UIUserInterfaceStyle
         let accessibilityContrast: UIAccessibilityContrast
+        let displayScale: CGFloat
         let isRightToLeft: Bool
         let quoteMaximumWidth: CGFloat
     }
@@ -154,7 +155,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         addGestureRecognizer(chipTapRecognizer)
 
         registerForTraitChanges(
-            [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self]
+            [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]
         ) { (view: ComposerChipTextView, _) in
             // Deferred: `adjustsFontForContentSizeCategory` updates `font` from
             // the same trait change, and the chips have to be sized against the
@@ -355,6 +356,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             fontPointSize: (font ?? .preferredFont(forTextStyle: .body)).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
             accessibilityContrast: traitCollection.accessibilityContrast,
+            displayScale: traitCollection.displayScale,
             isRightToLeft: isRightToLeft,
             quoteMaximumWidth: max(120, min(260, bounds.width * 0.72))
         )
