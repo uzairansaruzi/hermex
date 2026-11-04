@@ -112,7 +112,9 @@ import XCTest
     /// approval queue's `request_id`, not the envelope id.
     func testARecordedApprovalOffersTheHostsChoicesAndAnswersByItsRequestID() async throws {
         let approval = try XCTUnwrap(try recorded("turn-tool-approval-frames").first { $0["method"].text == "approval" })
-        let chat = await openChat(runtime: "7dd4dff2")
+        let runtime = try XCTUnwrap(approval["params"]["session_id"].text)
+        let requestID = try XCTUnwrap(approval["params"]["request_id"].text)
+        let chat = await openChat(runtime: runtime)
         chat.host.always("approval.respond", .init(result: .object(["resolved": .number(1)])))
         chat.receive(approval)
         guard case .approval(let shown)? = chat.requests.onScreen else { return XCTFail("Expected the approval on screen") }
@@ -125,7 +127,7 @@ import XCTest
         let taken = await chat.requests.respond(try action(chat), choice: .session)
         XCTAssertTrue(taken)
         XCTAssertEqual(chat.writes("approval.respond"), [[
-            "session_id": .string("7dd4dff2"), "request_id": .string("850a0a9d32c448c2b4b9bc34503f5812"),
+            "session_id": .string(runtime), "request_id": .string(requestID),
             "choice": .string("session")
         ]])
         XCTAssertNil(chat.requests.onScreen, "an answered card leaves at once")

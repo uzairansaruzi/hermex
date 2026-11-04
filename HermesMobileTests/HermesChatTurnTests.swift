@@ -45,34 +45,37 @@ import SwiftUI
     /// and title, and goes idle only once `session.info` says so after `message.complete`.
     func testRecordedTurnStreamsTextAndTitleAndEndsOnSessionInfo() async throws {
         let frames = try recorded("turn-frames")
-        let chat = await openChat(runtime: "e7d1ef0d", key: "20260925_023517_59d8c3", profile: "inbox-triage")
+        let first = frames[0]["params"]
+        let runtime = try XCTUnwrap(first["session_id"].text)
+        let key = try XCTUnwrap(first["payload"]["stored_session_id"].text)
+        let startedAt = Date(timeIntervalSince1970: try XCTUnwrap(first["payload"]["turn_started_at"].number))
+        let chat = await openChat(runtime: runtime, key: key, profile: "hermex-fixtures")
         chat.receive(frames[0])
         chat.receive(frames[1])
         XCTAssertNotNil(chat.model.activeStreamID, "an unprompted message.start starts a turn")
-        XCTAssertEqual(chat.model.activeRunStartedAt, Date(timeIntervalSince1970: 1790318117.362543),
-                       "the run counts from the host's turn_started_at")
+        XCTAssertEqual(chat.model.activeRunStartedAt, startedAt, "the run counts from the host's turn_started_at")
 
-        frames[2...8].forEach(chat.receive)
+        frames[2..<(frames.count - 1)].forEach(chat.receive)
         chat.model.flushPendingStreamingContent()
+        let complete = try XCTUnwrap(frames.first { $0["params"]["type"].text == "message.complete" })["params"]["payload"]
         XCTAssertEqual(chat.model.messages.map(\.role), ["assistant"])
-        XCTAssertEqual(chat.model.messages.map(\.content), ["ok"],
+        XCTAssertEqual(chat.model.messages.map(\.content), [try XCTUnwrap(complete["text"].text)],
                        "reasoning.available repeats the answer and is never shown again")
         XCTAssertEqual(chat.model.liveReasoningText, "", "thinking.delta is spinner text, not reasoning")
         XCTAssertEqual(chat.model.displayTitle, "fixture-redacted")
         XCTAssertNotNil(chat.model.activeStreamID, "message.complete alone does not make the chat idle")
-        XCTAssertEqual(chat.model.contextWindowSnapshot?.contextLength, 1_048_576)
-        XCTAssertEqual(chat.model.contextWindowSnapshot?.tokensUsed, 14_215)
+        XCTAssertEqual(chat.model.contextWindowSnapshot?.contextLength, try XCTUnwrap(complete["usage"]["context_max"].integer))
+        XCTAssertEqual(chat.model.contextWindowSnapshot?.tokensUsed, try XCTUnwrap(complete["usage"]["context_used"].integer))
 
-        chat.receive(frames[9])
+        chat.receive(frames[frames.count - 1])
         XCTAssertNil(chat.model.activeStreamID)
         XCTAssertEqual(chat.model.latestRunOutcome?.ending, .completed)
         XCTAssertEqual(chat.model.runEndTrigger, 1)
         XCTAssertEqual(chat.liveActivity.titles, [], "a Hermes title never reaches a webui Live Activity")
 
         // The host sends no `session.info {running: true}` before a later turn's start.
-        chat.receive(event(11, "message.start", runtime: "e7d1ef0d"))
-        XCTAssertNotEqual(chat.model.activeRunStartedAt, Date(timeIntervalSince1970: 1790318117.362543),
-                          "a later turn never counts from the last one's start")
+        chat.receive(event(frames.count + 1, "message.start", runtime: runtime))
+        XCTAssertNotEqual(chat.model.activeRunStartedAt, startedAt, "a later turn never counts from the last one's start")
     }
 
     /// The recorded tool turn: the interim reply, one tool row keyed by `tool_id` from start
@@ -81,19 +84,22 @@ import SwiftUI
     func testRecordedToolTurnKeysToolsByIDAndAppendsTheFinalAnswer() async throws {
         let frames = try recorded("turn-tool-approval-frames")
         let key = try XCTUnwrap(frames[0]["params"]["payload"]["stored_session_id"].text)
-        let chat = await openChat(runtime: "7dd4dff2", key: key, profile: "default")
-        frames[0...7].forEach(chat.receive)
+        let runtime = try XCTUnwrap(frames[0]["params"]["session_id"].text)
+        let chat = await openChat(runtime: runtime, key: key, profile: "default")
+        let approval = try XCTUnwrap(frames.firstIndex { $0["method"].text == "approval" })
+        let withdrawal = try XCTUnwrap(frames.firstIndex { $0["params"]["type"].text == "request.cancel" })
+        frames[..<approval].forEach(chat.receive)
         chat.model.flushPendingStreamingContent()
         XCTAssertEqual(chat.model.liveToolCalls.map(\.id), ["fixture-redacted"])
         XCTAssertEqual(chat.model.liveToolCalls.map(\.name), ["terminal"])
         XCTAssertEqual(chat.model.liveToolCalls.map(\.isCompleted), [false])
 
-        chat.receive(frames[8])
+        chat.receive(frames[approval])
         XCTAssertTrue(chat.model.stopNeedsConfirmation, "the approval is an open request")
-        chat.receive(frames[9])
+        frames[(approval + 1)...withdrawal].forEach(chat.receive)
         XCTAssertFalse(chat.model.stopNeedsConfirmation, "request.cancel withdrew it")
 
-        frames[10...].forEach(chat.receive)
+        frames[(withdrawal + 1)...].forEach(chat.receive)
         XCTAssertEqual(chat.model.liveToolCalls.map(\.id), ["fixture-redacted"], "the completion found its start")
         XCTAssertEqual(chat.model.liveToolCalls.map(\.isCompleted), [true])
         XCTAssertEqual(chat.model.messages.map(\.content), ["Let me run a quick check.\n\nThe command returned: 1."])

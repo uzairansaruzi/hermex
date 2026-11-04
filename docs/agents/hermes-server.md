@@ -404,7 +404,7 @@ adding per-route policy. The probe never opens a socket.
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
-counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.5 (`ca678285`); sections
+counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.22.5 (`bf0203a7`); sections
 of these docs that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
 and the connection screen stores it on the `BotConnection` record.
 `HermesCompatibility` holds the tested release and the minimum, 0.21.3: 0.21.2
@@ -424,7 +424,7 @@ Each RPC validates the contract just in time. Advancing the pin is described in 
 frames into `HermesMobileTests/Fixtures/HermesAgent/`, and
 `HermesAgentFixtureTests` feeds them through the real parsers, so a renamed or
 dropped field fails a test instead of blanking a screen. The capture keeps only
-the `inbox-triage` Profile, replaces every string outside an allow-list of ids,
+the `hermex-fixtures` Profile, replaces every string outside an allow-list of ids,
 event and status vocabulary, the release and the canned turn's text, and writes
 nothing if the output still holds the host, the account, the socket ticket, a
 home path, the install id or another Profile's name. `--keep-raw` and

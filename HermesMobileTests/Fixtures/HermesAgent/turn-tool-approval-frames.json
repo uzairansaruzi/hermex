@@ -1,5 +1,5 @@
 {
-  "captured_at" : "2026-09-30T05:19:36Z",
+  "captured_at" : "2026-11-04T00:18:32Z",
   "frames" : [
     {
       "jsonrpc" : "2.0",
@@ -23,12 +23,12 @@
           "running" : true,
           "service_tier" : "fixture-redacted",
           "skills" : {},
-          "stored_session_id" : "20260930_011912_659032",
+          "stored_session_id" : "20261103_191828_96b243",
           "system_prompt" : "fixture-redacted",
           "terminal_backend" : "fixture-redacted",
           "title" : "fixture-redacted",
           "tools" : {},
-          "turn_started_at" : 1790745552.718498,
+          "turn_started_at" : 1793751508.709746,
           "update_behind" : null,
           "update_command" : "fixture-redacted",
           "usage" : {
@@ -43,11 +43,11 @@
             "reasoning" : 0,
             "total" : 0
           },
-          "version" : "0.21.5",
+          "version" : "0.22.5",
           "yolo" : false
         },
         "seq" : 1,
-        "session_id" : "7dd4dff2",
+        "session_id" : "4f098166",
         "type" : "session.info"
       }
     },
@@ -56,7 +56,7 @@
       "method" : "event",
       "params" : {
         "seq" : 2,
-        "session_id" : "7dd4dff2",
+        "session_id" : "4f098166",
         "type" : "message.start"
       }
     },
@@ -65,10 +65,10 @@
       "method" : "event",
       "params" : {
         "payload" : {
-          "text" : "(´･_･`) formulating..."
+          "text" : "( ͡° ͜ʖ ͡°) computing..."
         },
         "seq" : 3,
-        "session_id" : "7dd4dff2",
+        "session_id" : "4f098166",
         "type" : "thinking.delta"
       }
     },
@@ -80,32 +80,8 @@
           "text" : ""
         },
         "seq" : 4,
-        "session_id" : "7dd4dff2",
+        "session_id" : "4f098166",
         "type" : "thinking.delta"
-      }
-    },
-    {
-      "jsonrpc" : "2.0",
-      "method" : "event",
-      "params" : {
-        "payload" : {
-          "usage" : {
-            "active_subagents" : 0,
-            "avg_latency_s" : 0.2,
-            "calls" : 1,
-            "completion" : 0,
-            "compressions" : 0,
-            "input" : 0,
-            "model" : "fixture-redacted",
-            "output" : 0,
-            "prompt" : 0,
-            "reasoning" : 0,
-            "total" : 0
-          }
-        },
-        "seq" : 5,
-        "session_id" : "7dd4dff2",
-        "type" : "session.usage"
       }
     },
     {
@@ -115,8 +91,8 @@
         "payload" : {
           "text" : "Let me run a quick check."
         },
-        "seq" : 6,
-        "session_id" : "7dd4dff2",
+        "seq" : 5,
+        "session_id" : "4f098166",
         "type" : "reasoning.available"
       }
     },
@@ -128,8 +104,8 @@
           "already_streamed" : false,
           "text" : "Let me run a quick check."
         },
-        "seq" : 7,
-        "session_id" : "7dd4dff2",
+        "seq" : 6,
+        "session_id" : "4f098166",
         "type" : "message.interim"
       }
     },
@@ -145,13 +121,13 @@
           "name" : "terminal",
           "tool_id" : "fixture-redacted"
         },
-        "seq" : 8,
-        "session_id" : "7dd4dff2",
+        "seq" : 7,
+        "session_id" : "4f098166",
         "type" : "tool.start"
       }
     },
     {
-      "id" : "srq-627297cd2bb0",
+      "id" : "srq-b3fb5f90a2e2",
       "jsonrpc" : "2.0",
       "method" : "approval",
       "params" : {
@@ -169,8 +145,8 @@
         "pattern_keys" : [
           "fixture-redacted"
         ],
-        "request_id" : "850a0a9d32c448c2b4b9bc34503f5812",
-        "session_id" : "7dd4dff2"
+        "request_id" : "e01b75f95008443b99067bd4135e896f",
+        "session_id" : "4f098166"
       }
     },
     {
@@ -178,12 +154,12 @@
       "method" : "event",
       "params" : {
         "payload" : {
-          "id" : "srq-627297cd2bb0",
+          "id" : "srq-b3fb5f90a2e2",
           "method" : "approval",
           "reason" : "fixture-redacted"
         },
-        "seq" : 9,
-        "session_id" : "7dd4dff2",
+        "seq" : 8,
+        "session_id" : "4f098166",
         "type" : "request.cancel"
       }
     },
@@ -195,7 +171,7 @@
           "args" : {
             "command" : "python3 -c \"print(1)\""
           },
-          "duration_s" : 0.5338609218597412,
+          "duration_s" : 0.5736010074615479,
           "name" : "terminal",
           "result" : {
             "approval" : "fixture-redacted",
@@ -205,8 +181,8 @@
           },
           "tool_id" : "fixture-redacted"
         },
-        "seq" : 10,
-        "session_id" : "7dd4dff2",
+        "seq" : 9,
+        "session_id" : "4f098166",
         "type" : "tool.complete"
       }
     },
@@ -215,10 +191,10 @@
       "method" : "event",
       "params" : {
         "payload" : {
-          "text" : "(｡•́︿•̀｡) pondering..."
+          "text" : "(¬‿¬) reasoning..."
         },
-        "seq" : 11,
-        "session_id" : "7dd4dff2",
+        "seq" : 10,
+        "session_id" : "4f098166",
         "type" : "thinking.delta"
       }
     },
@@ -229,8 +205,8 @@
         "payload" : {
           "text" : ""
         },
-        "seq" : 12,
-        "session_id" : "7dd4dff2",
+        "seq" : 11,
+        "session_id" : "4f098166",
         "type" : "thinking.delta"
       }
     },
@@ -241,8 +217,8 @@
         "payload" : {
           "text" : "The command returned: 1."
         },
-        "seq" : 13,
-        "session_id" : "7dd4dff2",
+        "seq" : 12,
+        "session_id" : "4f098166",
         "type" : "reasoning.available"
       }
     },
@@ -260,13 +236,16 @@
               3,
               4
             ],
-            "user_row_id" : 1
+            "user_row_id" : 1,
+            "user_row_ids" : [
+              1
+            ]
           },
           "status" : "complete",
           "text" : "The command returned: 1.",
           "usage" : {
             "active_subagents" : 0,
-            "avg_latency_s" : 0.1,
+            "avg_latency_s" : 0.2,
             "calls" : 2,
             "completion" : 0,
             "compressions" : 0,
@@ -278,8 +257,8 @@
             "total" : 0
           }
         },
-        "seq" : 14,
-        "session_id" : "7dd4dff2",
+        "seq" : 13,
+        "session_id" : "4f098166",
         "type" : "message.complete"
       }
     },
@@ -305,7 +284,7 @@
           "running" : false,
           "service_tier" : "fixture-redacted",
           "skills" : {},
-          "stored_session_id" : "20260930_011912_659032",
+          "stored_session_id" : "20261103_191828_96b243",
           "system_prompt" : "fixture-redacted",
           "terminal_backend" : "fixture-redacted",
           "title" : "fixture-redacted",
@@ -315,7 +294,7 @@
           "update_command" : "fixture-redacted",
           "usage" : {
             "active_subagents" : 0,
-            "avg_latency_s" : 0.1,
+            "avg_latency_s" : 0.2,
             "calls" : 2,
             "completion" : 0,
             "compressions" : 0,
@@ -326,15 +305,15 @@
             "reasoning" : 0,
             "total" : 0
           },
-          "version" : "0.21.5",
+          "version" : "0.22.5",
           "yolo" : false
         },
-        "seq" : 15,
-        "session_id" : "7dd4dff2",
+        "seq" : 14,
+        "session_id" : "4f098166",
         "type" : "session.info"
       }
     }
   ],
-  "hermes_agent_sha" : "ca6782850432927f33df4775cb6dd45bb51460d2",
-  "version" : "0.21.5"
+  "hermes_agent_sha" : "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
+  "version" : "0.22.5"
 }
