@@ -67,6 +67,15 @@ enum HermesCall: Equatable, Sendable {
     /// the canonical key, because bare names collide across category folders. Either direction can
     /// sync the Profile's Python packages first, which took 30 s on a fresh host. A refusal is 5026.
     case pluginsToggle(profile: String, key: String, enable: Bool)
+    /// `{ok, plugin_name, enabled, missing_env, restart_required, gateway_reloaded, activation, …}`.
+    /// A catalog source names the entry, so the host resolves its repo and enforces its removal list,
+    /// and sends `ref`, because without one the host reuses a disabled copy at whatever commit it has
+    /// rather than the one the review showed. `replace` is the host's `force`, which also lets a
+    /// caution scan through on a repo source; a dangerous one stays blocked. Every refusal is 5026
+    /// with the host's message.
+    case pluginsInstall(profile: String, source: HermesPluginSource, replace: Bool, enable: Bool)
+    /// `{ok, name, cleared_memory_provider?}`. The host refuses a bundled plugin with 5026.
+    case pluginsRemove(profile: String, key: String)
 
     // The canonical Bot Chat
     /// Finds the Profile's Bot Chat by its exact title, hidden rows included.
@@ -333,7 +342,7 @@ enum HermesCall: Equatable, Sendable {
         case .profilesSetAsset: return "profiles.set_asset"
         case .profilesConfigure: return "profiles.configure"
         case .profilesCreate: return "profiles.create"
-        case .pluginsList, .pluginsToggle: return "plugins.manage"
+        case .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove: return "plugins.manage"
         case .sessionList: return "session.list"
         case .sessionCreate, .sessionNew: return "session.create"
         case .sessionTitle, .sessionRename: return "session.title"
@@ -410,6 +419,18 @@ enum HermesCall: Equatable, Sendable {
         case .pluginsList(let profile): return ["action": .string("list"), "profile": .string(profile)]
         case .pluginsToggle(let profile, let key, let enable):
             return ["action": .string("toggle"), "profile": .string(profile), "key": .string(key), "enable": .bool(enable)]
+        case .pluginsInstall(let profile, let source, let replace, let enable):
+            var params: [String: BotJSON] = ["action": .string("install"), "profile": .string(profile), "enable": .bool(enable)]
+            switch source {
+            case .catalog(let name, let pin):
+                params["catalog_name"] = .string(name)
+                if !pin.isEmpty { params["ref"] = .string(pin) }
+            case .repo(let identifier): params["identifier"] = .string(identifier)
+            }
+            if replace { params["force"] = .bool(true) }
+            return params
+        case .pluginsRemove(let profile, let key):
+            return ["action": .string("remove"), "profile": .string(profile), "name": .string(key)]
         case .profilesGetAsset(let name): return ["name": .string(name), "asset": .string("avatar")]
         case .profilesSetAsset(let name, .replace(let data)):
             return ["name": .string(name), "asset": .string("avatar"), "data": .string(data)]
@@ -620,7 +641,9 @@ enum HermesCall: Equatable, Sendable {
         switch self {
         case .profilesDescribe(let name): valid = !name.isEmpty
         case .pluginsList(let profile): valid = !profile.isEmpty
-        case .pluginsToggle(let profile, let key, _): valid = !profile.isEmpty && !key.isEmpty
+        case .pluginsToggle(let profile, let key, _), .pluginsRemove(let profile, let key): valid = !profile.isEmpty && !key.isEmpty
+        case .pluginsInstall(let profile, .catalog(let identifier, _), _, _), .pluginsInstall(let profile, .repo(let identifier), _, _):
+            valid = !profile.isEmpty && !identifier.isEmpty
         case .profilesSetAsset(let name, let avatar):
             // Base64 for the server's 2 MB decoded cap, with small data-URL headroom.
             if case .replace(let data) = avatar { valid = !name.isEmpty && !data.isEmpty && data.utf8.count <= 3_000_000 }

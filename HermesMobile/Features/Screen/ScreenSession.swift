@@ -362,6 +362,9 @@ enum HermexScreenPlugin {
         var socketFactory: ((URLRequest) -> any RFBSocket)?
         /// How long before reading a missing plugin's route again, since a hot-mount can be in flight.
         var pluginRecheck: Duration = .seconds(1)
+        /// Remove acts on this session's Profile, for the Plugins screen, which names one. Otherwise it
+        /// acts on the dashboard's own Profile, the one this screen's Install puts the plugin on.
+        var removesFromItsProfile = false
         /// How often an open host stream re-reads whether its screen is locked.
         var lockPoll: Duration = .seconds(20)
     }
@@ -813,7 +816,11 @@ enum HermexScreenPlugin {
                 throw BotFailure.unsupported
             }
             options.holds.save(nil, server: server, profile: profile)
-            try await dashboard.removePlugin(HermexScreenPlugin.name)
+            if options.removesFromItsProfile {
+                _ = try await HermesPluginsClient(http: client.http).remove(key: HermexScreenPlugin.name, profile: profile)
+            } else {
+                try await dashboard.removePlugin(HermexScreenPlugin.name)
+            }
         }
     }
 

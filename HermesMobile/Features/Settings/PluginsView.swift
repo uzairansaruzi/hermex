@@ -1,12 +1,21 @@
 import SwiftUI
 
 /// A Hermes server's Plugins page (#1582), opened from its Settings page: one Profile's plugins with
-/// search and filters, each row's switch applying at once unless Hermex or sign-in relies on it.
+/// search and filters, each row's switch applying at once unless Hermex or sign-in relies on it. **+**
+/// installs after a review, and a user install swipes to Remove, or to its own page for the two
+/// plugins Hermex manages itself.
 struct PluginsView: View {
     @State private var model: PluginsModel
     @State private var isConfirmingRestart = false
+    @State private var installProfile: InstallProfile?
+    @State private var isShowingPushSettings = false
+    @State private var screenProfile: InstallProfile?
+    private let connection: BotConnection
+    private let server: URL
 
     init(connection: BotConnection, server: URL) {
+        self.connection = connection
+        self.server = server
         _model = State(initialValue: PluginsModel(client: HermesPluginsClient(saved: connection, server: server)))
     }
 
@@ -18,6 +27,7 @@ struct PluginsView: View {
                 }
             }
             noticeSection
+            if let setup = model.setup { PluginSetupSection(setup: setup, model: model) }
             content
         }
         .settingsPage(String(localized: "Plugins"))
@@ -28,8 +38,29 @@ struct PluginsView: View {
         .searchPresentationToolbarBehavior(.avoidHidingContent)
         .ignoresSafeArea(.keyboard)
         .scrollDismissesKeyboard(.immediately)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    installProfile = model.profile.map(InstallProfile.init)
+                } label: {
+                    Label("Install Plugin", systemImage: "plus")
+                }
+                .disabled(model.profile == nil)
+            }
+        }
         .task { await model.load() }
         .refreshable { await model.load() }
+        .sheet(item: $installProfile) { PluginInstallSheet(model: model, profile: $0.name) }
+        .navigationDestination(isPresented: $isShowingPushSettings) { SettingsNotificationsPage(server: server) }
+        .fullScreenCover(item: $screenProfile, onDismiss: { Task { await model.load() } }) { profile in
+            ScreenView(profile: profile.name, title: profile.name, server: server, connection: connection, removesFromItsProfile: true) {}
+        }
+        .alert(pendingRemovalTitle, isPresented: isPresentingPendingRemoval, presenting: model.pendingRemoval) { _ in
+            Button("Remove", role: .destructive) { model.confirmPendingRemoval() }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("This deletes its files from \(model.profile ?? "") on the host. You can install it again later.")
+        }
         .alert(pendingToggleTitle, isPresented: isPresentingPendingToggle, presenting: model.pendingToggle) { pending in
             Button(pending.turningOn ? String(localized: "Turn On") : String(localized: "Turn Off"), role: .destructive) {
                 model.confirmPendingToggle()
@@ -48,6 +79,15 @@ struct PluginsView: View {
 
     private var isPresentingPendingToggle: Binding<Bool> {
         Binding(get: { model.pendingToggle != nil }, set: { if !$0 { model.pendingToggle = nil } })
+    }
+
+    private var isPresentingPendingRemoval: Binding<Bool> {
+        Binding(get: { model.pendingRemoval != nil }, set: { if !$0 { model.pendingRemoval = nil } })
+    }
+
+    private var pendingRemovalTitle: String {
+        guard let plugin = model.pendingRemoval else { return "" }
+        return String(localized: "Remove \(plugin.name) from \(model.profile ?? "")?")
     }
 
     private var pendingToggleTitle: String {
@@ -102,6 +142,8 @@ struct PluginsView: View {
                         PluginRow(plugin: plugin, isOn: model.isOn(plugin), isBusy: model.isToggling(plugin)) { turningOn in
                             model.requestToggle(plugin, to: turningOn)
                         }
+                        .swipeActions { pluginActions(plugin) }
+                        .contextMenu { pluginActions(plugin) }
                     }
                 } header: {
                     Text(group.kind.title)
@@ -109,6 +151,29 @@ struct PluginsView: View {
             }
         }
     }
+}
+
+private extension PluginsView {
+    /// A user install's way out. hermex-push and hermex-screen go to the pages that manage them,
+    /// because each has its own pairing or hold to undo. Bundled plugins have none.
+    @ViewBuilder
+    func pluginActions(_ plugin: HermesPlugin) -> some View {
+        if plugin.key == "hermex-push" {
+            Button("Manage", systemImage: "gearshape") { isShowingPushSettings = true }
+        } else if plugin.key == "hermex-screen" {
+            Button("Manage", systemImage: "gearshape") { screenProfile = model.profile.map(InstallProfile.init) }
+        } else if !plugin.isBundled {
+            Button("Remove", systemImage: "trash", role: .destructive) { model.pendingRemoval = plugin }
+        }
+    }
+}
+
+/// The Profile a sheet was opened for, fixed for as long as it's up.
+private struct InstallProfile: Identifiable {
+    let name: String
+    var id: String { name }
+
+    init(_ name: String) { self.name = name }
 }
 
 private extension PluginsModel.Group.Kind {

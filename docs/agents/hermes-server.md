@@ -576,6 +576,18 @@ the dashboard runs as. A row's identity is its `key`: names collide across categ
 - `POST /api/gateway/restart?profile=` answers once the restart has started, not once it has
   finished. On a multiplexed host it restarts the one gateway every Profile shares. Only a
   confirmed action sends it.
+- An install takes minutes: it clones, scans, syncs packages and loads the plugin, and a small one
+  took 55 s. A catalog install sends only `catalog_name`, so the host resolves the repo and pin and
+  enforces its removal list; a name it doesn't list is never retried as a repository. Every refusal
+  is a bare 5026, so the sentence `… already exists …` is the only sign that Replace applies.
+- The install's `force` means two things: replace the existing copy, and accept a caution scan on a
+  repo source. A dangerous scan stays blocked, and a catalog install at its pin is trusted. Replace's
+  confirmation says so, because at this pin the findings can't be shown. A forced replacement of an
+  enabled plugin with dependencies can still be refused for lack of a terminal; the host's message
+  shows as is.
+- A catalog entry's Disclosure is the text after `Disclosure:` or `Disclosure —` in its `description`,
+  the marker upstream reads. A required key saved from the install's `missing_env` is written to the
+  Profile's `.env`, but `GET /api/env` doesn't list a key its catalog doesn't know.
 - Which toggles ask first comes from `GET /api/memory?profile=` (`active`) and
   `GET /api/messaging/platforms?profile=` (`enabled` and `configured`). Until those answer, or if
   they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only

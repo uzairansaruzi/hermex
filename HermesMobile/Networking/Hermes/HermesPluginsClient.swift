@@ -1,5 +1,13 @@
 import Foundation
 
+/// What an install fetches: a catalog entry, which the host resolves itself, at the commit the review
+/// showed, or a repository at its latest commit. A catalog name is never turned into a repository,
+/// so its removal list always applies (#1582).
+enum HermesPluginSource: Equatable, Sendable {
+    case catalog(name: String, pin: String)
+    case repo(String)
+}
+
 /// One row of `plugins.manage list` on a Hermes host (#1582). `key` is its identity: names collide
 /// across category folders (`image_gen/fal`, `video_gen/fal`). `install_dir`, a host path, is never
 /// decoded.
@@ -65,6 +73,24 @@ struct HermesPluginChange: Equatable, Sendable {
         failedServers = (activation["live_now"]["mcp_servers"].list ?? []).compactMap { server in
             server["connected"].flag == true ? nil : server["name"].text
         }
+    }
+}
+
+/// What the host reported after an install (#1582).
+struct HermesPluginInstall: Equatable, Sendable {
+    /// The installed plugin's name, which is also its key in the list.
+    let name: String
+    let isEnabled: Bool
+    let change: HermesPluginChange
+    /// The variables its manifest requires and the Profile hasn't set.
+    let missingKeys: [String]
+
+    init?(_ reply: BotJSON) {
+        guard let name = reply["plugin_name"].text, !name.isEmpty else { return nil }
+        self.name = name
+        isEnabled = reply["enabled"].flag == true
+        change = HermesPluginChange(reply, enabling: isEnabled)
+        missingKeys = (reply["missing_env"].list ?? []).compactMap(\.text)
     }
 }
 
@@ -139,6 +165,34 @@ struct HermesPluginStakes: Equatable, Sendable {
 
     func setPlugin(key: String, enabled: Bool, profile: String) async throws -> HermesPluginChange {
         HermesPluginChange(try await gateway(.pluginsToggle(profile: profile, key: key, enable: enabled)), enabling: enabled)
+    }
+
+    /// The release the host reported at sign-in.
+    var hostVersion: String? { http.serverVersion }
+
+    /// The host's plugin catalog, decoded off the main thread because it runs to megabytes.
+    func catalog() async throws -> HermesPluginCatalog {
+        let body = try HermesCronClient.accepted(try await http.reply(.pluginCatalog))
+        return try await Task.detached(priority: .userInitiated) { try HermesPluginCatalog(body) }.value
+    }
+
+    /// Installs on `profile`. A reply with no plugin name is a host this client doesn't understand,
+    /// so the outcome is unknown and it throws as a lost reply would.
+    func install(_ source: HermesPluginSource, profile: String, replace: Bool, enable: Bool) async throws -> HermesPluginInstall {
+        guard let install = HermesPluginInstall(try await gateway(.pluginsInstall(profile: profile, source: source, replace: replace, enable: enable)))
+        else { throw BotFailure.unsupported }
+        return install
+    }
+
+    /// Removes a user install from `profile`. True when its memory provider went with it, which puts
+    /// the Profile back on the built-in one.
+    func remove(key: String, profile: String) async throws -> Bool {
+        try await gateway(.pluginsRemove(profile: profile, key: key))["cleared_memory_provider"].flag == true
+    }
+
+    /// Writes one required key to `profile`'s `.env`. The value goes out once and isn't read back.
+    func saveKey(_ name: String, value: String, profile: String) async throws {
+        try await HermesEnvironmentClient(http: http).set(name, value: value, profile: profile)
     }
 
     /// What `profile` relies on. A route the host refuses leaves its field unknown.

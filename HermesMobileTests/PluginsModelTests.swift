@@ -241,6 +241,181 @@ import XCTest
         XCTAssertFalse(model.needsRestart)
     }
 
+    func testTheInstallFieldReadsEverythingPeoplePaste() {
+        let cases: [(String, PluginInstallInput)] = [
+            ("  ", .empty),
+            ("owner/repo", .repo("owner/repo")),
+            ("git@github.com:owner/repo.git", .repo("git@github.com:owner/repo.git")),
+            ("apify", .catalogName("apify")),
+            (" hermes plugins install apify\n", .catalogName("apify")),
+            ("hermes plugins install --force owner/repo", .repo("owner/repo")),
+            ("hermes://plugin/install?catalog=apify", .catalogName("apify")),
+            ("hermes://plugin/install?repo=owner/repo&force=1", .repo("owner/repo")),
+            ("hermes://plugin/install?catalog=owner/repo", .invalid),
+            ("hermes://connections/done", .invalid),
+            ("two words", .invalid),
+            ("Apify", .invalid)
+        ]
+        for (raw, expected) in cases { XCTAssertEqual(PluginInstallInput(raw), expected, raw) }
+    }
+
+    func testACatalogInstallNamesOnlyTheEntryOnTheProfileAsked() async throws {
+        let host = hostWithPlugins([row("disk-cleanup")])
+        let model = model(on: host)
+        await model.load()
+        await model.select("dev")
+
+        host.next("plugins.manage", .init(result: installed("apify")))
+        let result = await model.install(.catalog(name: "apify", pin: "4d492b1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), profile: "dev", replace: false, enable: true)
+
+        XCTAssertEqual(result, .finished)
+        let params = try XCTUnwrap(host.requests.last { $0["params"]["action"].text == "install" })["params"]
+        XCTAssertEqual(params["catalog_name"].text, "apify")
+        XCTAssertEqual(params["ref"].text, "4d492b1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "the commit the review showed, not a disabled copy's")
+        XCTAssertEqual(params["profile"].text, "dev")
+        XCTAssertEqual(params["identifier"], .null, "a catalog install is never turned into a repo install")
+        XCTAssertEqual(params["force"], .null)
+    }
+
+    func testReplaceIsOfferedOnlyWhenTheHostSaysThePluginExists() async {
+        let host = hostWithPlugins([row("disk-cleanup")])
+        let model = model(on: host)
+        await model.load()
+
+        host.next("plugins.manage", .init(error: 5026, message: "Plugin 'apify' already exists. Use force reinstall or run `hermes plugins update apify`."))
+        let exists = await model.install(.catalog(name: "apify", pin: ""), profile: "default", replace: false, enable: true)
+        guard case .alreadyExists = exists else { return XCTFail("Expected Replace to be offered, got \(exists)") }
+        XCTAssertEqual(host.requests.filter { $0["params"]["force"].flag == true }.count, 0, "nothing replaces on its own")
+
+        host.next("plugins.manage", .init(error: 5026, message: "enable refused: a dependency conflict"))
+        let refused = await model.install(.repo("owner/repo"), profile: "default", replace: false, enable: true)
+        XCTAssertEqual(refused, .refused("enable refused: a dependency conflict"))
+
+        host.next("plugins.manage", .init(result: installed("apify")))
+        _ = await model.install(.catalog(name: "apify", pin: ""), profile: "default", replace: true, enable: true)
+        XCTAssertEqual(host.requests.filter { $0["params"]["force"].flag == true }.count, 1)
+    }
+
+    func testAnInstallCutOffByADroppedConnectionIsUnconfirmedAndNeverResent() async throws {
+        let host = hostWithPlugins([row("disk-cleanup")])
+        let http = host.connection(record)
+        let model = PluginsModel(client: HermesPluginsClient(http: http))
+        await model.load()
+
+        host.withhold("plugins.manage")
+        let sent = expectation(description: "the install reached the host")
+        host.expect(sent, onNext: "plugins.manage")
+        let install = Task { await model.install(.repo("owner/repo"), profile: "default", replace: false, enable: true) }
+        await fulfillment(of: [sent], timeout: 5)
+        host.allow("plugins.manage")
+        host.next("plugins.manage", .init(result: list([row("disk-cleanup"), row("repo", source: "git")])))
+        http.gateway.dropSocket()
+        let result = await install.value
+
+        XCTAssertEqual(result, .finished)
+        guard case .unconfirmed = model.notice else { return XCTFail("Expected an unconfirmed result, got \(String(describing: model.notice))") }
+        XCTAssertEqual(host.requests.filter { $0["params"]["action"].text == "install" }.count, 1)
+        XCTAssertEqual(model.plugins.map(\.key), ["disk-cleanup", "repo"], "the list shows what the host reports now")
+    }
+
+    func testMissingKeysAreSavedToTheProfileThatInstalledThePlugin() async throws {
+        let host = hostWithPlugins([row("disk-cleanup")])
+        let model = PluginsModel(client: HermesPluginsClient(http: host.connection(record, rest: { request in
+            request.url?.path == "/api/env" ? .json(200, .object(["ok": .bool(true)])) : nil
+        })))
+        await model.load()
+        await model.select("dev")
+
+        host.next("plugins.manage", .init(result: installed("homeassistant", extra: ["missing_env": .array([.string("HASS_TOKEN")])])))
+        _ = await model.install(.catalog(name: "homeassistant", pin: ""), profile: "dev", replace: false, enable: true)
+        XCTAssertEqual(model.setup, .init(profile: "dev", name: "homeassistant", keys: ["HASS_TOKEN"]))
+
+        try await model.saveKey("HASS_TOKEN", value: "secret")
+
+        XCTAssertEqual(HermesHostFixture.requests.last { $0.url?.path == "/api/env" }?.httpMethod, "PUT")
+        XCTAssertNil(model.setup, "the last key finishes it")
+    }
+
+    func testAKeySaveEndingAfterASwitchLeavesTheNewProfileAlone() async throws {
+        let host = hostWithPlugins([row("disk-cleanup")])
+        let model = PluginsModel(client: HermesPluginsClient(http: host.connection(record, rest: { request in
+            request.url?.path == "/api/env" ? .park : nil
+        })))
+        await model.load()
+        host.next("plugins.manage", .init(result: installed("homeassistant", extra: ["missing_env": .array([.string("HASS_TOKEN")])])))
+        _ = await model.install(.catalog(name: "homeassistant", pin: ""), profile: "default", replace: false, enable: true)
+
+        let parked = expectation(description: "the save is on its way")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let save = Task { try await model.saveKey("HASS_TOKEN", value: "secret") }
+        await fulfillment(of: [parked], timeout: 5)
+        await model.select("dev")
+        HermesHostFixture.releaseParked(.json(200, .object(["ok": .bool(true)])))
+        try await save.value
+
+        XCTAssertNil(model.notice, "dev never saved anything")
+    }
+
+    func testACancelledCallerDoesntTakeTheCatalogReadDownWithIt() async {
+        let model = PluginsModel(client: HermesPluginsClient(http: BotSocketHost().connection(record, rest: { request in
+            request.url?.path == "/api/dashboard/plugins/catalog" ? .park : nil
+        })))
+        let parked = expectation(description: "the catalog is on its way")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let keystroke = Task { await model.loadCatalog() }
+        await fulfillment(of: [parked], timeout: 5)
+        keystroke.cancel()
+        HermesHostFixture.releaseParked(.json(200, .object(["entries": .array([.object(["name": .string("apify")])])])))
+        await model.loadCatalog()
+
+        guard case .catalog = model.review(of: .catalogName("apify")) else { return XCTFail("Expected the entry, got \(model.catalog)") }
+    }
+
+    func testConfirmingARemovalSendsItEvenThoughTheAlertClearsThePendingOne() async throws {
+        let host = hostWithPlugins([row("apify", source: "user")])
+        let model = model(on: host)
+        await model.load()
+        await model.select("dev")
+        model.pendingRemoval = try XCTUnwrap(model.plugins.first)
+        XCTAssertFalse(host.requests.contains { $0["params"]["action"].text == "remove" })
+
+        host.next("plugins.manage", .init(result: .object(["ok": .bool(true), "name": .string("apify")])))
+        let sent = expectation(description: "the removal reached the host")
+        host.expect(sent, onNext: "plugins.manage")
+        model.confirmPendingRemoval()
+        model.pendingRemoval = nil // what the alert's binding does as it closes
+        await fulfillment(of: [sent], timeout: 5)
+
+        let params = try XCTUnwrap(host.requests.last { $0["params"]["action"].text == "remove" })["params"]
+        XCTAssertEqual(params["name"].text, "apify")
+        XCTAssertEqual(params["profile"].text, "dev")
+    }
+
+    func testTheReviewNeverOffersARemovedOrUnlistedNameAndSplitsTheDisclosure() async throws {
+        let catalog: BotJSON = .object([
+            "entries": .array([
+                .object(["name": .string("apify"),
+                         "requires_hermes": .string(">=0.23"),
+                         "description": .string("Run Actors.\n Disclosure: Runs go to Apify. Apify bills them.")]),
+                .object(["description": .string("A row with no name is left out.")])
+            ]),
+            "removed": .array([.object(["name": .string("or-picker"), "reason": .string("Folded into openrouter-picker.")])])
+        ])
+        let model = PluginsModel(client: HermesPluginsClient(http: BotSocketHost().connection(record, rest: { request in
+            request.url?.path == "/api/dashboard/plugins/catalog" ? .json(200, catalog) : nil
+        })))
+        await model.loadCatalog()
+
+        XCTAssertEqual(model.review(of: .catalogName("or-picker")), .removed("or-picker", reason: "Folded into openrouter-picker."))
+        XCTAssertEqual(model.review(of: .catalogName("nope")), .notInCatalog("nope"))
+        guard case .catalog(let entry) = model.review(of: .catalogName("apify")) else { return XCTFail("Expected the entry") }
+        XCTAssertEqual(entry.summary, "Run Actors.")
+        XCTAssertEqual(entry.disclosure, "Runs go to Apify. Apify bills them.")
+        XCTAssertTrue(entry.isTooNew(forHost: "0.22.5"))
+        XCTAssertFalse(entry.isTooNew(forHost: "0.23.0"))
+        XCTAssertFalse(entry.isTooNew(forHost: nil), "the host checks an unread version itself")
+    }
+
     // MARK: Fixtures
 
     private var profiles: BotJSON {
@@ -271,6 +446,11 @@ import XCTest
     private func toggled(_ plugin: BotJSON, extra: [String: BotJSON] = [:]) -> BotJSON {
         .object(["ok": .bool(true), "unchanged": .bool(false), "restart_required": .bool(false),
                  "gateway_reloaded": .bool(false), "name": plugin["key"], "plugin": plugin].merging(extra) { $1 })
+    }
+
+    private func installed(_ name: String, extra: [String: BotJSON] = [:]) -> BotJSON {
+        .object(["ok": .bool(true), "plugin_name": .string(name), "enabled": .bool(true), "missing_env": .array([]),
+                 "restart_required": .bool(false), "gateway_reloaded": .bool(true)].merging(extra) { $1 })
     }
 
     private func row(_ key: String, name: String? = nil, status: String = "enabled", source: String = "bundled") -> BotJSON {
