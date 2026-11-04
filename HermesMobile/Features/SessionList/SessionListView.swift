@@ -114,6 +114,7 @@ struct SessionListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var viewModel: SessionListViewModel
@@ -549,7 +550,7 @@ struct SessionListView: View {
     /// to the list first, and the list opens Notifications once it is back on screen.
     /// Regular width pops the detail column on every root selection already.
     private func showNotificationSettings() {
-        guard horizontalSizeClass != .regular, navigationState.destination != nil else {
+        guard !usesSplit, navigationState.destination != nil else {
             selectDestination(.notificationSettings)
             return
         }
@@ -569,9 +570,13 @@ struct SessionListView: View {
         selectDestination(.bots)
     }
 
+    private var usesSplit: Bool {
+        HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass, verticalSizeClass: verticalSizeClass)
+    }
+
     @ViewBuilder
     private var navigationContainer: some View {
-        if horizontalSizeClass == .regular {
+        if usesSplit {
             SessionSplitView(rootRevision: navigationState.rootRevision) {
                 sessionListSurface
             } detail: {
@@ -645,7 +650,8 @@ struct SessionListView: View {
                 session: session,
                 server: server,
                 onAPIError: authManager.handleAPIError,
-                draftStore: draftStore
+                draftStore: draftStore,
+                continuity: navigationState.chatContinuity
             )
                 .id(session.id)
         case .newChat(let route):
@@ -700,7 +706,7 @@ struct SessionListView: View {
                     showsCronSessions: showsCronSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
-                    selectedSessionID: horizontalSizeClass == .regular
+                    selectedSessionID: usesSplit
                         ? navigationState.selectedSessionID
                         : nil,
                     actions: sessionRowActions(toastHost: .scheduled),
@@ -776,7 +782,7 @@ struct SessionListView: View {
                     isSearchActive: isSearchingSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
-                    selectedSessionID: horizontalSizeClass == .regular
+                    selectedSessionID: usesSplit
                         ? navigationState.selectedSessionID
                         : nil,
                     userIsExpanded: $scheduledSessionsAreExpanded,
@@ -794,7 +800,7 @@ struct SessionListView: View {
                 isSearchActive: isSearchingSessions,
                 showsMessageCount: showsSessionMessageCount,
                 showsWorkspace: showsSessionWorkspace,
-                selectedSessionID: horizontalSizeClass == .regular
+                selectedSessionID: usesSplit
                     ? navigationState.selectedSessionID
                     : nil,
                 actions: sessionRowActions(),
@@ -1084,7 +1090,7 @@ struct SessionListView: View {
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
             hasActiveRows: !activeSessions.isEmpty,
             isViewingCachedData: viewModel.isViewingCachedData,
-            isRegularWidth: horizontalSizeClass == .regular,
+            isRegularWidth: usesSplit,
             destination: navigationState.destination
         )
     }
@@ -1201,7 +1207,7 @@ struct SessionListView: View {
     private func openSearchFromKeyboard() {
         searchFieldIsFocused = false
 
-        if horizontalSizeClass != .regular {
+        if !usesSplit {
             navigationState.clearDestination()
         }
 
@@ -1333,7 +1339,7 @@ struct SessionListView: View {
                 archiveNumber,
                 swipedOn: toastHost,
                 destination: navigationState.destination,
-                isRegularWidth: horizontalSizeClass == .regular
+                isRegularWidth: usesSplit
             )
             if shownOn != nil {
                 showArchiveUndoToast(for: session)

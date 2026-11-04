@@ -339,6 +339,51 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         XCTAssertTrue(prependController.restoreAfterPrepend())
     }
 
+    /// SwiftUI can move a reader at the exact top to the bottom as the content size changes
+    /// (#1528). A rewrap keeps them at the top, wherever the bars' insets now put it.
+    func testReflowKeepsAReaderAtTheTopThroughSwiftUIMovingThem() {
+        let scrollView = makeScrollView()
+        scrollView.contentInset.top = 100
+        scrollView.contentOffset.y = -100
+        let controller = ChatScrollPositionController()
+        controller.attach(to: scrollView)
+        let narrow = ChatScrollPositionController.Layout(contentWidth: 288, dynamicTypeSize: .large)
+        let wide = ChatScrollPositionController.Layout(contentWidth: 768, dynamicTypeSize: .large)
+        controller.rowFrameChanged(id: "prompt", frame: CGRect(x: 0, y: 0, width: 288, height: 400), layout: narrow, isFollowing: false)
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 408, width: 288, height: 800), layout: narrow, isFollowing: false)
+
+        controller.rowFrameChanged(id: "prompt", frame: CGRect(x: 0, y: 0, width: 768, height: 200), layout: wide, isFollowing: false)
+        controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 400), layout: wide, isFollowing: false)
+        scrollView.contentInset.top = 50
+        scrollView.contentSize.height = 608
+        scrollView.contentOffset.y = 300
+
+        XCTAssertEqual(scrollView.contentOffset.y, -50, accuracy: 0.001)
+    }
+
+    /// A split view can build an extra transcript that never gets a scroll view. The reader's
+    /// place still reaches the one that stays (#1528).
+    func testHandoffPassesThroughATranscriptThatNeverAttached() {
+        let continuity = ChatContinuity()
+        let narrow = ChatScrollPositionController.Layout(contentWidth: 288, dynamicTypeSize: .large)
+        let wide = ChatScrollPositionController.Layout(contentWidth: 768, dynamicTypeSize: .large)
+        let oldScrollView = makeScrollView()
+        let old = ChatScrollPositionController()
+        old.attach(to: oldScrollView)
+        old.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 408, width: 288, height: 600), layout: narrow, isFollowing: false)
+        oldScrollView.contentOffset.y = 648
+        continuity.transcriptAppeared(old, isFollowing: false)
+
+        continuity.transcriptAppeared(ChatScrollPositionController(), isFollowing: false)
+        let newScrollView = makeScrollView()
+        let new = ChatScrollPositionController()
+        continuity.transcriptAppeared(new, isFollowing: false)
+        new.attach(to: newScrollView)
+        new.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 300), layout: wide, isFollowing: false)
+
+        XCTAssertEqual(newScrollView.contentOffset.y, 328, accuracy: 0.001)
+    }
+
     private func makeScrollView() -> UIScrollView {
         let scrollView = UIScrollView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         scrollView.contentSize = CGSize(width: 320, height: 1_200)

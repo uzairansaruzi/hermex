@@ -679,6 +679,7 @@ enum HermesSettingsPresentation {
 
 struct HermesServerHome: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Bindable var authManager: AuthManager
     let server: URL
     private let loadConnection: @MainActor (URL) -> BotConnection?
@@ -808,7 +809,7 @@ struct HermesServerHome: View {
     }
 
     private var usesSplit: Bool {
-        HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass)
+        HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass, verticalSizeClass: verticalSizeClass)
     }
 
     private func isPresenting(_ presentation: HermesSettingsPresentation) -> Binding<Bool> {

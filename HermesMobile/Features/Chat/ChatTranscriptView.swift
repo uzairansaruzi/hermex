@@ -138,6 +138,8 @@ struct ChatTranscriptView: View {
     /// drawn last as a pending bubble whose only action is `onCancelWaitingSend`.
     var waitingSend: ChatMessage? = nil
     var onCancelWaitingSend: () -> Void = {}
+    /// Carries the reader's place from a transcript a size-class change replaced (#1528).
+    var continuity: ChatContinuity? = nil
 
     /// The session's live workers, nil on the offline cache's copy. The preview observes roster
     /// changes itself, so this view only redraws when the count does.
@@ -331,6 +333,14 @@ struct ChatTranscriptView: View {
                         releasingHold { onScrollToBottom(proxy) }
                     }
                 }
+                .onAppear {
+                    // Stored past this view: the ID alone, so `continuity` can't keep the view's closures.
+                    scrollPositionController.resyncToTop = { [transcriptContentID] in
+                        proxy.scrollTo(transcriptContentID, anchor: .top)
+                    }
+                    continuity?.transcriptAppeared(scrollPositionController, isFollowing: shouldFollowLatestMessage)
+                }
+                .onDisappear { continuity?.transcriptDisappeared(scrollPositionController) }
             }
         }
     }

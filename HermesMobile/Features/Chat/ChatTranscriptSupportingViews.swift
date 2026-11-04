@@ -256,6 +256,7 @@ struct ChatScrollObserver: UIViewRepresentable {
         private func finishUserScrollSession(isAtBottom: Bool) {
             cancelSettle()
             isUserScrollSessionActive = false
+            scrollPositionController?.readerSettled()
             onFollowEvent(.userScrollEnd(isAtBottom: isAtBottom))
         }
 
@@ -375,8 +376,63 @@ struct ChatScrollObserver: UIViewRepresentable {
     }
 }
 
+/// What one open chat keeps when a size-class change rebuilds its screen (#1528). An iPad window
+/// crossing compact and regular width, or an iPhone Duo folding, swaps the navigation stack for
+/// the split view, and SwiftUI makes a new `ChatView` in the other branch. Whoever says
+/// which chat is open holds one of these for as long as it is, and hands it to the `ChatView` of
+/// either branch. The new view takes the old one's model, with its loaded history, its stream and
+/// its follow latch, and the reader's place in the transcript.
+///
+/// SwiftUI gives no order to the swap: the new view can appear before or after the old one leaves,
+/// and a split view can build an extra `ChatView` that appears and leaves while another stays on
+/// screen. So this counts the views on screen rather than naming one owner.
+@MainActor final class ChatContinuity: Equatable {
+    /// The model of the view on screen, for its successor. Set as a view appears, since SwiftUI
+    /// can init a `ChatView` it never shows.
+    private(set) var model: ChatViewModel?
+    /// The transcript load finished, so a successor must not load again: that would replace the
+    /// older pages the reader loaded with the newest one.
+    var didLoadMessages = false
+    private var viewsOnScreen: Set<UUID> = []
+    private var transcriptsOnScreen: [ChatScrollPositionController] = []
+    /// The transcript that left with none on screen, whose place the next one takes.
+    private var lastTranscript: ChatScrollPositionController?
+
+    nonisolated init() {}
+
+    nonisolated static func == (lhs: ChatContinuity, rhs: ChatContinuity) -> Bool { lhs === rhs }
+
+    func viewAppeared(_ view: UUID, model: ChatViewModel) {
+        viewsOnScreen.insert(view)
+        self.model = model
+    }
+
+    /// True once no view of this chat is on screen, when the chat really left and its model stops
+    /// its work. The next view to appear starts it again, as when a pushed screen pops.
+    func viewDisappeared(_ view: UUID) -> Bool {
+        viewsOnScreen.remove(view)
+        return viewsOnScreen.isEmpty
+    }
+
+    /// A transcript of this chat appeared. One that replaces another keeps its reader's place,
+    /// unless the reader is following: a new transcript already opens at the live edge.
+    func transcriptAppeared(_ controller: ChatScrollPositionController, isFollowing: Bool) {
+        let previous = transcriptsOnScreen.last ?? lastTranscript
+        if let previous, previous !== controller, !isFollowing, let place = previous.readingPlace {
+            controller.restore(place)
+        }
+        transcriptsOnScreen.append(controller)
+        lastTranscript = nil
+    }
+
+    func transcriptDisappeared(_ controller: ChatScrollPositionController) {
+        transcriptsOnScreen.removeAll { $0 === controller }
+        if transcriptsOnScreen.isEmpty { lastTranscript = controller }
+    }
+}
+
 /// Keeps the reader's exact vertical position through a layout change SwiftUI
-/// would otherwise move them for. Two cases:
+/// would otherwise move them for. Three cases:
 ///
 /// - **Prepend.** Older rows are inserted above the reader; the offset shifts
 ///   by the net content-height growth. `ScrollViewProxy.scrollTo(_:anchor:)`
@@ -394,8 +450,13 @@ struct ChatScrollObserver: UIViewRepresentable {
 ///   (`rowFrameChanged`) under the layout they were measured in; the
 ///   first frame of a new layout captures the reader's place from the old
 ///   layout's frames, and the anchor row's new frames put it back. A reader
-///   following the live edge or at the top is left alone, as is any prepend
-///   or hold already in flight. Ends like a hold, without its resync.
+///   at the top stays at the top, through any change in the bars' insets, and
+///   undoes SwiftUI like a hold, with its resync (#1528). A reader following
+///   the live edge is left alone, as is any prepend or hold already in flight.
+///   Otherwise ends like a hold, without its resync.
+/// - **Handoff.** A size-class change rebuilt the transcript (`ChatContinuity`).
+///   The new controller keeps the old one's reading place as a reflow does, and
+///   undoes the bottom anchor SwiftUI opens a new transcript at.
 ///
 /// The controller snapshots the UIKit scroll geometry, then corrects during
 /// the following layout passes for a bounded window. Corrections are
@@ -408,7 +469,7 @@ final class ChatScrollPositionController {
         case prepend
         /// Offset stays put; SwiftUI-driven offset changes are reverted.
         case hold
-        /// Offset keeps `reflowAnchor` at the reading line; otherwise like `hold`.
+        /// Offset keeps `reflowPlace` at the reading line; otherwise like `hold`.
         case reflow
     }
 
@@ -451,7 +512,18 @@ final class ChatScrollPositionController {
     /// Plain storage, written only when a row's frame changes; never per scroll.
     private var rowFrames: [String: CGRect] = [:]
     private var rowFramesLayout: Layout?
-    private var reflowAnchor: ChatScrollPolicy.ReflowAnchor?
+    private var reflowPlace: ChatScrollPolicy.ReadingPlace?
+    /// Puts back an offset change riding on a size change in the same turn:
+    /// SwiftUI re-applying a default anchor. Off for a row's reflow, where no
+    /// size-change anchor applies and that change is the reader's.
+    private var undoesSwiftUIAnchors = false
+    /// A place handed over before this controller had a scroll view.
+    private var pendingPlace: ChatScrollPolicy.ReadingPlace?
+    /// Where the reader was when last asked, for a successor's handoff after the scroll view or
+    /// the rows left, in whichever order they go. An anchor survives the rows moving under it.
+    private var lastPlace: ChatScrollPolicy.ReadingPlace?
+    /// A SwiftUI scroll to the transcript's top: how keeping the top resyncs.
+    var resyncToTop: (() -> Void)?
 
     var isHoldingPosition: Bool {
         mode == .hold && baselineOffsetY != nil
@@ -462,6 +534,10 @@ final class ChatScrollPositionController {
         guard scrollView !== self.scrollView else { return }
         cancelPreservation()
         self.scrollView = scrollView
+        if let pendingPlace {
+            self.pendingPlace = nil
+            keep(pendingPlace, in: scrollView, undoesSwiftUIAnchors: true)
+        }
     }
 
     /// A row's frame changed; `id` is its `renderID`, or a stable key for a
@@ -471,7 +547,7 @@ final class ChatScrollPositionController {
     /// layouts (a second rotation).
     func rowFrameChanged(id: String, frame: CGRect, layout: Layout, isFollowing: Bool) {
         if let previous = rowFramesLayout, previous != layout {
-            if mode == .reflow, reflowAnchor != nil {
+            if mode == .reflow, reflowPlace != nil {
                 scheduleQuietRelease()
             } else {
                 armReflow(isFollowing: isFollowing)
@@ -479,7 +555,7 @@ final class ChatScrollPositionController {
         }
         rowFramesLayout = layout
         rowFrames[id] = frame
-        if mode == .reflow, reflowAnchor?.id == id {
+        if mode == .reflow, reflowPlace?.dependsOnFrame(of: id) == true {
             applyCompensation()
             scheduleQuietRelease()
         }
@@ -496,23 +572,59 @@ final class ChatScrollPositionController {
               let scrollView,
               !scrollView.isDragging,
               !scrollView.isTracking,
-              !scrollView.isDecelerating
+              !scrollView.isDecelerating,
+              let place = place(in: scrollView)
         else { return }
 
+        keep(place, in: scrollView, undoesSwiftUIAnchors: place == .top)
+    }
+
+    /// The reader's place in `scrollView`, from the frames of the layout it was
+    /// last measured in. Nil with no rows to place it among.
+    private func place(in scrollView: UIScrollView) -> ChatScrollPolicy.ReadingPlace? {
+        guard !rowFrames.isEmpty else { return nil }
         let topInset = scrollView.adjustedContentInset.top
         let readingLineY = scrollView.contentOffset.y + topInset - contentOriginY(in: scrollView)
-        guard let anchor = ChatScrollPolicy.reflowAnchor(
+        return ChatScrollPolicy.reflowAnchor(
             readingLineY: readingLineY,
             isAtTop: scrollView.contentOffset.y <= -topInset + 0.5,
             rowFrames: rowFrames
-        ) else { return }
+        ).map { .row($0) } ?? .top
+    }
 
-        reflowAnchor = anchor
+    private func keep(_ place: ChatScrollPolicy.ReadingPlace, in scrollView: UIScrollView, undoesSwiftUIAnchors: Bool) {
+        reflowPlace = place
+        lastPlace = place
+        self.undoesSwiftUIAnchors = undoesSwiftUIAnchors
         baselineContentHeight = scrollView.contentSize.height
         baselineOffsetY = scrollView.contentOffset.y
         lastObservedContentHeight = scrollView.contentSize.height
+        if place == .top { resyncAfterHold = resyncToTop }
         beginPreservation(mode: .reflow, scrollView: scrollView, window: ChatScrollPolicy.disclosureHoldMaximum)
+        applyCompensation()
         scheduleQuietRelease()
+    }
+
+    /// Where the reader is now, or was when last known. A reflow running keeps the place it took
+    /// before the rows moved.
+    var readingPlace: ChatScrollPolicy.ReadingPlace? {
+        reflowPlace ?? scrollView.flatMap(place(in:)) ?? lastPlace
+    }
+
+    /// The reader's gesture came to rest. Once per gesture, never per scroll.
+    func readerSettled() {
+        lastPlace = readingPlace
+    }
+
+    /// Keeps the reader at a place the previous transcript of this chat reported.
+    func restore(_ place: ChatScrollPolicy.ReadingPlace) {
+        // A transcript that leaves before it has a scroll view still passes this on.
+        lastPlace = place
+        guard let scrollView else {
+            pendingPlace = place
+            return
+        }
+        keep(place, in: scrollView, undoesSwiftUIAnchors: true)
     }
 
     private func contentOriginY(in scrollView: UIScrollView) -> CGFloat {
@@ -520,6 +632,7 @@ final class ChatScrollPositionController {
     }
 
     func detach() {
+        lastPlace = readingPlace
         cancelPreservation()
         scrollView = nil
     }
@@ -578,6 +691,7 @@ final class ChatScrollPositionController {
         baselineContentHeight = scrollView.contentSize.height
         baselineOffsetY = scrollView.contentOffset.y
         lastObservedContentHeight = scrollView.contentSize.height
+        undoesSwiftUIAnchors = true
         resyncAfterHold = resync
         beginPreservation(mode: .hold, scrollView: scrollView, window: ChatScrollPolicy.disclosureHoldMaximum)
         scheduleQuietRelease()
@@ -588,10 +702,11 @@ final class ChatScrollPositionController {
     /// scroll needs no resync; that scroll does it.
     private func finishHold() {
         applyCompensation()
+        let minimumOffsetY = scrollView.map { -$0.adjustedContentInset.top }
         let resync = Self.shouldResync(
             didRevertSwiftUIOffset: didRevertSwiftUIOffset,
-            heldOffsetY: baselineOffsetY,
-            minimumOffsetY: scrollView.map { -$0.adjustedContentInset.top }
+            heldOffsetY: reflowPlace == .top ? minimumOffsetY : baselineOffsetY,
+            minimumOffsetY: minimumOffsetY
         ) ? resyncAfterHold : nil
         cancelPreservation()
         resync?()
@@ -665,7 +780,8 @@ final class ChatScrollPositionController {
         lastObservedContentHeight = nil
         baselineContentHeight = nil
         baselineOffsetY = nil
-        reflowAnchor = nil
+        reflowPlace = nil
+        undoesSwiftUIAnchors = false
         isApplyingCompensation = false
     }
 
@@ -725,18 +841,16 @@ final class ChatScrollPositionController {
     }
 
     /// User movement releases the preservation. In hold and reflow modes an
-    /// offset change UIKit makes inside the content-size setter is put back. A
-    /// hold also puts back one riding on a size change in the same turn: SwiftUI
-    /// re-applying a default anchor. Reflow runs only where no size-change
-    /// anchor applies, so there that change is the reader's. Any other offset
-    /// change is a deliberate scroll and releases it.
+    /// offset change UIKit makes inside the content-size setter is put back, and
+    /// with `undoesSwiftUIAnchors` so is one riding on a size change in the same
+    /// turn. Any other offset change is a deliberate scroll and releases it.
     private func handleOffsetChange(_ scrollView: UIScrollView) {
         guard !isApplyingCompensation, scrollView === self.scrollView else { return }
 
         if scrollView.isDragging || scrollView.isTracking || scrollView.isDecelerating {
             cancelPreservation()
         } else if mode != .prepend {
-            let sizeIsChanging = (mode == .hold && contentSizeChangedThisTurn)
+            let sizeIsChanging = (undoesSwiftUIAnchors && contentSizeChangedThisTurn)
                 || scrollView.contentSize.height != lastObservedContentHeight
             if sizeIsChanging {
                 applyCompensation()
@@ -750,10 +864,15 @@ final class ChatScrollPositionController {
     private func compensatedOffsetY(in scrollView: UIScrollView) -> CGFloat? {
         guard let baselineContentHeight, var baselineOffsetY else { return nil }
 
-        if mode == .reflow {
-            guard let reflowAnchor, let frame = rowFrames[reflowAnchor.id] else { return nil }
-            baselineOffsetY = ChatScrollPolicy.reflowReadingLineY(anchor: reflowAnchor, newFrame: frame)
+        switch reflowPlace {
+        case .top?:
+            baselineOffsetY = -scrollView.adjustedContentInset.top
+        case .row(let anchor)?:
+            guard let frame = rowFrames[anchor.id] else { return nil }
+            baselineOffsetY = ChatScrollPolicy.reflowReadingLineY(anchor: anchor, newFrame: frame)
                 + contentOriginY(in: scrollView) - scrollView.adjustedContentInset.top
+        case nil:
+            break
         }
         return Self.compensatedOffsetY(
             baselineOffsetY: baselineOffsetY,
@@ -768,7 +887,7 @@ final class ChatScrollPositionController {
         guard let scrollView, let targetY = compensatedOffsetY(in: scrollView) else { return }
         guard abs(scrollView.contentOffset.y - targetY) > 0.5 else { return }
 
-        if mode == .hold {
+        if undoesSwiftUIAnchors {
             didRevertSwiftUIOffset = true
         }
         isApplyingCompensation = true

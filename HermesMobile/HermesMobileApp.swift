@@ -97,6 +97,7 @@ struct HermesMobileApp: App {
             #if DEBUG
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                .background(WindowBackgroundPainter())
                 // Signs in from `HERMEX_DEV_*` launch environment variables
                 // (`scripts/sim-login`); a no-op when they are absent.
                 .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
@@ -109,6 +110,7 @@ struct HermesMobileApp: App {
             #else
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                .background(WindowBackgroundPainter())
             #endif
         }
         .modelContainer(cacheContainer)
@@ -117,4 +119,18 @@ struct HermesMobileApp: App {
             SidebarCommands()
         }
     }
+}
+
+/// Paints the window behind SwiftUI's content, which shows in the gap while a rotation outruns the
+/// content's layout (#1528). A window has no background of its own, so that gap flashes black.
+private struct WindowBackgroundPainter: UIViewRepresentable {
+    final class PaintingView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            window?.backgroundColor = .systemBackground
+        }
+    }
+
+    func makeUIView(context: Context) -> PaintingView { PaintingView() }
+    func updateUIView(_ view: PaintingView, context: Context) {}
 }

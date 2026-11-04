@@ -1,14 +1,17 @@
 import SwiftUI
 import UIKit
 
-/// Hermes home owns a split only at regular width; pushed lists keep their caller's stack.
+/// A home owns a split only at regular width with room to stand in; pushed lists keep their
+/// caller's stack. A Plus/Max iPhone in landscape is regular width but compact height, and stays on
+/// its stack: a split there would rebuild the open chat in the middle of every rotation (#1528).
 enum HermesHomeLayout {
-    static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
-        isHome && horizontalSizeClass == .regular
+    static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?,
+                          verticalSizeClass: UserInterfaceSizeClass?) -> Bool {
+        isHome && horizontalSizeClass == .regular && verticalSizeClass != .compact
     }
 }
 
-/// The regular-width shell (iPad, iPhone Duo's inner display, landscape Plus/Max). A sidebar root
+/// The regular-width shell (iPad, iPhone Duo's inner display). A sidebar root
 /// selection bumps `rootRevision`, which rebuilds only the detail root and pops any screen pushed
 /// above it (#116). The sidebar keeps its identity, scroll position, and row state across selections
 /// (#689); its visibility follows `settled(isRoomy:isCollapsedByUser:)` as selections land and the
