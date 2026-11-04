@@ -53,10 +53,12 @@ struct ScreenHold: Codable, Equatable {
     static let shared = ScreenHoldStore(keychain: KeychainStore())
 
     private(set) var revision = 0
+    @ObservationIgnored let idleNotification: ScreenIdleNotification
     @ObservationIgnored private let keychain: any KeychainStoring
 
-    init(keychain: any KeychainStoring) {
+    init(keychain: any KeychainStoring, idleNotification: ScreenIdleNotification = .system) {
         self.keychain = keychain
+        self.idleNotification = idleNotification
     }
 
     func holds(server: URL) -> [String: ScreenHold] {
@@ -154,7 +156,7 @@ enum ScreenIdlePolicy {
     private static func handBack(_ hold: ScreenHold, profile: String, server: URL, client: BotClient, store: ScreenHoldStore) async {
         guard (try? await hold.source.release(hold, profile: profile, client: client)) != nil else { return }
         store.forget(viewerIDs: hold.viewerIDs, server: server, profile: profile)
-        ScreenIdleNotification.cancel(server: server, profile: profile)
+        store.idleNotification.cancel(server: server, profile: profile)
     }
 
     private static func withOwnClient(_ connection: BotConnection, server: URL,
@@ -184,9 +186,14 @@ enum ScreenIdlePolicy {
 
 /// The local notice that a takeover ran out while the app was in the background. It says so and
 /// asks nothing: control goes back when the app next runs. Sent only if notifications are already
-/// allowed, so a Screen never raises the permission prompt.
+/// allowed, so a Screen never raises the permission prompt. Tests use `.off` to stay away from
+/// the real notification center, which may stall a CI simulator for minutes on first use (#1580).
 enum ScreenIdleNotification {
-    static func schedule(server: URL, profile: String, title: String, at deadline: Date) {
+    case system
+    case off
+
+    func schedule(server: URL, profile: String, title: String, at deadline: Date) {
+        guard self == .system else { return }
         let interval = deadline.timeIntervalSinceNow
         guard interval > 0 else { return }
         let content = UNMutableNotificationContent()
@@ -197,11 +204,12 @@ enum ScreenIdleNotification {
             UNNotificationRequest(identifier: identifier(server: server, profile: profile), content: content, trigger: trigger))
     }
 
-    static func cancel(server: URL, profile: String) {
+    func cancel(server: URL, profile: String) {
+        guard self == .system else { return }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier(server: server, profile: profile)])
     }
 
-    private static func identifier(server: URL, profile: String) -> String {
+    private func identifier(server: URL, profile: String) -> String {
         "screen-idle|\(server.absoluteString)|\(profile)"
     }
 }

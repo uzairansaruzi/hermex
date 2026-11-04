@@ -432,7 +432,7 @@ enum HermexScreenPlugin {
     func open() {
         stopStream()
         failures = 0
-        ScreenIdleNotification.cancel(server: server, profile: profile)
+        options.holds.idleNotification.cancel(server: server, profile: profile)
         if phase != .live, phase != .reconnecting { set(.connecting) }
         let owner = generation
         stream = Task { [weak self] in await self?.run(owner) }
@@ -443,8 +443,8 @@ enum HermexScreenPlugin {
     func suspend() {
         persistLastInput()
         if control == .mine, let lastInput {
-            ScreenIdleNotification.schedule(server: server, profile: profile, title: title,
-                                            at: lastInput.addingTimeInterval(TimeInterval(options.idleLimit.components.seconds)))
+            options.holds.idleNotification.schedule(server: server, profile: profile, title: title,
+                                                    at: lastInput.addingTimeInterval(TimeInterval(options.idleLimit.components.seconds)))
         }
         stopStream()
         idleTimer?.cancel()
@@ -909,7 +909,7 @@ enum HermexScreenPlugin {
         do {
             let lease = try await hold.source.release(hold, profile: profile, client: client)
             options.holds.forget(viewerIDs: hold.viewerIDs, server: server, profile: profile)
-            ScreenIdleNotification.cancel(server: server, profile: profile)
+            options.holds.idleNotification.cancel(server: server, profile: profile)
             guard owner == generation else { return }
             idleTimer?.cancel()
             isAskingStillThere = false
@@ -923,7 +923,7 @@ enum HermexScreenPlugin {
 
     private func forgetHold(notice: Notice?, control: Control) {
         options.holds.save(nil, server: server, profile: profile)
-        ScreenIdleNotification.cancel(server: server, profile: profile)
+        options.holds.idleNotification.cancel(server: server, profile: profile)
         idleTimer?.cancel()
         isAskingStillThere = false
         latchedModifiers = []
