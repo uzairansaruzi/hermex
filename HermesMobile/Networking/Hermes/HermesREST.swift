@@ -37,8 +37,7 @@ import Foundation
 /// (`/private/var/…` for `/var/…` on a Mac), so it never matches the path that was asked for.
 /// The file, config and soul routes the Memory screen uses (#1073) are read at the same pin and
 /// checked against `scripts/local-hermes`: a missing file reads 404 `{detail: "File not found"}`,
-/// a write to a missing folder is 400 "Parent directory does not exist", and `files/mkdir`
-/// answers the folder's entry.
+/// and `files/read` and `files/upload` carry a file as a base64 `data_url` (#1566, 0.22.5).
 /// The update routes (#1075) are read at the same pin and checked against `scripts/local-hermes`;
 /// `docs/agents/bots.md` § Updating Hermes has their shapes. `POST /api/audio/speak` (#1072) is
 /// read at the same pin and checked against `scripts/local-hermes`: `{text}` only, spoken by the
@@ -308,11 +307,12 @@ enum HermesREST: Equatable, Sendable {
     /// `{ghReady, pr: {url, state, number} | null}`: the checked-out branch's pull request from the
     /// host's `gh pr view` (#1391). `ghReady` is false, and `pr` null, without an authenticated `gh`.
     case gitShipInfo(repository: String)
-    /// Replaces or creates the file at a host path, atomically; `{ok, path, byteSize}`. It never
-    /// creates folders: a missing parent is 400 "Parent directory does not exist".
-    case fsWriteText(path: String, content: String)
-    /// Creates the folder at a host path, with its parents; 409 when a file is in the way.
-    case filesMkdir(path: String)
+    /// `{data_url, size, …}` for the whole file at a path on the dashboard's own machine; 404
+    /// `{detail}` when there is none. Unlike `/api/fs/*`, the managed files routes never follow a
+    /// Profile's SSH terminal backend to another machine.
+    case filesRead(path: String)
+    /// Replaces or creates the file at a path on the dashboard's own machine, with its parents.
+    case filesUpload(path: String, text: String)
     /// A Profile's whole config, unredacted, credentials included: decode only what is needed.
     case config(profile: String)
     /// Writes `platformNote` as the Profile's `platform_hints.gui.append` (#1278). The host
@@ -650,11 +650,13 @@ enum HermesREST: Equatable, Sendable {
             return try Self.pluginGit(base, "branch", repository: repository, ["name": .string(name)])
         case .gitShipInfo(let repository):
             return try Self.pathQuery(base, "api/git/review/ship-info", [URLQueryItem(name: "path", value: repository)])
-        case .fsWriteText(let path, let content):
-            return try Self.send("POST", base.appendingPathComponent("api/fs/write-text"),
-                                 ["path": .string(path), "content": .string(content)])
-        case .filesMkdir(let path):
-            return try Self.send("POST", base.appendingPathComponent("api/files/mkdir"), ["path": .string(path)])
+        case .filesRead(let path):
+            return try Self.pathQuery(base, "api/files/read", [URLQueryItem(name: "path", value: path)])
+        case .filesUpload(let path, let text):
+            return try Self.send("POST", base.appendingPathComponent("api/files/upload"), [
+                "path": .string(path), "overwrite": .bool(true),
+                "data_url": .string("data:text/plain;base64," + Data(text.utf8).base64EncodedString())
+            ])
         case .config(let profile):
             guard !profile.isEmpty else { throw BotFailure.invalidAddress }
             return Self.get(try Self.url(base, "api/config", profile: profile))

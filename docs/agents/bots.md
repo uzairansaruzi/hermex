@@ -1370,12 +1370,13 @@ panel (#1113) and Git (#1114) read the same context.
 The Memory screen runs on a Hermes host through `HermesMemoryClient` (#1073), the
 `MemoryDataClient` beside webui's `APIClient`, for the Profile the home's Sessions side
 lists (#709). My Notes and User Profile are `<path>/memories/MEMORY.md` and `USER.md`, where
-`path` is the Profile's `profiles.list` row, read on every load and save: `/api/fs/*` accepts
-any absolute path, so no other path is ever built, and the path is never shown, logged or
-kept. They are read with `GET /api/fs/read-text?path=` (404 is empty; `truncated` or
-`binary` shows the section read-only) and written with `POST /api/fs/write-text`, which
-creates no folders: its 400 "Parent directory does not exist" gets one `POST
-/api/files/mkdir` and a retry. Agent Soul is `GET`/`PUT /api/profiles/{name}/soul`.
+`path` is the Profile's `profiles.list` row, read on every load and save: the file routes
+accept any absolute path, so no other path is ever built, and the path is never shown, logged
+or kept. They are read with `GET /api/files/read?path=` (404 is empty; a file over 512 KiB or
+not UTF-8 shows the section read-only) and written with `POST /api/files/upload`, which
+creates a missing folder. Not `/api/fs/*`, which since 0.22 follows the dashboard's Profile to
+its SSH terminal machine, where these host paths don't exist (#1566). Agent Soul is
+`GET`/`PUT /api/profiles/{name}/soul`.
 `GET /api/config?profile=` is the whole unredacted config; only `memory` is decoded: a
 section whose flag is off is hidden, and `memory_char_limit` and `user_char_limit` (default
 2200 and 1375) are counted in Unicode scalars, Python's `len`, with Save off over them.
