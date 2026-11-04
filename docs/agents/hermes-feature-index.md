@@ -46,7 +46,7 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 
 ## Upstream RPC methods Hermex never calls
 
-At the pin (0.21.5, `ca678285`) the gateway contract has 237 methods and `HermesCall` sends
+At the pin (0.22.5, `bf0203a7`) the gateway contract has 258 methods and `HermesCall` sends
 61 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
 
 | Family | Methods | Status | Note |
@@ -58,13 +58,14 @@ At the pin (0.21.5, `ca678285`) the gateway contract has 237 methods and `Hermes
 | Diagnostics | `diagnostics.share_nous`, `session.events.stats` | n-a | Uploads a debug bundle; replay-buffer telemetry. |
 | Reloads | `reload.env`, `reload.mcp` | n-a | Host administration that resets live sessions. |
 | Desktop and terminal | `browser.*`, `display.*`, `clipboard.paste`, `paste.collapse`, `input.detect_drop`, `terminal.resize`, `system.battery`, `preview.restart`, `pet.*`, `wake.*`, `voice.record`, `voice.toggle` | n-a | Host screen, microphone, terminal or desktop UI. |
-| Host setup | `onboarding.*`, `setup.*`, `profiles.remember_onboarding` | n-a | First-run setup on the host. |
+| Host setup | `onboarding.*`, `setup.*` | n-a | First-run setup on the host. |
+| Desktop telemetry and locale | `shared_metrics.*`, `i18n.*`, `machine.facts` | n-a | Desktop's usage metrics, its string catalog and the host's hardware facts. |
 | Foreign sessions | `session.foreign.*` | n-a | Claude Code and Codex sessions on the host. |
 | Reactions | `message.react` | dropped | Removed from Hermex. |
-| Covered elsewhere | `approval.pending`, `session.history`, `command.resolve`, `cron.manage`, `config.get`, `config.show`, `plugins.list`, `plugins.manage`, `image.attach`, `image.attach_bytes`, `image.detach`, `pdf.attach`, `voice.tts`, `session.branch_whole`, `session.branch_stored`, `session.activate`, `ping` | covered | Resume's `open_requests`, REST messages, `commands.catalog`, `/api/cron/jobs`, `/api/config`, the plugins hub, `/api/chat/image-upload` and `file.attach`, `/api/audio/speak`, `session.branch`, `session.resume`, `gateway.ping`. |
+| Covered elsewhere | `approval.pending`, `session.history`, `command.resolve`, `cron.manage`, `config.get`, `config.show`, `plugins.list`, `plugins.manage`, `plugins.catalog.lookup`, `image.attach`, `image.attach_bytes`, `image.detach`, `pdf.attach`, `voice.tts`, `session.branch_whole`, `session.branch_stored`, `session.activate`, `ping` | covered | Resume's `open_requests`, REST messages, `commands.catalog`, `/api/cron/jobs`, `/api/config`, the plugins hub, `/api/chat/image-upload` and `file.attach`, `/api/audio/speak`, `session.branch`, `session.resume`, `gateway.ping`. |
 | Approval timing | `approval.received` | untriaged | Starts an approval's timeout when the card shows. |
 | Host capabilities | `gateway.capabilities` | untriaged | What the build enforces; could replace some probes in `hermes-server.md`. |
-| Session extras | `session.usage`, `session.context_breakdown`, `session.status`, `session.set_hidden`, `session.save` | untriaged | Per-chat cost and context, `/status` text, hide/unhide, export to the host. |
+| Session extras | `session.usage`, `session.context_breakdown`, `session.status`, `session.set_hidden`, `session.save`, `session.archive` | untriaged | Per-chat cost and context, `/status` text, hide/unhide, export to the host. |
 | Projects | `projects.list`, `projects.get`, `projects.archive`, `projects.add_folder`, `projects.remove_folder`, `projects.set_primary`, `projects.set_active`, `projects.for_cwd`, `projects.project_sessions`, `projects.discover_repos`, `projects.record_repos`, `project.facts` | untriaged | Hermex reads `projects.tree` and creates, renames and deletes. |
 | Subagents and processes | `subagent.steer`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.*` | untriaged | Hermex previews up to three live workers in chat; View all opens the session's list, tail and interrupt controls. Completed delegations keep their transcript result cards. |
 | Checkpoints | `rollback.*` | untriaged | Restore a working tree to a checkpoint. |

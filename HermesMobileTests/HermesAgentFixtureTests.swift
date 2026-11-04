@@ -76,14 +76,14 @@ import XCTest
         XCTAssertEqual(profiles.count, rows.count)
         // `BotProfile` requires only `name`, so these catch a renamed `canonical_session`
         // or `ui_meta_revisions`, which would otherwise decode to an empty inbox row.
-        let bot = try XCTUnwrap(profiles.first { $0.id == "inbox-triage" })
+        let bot = try XCTUnwrap(profiles.first { $0.id == "hermex-fixtures" })
         XCTAssertNotNil(bot.preview)
         XCTAssertNotNil(bot.lastActive)
         XCTAssertNotNil(bot.lookRevision)
         // The inbox names and hides a bot from `display_name` and Desktop's look.
         XCTAssertNotNil(bot.displayName)
         XCTAssertNotNil(bot.title)
-        let row = try XCTUnwrap(rows.first { $0["name"].text == "inbox-triage" })
+        let row = try XCTUnwrap(rows.first { $0["name"].text == "hermex-fixtures" })
         let hidden = try XCTUnwrap(row["ui_meta"]["hermes-bots"]["hidden"].flag, "The captured look carries `hidden`")
         XCTAssertEqual(bot.hidden, hidden)
     }
@@ -102,7 +102,7 @@ import XCTest
         let engine = HermesConversation(server: URL(string: "https://webui.example")!,
                                         connection: BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                                                   username: "user", password: "fixture"),
-                                        target: .canonicalChat(profile: "inbox-triage"), wire: wire)
+                                        target: .canonicalChat(profile: "hermex-fixtures"), wire: wire)
         await engine.activate()
         defer { engine.suspend() }
         XCTAssertEqual(engine.connectionState, .connected)

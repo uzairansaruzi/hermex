@@ -200,6 +200,10 @@ def pinned_commit():
     return sha
 
 
+def pinned_release():
+    return (REPO / "HERMES_AGENT_TESTED_SHA").read_text().splitlines()[1].strip()
+
+
 def run(command):
     print("+ " + " ".join(command), flush=True)
     subprocess.run(command, check=True, stdin=subprocess.DEVNULL)
@@ -236,6 +240,9 @@ def install(root, sha):
             run(["git", "-C", str(partial), "init", "--quiet"])
             run(["git", "-C", str(partial), "fetch", "--quiet", "--depth", "1", UPSTREAM, sha])
             run(["git", "-C", str(partial), "checkout", "--quiet", "--detach", "FETCH_HEAD"])
+            # Since 0.22 /api/status reports the newest release tag, which a one-commit
+            # fetch doesn't have, so the checkout names the release the pin records.
+            run(["git", "-C", str(partial), "tag", "v" + pinned_release()])
             partial.rename(source)
         except BaseException:
             shutil.rmtree(partial, ignore_errors=True)

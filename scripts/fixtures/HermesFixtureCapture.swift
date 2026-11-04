@@ -93,14 +93,14 @@ struct Options {
     }
 }
 
-/// What one run records. A real host gets the canned text turn on its `inbox-triage`
-/// bot, and any tool or request traffic fails the capture. `--local` records the
+/// What one run records. A real host gets the canned text turn on its `hermex-fixtures`
+/// Profile, kept for this, and any tool or request traffic fails the capture. `--local` records the
 /// scripted tool and approval turn from `scripts/local-hermes` on its `default`
 /// Profile, and is the only mode that lets that traffic and its fields through. It
 /// also records that Profile's 30-day analytics, the Insights screen's three reads.
 struct Mode {
     let local: Bool
-    var profile: String { local ? "default" : "inbox-triage" }
+    var profile: String { local ? "default" : "hermex-fixtures" }
     var prompt: String { local ? "Run the quick check." : "Reply with exactly: ok. Do not use tools." }
     /// String keys the sanitizer keeps: `Sanitizer.keptStrings`, plus what the tool
     /// and approval fixture test reads in local mode.

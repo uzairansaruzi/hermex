@@ -7,7 +7,7 @@
 #
 # It signs in to the hermex-bot Keychain host, reads /api/status and profiles.list,
 # runs one canned turn ("Reply with exactly: ok.") in a disposable hidden session on
-# the inbox-triage bot, resumes it, then closes and deletes that session. The turn
+# the hermex-fixtures Profile, resumes it, then closes and deletes that session. The turn
 # is one real model call, and a paired phone may get its reply push. Output is
 # sanitized with an allow-list and checked for the host, account, ticket, home paths
 # and other Profile names before anything is written. Credentials come from the
