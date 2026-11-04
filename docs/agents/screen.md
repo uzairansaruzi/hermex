@@ -94,6 +94,20 @@ reconnect. `ScreenInputQueue` replaces a waiting pointer move and sends what pil
 - Modifiers from the key row latch and wrap only the next key or click, so none can stay down on
   the host. A hardware keyboard passes through as it happens (`ScreenHardwareKeys`).
 
+## Setup on Linux
+
+A screen that isn't running shows one state (`ScreenStatus.settledPhase`), the host's blocker first:
+a sandbox short of its desktop image reports that as well as missing packages, and installing on
+the host wouldn't fix it. That blocker shows in place of Start, in the host's words, as a refused
+`display.start` does.
+
+The app doesn't install anything or switch a sandbox's image. `display.install` needs `sudo` from
+the phone, and switching the image recreates the container, so both stay on the host in v1. It
+offers `status.install_command` to copy, which is the host's own line.
+
+Stop Screen is in the toolbar's menu when this iPhone isn't holding. Over another person's takeover
+it sends `force`, after a confirmation that says they lose it.
+
 ## Entries
 
 The bot chat's toolbar, the Bots home row and tile menus (outside the edit-only group, which

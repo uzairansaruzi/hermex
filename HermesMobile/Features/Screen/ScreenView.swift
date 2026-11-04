@@ -12,6 +12,7 @@ struct ScreenView: View {
     @State private var session: ScreenSession
     @State private var isTyping = false
     @State private var isConfirmingForce = false
+    @State private var isConfirmingStop = false
     /// Direct touch or the trackpad panel, remembered per server.
     @AppStorage private var usesTrackpad: Bool
     /// Tells the entries the host has no screen at all, so they hide.
@@ -42,7 +43,7 @@ struct ScreenView: View {
             // Control Center and banners (`.inactive`) keep the stream, as they keep the gateway.
             switch scenePhase {
             case .background: session.suspend()
-            case .active where session.phase != .live: session.open()
+            case .active: session.returnToForeground()
             default: break
             }
         }
@@ -77,6 +78,14 @@ struct ScreenView: View {
                           systemImage: isTyping ? "keyboard.chevron.compact.down" : "keyboard")
                 }
             }
+        } else if session.phase == .live {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("Stop Screen", systemImage: "stop", role: .destructive) { isConfirmingStop = true }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                }
+            }
         }
     }
 
@@ -87,7 +96,33 @@ struct ScreenView: View {
         case .connecting, .live, .reconnecting:
             live
         case .stopped:
-            ScreenNotice(title: "Screen is off", message: "This bot's screen isn't running.") { checkAgain }
+            ScreenNotice(title: "Screen is off",
+                         message: "Starting it uses about 1.5 GB of memory on the host. It stops after 30 minutes unused.") {
+                Button("Start Screen") { session.start() }
+                    .buttonStyle(.borderedProminent)
+            }
+        case .starting:
+            ScreenNotice(title: "Starting the screen", message: "This takes a few seconds. You can leave and come back.") { EmptyView() }
+        case .blocked(let reason):
+            // The host's own words: too little memory, or a sandbox image with no desktop.
+            ScreenNotice(title: "This screen can't start", detail: reason) { checkAgain }
+        case .needsPackages(let command):
+            ScreenNotice(title: "Install the desktop on this host",
+                         message: command == nil
+                             ? "This Linux host needs a few packages, and has no package manager Hermes knows."
+                             : "This Linux host needs a few packages. Run this on the host:") {
+                if let command {
+                    Text(verbatim: command)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    Button("Copy Command") { UIPasteboard.general.string = command }
+                        .buttonStyle(.bordered)
+                }
+                checkAgain
+            }
         case .unsupported:
             ScreenNotice(title: "No screen on this host", message: "This host can't run a bot desktop.") { EmptyView() }
         case .unavailable:
@@ -211,6 +246,15 @@ struct ScreenView: View {
         } message: {
             Text("They lose control at once, and the bot carries on.")
         }
+        .confirmationDialog("Stop this screen?", isPresented: $isConfirmingStop, titleVisibility: .visible) {
+            Button("Stop Screen", role: .destructive) { session.stopScreen(force: session.control == .other) }
+        } message: {
+            if session.control == .other {
+                Text("Someone holds this screen. They lose it at once, and everything open on it closes.")
+            } else {
+                Text("Everything open on it closes, and the bot's next action that needs it starts it again.")
+            }
+        }
     }
 
     private var noticeText: LocalizedStringKey? {
@@ -221,6 +265,7 @@ struct ScreenView: View {
         case .takeOverFailed: return "Couldn't take over. Check the connection and try again."
         case .handBackFailed: return "Couldn't hand back, so the bot stays paused. You can try again from Bots."
         case .forceFailed: return "Couldn't hand back. Check the connection and try again."
+        case .stopFailed: return "Couldn't stop the screen. Check the connection and try again."
         case nil: return nil
         }
     }
@@ -279,6 +324,8 @@ struct ScreenView: View {
 private struct ScreenNotice<Actions: View>: View {
     let title: LocalizedStringKey
     var message: LocalizedStringKey?
+    /// The host's words, which are never a catalog key.
+    var detail: String?
     @ViewBuilder let actions: Actions
 
     var body: some View {
@@ -286,6 +333,9 @@ private struct ScreenNotice<Actions: View>: View {
             Text(title).font(.title3.weight(.semibold))
             if let message {
                 Text(message).font(.subheadline).foregroundStyle(.secondary)
+            }
+            if let detail {
+                Text(verbatim: detail).font(.subheadline).foregroundStyle(.secondary)
             }
             actions.padding(.top, 8)
         }

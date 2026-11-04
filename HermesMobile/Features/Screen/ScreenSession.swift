@@ -23,21 +23,43 @@ enum BotScreenSettings {
 struct ScreenCallFailure: Error, Equatable {
     let code: Int
     let refusal: String?
+    /// The host's own words, which say why a start was refused.
+    var message: String?
 }
 
 /// `display.status`, read tolerantly: `display.observe` carries the same fields.
 struct ScreenStatus: Equatable {
     let supported: Bool
+    let installed: Bool
     let running: Bool
+    /// Why it can't start now: too little memory, or a sandbox image with no desktop.
+    let blocker: String?
+    /// What installs the desktop on this host, as the user would type it there.
+    let installCommand: String?
     let lease: ScreenLease
     /// Names this screen in the `display.lease` event, which reaches every attached client.
     let profileKey: String?
 
     init(_ json: BotJSON) {
         supported = json["supported"].flag ?? false
+        // A host that omits it has shown no sign of lacking anything.
+        installed = json["installed"].flag ?? true
         running = json["running"].flag ?? false
+        blocker = json["blocker"].text?.nonEmptyTrimmed
+        installCommand = json["install_command"].text?.nonEmptyTrimmed
         lease = ScreenLease(json["lease"])
         profileKey = json["profile_key"].text
+    }
+}
+
+extension ScreenStatus {
+    /// What a screen that isn't running shows. The host's blocker comes first: a sandbox missing
+    /// its desktop image reports that as well as the missing packages, and installing on the
+    /// host wouldn't fix it.
+    var settledPhase: ScreenSession.Phase {
+        if let blocker { return .blocked(blocker) }
+        if !installed { return .needsPackages(command: installCommand) }
+        return .stopped
     }
 }
 
@@ -80,6 +102,16 @@ enum ScreenSource {
     /// Clears any holder: the force Hand Back.
     func releaseAny(profile: String, client: BotClient) async throws -> ScreenLease {
         ScreenLease(try await client.call(.displayLeaseRelease(profile: profile, viewerID: nil))["lease"])
+    }
+
+    /// Starts the screen, returning once it's up.
+    func start(profile: String, client: BotClient) async throws {
+        _ = try await client.call(.displayStart(profile: profile))
+    }
+
+    /// Stops the screen. `force` is for one a person holds, which the host otherwise refuses.
+    func stop(profile: String, force: Bool, client: BotClient) async throws {
+        _ = try await client.call(.displayStop(profile: profile, force: force))
     }
 
     /// Releases `hold`, naming each id it may be under. The host answers success whether or not an
@@ -139,8 +171,14 @@ enum ScreenSource {
         case live
         /// The stream dropped. The last picture stays, dimmed, while this retries.
         case reconnecting
-        /// The screen isn't running.
+        /// The screen isn't running, and can start.
         case stopped
+        /// `display.start` is on its way.
+        case starting
+        /// The screen can't start, in the host's words.
+        case blocked(String)
+        /// The desktop packages are missing. The command is the host's, when it has a package manager.
+        case needsPackages(command: String?)
         /// The host answers `display.status` but can't run a screen.
         case unsupported
         /// The host has no `display.*` methods.
@@ -165,6 +203,7 @@ enum ScreenSource {
         case takeOverFailed
         case handBackFailed
         case forceFailed
+        case stopFailed
     }
 
     /// Tests script the socket and shorten the waits; production takes the defaults.
@@ -258,6 +297,15 @@ enum ScreenSource {
         idleTimer?.cancel()
         client.close()
         if phase == .live { set(.reconnecting) }
+        // Going to the background ended the call, so the state needs reading again on return.
+        if phase == .starting { set(.connecting) }
+    }
+
+    /// The app came back to the front, from the background or just Control Center. A live stream
+    /// and a Start still on its way carry on; anything else reads the state again.
+    func returnToForeground() {
+        guard phase != .live, phase != .starting else { return }
+        open()
     }
 
     /// The view closed. Any saved hold hands back, then this view's part of the socket ends. That
@@ -357,7 +405,11 @@ enum ScreenSource {
         guard owner == generation else { return }
         profileKey = status.profileKey
         guard status.supported else { throw ScreenStreamEnd.settled(.unsupported) }
-        guard status.running else { throw ScreenStreamEnd.settled(.stopped) }
+        guard status.running else {
+            // Stopping a screen ends its lease, so a hold from before that is over.
+            if hold != nil { settleLostHold(status.lease) } else { set(status.lease.holder == .human ? .other : .bot) }
+            throw ScreenStreamEnd.settled(status.settledPhase)
+        }
         let observed = try await source.observe(profile: profile, viewerID: nil, client: client)
         guard owner == generation else { return }
         viewerID = observed.viewerID
@@ -383,9 +435,7 @@ enum ScreenSource {
             return
         }
         guard let holder = hold.holder(of: lease) else {
-            // Handed back or taken while this iPhone was away, or an acquire that never landed.
-            forgetHold(notice: !hold.isConfirmed ? nil : lease.holder == .human ? .someoneTookOver : .returnedToBot,
-                       control: lease.holder == .human ? .other : .bot)
+            settleLostHold(lease)
             return
         }
         // This view's own input counts: the saved time only moves when the app leaves the foreground.
@@ -404,6 +454,14 @@ enum ScreenSource {
         lastInput = last
         set(.mine)
         startIdleTimer()
+    }
+
+    /// A saved hold the host doesn't show: handed back or taken while this iPhone was away, or an
+    /// acquire that never landed, which goes quietly. A hold it does show stays for the next read.
+    private func settleLostHold(_ lease: ScreenLease) {
+        guard let hold, hold.holder(of: lease) == nil else { return }
+        forgetHold(notice: !hold.isConfirmed ? nil : lease.holder == .human ? .someoneTookOver : .returnedToBot,
+                   control: lease.holder == .human ? .other : .bot)
     }
 
     private func deliver(_ image: CGImage, _ owner: Int) {
@@ -426,6 +484,51 @@ enum ScreenSource {
         let wait = Task { _ = try? await Task.sleep(for: duration) }
         self.wait = wait
         await withTaskCancellationHandler { await wait.value } onCancel: { wait.cancel() }
+    }
+
+    // MARK: - Start and stop
+
+    /// Starts the screen, then streams it. A refusal shows the host's reason.
+    func start() {
+        stopStream()
+        set(.starting)
+        let owner = generation
+        stream = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.client.connect()
+                try await self.source.start(profile: self.profile, client: self.client)
+                guard owner == self.generation else { return }
+                self.open()
+            } catch let failure as ScreenCallFailure where failure.code == 5300 {
+                guard owner == self.generation else { return }
+                self.set(failure.message?.nonEmptyTrimmed.map(Phase.blocked) ?? .failed)
+            } catch {
+                guard owner == self.generation else { return }
+                self.set(.failed)
+            }
+        }
+    }
+
+    /// Stops the screen. Only offered to someone not holding it, and `force` overrides another
+    /// person's takeover, which the view confirms first.
+    func stopScreen(force: Bool) {
+        stopStream()
+        notice = nil
+        let owner = generation
+        stream = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.client.connect()
+                try await self.source.stop(profile: self.profile, force: force, client: self.client)
+                guard owner == self.generation else { return }
+                self.open()
+            } catch {
+                guard owner == self.generation else { return }
+                self.notice = .stopFailed
+                self.open()
+            }
+        }
     }
 
     // MARK: - Control
@@ -701,5 +804,12 @@ private enum ScreenStreamOutcome {
             // A sign-in the host refused or a socket it won't upgrade doesn't heal on its own.
             self = BotConnectionAdvice.isRetryable(error) ? .retry : .settled(.failed)
         }
+    }
+}
+
+private extension String {
+    var nonEmptyTrimmed: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

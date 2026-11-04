@@ -53,6 +53,12 @@ enum HermesCall: Equatable, Sendable {
     /// only that holder release, so another person's takeover survives. It answers success either
     /// way, so read the lease. With no `viewerID` it clears any holder: the force Hand Back only.
     case displayLeaseRelease(profile: String, viewerID: String?)
+    /// Starts the screen and answers the status fields once it's up. It can wait 15 s or more for
+    /// the desktop. A refusal, such as too little memory, is 5300 with the host's message.
+    case displayStart(profile: String)
+    /// Stops the screen and answers the status fields plus `stopped`. Refused with
+    /// `viewer_mismatch` while a human holds it, unless `force`.
+    case displayStop(profile: String, force: Bool)
 
     // The canonical Bot Chat
     /// Finds the Profile's Bot Chat by its exact title, hidden rows included.
@@ -339,6 +345,8 @@ enum HermesCall: Equatable, Sendable {
         case .displayObserve: return "display.observe"
         case .displayLeaseAcquire: return "display.lease.acquire"
         case .displayLeaseRelease: return "display.lease.release"
+        case .displayStart: return "display.start"
+        case .displayStop: return "display.stop"
         case .promptSubmit, .promptRewind: return "prompt.submit"
         case .sessionSteer: return "session.steer"
         case .sessionRedirect: return "session.redirect"
@@ -410,7 +418,10 @@ enum HermesCall: Equatable, Sendable {
         case .sessionDraft(let profile):
             return ["profile": .string(profile), "hidden": .bool(true), "follow_profile_config": .bool(true),
                     "close_on_disconnect": .bool(true), "source": .string(Self.source)]
-        case .sessionMostRecent(let profile), .displayStatus(let profile): return ["profile": .string(profile)]
+        case .sessionMostRecent(let profile), .displayStatus(let profile), .displayStart(let profile):
+            return ["profile": .string(profile)]
+        case .displayStop(let profile, let force):
+            return force ? ["profile": .string(profile), "force": .bool(true)] : ["profile": .string(profile)]
         case .displayObserve(let profile, let viewerID):
             var params: [String: BotJSON] = ["profile": .string(profile)]
             if let viewerID { params["viewer_id"] = .string(viewerID) }
@@ -617,7 +628,8 @@ enum HermesCall: Equatable, Sendable {
             valid = !runtime.isEmpty && name.map(Self.isBlank) != true && (count ?? 1) > 0
         case .sessionWorkspaceMove(let profile, let storedKey, let cwd):
             valid = !profile.isEmpty && !storedKey.isEmpty && !Self.isBlank(cwd)
-        case .projectsTree(let profile), .displayStatus(let profile): valid = !profile.isEmpty
+        case .projectsTree(let profile), .displayStatus(let profile), .displayStart(let profile), .displayStop(let profile, _):
+            valid = !profile.isEmpty
         case .displayObserve(let profile, let viewerID), .displayLeaseRelease(let profile, let viewerID):
             valid = !profile.isEmpty && viewerID?.isEmpty != true
         case .displayLeaseAcquire(let profile, let viewerID): valid = !profile.isEmpty && !viewerID.isEmpty

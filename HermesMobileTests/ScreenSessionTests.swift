@@ -203,6 +203,117 @@ import XCTest
         }
     }
 
+    // MARK: - Start and stop
+
+    /// `Start Screen`, then the stream, with the status re-read in between.
+    func testStartingAStoppedScreenStreamsIt() async throws {
+        host.next("display.status", .init(result: screen(running: false)))
+        host.always("display.status", .init(result: screen()))
+        host.always("display.observe", .init(result: screen()))
+        host.always("display.start", .init(result: screen()))
+        let session = makeSession()
+        session.open()
+        await reach(.stopped, on: session)
+        session.start()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        XCTAssertEqual(requests("display.start").first?["params"]["profile"].text, "work")
+        session.leave()
+    }
+
+    /// Control Center comes back without having interrupted anything, so a Start carries on.
+    func testReturningToTheForegroundDoesNotInterruptAStart() async throws {
+        host.next("display.status", .init(result: screen(running: false)))
+        host.always("display.status", .init(result: screen()))
+        host.always("display.observe", .init(result: screen()))
+        host.withhold("display.start")
+        let session = makeSession()
+        session.open()
+        await reach(.stopped, on: session)
+        let sent = expectation(description: "start sent")
+        host.expect(sent, onNext: "display.start")
+        session.start()
+        await fulfillment(of: [sent], timeout: 5)
+        session.returnToForeground()
+        XCTAssertEqual(session.phase, .starting)
+        XCTAssertEqual(requests("display.status").count, 1)
+        session.leave()
+    }
+
+    /// A refused start says why in the host's words, in place of Start.
+    func testARefusedStartShowsTheHostsReason() async {
+        host.always("display.status", .init(result: screen(running: false)))
+        host.always("display.start", .init(error: 5300, message: "Not enough free memory for a desktop"))
+        let session = makeSession()
+        session.open()
+        await reach(.stopped, on: session)
+        session.start()
+        await reach(.blocked("Not enough free memory for a desktop"), on: session)
+        session.leave()
+    }
+
+    /// A sandbox short of its image reports a blocker as well as missing packages, and installing
+    /// on the host wouldn't help, so the blocker wins.
+    func testAScreenThatCantStartShowsItsBlockerThenItsMissingPackages() {
+        let both = ScreenStatus(.object(["supported": .bool(true), "installed": .bool(false), "running": .bool(false),
+                                         "blocker": .string("The sandbox lacks Xvnc"), "install_command": .string("sudo apt-get install")]))
+        XCTAssertEqual(both.settledPhase, .blocked("The sandbox lacks Xvnc"))
+        let missing = ScreenStatus(.object(["supported": .bool(true), "installed": .bool(false), "running": .bool(false),
+                                            "install_command": .string("sudo apt-get install")]))
+        XCTAssertEqual(missing.settledPhase, .needsPackages(command: "sudo apt-get install"))
+    }
+
+    /// Force only when someone else holds it: the host refuses a plain stop then.
+    func testStoppingAScreenAsksForForceOnlyOverAnotherPerson() async throws {
+        standUp()
+        host.always("display.stop", .init(result: screen(running: false)))
+        let session = makeSession()
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        host.always("display.status", .init(result: screen(running: false)))
+        session.stopScreen(force: false)
+        await reach(.stopped, on: session)
+        XCTAssertEqual(requests("display.stop").last?["params"]["force"], .null)
+        session.stopScreen(force: true)
+        while requests("display.stop").count < 2 { await Task.yield() }
+        XCTAssertEqual(requests("display.stop").last?["params"]["force"].flag, true)
+        session.leave()
+    }
+
+    /// A stop the host refused says so, and a retry that works clears that.
+    func testARefusedStopReportsItAndARetryClearsIt() async {
+        standUp()
+        let session = makeSession()
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        host.next("display.stop", .init(error: 5300))
+        session.stopScreen(force: false)
+        while session.notice == nil { await Task.yield() }
+        XCTAssertEqual(session.notice, .stopFailed)
+
+        host.always("display.stop", .init(result: screen(running: false)))
+        host.always("display.status", .init(result: screen(running: false)))
+        session.stopScreen(force: false)
+        await reach(.stopped, on: session)
+        XCTAssertNil(session.notice)
+        session.leave()
+    }
+
+    /// Stopping a screen ends its lease, so a hold from before that is over, and says so.
+    func testAScreenStoppedElsewhereEndsTheHold() async {
+        let session = await holding()
+        host.always("display.status", .init(result: screen(running: false)))
+        await socket(0).end(code: 4001)
+        await reach(.stopped, on: session)
+        session.open()
+        await reach(.bot, on: session)
+        XCTAssertEqual(session.notice, .returnedToBot)
+        XCTAssertNil(holds.hold(server: server, profile: "work"))
+        session.leave()
+    }
+
     // MARK: - Control
 
     func testTakeOverAcquiresWithTheMintedIDAndSavesIt() async throws {

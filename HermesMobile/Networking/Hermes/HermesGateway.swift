@@ -450,7 +450,8 @@ import OSLog
                 entry.continuation.resume(throwing: BotSettingFailure.rejected(
                     code, frame["error"]["message"].text ?? BotFailure.rejected(code).localizedDescription))
             case .screen:
-                entry.continuation.resume(throwing: ScreenCallFailure(code: code, refusal: frame["error"]["data"]["code"].text))
+                entry.continuation.resume(throwing: ScreenCallFailure(
+                    code: code, refusal: frame["error"]["data"]["code"].text, message: frame["error"]["message"].text))
             case .plain:
                 entry.continuation.resume(throwing: BotFailure.rejected(code))
             }
@@ -536,7 +537,8 @@ private extension HermesCall {
         switch self {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
-             .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease: return true
+             .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
+             .displayStart, .displayStop: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }
@@ -547,12 +549,13 @@ private extension HermesCall {
     /// model for its summary, so `session.compress` (#1050) waits as long as Desktop does
     /// (`SESSION_COMPRESS_TIMEOUT_MS`), past the host's own 630 s cap. A commit message (#1115)
     /// waits the two minutes webui's does: the host gives its model call 60 s, on a cold tunnel.
-    /// An approval summary is optional, so it gives up after 20 s at most.
+    /// An approval summary is optional, so it gives up after 20 s at most. Starting a screen can
+    /// take a sandbox's container as well as a desktop, so `display.start` waits two minutes.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
         case .slashExec: return standard * 2
         case .approvalSummary: return min(standard, .seconds(20))
-        case .commitMessage: return .seconds(120)
+        case .commitMessage, .displayStart: return .seconds(120)
         case .sessionCompress: return .seconds(660)
         default: return standard
         }
