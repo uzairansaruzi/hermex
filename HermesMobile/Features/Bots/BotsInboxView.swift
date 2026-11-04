@@ -51,6 +51,8 @@ import SwiftUI
     @State private var hostLacksScreen = false
     /// The server's Bot Screen switch.
     @AppStorage private var isScreenEnabled: Bool
+    /// The Profiles whose screen this iPhone still holds, for the banner.
+    @State private var heldScreens: [String] = []
 
     init(
         server: URL,
@@ -82,11 +84,14 @@ import SwiftUI
         let toasted = navigationSurface
             .focusedSceneValue(\.hermexSceneActions, sceneActions)
             .fullScreenCover(item: $screenTarget) { target in
-                ScreenView(profile: target.profile, server: server, connection: target.connection) {
+                ScreenView(profile: target.profile, title: target.profile.name, server: server, connection: target.connection) {
                     hostLacksScreen = true
                 }
             }
             .onChange(of: isScreenEnabled) { if !isScreenEnabled { screenTarget = nil } }
+            .onChange(of: ScreenHoldStore.shared.revision, initial: true) {
+                heldScreens = ScreenHoldStore.shared.holds(server: server).keys.sorted()
+            }
             .overlay(alignment: .bottom) {
                 if let toast {
                     Text(toast).font(.callout).padding()
@@ -161,6 +166,12 @@ import SwiftUI
     private var list: some View {
         List {
             homeHeader
+            // Not gated on the switch: a hand-back that failed as it was turned off still needs a way out.
+            if let connection = inbox.connection {
+                ForEach(heldScreens, id: \.self) { profile in
+                    heldScreenRow(profile, connection)
+                }
+            }
             if inbox.connection != nil {
                 if let message = inbox.errorMessage ?? inbox.routeAdvice {
                     Text(message).font(.callout)
@@ -508,6 +519,28 @@ import SwiftUI
         )
     }
 
+    /// A takeover that outlived its Screen view: the bot stays paused until someone hands back, so
+    /// it stays in sight here. The name opens the Screen.
+    private func heldScreenRow(_ profile: String, _ connection: BotConnection) -> some View {
+        let bot = inbox.profiles.first { $0.id == profile }
+        return HStack {
+            Button {
+                if let bot { openScreen(bot) }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: bot?.name ?? profile).font(.headline)
+                    Text("You hold its screen").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button("Hand Back") {
+                Task { await ScreenHolds.handBack(profile: profile, server: server, connection: connection) }
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
     /// Whether the entries to a bot's Screen show: the server's switch is on, and the host hasn't
     /// answered that it has no such method.
     private var canOpenScreen: Bool {
@@ -739,6 +772,7 @@ extension BotsInboxView {
             .task(id: revision) {
                 inbox.offlineCache = modelContext
                 await inbox.open(); hasSettled = true; openPendingDestination()
+                if let connection = inbox.connection { await ScreenHolds.reconcile(server: server, connection: connection) }
             }
             .onChange(of: inbox.link) { openPendingDestination() }
             .onChange(of: pendingDestination) { openPendingDestination() }

@@ -43,6 +43,57 @@ Codespace, over loopback and through its public address.
   It never sent gradient or plain zlib rectangles there, so those are tested on hand-built bytes.
 - A screen stops after `bot_desktop.idle_stop_minutes` (30) with no viewer attached.
 
+## Control
+
+`ScreenSession` owns who controls the screen. A takeover survives anything but a deliberate end,
+because upstream treats a clean socket close as a hand-back and a dropped one as "the human keeps
+control", and a bot resuming into a half-typed login is the failure to avoid.
+
+| Event while holding | Result | How |
+| --- | --- | --- |
+| Switch apps or lock the phone | Control stays, the stream stops | `suspend()`. `NativeRFBSocket.close` always sends 1011, never 1000 or 1001 |
+| Connection lost | Control stays, the view retries | Backoff of 1, 2, 4, 8, 16, then 30 s |
+| Return to the app | Control resumes with no prompt | A new socket mints a new viewer id. If the lease's hash matches the saved id, `display.lease.acquire` under the new one |
+| Close the Screen | Hands back | `leave()`. The button says Hand Back while holding, and a failed hand-back also offers ✕, or a dead link would trap the user |
+| Hand Back button | Hands back and stays, watching | `handBack()` |
+| Switch servers, sign out, remove the server | Hands back | `ScreenHolds.handBackAll`, on a connection of its own so the tree's rebuild can't cut it off |
+| Bot Screen switch off | Hands back, hides the feature | The same call |
+| Another person takes over | Last wins, this viewer watches | Close code 4000 |
+| 15 minutes with no input | Hands back | "Still there?" at 14. With the app away, a local notice, then `settleControl` or `ScreenHolds.reconcile` when it next runs |
+| App killed and never reopened | The bot stays blocked | A stock lease never expires. Force Hand Back from any client, or `hermes computer-use screen stop --force` |
+
+- The raw viewer id is a capability, so it lives in the Keychain (`ScreenHoldStore`), per server
+  and Profile. The app compares `viewer_hash` against the first 12 hex characters of its SHA-256.
+  It is saved before each acquire goes out, because a phone can suspend after the host took the
+  lease and before the reply.
+- Every hand-back names the saved id with `force: true`. `force` only skips the check that this
+  connection minted the id; with an id, the host still releases only if that id holds, so it
+  can't revoke another person's takeover. It answers success either way, so a hand-back counts
+  only when the returned lease says this id no longer holds. `force` with no id clears any holder,
+  and only the force Hand Back action sends that.
+- Retaking control on return can race another person's takeover, because stock hosts have no
+  conditional acquire. v1 accepts that window.
+- A takeover this iPhone still holds shows on the Bots home (`heldScreenRow`), which is also where
+  a hand-back that failed can be retried.
+
+Both public proxies were checked with a holder's stream ending three ways, reading the lease 15 s
+later. A TCP reset and a 1011 close kept control, and only a clean 1000 handed back, through a
+Codespace's public address and a Cloudflare quick tunnel alike.
+
+## Input
+
+Input goes out only while this iPhone holds control and a stream is up; nothing queues across a
+reconnect. `ScreenInputQueue` replaces a waiting pointer move and sends what piled up as one frame.
+
+- Direct touch: tap clicks, hold right-clicks, two fingers scroll, pinch zooms, one finger pans.
+- Trackpad panel: swipe moves, tap clicks, hold drags, two fingers scroll or right-click. The
+  choice is per server (`BotScreenSettings.trackpadKey`).
+- The iOS keyboard goes through `ScreenKeyField`, which stays empty so nothing typed is kept on the
+  phone. Paste and password AutoFill arrive as text and go out a key at a time, so stock hosts
+  never need ClientCutText.
+- Modifiers from the key row latch and wrap only the next key or click, so none can stay down on
+  the host. A hardware keyboard passes through as it happens (`ScreenHardwareKeys`).
+
 ## Entries
 
 The bot chat's toolbar, the Bots home row and tile menus (outside the edit-only group, which

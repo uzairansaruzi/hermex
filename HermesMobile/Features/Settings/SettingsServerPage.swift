@@ -411,8 +411,10 @@ private struct MoveToHermesRequest: Identifiable {
 /// The per-server "Bot Screen (beta)" switch (#1567), off by default.
 private struct BotScreenToggleSection: View {
     @AppStorage private var isEnabled: Bool
+    private let server: URL
 
     init(server: URL) {
+        self.server = server
         _isEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
 
@@ -423,6 +425,10 @@ private struct BotScreenToggleSection: View {
             }
         } footer: {
             Text("Watch and control this host's screen. Anyone with this server's login could do the same.")
+        }
+        // Turning it off also hands back any control, since nothing would show that it's held.
+        .onChange(of: isEnabled) {
+            if !isEnabled { Task { await ScreenHolds.handBackAll(server: server) } }
         }
     }
 }

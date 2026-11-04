@@ -18,6 +18,7 @@ protocol RFBSocket: Sendable {
     func send(_ data: Data) async throws
     /// Sends one ping frame and returns when its pong arrives.
     func ping() async throws
+    /// Closes the socket as a dropped link would, leaving any takeover in place.
     func close()
 }
 
@@ -63,6 +64,11 @@ actor RFBClient {
             }
             try await group.next()
         }
+    }
+
+    /// Sends input the session has batched.
+    func send(_ data: Data) async throws {
+        try await socket.send(data)
     }
 
     private func read() async throws {
@@ -145,7 +151,11 @@ struct NativeRFBSocket: RFBSocket {
         }
     }
 
+    /// Never a clean close. The host hands back when the holder's stream closes with 1000 or 1001,
+    /// and only an explicit `display.lease.release` should do that, so leaving for a 2FA code keeps
+    /// control. 1011 is a code the protocol allows an endpoint to send, and the host reads it as
+    /// a dropped link.
     func close() {
-        task.cancel(with: .normalClosure, reason: nil)
+        task.cancel(with: .internalServerError, reason: nil)
     }
 }

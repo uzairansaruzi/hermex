@@ -536,7 +536,7 @@ private extension HermesCall {
         switch self {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
-             .approvalSummary, .displayStatus, .displayObserve: return true
+             .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }

@@ -518,6 +518,7 @@ final class AuthManager {
             return
         }
 
+        await ScreenHolds.handBackAll(server: active)
         if kind(of: active) == .hermes {
             try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
             await ChatDraftStore.shared.discardBotDrafts(server: active)
@@ -554,6 +555,7 @@ final class AuthManager {
         defer { removingServerIDs.remove(account.id) }
         limitsPublisher.invalidate(server: serverURL)
         dropStaleMoveSheets()
+        await ScreenHolds.handBackAll(server: serverURL)
         // A move committed during the awaits below leaves an orphan journal, which `MoveToHermesPending.all` deletes.
         let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
@@ -589,6 +591,8 @@ final class AuthManager {
         guard account.id != state.server?.absoluteString,
               let serverURL = URL(string: account.urlString) else { return }
 
+        // On a connection of its own, so the logged-in tree's rebuild can't cut it off.
+        if let departing = state.server { Task { await ScreenHolds.handBackAll(server: departing) } }
         serverRegistry.setActive(id: account.id)
         refreshServers()
         try? keychain.save(serverURL.absoluteString, forKey: .serverURL)
@@ -663,6 +667,7 @@ final class AuthManager {
     /// the Profile that list last read, its favorite and recent models, and its Bot Screen switch.
     private func removeBotConnection(for server: URL) {
         BotScreenSettings.remove(for: server, in: preferences)
+        ScreenHoldStore(keychain: keychain).removeAll(server: server)
         ModelFavoritesStore.remove(for: server, in: preferences)
         ModelRecentsStore.remove(for: server, in: preferences)
         HermesProfilePreference.save(nil, for: server, in: preferences)

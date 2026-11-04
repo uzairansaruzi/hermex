@@ -39,6 +39,8 @@ final class BotSocketHost: @unchecked Sendable {
     /// Leaves every later `method` call unanswered, as a reply the socket lost; it is still
     /// logged.
     func withhold(_ method: String) { lock.withLock { _ = withheld.insert(method) } }
+    /// Answers `method` again after `withhold`.
+    func allow(_ method: String) { lock.withLock { _ = withheld.remove(method) } }
     /// Opens the next socket without `gateway.ready`, as a host stalled mid-handshake, and
     /// fulfills `opened` as it opens.
     func stallReady(_ opened: XCTestExpectation) { lock.withLock { stalledOpen = opened } }

@@ -686,6 +686,9 @@
 		CFA1B013C7784C249E72A5DE /* ScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AB42AA714B106DA5BF543C /* ScreenView.swift */; };
 		3C47C99D373EDF30CDEAAED1 /* RFBDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */; };
 		FD6887A5B7CABFF85B74F360 /* ScreenSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */; };
+		D54C4191484B7E0927A7C9BD /* ScreenControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28ED07BACC5D9828A7439134 /* ScreenControl.swift */; };
+		D5D7BC7A9A48E1E101C20E93 /* ScreenInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2900E77AEE7D9DEBC0288D /* ScreenInput.swift */; };
+		79EEC8486030DA04A092D557 /* ScreenCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE62D4ED7F12CB894C054390 /* ScreenCanvas.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1411,6 +1414,9 @@
 		43AB42AA714B106DA5BF543C /* ScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenView.swift"; sourceTree = "<group>"; };
 		642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFBDecoderTests.swift; sourceTree = "<group>"; };
 		4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenSessionTests.swift; sourceTree = "<group>"; };
+		28ED07BACC5D9828A7439134 /* ScreenControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenControl.swift"; sourceTree = "<group>"; };
+		3E2900E77AEE7D9DEBC0288D /* ScreenInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenInput.swift"; sourceTree = "<group>"; };
+		CE62D4ED7F12CB894C054390 /* ScreenCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenCanvas.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1889,6 +1895,9 @@
 		1A2B3C4D5E6F7000000000C3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				CE62D4ED7F12CB894C054390 /* ScreenCanvas.swift */,
+				3E2900E77AEE7D9DEBC0288D /* ScreenInput.swift */,
+				28ED07BACC5D9828A7439134 /* ScreenControl.swift */,
 				43AB42AA714B106DA5BF543C /* ScreenView.swift */,
 				344CB343107883F5E3398866 /* ScreenSession.swift */,
 				D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */,
@@ -2635,6 +2644,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				79EEC8486030DA04A092D557 /* ScreenCanvas.swift in Sources */,
+				D5D7BC7A9A48E1E101C20E93 /* ScreenInput.swift in Sources */,
+				D54C4191484B7E0927A7C9BD /* ScreenControl.swift in Sources */,
 				CFA1B013C7784C249E72A5DE /* ScreenView.swift in Sources */,
 				284C1405D843B63B8A2360CA /* ScreenSession.swift in Sources */,
 				FC264D031B2CAEDB4AF53C1D /* RFBClient.swift in Sources */,
