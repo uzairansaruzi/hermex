@@ -449,6 +449,9 @@ import OSLog
             case .setting:
                 entry.continuation.resume(throwing: BotSettingFailure.rejected(
                     code, frame["error"]["message"].text ?? BotFailure.rejected(code).localizedDescription))
+            case .screen:
+                entry.continuation.resume(throwing: ScreenCallFailure(
+                    code: code, refusal: frame["error"]["data"]["code"].text, message: frame["error"]["message"].text))
             case .plain:
                 entry.continuation.resume(throwing: BotFailure.rejected(code))
             }
@@ -512,7 +515,7 @@ import OSLog
 
 /// How the socket treats each request once it is on the wire.
 private extension HermesCall {
-    enum Rejection { case plain, room, setting }
+    enum Rejection { case plain, room, setting, screen }
 
     /// Reads and uploads that never control agent execution. Cancelling one
     /// discards its late reply; cancelling any other call ends its screen's part,
@@ -521,7 +524,7 @@ private extension HermesCall {
         switch self {
         case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
              .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
-             .commitMessage, .approvalSummary: return true
+             .commitMessage, .approvalSummary, .displayStatus, .displayObserve: return true
         default: return false
         }
     }
@@ -534,7 +537,8 @@ private extension HermesCall {
         switch self {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
-             .approvalSummary: return true
+             .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
+             .displayStart, .displayStop: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }
@@ -545,12 +549,13 @@ private extension HermesCall {
     /// model for its summary, so `session.compress` (#1050) waits as long as Desktop does
     /// (`SESSION_COMPRESS_TIMEOUT_MS`), past the host's own 630 s cap. A commit message (#1115)
     /// waits the two minutes webui's does: the host gives its model call 60 s, on a cold tunnel.
-    /// An approval summary is optional, so it gives up after 20 s at most.
+    /// An approval summary is optional, so it gives up after 20 s at most. Starting a screen can
+    /// take a sandbox's container as well as a desktop, so `display.start` waits two minutes.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
         case .slashExec: return standard * 2
         case .approvalSummary: return min(standard, .seconds(20))
-        case .commitMessage: return .seconds(120)
+        case .commitMessage, .displayStart: return .seconds(120)
         case .sessionCompress: return .seconds(660)
         default: return standard
         }
@@ -566,6 +571,7 @@ private extension HermesCall {
     /// and a refused branch, whose 5008 message names the session using its name (#1051).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
+        if method.hasPrefix("display.") { return .screen }
         switch self {
         case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .profileModelOptions,
              .sessionControlRead: return .setting

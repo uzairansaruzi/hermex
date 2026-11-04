@@ -575,6 +575,21 @@ final class AuthManagerStateTests: XCTestCase {
     private let hermesServer = URL(string: "https://hermes.example")!
     private let webuiServer = URL(string: "https://a.test")!
 
+    /// Each way the active server changes hands back the Bot Screen holds on the one being left.
+    func testAddingOrSwitchingServersHandsBackTheDepartingServersScreens() async throws {
+        let manager = try await makeHermesManager()
+        var handedBack: [URL] = []
+        manager.handBackScreenHolds = { handedBack.append($0) }
+        let next = URL(string: "https://next.test")!
+        XCTAssertTrue(manager.addHermesServer(BotConnection(id: UUID(), name: "Next", address: next, username: "me",
+                                                            password: "secret", hermesVersion: "0.21.5")))
+        XCTAssertEqual(handedBack, [hermesServer])
+
+        let account = try XCTUnwrap(manager.servers.first { $0.id == hermesServer.absoluteString })
+        manager.switchActiveServer(to: account)
+        XCTAssertEqual(handedBack, [hermesServer, next])
+    }
+
     private func hermesRecord(password: String = "secret") -> BotConnection {
         BotConnection(id: UUID(), name: "Studio", address: hermesServer, username: "me", password: password,
                       hermesVersion: "0.21.5")

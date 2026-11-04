@@ -167,3 +167,9 @@ _Avoid_: chat target, session kind
 **Turn identity**:
 Which run a chat is following: a webui stream id, or for a Hermes session its stored key and the host's `turn_started_at`. A Hermes turn ends once `message.complete` and `session.info {running: false}` have both arrived.
 _Avoid_: stream id (for a Hermes turn), run id
+
+## Screen
+
+**Screen**:
+The place a bot's `computer_use` acts, shown live in the app: on Linux the bot's own virtual desktop, on Mac and Windows the real logged-in desktop. See `docs/agents/screen.md`.
+_Avoid_: Bot Desktop (except for Linux's kind of Screen), remote desktop, VNC (in copy)

@@ -57,7 +57,8 @@ At the pin (0.22.5, `bf0203a7`) the gateway contract has 258 methods and `Hermes
 | Billing | `billing.*`, `subscription.*`, `free_tier.*`, `usage.bars` | n-a | Nous account billing. |
 | Diagnostics | `diagnostics.share_nous`, `session.events.stats` | n-a | Uploads a debug bundle; replay-buffer telemetry. |
 | Reloads | `reload.env`, `reload.mcp` | n-a | Host administration that resets live sessions. |
-| Desktop and terminal | `browser.*`, `display.*`, `clipboard.paste`, `paste.collapse`, `input.detect_drop`, `terminal.resize`, `system.battery`, `preview.restart`, `pet.*`, `wake.*`, `voice.record`, `voice.toggle` | n-a | Host screen, microphone, terminal or desktop UI. |
+| Bot Screen | `display.status`, `display.observe`, `display.lease.acquire`, `display.lease.release`, `display.start`, `display.stop` | covered | `docs/agents/screen.md` (#1567). Behind the per-server Bot Screen switch. `display.install` and `display.thumbnail` stay unused. |
+| Desktop and terminal | `browser.*`, `clipboard.paste`, `paste.collapse`, `input.detect_drop`, `terminal.resize`, `system.battery`, `preview.restart`, `pet.*`, `wake.*`, `voice.record`, `voice.toggle` | n-a | Host screen, microphone, terminal or desktop UI. |
 | Host setup | `onboarding.*`, `setup.*` | n-a | First-run setup on the host. |
 | Desktop telemetry and locale | `shared_metrics.*`, `i18n.*`, `machine.facts` | n-a | Desktop's usage metrics, its string catalog and the host's hardware facts. |
 | Foreign sessions | `session.foreign.*` | n-a | Claude Code and Codex sessions on the host. |

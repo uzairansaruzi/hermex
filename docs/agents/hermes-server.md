@@ -539,6 +539,7 @@ describe RPC, and `gateway.ready` lists no methods.
 | `groups.capabilities` | a capability missing | Rooms hide, or their writes turn off (`bots.md` § Group rooms). |
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "Plugin not found"}` | The plugin is off or not installed (`HermexPushPlugin.missingRoute`, Kanban). |
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "No such API endpoint: …"}` | The dashboard never mounted the plugin's routes: it is new on disk and the host needs a restart, or the host lacks it (`kanban.md`, Absent plugin). |
+| `GET /api/plugins/hermex-screen/capabilities` | 200 / 404 `Plugin not found` / a catch-all 404 / 404 `Not Found` | Whether a host with no stock Bot Screen can show its real desktop, and what to offer if not (`HermexScreenPlugin.State`, `docs/agents/screen.md`). |
 | `GET /api/plugins/hermex-push/capabilities` | `{plugin_version, routes}` / any 404 | The companion routes the loaded plugin mounts / none, so the feature doesn't show (`bots.md` § Push provisioning). |
 | `GET /api/sessions/{id}/mutation-snapshot` | 200 / a catch-all 404 (`No such API endpoint`, or `serve`'s `Headless backend`) | The host fences session writes / it is older and takes them bare (§ Session write fence). |
 
