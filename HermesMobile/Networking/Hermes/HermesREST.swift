@@ -160,8 +160,8 @@ enum HermesREST: Equatable, Sendable {
     case removeEnvironment(key: String, profile: String)
     /// Installs an agent plugin, reinstalling over an existing copy. `ref` pins a full commit.
     case installPlugin(identifier: String, ref: String? = nil)
-    /// Deletes a plugin's folder. Hermes runs no plugin code first, and its routes stay mounted
-    /// until the next dashboard restart.
+    /// Deletes a plugin's folder, and Hermes runs no plugin code first. On 0.22.5 its routes answer
+    /// "Plugin not found" at once.
     case removePlugin(name: String)
     /// hermex-screen's mounted routes (#1567). A 404's body says why it's missing
     /// (`HermexScreenPlugin.State`).

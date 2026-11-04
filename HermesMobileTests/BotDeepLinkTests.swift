@@ -40,6 +40,17 @@ import XCTest
 
     /// A Hermes server is Bot UI throughout, so its links open with Bot Mode off; a webui
     /// server's stay dropped (#899).
+    /// A bot link can also open the bot's Screen, and an ordinary one doesn't.
+    func testAScreenLinkSurvivesTheRoundTrip() throws {
+        let id = UUID()
+        let server = URL(string: "https://hermes.example")!
+        let plain = BotDestination(server: server, connectionID: id, profile: "work")
+        XCTAssertEqual(try HermesDeepLink.botDestination(from: XCTUnwrap(HermesDeepLink.botURL(for: plain)))?.opensScreen, false)
+        var screen = plain
+        screen.opensScreen = true
+        XCTAssertEqual(try HermesDeepLink.botDestination(from: XCTUnwrap(HermesDeepLink.botURL(for: screen)))?.opensScreen, true)
+    }
+
     func testAHermesServersLinkOpensItEvenWithBotModeOff() throws {
         let hermes = try XCTUnwrap(URL(string: "http://127.0.0.1:9199"))
         let link = destination(server: hermes)

@@ -41,7 +41,7 @@ struct ScreenView: View {
                 .confirmationDialog("Remove the plugin from this host?", isPresented: $isConfirmingRemove, titleVisibility: .visible) {
                     Button("Remove", role: .destructive) { session.removePlugin() }
                 } message: {
-                    Text("Its routes stay mounted until the dashboard next restarts.")
+                    Text("This computer's screen stops being available in Hermex. You can install it again from here.")
                 }
         }
         .onAppear { session.open() }

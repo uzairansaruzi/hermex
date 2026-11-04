@@ -142,9 +142,10 @@ another client handed back.
 - Install sends `ref`, a full commit (`HermexScreenPlugin.pinnedCommit`), so a fix reaches normal
   users through an app update. Testers can install a newer commit from the command line.
 - "Check Again" only reads. Install, restart and remove each come from a confirmed tap.
-- Hermes runs no plugin code on removal, so the app hands back first. Routes stay mounted until the
-  next dashboard restart. If someone removes it another way, its leases stay held, `display.status`
-  still shows them, and the force Hand Back clears each Profile's stock lease.
+- Hermes runs no plugin code on removal, so the app hands back first. On 0.22.5 the routes answer
+  "Plugin not found" at once, and a reinstall hot-mounts again. If someone removes it another way,
+  its leases stay held, `display.status` still shows them, and the force Hand Back clears each
+  Profile's stock lease.
 
 **The driver is whatever Hermes resolves.** On 0.22.5 that's a pinned 0.21.0, which has the
 action-level `scope` this needs. A driver without it gets a plain explanation and no control. A

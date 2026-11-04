@@ -793,7 +793,7 @@ enum HermexScreenPlugin {
     }
 
     /// Hermes runs no plugin code on removal, so any hold has to go first, or it would stay held
-    /// with nothing left to end it. Its routes stay mounted until the dashboard next restarts.
+    /// with nothing left to end it.
     func removePlugin() {
         let hold = hold
         runPluginAction { [self] dashboard in
