@@ -9,6 +9,8 @@ struct HermexSceneActions {
     let openChat: (_ position: Int) -> Void
     /// Opens the chat `offset` rows from the selected one, wrapping at the ends.
     let openAdjacentChat: (_ offset: Int) -> Void
+    /// Opens the selected bot's Screen; nil while there is none to open.
+    var openScreen: (() -> Void)?
 }
 
 private struct HermexSceneActionsKey: FocusedValueKey {
@@ -46,6 +48,12 @@ struct HermexCommands: Commands {
             }
             .keyboardShortcut("f", modifiers: .command)
             .disabled(actions == nil)
+        }
+
+        CommandGroup(after: .sidebar) {
+            Button("Open Screen") { actions?.openScreen?() }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(actions?.openScreen == nil)
         }
 
         // View menu, beside Toggle Sidebar. ⌘⇧] and ⌘⇧[ back up ⌃Tab in case

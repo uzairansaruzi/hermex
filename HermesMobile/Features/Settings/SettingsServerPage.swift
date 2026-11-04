@@ -157,6 +157,8 @@ struct SettingsServerPage: View {
             }
         }
 
+        BotScreenToggleSection(server: server)
+
         if let hermesConnection {
             Section(String(localized: "Sessions")) {
                 NavigationLink {
@@ -404,4 +406,23 @@ private struct MoveToHermesSection: View {
 private struct MoveToHermesRequest: Identifiable {
     let entry: MoveToHermesEntry
     var id: String { "\(entry)" }
+}
+
+/// The per-server "Bot Screen (beta)" switch (#1567), off by default.
+private struct BotScreenToggleSection: View {
+    @AppStorage private var isEnabled: Bool
+
+    init(server: URL) {
+        _isEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
+    }
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $isEnabled) {
+                SettingsLabel(title: String(localized: "Bot Screen (beta)"), systemImage: "display")
+            }
+        } footer: {
+            Text("Watch and control this host's screen. Anyone with this server's login could do the same.")
+        }
+    }
 }

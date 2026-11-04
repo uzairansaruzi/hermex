@@ -680,6 +680,12 @@
 		131D47952016B290FA56B00F /* BotGeneratedAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */; };
 		FD3E09513D0737A13DCBCDB2 /* BotAvatarGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */; };
 		DC0447FD714D103048C79835 /* BotAvatarLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */; };
+		DAB1829DA684D7E566D41872 /* RFBDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21D8EAD32474C507B988C931 /* RFBDecoder.swift */; };
+		FC264D031B2CAEDB4AF53C1D /* RFBClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90089E89E3BEF3B1D16FFB12 /* RFBClient.swift */; };
+		284C1405D843B63B8A2360CA /* ScreenSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 344CB343107883F5E3398866 /* ScreenSession.swift */; };
+		CFA1B013C7784C249E72A5DE /* ScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AB42AA714B106DA5BF543C /* ScreenView.swift */; };
+		3C47C99D373EDF30CDEAAED1 /* RFBDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */; };
+		FD6887A5B7CABFF85B74F360 /* ScreenSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1399,6 +1405,12 @@
 		DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotGeneratedAvatar.swift; sourceTree = "<group>"; };
 		D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarGeneration.swift; sourceTree = "<group>"; };
 		B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarLibraryTests.swift; sourceTree = "<group>"; };
+		21D8EAD32474C507B988C931 /* RFBDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/RFBDecoder.swift"; sourceTree = "<group>"; };
+		90089E89E3BEF3B1D16FFB12 /* RFBClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/RFBClient.swift"; sourceTree = "<group>"; };
+		344CB343107883F5E3398866 /* ScreenSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenSession.swift"; sourceTree = "<group>"; };
+		43AB42AA714B106DA5BF543C /* ScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenView.swift"; sourceTree = "<group>"; };
+		642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFBDecoderTests.swift; sourceTree = "<group>"; };
+		4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenSessionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1519,6 +1531,8 @@
 		1A2B3C4D5E6F700000000034 /* HermesMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */,
+				642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */,
 				B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */,
 				B48200000000000000000007 /* BotProfileEditorTests.swift */,
 				B48200000000000000000035 /* BotLifecycleTests.swift */,
@@ -1783,6 +1797,8 @@
 		1A2B3C4D5E6F7000000000C1 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				90089E89E3BEF3B1D16FFB12 /* RFBClient.swift */,
+				21D8EAD32474C507B988C931 /* RFBDecoder.swift */,
 				5619C4EB852849D396C45F95 /* BotProtocol.swift */,
 				BF2EA5336E9B431489F91A63 /* BotClient.swift */,
 				02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */,
@@ -1873,6 +1889,8 @@
 		1A2B3C4D5E6F7000000000C3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				43AB42AA714B106DA5BF543C /* ScreenView.swift */,
+				344CB343107883F5E3398866 /* ScreenSession.swift */,
 				D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */,
 				DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */,
 				C65390EF87632CA0D99CEF90 /* BotAvatarLibrary.swift */,
@@ -2617,6 +2635,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CFA1B013C7784C249E72A5DE /* ScreenView.swift in Sources */,
+				284C1405D843B63B8A2360CA /* ScreenSession.swift in Sources */,
+				FC264D031B2CAEDB4AF53C1D /* RFBClient.swift in Sources */,
+				DAB1829DA684D7E566D41872 /* RFBDecoder.swift in Sources */,
 				A4790000000000000000E001 /* PushEnvironment.swift in Sources */,
 				A4790000000000000000E002 /* PushPairing.swift in Sources */,
 				559000000000000000000001 /* PushPreview.swift in Sources */,
@@ -3037,6 +3059,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FD6887A5B7CABFF85B74F360 /* ScreenSessionTests.swift in Sources */,
+				3C47C99D373EDF30CDEAAED1 /* RFBDecoderTests.swift in Sources */,
 				A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */,
 				B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */,
 				B48200000000000000000036 /* BotLifecycleTests.swift in Sources */,

@@ -40,6 +40,14 @@ enum HermesCall: Equatable, Sendable {
     case profilesConfigure(ProfileChanges)
     case profilesCreate(NewProfile)
 
+    // The bot's screen (#1567). Read at the pin and checked against `scripts/local-hermes` on a
+    // Linux host; `docs/agents/screen.md` has the contract. Every failure is 5300.
+    /// `{supported, installed, missing, running, blocker, geometry, lease, profile_key, …}`.
+    case displayStatus(profile: String)
+    /// The same fields, plus a single-use 30 s `ticket` for `/api/display/ws` and a `viewer_id`.
+    /// A `viewerID` this connection minted comes back unchanged; any other gets a new one.
+    case displayObserve(profile: String, viewerID: String?)
+
     // The canonical Bot Chat
     /// Finds the Profile's Bot Chat by its exact title, hidden rows included.
     case sessionList(profile: String)
@@ -321,6 +329,8 @@ enum HermesCall: Equatable, Sendable {
         case .sessionEventsSince: return "session.events.since"
         case .sessionActiveList: return "session.active_list"
         case .sessionMostRecent: return "session.most_recent"
+        case .displayStatus: return "display.status"
+        case .displayObserve: return "display.observe"
         case .promptSubmit, .promptRewind: return "prompt.submit"
         case .sessionSteer: return "session.steer"
         case .sessionRedirect: return "session.redirect"
@@ -392,7 +402,11 @@ enum HermesCall: Equatable, Sendable {
         case .sessionDraft(let profile):
             return ["profile": .string(profile), "hidden": .bool(true), "follow_profile_config": .bool(true),
                     "close_on_disconnect": .bool(true), "source": .string(Self.source)]
-        case .sessionMostRecent(let profile): return ["profile": .string(profile)]
+        case .sessionMostRecent(let profile), .displayStatus(let profile): return ["profile": .string(profile)]
+        case .displayObserve(let profile, let viewerID):
+            var params: [String: BotJSON] = ["profile": .string(profile)]
+            if let viewerID { params["viewer_id"] = .string(viewerID) }
+            return params
         case .sessionTitle(let sessionID): return ["session_id": .string(sessionID), "title": .string(Self.botChatTitle)]
         case .sessionRename(let runtime, let title): return ["session_id": .string(runtime), "title": .string(title)]
         case .sessionClose(let runtime), .sessionUndo(let runtime): return ["session_id": .string(runtime)]
@@ -589,7 +603,8 @@ enum HermesCall: Equatable, Sendable {
             valid = !runtime.isEmpty && name.map(Self.isBlank) != true && (count ?? 1) > 0
         case .sessionWorkspaceMove(let profile, let storedKey, let cwd):
             valid = !profile.isEmpty && !storedKey.isEmpty && !Self.isBlank(cwd)
-        case .projectsTree(let profile): valid = !profile.isEmpty
+        case .projectsTree(let profile), .displayStatus(let profile): valid = !profile.isEmpty
+        case .displayObserve(let profile, let viewerID): valid = !profile.isEmpty && viewerID?.isEmpty != true
         case .projectsCreate(let profile, let name, let folder, let color):
             valid = !profile.isEmpty && !Self.isBlank(name) && !Self.isBlank(folder) && color?.isEmpty != true
         case .projectsUpdate(let profile, let id, let name, let color):

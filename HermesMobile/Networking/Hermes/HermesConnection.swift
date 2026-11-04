@@ -481,6 +481,12 @@ import OSLog
         }
     }
 
+    /// Returns a bot screen's stream upgrade (#1567) with this connection's headers. `ticket` came
+    /// from `display.observe` on the gateway, so this needs no pass of its own.
+    func screenUpgrade(ticket: String) throws -> URLRequest {
+        prepared(try HermesREST.screenUpgrade(base: connection.address, ticket: ticket))
+    }
+
     /// Returns the upgrade `build` makes for a fresh pass, with this connection's headers. Either
     /// pass is preceded by a signed-in read, so a 401 signs in again first: minting the ticket,
     /// or for a page token a gated read, since a refused upgrade can't tell a token a host

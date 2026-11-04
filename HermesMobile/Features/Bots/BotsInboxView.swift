@@ -45,6 +45,12 @@ import SwiftUI
     /// True once `open()` has returned at least once, so "no Bot connection" is a
     /// settled answer to a held deep link rather than a not-loaded-yet one.
     @State private var hasSettled = false
+    /// The bot whose Screen is open (#1567), on the connection it opened with.
+    @State private var screenTarget: BotScreenTarget?
+    /// The host answered a Screen's `display.*` with -32601, so the entries hide.
+    @State private var hostLacksScreen = false
+    /// The server's Bot Screen switch.
+    @AppStorage private var isScreenEnabled: Bool
 
     init(
         server: URL,
@@ -60,6 +66,7 @@ import SwiftUI
         self.home = home
         _pendingDestination = pendingDestination
         _inbox = State(initialValue: inbox)
+        _isScreenEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
 
     /// An inbox the caller built, such as one on scripted wires.
@@ -68,11 +75,18 @@ import SwiftUI
         home = nil
         _pendingDestination = .constant(nil)
         _inbox = State(initialValue: inbox)
+        _isScreenEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
 
     var body: some View {
         let toasted = navigationSurface
             .focusedSceneValue(\.hermexSceneActions, sceneActions)
+            .fullScreenCover(item: $screenTarget) { target in
+                ScreenView(profile: target.profile, server: server, connection: target.connection) {
+                    hostLacksScreen = true
+                }
+            }
+            .onChange(of: isScreenEnabled) { if !isScreenEnabled { screenTarget = nil } }
             .overlay(alignment: .bottom) {
                 if let toast {
                     Text(toast).font(.callout).padding()
@@ -305,6 +319,7 @@ import SwiftUI
         ) else { return }
         pendingDestination = nil
         inbox.selection.open(destination, connection: inbox.connection, profiles: inbox.profiles)
+        if destination.opensScreen, let profile = inbox.selection.profile { openScreen(profile) }
     }
 
     /// Resolve the selection again after the sheet closes so a refreshed roster
@@ -412,6 +427,15 @@ import SwiftUI
             .id([profile.id, connection.id.uuidString, inbox.selection.conversation ?? ""])
             .onAppear { inbox.markSeen(profile) }
             .onDisappear { inbox.noteReturn(from: profile) }
+            .toolbar {
+                if canOpenScreen {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { openScreen(profile) } label: {
+                            Label("Screen", systemImage: "display")
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -477,8 +501,22 @@ import SwiftUI
                 if let chat = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedChatID, in: keyboardShortcutChats) {
                     open(chat)
                 }
+            },
+            openScreen: inbox.selection.profile.flatMap { profile in
+                canOpenScreen ? { openScreen(profile) } : nil
             }
         )
+    }
+
+    /// Whether the entries to a bot's Screen show: the server's switch is on, and the host hasn't
+    /// answered that it has no such method.
+    private var canOpenScreen: Bool {
+        isScreenEnabled && !hostLacksScreen
+    }
+
+    private func openScreen(_ profile: BotProfile) {
+        guard canOpenScreen, let connection = inbox.connection else { return }
+        screenTarget = BotScreenTarget(profile: profile, connection: connection)
     }
 
     /// The tiles, then the rows under them, as the list shows them, which it does only with a
@@ -530,8 +568,14 @@ import SwiftUI
     }
 
     /// Pin, hide and the section write Desktop's own roster fields; all stay inert
-    /// until the inbox is live and no write for this bot is in flight.
-    private func organizeMenu(_ profile: BotProfile) -> some View {
+    /// until the inbox is live and no write for this bot is in flight. Screen writes nothing, so
+    /// it sits outside them.
+    @ViewBuilder private func organizeMenu(_ profile: BotProfile) -> some View {
+        if canOpenScreen {
+            Button { openScreen(profile) } label: {
+                Label("Screen", systemImage: "display")
+            }
+        }
         Group {
             Button {
                 guard let connection = inbox.connection else { return }
@@ -797,6 +841,13 @@ private enum BotCreationIntent: Identifiable {
     case new, duplicate(BotProfile)
     var id: String { source?.id ?? "" }
     var source: BotProfile? { if case .duplicate(let profile) = self { return profile }; return nil }
+}
+
+/// One open Screen: the bot, on the connection the entry saw.
+private struct BotScreenTarget: Identifiable {
+    let profile: BotProfile
+    let connection: BotConnection
+    var id: String { connection.id.uuidString + "|" + profile.id }
 }
 
 private struct BotProfileEditSelection: Identifiable, Hashable {

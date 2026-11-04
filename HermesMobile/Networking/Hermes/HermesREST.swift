@@ -799,6 +799,18 @@ enum HermesREST: Equatable, Sendable {
         return URLRequest(url: url)
     }
 
+    /// A bot screen's stream (#1567): `/api/display/ws` on the `ws`/`wss` URL matching the address's
+    /// scheme. The ticket `display.observe` minted rides as `?display_ticket=`, and it offers no
+    /// subprotocol. A policy refusal is an HTTP 403; a bad ticket is accepted, then closes with 4401.
+    static func screenUpgrade(base: URL, ticket: String) throws -> URLRequest {
+        guard var parts = URLComponents(url: base.appendingPathComponent("api/display/ws"), resolvingAgainstBaseURL: false)
+        else { throw BotFailure.invalidAddress }
+        parts.scheme = base.scheme == "https" ? "wss" : "ws"
+        parts.queryItems = [URLQueryItem(name: "display_ticket", value: ticket)]
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return URLRequest(url: url)
+    }
+
     /// The session token in `dashboardPage`'s body: upstream writes
     /// `window.__HERMES_SESSION_TOKEN__="<token>";`, quoted by hand or by `json.dumps`. Nil for
     /// a page without one, such as a dashboard behind its sign-in, which never injects it.
