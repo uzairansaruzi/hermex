@@ -278,6 +278,15 @@ suite, so a stalled worker does not consume the 90-minute job budget and prevent
 failure diagnostics from running. This is a combined limit, not a separate
 five-minute boot deadline.
 
+`ChatViewModelSendTests/testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay`
+skips itself on CI, where the real voice took from 2 s to over 6 minutes per run.
+Nothing else exercises real speech rendering, so after changing `OnDeviceSpeech`
+or `ListenAudioPlayer`, run it locally:
+
+```zsh
+scripts/test-sim <simulator-udid> --only HermesMobileTests/ChatViewModelSendTests/testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay
+```
+
 The Actions summary records phase timings, the failed phase, assertion messages,
 and slow tests. Failure artifacts include setup/build/test logs and any result
 bundle. Tests run with `-collect-test-diagnostics never`, as locally: on the
