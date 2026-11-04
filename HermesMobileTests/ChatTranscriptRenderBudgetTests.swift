@@ -422,15 +422,31 @@ final class ChatTranscriptReflowTests: XCTestCase {
         let continuity = ChatContinuity()
         let onScreen = UUID(), extra = UUID(), successor = UUID()
 
-        continuity.viewAppeared(onScreen, model: model)
-        continuity.viewAppeared(extra, model: model)
+        continuity.viewAppeared(onScreen, model: model) { _, _ in }
+        continuity.viewAppeared(extra, model: model) { _, _ in }
         XCTAssertFalse(continuity.viewDisappeared(extra), "An extra view leaving stopped the chat under the one on screen")
 
         // The new view appeared first: the old one leaves it running.
-        continuity.viewAppeared(successor, model: model)
+        continuity.viewAppeared(successor, model: model) { _, _ in }
         XCTAssertFalse(continuity.viewDisappeared(onScreen))
         // The chat really closes.
         XCTAssertTrue(continuity.viewDisappeared(successor))
+    }
+
+    /// A waiting send that comes back must reach a composer on screen, not the extra view's: its
+    /// text would be lost to the screen, and the visible composer's next edit overwrites the draft.
+    func testAReturnedWaitingSendReachesTheViewThatStays() throws {
+        let model = try makeViewModel(turns: 1)
+        let continuity = ChatContinuity()
+        let onScreen = UUID(), extra = UUID()
+        var reached: [UUID] = []
+
+        continuity.viewAppeared(onScreen, model: model) { _, _ in reached.append(onScreen) }
+        continuity.viewAppeared(extra, model: model) { _, _ in reached.append(extra) }
+        _ = continuity.viewDisappeared(extra)
+        model.onWaitingSendReturned?("Text", .cancelled)
+
+        XCTAssertEqual(reached, [onScreen])
     }
 
     // MARK: - Helpers
@@ -447,7 +463,7 @@ final class ChatTranscriptReflowTests: XCTestCase {
         let navigation = HermesSessionListNavigation()
         navigation.covers.chat = HermesSessionChat(server: server, connection: connection, target: .session(profile: "default", key: "session-abc"))
         let continuity = navigation.covers.chatContinuity
-        continuity.viewAppeared(UUID(), model: model)
+        continuity.viewAppeared(UUID(), model: model) { _, _ in }
         continuity.didLoadMessages = true
         let avatar = SessionsHeader.Avatar(initials: "QA", color: .blue, foreground: .white,
             servers: .init(servers: [], activeServerID: nil), openSettings: {},

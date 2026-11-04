@@ -369,7 +369,6 @@ struct ChatView: View {
     @State private var disclosureSettleGeneration = 0
     /// Settled turns the user has opened, plus failed or stopped turns, which
     /// start open. Keyed by turn so paging older messages in does not shift them.
-    @State private var expandedTurnKeys: Set<String> = []
     @State private var transcriptStructureMemo = TranscriptStructureMemo()
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
@@ -1181,17 +1180,16 @@ struct ChatView: View {
                 gitAvailabilityViewModel.suspendPullRequestReads()
             }
             .onAppear {
-                continuity.viewAppeared(viewID, model: viewModel)
-                viewModel.protectDraftAttachments(for: draftKey)
-                isOnScreen = true
                 // Holds only the composer's text and the toast, never this view (#1407).
-                viewModel.onWaitingSendReturned = { [composerText = $draftMessage, toast = toastState] text, reason in
+                continuity.viewAppeared(viewID, model: viewModel) { [composerText = $draftMessage, toast = toastState] text, reason in
                     composerText.wrappedValue = text
                     if reason == .expired {
                         let notice = String(localized: "Not sent after 10 minutes offline. Your message is back in the composer.")
                         toast.show(ActionToast(message: notice, systemImage: "clock", accessibilityLabel: notice))
                     }
                 }
+                viewModel.protectDraftAttachments(for: draftKey)
+                isOnScreen = true
                 gitAvailabilityViewModel.resumePullRequestReads()
                 appearanceTask?.cancel()
                 appearanceTask = Task {
@@ -2320,7 +2318,7 @@ struct ChatView: View {
             onDisclosureToggle: handleDisclosureToggle,
             turnFolds: structure.folds,
             terminalReplyRenderIDs: structure.terminalReplyRenderIDs,
-            expandedTurnKeys: expandedTurnKeys,
+            expandedTurnKeys: viewModel.expandedTurnKeys,
             onToggleTurnFold: toggleTurnFold,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
@@ -2654,8 +2652,8 @@ struct ChatView: View {
     private func toggleTurnFold(_ turnKey: String) {
         handleDisclosureToggle()
         withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-            if !expandedTurnKeys.insert(turnKey).inserted {
-                expandedTurnKeys.remove(turnKey)
+            if !viewModel.expandedTurnKeys.insert(turnKey).inserted {
+                viewModel.expandedTurnKeys.remove(turnKey)
             }
         }
     }
@@ -2663,7 +2661,7 @@ struct ChatView: View {
     /// Failed or stopped turns start open so the work that went wrong is in view.
     private func handleLatestRunOutcomeChange(_ outcome: TranscriptTurnRunOutcome?) {
         guard let outcome, outcome.ending != .completed else { return }
-        expandedTurnKeys.insert(outcome.turnKey)
+        viewModel.expandedTurnKeys.insert(outcome.turnKey)
     }
 
     private var latestTranscriptMessageID: String? {
@@ -3950,7 +3948,7 @@ struct ChatView: View {
         // A new turn starting folds the previous one, even one that opened
         // itself after failing or being stopped.
         if let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
-            expandedTurnKeys.remove(previousTurnKey)
+            viewModel.expandedTurnKeys.remove(previousTurnKey)
         }
 
         completionScrollPolicy.begin(streamID: activeStreamID, isFollowing: shouldFollowLatestMessage)
