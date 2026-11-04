@@ -1125,6 +1125,12 @@ struct ChatView: View {
                 handleNetworkPathChange()
             }
             .onChange(of: viewModel.activeStreamID) {
+                // A new turn starting folds the previous one, even one that opened
+                // itself after failing or being stopped. Here, not in the handler, which a
+                // rebuilt view also runs as it appears, with the same turn still going.
+                if viewModel.activeStreamID != nil, let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
+                    viewModel.expandedTurnKeys.remove(previousTurnKey)
+                }
                 handleActiveStreamChange()
             }
             .onChange(of: viewModel.transcriptRelayoutScrollToken) {
@@ -3945,11 +3951,6 @@ struct ChatView: View {
             return
         }
 
-        // A new turn starting folds the previous one, even one that opened
-        // itself after failing or being stopped.
-        if let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
-            viewModel.expandedTurnKeys.remove(previousTurnKey)
-        }
 
         completionScrollPolicy.begin(streamID: activeStreamID, isFollowing: shouldFollowLatestMessage)
         hydratedCompletionStreamID = nil
