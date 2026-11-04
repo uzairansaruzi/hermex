@@ -1,4 +1,5 @@
 import CoreGraphics
+import Observation
 import XCTest
 @testable import HermesMobile
 
@@ -7,8 +8,9 @@ import XCTest
     private let host = BotSocketHost()
     private let server = URL(string: "https://hermes.example")!
     private var holds = ScreenHoldStore(keychain: InMemoryKeychainStore())
-    private var sockets: [ScriptedRFBSocket] = []
-    private var upgrades: [URLRequest] = []
+    private let opened = OpenedStreams()
+    private var sockets: [ScriptedRFBSocket] { opened.sockets }
+    private var upgrades: [URLRequest] { opened.upgrades }
     private var clock = Date(timeIntervalSince1970: 1_000_000)
 
     private func makeSession(backoff: [Duration] = [.zero], configure: (inout ScreenSession.Options) -> Void = { _ in }) -> ScreenSession {
@@ -18,9 +20,8 @@ import XCTest
         options.holds = holds
         options.now = { [unowned self] in clock }
         options.socketFactory = { [unowned self] upgrade in
-            upgrades.append(upgrade)
             let socket = ScriptedRFBSocket()
-            sockets.append(socket)
+            opened.add(socket, upgrade)
             return socket
         }
         configure(&options)
@@ -67,7 +68,7 @@ import XCTest
     }
 
     private func socket(_ index: Int) async -> ScriptedRFBSocket {
-        while sockets.count <= index { await Task.yield() }
+        await waitUntil("stream \(index) opened") { [opened] in opened.sockets.count > index }
         return sockets[index]
     }
 
@@ -269,8 +270,10 @@ import XCTest
         session.stopScreen(force: false)
         await reach(.stopped, on: session)
         XCTAssertEqual(requests("display.stop").last?["params"]["force"], .null)
+        let forced = expectation(description: "forced stop")
+        host.expect(forced, onNext: "display.stop")
         session.stopScreen(force: true)
-        while requests("display.stop").count < 2 { await Task.yield() }
+        await fulfillment(of: [forced], timeout: 5)
         XCTAssertEqual(requests("display.stop").last?["params"]["force"].flag, true)
         session.leave()
     }
@@ -284,7 +287,7 @@ import XCTest
         await reach(.live, on: session)
         host.next("display.stop", .init(error: 5300))
         session.stopScreen(force: false)
-        while session.notice == nil { await Task.yield() }
+        await waitUntil("a notice") { session.notice != nil }
         XCTAssertEqual(session.notice, .stopFailed)
 
         host.always("display.stop", .init(result: screen(running: false)))
@@ -361,7 +364,7 @@ import XCTest
         let session = await holding()
         host.next("display.lease.release", .init(result: .object(["lease": lease(holder: "human", viewer: "viewer-1")])))
         session.handBack()
-        while session.notice == nil { await Task.yield() }
+        await waitUntil("a notice") { session.notice != nil }
         XCTAssertEqual(session.notice, .handBackFailed)
         XCTAssertEqual(session.control, .mine)
         XCTAssertNotNil(holds.hold(server: server, profile: "work"))
@@ -385,7 +388,10 @@ import XCTest
         host.next("display.lease.release", .init(result: .object(["lease": lease()]), before: [event]))
         session.handBack()
         await reach(.bot, on: session)
-        while holds.hold(server: server, profile: "work") != nil { await Task.yield() }
+        await waitUntil("the hold is forgotten") { [holds, server] in
+            _ = holds.revision
+            return holds.hold(server: server, profile: "work") == nil
+        }
         XCTAssertNil(session.notice)
         session.leave()
     }
@@ -480,9 +486,8 @@ import XCTest
         options.holds = holds
         options.now = { [unowned self] in clock }
         options.socketFactory = { [unowned self] upgrade in
-            upgrades.append(upgrade)
             let socket = ScriptedRFBSocket()
-            sockets.append(socket)
+            opened.add(socket, upgrade)
             return socket
         }
         return ScreenSession(profile: "work", title: "Work", server: server,
@@ -666,9 +671,11 @@ import XCTest
     /// Hermes runs no plugin code on removal, so a hold has to end first.
     func testRemovingThePluginReleasesAnyHoldFirst() async throws {
         var order: [String] = []
+        let deleted = expectation(description: "the plugin is deleted")
         let session = makeHostSession { [unowned self] request in
             if request.url?.path == "/api/dashboard/agent-plugins/hermex-screen", request.httpMethod == "DELETE" {
                 order.append("delete")
+                deleted.fulfill()
                 return .json(200, .object(["ok": .bool(true)]))
             }
             return livePlugin({ route in
@@ -682,7 +689,7 @@ import XCTest
         session.takeOver()
         await reach(.mine, on: session)
         session.removePlugin()
-        while !order.contains("delete") { await Task.yield() }
+        await fulfillment(of: [deleted], timeout: 5)
         XCTAssertEqual(order, ["release", "delete"])
         XCTAssertNil(holds.hold(server: server, profile: "work"))
         session.leave()
@@ -722,7 +729,7 @@ import XCTest
         await reach(.live, on: session)
         held = true
         session.removePlugin()
-        while session.notice != .pluginActionFailed { await Task.yield() }
+        await waitUntil("the failure's notice") { session.notice == .pluginActionFailed }
         XCTAssertFalse(deleted)
         session.leave()
     }
@@ -760,8 +767,10 @@ import XCTest
         await reach(.live, on: session)
         session.takeOver()
         await reach(.mine, on: session)
+        let moved = expectation(description: "a pointer event reaches the plugin")
+        stream.fulfill(moved) { $0.first == 5 }
         session.keepControl()
-        while !stream.sentBytes.contains(where: { $0.first == 5 }) { await Task.yield() }
+        await fulfillment(of: [moved], timeout: 5)
         session.leave()
     }
 
@@ -795,7 +804,7 @@ import XCTest
         options.holds = holds
         options.socketFactory = { [unowned self] upgrade in
             let socket = ScriptedRFBSocket()
-            sockets.append(socket)
+            opened.add(socket, upgrade)
             return socket
         }
         let session = ScreenSession(profile: "work", title: "Work", server: server, client: BotClient(http: host.connection(record, rest: livePlugin({ [unowned self] route in
@@ -806,7 +815,7 @@ import XCTest
         await reach(.live, on: session)
         XCTAssertTrue(session.isHostLocked)
         locked = false
-        while session.isHostLocked { await Task.yield() }
+        await waitUntil("the unlock is noticed") { !session.isHostLocked }
         session.leave()
     }
 
@@ -843,7 +852,7 @@ import XCTest
         session.open()
         await reach(.pluginNotInstalled, on: session)
         session.installPlugin()
-        while session.notice != .pluginActionFailed { await Task.yield() }
+        await waitUntil("the failure's notice") { session.notice == .pluginActionFailed }
         await reach(.pluginNotInstalled, on: session)
         session.leave()
     }
@@ -857,7 +866,7 @@ import XCTest
         await socket(0).serve(ScriptedRFBSocket.oneFrame)
         await reach(.live, on: session)
         session.takeOver()
-        while session.notice != .takeOverFailed { await Task.yield() }
+        await waitUntil("the failure's notice") { session.notice == .takeOverFailed }
         XCTAssertNil(holds.hold(server: server, profile: "work"))
         session.leave()
     }
@@ -901,7 +910,7 @@ import XCTest
             options.now = { Date() }
         }
         host.always("display.lease.release", .init(result: .object(["lease": lease()])))
-        while !session.isAskingStillThere { await Task.yield() }
+        await waitUntil("Still there?") { session.isAskingStillThere }
         session.noteActivity()
         XCTAssertFalse(session.isAskingStillThere)
         await reach(.bot, on: session)
@@ -1061,16 +1070,20 @@ import XCTest
 
         session.takeOver()
         await reach(.mine, on: session)
-        session.toggleModifier(.control)
-        session.press(ScreenKey(keysym: 0x63))
         let typed = RFBMessage.key(.control, down: true) + RFBMessage.key(ScreenKey(keysym: 0x63), down: true)
             + RFBMessage.key(ScreenKey(keysym: 0x63), down: false) + RFBMessage.key(.control, down: false)
-        while !stream.sentBytes.contains(where: { $0 == typed }) { await Task.yield() }
+        let chorded = expectation(description: "the key goes out inside its modifier")
+        stream.fulfill(chorded) { $0 == typed }
+        session.toggleModifier(.control)
+        session.press(ScreenKey(keysym: 0x63))
+        await fulfillment(of: [chorded], timeout: 5)
         XCTAssertTrue(session.latchedModifiers.isEmpty)
 
-        session.type("é")
         let accent = RFBMessage.key(ScreenKey(keysym: 0xE9), down: true) + RFBMessage.key(ScreenKey(keysym: 0xE9), down: false)
-        while !stream.sentBytes.contains(where: { $0 == accent }) { await Task.yield() }
+        let accented = expectation(description: "the typed letter goes out")
+        stream.fulfill(accented) { $0 == accent }
+        session.type("é")
+        await fulfillment(of: [accented], timeout: 5)
         session.leave()
     }
 
@@ -1101,6 +1114,17 @@ import XCTest
         let edge = try XCTUnwrap(screenPixel(at: CGPoint(x: 500, y: -5), in: CGSize(width: 390, height: 244), width: 1440, height: 900))
         XCTAssertEqual(edge.x, 1439)
         XCTAssertEqual(edge.y, 0)
+    }
+}
+
+/// The stream sockets a session opened, which a test can wait on.
+@MainActor @Observable private final class OpenedStreams {
+    private(set) var sockets: [ScriptedRFBSocket] = []
+    private(set) var upgrades: [URLRequest] = []
+
+    func add(_ socket: ScriptedRFBSocket, _ upgrade: URLRequest) {
+        upgrades.append(upgrade)
+        sockets.append(socket)
     }
 }
 
@@ -1136,6 +1160,7 @@ final class ScriptedRFBSocket: RFBSocket, @unchecked Sendable {
     private let state = ScriptedRFBSocketState()
     private let lock = NSLock()
     private var sent: [Data] = []
+    private var sendWaiters: [(expectation: XCTestExpectation, matches: (Data) -> Bool)] = []
     var pingFailure: Error?
 
     /// Everything the client sent, a frame each.
@@ -1154,7 +1179,21 @@ final class ScriptedRFBSocket: RFBSocket, @unchecked Sendable {
     func end(error: Error) async { await state.deliver(.failure(error)) }
 
     func receive() async throws -> Data { try await state.next() }
-    func send(_ data: Data) async throws { lock.withLock { sent.append(data) } }
+    func send(_ data: Data) async throws {
+        lock.withLock {
+            sent.append(data)
+            sendWaiters.removeAll { waiter in
+                guard waiter.matches(data) else { return false }
+                waiter.expectation.fulfill()
+                return true
+            }
+        }
+    }
+
+    /// Fulfills `expectation` when a later frame the client sends matches.
+    func fulfill(_ expectation: XCTestExpectation, when matches: @escaping (Data) -> Bool) {
+        lock.withLock { sendWaiters.append((expectation, matches)) }
+    }
     func ping() async throws { if let pingFailure { throw pingFailure } }
     func close() { Task { await state.close() } }
 }
