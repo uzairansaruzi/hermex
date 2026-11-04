@@ -354,6 +354,8 @@ enum HermexScreenPlugin {
         var rfb = RFBClient.Options()
         var idlePrompt = ScreenIdlePolicy.prompt
         var idleLimit = ScreenIdlePolicy.limit
+        /// How soon a hand-back at the limit that failed tries again.
+        var idleRetry: Duration = .seconds(15)
         var holds: ScreenHoldStore = .shared
         var now: () -> Date = { Date() }
         /// Gets the finished upgrade; nil opens a native socket on the connection's session.
@@ -404,6 +406,8 @@ enum HermexScreenPlugin {
     @ObservationIgnored private var lastInput: Date?
     /// A release is on its way, so its own `display.lease` event isn't news.
     @ObservationIgnored private var isReleasing = false
+    /// A Take Over on its way. A host's goes by HTTP, so a release sent after it can overtake it.
+    @ObservationIgnored private var acquiring: Task<Void, Never>?
     /// Where the trackpad's pointer is, in framebuffer pixels.
     @ObservationIgnored private var pointer: (x: Int, y: Int)?
 
@@ -467,8 +471,12 @@ enum HermexScreenPlugin {
             return
         }
         control = .bot
+        let acquiring = acquiring
         Task {
-            await release(hold, owner: nil)
+            // On a host, a release sent ahead of the acquire would finish first and leave the
+            // acquire to pause every bot with nobody watching. A gateway call keeps its order.
+            if hold.source == .hostDesktop { await acquiring?.value }
+            await release(self.hold ?? hold, owner: nil)
             client.close()
         }
     }
@@ -838,12 +846,15 @@ enum HermexScreenPlugin {
         let source = source
         options.holds.save(ScreenHold(viewerIDs: [viewerID], isConfirmed: false, lastInput: taken, source: source),
                            server: server, profile: profile)
-        Task {
+        acquiring = Task {
             do {
                 let lease = try await source.acquire(profile: profile, viewerID: viewerID, client: client)
                 guard lease.isHeld(by: viewerID) else { throw BotFailure.unsupported }
-                options.holds.save(ScreenHold(viewerIDs: [viewerID], isConfirmed: true, lastInput: taken, source: source),
-                                   server: server, profile: profile)
+                // A late reply can't replace what's been saved since, or bring back what's been released.
+                if hold?.viewerIDs == [viewerID] {
+                    options.holds.save(ScreenHold(viewerIDs: [viewerID], isConfirmed: true, lastInput: taken, source: source),
+                                       server: server, profile: profile)
+                }
                 guard owner == generation else { return }
                 lastInput = taken
                 notice = nil
@@ -951,9 +962,14 @@ enum HermexScreenPlugin {
                 if elapsed >= self.options.idleLimit {
                     guard let hold = self.hold else { return }
                     await self.release(hold, owner: owner)
-                    if self.control != .mine { self.notice = .handedBackAutomatically }
-                    self.isAskingStillThere = false
-                    return
+                    guard self.control == .mine else {
+                        self.notice = .handedBackAutomatically
+                        self.isAskingStillThere = false
+                        return
+                    }
+                    // It didn't go through, and a stock lease never expires: try again until it does.
+                    do { try await Task.sleep(for: self.options.idleRetry) } catch { return }
+                    continue
                 }
                 let isPast = elapsed >= self.options.idlePrompt
                 if isPast != self.isAskingStillThere { self.isAskingStillThere = isPast }

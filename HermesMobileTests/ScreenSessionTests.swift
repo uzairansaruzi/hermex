@@ -734,6 +734,58 @@ import XCTest
         session.leave()
     }
 
+    /// A host's calls go by HTTP, so a release sent ahead of a slow acquire would finish first and
+    /// leave the acquire to pause every bot with nobody watching.
+    func testClosingOnAHostWaitsForATakeOverStillOnItsWay() async {
+        var order: [String] = []
+        let acquiring = expectation(description: "the acquire reached the host")
+        let released = expectation(description: "the release reached the host")
+        let session = makeHostSession(rest: livePlugin({ route in
+            if route == "/lease/acquire" {
+                order.append("acquire")
+                acquiring.fulfill()
+                return .park
+            }
+            if route == "/lease/release" {
+                order.append("release")
+                released.fulfill()
+            }
+            return nil
+        }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.takeOver()
+        await fulfillment(of: [acquiring], timeout: 5)
+        session.leave()
+        XCTAssertEqual(order, ["acquire"], "nothing overtakes it while it's unanswered")
+
+        HermesHostFixture.releaseParked(.json(200, .object(["lease": lease(holder: "human", viewer: "viewer-1")])))
+        await fulfillment(of: [released], timeout: 5)
+        XCTAssertEqual(order, ["acquire", "release"])
+    }
+
+    /// A reply arriving after a hand-back can't bring back the hold it replaced.
+    func testALateAcquireReplyDoesntRestoreAForgottenHold() async {
+        let acquiring = expectation(description: "the acquire reached the host")
+        let session = makeHostSession(rest: livePlugin({ route in
+            guard route == "/lease/acquire" else { return nil }
+            acquiring.fulfill()
+            return .park
+        }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.takeOver()
+        await fulfillment(of: [acquiring], timeout: 5)
+        holds.save(nil, server: server, profile: "work")
+
+        HermesHostFixture.releaseParked(.json(200, .object(["lease": lease(holder: "human", viewer: "viewer-1")])))
+        await reach(.mine, on: session)
+        XCTAssertNil(holds.hold(server: server, profile: "work"))
+        session.suspend()
+    }
+
     /// A blocked state still needs its way out: a hold of this iPhone's shows Hand Back, and
     /// anyone else's shows the force.
     func testABlockedHostStateStillReportsWhoHoldsIt() async {
@@ -915,6 +967,23 @@ import XCTest
         XCTAssertFalse(session.isAskingStillThere)
         await reach(.bot, on: session)
         XCTAssertEqual(session.notice, .handedBackAutomatically)
+        XCTAssertNil(holds.hold(server: server, profile: "work"))
+        session.leave()
+    }
+
+    /// A stock lease never expires, so one failed hand-back at the limit can't be the last try.
+    func testAHandBackAtTheLimitThatFailsTriesAgain() async {
+        let session = await holding { options in
+            options.idlePrompt = .milliseconds(1)
+            options.idleLimit = .milliseconds(2)
+            options.idleRetry = .milliseconds(1)
+            options.now = { Date() }
+        }
+        host.next("display.lease.release", .init(error: 5300))
+        host.always("display.lease.release", .init(result: .object(["lease": lease()])))
+        await reach(.bot, on: session)
+        XCTAssertEqual(session.notice, .handedBackAutomatically)
+        XCTAssertGreaterThanOrEqual(requests("display.lease.release").count, 2)
         XCTAssertNil(holds.hold(server: server, profile: "work"))
         session.leave()
     }

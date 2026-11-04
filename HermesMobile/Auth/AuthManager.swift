@@ -99,6 +99,8 @@ final class AuthManager {
     private let hermesConnections: HermesConnections
     /// Where a removed server's Profile choice and model lists are cleared.
     private let preferences: UserDefaults
+    /// Hands back a server's Bot Screen holds. Tests record it.
+    var handBackScreenHolds: (URL) -> Void = { server in Task { await ScreenHolds.handBackAll(server: server) } }
     /// Tears down a server's push pairing when it is signed out of or removed.
     private let forgetPush: @MainActor (URL) async -> Void
     /// The Limits widget's snapshot, emptied when its server or connection stops being in use.
@@ -342,6 +344,7 @@ final class AuthManager {
             // live header store (and the active server) completely untouched.
             try keychain.save(serverURL.absoluteString, forKey: .serverURL)
             headerStore.replace(with: newHeaders)
+            handBackScreens(leavingFor: serverURL)
             serverRegistry.activate(url: serverURL)
             persistCustomHeaders(for: serverURL)
             refreshServers()
@@ -383,6 +386,7 @@ final class AuthManager {
             refreshServers()
             return true
         }
+        handBackScreens(leavingFor: server)
         serverRegistry.activate(url: server, kind: .hermes, serverVersion: connection.hermesVersion)
         refreshServers()
         // The Shortcuts Profile list belonged to the server this replaces as active (#339).
@@ -591,8 +595,7 @@ final class AuthManager {
         guard account.id != state.server?.absoluteString,
               let serverURL = URL(string: account.urlString) else { return }
 
-        // On a connection of its own, so the logged-in tree's rebuild can't cut it off.
-        if let departing = state.server { Task { await ScreenHolds.handBackAll(server: departing) } }
+        handBackScreens(leavingFor: serverURL)
         serverRegistry.setActive(id: account.id)
         refreshServers()
         try? keychain.save(serverURL.absoluteString, forKey: .serverURL)
@@ -659,6 +662,13 @@ final class AuthManager {
         try? keychain.delete(.customHeaders, scope: server.absoluteString)
         removeBotConnection(for: server)
         if kind(of: server) == .webui { clearSessionCookies(for: server) }
+    }
+
+    /// Any Bot Screen takeover on the server being left goes back to its bot. It runs on a connection
+    /// of its own, so the logged-in tree's rebuild can't cut it off.
+    private func handBackScreens(leavingFor next: URL) {
+        guard let departing = state.server, departing != next else { return }
+        handBackScreenHolds(departing)
     }
 
     /// Deletes `server`'s Bot connection record with that connection's cached avatars,
