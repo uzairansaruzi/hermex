@@ -2537,3 +2537,39 @@ screen (a webui session ID, or a Hermes session's current stored key) and, when 
 `active_until` lease: the app knows exactly what is on screen, and a lease would keep
 muting replies for up to two minutes after the user leaves. Local completion alerts are
 still never shown in the foreground.
+
+## Bot computer
+
+Bot Chat and the Profile's Computer row open the same full-screen viewer. The
+chat shows a thumbnail while a live turn uses a computer or browser tool and
+offers takeover after the turn. Auto-open is off by default and is a per-connection,
+per-Profile preference. Opening the viewer starts an installed, stopped desktop
+once. Reconnecting or returning from the background checks status without starting
+it again. Missing packages show the host's installation command for the user to
+run. Stopping the desktop requires confirmation, with a separate confirmation
+before interrupting someone who holds control.
+
+The viewer starts in watch mode. Local zoom and pan never send remote input.
+Only a confirmed lease for the current viewer enables touch, trackpad, keyboard
+and clipboard actions. Hold one finger still and release, or tap with two fingers,
+to right-click. Slide two fingers together to scroll the remote desktop, and
+pinch to change the local zoom. A voluntary exit hands back control. Leaving a takeover
+requested in chat preserves the lease so the Bot stays paused until the user
+returns and hands it back. Losing the lease clears remote clipboard data and
+disables input. The app hides the controlled screen while the scene is captured
+or inactive.
+
+`HermesCall` owns the display RPCs. A reconnect observes for a fresh single-use
+ticket and presents the previous viewer id, which the gateway recognizes only
+on its own connection. The native WebSocket carries the saved proxy headers and
+rejects redirects. Tickets and credentials stay native. WebKit receives bounded
+RFB bytes and lease-gated input commands. Bundled noVNC has no browser networking
+or persistent website storage. Its source, notices and rebuild instructions live
+in `Resources/BotDesktop.bundle`.
+
+Backgrounding clears the socket and rendered frame without handing back control.
+Late replies and callbacks are fenced by generation. A rejected ticket is renewed
+once and an HTTP 403 ends the attempt immediately. Try Again replaces a failed
+local renderer before reconnecting. The app waits for the first rendered
+frame before revealing the viewer. Resources and tests belong to the main app,
+with no share, widget or notification extension changes.

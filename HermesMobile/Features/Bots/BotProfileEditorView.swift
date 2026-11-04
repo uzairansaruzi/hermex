@@ -5,6 +5,8 @@ import SwiftUI
     @State private var editor: BotProfileEditor
     @State private var capabilitySheet: BotProfileEditor.Field?
     @State private var showsModels = false
+    @State private var showsDesktop = false
+    @AppStorage private var opensComputerAutomatically: Bool
     @State private var photoItem: PhotosPickerItem?
     @State private var showsPhotoPicker = false
     @State private var showsExpressions = false
@@ -20,9 +22,14 @@ import SwiftUI
          onSaved: @escaping () -> Void = {}) {
         _editor = State(initialValue: BotProfileEditor(server: server, connection: connection,
                                                        profile: profile, avatar: avatar, onSaved: onSaved))
+        _opensComputerAutomatically = AppStorage(wrappedValue: false, BotDesktopPreference.autoOpen(connection: connection, profile: profile.id))
     }
 
-    init(editor: BotProfileEditor) { _editor = State(initialValue: editor) }
+    init(editor: BotProfileEditor) {
+        _editor = State(initialValue: editor)
+        _opensComputerAutomatically = AppStorage(wrappedValue: false,
+            BotDesktopPreference.autoOpen(connection: editor.connection, profile: editor.profile.id))
+    }
 
     var body: some View {
         Group {
@@ -65,6 +72,9 @@ import SwiftUI
         }
         .sheet(item: $capabilitySheet) { field in capabilityPicker(field) }
         .sheet(isPresented: $showsModels) { modelPicker }
+        .fullScreenCover(isPresented: $showsDesktop) {
+            BotDesktopView(server: editor.server, connection: editor.connection, profile: editor.profile, avatar: editor.avatar)
+        }
         .navigationDestination(isPresented: $showsExpressions) { BotExpressionPickerView(editor: editor) }
         .sheet(isPresented: $showsDescribe) {
             BotAvatarDescribeSheet(send: { [editor] prompt in try await editor.sendAvatarPrompt(prompt) }) { generated in
@@ -133,6 +143,14 @@ import SwiftUI
                     capabilityRow(.toolsets, systemImage: "wrench.and.screwdriver")
                     Divider().padding(.leading, 52)
                     capabilityRow(.mcpServers, systemImage: "server.rack")
+                }
+                sectionLabel("Computer")
+                card {
+                    navigationRow(String(localized: "Computer"), subtitle: nil, value: "",
+                                  systemImage: "desktopcomputer") { showsDesktop = true }
+                    Divider().padding(.leading, 52)
+                    Toggle("Open when the Bot uses its computer", isOn: $opensComputerAutomatically)
+                        .padding(16)
                 }
                 sectionLabel("Server")
                 card {

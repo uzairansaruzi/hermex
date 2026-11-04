@@ -11,6 +11,7 @@ final class SettingsAcknowledgementsTests: XCTestCase {
             "Highlightr-LICENSE.txt", "KeychainAccess-LICENSE.txt", "LDSwiftEventSource-LICENSE.txt",
             "LucideIcons-LICENSE.txt", "MarkdownUI-LICENSE.txt", "NetworkImage-LICENSE.txt", "OpenBotAvatar-LICENSE.txt",
             "Splash-LICENSE.txt", "SwiftMath-LICENSE.txt", "swift-cmark-COPYING.txt",
+            "noVNC-LICENSE.txt",
         ])
         XCTAssertEqual(notices.map(\.name), notices.map(\.name).sorted { $0.localizedStandardCompare($1) == .orderedAscending })
         for notice in notices {

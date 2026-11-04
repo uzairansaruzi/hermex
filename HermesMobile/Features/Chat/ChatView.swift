@@ -448,6 +448,11 @@ struct ChatView: View {
     @State private var showsDelegatedWork = false
     /// A bot's chat's pill opened the bot's profile (#1145).
     @State private var showsBotProfileEditor = false
+    @State private var showsBotDesktop = false
+    @State private var botDesktopSession: BotDesktopSession?
+    @State private var botDesktopScope: String?
+    @State private var botDesktopTakeoverReason: String?
+    @State private var lastBotDesktopAutoOpen: Date?
     @State private var showsChatSettings = false
     @State private var showsModelSettings = false
     /// Measured height of the pinned notice stack, which grows with each
@@ -1260,6 +1265,12 @@ struct ChatView: View {
                         // A bot's chat has no subtitle to tap, since the pill opens its bot.
                         if viewModel.hermesBotChat != nil {
                             ChatToolbarActionSlot {
+                                Button { openBotComputer() } label: {
+                                    Label("Computer", systemImage: "desktopcomputer")
+                                }
+                                .accessibilityLabel("Computer")
+                            }
+                            ChatToolbarActionSlot {
                                 Button { showsChatSettings = true } label: {
                                     Label("Chat settings", systemImage: "slider.horizontal.3")
                                 }
@@ -1311,6 +1322,7 @@ struct ChatView: View {
                 HermesSessionListView(entry: entry).id(entry.id)
             }
             .navigationDestination(isPresented: $showsBotProfileEditor) { botProfileEditor }
+            .fullScreenCover(isPresented: $showsBotDesktop) { botDesktop }
             .onChange(of: showsBotProfileEditor) { _, isShown in
                 if !isShown, let botChat = viewModel.hermesBotChat { Task { await botChat.settings.refreshProfiles() } }
             }
@@ -2223,6 +2235,50 @@ struct ChatView: View {
         }
     }
 
+    @ViewBuilder private var botDesktop: some View {
+        if let botChat = viewModel.hermesBotChat, let profile = botChat.botProfile {
+            BotDesktopView(server: botChat.engine.server, connection: botChat.engine.connection, profile: profile,
+                           avatar: botChat.settings.avatars[profile.id], session: botDesktopSession,
+                           takeoverReason: botDesktopTakeoverReason)
+        }
+    }
+
+    private func openBotComputer(reason: String? = nil) {
+        guard !showsBotDesktop, let botChat = viewModel.hermesBotChat, let profile = botChat.botProfile else { return }
+        let connection = botChat.engine.connection
+        let scope = connection.id.uuidString + "|" + profile.id
+        if botDesktopScope != scope || botDesktopSession == nil {
+            botDesktopSession = BotDesktopSession(server: botChat.engine.server, connection: connection, profile: profile.id)
+            botDesktopScope = scope
+        }
+        botDesktopTakeoverReason = reason
+        showsBotDesktop = true
+    }
+
+    private func autoOpenBotComputer() {
+        guard let chat = viewModel.hermesBotChat, chat.desktopUse == .active,
+              scenePhase == .active, let profile = chat.botProfile,
+              UserDefaults.standard.bool(forKey: BotDesktopPreference.autoOpen(connection: chat.engine.connection, profile: profile.id)),
+              lastBotDesktopAutoOpen.map({ Date().timeIntervalSince($0) >= 30 }) ?? true else { return }
+        lastBotDesktopAutoOpen = Date()
+        openBotComputer()
+    }
+
+    private var botComputerCard: AnyView? {
+        guard let chat = viewModel.hermesBotChat, let profile = chat.botProfile else { return nil }
+        let connection = chat.engine.connection
+        let scope = connection.id.uuidString + "|" + profile.id
+        let held = botDesktopScope == scope && botDesktopSession?.controlsDesktop == true && !showsBotDesktop
+        guard chat.desktopUse != .none || held else { return nil }
+        return AnyView(BotDesktopChatCard(server: chat.engine.server, connection: connection, profile: profile.id,
+            use: chat.desktopUse, held: held, covered: showsBotDesktop,
+            open: { openBotComputer() }, takeOver: {
+                let reply = viewModel.messages.last { $0.role == "assistant" }?.content ?? ""
+                let firstLine = reply.split(whereSeparator: \.isNewline).first.map { String($0.prefix(60)) } ?? ""
+                openBotComputer(reason: firstLine.isEmpty ? String(localized: "The Bot is waiting for you.") : firstLine)
+            }).id(scope))
+    }
+
     /// A Hermes chat's delegated workers (#1140). Nil on the offline cache's copy, which lists none.
     private var delegatedWork: HermesDelegatedWork? {
         viewModel.isViewingCachedData ? nil : viewModel.hermesActivity?.delegatedWork
@@ -2386,6 +2442,7 @@ struct ChatView: View {
             settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
             settledPlanAfterRenderID: settledPlanAfterRenderID,
             turnOutcome: hermesTurnOutcome,
+            botComputerCard: botComputerCard,
             queuedPrompt: viewModel.queuedPromptMessage,
             isCronRun: isCronRun,
             onCopyQueuedPrompt: { text in
@@ -2402,6 +2459,7 @@ struct ChatView: View {
         .onChange(of: viewModel.latestRunOutcome) {
             handleLatestRunOutcomeChange(viewModel.latestRunOutcome)
         }
+        .onChange(of: viewModel.hermesBotChat?.desktopUse) { autoOpenBotComputer() }
         .task(id: session.sessionId) {
             await resolveForkOrigin()
         }

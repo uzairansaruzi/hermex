@@ -522,6 +522,7 @@ private extension HermesCall {
     /// because its outcome is unknown.
     var isCancellationSafe: Bool {
         switch self {
+        case .displayStatus, .displayObserve, .displayThumbnail: return true
         case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
              .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
              .commitMessage, .approvalSummary, .displayStatus, .displayObserve: return true
@@ -535,6 +536,7 @@ private extension HermesCall {
     /// connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
+        case .displayStatus, .displayObserve, .displayThumbnail: return true
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
              .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
@@ -553,6 +555,8 @@ private extension HermesCall {
     /// take a sandbox's container as well as a desktop, so `display.start` waits two minutes.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
+        case .displayStart: return .seconds(180)
+        case .displayStatus, .displayObserve, .displayThumbnail: return min(standard, .seconds(20))
         case .slashExec: return standard * 2
         case .approvalSummary: return min(standard, .seconds(20))
         case .commitMessage, .displayStart: return .seconds(120)

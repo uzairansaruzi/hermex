@@ -31,6 +31,15 @@ enum HermesCall: Equatable, Sendable {
     /// protocol `gui` means Desktop.
     static let source = "gui"
 
+    // Bot computer. The gateway mints the viewer identity and enforces input ownership.
+    case displayStatus(profile: String)
+    case displayStart(profile: String)
+    case displayObserve(profile: String, viewerID: String? = nil)
+    case displayAcquire(profile: String, viewerID: String, reason: String)
+    case displayRelease(profile: String, viewerID: String)
+    case displayStop(profile: String, force: Bool)
+    case displayThumbnail(profile: String)
+
     // Profiles
     case profilesList(includeSessions: Bool)
     case profilesDescribe(name: String)
@@ -319,6 +328,13 @@ enum HermesCall: Equatable, Sendable {
 
     var method: String {
         switch self {
+        case .displayStatus: return "display.status"
+        case .displayStart: return "display.start"
+        case .displayObserve: return "display.observe"
+        case .displayAcquire: return "display.lease.acquire"
+        case .displayRelease: return "display.lease.release"
+        case .displayStop: return "display.stop"
+        case .displayThumbnail: return "display.thumbnail"
         case .profilesList: return "profiles.list"
         case .profilesDescribe: return "profiles.describe"
         case .profilesGetAsset: return "profiles.get_asset"
@@ -396,6 +412,18 @@ enum HermesCall: Equatable, Sendable {
     func params(hostVersion: String? = nil) throws -> [String: BotJSON] {
         try admit()
         switch self {
+        case .displayStatus(let profile), .displayStart(let profile), .displayThumbnail(let profile):
+            return ["profile": .string(profile)]
+        case .displayObserve(let profile, let viewerID):
+            var params: [String: BotJSON] = ["profile": .string(profile)]
+            if let viewerID { params["viewer_id"] = .string(viewerID) }
+            return params
+        case .displayAcquire(let profile, let viewerID, let reason):
+            return ["profile": .string(profile), "viewer_id": .string(viewerID), "reason": .string(reason)]
+        case .displayRelease(let profile, let viewerID):
+            return ["profile": .string(profile), "viewer_id": .string(viewerID)]
+        case .displayStop(let profile, let force):
+            return ["profile": .string(profile), "force": .bool(force)]
         case .profilesList(let includeSessions): return ["include_sessions": .bool(includeSessions)]
         case .profilesDescribe(let name): return ["name": .string(name)]
         case .profilesGetAsset(let name): return ["name": .string(name), "asset": .string("avatar")]
@@ -606,6 +634,11 @@ enum HermesCall: Equatable, Sendable {
     private func admit() throws {
         let valid: Bool
         switch self {
+        case .displayStatus(let profile), .displayStart(let profile), .displayObserve(let profile, _),
+             .displayStop(let profile, _), .displayThumbnail(let profile):
+            valid = !Self.isBlank(profile)
+        case .displayAcquire(let profile, let viewerID, _), .displayRelease(let profile, let viewerID):
+            valid = !Self.isBlank(profile) && !Self.isBlank(viewerID)
         case .profilesDescribe(let name): valid = !name.isEmpty
         case .profilesSetAsset(let name, let avatar):
             // Base64 for the server's 2 MB decoded cap, with small data-URL headroom.

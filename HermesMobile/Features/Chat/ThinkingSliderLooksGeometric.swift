@@ -287,8 +287,10 @@ extension ThinkingSliderLook {
             let depth = Double(layer)
             return wave(from: -4, to: width + 4, step: 4) { x in
                 let unit = x / width
-                return top + depth * (3 + active * 3)
-                    + active * (2 + depth * 0.6) * sin(unit * (12 + active * 13) - store.phase * (3 + depth * 0.13) + depth * 0.85)
+                let baseline = top + depth * (3 + active * 3)
+                let amplitude = active * (2 + depth * 0.6)
+                let phase = unit * (12 + active * 13) - store.phase * (3 + depth * 0.13) + depth * 0.85
+                return baseline + amplitude * sin(phase)
             }
         }
         for layer in stride(from: layers - 1, through: 0, by: -1) {
