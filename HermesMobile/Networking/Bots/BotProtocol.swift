@@ -79,8 +79,9 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .wrongIdentity: return String(localized: "The conversation identity changed. Check this bot in Desktop.")
         case .differentHost: return String(localized: "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
         case .rejected(401): return String(localized: "Hermes didn't accept the username or password.")
-        // Hermes answers 403 only to a session edit it refuses (`updateSession` throws most of those as
-        // `HermesSessionFenceRefusal.refused`) and to the gateway upgrade (see `.upgradeRefused`).
+        // A 403 Hermes explains in `detail`, such as a refused session edit or file read, reads as
+        // that reason where it is read (`HermesCronClient.accepted`), and the gateway upgrade has
+        // `.upgradeRefused`, so one that lands here came from a proxy or tunnel.
         // Hermes never answers 520-530 itself. 502-504 usually come from a proxy; Hermes's own 503
         // (its auth provider is unreachable) shares the approved proxy copy.
         case .rejected(403): return String(localized: "Something in front of Hermes, such as Cloudflare Access, blocked the request.")
