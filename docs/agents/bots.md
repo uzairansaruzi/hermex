@@ -613,6 +613,12 @@ inline. This keeps the editor small, not the prompt: the host may expand the fil
 warn, or leave a stub that agent tools read, as for any document below. Webui sessions
 and rooms always paste inline.
 
+Tapping an unsent paste's tile opens its text from the local copy, with Edit (#1456). Save
+writes a new copy, points the tile and draft record at it, saves the draft, then deletes
+the old copy, so a failure leaves the original. The sheet is read-only while a send may be
+reading the file or its outcome is unknown, and past `StagedPasteText.editableBytes` it
+shows only the start, read-only.
+
 Send and Queue upload the selected files and put only acknowledged references in
 that prompt. Steer/Redirect remain text-only. Images use the authenticated
 `POST /api/chat/image-upload?profile=…` with `{filename, data_url}` using the

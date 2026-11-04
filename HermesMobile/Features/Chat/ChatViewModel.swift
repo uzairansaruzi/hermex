@@ -1851,6 +1851,21 @@ final class ChatViewModel {
         attachmentCoordinator.cancelPastedTextStaging()
     }
 
+    /// Whether a send may be reading the staged files, or its outcome is unknown (#508), so a
+    /// staged paste stays read-only (#1456). A send reads each file only when it gets to it.
+    var stagedFilesAreSending: Bool { isSubmittingHermesPrompt || isHermesSubmissionUncertain }
+
+    func stagedPasteText(_ attachment: PendingAttachment) async -> StagedPasteText? {
+        await attachmentCoordinator.stagedPasteText(attachment)
+    }
+
+    /// Saves an edited staged paste, unless a send took it after the sheet opened. Returns
+    /// why it did not save, or nil once it has.
+    func saveStagedPaste(_ attachment: PendingAttachment, text: String) async -> String? {
+        guard !stagedFilesAreSending else { return StagedPasteText.sendingNotice }
+        return await attachmentCoordinator.replaceStagedPaste(attachment, with: text)
+    }
+
     /// Re-uploads a restored draft attachment from its durable local copy,
     /// preserving the draft record's identity. Quiet on failure (returns nil):
     /// the caller reports in aggregate and keeps the record for a later retry.

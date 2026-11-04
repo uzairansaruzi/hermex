@@ -1289,6 +1289,8 @@ actor PausingCopies: ChatDraftAttachmentStoring {
     var count: Int { get async { await copies.count } }
 
     func onSave(_ saved: @escaping () -> Void) { self.saved = saved }
+    /// Holds the next save too, after an earlier `resume()`.
+    func pause() { isResumed = false }
     func resume() {
         isResumed = true
         paused?.resume()

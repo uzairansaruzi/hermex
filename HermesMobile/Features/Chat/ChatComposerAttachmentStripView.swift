@@ -120,8 +120,8 @@ private struct ComposerDocumentThumbnail<Content: View>: View {
     @State private var loaded: UIImage?
 
     var body: some View {
-        content(loaded ?? ComposerDocumentThumbnails.shared.cachedThumbnail(for: attachment.id))
-            .task(id: attachment.id) {
+        content(loaded ?? ComposerDocumentThumbnails.shared.cachedThumbnail(for: attachment))
+            .task(id: attachment.draftFileName) {
                 let image = await ComposerDocumentThumbnails.shared.thumbnail(
                     for: attachment,
                     size: documentBadgeSize,
