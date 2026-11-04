@@ -191,9 +191,25 @@ enum ChatScrollPolicy {
         let fractionWithinRow: CGFloat
     }
 
+    /// Where a reflow or a rebuilt transcript keeps the reader (#1528). The top
+    /// is a place of its own: its offset changes with the bars' insets.
+    enum ReadingPlace: Equatable {
+        case top
+        case row(ReflowAnchor)
+
+        /// Whether `id`'s new frame can move this place: the row's own, or any at the top,
+        /// where a frame moving means the bars' insets may have too.
+        func dependsOnFrame(of id: String) -> Bool {
+            switch self {
+            case .top: true
+            case .row(let anchor): anchor.id == id
+            }
+        }
+    }
+
     /// The row under `readingLineY`, all in the transcript content's coordinates.
     /// A line in the gap after a row, or below the last one, keeps the end of the
-    /// row above it. Nil at the top (top stays top) and above the first row.
+    /// row above it. Nil at the top and above the first row, which keep the top.
     static func reflowAnchor(readingLineY: CGFloat, isAtTop: Bool, rowFrames: [String: CGRect]) -> ReflowAnchor? {
         guard !isAtTop else { return nil }
         let row = rowFrames

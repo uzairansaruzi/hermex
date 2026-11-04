@@ -159,12 +159,17 @@ struct BotInboxSelection {
             if profile != nil { room = nil }
             conversation = nil
             pick = UUID()
+            chatContinuity = ChatContinuity()
         }
     }
     var room: BotRoomKey? {
         didSet { if room != nil { profile = nil; conversation = nil }; pick = UUID() }
     }
-    var conversation: String?
+    var conversation: String? {
+        didSet { chatContinuity = ChatContinuity() }
+    }
+    /// The open chat's, for the `ChatView` of whichever width is showing it (#1528).
+    private(set) var chatContinuity = ChatContinuity()
     /// New on every pick, the same bot or room again included, so a regular-width detail
     /// re-roots and pops what it pushed, as a Sessions row does.
     private(set) var pick = UUID()

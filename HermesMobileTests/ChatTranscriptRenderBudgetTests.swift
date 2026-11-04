@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import XCTest
 @testable import HermesMobile
@@ -251,6 +252,17 @@ private struct BudgetTranscriptHost: View {
     }
 }
 
+/// `HermesServerHome`'s width branches around the real list, which owns the split at regular
+/// width and pushes its chat in this stack at compact width.
+private struct WidthCrossingHome: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    let list: HermesSessionListView
+
+    var body: some View {
+        if horizontalSizeClass == .regular { list } else { NavigationStack { list } }
+    }
+}
+
 /// A reader parked inside a long reply keeps their place when the column rewraps
 /// (#1414): rotation and a text-size change move every row above them, and a raw
 /// offset would land them screens away. A reader on a block between rows (a plan)
@@ -360,7 +372,163 @@ final class ChatTranscriptReflowTests: XCTestCase {
         XCTAssertEqual(frame.maxX, window.bounds.width, accuracy: 0.5)
     }
 
+    /// An iPad window crossing compact and regular width rebuilds the open chat in the other
+    /// navigation branch (#1528). The reader keeps the model, so the history they loaded, and the
+    /// passage they were reading, there and back.
+    func testCrossingTheWidthClassKeepsTheModelAndTheReadersPlace() async throws {
+        let model = try makeViewModel(turns: 20)
+        await model.loadMessages()
+        model.followLatch.isFollowing = false
+        let loaded = model.messages.count
+        let hosted = try hostHermesHome(openChatOn: model)
+        let window = hosted.window
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        try await parkReader(in: window, onReply: "Answer 12.")
+        for (width, sizeClass) in [(CGFloat(932), UIUserInterfaceSizeClass.regular), (430, .compact)] {
+            window.traitOverrides.horizontalSizeClass = sizeClass
+            window.frame = CGRect(x: 0, y: 0, width: width, height: 844)
+            await settle(window) { self.replyAtReadingLine(in: window)?.hasPrefix("Answer 12.") == true }
+            XCTAssertEqual(replyAtReadingLine(in: window)?.hasPrefix("Answer 12."), true, "\(sizeClass) moved the reader")
+            XCTAssertTrue(hosted.continuity.model === model, "The rebuilt chat made a new model")
+            XCTAssertEqual(model.messages.count, loaded, "Crossing the width class dropped loaded history")
+            XCTAssertFalse(model.followLatch.isFollowing, "The rebuilt transcript's bottom re-armed follow")
+        }
+    }
+
+    /// A reader following the live edge is still there after the rebuild.
+    func testCrossingTheWidthClassKeepsAFollowerAtTheBottom() async throws {
+        let model = try makeViewModel(turns: 20)
+        await model.loadMessages()
+        let hosted = try hostHermesHome(openChatOn: model)
+        let window = hosted.window
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await settle(window) { self.transcriptScrollView(in: window) != nil }
+
+        window.traitOverrides.horizontalSizeClass = .regular
+        window.frame = CGRect(x: 0, y: 0, width: 932, height: 844)
+        await settle(window) { self.replyAtReadingLine(in: window)?.hasPrefix("Answer 19.") == true }
+
+        XCTAssertTrue(model.followLatch.isFollowing)
+        let scrollView = try XCTUnwrap(transcriptScrollView(in: window))
+        let bottomOffset = scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom
+        XCTAssertEqual(scrollView.contentOffset.y, bottomOffset, accuracy: 2, "The follower left the live edge")
+    }
+
+    /// A split view can build a `ChatView` that appears and leaves while another stays on screen.
+    /// The model's stream stops only when the last one leaves, in either order of a swap.
+    func testOnlyTheLastViewOnScreenStopsTheChat() throws {
+        let model = try makeViewModel(turns: 1)
+        let continuity = ChatContinuity()
+        let onScreen = UUID(), extra = UUID(), successor = UUID()
+
+        continuity.viewAppeared(onScreen, model: model) { _, _ in }
+        continuity.viewAppeared(extra, model: model) { _, _ in }
+        XCTAssertFalse(continuity.viewDisappeared(extra), "An extra view leaving stopped the chat under the one on screen")
+
+        // The new view appeared first: the old one leaves it running.
+        continuity.viewAppeared(successor, model: model) { _, _ in }
+        XCTAssertFalse(continuity.viewDisappeared(onScreen))
+        // The chat really closes.
+        XCTAssertTrue(continuity.viewDisappeared(successor))
+    }
+
+    /// A waiting send that comes back must reach a composer on screen, not the extra view's: its
+    /// text would be lost to the screen, and the visible composer's next edit overwrites the draft.
+    func testAReturnedWaitingSendReachesTheViewThatStays() throws {
+        let model = try makeViewModel(turns: 1)
+        let continuity = ChatContinuity()
+        let onScreen = UUID(), extra = UUID()
+        var reached: [UUID] = []
+
+        continuity.viewAppeared(onScreen, model: model) { _, _ in reached.append(onScreen) }
+        continuity.viewAppeared(extra, model: model) { _, _ in reached.append(extra) }
+        _ = continuity.viewDisappeared(extra)
+        model.onWaitingSendReturned?("Text", .cancelled)
+
+        XCTAssertEqual(reached, [onScreen])
+    }
+
     // MARK: - Helpers
+
+    /// The real Hermes home list, in the branches `HermesServerHome` swaps by width, with a chat
+    /// open on `model` as if its view had already appeared and loaded.
+    private func hostHermesHome(openChatOn model: ChatViewModel) throws -> (window: UIWindow, continuity: ChatContinuity) {
+        let server = try XCTUnwrap(URL(string: "http://127.0.0.1:9"))
+        let connection = BotConnection(id: UUID(), name: "Width test", address: server, username: "fixture", password: "fixture-only")
+        let entry = HermesSessionListEntry(server: server, connection: connection, profile: "default")
+        let wire = HermesSessionListWire()
+        let list = SessionListViewModel(server: server, hermes: HermesSessionListSource(
+            connection: connection, profile: "default", makeWire: { _ in wire }))
+        let navigation = HermesSessionListNavigation()
+        navigation.covers.chat = HermesSessionChat(server: server, connection: connection, target: .session(profile: "default", key: "session-abc"))
+        let continuity = navigation.covers.chatContinuity
+        continuity.viewAppeared(UUID(), model: model) { _, _ in }
+        continuity.didLoadMessages = true
+        let avatar = SessionsHeader.Avatar(initials: "QA", color: .blue, foreground: .white,
+            servers: .init(servers: [], activeServerID: nil), openSettings: {},
+            switchToServer: { _ in }, addServer: {}, manageServers: {})
+        let home = HermesHome(title: "Width test", avatar: avatar, tab: .constant(.sessions))
+        let container = try ModelContainer(for: CachedSession.self, CachedMessage.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let auth = AuthManager(keychain: InMemoryKeychainStore(), serverRegistry: .inMemory(),
+                               hermesConnections: HermesConnections(keychain: InMemoryKeychainStore()))
+        let root = WidthCrossingHome(list: HermesSessionListView(entry: entry, model: list, home: home, navigation: navigation))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.traitOverrides.horizontalSizeClass = .compact
+        window.frame = CGRect(x: 0, y: 0, width: 430, height: 844)
+        window.rootViewController = UIHostingController(rootView: root.modelContainer(container).environment(auth))
+        window.makeKeyAndVisible()
+        return (window, continuity)
+    }
+
+    /// Parks the transcript's reading line inside the reply starting `prefix`.
+    private func parkReader(in window: UIWindow, onReply prefix: String) async throws {
+        await settle(window) { self.reply(startingWith: prefix, in: window) != nil }
+        let scrollView = try XCTUnwrap(transcriptScrollView(in: window))
+        let reply = try XCTUnwrap(reply(startingWith: prefix, in: window))
+        let frame = reply.convert(reply.bounds, to: scrollView)
+        scrollView.setContentOffset(
+            CGPoint(x: 0, y: frame.minY + 0.4 * frame.height - scrollView.adjustedContentInset.top),
+            animated: false
+        )
+        await settle(window) { self.replyAtReadingLine(in: window)?.hasPrefix(prefix) == true }
+    }
+
+    private func replies(in view: UIView) -> [ResponseSelectionInput] {
+        [view as? ResponseSelectionInput].compactMap { $0 } + view.subviews.flatMap(replies(in:))
+    }
+
+    private func text(of reply: ResponseSelectionInput) -> String? {
+        reply.textRange(from: reply.beginningOfDocument, to: reply.endOfDocument).flatMap(reply.text(in:))
+    }
+
+    private func reply(startingWith prefix: String, in window: UIWindow) -> ResponseSelectionInput? {
+        replies(in: window).first { text(of: $0)?.hasPrefix(prefix) == true }
+    }
+
+    /// The text of the reply under the top of the transcript's visible area.
+    private func replyAtReadingLine(in window: UIWindow) -> String? {
+        guard let scrollView = transcriptScrollView(in: window) else { return nil }
+        let line = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+        return replies(in: scrollView)
+            .first { let frame = $0.convert($0.bounds, to: scrollView); return frame.minY <= line && line <= frame.maxY }
+            .flatMap(text(of:))
+    }
+
+    /// Runs the main queue until `condition` holds. The bound only fails a broken test faster;
+    /// navigation lands over several turns.
+    private func settle(_ window: UIWindow, until condition: @escaping @MainActor () -> Bool) async {
+        let landed = expectation(description: "layout landed")
+        @MainActor func check(_ remaining: Int) {
+            window.layoutIfNeeded()
+            if condition() || remaining == 0 { landed.fulfill(); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { MainActor.assumeIsolated { check(remaining - 1) } }
+        }
+        check(250)
+        await fulfillment(of: [landed], timeout: 10)
+    }
 
     /// Lets SwiftUI apply pending updates, then lays the window out.
     private func layOut(_ window: UIWindow) async {

@@ -465,6 +465,12 @@ final class ChatViewModel {
     /// An archived Bot Chat, opened by its key, keeps its cached copy under this lineage root,
     /// and reads its bot's Bot Chat's copy of that root while it has none (#1144). Nil for any
     /// other chat.
+    /// Whether the transcript follows the live edge. Here rather than in `ChatView`, so a
+    /// size-class change's new view knows whether the reader was up in history (#1528).
+    var followLatch = ChatScrollPolicy.FollowLatch()
+    /// The turns the reader opened, here for the same reason: the row they are reading can sit
+    /// inside one.
+    var expandedTurnKeys: Set<String> = []
     @ObservationIgnored var hermesBotChatRoot: String?
     /// A session's lineage root as its row or link named it (`HermesSessionChat.lineageRoot`);
     /// nil asks the cache.

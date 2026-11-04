@@ -34,6 +34,7 @@ struct HermesSessionListEntry: Hashable, Identifiable {
 struct HermesSessionListView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var modelContext
@@ -306,7 +307,8 @@ struct HermesSessionListView: View {
         .task { await viewModel.openHermes(modelContext: modelContext) }
         // A link arriving while a chat, screen or sheet covers the rows pops and closes them, so
         // what it opens or says shows here.
-        .onChange(of: pendingLink, initial: true) { covers.accept(pendingLink, on: entry.server) }
+        // Only with a link: `covers` is observed, and its setter runs for any mutating call.
+        .onChange(of: pendingLink, initial: true) { if pendingLink != nil { covers.accept(pendingLink, on: entry.server) } }
         .task(id: pendingLink) { await openPendingLink() }
         .onChange(of: pendingUsage, initial: true) { if pendingUsage != nil { covers.bringForward() } }
         .task(id: UsageReadiness(link: pendingUsage, isLive: viewModel.isHermesLive)) { await openPendingUsage() }
@@ -355,7 +357,7 @@ struct HermesSessionListView: View {
     }
 
     private var usesSplit: Bool {
-        HermesHomeLayout.usesSplit(isHome: home != nil, horizontalSizeClass: horizontalSizeClass)
+        HermesHomeLayout.usesSplit(isHome: home != nil, horizontalSizeClass: horizontalSizeClass, verticalSizeClass: verticalSizeClass)
     }
 
     private var selectedSessionID: String? {
@@ -394,8 +396,8 @@ struct HermesSessionListView: View {
                 }
                 searchText = opened.query
                 if !opened.query.isEmpty && home != nil { isSearchExpanded = true }
-            }, onDraftKeyChange: { covers.identifyChat(chat.id, draftKey: $0) },
-            waitingShortcut: shortcutReview.waiting(in: chat.id))
+            }, onDraftKeyChange: identifyChat(chat), waitingShortcut: shortcutReview.waiting(in: chat.id),
+            continuity: covers.chatContinuity)
             .id(chat.id)
         }
         .navigationDestination(isPresented: $navigation.covers.showingScheduled) {
@@ -429,6 +431,12 @@ struct HermesSessionListView: View {
         }
     }
 
+    /// The model keeps this past any one view, and `navigation` keeps the model through
+    /// `chatContinuity`, so it holds neither `navigation` nor the view strongly.
+    private func identifyChat(_ chat: HermesSessionChat) -> (ChatDraftKey) -> Void {
+        { [weak navigation, id = chat.id] in navigation?.covers.identifyChat(id, draftKey: $0) }
+    }
+
     @ViewBuilder private var regularWidthDetail: some View {
         if let chat = covers.chat {
             ChatView(hermesSession: covers.building(chat), onReplace: { replace(chat, with: $0) }, onOpenSessions: { opened in
@@ -438,8 +446,8 @@ struct HermesSessionListView: View {
                 }
                 searchText = opened.query
                 if !opened.query.isEmpty { isSearchExpanded = true }
-            }, onDraftKeyChange: { covers.identifyChat(chat.id, draftKey: $0) },
-            waitingShortcut: shortcutReview.waiting(in: chat.id)).id(chat.id)
+            }, onDraftKeyChange: identifyChat(chat), waitingShortcut: shortcutReview.waiting(in: chat.id),
+            continuity: covers.chatContinuity).id(chat.id)
         } else if let entry = covers.tasks {
             TasksView(server: entry.server, onAPIError: { _ in }, client: entry.client, newTaskProfile: entry.newTaskProfile).id(entry.id)
         } else if let entry = covers.skills {
@@ -1187,9 +1195,15 @@ private struct SessionsToolbarTitle: View {
 /// the list itself; a closed chat keeps its draft in the draft store.
 struct HermesSessionListCovers {
     var chat: HermesSessionChat? {
-        didSet { if chat?.id != oldValue?.id { chatDraftKey = nil } }
+        didSet {
+            guard chat?.id != oldValue?.id else { return }
+            chatDraftKey = nil
+            chatContinuity = ChatContinuity()
+        }
     }
     private var chatDraftKey: ChatDraftKey?
+    /// The open chat's, for the `ChatView` of whichever width is showing it (#1528).
+    private(set) var chatContinuity = ChatContinuity()
     var renaming: SessionSummary?
     var deleting: SessionSummary?
     var exported: SessionExportShareItem?

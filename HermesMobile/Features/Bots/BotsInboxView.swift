@@ -7,6 +7,7 @@ import SwiftUI
 /// filter holds hidden bots and section order, and new chat makes a bot or a group chat.
 @MainActor struct BotsInboxView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
@@ -88,7 +89,7 @@ import SwiftUI
     }
 
     private var usesSplit: Bool {
-        HermesHomeLayout.usesSplit(isHome: home != nil, horizontalSizeClass: horizontalSizeClass)
+        HermesHomeLayout.usesSplit(isHome: home != nil, horizontalSizeClass: horizontalSizeClass, verticalSizeClass: verticalSizeClass)
     }
 
     @ViewBuilder private var navigationSurface: some View {
@@ -402,7 +403,7 @@ import SwiftUI
     /// lands. A refused password comes back here to the inbox's sign-in form.
     @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
         if let chat = inbox.selection.chat(server: server, connection: connection) {
-            ChatView(hermesSession: chat)
+            ChatView(hermesSession: chat, continuity: inbox.selection.chatContinuity)
             .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); inbox.selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them

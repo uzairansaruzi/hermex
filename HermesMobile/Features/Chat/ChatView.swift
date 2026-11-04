@@ -362,7 +362,6 @@ struct ChatView: View {
     @State private var completedResponseRenderID: String?
     @State private var hydratedCompletionStreamID: String?
     @State private var composerFocusRevision = 0
-    @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var followScrollGeneration = 0
     /// While true the transcript's bottom size-change anchor and follow-driven
     /// scrolls are suspended so a disclosure toggle grows or shrinks in place.
@@ -370,7 +369,6 @@ struct ChatView: View {
     @State private var disclosureSettleGeneration = 0
     /// Settled turns the user has opened, plus failed or stopped turns, which
     /// start open. Keyed by turn so paging older messages in does not shift them.
-    @State private var expandedTurnKeys: Set<String> = []
     @State private var transcriptStructureMemo = TranscriptStructureMemo()
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
@@ -415,6 +413,10 @@ struct ChatView: View {
     /// Folds and viewed marks the Changes sheet and turn diffs share for as long as this chat is open.
     @State private var reviewProgress = ReviewProgressStore()
     @State private var viewModel: ChatViewModel
+    /// What outlives this view when a size-class change rebuilds the screen (#1528).
+    @State private var continuity: ChatContinuity
+    /// This view among those on screen for `continuity`.
+    @State private var viewID = UUID()
     @State private var gitAvailabilityViewModel: GitWorkspaceAvailabilityViewModel
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
@@ -510,7 +512,8 @@ struct ChatView: View {
         onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil,
         onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil,
         onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil,
-        waitingShortcut: WaitingShortcutText? = nil
+        waitingShortcut: WaitingShortcutText? = nil,
+        continuity: ChatContinuity? = nil
     ) {
         self.session = session
         self.server = server
@@ -534,7 +537,9 @@ struct ChatView: View {
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
         self.shareNotice = shareNotice
-        let model = ChatViewModel(
+        let continuity = continuity ?? ChatContinuity()
+        _continuity = State(initialValue: continuity)
+        let model = continuity.model ?? ChatViewModel(
             session: session,
             server: server,
             showsLiveActivityResponseExcerpts: UserDefaults.standard.bool(
@@ -548,6 +553,9 @@ struct ChatView: View {
         model.hermesLineageRoot = hermesSession?.lineageRoot
         model.onHermesDraftKeyChange = onHermesDraftKeyChange
         _viewModel = State(initialValue: model)
+        // Until its first report, a reader who wasn't following reads as away from the live edge,
+        // so the bottom a rebuilt transcript opens at doesn't re-arm follow.
+        _isScrolledNearBottom = State(initialValue: model.followLatch.isFollowing)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
@@ -561,7 +569,8 @@ struct ChatView: View {
     /// `HermesUpdateSignInAction`. New Chat with Voice's chat (#1180) starts dictation.
     init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil,
          onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil,
-         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil) {
+         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil,
+         continuity: ChatContinuity? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
@@ -572,7 +581,8 @@ struct ChatView: View {
             onReplaceHermesSession: onReplace,
             onOpenHermesSessions: onOpenSessions,
             onHermesDraftKeyChange: onDraftKeyChange,
-            waitingShortcut: waitingShortcut
+            waitingShortcut: waitingShortcut,
+            continuity: continuity
         )
     }
 
@@ -1115,6 +1125,12 @@ struct ChatView: View {
                 handleNetworkPathChange()
             }
             .onChange(of: viewModel.activeStreamID) {
+                // A new turn starting folds the previous one, even one that opened
+                // itself after failing or being stopped. Here, not in the handler, which a
+                // rebuilt view also runs as it appears, with the same turn still going.
+                if viewModel.activeStreamID != nil, let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
+                    viewModel.expandedTurnKeys.remove(previousTurnKey)
+                }
                 handleActiveStreamChange()
             }
             .onChange(of: viewModel.transcriptRelayoutScrollToken) {
@@ -1149,31 +1165,37 @@ struct ChatView: View {
                 composerFocusRevision += 1
                 completionScrollPolicy.readerDidInteract()
                 hydratedCompletionStreamID = nil
-                parkQueuedMessages()
-                // A waiting send never sends from a chat that left; its text goes back to the draft (#1407).
-                viewModel.leaveWaitingSend()
+                // Another view on screen, from a size-class change, still runs the model (#1528).
+                let chatLeft = continuity.viewDisappeared(viewID)
+                if chatLeft {
+                    parkQueuedMessages()
+                    // A waiting send never sends from a chat that left; its text goes back to the draft (#1407).
+                    viewModel.leaveWaitingSend()
+                }
                 flushDraftsBestEffort()
                 appearanceTask?.cancel()
                 appearanceTask = nil
                 activeStreamStatusRefreshTask?.cancel()
                 activeStreamStatusRefreshTask = nil
-                viewModel.cancelPastedTextStaging()
-                viewModel.stopListening()
-                viewModel.suspendStreamForNavigation()
-                viewModel.cleanupPollingTasks()
+                if chatLeft {
+                    viewModel.cancelPastedTextStaging()
+                    viewModel.stopListening()
+                    viewModel.suspendStreamForNavigation()
+                    viewModel.cleanupPollingTasks()
+                }
                 gitAvailabilityViewModel.suspendPullRequestReads()
             }
             .onAppear {
-                viewModel.protectDraftAttachments(for: draftKey)
-                isOnScreen = true
                 // Holds only the composer's text and the toast, never this view (#1407).
-                viewModel.onWaitingSendReturned = { [composerText = $draftMessage, toast = toastState] text, reason in
+                continuity.viewAppeared(viewID, model: viewModel) { [composerText = $draftMessage, toast = toastState] text, reason in
                     composerText.wrappedValue = text
                     if reason == .expired {
                         let notice = String(localized: "Not sent after 10 minutes offline. Your message is back in the composer.")
                         toast.show(ActionToast(message: notice, systemImage: "clock", accessibilityLabel: notice))
                     }
                 }
+                viewModel.protectDraftAttachments(for: draftKey)
+                isOnScreen = true
                 gitAvailabilityViewModel.resumePullRequestReads()
                 appearanceTask?.cancel()
                 appearanceTask = Task {
@@ -2302,7 +2324,7 @@ struct ChatView: View {
             onDisclosureToggle: handleDisclosureToggle,
             turnFolds: structure.folds,
             terminalReplyRenderIDs: structure.terminalReplyRenderIDs,
-            expandedTurnKeys: expandedTurnKeys,
+            expandedTurnKeys: viewModel.expandedTurnKeys,
             onToggleTurnFold: toggleTurnFold,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
@@ -2351,6 +2373,7 @@ struct ChatView: View {
             },
             waitingSend: viewModel.waitingSendMessage,
             onCancelWaitingSend: viewModel.cancelWaitingSend,
+            continuity: continuity,
             delegatedWork: delegatedWork,
             onOpenDelegatedWork: openDelegatedWork
         )
@@ -2444,7 +2467,7 @@ struct ChatView: View {
     }
 
     private var shouldFollowLatestMessage: Bool {
-        followLatch.isFollowing
+        viewModel.followLatch.isFollowing
     }
 
     /// Automatic follows run only while the latch is on and no disclosure
@@ -2635,8 +2658,8 @@ struct ChatView: View {
     private func toggleTurnFold(_ turnKey: String) {
         handleDisclosureToggle()
         withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-            if !expandedTurnKeys.insert(turnKey).inserted {
-                expandedTurnKeys.remove(turnKey)
+            if !viewModel.expandedTurnKeys.insert(turnKey).inserted {
+                viewModel.expandedTurnKeys.remove(turnKey)
             }
         }
     }
@@ -2644,7 +2667,7 @@ struct ChatView: View {
     /// Failed or stopped turns start open so the work that went wrong is in view.
     private func handleLatestRunOutcomeChange(_ outcome: TranscriptTurnRunOutcome?) {
         guard let outcome, outcome.ending != .completed else { return }
-        expandedTurnKeys.insert(outcome.turnKey)
+        viewModel.expandedTurnKeys.insert(outcome.turnKey)
     }
 
     private var latestTranscriptMessageID: String? {
@@ -2655,9 +2678,14 @@ struct ChatView: View {
         transcriptMessages.last?.message.role
     }
 
+    /// A view a size-class change rebuilt keeps its predecessor's transcript, older pages included.
+    private var needsInitialMessages: Bool {
+        loadsInitialMessages && !continuity.didLoadMessages
+    }
+
     private func prepareInitialAppearance() {
         viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
-        if loadsInitialMessages {
+        if needsInitialMessages {
             viewModel.prepareInitialMessageLoad(modelContext: modelContext)
         }
     }
@@ -2682,9 +2710,10 @@ struct ChatView: View {
         guard !Task.isCancelled else { return }
         let draftSettingsInteractionGeneration = viewModel.composerConfigurationInteractionGeneration
 
-        if loadsInitialMessages {
+        if needsInitialMessages {
             await loadMessages(appliesInitialFocus: false, usesInitialPrefetch: true)
             guard !Task.isCancelled else { return }
+            continuity.didLoadMessages = viewModel.errorMessage == nil
             if viewModel.messages.isEmpty { endSessionOpenSignpost() }
         }
         if initialAttachments.isEmpty {
@@ -2783,7 +2812,7 @@ struct ChatView: View {
     }
 
     private func loadOlderMessages() async -> Bool {
-        followLatch.isFollowing = false
+        viewModel.followLatch.isFollowing = false
 
         let signpost = performanceSignposter.beginInterval("Load Earlier")
         let didLoad = await viewModel.loadOlderMessages(modelContext: modelContext)
@@ -3310,6 +3339,8 @@ struct ChatView: View {
                 pendingRetry.append(contentsOf: records[offset...])
                 break
             }
+            // A model a size-class change kept still holds it (#1528).
+            if viewModel.pendingAttachments.contains(where: { $0.id == record.id }) { continue }
             guard let fileName = record.file else {
                 // Tolerate an older or partially corrupt record that predates
                 // the durable-staging invariant.
@@ -3920,11 +3951,6 @@ struct ChatView: View {
             return
         }
 
-        // A new turn starting folds the previous one, even one that opened
-        // itself after failing or being stopped.
-        if let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
-            expandedTurnKeys.remove(previousTurnKey)
-        }
 
         completionScrollPolicy.begin(streamID: activeStreamID, isFollowing: shouldFollowLatestMessage)
         hydratedCompletionStreamID = nil
@@ -4017,7 +4043,7 @@ struct ChatView: View {
                   sceneIsActive: scenePhase == .active
               ) else { return }
         hydratedCompletionStreamID = nil
-        followLatch.isFollowing = false
+        viewModel.followLatch.isFollowing = false
         completedResponseRenderID = finalRenderID
     }
 
@@ -4203,9 +4229,9 @@ struct ChatView: View {
         default:
             break
         }
-        let resolved = ChatScrollPolicy.resolveFollow(current: followLatch, event: event)
-        if resolved != followLatch {
-            followLatch = resolved
+        let resolved = ChatScrollPolicy.resolveFollow(current: viewModel.followLatch, event: event)
+        if resolved != viewModel.followLatch {
+            viewModel.followLatch = resolved
         }
     }
 

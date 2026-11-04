@@ -150,10 +150,37 @@ private struct ResponseSelectionScopeKey: EnvironmentKey {
     static let defaultValue: ResponseSelectionScope? = nil
 }
 
+/// A reply's selectable leaves in view order. SwiftUI merges these at every level of the reply's
+/// tree, on every layout, so a merge only links two nodes; concatenating arrays copied every leaf
+/// below it each time (#1528).
+private indirect enum ResponseSelectionOrder: Equatable {
+    case empty
+    case leaf(UUID)
+    case pair(ResponseSelectionOrder, ResponseSelectionOrder)
+
+    var ids: [UUID] {
+        var ids: [UUID] = []
+        collect(into: &ids)
+        return ids
+    }
+
+    private func collect(into ids: inout [UUID]) {
+        switch self {
+        case .empty: break
+        case .leaf(let id): ids.append(id)
+        case .pair(let first, let second):
+            first.collect(into: &ids)
+            second.collect(into: &ids)
+        }
+    }
+}
+
 private struct ResponseSelectionOrderKey: PreferenceKey {
-    static let defaultValue: [UUID] = []
-    static func reduce(value: inout [UUID], nextValue: () -> [UUID]) {
-        value += nextValue()
+    static let defaultValue = ResponseSelectionOrder.empty
+    static func reduce(value: inout ResponseSelectionOrder, nextValue: () -> ResponseSelectionOrder) {
+        let next = nextValue()
+        if case .empty = next { return }
+        if case .empty = value { value = next } else { value = .pair(value, next) }
     }
 }
 
@@ -168,7 +195,7 @@ extension View {
     func responseSelectionDocument(_ scope: ResponseSelectionScope) -> some View {
         environment(\.responseSelectionScope, scope)
             .onPreferenceChange(ResponseSelectionOrderKey.self) { [weak input = scope.input] order in
-                input?.leafOrder = order
+                input?.leafOrder = order.ids
             }
     }
 }
@@ -214,7 +241,7 @@ private struct RegisteredResponseSelectionLeaf: ViewModifier {
             }
         }
         .background(ResponseSelectionMarker(scope: scope, id: id, text: text, separator: separator, tableColumn: tableColumn, geometry: geometry))
-        .preference(key: ResponseSelectionOrderKey.self, value: [id])
+        .preference(key: ResponseSelectionOrderKey.self, value: .leaf(id))
     }
 }
 

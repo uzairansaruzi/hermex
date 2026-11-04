@@ -859,6 +859,11 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
         try assertSplit(in: sessions(), sizeClass: .regular, expected: true)
     }
 
+    /// A Plus/Max iPhone in landscape: a split here would rebuild the chat on every rotation (#1528).
+    func testRegularWidthCompactHeightHermesSessionsKeepsItsStack() throws {
+        try assertSplit(in: NavigationStack { sessions() }, sizeClass: .regular, verticalSizeClass: .compact, expected: false)
+    }
+
     func testCompactHermesSessionsStillPushesInItsCallerStack() throws {
         try assertSplit(in: NavigationStack { sessions() }, sizeClass: .compact, expected: false)
     }
@@ -1125,6 +1130,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     }
 
     private func assertSplit<V: View>(in view: V, sizeClass: UserInterfaceSizeClass,
+                                      verticalSizeClass: UserInterfaceSizeClass = .regular,
                                       expected: Bool) throws {
         let container = try ModelContainer(for: CachedSession.self, CachedMessage.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -1132,7 +1138,8 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
                                hermesConnections: HermesConnections(keychain: InMemoryKeychainStore()))
         let host = UIHostingController(rootView: view.modelContainer(container)
             .environment(auth)
-            .environment(\.horizontalSizeClass, sizeClass))
+            .environment(\.horizontalSizeClass, sizeClass)
+            .environment(\.verticalSizeClass, verticalSizeClass))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.traitOverrides.horizontalSizeClass = sizeClass == .regular ? .regular : .compact
