@@ -805,6 +805,7 @@ struct ChatView: View {
             },
             showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
+            attachmentTransfer: viewModel.attachmentTransfer,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber
         )

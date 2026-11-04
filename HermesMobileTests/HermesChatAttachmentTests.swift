@@ -114,6 +114,7 @@ import UIKit
     }
 
     /// One failed upload of two: nothing is submitted, and the text and both files stay.
+    /// The transfer marks the stored file done and the failed one by id and name (#1419).
     func testAFailedUploadSubmitsNothingAndKeepsTheDraft() async {
         let chat = await openChat()
         _ = HermesHostFixture.configuration { request in
@@ -124,6 +125,8 @@ import UIKit
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
         await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
         await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+        let photoID = chat.model.pendingAttachments[0].id
+        let notesID = chat.model.pendingAttachments[1].id
 
         let sent = await chat.model.sendMessage("Compare these")
         XCTAssertFalse(sent, "false keeps the draft in the composer")
@@ -131,9 +134,47 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["photo.jpg", "notes.txt"])
         XCTAssertEqual(chat.model.messages, [])
         XCTAssertEqual(chat.model.sendErrorMessage,
-                       "Couldn't upload the attachments. Your message and attachments are still here.")
+                       "Couldn't upload notes.txt. Remove it or try again.")
+        let transfer = chat.model.attachmentTransfer
+        XCTAssertEqual(transfer?.ids, [photoID, notesID])
+        XCTAssertEqual(transfer?.completedIDs, [photoID])
+        XCTAssertEqual(transfer?.failedID, notesID)
+        XCTAssertEqual(transfer?.failedFilename, "notes.txt")
+        XCTAssertEqual(transfer?.marks[photoID], .done)
+        XCTAssertEqual(transfer?.marks[notesID], .failed)
         let copies = await chat.copies.count
         XCTAssertEqual(copies, 2)
+
+        // Removing the failed file clears its mark; the other tile's stays put.
+        chat.model.removePendingAttachment(id: notesID)
+        XCTAssertNil(chat.model.attachmentTransfer?.failedID)
+        XCTAssertEqual(chat.model.attachmentTransfer?.marks[photoID], .done)
+    }
+
+    /// The second of three fails: the first is done, the second failed by id, the third
+    /// never started, and no prompt went out (#1419).
+    func testAFailedSecondUploadLeavesTheRestWaitingAndSubmitsNothing() async {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/chat/image-upload"
+                ? .json(200, .object(["ok": .bool(true), "path": .string(Self.storedImage)])) : nil
+        }
+        chat.host.always("file.attach", .init(error: 5028))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+        await chat.model.uploadAttachment(data: Data("a,b".utf8), filename: "data.csv")
+        let ids = chat.model.pendingAttachments.map(\.id)
+
+        let sent = await chat.model.sendMessage("Compare these")
+        XCTAssertFalse(sent)
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        XCTAssertEqual(chat.writes("file.attach").count, 1, "the third file is never uploaded")
+        XCTAssertEqual(chat.model.attachmentTransfer?.ids, ids)
+        XCTAssertEqual(chat.model.attachmentTransfer?.completedIDs, [ids[0]])
+        XCTAssertEqual(chat.model.attachmentTransfer?.failedID, ids[1])
+        XCTAssertEqual(chat.model.attachmentTransfer?.marks[ids[2]], .waiting, "the third file is never started")
+        XCTAssertEqual(chat.model.pendingAttachments.count, 3, "all draft files stay")
     }
 
     /// Cancel during an upload: nothing is submitted, and the text and file stay.
@@ -151,6 +192,111 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["photo.jpg"])
         XCTAssertEqual(chat.model.messages, [])
         XCTAssertEqual(chat.model.sendErrorMessage, "Upload cancelled. Your message and attachments are still here.")
+        // A cancel leaves no failed mark: the transfer is gone, not marked failed (#1419).
+        XCTAssertNil(chat.model.attachmentTransfer)
+        let copies = await chat.copies.count
+        XCTAssertEqual(copies, 1)
+    }
+
+    /// While the upload runs, the composer can say which file of how many is uploading
+    /// (#1419). The parked request holds the first file in its `.uploading` phase.
+    func testAnUploadInProgressNamesTheCurrentFileAndPhase() async throws {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
+        let parked = expectation(description: "image upload parked")
+        HermesHostFixture.onPark = { Task { @MainActor in parked.fulfill() } }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+        let photoID = chat.model.pendingAttachments[0].id
+        let notesID = chat.model.pendingAttachments[1].id
+
+        let send = Task { await chat.model.sendMessage("Look at these") }
+        await fulfillment(of: [parked], timeout: 10)
+
+        let transfer = try XCTUnwrap(chat.model.attachmentTransfer)
+        XCTAssertEqual(transfer.ids, [photoID, notesID])
+        XCTAssertEqual(transfer.currentID, photoID)
+        XCTAssertEqual(transfer.phase, .uploading)
+        XCTAssertEqual(transfer.marks[photoID], .uploading)
+        XCTAssertEqual(transfer.marks[notesID], .waiting)
+
+        chat.model.cancelAttachmentUpload()
+        let sent = await send.value
+        XCTAssertFalse(sent)
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        XCTAssertNil(chat.model.attachmentTransfer, "the cancel clears the marks, failed or not")
+    }
+
+    /// An upload that outlives its attach — a reattach made it stale — ends with the marks
+    /// cleared and no failure named, the cancelled outcome (#1419).
+    func testAStaleUploadClearsTheMarksAndNamesNoFailure() async throws {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
+        let parked = expectation(description: "image upload parked")
+        HermesHostFixture.onPark = { Task { @MainActor in parked.fulfill() } }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        let outgoing = try outgoingAttachment(chat.model.pendingAttachments[0], chat: chat)
+
+        let send = Task { try await chat.turn.submit("Look", mode: .send, attachments: [outgoing]) }
+        await fulfillment(of: [parked], timeout: 10)
+        XCTAssertNotNil(chat.turn.attachmentTransfer)
+
+        chat.turn.engine.suspend()
+        // The parked upload outlived its attach; its reply lands into a stale engine.
+        HermesHostFixture.releaseParked(.json(200, .object(["ok": .bool(true), "path": .string(Self.storedImage)])))
+
+        do {
+            _ = try await send.value
+            XCTFail("a stale upload submitted nothing")
+        } catch let notSent as HermesChatTurnCoordinator.NotSent {
+            XCTAssertTrue(notSent.duringUpload)
+            XCTAssertEqual(notSent.underlying as? BotFailure, .stale)
+        }
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        XCTAssertNil(chat.turn.attachmentTransfer, "a stale attach clears the marks, no failed file named")
+    }
+
+    /// An upload a newer send displaced cannot repaint the newer send's marks or submit its
+    /// own prompt: the owner token discards every write it makes past an await (#1419).
+    func testAnUploadDisplacedByANewerSendCannotRepaintTheNewerTransfer() async throws {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        await chat.model.uploadAttachment(data: photo, filename: "second.jpg", previewData: photo)
+        // Each send parks on its own image-upload request: the first park is the first send's.
+        let parks = ParkTally()
+        let firstParked = expectation(description: "first send parked")
+        let secondParked = expectation(description: "second send parked")
+        HermesHostFixture.onPark = {
+            Task { @MainActor in
+                if parks.next() == 1 { firstParked.fulfill() } else { secondParked.fulfill() }
+            }
+        }
+        let attachments = chat.model.pendingAttachments
+        let first = try outgoingAttachment(attachments[0], chat: chat)
+        let second = try outgoingAttachment(attachments[1], chat: chat)
+
+        let send1 = Task { try await chat.turn.submit("first", mode: .send, attachments: [first]) }
+        await fulfillment(of: [firstParked], timeout: 10)
+        let firstID = chat.turn.attachmentTransfer?.currentID
+        let send2 = Task { try await chat.turn.submit("second", mode: .send, attachments: [second]) }
+        await fulfillment(of: [secondParked], timeout: 10)
+        let secondID = chat.turn.attachmentTransfer?.currentID
+
+        HermesHostFixture.releaseParked()
+        do {
+            _ = try await send1.value
+            XCTFail("the displaced send submitted its prompt")
+        } catch let notSent as HermesChatTurnCoordinator.NotSent {
+            XCTAssertTrue(notSent.duringUpload, "the displaced send was refused, not delivered")
+        }
+        _ = try await send2.value
+        XCTAssertEqual(chat.writes("prompt.submit").compactMap { $0["text"]?.text?.hasPrefix("second") }, [true])
+        XCTAssertNil(chat.turn.attachmentTransfer, "the newer send cleared its marks on success")
+        XCTAssertNotEqual(firstID, secondID)
     }
 
     /// #508: a lost answer to the prompt keeps the text and files, marks the submission
@@ -734,6 +880,18 @@ import UIKit
                  "payload": .object(payload)])
     }
 
+    /// An `OutgoingAttachment` for a staged file, reading its bytes from the test's draft
+    /// store the way `ChatAttachmentCoordinator.outgoingAttachments(_:)` does.
+    private func outgoingAttachment(_ attachment: PendingAttachment,
+                                    chat: Chat) throws -> HermesChatTurnCoordinator.OutgoingAttachment {
+        HermesChatTurnCoordinator.OutgoingAttachment(
+            id: attachment.id, name: attachment.name, mime: attachment.mime, isImage: attachment.isImage
+        ) { [copies = chat.copies] in
+            guard let file = attachment.draftFileName else { throw BotAttachmentFailure.unreadable }
+            return try await copies.data(named: file)
+        }
+    }
+
     /// `previewLimit` is the chat's preview cap, which a test lowers to stay small.
     private func openChat(history: [BotJSON] = [], previewLimit: Int = BotArtifactBuffer.maximumBytes) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
@@ -760,5 +918,16 @@ import UIKit
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, drafts: drafts, copies: copies, client: client)
+    }
+}
+
+/// Counts parked requests from the fixture's nonisolated callback, so each park can be
+/// attributed to the send it belongs to.
+final class ParkTally: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func next() -> Int {
+        lock.withLock { count += 1; return count }
     }
 }

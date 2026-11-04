@@ -7,6 +7,8 @@ private let documentBadgeSize = CGSize(width: 58, height: 68)
 
 struct ComposerAttachmentStripView: View {
     let attachments: [PendingAttachment]
+    /// Per-file upload phases (#1419): a static glyph on each tile, no progress.
+    var marks: [UUID: HermesChatTurnCoordinator.AttachmentTransfer.Mark] = [:]
     let onRemove: (UUID) -> Void
     let onPreview: (PendingAttachment) -> Void
 
@@ -19,6 +21,7 @@ struct ComposerAttachmentStripView: View {
                     ForEach(attachments) { attachment in
                         ComposerAttachmentThumbnailView(
                             attachment: attachment,
+                            mark: marks[attachment.id],
                             onRemove: { onRemove(attachment.id) },
                             onOpen: { onPreview(attachment) }
                         )
@@ -38,10 +41,35 @@ struct ComposerAttachmentStripView: View {
     }
 }
 
+/// A transfer mark's tile glyph color and VoiceOver phrase (#1419).
+extension HermesChatTurnCoordinator.AttachmentTransfer.Mark {
+    var tint: Color {
+        switch self {
+        case .waiting, .preparing: return Color(.secondaryLabel)
+        case .uploading: return Color.accentColor
+        case .done: return Color.green
+        case .failed: return Color.red
+        }
+    }
+
+    /// Nil for `.waiting`: an unreached file needs no phase announced.
+    func accessibilityPhrase(filename: String) -> String? {
+        switch self {
+        case .waiting: return nil
+        case .preparing, .uploading: return String(localized: "Uploading \(filename)")
+        case .done: return String(localized: "Uploaded \(filename)")
+        case .failed: return String(localized: "Failed to upload \(filename)")
+        }
+    }
+}
+
 /// Pill-state summary of pending attachments: up to three 30 pt tiles plus a
 /// `+N` chip, so nothing pending is ever out of sight while the editor is idle.
 struct ComposerAttachmentPillPreview: View {
     let attachments: [PendingAttachment]
+    /// Per-file upload phases (#1419): marks show on visible tiles, and a mark on a
+    /// file past the visible ones surfaces on the `+N` chip so nothing is out of sight.
+    var marks: [UUID: HermesChatTurnCoordinator.AttachmentTransfer.Mark] = [:]
     let onPreview: (PendingAttachment) -> Void
 
     private let tileSize: CGFloat = 30
@@ -57,19 +85,58 @@ struct ComposerAttachmentPillPreview: View {
                         tile(for: attachment)
                     }
                     .buttonStyle(.chatTactile(.thumbnail))
-                    .accessibilityLabel("Open attachment \(attachment.name)")
+                    .accessibilityLabel(accessibilityLabel(for: attachment))
                 }
 
                 if attachments.count > visibleLimit {
-                    Text("+\(attachments.count - visibleLimit)")
+                    let hiddenCount = attachments.count - visibleLimit
+                    Text("+\(hiddenCount)")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color(.secondaryLabel))
                         .frame(width: tileSize, height: tileSize)
                         .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .accessibilityLabel(Text("\(attachments.count - visibleLimit) more attachments"))
+                        .overlay(alignment: .topTrailing) {
+                            if let hidden = hiddenMarkedFile {
+                                Image(systemName: hidden.mark.systemImage)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(hidden.mark.tint)
+                                    .frame(width: 14, height: 14)
+                                    .background(Circle().fill(Color(.systemBackground).opacity(0.85)))
+                                    .offset(x: 4, y: -4)
+                            }
+                        }
+                        .accessibilityLabel(hiddenAccessibilityLabel(hiddenCount: hiddenCount))
                 }
             }
         }
+    }
+
+    /// A mark on a file past the visible tiles: its failure first, else the upload in
+    /// flight, so the collapsed pill still identifies it (#1419).
+    private var hiddenMarkedFile: (name: String, mark: HermesChatTurnCoordinator.AttachmentTransfer.Mark)? {
+        let order: [HermesChatTurnCoordinator.AttachmentTransfer.Mark] = [.failed, .uploading, .preparing, .done]
+        for mark in order {
+            if let attachment = attachments.dropFirst(visibleLimit).first(where: { marks[$0.id] == mark }) {
+                return (attachment.name, mark)
+            }
+        }
+        return nil
+    }
+
+    private func accessibilityLabel(for attachment: PendingAttachment) -> Text {
+        let base = Text("Open attachment \(attachment.name)")
+        guard let mark = marks[attachment.id], let phrase = mark.accessibilityPhrase(filename: attachment.name) else {
+            return base
+        }
+        return base + Text(", ") + Text(verbatim: phrase)
+    }
+
+    private func hiddenAccessibilityLabel(hiddenCount: Int) -> Text {
+        let more = Text("\(hiddenCount) more attachments")
+        guard let hidden = hiddenMarkedFile, let phrase = hidden.mark.accessibilityPhrase(filename: hidden.name) else {
+            return more
+        }
+        return Text(verbatim: phrase) + Text(", ") + more
     }
 
     @ViewBuilder
@@ -97,6 +164,16 @@ struct ComposerAttachmentPillPreview: View {
         }
         .frame(width: tileSize, height: tileSize)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(alignment: .bottomTrailing) {
+            if let mark = marks[attachment.id], mark != .waiting {
+                Image(systemName: mark.systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(mark.tint)
+                    .frame(width: 14, height: 14)
+                    .background(Circle().fill(Color(.systemBackground).opacity(0.85)))
+                    .offset(x: 4, y: 4)
+            }
+        }
     }
 
     private func placeholderTile(systemName: String) -> some View {
@@ -137,6 +214,9 @@ private struct ComposerDocumentThumbnail<Content: View>: View {
 
 private struct ComposerAttachmentThumbnailView: View {
     let attachment: PendingAttachment
+    /// The file's upload phase (#1419): a static corner glyph, and the phase in the
+    /// tile's VoiceOver labels.
+    let mark: HermesChatTurnCoordinator.AttachmentTransfer.Mark?
     let onRemove: () -> Void
     let onOpen: () -> Void
 
@@ -147,9 +227,10 @@ private struct ComposerAttachmentThumbnailView: View {
         ZStack(alignment: .topTrailing) {
             Button(action: onOpen) {
                 thumbnailContent
+                    .overlay(alignment: .topLeading) { transferMarkBadge }
             }
             .buttonStyle(.chatTactile(.thumbnail))
-            .accessibilityLabel("Open attachment \(attachment.name)")
+            .accessibilityLabel(openAccessibilityLabel)
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
@@ -185,6 +266,31 @@ private struct ComposerAttachmentThumbnailView: View {
         }
     }
 
+    /// The upload phase as a static corner glyph; nothing while waiting or idle (#1419).
+    @ViewBuilder
+    private var transferMarkBadge: some View {
+        if let mark = mark, mark != .waiting {
+            Image(systemName: mark.systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(mark.tint)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(Color(.systemBackground).opacity(0.85)))
+                .overlay(Circle().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5))
+                .offset(x: 4, y: 4)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var openAccessibilityLabel: Text {
+        labeled(Text("Open attachment \(attachment.name)"))
+    }
+
+    /// The tile's label with the file's upload phase appended, when it has one (#1419).
+    private func labeled(_ base: Text) -> Text {
+        guard let mark = mark, let phrase = mark.accessibilityPhrase(filename: attachment.name) else { return base }
+        return base + Text(", ") + Text(verbatim: phrase)
+    }
+
     @ViewBuilder
     private var imagePreview: some View {
         Group {
@@ -206,7 +312,7 @@ private struct ComposerAttachmentThumbnailView: View {
         .frame(width: imagePreviewSize, height: imagePreviewSize)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(previewBorder(cornerRadius: 14))
-        .accessibilityLabel("Image attachment \(attachment.name)")
+        .accessibilityLabel(labeled(Text("Image attachment \(attachment.name)")))
     }
 
     private var filePreview: some View {
@@ -251,7 +357,7 @@ private struct ComposerAttachmentThumbnailView: View {
         )
         .overlay(previewBorder(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("File attachment \(attachment.name), \(fileDetailText)")
+        .accessibilityLabel(labeled(Text("File attachment \(attachment.name), \(fileDetailText)")))
     }
 
     /// The document's icon and extension, until (or unless) Quick Look draws
