@@ -390,6 +390,7 @@ struct ChatView: View {
     @State private var regenerateContext: MessageActionContext?
     @State private var showRegenerateDiscardConfirmation = false
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
+    @State private var stagedPasteItem: StagedPasteItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     /// A reply's images in the lightbox, opened at the tapped one.
     @State private var transcriptImageGallery: ImageLightboxGallery<TranscriptMediaPreviewItem>?
@@ -743,6 +744,14 @@ struct ChatView: View {
                 }
             },
             onPreviewAttachment: { attachment in
+                if ComposerLargePaste.isStagedPaste(attachment) {
+                    return presentPreviewRestoringComposerFocusIfNeeded {
+                        stagedPasteItem = StagedPasteItem(
+                            attachment: attachment,
+                            isSending: viewModel.stagedFilesAreSending || isRestoringDraftAttachments
+                        )
+                    }
+                }
                 let pending = viewModel.pendingAttachments
                 guard let index = pending.firstIndex(where: { $0.id == attachment.id }) else {
                     return presentAttachmentPreview([ChatAttachmentPreviewItem(pending: attachment)], at: 0)
@@ -1314,6 +1323,18 @@ struct ChatView: View {
                 )
             }
             .onChange(of: attachmentPreviewItem == nil) { _, isDismissed in
+                if isDismissed {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
+            .sheet(item: $stagedPasteItem) { item in
+                StagedPasteSheet(
+                    item: item,
+                    load: { await viewModel.stagedPasteText(item.attachment) },
+                    save: { await viewModel.saveStagedPaste(item.attachment, text: $0) }
+                )
+            }
+            .onChange(of: stagedPasteItem == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }

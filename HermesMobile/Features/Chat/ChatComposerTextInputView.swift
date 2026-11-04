@@ -743,6 +743,14 @@ enum ComposerLargePaste {
         }
         return candidate
     }
+
+    /// Whether a staged attachment opens in `StagedPasteSheet` (#1456). A draft records
+    /// nothing else about where a file came from, so a local file the user named this way
+    /// opens there too; only its app-owned copy can change.
+    static func isStagedPaste(_ attachment: PendingAttachment) -> Bool {
+        attachment.path.isEmpty && attachment.draftFileName != nil && !attachment.isImage
+            && attachment.name.wholeMatch(of: /pasted-text(-\d+)?\.txt/) != nil
+    }
 }
 
 /// The hardware-keyboard commands the composer's editor offers (#1380), each titled by
