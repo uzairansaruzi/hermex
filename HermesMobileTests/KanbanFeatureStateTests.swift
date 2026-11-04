@@ -427,6 +427,21 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(defaultPresentation.actions.contains(.archive))
     }
 
+    /// A retried Card's first start stays on the Card, so its run is measured from the current
+    /// run's start. A host without that field keeps the age it sent.
+    func testARetriedCardsAgeCountsFromItsCurrentRun() {
+        let cards: [KanbanCard] = mutationDecode("""
+        [{"id":"retried","status":"running","started_at":1000,"current_run_started_at":87400,
+          "age":{"created_age_seconds":90000,"started_age_seconds":86460}},
+         {"id":"older-host","status":"running","started_at":1000,
+          "age":{"created_age_seconds":90000,"started_age_seconds":86460}}]
+        """)
+        XCTAssertEqual(cards[0].ageSeconds, 60)
+        XCTAssertEqual(cards[0].staleness, .none)
+        XCTAssertEqual(cards[1].ageSeconds, 86460)
+        XCTAssertEqual(cards[1].staleness, .critical)
+    }
+
     /// A Hermes host sends `age` as `{created_age_seconds, started_age_seconds, …}` and webui
     /// forwards the same dict as `age_seconds`. Running reads the started age, every other
     /// Status the created age.
