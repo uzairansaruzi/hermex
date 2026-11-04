@@ -112,18 +112,12 @@ import XCTest
         session.leave()
     }
 
-    func testAHostWithoutTheMethodsOrSupportSaysSo() async {
+    func testAHostWithoutTheMethodsSaysSo() async {
         host.always("display.status", .init(error: -32601))
         let lacking = makeSession()
         lacking.open()
         await reach(.unavailable, on: lacking)
         lacking.leave()
-
-        host.always("display.status", .init(result: screen(supported: false)))
-        let unsupported = makeSession()
-        unsupported.open()
-        await reach(.unsupported, on: unsupported)
-        unsupported.leave()
     }
 
     /// 5300 with no `data.code` is a state: the screen stopped between the two calls.
@@ -472,6 +466,432 @@ import XCTest
         session.leave()
     }
 
+    // MARK: - The host's desktop
+
+    private let plugin = "/api/plugins/hermex-screen"
+
+    /// A session on a host with no stock screen, whose plugin routes `rest` answers.
+    private func makeHostSession(rest: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> ScreenSession {
+        host.always("display.status", .init(result: screen(supported: false)))
+        let record = BotConnection(id: UUID(), name: "Host", address: server, username: "u", password: "p")
+        var options = ScreenSession.Options()
+        options.backoff = [.zero]
+        options.pluginRecheck = .zero
+        options.holds = holds
+        options.now = { [unowned self] in clock }
+        options.socketFactory = { [unowned self] upgrade in
+            upgrades.append(upgrade)
+            let socket = ScriptedRFBSocket()
+            sockets.append(socket)
+            return socket
+        }
+        return ScreenSession(profile: "work", title: "Work", server: server,
+                             client: BotClient(http: host.connection(record, rest: rest)), options: options)
+    }
+
+    private func pluginStatus(_ fields: [String: BotJSON] = [:]) -> BotJSON {
+        .object(["supported": .bool(true), "driver": .object(["available": .bool(true)]),
+                 "permissions": .object(["accessibility": .bool(true), "screen_recording": .bool(true)]),
+                 "locked": .bool(false), "lease": lease()].merging(fields) { $1 })
+    }
+
+    private func requestBody(_ request: URLRequest) -> BotJSON {
+        guard let stream = request.httpBodyStream else { return .null }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        return (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null
+    }
+
+    /// A plugin that serves every route, recording what the app sent.
+    private func livePlugin(_ overrides: @escaping (String) -> HermesHostFixture.Reply? = { _ in nil },
+                            sent: @escaping (String, BotJSON) -> Void = { _, _ in }) -> (URLRequest) -> HermesHostFixture.Reply? {
+        { [plugin, unowned self] request in
+            guard let path = request.url?.path, path.hasPrefix(plugin) else { return nil }
+            let route = String(path.dropFirst(plugin.count))
+            sent(route, requestBody(request))
+            if let reply = overrides(route) { return reply }
+            switch route {
+            case "/capabilities": return .json(200, .object(["routes": .array([])]))
+            case "/status": return .json(200, pluginStatus())
+            case "/observe": return .json(200, .object(["viewer_id": .string("viewer-1"), "stream_ticket": .string("plugin-ticket"), "lease": lease()]))
+            case "/lease/acquire": return .json(200, .object(["lease": lease(holder: "human", viewer: "viewer-1")]))
+            case "/lease/release": return .json(200, .object(["lease": lease()]))
+            default: return nil
+            }
+        }
+    }
+
+    func testAPluginsRouteSaysWhereItStands() {
+        func state(_ status: Int, _ fields: [String: BotJSON]) -> HermexScreenPlugin.State? {
+            HermexScreenPlugin.State(status: status, body: .object(fields))
+        }
+        XCTAssertEqual(state(200, [:]), .live)
+        XCTAssertEqual(state(404, ["detail": .string("Plugin not found")]), .notInstalled)
+        XCTAssertEqual(state(404, ["detail": .string("No such API endpoint: /api/plugins/x")]), .notMounted)
+        XCTAssertEqual(state(404, ["error": .string("Headless backend (hermes serve): web UI disabled")]), .notMounted)
+        XCTAssertEqual(state(404, ["detail": .string("Not Found")]), .failedToLoad)
+        XCTAssertNil(state(500, [:]))
+    }
+
+    func testAHostWithThePluginStreamsAndTakesOverThroughIt() async throws {
+        var sent: [(String, BotJSON)] = []
+        let session = makeHostSession(rest: livePlugin(sent: { sent.append(($0, $1)) }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        XCTAssertEqual(session.source, .hostDesktop)
+        let url = try XCTUnwrap(upgrades.first?.url)
+        XCTAssertEqual(url.path, "\(plugin)/stream")
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(query.first { $0.name == "stream_ticket" }?.value, "plugin-ticket")
+        XCTAssertNotNil(query.first { $0.name == "ticket" }?.value, "the dashboard's gate needs its own pass")
+
+        session.takeOver()
+        await reach(.mine, on: session)
+        XCTAssertEqual(holds.hold(server: server, profile: "work")?.source, .hostDesktop)
+        XCTAssertEqual(sent.last { $0.0 == "/lease/acquire" }?.1["viewer_id"].text, "viewer-1")
+
+        session.handBack()
+        await reach(.bot, on: session)
+        let release = try XCTUnwrap(sent.last { $0.0 == "/lease/release" })
+        XCTAssertEqual(release.1["viewer_id"].text, "viewer-1")
+        session.leave()
+    }
+
+    /// Nothing changes on the host until the tap, and the install names the pinned commit.
+    func testInstallingThePluginIsPinnedAndWaitsForTheTap() async throws {
+        var installed: BotJSON?
+        var mounted = false
+        let session = makeHostSession { [plugin, unowned self] request in
+            if request.url?.path == "/api/dashboard/agent-plugins/install" {
+                installed = requestBody(request)
+                mounted = true
+                return .json(200, .object(["ok": .bool(true)]))
+            }
+            if request.url?.path == "\(plugin)/capabilities", !mounted {
+                return .json(404, .object(["detail": .string("Plugin not found")]))
+            }
+            return livePlugin()(request)
+        }
+        session.open()
+        await reach(.pluginNotInstalled, on: session)
+        XCTAssertNil(installed)
+
+        session.open()
+        await reach(.pluginNotInstalled, on: session)
+        XCTAssertNil(installed, "Check Again never installs")
+
+        session.installPlugin()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        XCTAssertEqual(installed?["identifier"].text, HermexScreenPlugin.installIdentifier)
+        XCTAssertEqual(installed?["ref"].text?.count, 40)
+        XCTAssertEqual(installed?["enable"].flag, true)
+        session.leave()
+    }
+
+    /// A hot-mount can be in flight, so one read isn't enough to offer a restart.
+    func testARestartIsOfferedOnlyIfASecondReadStillSaysSoAndOnlyWithARoute() async {
+        var reads = 0
+        let session = makeHostSession { [plugin] request in
+            switch request.url?.path {
+            case "\(plugin)/capabilities"?:
+                reads += 1
+                return .json(404, .object(["detail": .string("No such API endpoint: /x")]))
+            case "/api/plugins/hermex-push/capabilities"?:
+                return .json(200, .object(["routes": .array([.string("POST /restart")])]))
+            default: return nil
+            }
+        }
+        session.open()
+        await reach(.pluginNeedsRestart(canRestart: true), on: session)
+        XCTAssertEqual(reads, 2)
+        session.leave()
+    }
+
+    func testAHostThatCantServeSaysWhyInsteadOfStreaming() async {
+        func phase(for fields: [String: BotJSON]) async -> ScreenSession.Phase {
+            let session = makeHostSession(rest: livePlugin({ [unowned self] route in
+                route == "/status" ? .json(200, pluginStatus(fields)) : nil
+            }))
+            session.open()
+            while session.phase == .connecting {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    withObservationTracking { _ = session.phase } onChange: { continuation.resume() }
+                }
+            }
+            let phase = session.phase
+            session.leave()
+            return phase
+        }
+        let driver = await phase(for: ["driver": .object(["problem": .string("this driver has no click tool")])])
+        XCTAssertEqual(driver, .driverProblem("this driver has no click tool"))
+        let permissions = await phase(for: ["permissions": .object(["accessibility": .bool(true), "screen_recording": .bool(false)])])
+        XCTAssertEqual(permissions, .permissionsMissing(accessibility: false, screenRecording: true))
+        let refused = await phase(for: ["refusal": .string("Windows isn't supported yet.")])
+        XCTAssertEqual(refused, .hostRefused("Windows isn't supported yet."))
+    }
+
+    /// A takeover left by a plugin that has gone still holds every Profile's stock lease, so the
+    /// force Hand Back clears them there.
+    func testForceWithThePluginGoneClearsEveryProfilesStockLease() async throws {
+        host.always("profiles.list", .init(result: .object(["profiles": .array([
+            .object(["name": .string("work")]), .object(["name": .string("home")])
+        ])])))
+        host.always("display.lease.release", .init(result: .object(["lease": lease()])))
+        let session = makeHostSession { [plugin] request in
+            guard request.url?.path.hasPrefix(plugin) == true else { return nil }
+            return .json(404, .object(["detail": .string("Plugin not found")]))
+        }
+        host.always("display.status", .init(result: screen(supported: false, lease: lease(holder: "human", viewer: "a-gone-plugin"))))
+        session.open()
+        await reach(.pluginNotInstalled, on: session)
+        XCTAssertEqual(session.control, .other)
+
+        session.forceHandBack()
+        await reach(.bot, on: session)
+        let profiles = requests("display.lease.release").compactMap { $0["params"]["profile"].text }
+        XCTAssertEqual(Set(profiles), ["work", "home"])
+        XCTAssertTrue(requests("display.lease.release").allSatisfy { $0["params"]["viewer_id"] == .null })
+        session.leave()
+    }
+
+    /// Hermes runs no plugin code on removal, so a hold has to end first.
+    func testRemovingThePluginReleasesAnyHoldFirst() async throws {
+        var order: [String] = []
+        let session = makeHostSession { [unowned self] request in
+            if request.url?.path == "/api/dashboard/agent-plugins/hermex-screen", request.httpMethod == "DELETE" {
+                order.append("delete")
+                return .json(200, .object(["ok": .bool(true)]))
+            }
+            return livePlugin({ route in
+                if route == "/lease/release" { order.append("release") }
+                return nil
+            })(request)
+        }
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.takeOver()
+        await reach(.mine, on: session)
+        session.removePlugin()
+        while !order.contains("delete") { await Task.yield() }
+        XCTAssertEqual(order, ["release", "delete"])
+        XCTAssertNil(holds.hold(server: server, profile: "work"))
+        session.leave()
+    }
+
+    /// The removal menu only shows with nobody holding, since a takeover on a removed plugin has
+    /// nothing left to end it.
+    func testThePluginCanBeRemovedOnlyWithNoTakeoverOnIt() async {
+        var lease = self.lease()
+        let session = makeHostSession(rest: livePlugin({ [unowned self] route in
+            route == "/observe" ? .json(200, .object(["viewer_id": .string("viewer-1"), "stream_ticket": .string("t"), "lease": lease])) : nil
+        }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        XCTAssertTrue(session.canRemovePlugin)
+
+        lease = self.lease(holder: "human", viewer: "someone-else")
+        await socket(0).end(code: 4401)
+        await reach(.other, on: session)
+        XCTAssertFalse(session.canRemovePlugin)
+        session.leave()
+    }
+
+    /// Someone can take over while the confirmation is open, which would strand their takeover.
+    func testRemovingRechecksForATakeoverBeforeDeleting() async {
+        var deleted = false
+        var held = false
+        let session = makeHostSession { [unowned self] request in
+            if request.httpMethod == "DELETE" { deleted = true; return .json(200, .object([:])) }
+            return livePlugin({ [unowned self] route in
+                route == "/status" && held ? .json(200, pluginStatus(["lease": lease(holder: "human", viewer: "someone-else")])) : nil
+            })(request)
+        }
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        held = true
+        session.removePlugin()
+        while session.notice != .pluginActionFailed { await Task.yield() }
+        XCTAssertFalse(deleted)
+        session.leave()
+    }
+
+    /// A blocked state still needs its way out: a hold of this iPhone's shows Hand Back, and
+    /// anyone else's shows the force.
+    func testABlockedHostStateStillReportsWhoHoldsIt() async {
+        let blocked: [String: BotJSON] = ["driver": .object(["problem": .string("no click tool")]),
+                                          "lease": lease(holder: "human", viewer: "mine")]
+        holds.save(ScreenHold(viewerIDs: ["mine"], isConfirmed: true, lastInput: clock, source: .hostDesktop), server: server, profile: "work")
+        let mine = makeHostSession(rest: livePlugin({ [unowned self] route in
+            route == "/status" ? .json(200, pluginStatus(blocked)) : nil
+        }))
+        mine.open()
+        await reach(.driverProblem("no click tool"), on: mine)
+        XCTAssertEqual(mine.control, .mine)
+        mine.suspend()
+
+        holds.save(nil, server: server, profile: "work")
+        let other = makeHostSession(rest: livePlugin({ [unowned self] route in
+            route == "/status" ? .json(200, pluginStatus(blocked)) : nil
+        }))
+        other.open()
+        await reach(.driverProblem("no click tool"), on: other)
+        XCTAssertEqual(other.control, .other)
+        other.leave()
+    }
+
+    /// The plugin counts only input it receives, so Keep Control has to reach it.
+    func testKeepControlRenewsThePluginsTimerAsWellAsThePhones() async throws {
+        let session = makeHostSession(rest: livePlugin())
+        session.open()
+        let stream = await socket(0)
+        await stream.serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.takeOver()
+        await reach(.mine, on: session)
+        session.keepControl()
+        while !stream.sentBytes.contains(where: { $0.first == 5 }) { await Task.yield() }
+        session.leave()
+    }
+
+    /// A saved host hold whose plugin has gone still ends, on each Profile's stock lease, by its id.
+    func testAHoldOutlivingThePluginHandsBackThroughStockLeases() async throws {
+        host.always("profiles.list", .init(result: .object(["profiles": .array([
+            .object(["name": .string("work")]), .object(["name": .string("home")])
+        ])])))
+        host.always("display.lease.release", .init(result: .object(["lease": lease()])))
+        let record = BotConnection(id: UUID(), name: "Host", address: server, username: "u", password: "p")
+        let client = BotClient(http: host.connection(record) { [plugin] request in
+            request.url?.path.hasPrefix(plugin) == true ? .json(404, .object(["detail": .string("Plugin not found")])) : nil
+        })
+        try await client.connect()
+        let hold = ScreenHold(viewerIDs: ["old"], isConfirmed: true, lastInput: clock, source: .hostDesktop)
+        _ = try await ScreenSource.hostDesktop.release(hold, profile: "work", client: client)
+        let released = requests("display.lease.release")
+        XCTAssertEqual(Set(released.compactMap { $0["params"]["profile"].text }), ["work", "home"])
+        XCTAssertTrue(released.allSatisfy { $0["params"]["viewer_id"].text == "old" })
+        client.close()
+    }
+
+    /// A lock can come and go while the stream runs, and on Windows it decides whether Take Over shows.
+    func testALockOrUnlockDuringAStreamIsNoticed() async {
+        var locked = true
+        let record = BotConnection(id: UUID(), name: "Host", address: server, username: "u", password: "p")
+        host.always("display.status", .init(result: screen(supported: false)))
+        var options = ScreenSession.Options()
+        options.pluginRecheck = .zero
+        options.lockPoll = .milliseconds(5)
+        options.holds = holds
+        options.socketFactory = { [unowned self] upgrade in
+            let socket = ScriptedRFBSocket()
+            sockets.append(socket)
+            return socket
+        }
+        let session = ScreenSession(profile: "work", title: "Work", server: server, client: BotClient(http: host.connection(record, rest: livePlugin({ [unowned self] route in
+            route == "/status" ? .json(200, pluginStatus(["locked": .bool(locked)])) : nil
+        }))), options: options)
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        XCTAssertTrue(session.isHostLocked)
+        locked = false
+        while session.isHostLocked { await Task.yield() }
+        session.leave()
+    }
+
+    /// A restart drops the gateway with it, and the read that follows finds the routes mounted.
+    func testRestartingForThePluginEndsLiveOnceTheRoutesAreMounted() async {
+        var restarted = false
+        let session = makeHostSession { [plugin, unowned self] request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/restart"?:
+                restarted = true
+                return .json(202, .object(["ok": .bool(true)]))
+            case "/api/plugins/hermex-push/capabilities"?:
+                return .json(200, .object(["routes": .array([.string("POST /restart")])]))
+            case "\(plugin)/capabilities"? where !restarted:
+                return .json(404, .object(["detail": .string("No such API endpoint: /x")]))
+            default:
+                return livePlugin()(request)
+            }
+        }
+        session.open()
+        await reach(.pluginNeedsRestart(canRestart: true), on: session)
+        session.restartForPlugin()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.leave()
+    }
+
+    func testAPluginActionThatFailsSaysSoAndKeepsTheOffer() async {
+        let session = makeHostSession { [plugin] request in
+            if request.url?.path == "/api/dashboard/agent-plugins/install" { return .json(500, .object([:])) }
+            if request.url?.path == "\(plugin)/capabilities" { return .json(404, .object(["detail": .string("Plugin not found")])) }
+            return nil
+        }
+        session.open()
+        await reach(.pluginNotInstalled, on: session)
+        session.installPlugin()
+        while session.notice != .pluginActionFailed { await Task.yield() }
+        await reach(.pluginNotInstalled, on: session)
+        session.leave()
+    }
+
+    /// The plugin refused, so the hold saved ahead of the call never landed.
+    func testARefusedTakeOverLeavesNoHold() async {
+        let session = makeHostSession(rest: livePlugin({ route in
+            route == "/lease/acquire" ? .json(409, .object(["detail": .string("viewer_id was not minted"), "code": .string("viewer_mismatch")])) : nil
+        }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.takeOver()
+        while session.notice != .takeOverFailed { await Task.yield() }
+        XCTAssertNil(holds.hold(server: server, profile: "work"))
+        session.leave()
+    }
+
+    /// The plugin's own timer runs with or without the phone, and closes with its own code.
+    func testThePluginsTimerEndingATakeoverSaysSo() async {
+        let session = makeHostSession(rest: livePlugin())
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.takeOver()
+        await reach(.mine, on: session)
+        await socket(0).end(code: 4002)
+        await reach(.bot, on: session)
+        XCTAssertEqual(session.notice, .handedBackAutomatically)
+        XCTAssertNil(holds.hold(server: server, profile: "work"))
+        session.leave()
+    }
+
+    /// A host's desktop has no stopped state, so a capture failure re-reads what's wrong.
+    func testAStreamEndingOnAHostReadsItsStateAgain() async {
+        var failing = false
+        let session = makeHostSession(rest: livePlugin({ [unowned self] route in
+            route == "/status" && failing ? .json(200, pluginStatus(["permissions": .object(["screen_recording": .bool(false)])])) : nil
+        }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        failing = true
+        await socket(0).end(code: 4001)
+        await reach(.permissionsMissing(accessibility: false, screenRecording: true), on: session)
+        session.leave()
+    }
+
     // MARK: - Idle
 
     func testIdleAsksThenHandsBackAndInputPutsItOff() async {
@@ -554,7 +974,7 @@ import XCTest
 
     /// An acquire that never landed isn't someone else's takeover.
     func testAnUnconfirmedHoldTheHostDoesntShowGoesQuietly() async {
-        holds.save(ScreenHold(viewerIDs: ["never-landed"], isConfirmed: false, lastInput: clock), server: server, profile: "work")
+        holds.save(ScreenHold(viewerIDs: ["never-landed"], isConfirmed: false, lastInput: clock, source: .botDesktop), server: server, profile: "work")
         standUp()
         let session = makeSession()
         session.open()
@@ -589,7 +1009,7 @@ import XCTest
 
     func testReconcileForgetsAHoldTheHostNoLongerShows() async throws {
         let client = try await reconcilingClient()
-        holds.save(ScreenHold(viewerIDs: ["gone"], isConfirmed: true, lastInput: clock), server: server, profile: "work")
+        holds.save(ScreenHold(viewerIDs: ["gone"], isConfirmed: true, lastInput: clock, source: .botDesktop), server: server, profile: "work")
         host.always("display.status", .init(result: screen()))
         await ScreenHolds.reconcile(server: server, client: client, store: holds, now: clock)
         XCTAssertNil(holds.hold(server: server, profile: "work"))
@@ -599,7 +1019,7 @@ import XCTest
 
     func testReconcileHandsBackAHoldPastItsDeadline() async throws {
         let client = try await reconcilingClient()
-        holds.save(ScreenHold(viewerIDs: ["old"], isConfirmed: true, lastInput: clock.addingTimeInterval(-16 * 60)),
+        holds.save(ScreenHold(viewerIDs: ["old"], isConfirmed: true, lastInput: clock.addingTimeInterval(-16 * 60), source: .botDesktop),
                    server: server, profile: "work")
         host.always("display.status", .init(result: screen(lease: lease(holder: "human", viewer: "old"))))
         host.always("display.lease.release", .init(result: .object(["lease": lease()])))
@@ -611,14 +1031,14 @@ import XCTest
 
     /// A reply about an old hold must not erase one retaken since.
     func testForgettingAnOldHoldLeavesANewerOne() {
-        holds.save(ScreenHold(viewerIDs: ["new"], isConfirmed: true, lastInput: clock), server: server, profile: "work")
+        holds.save(ScreenHold(viewerIDs: ["new"], isConfirmed: true, lastInput: clock, source: .botDesktop), server: server, profile: "work")
         holds.forget(viewerIDs: ["old"], server: server, profile: "work")
         XCTAssertEqual(holds.hold(server: server, profile: "work")?.viewerIDs, ["new"])
     }
 
     func testAHoldNeverShowsUnderAnotherServer() {
         let other = URL(string: "https://other.example")!
-        holds.save(ScreenHold(viewerIDs: ["mine"], isConfirmed: true, lastInput: Date()), server: server, profile: "work")
+        holds.save(ScreenHold(viewerIDs: ["mine"], isConfirmed: true, lastInput: Date(), source: .botDesktop), server: server, profile: "work")
         XCTAssertNil(holds.hold(server: other, profile: "work"))
         holds.removeAll(server: other)
         XCTAssertNotNil(holds.hold(server: server, profile: "work"))

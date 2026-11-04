@@ -38,6 +38,8 @@ struct ScreenHold: Codable, Equatable {
     /// it goes quietly rather than reporting that someone else took over.
     var isConfirmed: Bool
     var lastInput: Date
+    /// Which kind of screen it's on, so a hand-back from Bots home goes the right way.
+    var source: ScreenSource
 
     func holder(of lease: ScreenLease) -> String? {
         viewerIDs.first { lease.isHeld(by: $0) }
@@ -140,7 +142,7 @@ enum ScreenIdlePolicy {
 
     static func reconcile(server: URL, client: BotClient, store: ScreenHoldStore, now: Date) async {
         for (profile, hold) in store.holds(server: server) {
-            guard let status = try? await ScreenSource.botDesktop.status(profile: profile, client: client) else { continue }
+            guard let status = try? await hold.source.status(profile: profile, client: client) else { continue }
             if hold.holder(of: status.lease) == nil {
                 store.forget(viewerIDs: hold.viewerIDs, server: server, profile: profile)
             } else if now >= ScreenIdlePolicy.deadline(after: hold.lastInput) {
@@ -150,7 +152,7 @@ enum ScreenIdlePolicy {
     }
 
     private static func handBack(_ hold: ScreenHold, profile: String, server: URL, client: BotClient, store: ScreenHoldStore) async {
-        guard (try? await ScreenSource.botDesktop.release(hold, profile: profile, client: client)) != nil else { return }
+        guard (try? await hold.source.release(hold, profile: profile, client: client)) != nil else { return }
         store.forget(viewerIDs: hold.viewerIDs, server: server, profile: profile)
         ScreenIdleNotification.cancel(server: server, profile: profile)
     }

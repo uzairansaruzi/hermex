@@ -15,7 +15,8 @@ user is looking at. It ships dark behind a per-server "Bot Screen (beta)" switch
   waits for each frame to land before requesting the next, so one frame is ever in flight.
 - `Features/Screen/ScreenSession`: an `@MainActor @Observable` owner of one open view. A
   generation token rejects anything late from before the last `open()` or `close()`.
-- `ScreenSource`: where the picture comes from. Nothing above it branches on the host.
+- `ScreenSource`: where the picture comes from, a bot's desktop or the host's. Nothing above it
+  branches on the host except what it calls itself.
 - `ScreenFrameStore` and `ScreenFramebufferView`: frames go straight to a `CALayer`, so a frame
   never invalidates SwiftUI.
 
@@ -107,6 +108,54 @@ offers `status.install_command` to copy, which is the host's own line.
 
 Stop Screen is in the toolbar's menu when this iPhone isn't holding. Over another person's takeover
 it sends `force`, after a confirmation that says they lose it.
+
+## The host's desktop (`hermex-screen`)
+
+Mac and Windows hosts show their real logged-in desktop through
+[`uzairansaruzi/hermex-screen`](https://github.com/uzairansaruzi/hermex-screen), built on the
+`cua-driver` Hermes installs for `computer_use`. That repo's README and module docs own its
+internals. Frames go directly between host and phone over the dashboard's address.
+
+**Choosing the source.** Always `display.status` first. `supported` true is stock. False reads the
+plugin's `GET /capabilities` (`HermexScreenPlugin.State`):
+
+| Reply | Means | The app |
+| --- | --- | --- |
+| 200 | Routes are live, including a hot-mount on newer hosts | Streams, after `/status` |
+| 404 `Plugin not found`, the whole message | Off or not installed | Offers the install, with consent |
+| 404 `No such API endpoint…` or `Headless backend…`, on a second read | Enabled, not mounted | Offers a restart through hermex-push's route, or manual steps |
+| 404 `Not Found` | A newer host tried to mount it and failed | Points to the dashboard log |
+
+-32601 on `display.status` hides the feature. The app never branches on a version or an OS name;
+what differs by OS comes from the plugin's own fields (`refusal`, `locked_input`).
+
+**The plugin's contract** follows stock where it can, so `ScreenSession` runs one set of rules.
+`POST /observe` mints a viewer id and a single-use ticket, a hold moves to a new id on return, and
+Hand Back names the saved id with `force`. The stream takes the dashboard's own pass as `?ticket=`
+plus `?stream_ticket=`. Close codes match stock, plus 4002: its own timer ended the takeover, or
+another client handed back.
+
+- A takeover holds every Profile's lease, because one desktop is every bot's. So it pauses every bot
+  on that host.
+- The plugin's timer hands back at 15 minutes with no phone connected, and survives a dashboard
+  restart. The app's timer still runs while the view is open, for "Still there?".
+- Install sends `ref`, a full commit (`HermexScreenPlugin.pinnedCommit`), so a fix reaches normal
+  users through an app update. Testers can install a newer commit from the command line.
+- "Check Again" only reads. Install, restart and remove each come from a confirmed tap.
+- Hermes runs no plugin code on removal, so the app hands back first. Routes stay mounted until the
+  next dashboard restart. If someone removes it another way, its leases stay held, `display.status`
+  still shows them, and the force Hand Back clears each Profile's stock lease.
+
+**The driver is whatever Hermes resolves.** On 0.22.5 that's a pinned 0.21.0, which has the
+action-level `scope` this needs. A driver without it gets a plain explanation and no control. A
+separately installed `/Applications/CuaDriver.app` can break Hermes's own: the pinned driver starts
+that app's daemon, which refuses it. Moving it aside fixes that, and the grants carry over because
+both have the same bundle identity. `hermes computer-use doctor` is the safe line to offer; it reads
+only.
+
+**Windows** is refused until the host sets `HERMEX_SCREEN_WINDOWS=1`, and `/doctor` says why. Testers
+follow the plugin's `TESTING-WINDOWS.md`. The default flips in a new plugin commit that an app update
+pins, after two testers pass.
 
 ## Entries
 

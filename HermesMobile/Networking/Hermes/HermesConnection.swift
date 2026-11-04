@@ -487,6 +487,14 @@ import OSLog
         prepared(try HermesREST.screenUpgrade(base: connection.address, ticket: ticket))
     }
 
+    /// Returns hermex-screen's stream upgrade (#1567) with this connection's headers, on a fresh
+    /// pass for the dashboard's gate.
+    func screenPluginUpgrade(streamTicket: String) async throws -> URLRequest {
+        try await upgrade(recordsLiveStages: false) {
+            try HermesREST.screenPluginUpgrade(base: connection.address, streamTicket: streamTicket, pass: $0)
+        }
+    }
+
     /// Returns the upgrade `build` makes for a fresh pass, with this connection's headers. Either
     /// pass is preceded by a signed-in read, so a 401 signs in again first: minting the ticket,
     /// or for a page token a gated read, since a refused upgrade can't tell a token a host

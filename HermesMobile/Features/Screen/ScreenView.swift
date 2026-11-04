@@ -13,6 +13,8 @@ struct ScreenView: View {
     @State private var isTyping = false
     @State private var isConfirmingForce = false
     @State private var isConfirmingStop = false
+    @State private var isConfirmingRemove = false
+    @State private var isConfirmingRestart = false
     /// Direct touch or the trackpad panel, remembered per server.
     @AppStorage private var usesTrackpad: Bool
     /// Tells the entries the host has no screen at all, so they hide.
@@ -36,6 +38,11 @@ struct ScreenView: View {
                 .background(Color(.systemGroupedBackground))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
+                .confirmationDialog("Remove the plugin from this host?", isPresented: $isConfirmingRemove, titleVisibility: .visible) {
+                    Button("Remove", role: .destructive) { session.removePlugin() }
+                } message: {
+                    Text("Its routes stay mounted until the dashboard next restarts.")
+                }
         }
         .onAppear { session.open() }
         .onDisappear { session.leave() }
@@ -67,7 +74,14 @@ struct ScreenView: View {
         ToolbarItem(placement: .principal) {
             VStack(spacing: 0) {
                 Text("Screen").font(.headline)
-                Text("Bot desktop").font(.caption).foregroundStyle(.secondary)
+                Group {
+                    if session.source == .hostDesktop {
+                        Text("This computer's real desktop")
+                    } else {
+                        Text("Bot desktop")
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
         }
@@ -78,10 +92,14 @@ struct ScreenView: View {
                           systemImage: isTyping ? "keyboard.chevron.compact.down" : "keyboard")
                 }
             }
-        } else if session.phase == .live {
+        } else if session.canRemovePlugin || (session.phase == .live && session.source == .botDesktop) {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button("Stop Screen", systemImage: "stop", role: .destructive) { isConfirmingStop = true }
+                    if session.source == .hostDesktop {
+                        Button("Remove from This Host", systemImage: "trash", role: .destructive) { isConfirmingRemove = true }
+                    } else {
+                        Button("Stop Screen", systemImage: "stop", role: .destructive) { isConfirmingStop = true }
+                    }
                 } label: {
                     Label("More", systemImage: "ellipsis")
                 }
@@ -123,10 +141,67 @@ struct ScreenView: View {
                 }
                 checkAgain
             }
-        case .unsupported:
-            ScreenNotice(title: "No screen on this host", message: "This host can't run a bot desktop.") { EmptyView() }
         case .unavailable:
             ScreenNotice(title: "No screen on this host", message: "This Hermes release doesn't offer a bot desktop.") { EmptyView() }
+        case .pluginNotInstalled:
+            ScreenNotice(title: "Show this computer's desktop?",
+                         message: "Hermex installs the hermex-screen plugin on this host. Anyone with this server's login can then see and control everything on this computer.") {
+                Button("Install Plugin") { session.installPlugin() }
+                    .buttonStyle(.borderedProminent)
+                staleTakeover
+                noticeLine
+            }
+        case .pluginBusy:
+            ScreenNotice(title: "Setting up this host", message: "This can take a moment. You can leave and come back.") { EmptyView() }
+        case .pluginNeedsRestart(let canRestart):
+            ScreenNotice(title: "Restart Hermes to finish",
+                         message: canRestart ? "The plugin is installed. Restarting stops any running work on this host."
+                             : "The plugin is installed. Restart the dashboard on the host, then check again.") {
+                if canRestart {
+                    Button("Restart Hermes") { isConfirmingRestart = true }
+                        .buttonStyle(.borderedProminent)
+                }
+                checkAgain
+                staleTakeover
+                noticeLine
+            }
+            .confirmationDialog("Restart Hermes?", isPresented: $isConfirmingRestart, titleVisibility: .visible) {
+                Button("Restart Hermes", role: .destructive) { session.restartForPlugin() }
+            } message: {
+                Text("Any running work on this host stops.")
+            }
+        case .pluginFailed:
+            ScreenNotice(title: "The plugin didn't load",
+                         message: "Hermes couldn't load hermex-screen, and restarting won't fix it. The dashboard log on the host says why.") {
+                checkAgain
+                staleTakeover
+            }
+        case .hostRefused(let reason):
+            ScreenNotice(title: "This host can't show its screen", detail: reason) {
+                checkAgain
+                staleTakeover
+                noticeLine
+            }
+        case .driverProblem(let reason):
+            ScreenNotice(title: "The computer-use driver isn't ready", detail: reason) {
+                Text(verbatim: "hermes computer-use doctor")
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                Text("Run this on the host to see what's wrong.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                checkAgain
+                staleTakeover
+                noticeLine
+            }
+        case .permissionsMissing(let accessibility, let screenRecording):
+            ScreenNotice(title: "Allow screen access",
+                         message: "On this computer, in its privacy settings, turn on CuaDriver under:") {
+                if accessibility { Text("Accessibility").font(.subheadline.weight(.medium)) }
+                if screenRecording { Text("Screen Recording").font(.subheadline.weight(.medium)) }
+                checkAgain
+                staleTakeover
+                noticeLine
+            }
         case .failed:
             ScreenNotice(title: "Couldn't show the screen", message: "The connection to the screen was refused or broke.") { checkAgain }
         }
@@ -198,7 +273,7 @@ struct ScreenView: View {
         VStack(spacing: 8) {
             Text("Still there?").font(.headline)
             Text("Control returns to the bot in 1 minute.").font(.subheadline).foregroundStyle(.secondary)
-            Button("Keep Control") { session.noteActivity() }
+            Button("Keep Control") { session.keepControl() }
                 .buttonStyle(.borderedProminent)
         }
         .multilineTextAlignment(.center)
@@ -221,6 +296,16 @@ struct ScreenView: View {
                 Text("The bot is blocked until someone hands back.")
                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
+            if session.isHostLocked {
+                Group {
+                    if session.canUnlockHost {
+                        Text("Screen is locked. Take over and type this computer's password to unlock it.")
+                    } else {
+                        Text("Screen is locked. Unlock it at the computer.")
+                    }
+                }
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
             if isMine {
                 if isTyping { keyRow }
                 else { touchModePicker }
@@ -233,19 +318,13 @@ struct ScreenView: View {
                     Text("Take Over").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(session.phase != .live)
+                .disabled(session.phase != .live || (session.isHostLocked && !session.canUnlockHost))
                 if session.control == .other {
-                    Button("Hand Back (Force)") { isConfirmingForce = true }
-                        .buttonStyle(.bordered).tint(.red)
+                    forceHandBackButton
                 }
             }
         }
         .padding(12)
-        .confirmationDialog("Hand back for whoever holds this screen?", isPresented: $isConfirmingForce, titleVisibility: .visible) {
-            Button("Hand Back (Force)", role: .destructive) { session.forceHandBack() }
-        } message: {
-            Text("They lose control at once, and the bot carries on.")
-        }
         .confirmationDialog("Stop this screen?", isPresented: $isConfirmingStop, titleVisibility: .visible) {
             Button("Stop Screen", role: .destructive) { session.stopScreen(force: session.control == .other) }
         } message: {
@@ -254,6 +333,35 @@ struct ScreenView: View {
             } else {
                 Text("Everything open on it closes, and the bot's next action that needs it starts it again.")
             }
+        }
+    }
+
+    /// A takeover on a screen that isn't streaming: the bot stays blocked until someone ends it.
+    /// In the largest text sizes the toolbar has no Hand Back, so it's here too.
+    @ViewBuilder private var staleTakeover: some View {
+        if session.control == .other {
+            Text("Another session holds control, so the bot is blocked until someone hands back.")
+                .font(.footnote).foregroundStyle(.secondary)
+            forceHandBackButton
+        } else if isMine, movesHandBackToBottom {
+            Button("Hand Back") { session.handBack() }
+                .buttonStyle(.bordered)
+        }
+    }
+
+    private var forceHandBackButton: some View {
+        Button("Hand Back (Force)") { isConfirmingForce = true }
+            .buttonStyle(.bordered).tint(.red)
+            .confirmationDialog("Hand back for whoever holds this screen?", isPresented: $isConfirmingForce, titleVisibility: .visible) {
+                Button("Hand Back (Force)", role: .destructive) { session.forceHandBack() }
+            } message: {
+                Text("They lose control at once, and the bot carries on.")
+            }
+    }
+
+    @ViewBuilder private var noticeLine: some View {
+        if let text = noticeText {
+            Text(text).font(.footnote).foregroundStyle(.secondary)
         }
     }
 
@@ -266,6 +374,7 @@ struct ScreenView: View {
         case .handBackFailed: return "Couldn't hand back, so the bot stays paused. You can try again from Bots."
         case .forceFailed: return "Couldn't hand back. Check the connection and try again."
         case .stopFailed: return "Couldn't stop the screen. Check the connection and try again."
+        case .pluginActionFailed: return "That didn't work on the host. Check the connection and try again."
         case nil: return nil
         }
     }

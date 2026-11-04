@@ -39,6 +39,8 @@ struct ScreenStatus: Equatable {
     let lease: ScreenLease
     /// Names this screen in the `display.lease` event, which reaches every attached client.
     let profileKey: String?
+    /// What only a host desktop reports; nil on a bot's own.
+    var host: ScreenHostFacts?
 
     init(_ json: BotJSON) {
         supported = json["supported"].flag ?? false
@@ -52,7 +54,37 @@ struct ScreenStatus: Equatable {
     }
 }
 
+/// hermex-screen's `/status`, read tolerantly.
+struct ScreenHostFacts: Equatable {
+    /// Why this host refuses, in the plugin's words: an unsupported platform, or Windows without
+    /// its opt-in.
+    let refusal: String?
+    /// Why the driver can't do the job, in the plugin's words.
+    let driverProblem: String?
+    let lacksAccessibility: Bool
+    let lacksScreenRecording: Bool
+    let isLocked: Bool
+    /// Whether keys typed from the phone can reach this host's lock screen.
+    let canUnlock: Bool
+
+    init(_ json: BotJSON) {
+        refusal = json["refusal"].text
+        driverProblem = json["driver"]["problem"].text
+        // Only an explicit false: a driver that can't say is reported as a driver problem.
+        lacksAccessibility = json["permissions"]["accessibility"].flag == false
+        lacksScreenRecording = json["permissions"]["screen_recording"].flag == false
+        isLocked = json["locked"].flag ?? false
+        canUnlock = json["locked_input"].flag ?? false
+    }
+}
+
 extension ScreenStatus {
+    /// A hermex-screen host: its desktop is always there, unless its facts say otherwise.
+    init(host json: BotJSON) {
+        self.init(.object(["supported": .bool(true), "running": .bool(true), "lease": json["lease"]]))
+        host = ScreenHostFacts(json)
+    }
+
     /// What a screen that isn't running shows. The host's blocker comes first: a sandbox missing
     /// its desktop image reports that as well as the missing packages, and installing on the
     /// host wouldn't fix it.
@@ -70,41 +102,111 @@ struct ScreenObservation: Equatable {
     let status: ScreenStatus
 }
 
-/// Where the picture comes from. Only the bot's own virtual desktop for now (`display.*` and
-/// `/api/display/ws`); each case supplies its status, stream and lease, and nothing above this
-/// branches on the host.
-enum ScreenSource {
-    case botDesktop
+/// Where the picture comes from: a bot's own virtual desktop through stock `display.*` and
+/// `/api/display/ws`, or the real logged-in desktop through the hermex-screen plugin. Each case
+/// supplies its status, stream and lease, and nothing above this branches on the host except what
+/// it calls itself.
+enum ScreenSource: String, Codable, Equatable, Sendable {
+    case botDesktop, hostDesktop
 
-    /// The current state of `profile`'s screen.
+    /// The current state of `profile`'s screen. The plugin's isn't per Profile: its one desktop
+    /// is every bot's.
     func status(profile: String, client: BotClient) async throws -> ScreenStatus {
-        ScreenStatus(try await client.call(.displayStatus(profile: profile)))
+        switch self {
+        case .botDesktop:
+            return ScreenStatus(try await client.call(.displayStatus(profile: profile)))
+        case .hostDesktop:
+            do {
+                return ScreenStatus(host: try await Self.json(.screenStatus, client))
+            } catch BotFailure.rejected(404) {
+                // The plugin has gone. Stock still reports the lease it left.
+                return try await Self.botDesktop.status(profile: profile, client: client)
+            }
+        }
     }
 
-    /// A ticket and viewer id. Offers `viewerID`, which comes back when this connection minted it.
-    func observe(profile: String, viewerID: String?, client: BotClient) async throws -> ScreenObservation {
-        let reply = try await client.call(.displayObserve(profile: profile, viewerID: viewerID))
-        guard let ticket = reply["ticket"].text, !ticket.isEmpty,
-              let viewer = reply["viewer_id"].text, !viewer.isEmpty
-        else { throw BotFailure.unsupported }
-        return ScreenObservation(ticket: ticket, viewerID: viewer, status: ScreenStatus(reply))
+    /// A ticket and viewer id. Each is new, and a hold under an older id moves to it.
+    func observe(profile: String, client: BotClient) async throws -> ScreenObservation {
+        switch self {
+        case .botDesktop:
+            let reply = try await client.call(.displayObserve(profile: profile, viewerID: nil))
+            guard let ticket = reply["ticket"].text, !ticket.isEmpty,
+                  let viewer = reply["viewer_id"].text, !viewer.isEmpty
+            else { throw BotFailure.unsupported }
+            return ScreenObservation(ticket: ticket, viewerID: viewer, status: ScreenStatus(reply))
+        case .hostDesktop:
+            let reply = try await Self.json(.screenObserve, client)
+            guard let ticket = reply["stream_ticket"].text, !ticket.isEmpty,
+                  let viewer = reply["viewer_id"].text, !viewer.isEmpty
+            else { throw BotFailure.unsupported }
+            return ScreenObservation(ticket: ticket, viewerID: viewer, status: ScreenStatus(host: reply))
+        }
     }
 
     /// The upgrade for the stream `ticket` opens.
     func streamUpgrade(ticket: String, client: BotClient) async throws -> URLRequest {
-        try await client.http.screenUpgrade(ticket: ticket)
+        switch self {
+        case .botDesktop: return try await client.http.screenUpgrade(ticket: ticket)
+        case .hostDesktop: return try await client.http.screenPluginUpgrade(streamTicket: ticket)
+        }
     }
 
     func acquire(profile: String, viewerID: String, client: BotClient) async throws -> ScreenLease {
-        ScreenLease(try await client.call(.displayLeaseAcquire(profile: profile, viewerID: viewerID))["lease"])
+        switch self {
+        case .botDesktop:
+            return ScreenLease(try await client.call(.displayLeaseAcquire(profile: profile, viewerID: viewerID))["lease"])
+        case .hostDesktop:
+            return ScreenLease(try await Self.json(.screenAcquire(viewerID: viewerID), client)["lease"])
+        }
     }
 
-    /// Clears any holder: the force Hand Back.
+    /// Clears any holder: the force Hand Back. A hold left by a plugin that has since been removed
+    /// holds every Profile's stock lease, so without the plugin this clears them there.
     func releaseAny(profile: String, client: BotClient) async throws -> ScreenLease {
-        ScreenLease(try await client.call(.displayLeaseRelease(profile: profile, viewerID: nil))["lease"])
+        switch self {
+        case .botDesktop:
+            return ScreenLease(try await client.call(.displayLeaseRelease(profile: profile, viewerID: nil))["lease"])
+        case .hostDesktop:
+            do {
+                return ScreenLease(try await Self.json(.screenRelease(viewerID: nil), client)["lease"])
+            } catch BotFailure.rejected(404) {
+                return try await Self.releaseOnEveryProfile(profile: profile, viewerID: nil, client: client)
+            }
+        }
     }
 
-    /// Starts the screen, returning once it's up.
+    /// A plugin that has gone leaves its hold on every Profile's stock lease, with nothing left to
+    /// end it. An id releases only itself; nil clears any holder. Answers `profile`'s lease.
+    private static func releaseOnEveryProfile(profile: String, viewerID: String?, client: BotClient) async throws -> ScreenLease {
+        let roster = try await client.call(.profilesList(includeSessions: false))
+        for other in roster["profiles"].list?.compactMap({ $0["name"].text }) ?? [] where other != profile {
+            _ = try await client.call(.displayLeaseRelease(profile: other, viewerID: viewerID))
+        }
+        return ScreenLease(try await client.call(.displayLeaseRelease(profile: profile, viewerID: viewerID))["lease"])
+    }
+
+    /// Releases `hold`, naming each id it may be under. The host answers success whether or not an
+    /// id held, and leaves another person's takeover in place, so this throws unless the last
+    /// lease shows none of them holding.
+    func release(_ hold: ScreenHold, profile: String, client: BotClient) async throws -> ScreenLease {
+        var lease: ScreenLease?
+        for viewerID in hold.viewerIDs {
+            switch self {
+            case .botDesktop:
+                lease = ScreenLease(try await client.call(.displayLeaseRelease(profile: profile, viewerID: viewerID))["lease"])
+            case .hostDesktop:
+                do {
+                    lease = ScreenLease(try await Self.json(.screenRelease(viewerID: viewerID), client)["lease"])
+                } catch BotFailure.rejected(404) {
+                    lease = try await Self.releaseOnEveryProfile(profile: profile, viewerID: viewerID, client: client)
+                }
+            }
+        }
+        guard let lease, hold.holder(of: lease) == nil else { throw BotFailure.unsupported }
+        return lease
+    }
+
+    /// Starts the screen, returning once it's up. Only a bot's desktop starts and stops.
     func start(profile: String, client: BotClient) async throws {
         _ = try await client.call(.displayStart(profile: profile))
     }
@@ -114,16 +216,44 @@ enum ScreenSource {
         _ = try await client.call(.displayStop(profile: profile, force: force))
     }
 
-    /// Releases `hold`, naming each id it may be under. The host answers success whether or not an
-    /// id held, and leaves another person's takeover in place, so this throws unless the last
-    /// lease shows none of them holding.
-    func release(_ hold: ScreenHold, profile: String, client: BotClient) async throws -> ScreenLease {
-        var lease: ScreenLease?
-        for viewerID in hold.viewerIDs {
-            lease = ScreenLease(try await client.call(.displayLeaseRelease(profile: profile, viewerID: viewerID))["lease"])
+    private static func json(_ rest: HermesREST, _ client: BotClient) async throws -> BotJSON {
+        let data = try await client.http.data(rest)
+        return (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null
+    }
+}
+
+/// The hermex-screen plugin as this build knows it (#1567). The app pins one commit, so a fix reaches
+/// normal users through an app update; testers can install a newer one from the command line.
+enum HermexScreenPlugin {
+    static let name = "hermex-screen"
+    static let installIdentifier = "uzairansaruzi/hermex-screen"
+    static let pinnedCommit = "dad2cf0ebb5017eee05eddd0fc19ea44ab0a72e6"
+
+    /// Whether its routes are live, from `GET /capabilities`' status and body.
+    enum State: Equatable {
+        /// A 200: the routes are mounted, including a hot-mount on newer hosts.
+        case live
+        /// The dashboard's own "Plugin not found": off or not installed.
+        case notInstalled
+        /// A catch-all 404: it's enabled, but this dashboard never mounted it. A restart may help.
+        case notMounted
+        /// FastAPI's bare "Not Found": a newer host tried to mount it and failed, so a restart won't help.
+        case failedToLoad
+
+        init?(status: Int, body: BotJSON) {
+            switch status {
+            case 200..<300: self = .live
+            case 404:
+                switch HermexPushPlugin.missingRoute(body) {
+                case .pluginOff: self = .notInstalled
+                case .notMounted: self = .notMounted
+                case nil:
+                    guard body["detail"].text == "Not Found" else { return nil }
+                    self = .failedToLoad
+                }
+            default: return nil
+            }
         }
-        guard let lease, hold.holder(of: lease) == nil else { throw BotFailure.unsupported }
-        return lease
     }
 }
 
@@ -179,8 +309,19 @@ enum ScreenSource {
         case blocked(String)
         /// The desktop packages are missing. The command is the host's, when it has a package manager.
         case needsPackages(command: String?)
-        /// The host answers `display.status` but can't run a screen.
-        case unsupported
+        /// This host has no stock screen and no plugin. Nothing runs until the user consents.
+        case pluginNotInstalled
+        /// The install or the restart is on its way.
+        case pluginBusy
+        /// Installed, but this dashboard hasn't mounted it. `canRestart` when hermex-push offers it.
+        case pluginNeedsRestart(canRestart: Bool)
+        /// A newer host tried to mount it and failed, so the dashboard's log says why.
+        case pluginFailed
+        /// The host refuses, or its driver can't do the job, in the plugin's words.
+        case hostRefused(String)
+        case driverProblem(String)
+        /// What to grant at the host. These can't be granted from a phone.
+        case permissionsMissing(accessibility: Bool, screenRecording: Bool)
         /// The host has no `display.*` methods.
         case unavailable
         /// Retrying won't help until something changes on the host or in front of it.
@@ -204,6 +345,7 @@ enum ScreenSource {
         case handBackFailed
         case forceFailed
         case stopFailed
+        case pluginActionFailed
     }
 
     /// Tests script the socket and shorten the waits; production takes the defaults.
@@ -216,11 +358,19 @@ enum ScreenSource {
         var now: () -> Date = { Date() }
         /// Gets the finished upgrade; nil opens a native socket on the connection's session.
         var socketFactory: ((URLRequest) -> any RFBSocket)?
+        /// How long before reading a missing plugin's route again, since a hot-mount can be in flight.
+        var pluginRecheck: Duration = .seconds(1)
+        /// How often an open host stream re-reads whether its screen is locked.
+        var lockPoll: Duration = .seconds(20)
     }
 
     let profile: String
     let title: String
-    let source: ScreenSource
+    /// Settled by the first read: stock support decides it, and a host without moves to the plugin.
+    private(set) var source: ScreenSource = .botDesktop
+    /// The host's screen is locked, so the picture shows only that.
+    private(set) var isHostLocked = false
+    private(set) var canUnlockHost = false
     private(set) var phase = Phase.connecting
     private(set) var control = Control.bot
     var notice: Notice?
@@ -248,6 +398,7 @@ enum ScreenSource {
     @ObservationIgnored private var isStreamReady = false
     @ObservationIgnored private var input = ScreenInputQueue()
     @ObservationIgnored private var inputPump: Task<Void, Never>?
+    @ObservationIgnored private var lockWatch: Task<Void, Never>?
     @ObservationIgnored private var idleTimer: Task<Void, Never>?
     /// Newer than the saved hold's while this view is open; nil until it has seen the hold.
     @ObservationIgnored private var lastInput: Date?
@@ -256,12 +407,10 @@ enum ScreenSource {
     /// Where the trackpad's pointer is, in framebuffer pixels.
     @ObservationIgnored private var pointer: (x: Int, y: Int)?
 
-    init(profile: String, title: String, server: URL, source: ScreenSource = .botDesktop, client: BotClient,
-         options: Options = Options()) {
+    init(profile: String, title: String, server: URL, client: BotClient, options: Options = Options()) {
         self.profile = profile
         self.title = title
         self.server = server
-        self.source = source
         self.client = client
         self.options = options
         client.onEvent = { [weak self] event in self?.handle(event) }
@@ -338,6 +487,8 @@ enum ScreenSource {
         generation += 1
         stream?.cancel()
         stream = nil
+        lockWatch?.cancel()
+        lockWatch = nil
         wait?.cancel()
         wait = nil
         endStream()
@@ -369,13 +520,17 @@ enum ScreenSource {
                 let reason = HermesConnectionLog.reason(error)
                 HermesConnectionLog.logger.notice("screen stream ended: \(reason, privacy: .public)")
                 endStream()
-                switch ScreenStreamOutcome(error) {
+                switch ScreenStreamOutcome(error, source: source) {
                 case .settled(let phase):
                     set(phase)
                     return
                 case .evicted:
                     // Last Take Over wins: this viewer drops to watching, on a new ticket.
                     forgetHold(notice: .someoneTookOver, control: .other)
+                    continue
+                case .handedBack:
+                    // The plugin's own timer, which runs whether or not the phone is connected.
+                    forgetHold(notice: .handedBackAutomatically, control: .bot)
                     continue
                 case .reopen where failures == 0:
                     // A spent or expired ticket: a new one fixes it, once.
@@ -401,16 +556,91 @@ enum ScreenSource {
             // again. A call's `.stale` is only a socket lost between calls, which a retry fixes.
             throw ScreenStreamEnd.settled(.failed)
         }
-        let status = try await source.status(profile: profile, client: client)
+        // Always the stock read: it's what decides which kind of screen this is.
+        let status = try await ScreenSource.botDesktop.status(profile: profile, client: client)
         guard owner == generation else { return }
         profileKey = status.profileKey
-        guard status.supported else { throw ScreenStreamEnd.settled(.unsupported) }
+        guard status.supported else {
+            try await settleHost(stock: status, owner)
+            try await streamFrom(.hostDesktop, owner)
+            return
+        }
+        source = .botDesktop
         guard status.running else {
             // Stopping a screen ends its lease, so a hold from before that is over.
-            if hold != nil { settleLostHold(status.lease) } else { set(status.lease.holder == .human ? .other : .bot) }
+            settleBlockedControl(status.lease)
             throw ScreenStreamEnd.settled(status.settledPhase)
         }
-        let observed = try await source.observe(profile: profile, viewerID: nil, client: client)
+        try await streamFrom(.botDesktop, owner)
+    }
+
+    /// A host with no stock screen. Reads the plugin's route, and throws the state to show unless
+    /// the plugin is ready to stream. `stock` still reports the lease on every host, so a takeover
+    /// left by a plugin that has since gone still shows, with its force Hand Back.
+    private func settleHost(stock: ScreenStatus, _ owner: Int) async throws {
+        source = .hostDesktop
+        var state = try await pluginState()
+        if state == .notMounted {
+            try await Task.sleep(for: options.pluginRecheck)
+            state = try await pluginState()
+        }
+        guard owner == generation else { throw CancellationError() }
+        if state != .live { settleBlockedControl(stock.lease) }
+        switch state {
+        case .live: break
+        case .notInstalled:
+            throw ScreenStreamEnd.settled(.pluginNotInstalled)
+        case .notMounted:
+            let routes = try? await BotDashboardClient(http: client.http).companionRoutes()
+            throw ScreenStreamEnd.settled(.pluginNeedsRestart(canRestart: routes?.routes.contains("POST /restart") == true))
+        case .failedToLoad:
+            throw ScreenStreamEnd.settled(.pluginFailed)
+        }
+        let status = try await ScreenSource.hostDesktop.status(profile: profile, client: client)
+        guard owner == generation, let facts = status.host else { throw CancellationError() }
+        if facts.refusal != nil || facts.driverProblem != nil || facts.lacksAccessibility || facts.lacksScreenRecording {
+            settleBlockedControl(status.lease)
+        }
+        if let refusal = facts.refusal { throw ScreenStreamEnd.settled(.hostRefused(refusal)) }
+        if let problem = facts.driverProblem { throw ScreenStreamEnd.settled(.driverProblem(problem)) }
+        if facts.lacksAccessibility || facts.lacksScreenRecording {
+            throw ScreenStreamEnd.settled(.permissionsMissing(accessibility: facts.lacksAccessibility,
+                                                              screenRecording: facts.lacksScreenRecording))
+        }
+        apply(facts)
+    }
+
+    private func apply(_ facts: ScreenHostFacts) {
+        if isHostLocked != facts.isLocked { isHostLocked = facts.isLocked }
+        if canUnlockHost != facts.canUnlock { canUnlockHost = facts.canUnlock }
+    }
+
+    /// A screen can lock or unlock while its stream runs, and only `/status` says so.
+    private func watchHostLock(_ owner: Int) {
+        lockWatch?.cancel()
+        lockWatch = Task { [weak self] in
+            while let interval = self?.options.lockPoll {
+                do { try await Task.sleep(for: interval) } catch { return }
+                guard let self, owner == self.generation else { return }
+                guard let status = try? await ScreenSource.hostDesktop.status(profile: self.profile, client: self.client),
+                      owner == self.generation else { continue }
+                if let facts = status.host { self.apply(facts) }
+            }
+        }
+    }
+
+    private func pluginState() async throws -> HermexScreenPlugin.State {
+        let reply = try await client.http.reply(.screenCapabilities)
+        let body = (try? JSONDecoder().decode(BotJSON.self, from: reply.body)) ?? .null
+        guard let state = HermexScreenPlugin.State(status: reply.status, body: body) else {
+            throw BotFailure.rejected(reply.status)
+        }
+        return state
+    }
+
+    /// Spends a ticket on `source`'s stream, and reads frames until it ends.
+    private func streamFrom(_ source: ScreenSource, _ owner: Int) async throws {
+        let observed = try await source.observe(profile: profile, client: client)
         guard owner == generation else { return }
         viewerID = observed.viewerID
         try await settleControl(observed, owner)
@@ -421,6 +651,7 @@ enum ScreenSource {
             await self?.deliver(image, owner)
         }
         self.rfb = rfb
+        if source == .hostDesktop { watchHostLock(owner) }
         try await rfb.run()
     }
 
@@ -445,15 +676,27 @@ enum ScreenSource {
             if self.hold == nil { notice = .handedBackAutomatically } else { set(.mine) }
             return
         }
-        let moving = ScreenHold(viewerIDs: [holder, observed.viewerID], isConfirmed: true, lastInput: last)
+        let moving = ScreenHold(viewerIDs: [holder, observed.viewerID], isConfirmed: true, lastInput: last, source: source)
         options.holds.save(moving, server: server, profile: profile)
         let taken = try await source.acquire(profile: profile, viewerID: observed.viewerID, client: client)
         guard taken.isHeld(by: observed.viewerID) else { return }
-        options.holds.save(ScreenHold(viewerIDs: [observed.viewerID], isConfirmed: true, lastInput: last), server: server, profile: profile)
+        options.holds.save(ScreenHold(viewerIDs: [observed.viewerID], isConfirmed: true, lastInput: last, source: source),
+                           server: server, profile: profile)
         guard owner == generation else { return }
         lastInput = last
         set(.mine)
         startIdleTimer()
+    }
+
+    /// Who holds a screen in a state with no stream, so its Hand Back or force shows there too.
+    private func settleBlockedControl(_ lease: ScreenLease) {
+        if let hold, hold.holder(of: lease) != nil {
+            set(.mine)
+        } else if hold != nil {
+            settleLostHold(lease)
+        } else {
+            set(lease.holder == .human ? .other : .bot)
+        }
     }
 
     /// A saved hold the host doesn't show: handed back or taken while this iPhone was away, or an
@@ -531,6 +774,59 @@ enum ScreenSource {
         }
     }
 
+    // MARK: - The plugin
+
+    /// Installs the pinned plugin, from a consented tap only, then reads where that leaves things.
+    /// Newer hosts hot-mount it; older ones land on the restart state.
+    func installPlugin() {
+        runPluginAction { [self] dashboard in
+            try await dashboard.installPlugin(identifier: HermexScreenPlugin.installIdentifier, ref: HermexScreenPlugin.pinnedCommit)
+        }
+    }
+
+    /// Restarts the dashboard through hermex-push, from a confirmed tap only. The gateway socket
+    /// drops with it, and the read that follows waits out the restart's backoff.
+    func restartForPlugin() {
+        runPluginAction { dashboard in
+            try await dashboard.restartHermes()
+        }
+    }
+
+    /// Hermes runs no plugin code on removal, so any hold has to go first, or it would stay held
+    /// with nothing left to end it. Its routes stay mounted until the dashboard next restarts.
+    func removePlugin() {
+        let hold = hold
+        runPluginAction { [self] dashboard in
+            if let hold { _ = try await hold.source.release(hold, profile: profile, client: client) }
+            // Someone can take over while the confirmation is open. Removing the plugin then would
+            // leave their takeover with nothing to end it.
+            guard try await ScreenSource.hostDesktop.status(profile: profile, client: client).lease.holder != .human else {
+                throw BotFailure.unsupported
+            }
+            options.holds.save(nil, server: server, profile: profile)
+            try await dashboard.removePlugin(HermexScreenPlugin.name)
+        }
+    }
+
+    private func runPluginAction(_ action: @escaping (BotDashboardClient) async throws -> Void) {
+        stopStream()
+        set(.pluginBusy)
+        notice = nil
+        let owner = generation
+        stream = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await action(BotDashboardClient(http: self.client.http))
+                guard owner == self.generation else { return }
+                self.open()
+            } catch {
+                guard owner == self.generation else { return }
+                self.notice = .pluginActionFailed
+                self.open()
+            }
+        }
+    }
+
     // MARK: - Control
 
     /// Take Over. The bot's tools answer `human_has_control` from the host's reply on. The hold is
@@ -539,18 +835,22 @@ enum ScreenSource {
         guard let viewerID else { return }
         let owner = generation
         let taken = options.now()
-        options.holds.save(ScreenHold(viewerIDs: [viewerID], isConfirmed: false, lastInput: taken), server: server, profile: profile)
+        let source = source
+        options.holds.save(ScreenHold(viewerIDs: [viewerID], isConfirmed: false, lastInput: taken, source: source),
+                           server: server, profile: profile)
         Task {
             do {
                 let lease = try await source.acquire(profile: profile, viewerID: viewerID, client: client)
                 guard lease.isHeld(by: viewerID) else { throw BotFailure.unsupported }
-                options.holds.save(ScreenHold(viewerIDs: [viewerID], isConfirmed: true, lastInput: taken), server: server, profile: profile)
+                options.holds.save(ScreenHold(viewerIDs: [viewerID], isConfirmed: true, lastInput: taken, source: source),
+                                   server: server, profile: profile)
                 guard owner == generation else { return }
                 lastInput = taken
                 notice = nil
                 set(.mine)
                 startIdleTimer()
-            } catch let failure where failure is ScreenCallFailure || failure as? BotFailure == .unsupported {
+            } catch let failure where failure is ScreenCallFailure || failure as? BotFailure == .unsupported
+                || failure as? BotFailure == .rejected(409) {
                 // The host answered no.
                 options.holds.forget(viewerIDs: [viewerID], server: server, profile: profile)
                 guard owner == generation else { return }
@@ -595,7 +895,7 @@ enum ScreenSource {
         isReleasing = true
         defer { isReleasing = false }
         do {
-            let lease = try await source.release(hold, profile: profile, client: client)
+            let lease = try await hold.source.release(hold, profile: profile, client: client)
             options.holds.forget(viewerIDs: hold.viewerIDs, server: server, profile: profile)
             ScreenIdleNotification.cancel(server: server, profile: profile)
             guard owner == generation else { return }
@@ -663,7 +963,26 @@ enum ScreenSource {
         }
     }
 
-    /// "Keep Control", and every input.
+    /// "Keep Control". A plugin's timer runs on the host and counts only input it receives, so a host's
+    /// also hears a pointer move to where the pointer already is. A stock host has no timer.
+    func keepControl() {
+        noteActivity()
+        if source == .hostDesktop { movePointer(byX: 0, y: 0) }
+    }
+
+    /// Whether the plugin can be offered for removal: known to be on the host, with nobody's
+    /// takeover on it, which removing it would leave stranded.
+    var canRemovePlugin: Bool {
+        guard source == .hostDesktop, control == .bot, hold == nil else { return false }
+        switch phase {
+        case .live, .reconnecting, .pluginNeedsRestart, .pluginFailed, .hostRefused, .driverProblem, .permissionsMissing:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Every input.
     func noteActivity() {
         lastInput = options.now()
         if isAskingStillThere { isAskingStillThere = false }
@@ -778,21 +1097,26 @@ private enum ScreenStreamOutcome {
     case settled(ScreenSession.Phase)
     /// Someone else took over.
     case evicted
+    /// The host's own timer ended this viewer's takeover.
+    case handedBack
     /// Open again with a new ticket.
     case reopen
     /// Wait out the backoff, then open again.
     case retry
 
-    init(_ error: Error) {
+    init(_ error: Error, source: ScreenSource) {
         switch error {
         case ScreenStreamEnd.settled(let phase):
             self = .settled(phase)
         case RFBStreamEnd.closed(code: 4000):
             self = .evicted
+        case RFBStreamEnd.closed(code: 4002):
+            self = .handedBack
         case RFBStreamEnd.closed(code: 4401):
             self = .reopen
         case RFBStreamEnd.closed(code: 4001):
-            self = .settled(.stopped)
+            // A bot's screen stopped. A host's desktop has no such state: its read says what's wrong.
+            self = source == .botDesktop ? .settled(.stopped) : .retry
         case RFBStreamEnd.closed(code: 1003), is RFBFailure:
             self = .settled(.failed)
         case let failure as ScreenCallFailure:

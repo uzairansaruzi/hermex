@@ -158,8 +158,22 @@ enum HermesREST: Equatable, Sendable {
     case setEnvironment(key: String, value: String, profile: String?)
     /// Removes one key from `profile`'s `.env`; the body names both.
     case removeEnvironment(key: String, profile: String)
-    /// Installs an agent plugin, reinstalling over an existing copy.
-    case installPlugin(identifier: String)
+    /// Installs an agent plugin, reinstalling over an existing copy. `ref` pins a full commit.
+    case installPlugin(identifier: String, ref: String? = nil)
+    /// Deletes a plugin's folder. Hermes runs no plugin code first, and its routes stay mounted
+    /// until the next dashboard restart.
+    case removePlugin(name: String)
+    /// hermex-screen's mounted routes (#1567). A 404's body says why it's missing
+    /// (`HermexScreenPlugin.State`).
+    case screenCapabilities
+    /// Its driver, permissions, lock state and lease.
+    case screenStatus
+    /// A new viewer id and a single-use ticket for its stream.
+    case screenObserve
+    /// Take Over across every Profile. An id `/observe` didn't mint is 409 `viewer_mismatch`.
+    case screenAcquire(viewerID: String)
+    /// Hand Back. An id releases only itself; nil, with `force`, clears any holder.
+    case screenRelease(viewerID: String?)
     case setPlugin(name: String, enabled: Bool)
     case restartGateway
     case pushPairing
@@ -444,10 +458,23 @@ enum HermesREST: Equatable, Sendable {
             return try Self.send("PUT", base.appendingPathComponent("api/env"), body)
         case .removeEnvironment(let key, let profile):
             return try Self.send("DELETE", base.appendingPathComponent("api/env"), ["key": .string(key), "profile": .string(profile)])
-        case .installPlugin(let identifier):
-            return try Self.send("POST", base.appendingPathComponent("api/dashboard/agent-plugins/install"), [
-                "identifier": .string(identifier), "enable": .bool(true), "force": .bool(true)
-            ])
+        case .installPlugin(let identifier, let ref):
+            var body: [String: BotJSON] = ["identifier": .string(identifier), "enable": .bool(true), "force": .bool(true)]
+            if let ref { body["ref"] = .string(ref) }
+            return try Self.send("POST", base.appendingPathComponent("api/dashboard/agent-plugins/install"), body)
+        case .removePlugin(let name):
+            var request = URLRequest(url: base.appendingPathComponent("api/dashboard/agent-plugins").appendingPathComponent(name))
+            request.httpMethod = "DELETE"
+            return request
+        case .screenCapabilities: return Self.get(Self.screenRoute(base, "capabilities"))
+        case .screenStatus: return Self.get(Self.screenRoute(base, "status"))
+        case .screenObserve: return try Self.send("POST", Self.screenRoute(base, "observe"), [:])
+        case .screenAcquire(let viewerID):
+            return try Self.send("POST", Self.screenRoute(base, "lease/acquire"), ["viewer_id": .string(viewerID)])
+        case .screenRelease(let viewerID):
+            var body: [String: BotJSON] = ["force": .bool(true)]
+            if let viewerID { body["viewer_id"] = .string(viewerID) }
+            return try Self.send("POST", Self.screenRoute(base, "lease/release"), body)
         case .setPlugin(let name, let enabled):
             let url = base.appendingPathComponent("api/dashboard/agent-plugins").appendingPathComponent(name)
                 .appendingPathComponent(enabled ? "enable" : "disable")
@@ -809,6 +836,25 @@ enum HermesREST: Equatable, Sendable {
         parts.queryItems = [URLQueryItem(name: "display_ticket", value: ticket)]
         guard let url = parts.url else { throw BotFailure.invalidAddress }
         return URLRequest(url: url)
+    }
+
+    /// hermex-screen's stream (#1567): the dashboard's own pass as `?ticket=` or `?token=`, as for
+    /// a Kanban socket, and the plugin's ticket as `?stream_ticket=`, which names the viewer.
+    static func screenPluginUpgrade(base: URL, streamTicket: String, pass: UpgradePass) throws -> URLRequest {
+        guard var parts = URLComponents(url: screenRoute(base, "stream"), resolvingAgainstBaseURL: false)
+        else { throw BotFailure.invalidAddress }
+        parts.scheme = base.scheme == "https" ? "wss" : "ws"
+        let credential = switch pass {
+        case .ticket(let ticket): URLQueryItem(name: "ticket", value: ticket)
+        case .pageToken(let token): URLQueryItem(name: "token", value: token)
+        }
+        parts.queryItems = [credential, URLQueryItem(name: "stream_ticket", value: streamTicket)]
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return URLRequest(url: url)
+    }
+
+    private static func screenRoute(_ base: URL, _ path: String) -> URL {
+        base.appendingPathComponent("api/plugins/\(HermexScreenPlugin.name)/\(path)")
     }
 
     /// The session token in `dashboardPage`'s body: upstream writes

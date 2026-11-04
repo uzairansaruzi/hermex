@@ -35,8 +35,14 @@ import Foundation
     /// fail with nothing the user can do from the phone. Reinstalling cannot unpair a
     /// device: `hermex-push` keeps its key pair in `plugin-data`, outside the install
     /// directory.
-    func installPlugin(identifier: String) async throws {
-        _ = try await send(.installPlugin(identifier: identifier))
+    func installPlugin(identifier: String, ref: String? = nil) async throws {
+        _ = try await send(.installPlugin(identifier: identifier, ref: ref))
+    }
+
+    /// Removes a plugin's folder. Only hermex-screen uses this: hermex-push keeps its plugin on
+    /// disk, and only ever disables it.
+    func removePlugin(_ name: String) async throws {
+        _ = try await send(.removePlugin(name: name))
     }
 
     /// Enables or disables an installed agent plugin. Disabling is deliberately never

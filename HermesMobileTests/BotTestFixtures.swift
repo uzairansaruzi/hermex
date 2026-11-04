@@ -57,8 +57,9 @@ final class BotSocketHost: @unchecked Sendable {
 
     /// A connection to this host: an ordinary sign-in, then a scripted socket per open.
     /// `rpcDeadline` shortens how long an unanswered call waits.
-    @MainActor func connection(_ record: BotConnection, rpcDeadline: Duration = .seconds(30)) -> HermesConnection {
-        HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+    @MainActor func connection(_ record: BotConnection, rpcDeadline: Duration = .seconds(30),
+                               rest: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
+        HermesConnection(connection: record, configuration: HermesHostFixture.configuration(rest),
                          gateway: .init(rpcDeadline: rpcDeadline, socketFactory: { [self] _ in
                              let stalled = lock.withLock { defer { stalledOpen = nil }; return stalledOpen }
                              stalled?.fulfill()
