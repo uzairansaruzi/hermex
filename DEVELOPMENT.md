@@ -279,7 +279,7 @@ failure diagnostics from running. This is a combined limit, not a separate
 five-minute boot deadline.
 
 `ChatViewModelSendTests/testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay`
-skips itself on CI, where the real voice took from 2 s to over 6 minutes per run.
+skips itself on CI, where it took from 2 s to over 6 minutes per run.
 Nothing else exercises real speech rendering, so after changing `OnDeviceSpeech`
 or `ListenAudioPlayer`, run it locally:
 

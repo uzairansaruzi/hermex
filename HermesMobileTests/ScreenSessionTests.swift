@@ -7,7 +7,7 @@ import XCTest
 @MainActor final class ScreenSessionTests: XCTestCase {
     private let host = BotSocketHost()
     private let server = URL(string: "https://hermes.example")!
-    private var holds = ScreenHoldStore(keychain: InMemoryKeychainStore())
+    private var holds = ScreenHoldStore(keychain: InMemoryKeychainStore(), idleNotification: .off)
     private let opened = OpenedStreams()
     private var sockets: [ScriptedRFBSocket] { opened.sockets }
     private var upgrades: [URLRequest] { opened.upgrades }
