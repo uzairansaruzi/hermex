@@ -1392,6 +1392,112 @@
         }
       }
     },
+    "Hermes moves back to an older release. Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يعود Hermes إلى إصدار أقدم. تتوقف الجولات الجارية على هذا المضيف ويُعاد تشغيل Hermes. يعيد Hermex الاتصال عند عودته."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes wird auf ein älteres Release zurückgesetzt. Laufende Durchläufe auf diesem Host werden beendet und Hermes startet neu. Hermex verbindet sich wieder, sobald es zurück ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes vuelve a una versión anterior. Los turnos en curso en este host se detienen y Hermes se reinicia. Hermex se reconecta cuando vuelve."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes revient à une version antérieure. Les tours en cours sur cet hôte s’arrêtent et Hermes redémarre. Hermex se reconnecte dès son retour."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes יחזור לגרסה ישנה יותר. תורות שרצים במארח הזה ייעצרו ו‑Hermes יופעל מחדש. ‏Hermex יתחבר מחדש כשהוא יחזור."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes torna a una versione precedente. I turni in corso su questo host si interrompono e Hermes si riavvia. Hermex si riconnette quando torna disponibile."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes は古いリリースに戻ります。このホストで実行中のターンは停止し、Hermes が再起動します。復帰すると Hermex が再接続します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes가 이전 릴리스로 되돌아갑니다. 이 호스트에서 실행 중인 턴이 중지되고 Hermes가 재시작됩니다. 돌아오면 Hermex가 다시 연결합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes gaat terug naar een oudere release. Lopende beurten op deze host stoppen en Hermes start opnieuw. Hermex maakt opnieuw verbinding zodra het terug is."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes wróci do starszego wydania. Trwające tury na tym hoście zostaną zatrzymane, a Hermes uruchomi się ponownie. Hermex połączy się ponownie, gdy wróci."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes volta para uma versão anterior. Os turnos em andamento neste host param e o Hermes reinicia. O Hermex reconecta quando ele voltar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes вернётся к более старому релизу. Текущие ходы на этом хосте остановятся, и Hermes перезапустится. Hermex переподключится, когда он вернётся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes daha eski bir sürüme döner. Bu sunucuda çalışan turlar durur ve Hermes yeniden başlar. Geri geldiğinde Hermex yeniden bağlanır."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes پرانی ریلیز پر واپس چلا جائے گا۔ اس ہوسٹ پر چلنے والی باریاں رک جائیں گی اور Hermes دوبارہ شروع ہو گا۔ واپس آنے پر Hermex دوبارہ جڑ جائے گا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 會退回舊版本。此主機上正在執行的輪次會停止，Hermes 會重新啟動。恢復後，Hermex 會重新連線。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 将退回到旧版本。此主机上正在运行的轮次将停止，Hermes 将重启。恢复后，Hermex 会重新连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 會退回舊版本。此主機上正在執行的輪次會停止，Hermes 會重新啟動。恢復後，Hermex 會重新連線。"
+          }
+        }
+      }
+    },
     "Hide Sidebar" : {
       "localizations" : {
         "ar" : {
@@ -1712,7 +1818,431 @@
     },
     "Lightbulb" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Glühbirne" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Bombilla" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ampoule" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Lampadina" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Żarówka" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Lâmpada" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gloeilamp" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ampul" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Лампочка" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "電球" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "灯泡" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "전구" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "مصباح" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נורה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "بلب" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "燈泡" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "燈泡" } } } },
     "Magnifier" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Lupe" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Lupa" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Loupe" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Lente" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Lupa" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Lupa" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Vergrootglas" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Büyüteç" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Лупа" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "虫眼鏡" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "放大镜" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "돋보기" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "عدسة مكبرة" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "זכוכית מגדלת" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "محدب عدسہ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "放大鏡" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "放大鏡" } } } },
+    "Move Back" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إعادة إلى الإصدار السابق"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zurücksetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Volver atrás"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Revenir en arrière"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "החזרה לאחור"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Torna indietro"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "元に戻す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "되돌리기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Terugzetten"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cofnij"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voltar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Откатить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geri al"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "واپس لے جائیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "退回"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "退回"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "退回"
+          }
+        }
+      }
+    },
+    "Move back…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إعادة إلى الإصدار السابق…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zurücksetzen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Volver atrás…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Revenir en arrière…"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "החזרה לאחור…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Torna indietro…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "元に戻す…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "되돌리기…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Terugzetten…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cofnij…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voltar…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Откатить…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geri al…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "واپس لے جائیں…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "退回…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "退回…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "退回…"
+          }
+        }
+      }
+    },
+    "Move Hermes Back?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إعادة Hermes إلى الإصدار السابق؟"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes zurücksetzen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "¿Volver Hermes a una versión anterior?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ramener Hermes à une version antérieure ?"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "להחזיר את Hermes לאחור?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riportare Hermes indietro?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes を元に戻しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes를 되돌릴까요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes terugzetten?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cofnąć Hermes?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voltar o Hermes?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Откатить Hermes?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes geri alınsın mı?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes واپس لے جائیں؟"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要退回 Hermes 嗎？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "退回 Hermes？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要退回 Hermes 嗎？"
+          }
+        }
+      }
+    },
     "Mug" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Tasse" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Taza" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Mug" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Tazza" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kubek" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Caneca" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Mok" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kupa" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Кружка" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "マグカップ" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "马克杯" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "머그컵" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "كوب" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "ספל" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "مگ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "馬克杯" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "馬克杯" } } } },
+    "Newer than the latest release" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أحدث من آخر إصدار"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Neuer als das neueste Release"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Más reciente que la última versión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plus récent que la dernière version"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "חדש יותר מהגרסה האחרונה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Più recente dell’ultima versione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "最新リリースより新しいビルド"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "최신 릴리스보다 새로움"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nieuwer dan de nieuwste release"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nowsza niż najnowsze wydanie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mais recente que a última versão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Новее последнего релиза"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "En son sürümden daha yeni"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تازہ ترین ریلیز سے نیا"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "比最新版本更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "比最新版本更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "比最新版本更新"
+          }
+        }
+      }
+    },
     "Paint Brush" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Pinsel" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Pincel" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Pinceau" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Pennello" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Pędzel" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Pincel" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Penseel" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Boya Fırçası" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Кисть" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "絵筆" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "画笔" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "붓" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "فرشاة رسم" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מכחול" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پینٹ برش" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "畫筆" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "畫筆" } } } },
     "Palette" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Palette" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Paleta" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Palette" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Tavolozza" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Paleta" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Paleta" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Palet" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Palet" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Палитра" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "パレット" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "调色板" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "팔레트" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لوحة ألوان" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "פלטה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پیلیٹ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "調色盤" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "調色板" } } } },
     "Rocket" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Rakete" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Cohete" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Fusée" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Razzo" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Rakieta" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Foguete" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Raket" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Roket" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Ракета" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ロケット" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "火箭" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "로켓" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "صاروخ" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "רקטה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "راکٹ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "火箭" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "火箭" } } } },
