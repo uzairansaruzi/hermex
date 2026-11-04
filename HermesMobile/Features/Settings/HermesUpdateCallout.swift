@@ -17,17 +17,26 @@ import UIKit
         Group {
             if let card { callout(card) }
         }
-        .confirmationDialog("Update Hermes?", isPresented: $isConfirmingUpdate, titleVisibility: .visible) {
+        .confirmationDialog(movesBack ? "Move Hermes Back?" : "Update Hermes?", isPresented: $isConfirmingUpdate,
+                            titleVisibility: .visible) {
             // Like push's restart, the run outlives Settings once the host has been asked.
-            Button("Update", role: .destructive) { model.apply() }
+            Button(movesBack ? "Move Back" : "Update", role: .destructive) { model.apply() }
         } message: {
-            Text("Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back. This can’t be undone.")
+            Text(movesBack
+                 ? "Hermes moves back to an older release. Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back."
+                 : "Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back. This can’t be undone.")
         }
     }
 
     /// `check` and `lookAgain` ask the host's check again; `checkAgain` follows an update that
-    /// stopped without an outcome; `update` and `retry` confirm an update first.
-    private enum Action { case check, lookAgain, update, retry, checkAgain }
+    /// stopped without an outcome; `update`, `moveBack` and `retry` confirm first.
+    private enum Action { case check, lookAgain, update, moveBack, retry, checkAgain }
+
+    /// Whether what the host offers is an older release, so the confirmation says so.
+    private var movesBack: Bool {
+        guard case .answered(let check, _)? = model.check else { return false }
+        return check.offer == .moveBack
+    }
 
     /// What the callout shows: the update this phone started, else the host's check.
     private struct Card {
@@ -99,6 +108,16 @@ import UIKit
             return Card(symbol: "exclamationmark.triangle.fill", tint: .orange,
                         title: String(localized: "Couldn't check for updates"), message: message, action: .lookAgain)
         case .answered(let check, let checkedAt)?:
+            // The host's own message says which release, and why, for both of these.
+            let newer = String(localized: "Newer than the latest release")
+            if check.offer == .held {
+                return Card(symbol: "checkmark.circle.fill", tint: .secondary, title: newer, message: check.message, action: .check)
+            }
+            if check.offer == .moveBack {
+                return check.canApply
+                    ? Card(symbol: "arrow.uturn.backward.circle", tint: .secondary, title: newer, message: check.message, action: .moveBack)
+                    : Card(symbol: "arrow.uturn.backward.circle", tint: .secondary, title: newer, message: check.message, command: check.hostCommand)
+            }
             if check.updateAvailable {
                 let behind = check.behind.flatMap { $0 > 0 ? String(localized: "\($0) commits behind.") : nil }
                     ?? String(localized: "A newer Hermes is available.")
@@ -142,6 +161,7 @@ import UIKit
         case .check: return model.isChecking ? String(localized: "Checking…") : String(localized: "Check")
         case .lookAgain: return model.isChecking ? String(localized: "Checking…") : String(localized: "Check again")
         case .update: return String(localized: "Update…")
+        case .moveBack: return String(localized: "Move back…")
         case .retry: return String(localized: "Try again…")
         case .checkAgain: return model.isWorking ? String(localized: "Checking…") : String(localized: "Check again")
         }
@@ -150,7 +170,7 @@ import UIKit
     private func perform(_ action: Action) {
         switch action {
         case .check, .lookAgain: Task { await model.checkNow() }
-        case .update, .retry: isConfirmingUpdate = true
+        case .update, .moveBack, .retry: isConfirmingUpdate = true
         case .checkAgain: model.checkAgain()
         }
     }
