@@ -55,8 +55,12 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     /// The real on-device voice renders audio the Listen player can play and scrub (#1352).
+    /// Local-only, because it can take minutes on a fresh CI simulator (#1523). Run it by hand
+    /// after changing `OnDeviceSpeech` or `ListenAudioPlayer` (DEVELOPMENT.md § PR CI).
     @MainActor
     func testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay() async throws {
+        try XCTSkipIf(ProcessInfo.processInfo.environment["HERMEX_CI"] != nil,
+                      "Run locally when changing OnDeviceSpeech or ListenAudioPlayer")
         let audio = try await OnDeviceSpeech.render("Hermex reads this reply aloud.")
         let player = try ListenAudioPlayer(data: audio)
         XCTAssertGreaterThan(player.duration, 0.5)
