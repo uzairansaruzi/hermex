@@ -476,7 +476,8 @@ enum HermexScreenPlugin {
             // On a host, a release sent ahead of the acquire would finish first and leave the
             // acquire to pause every bot with nobody watching. A gateway call keeps its order.
             if hold.source == .hostDesktop { await acquiring?.value }
-            await release(self.hold ?? hold, owner: nil)
+            // Only what this view took: the store is shared, and a reopened Screen may hold it by now.
+            await release(hold, owner: nil)
             client.close()
         }
     }

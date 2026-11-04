@@ -765,6 +765,38 @@ import XCTest
         XCTAssertEqual(order, ["acquire", "release"])
     }
 
+    /// The store is shared, so a Screen reopened while this one closed may hold the screen by now.
+    func testClosingReleasesOnlyWhatThisViewTook() async {
+        var released: [String?] = []
+        let acquiring = expectation(description: "the acquire reached the host")
+        let done = expectation(description: "the release reached the host")
+        let session = makeHostSession(rest: livePlugin({ route in
+            guard route == "/lease/acquire" else { return nil }
+            acquiring.fulfill()
+            return .park
+        }, sent: { route, body in
+            guard route == "/lease/release" else { return }
+            released.append(body["viewer_id"].text)
+            done.fulfill()
+        }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.takeOver()
+        await fulfillment(of: [acquiring], timeout: 5)
+        session.leave()
+        let newer = ScreenHold(viewerIDs: ["newer-screen"], isConfirmed: true, lastInput: clock, source: .hostDesktop)
+        holds.save(newer, server: server, profile: "work")
+
+        HermesHostFixture.releaseParked(.json(200, .object(["lease": lease(holder: "human", viewer: "viewer-1")])))
+        await fulfillment(of: [done], timeout: 5)
+        XCTAssertEqual(released, ["viewer-1"])
+        await waitUntil("the reply is settled") { [holds, server] in
+            _ = holds.revision
+            return holds.hold(server: server, profile: "work") == newer
+        }
+    }
+
     /// A reply arriving after a hand-back can't bring back the hold it replaced.
     func testALateAcquireReplyDoesntRestoreAForgottenHold() async {
         let acquiring = expectation(description: "the acquire reached the host")
