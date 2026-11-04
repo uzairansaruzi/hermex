@@ -196,6 +196,29 @@ import XCTest
         }
     }
 
+    /// A locked host's own 403 (`_hosted_fs_read_guard`) never blames the proxy, on a read or a
+    /// download. A 403 with no reason, as a proxy answers, still does.
+    func testOnlyAnUnexplainedRefusalBlamesTheProxy() async {
+        func failures(_ client: HermesWorkspaceFileClient) async -> (read: Error?, download: Error?) {
+            var read: Error?, download: Error?
+            do { _ = try await client.file(path: "x") } catch { read = error }
+            do { _ = try await client.rawFileData(path: "x") } catch { download = error }
+            return (read, download)
+        }
+        let reason = "Path is outside the managed read boundary"
+        let explained = await failures(Self.client { request in
+            request.url?.path.hasPrefix("/api/fs/") == true ? .json(403, .object(["detail": .string(reason)])) : nil
+        })
+        XCTAssertEqual(explained.read as? HermesCronRefusal, HermesCronRefusal(detail: reason))
+        XCTAssertEqual(explained.download as? BotArtifactFailure, .unavailable)
+
+        let unexplained = await failures(Self.client { request in
+            request.url?.path.hasPrefix("/api/fs/") == true ? .json(403, .object([:])) : nil
+        })
+        XCTAssertEqual(unexplained.read as? BotFailure, .rejected(403))
+        XCTAssertEqual(unexplained.download as? BotFailure, .rejected(403))
+    }
+
     /// The host's reason for a refusal shows unless it names a path, as an `OSError`'s does.
     func testARefusalThatNamesAHostPathIsNotShown() async {
         let details = [

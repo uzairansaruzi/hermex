@@ -35,8 +35,12 @@ enum BotArtifactDownload {
         defer { bytes.task.cancel() }
         guard let response = response as? HTTPURLResponse else { throw BotArtifactFailure.unavailable }
         guard response.statusCode == 200 else {
-            if [401, 403].contains(response.statusCode) { throw BotFailure.rejected(response.statusCode) }
-            if response.statusCode == 400, await isFolderRefusal(bytes) { throw BotArtifactFailure.folder }
+            if response.statusCode == 401 { throw BotFailure.rejected(401) }
+            let detail = [400, 403].contains(response.statusCode) ? await refusalDetail(bytes) : nil
+            // Hermes explains its own 403, such as a path outside a locked files root, and the
+            // reason can name a path. One with no reason is the proxy in front of it.
+            if response.statusCode == 403, detail == nil { throw BotFailure.rejected(403) }
+            if response.statusCode == 400, detail == "Path points to a directory" { throw BotArtifactFailure.folder }
             throw BotArtifactFailure.unavailable
         }
         if let limit, response.expectedContentLength > Int64(limit) { throw BotArtifactFailure.tooLarge }
@@ -57,17 +61,17 @@ enum BotArtifactDownload {
         return buffer.data
     }
 
-    /// Whether a 400's body is `fs_download`'s refusal of a folder (`_fs_regular_file` in
+    /// A refusal's `detail`, such as `fs_download`'s of a folder (`_fs_regular_file` in
     /// `hermes_cli/web_routers/files.py` at the `HERMES_AGENT_TESTED_SHA` pin). Reads at most
-    /// 1 KiB; an unreadable body is any other refusal.
-    private static func isFolderRefusal(_ bytes: URLSession.AsyncBytes) async -> Bool {
+    /// 1 KiB; an unreadable body has none.
+    private static func refusalDetail(_ bytes: URLSession.AsyncBytes) async -> String? {
         var body = Data()
         do {
             for try await byte in bytes {
                 body.append(byte)
                 if body.count == 1024 { break }
             }
-        } catch { return false }
-        return (try? JSONDecoder().decode(BotJSON.self, from: body))?["detail"].text == "Path points to a directory"
+        } catch { return nil }
+        return (try? JSONDecoder().decode(BotJSON.self, from: body))?["detail"].text
     }
 }
