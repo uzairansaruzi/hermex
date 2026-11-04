@@ -10,6 +10,29 @@ extension View {
     }
 }
 
+/// The Profile a server page lists and writes to, a menu of the others when the host has more than one.
+struct ServerProfileRow: View {
+    let profiles: [String]
+    let selection: String
+    var footer: LocalizedStringKey?
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        Section {
+            if profiles.count > 1 {
+                Picker("Profile", selection: Binding(get: { selection }, set: onSelect)) {
+                    ForEach(profiles, id: \.self) { Text(verbatim: $0).tag($0) }
+                }
+                .pickerStyle(.menu)
+            } else {
+                LabeledContent("Profile") { Text(verbatim: selection) }
+            }
+        } footer: {
+            if let footer { Text(footer) }
+        }
+    }
+}
+
 /// A Settings row's title beside its gray glyph, with an optional note under the title for what
 /// the row needs explained.
 struct SettingsLabel: View {

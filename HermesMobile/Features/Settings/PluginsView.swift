@@ -1,0 +1,222 @@
+import SwiftUI
+
+/// A Hermes server's Plugins page (#1582), opened from its Settings page: one Profile's plugins with
+/// search and filters, each row's switch applying at once unless Hermex or sign-in relies on it.
+struct PluginsView: View {
+    @State private var model: PluginsModel
+    @State private var isConfirmingRestart = false
+
+    init(connection: BotConnection, server: URL) {
+        _model = State(initialValue: PluginsModel(client: HermesPluginsClient(saved: connection, server: server)))
+    }
+
+    var body: some View {
+        List {
+            if let profile = model.profile {
+                ServerProfileRow(profiles: model.profiles, selection: profile) { name in
+                    Task { await model.select(name) }
+                }
+            }
+            noticeSection
+            content
+        }
+        .settingsPage(String(localized: "Plugins"))
+        .listSectionSpacing(.compact)
+        .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search installed"))
+        // Closing search otherwise slides the bar back and resizes the list for the keyboard at once,
+        // which drops frames on a phone. The list stays still, and scrolling reaches what's under the keyboard.
+        .searchPresentationToolbarBehavior(.avoidHidingContent)
+        .ignoresSafeArea(.keyboard)
+        .scrollDismissesKeyboard(.immediately)
+        .task { await model.load() }
+        .refreshable { await model.load() }
+        .alert(pendingToggleTitle, isPresented: isPresentingPendingToggle, presenting: model.pendingToggle) { pending in
+            Button(pending.turningOn ? String(localized: "Turn On") : String(localized: "Turn Off"), role: .destructive) {
+                model.confirmPendingToggle()
+            }
+            Button(pending.turningOn ? String(localized: "Keep Off") : String(localized: "Keep On"), role: .cancel) {}
+        } message: { pending in
+            Text(verbatim: pending.warning)
+        }
+        .alert("Restart the gateway?", isPresented: $isConfirmingRestart) {
+            Button("Restart", role: .destructive) { Task { await model.restartGateway() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Running work on \(model.profile ?? "") stops. If this host runs one gateway for all its Profiles, work on the others stops too.")
+        }
+    }
+
+    private var isPresentingPendingToggle: Binding<Bool> {
+        Binding(get: { model.pendingToggle != nil }, set: { if !$0 { model.pendingToggle = nil } })
+    }
+
+    private var pendingToggleTitle: String {
+        guard let pending = model.pendingToggle else { return "" }
+        return pending.turningOn ? String(localized: "Turn on \(pending.plugin.name)?")
+            : String(localized: "Turn off \(pending.plugin.name)?")
+    }
+
+    /// What the host last reported, and the restart it asked for. The restart stays until it's requested.
+    @ViewBuilder
+    private var noticeSection: some View {
+        if model.notice != nil || model.needsRestart {
+            Section {
+                if let notice = model.notice { PluginNoticeRow(notice: notice) }
+                if model.needsRestart {
+                    Button("Restart Gateway…") { isConfirmingRestart = true }
+                        .disabled(model.isRestarting)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.state {
+        case .loading:
+            ContentUnavailableView {
+                ProgressView()
+            } description: {
+                Text("Loading plugins…")
+            }
+            .listRowBackground(Color.clear)
+        case .failed(let message):
+            ContentUnavailableView {
+                Label("Couldn't Load Plugins", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(verbatim: message)
+            } actions: {
+                Button("Try Again") { Task { await model.load() } }
+            }
+            .listRowBackground(Color.clear)
+        case .loaded:
+            PluginFilterChips(model: model)
+            let groups = model.groups
+            if groups.isEmpty {
+                ContentUnavailableView("No Plugins Match", systemImage: "puzzlepiece.extension")
+                    .listRowBackground(Color.clear)
+            }
+            ForEach(groups) { group in
+                Section {
+                    ForEach(group.plugins) { plugin in
+                        PluginRow(plugin: plugin, isOn: model.isOn(plugin), isBusy: model.isToggling(plugin)) { turningOn in
+                            model.requestToggle(plugin, to: turningOn)
+                        }
+                    }
+                } header: {
+                    Text(group.kind.title)
+                }
+            }
+        }
+    }
+}
+
+private extension PluginsModel.Group.Kind {
+    var title: String {
+        switch self {
+        case .updates: String(localized: "Updates")
+        case .yours: String(localized: "Yours")
+        case .bundled: String(localized: "Bundled")
+        }
+    }
+}
+
+private extension PluginsModel.Filter {
+    var title: String {
+        switch self {
+        case .all: String(localized: "All")
+        case .enabled: String(localized: "Enabled")
+        case .off: String(localized: "Off")
+        case .updates: String(localized: "Updates")
+        case .yours: String(localized: "Yours")
+        }
+    }
+}
+
+/// The filters, each with how many rows it holds, in a row that scrolls sideways.
+private struct PluginFilterChips: View {
+    let model: PluginsModel
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(PluginsModel.Filter.allCases, id: \.self) { filter in
+                    let isSelected = model.filter == filter
+                    Button {
+                        model.filter = filter
+                    } label: {
+                        Text(verbatim: "\(filter.title) \(model.count(of: filter))")
+                            .font(.footnote.weight(isSelected ? .semibold : .regular))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 5)
+                            .foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
+                            .background(isSelected ? Color.primary : Color(.secondarySystemGroupedBackground), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+            }
+        }
+        .scrollClipDisabled()
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+    }
+}
+
+/// One dense plugin row. The switch shows the state asked for and stays off limits until the host answers.
+private struct PluginRow: View {
+    let plugin: HermesPlugin
+    let isOn: Bool
+    let isBusy: Bool
+    let onChange: (Bool) -> Void
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { isOn }, set: onChange)) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: plugin.name)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                if !plugin.summary.isEmpty {
+                    Text(verbatim: plugin.summary)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                }
+                Text(verbatim: details)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .disabled(isBusy)
+    }
+
+    /// Its folder, which tells apart plugins with the same name, then its version and origin. While
+    /// the host works, which can take minutes on a toggle that syncs packages, it says so instead.
+    private var details: String {
+        if isBusy { return String(localized: "Applying…") }
+        var parts = [plugin.category, plugin.version, plugin.origin].compactMap { $0 }.filter { !$0.isEmpty }
+        if plugin.hasUpdate { parts.append(String(localized: "Update available")) }
+        return parts.joined(separator: " · ")
+    }
+}
+
+private struct PluginNoticeRow: View {
+    let notice: PluginsModel.Notice
+
+    var body: some View {
+        switch notice {
+        case .reported(let text):
+            Label { Text(verbatim: text) } icon: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                .font(.footnote)
+        case .refused(let text):
+            Label { Text(verbatim: text) } icon: { Image(systemName: "xmark.circle.fill").foregroundStyle(.red) }
+                .font(.footnote)
+        case .unconfirmed(let text):
+            Label { Text(verbatim: text) } icon: { Image(systemName: "questionmark.circle.fill").foregroundStyle(.orange) }
+                .font(.footnote)
+        }
+    }
+}

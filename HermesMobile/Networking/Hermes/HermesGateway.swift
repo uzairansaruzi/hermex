@@ -524,7 +524,7 @@ private extension HermesCall {
         switch self {
         case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
              .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
-             .commitMessage, .approvalSummary, .displayStatus, .displayObserve: return true
+             .commitMessage, .approvalSummary, .displayStatus, .displayObserve, .pluginsList: return true
         default: return false
         }
     }
@@ -538,7 +538,7 @@ private extension HermesCall {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
              .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
-             .displayStart, .displayStop: return true
+             .displayStart, .displayStop, .pluginsList, .pluginsToggle: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }
@@ -551,9 +551,12 @@ private extension HermesCall {
     /// waits the two minutes webui's does: the host gives its model call 60 s, on a cold tunnel.
     /// An approval summary is optional, so it gives up after 20 s at most. Starting a screen can
     /// take a sandbox's container as well as a desktop, so `display.start` waits two minutes.
+    /// The plugin list reads the host's live catalog, so it waits twice the usual deadline, and a
+    /// plugin toggle can sync the Profile's Python packages, so it waits three minutes.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
-        case .slashExec: return standard * 2
+        case .slashExec, .pluginsList: return standard * 2
+        case .pluginsToggle: return standard * 6
         case .approvalSummary: return min(standard, .seconds(20))
         case .commitMessage, .displayStart: return .seconds(120)
         case .sessionCompress: return .seconds(660)
@@ -568,7 +571,8 @@ private extension HermesCall {
     /// rewind or `/undo`, whose 5008 message says why the host could not write the cut (#1049),
     /// a refused `/compress`, whose 5005 message says why the compaction failed (#1050), a
     /// refused project change or move, such as 5063 naming the project that has the folder (#1052),
-    /// and a refused branch, whose 5008 message names the session using its name (#1051).
+    /// a refused branch, whose 5008 message names the session using its name (#1051), and a
+    /// refused plugin toggle, whose 5026 message says why (#1582).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         if method.hasPrefix("display.") { return .screen }
@@ -577,7 +581,7 @@ private extension HermesCall {
              .sessionControlRead: return .setting
         case .commandDispatch(let name, _, _) where name == "goal": return .setting
         case .slashExec, .sessionRename, .promptRewind, .sessionUndo, .sessionCompress, .sessionWorkspaceMove,
-             .projectsCreate, .projectsUpdate, .projectsDelete, .sessionBranch: return .setting
+             .projectsCreate, .projectsUpdate, .projectsDelete, .sessionBranch, .pluginsToggle: return .setting
         default: return .plain
         }
     }

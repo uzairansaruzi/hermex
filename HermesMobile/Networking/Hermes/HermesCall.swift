@@ -60,6 +60,14 @@ enum HermesCall: Equatable, Sendable {
     /// `viewer_mismatch` while a human holds it, unless `force`.
     case displayStop(profile: String, force: Bool)
 
+    // Plugins (#1582), per Profile. A Profile the host doesn't have answers 4064.
+    /// `{plugins, user_count, bundled_count}`. Every row, and on 0.22.5 it reads the catalog's pins too.
+    case pluginsList(profile: String)
+    /// `{ok, unchanged, restart_required, gateway_reloaded, activation, name, plugin}`. Always names
+    /// the canonical key, because bare names collide across category folders. Either direction can
+    /// sync the Profile's Python packages first, which took 30 s on a fresh host. A refusal is 5026.
+    case pluginsToggle(profile: String, key: String, enable: Bool)
+
     // The canonical Bot Chat
     /// Finds the Profile's Bot Chat by its exact title, hidden rows included.
     case sessionList(profile: String)
@@ -325,6 +333,7 @@ enum HermesCall: Equatable, Sendable {
         case .profilesSetAsset: return "profiles.set_asset"
         case .profilesConfigure: return "profiles.configure"
         case .profilesCreate: return "profiles.create"
+        case .pluginsList, .pluginsToggle: return "plugins.manage"
         case .sessionList: return "session.list"
         case .sessionCreate, .sessionNew: return "session.create"
         case .sessionTitle, .sessionRename: return "session.title"
@@ -398,6 +407,9 @@ enum HermesCall: Equatable, Sendable {
         switch self {
         case .profilesList(let includeSessions): return ["include_sessions": .bool(includeSessions)]
         case .profilesDescribe(let name): return ["name": .string(name)]
+        case .pluginsList(let profile): return ["action": .string("list"), "profile": .string(profile)]
+        case .pluginsToggle(let profile, let key, let enable):
+            return ["action": .string("toggle"), "profile": .string(profile), "key": .string(key), "enable": .bool(enable)]
         case .profilesGetAsset(let name): return ["name": .string(name), "asset": .string("avatar")]
         case .profilesSetAsset(let name, .replace(let data)):
             return ["name": .string(name), "asset": .string("avatar"), "data": .string(data)]
@@ -607,6 +619,8 @@ enum HermesCall: Equatable, Sendable {
         let valid: Bool
         switch self {
         case .profilesDescribe(let name): valid = !name.isEmpty
+        case .pluginsList(let profile): valid = !profile.isEmpty
+        case .pluginsToggle(let profile, let key, _): valid = !profile.isEmpty && !key.isEmpty
         case .profilesSetAsset(let name, let avatar):
             // Base64 for the server's 2 MB decoded cap, with small data-URL headroom.
             if case .replace(let data) = avatar { valid = !name.isEmpty && !data.isEmpty && data.utf8.count <= 3_000_000 }

@@ -559,6 +559,28 @@ older hosts ignore the extra fields on an import. A 409 (`revision_conflict`, `s
 never resent: the row action rolls back and reloads, and Move to Hermes leaves the batch uncertain
 for its next run.
 
+## Managing plugins
+
+The Plugins screen (Settings → Server → Plugins, #1582) manages one Profile's plugins over
+`plugins.manage`, because the dashboard's REST mutations can't name a Profile and act on the one
+the dashboard runs as. A row's identity is its `key`: names collide across category folders
+(`image_gen/fal`, `video_gen/fal`).
+
+- A toggle can sync the Profile's Python packages first in either direction, which took 30 s on a
+  fresh host, so it waits three minutes. A refusal is 5026 with the host's message, which can be a
+  long `uv` error. Losing the connection or the deadline leaves the outcome unknown: the screen says
+  so, reads the list again and never resends.
+- `restart_required` is true on any disable, and on an enable when no gateway answered. An enable's
+  `activation.deferred` is what waits for the next session; a disable's `activation` can be an
+  earlier load's summary, so it is ignored.
+- `POST /api/gateway/restart?profile=` answers once the restart has started, not once it has
+  finished. On a multiplexed host it restarts the one gateway every Profile shares. Only a
+  confirmed action sends it.
+- Which toggles ask first comes from `GET /api/memory?profile=` (`active`) and
+  `GET /api/messaging/platforms?profile=` (`enabled` and `configured`). Until those answer, or if
+  they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only
+  a user install can be the active one.
+
 ## Plugin routes need a host restart
 
 The dashboard mounts plugin routers once, when its process starts
