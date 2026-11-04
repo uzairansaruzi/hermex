@@ -599,6 +599,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         case currentRunID = "currentRunId"
         case claimLock, claimExpires
         case workerID = "workerPid"
+        case startedAt, currentRunStartedAt
     }
 
     init(
@@ -657,8 +658,10 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         commentCount = container.decodeLossyIntIfPresent(forKey: .commentCount)
         linkCounts = try? container.decodeIfPresent(KanbanLinkCounts.self, forKey: .linkCounts)
         // A Hermes host sends `age`; webui forwards the same dict as `age_seconds` too.
-        age = KanbanCardAge.decode(from: container, forKey: .age)
-            ?? KanbanCardAge.decode(from: container, forKey: .ageSeconds)
+        age = (KanbanCardAge.decode(from: container, forKey: .age)
+            ?? KanbanCardAge.decode(from: container, forKey: .ageSeconds))?
+            .sinceCurrentRun(firstStart: container.decodeLossyDoubleIfPresent(forKey: .startedAt),
+                             currentRunStart: container.decodeLossyDoubleIfPresent(forKey: .currentRunStartedAt))
         createdAt = container.decodeLossyStringIfPresent(forKey: .createdAt)
         updatedAt = container.decodeLossyStringIfPresent(forKey: .updatedAt)
         workspaceKind = container.decodeLossyStringIfPresent(forKey: .workspaceKind)
@@ -727,6 +730,15 @@ struct KanbanCardAge: Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case createdSeconds = "createdAgeSeconds"
         case startedSeconds = "startedAgeSeconds"
+    }
+
+    /// The host's started age counts from the Card's first start, so a retried Card's run reads
+    /// from the start of its current run. Only the host's own times go into it, because the
+    /// phone's clock can differ. Without both times, as from an older host, the age stays as sent.
+    func sinceCurrentRun(firstStart: Double?, currentRunStart: Double?) -> KanbanCardAge {
+        guard let startedSeconds, let firstStart, let currentRunStart else { return self }
+        return KanbanCardAge(createdSeconds: createdSeconds,
+                             startedSeconds: max(0, startedSeconds - (currentRunStart - firstStart)))
     }
 
     static func decode<Key: CodingKey>(
