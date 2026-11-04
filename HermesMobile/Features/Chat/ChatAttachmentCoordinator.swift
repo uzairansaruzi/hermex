@@ -222,15 +222,20 @@ final class ChatAttachmentCoordinator {
         pendingAttachments[index] = edited
         let key = attachmentLease?.key
         if let key { draftStore?.replaceAttachmentRecord(ChatDraftAttachment(pending: edited), for: key) }
+        // Nothing else references the old copy now; an import freeing space must not take it
+        // before the save below decides whether the edit stands.
+        attachmentLease?.files.insert(old)
         do {
             try await draftStore?.flush()
         } catch {
             if let index = pendingAttachments.firstIndex(where: { isCurrent($0, file) }) { pendingAttachments[index] = original }
             if let key { draftStore?.replaceAttachmentRecord(ChatDraftAttachment(pending: original), for: key) }
             attachmentLease?.filesByAttachmentID[attachment.id] = old
+            attachmentLease?.files.remove(old)
             await deleteUnreferencedCopy(file)
             return notSaved
         }
+        attachmentLease?.files.remove(old)
         await deleteUnreferencedCopy(old)
         return nil
     }

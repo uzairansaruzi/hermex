@@ -432,10 +432,16 @@ struct StagedPasteSheet: View {
         guard let text = buffer.text else { return }
         if case let .loaded(paste) = content, paste.text == text { return dismiss() }
         isSaving = true
+        buffer.setEditable(false)
         Task {
             let failure = await save(text)
             isSaving = false
-            if let failure { saveFailure = failure } else { dismiss() }
+            if let failure {
+                buffer.setEditable(true)
+                saveFailure = failure
+            } else {
+                dismiss()
+            }
         }
     }
 }
@@ -468,6 +474,11 @@ final class StagedPasteBuffer: NSObject, UITextViewDelegate {
             }
         }
         textView.becomeFirstResponder()
+    }
+
+    /// Off while a save runs, so nothing typed after Save is lost when the sheet closes.
+    func setEditable(_ isEditable: Bool) {
+        textView?.isEditable = isEditable
     }
 
     func textViewDidChange(_ textView: UITextView) {
