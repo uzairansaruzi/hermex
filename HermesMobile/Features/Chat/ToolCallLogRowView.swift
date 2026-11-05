@@ -230,8 +230,12 @@ struct ToolCallDetailBodyView: View {
                 .foregroundStyle(.secondary)
 
             Group {
-                if result.isMonospaced, !wrapsCodeBlockLines {
-                    unwrappedResultText(result.text)
+                if result.isMonospaced, !wrapsCodeBlockLines, Self.fitsOnOneTextLine(result.text) {
+                    ScrollView(.horizontal) {
+                        Text(result.text)
+                            .fixedSize(horizontal: true, vertical: true)
+                            .padding(7)
+                    }
                 } else {
                     Text(result.text)
                         .padding(7)
@@ -245,20 +249,10 @@ struct ToolCallDetailBodyView: View {
         }
     }
 
-    /// Output that scrolls sideways, split like a code block's lines because one `Text` can't
-    /// draw an arbitrarily wide line.
-    private func unwrappedResultText(_ text: String) -> some View {
-        ScrollView(.horizontal) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(MarkdownPlainCodeFormatter.lines(in: text)) { line in
-                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        ForEach(line.segments) { Text(verbatim: $0.text) }
-                    }
-                }
-            }
-            .fixedSize(horizontal: true, vertical: true)
-            .padding(7)
-        }
+    /// One `Text` keeps the whole result selectable but can't draw an arbitrarily wide line, so
+    /// output with a very long line wraps even when Wrap Lines is off.
+    private static func fitsOnOneTextLine(_ text: String) -> Bool {
+        text.split(separator: "\n").allSatisfy { $0.count <= 500 }
     }
 
     @ViewBuilder

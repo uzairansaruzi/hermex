@@ -516,7 +516,7 @@ final class AppearanceTextAndCodeSizeTests: XCTestCase {
     func testWrapSettingControlsToolOutput() async throws {
         let toolCall = ToolCall(
             name: "terminal",
-            preview: String(repeating: "output ", count: 200),
+            preview: String(repeating: "output ", count: 60),
             args: nil,
             isCompleted: true
         )
@@ -536,7 +536,7 @@ final class AppearanceTextAndCodeSizeTests: XCTestCase {
 
         UserDefaults.standard.set(true, forKey: CodeDisplaySettings.wrapsLinesKey)
         await settle(window)
-        XCTAssertGreaterThan(height(), unwrapped * 3)
+        XCTAssertGreaterThan(height(), unwrapped + 60, "Wrapped, the line takes several rows")
     }
 }
 
