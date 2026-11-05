@@ -152,7 +152,7 @@ struct ThinkingControl: View {
             ForEach(Array(ladder.levels.enumerated()), id: \.offset) { index, level in
                 Button { send(index) } label: {
                     Text(verbatim: ReasoningEffortOption.shortTitle(for: level))
-                        .font(.caption2.weight(index == shownIndex ? .semibold : .regular))
+                        .font(AppFont.caption2(weight: index == shownIndex ? .semibold : .regular))
                         .foregroundStyle(index == shownIndex ? Color(.appText) : Color(.appTextSecondary))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)

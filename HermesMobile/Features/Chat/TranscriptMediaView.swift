@@ -527,7 +527,7 @@ private struct TranscriptMediaFileExportView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(Color(.appText))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -535,7 +535,7 @@ private struct TranscriptMediaFileExportView: View {
                 Text(isExporting
                      ? String(localized: "Loading…")
                      : onPreview == nil ? String(localized: "Tap to download") : String(localized: "Tap to preview"))
-                    .font(.caption2)
+                    .font(AppFont.caption2())
                     .foregroundStyle(Color(.appTextSecondary))
                     .lineLimit(1)
             }
@@ -593,14 +593,14 @@ private struct TranscriptMediaVideoTile: View {
                     .foregroundStyle(Color.accentColor)
 
                 Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(Color(.appText))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: 172)
 
                 Text("Video")
-                    .font(.caption2)
+                    .font(AppFont.caption2())
                     .foregroundStyle(Color(.appTextSecondary))
             }
             .padding(.horizontal, 14)
@@ -619,13 +619,13 @@ private struct TranscriptMediaUnavailableChip: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(Color(.appText))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Text("Media unavailable")
-                    .font(.caption2)
+                    .font(AppFont.caption2())
                     .foregroundStyle(Color(.appTextSecondary))
                     .lineLimit(1)
             }
@@ -877,7 +877,7 @@ struct TranscriptMediaPreviewView: View {
             VStack(spacing: 8) {
                 Text(message)
                 Text(item.reference.rawReference)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .fontDesign(.monospaced)
                     .foregroundStyle(.appSecondary)
                     .textSelection(.enabled)
@@ -901,14 +901,14 @@ struct TranscriptMediaPreviewView: View {
     private var mediaHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(item.reference.rawReference)
-                .font(.caption)
+                .font(AppFont.caption())
                 .fontDesign(.monospaced)
                 .foregroundStyle(.appSecondary)
                 .textSelection(.enabled)
 
             if let originalByteCount = viewModel.originalByteCount {
                 Text(ByteCountFormatter.string(fromByteCount: Int64(originalByteCount), countStyle: .file))
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
         }

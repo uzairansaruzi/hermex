@@ -160,7 +160,7 @@ private struct ProjectFormSheet: View {
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .foregroundStyle(.red)
                     }
                 }
@@ -244,12 +244,12 @@ private struct ProjectFormSheet: View {
 
             if folderNeedsMoreTyping {
                 Text("Type more of the folder name.")
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
         } header: {
             Text("Folder")
-        } footer: {
+        } appFooter: {
             Text("Sessions working in this folder belong to the project.")
         }
         .task(id: folderPath) {
@@ -283,7 +283,7 @@ private struct ProjectFormSheet: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.bold))
+                        .font(AppFont.body(weight: .bold))
                         .foregroundStyle(checkmarkColor(for: option.hex))
                 }
             }

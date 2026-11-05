@@ -229,7 +229,7 @@ struct TasksView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 }
-                .font(.footnote)
+                .font(AppFont.footnote())
             }
         }
     }
@@ -263,7 +263,7 @@ struct TasksView: View {
                         isShowingAllRecentRuns.toggle()
                     } label: {
                         Text(isTruncated ? "Show All (\(recentRuns.count))" : "Show Less")
-                            .font(.subheadline)
+                            .font(AppFont.subheadline())
                     }
                 }
             }
@@ -407,7 +407,7 @@ struct StatusBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2)
+            .font(AppFont.caption2())
             .fontWeight(.semibold)
             .foregroundStyle(color)
             .padding(.horizontal, 8)

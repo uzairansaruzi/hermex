@@ -517,16 +517,16 @@ struct SessionListView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Another shared item is waiting")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                 Text("Open it when you are done with this draft.")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
             }
 
             Spacer(minLength: 0)
 
             Button("Open Next", action: openNextSharedImport)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline(weight: .semibold))
                 .buttonStyle(.bordered)
         }
         .padding(.horizontal)
@@ -874,10 +874,10 @@ struct SessionListView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.pencil")
-                    .font(.title3.weight(.semibold))
+                    .font(AppFont.title3(weight: .semibold))
 
                 Text("Chat")
-                    .font(.headline.weight(.semibold))
+                    .font(AppFont.headline(weight: .semibold))
             }
             .foregroundStyle(newSessionButtonForegroundColor)
             .padding(.horizontal, 22)
@@ -949,19 +949,19 @@ struct SessionListView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "archivebox")
-                    .font(.body)
+                    .font(AppFont.body())
                     .foregroundStyle(.appSecondary)
                     .frame(width: 24)
                     .accessibilityHidden(true)
 
                 Text("Archived Sessions")
-                    .font(.subheadline.weight(.medium))
+                    .font(AppFont.subheadline(weight: .medium))
                     .foregroundStyle(.appSecondary)
                     .lineLimit(1)
 
                 if let archivedCount = viewModel.archivedCount {
                     Text("\(archivedCount)")
-                        .font(.footnote.weight(.semibold))
+                        .font(AppFont.footnote(weight: .semibold))
                         .foregroundStyle(.appSecondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
@@ -971,7 +971,7 @@ struct SessionListView: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.forward")
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(.appSecondary)
                     .accessibilityHidden(true)
             }
@@ -2021,7 +2021,7 @@ private struct PendingNewChatView: View {
 
             Button {} label: {
                 Image(systemName: "arrow.up")
-                    .font(.headline.weight(.bold))
+                    .font(AppFont.headline(weight: .bold))
                     .foregroundStyle(Color(.appTextSecondary))
                     .frame(width: 44, height: 44)
                     .background(Color(.appFillTertiary), in: Circle())
@@ -2038,7 +2038,7 @@ private struct PendingNewChatView: View {
                 .foregroundStyle(.orange)
 
             Text(message)
-                .font(.footnote)
+                .font(AppFont.footnote())
                 .foregroundStyle(.appSecondary)
                 .lineLimit(2)
 
@@ -2047,7 +2047,7 @@ private struct PendingNewChatView: View {
             Button("Retry") {
                 Task { await retryCreateSession() }
             }
-            .font(.footnote.weight(.semibold))
+            .font(AppFont.footnote(weight: .semibold))
             .disabled(viewModel.isCreatingSession)
         }
         .padding(.horizontal, 12)

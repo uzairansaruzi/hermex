@@ -78,10 +78,10 @@ struct ApprovalRequestOverlay: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Approval required")
-                    .font(.headline)
+                    .font(AppFont.headline())
 
                 Text("Pending approvals: \(content.pendingCount)")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
             }
         }
@@ -91,7 +91,7 @@ struct ApprovalRequestOverlay: View {
         VStack(alignment: .leading, spacing: 10) {
             if let description = nonEmpty(content.description) {
                 Text(description)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.appPrimary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -113,20 +113,20 @@ struct ApprovalRequestOverlay: View {
 
             if let scope = content.scopeLine {
                 Text(scope)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if content.pendingCount > 1 {
                 Text("1 of \(content.pendingCount) pending")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
             }
 
             if let errorMessage = nonEmpty(errorMessage) {
                 Text(errorMessage)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.red)
             }
         }

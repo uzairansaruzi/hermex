@@ -35,7 +35,7 @@ struct ThinkingSliderPickerView: View {
                         .accessibilityAddTraits(level == sharedLevel ? .isSelected : [])
                     }
                 }
-            } footer: {
+            } appFooter: {
                 Text("How the Thinking control looks in Model settings.")
             }
 
@@ -84,7 +84,7 @@ private struct ThinkingSliderPickerRow: View {
                     Text(verbatim: look.name).foregroundStyle(.appPrimary)
                     Spacer(minLength: 8)
                     Text(verbatim: ReasoningEffortOption.title(for: shownLevel))
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")

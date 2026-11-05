@@ -175,6 +175,7 @@ struct AppLockView: View {
             .scrollBounceBehavior(.basedOnSize)
         }
         .background(Color(.appCanvas).ignoresSafeArea())
+        .appRootFont()
     }
 
     private var locked: some View {

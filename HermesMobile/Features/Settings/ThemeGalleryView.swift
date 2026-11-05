@@ -8,7 +8,7 @@ struct ThemeGalleryView: View {
     private static let reply = ChatMessage(role: "assistant", content: """
     ## Found the cause
 
-    The retry loop never resets `attempt`. See [AuthManager.swift](https://example.com) and $E = mc^2$.
+    The retry loop **never resets** *the counter* `attempt`. See [AuthManager.swift](https://example.com) and $E = mc^2$.
 
     ```swift
     func retry(_ attempt: Int) async throws {
@@ -50,6 +50,11 @@ struct ThemeGalleryView: View {
                     Text(verbatim: "Color Scheme")
                 }
                 .pickerStyle(.segmented)
+                Picker(selection: Bindable(AppFontSettings.shared).family) {
+                    ForEach(AppFontFamily.allCases) { Text(verbatim: $0.title).tag($0) }
+                } label: {
+                    Text(verbatim: "Font")
+                }
 
                 MessageBubbleView(message: Self.user, transcriptMediaCacheNamespace: "")
                 MessageBubbleView(message: Self.reply, transcriptMediaCacheNamespace: "")

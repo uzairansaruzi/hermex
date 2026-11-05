@@ -189,7 +189,7 @@ import SwiftUI
                 .foregroundStyle(isDone ? Color.green : Color(.appTextSecondary))
             Text(step.title).fontWeight(isRunning ? .semibold : .regular)
         }
-        .font(.footnote)
+        .font(AppFont.footnote())
         .foregroundStyle(isDone || isRunning ? Color(.appText) : Color(.appTextSecondary))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(isDone ? String(localized: "\(step.title): done")
@@ -302,8 +302,8 @@ import SwiftUI
 
     private func failureRow(_ failure: HermexPushProvisioner.Failure) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(failure.title).font(.footnote.weight(.semibold))
-            Text(failure.message).font(.footnote)
+            Text(failure.title).font(AppFont.footnote(weight: .semibold))
+            Text(failure.message).font(AppFont.footnote())
         }
         .foregroundStyle(.red)
         .accessibilityElement(children: .combine)

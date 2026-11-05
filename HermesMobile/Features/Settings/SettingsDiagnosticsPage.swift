@@ -67,7 +67,7 @@ struct SettingsDiagnosticsPage: View {
                                 }
                             }
                     }
-                } footer: {
+                } appFooter: {
                     Text("iOS delivers these reports. Hermex keeps up to 10 for 14 days, on this device only.")
                 }
             }
@@ -135,7 +135,7 @@ private struct DiagnosticRowLabel: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 Text(detail)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
         } icon: {

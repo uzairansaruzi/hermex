@@ -67,7 +67,7 @@ struct BotRoomComposerView: View {
         } label: {
             Group {
                 if reader.awaitingStop || reader.status.stopping > 0 {
-                    Text("Stopping…").font(.caption).padding(.horizontal, 8)
+                    Text("Stopping…").font(AppFont.caption()).padding(.horizontal, 8)
                 } else {
                     Image(systemName: stop ? "stop.fill" : "arrow.up")
                         .font(.system(size: iconSize, weight: .semibold))
@@ -119,12 +119,12 @@ struct BotRoomActionCard: View {
                 summary: reader.summaryPresentation(for: action))
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                Text(identity).font(.caption).foregroundStyle(.appSecondary)
+                Text(identity).font(AppFont.caption()).foregroundStyle(.appSecondary)
                 if action.isRetry {
                     Button("Retry") { Task { await reader.act(action) } }.disabled(!reader.mayAct(action))
                 } else {
                     Label("Needs attention. Answer the request in Hermes Desktop on this same connection.", systemImage: "desktopcomputer")
-                        .font(.callout)
+                        .font(AppFont.callout())
                 }
             }
             .padding(16).frame(maxWidth: 560, alignment: .leading)

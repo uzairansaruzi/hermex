@@ -141,6 +141,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// of appearance or text size has to redraw it even when the draft has not
     /// moved at all.
     private struct ChipRenderStyle: Equatable {
+        let fontName: String
         let fontPointSize: CGFloat
         let userInterfaceStyle: UIUserInterfaceStyle
         let appearance: AppAppearance
@@ -354,6 +355,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var currentStyle: ChipRenderStyle {
         ChipRenderStyle(
+            fontName: (font ?? fallbackFont).fontName,
             fontPointSize: (font ?? fallbackFont).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
             appearance: traitCollection[AppAppearanceTrait.self],
@@ -365,7 +367,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     private var fallbackFont: UIFont {
-        .preferredFont(forTextStyle: .body, compatibleWith: traitCollection)
+        .app(forTextStyle: .body, compatibleWith: traitCollection)
     }
 
     private var isRightToLeft: Bool {

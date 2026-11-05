@@ -76,7 +76,7 @@ struct ScreenView: View {
         }
         ToolbarItem(placement: .principal) {
             VStack(spacing: 0) {
-                Text("Screen").font(.headline)
+                Text("Screen").font(AppFont.headline())
                 Group {
                     if session.source == .hostDesktop {
                         Text("This computer's real desktop")
@@ -84,7 +84,7 @@ struct ScreenView: View {
                         Text("Bot desktop")
                     }
                 }
-                .font(.caption).foregroundStyle(.appSecondary)
+                .font(AppFont.caption()).foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .combine)
         }
@@ -191,7 +191,7 @@ struct ScreenView: View {
                     .font(.footnote.monospaced())
                     .textSelection(.enabled)
                 Text("Run this on the host to see what's wrong.")
-                    .font(.footnote).foregroundStyle(.appSecondary)
+                    .font(AppFont.footnote()).foregroundStyle(.appSecondary)
                 checkAgain
                 staleTakeover
                 noticeLine
@@ -199,8 +199,8 @@ struct ScreenView: View {
         case .permissionsMissing(let accessibility, let screenRecording):
             ScreenNotice(title: "Allow screen access",
                          message: "On this computer, in its privacy settings, turn on CuaDriver under:") {
-                if accessibility { Text("Accessibility").font(.subheadline.weight(.medium)) }
-                if screenRecording { Text("Screen Recording").font(.subheadline.weight(.medium)) }
+                if accessibility { Text("Accessibility").font(AppFont.subheadline(weight: .medium)) }
+                if screenRecording { Text("Screen Recording").font(AppFont.subheadline(weight: .medium)) }
                 checkAgain
                 staleTakeover
                 noticeLine
@@ -238,7 +238,7 @@ struct ScreenView: View {
             .opacity(session.phase == .reconnecting ? 0.45 : 1)
             .overlay(alignment: .top) {
                 Text(status)
-                    .font(.footnote.weight(.medium))
+                    .font(AppFont.footnote(weight: .medium))
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(.appMaterial(.regularMaterial), in: Capsule())
                     .padding(.top, 8)
@@ -264,7 +264,7 @@ struct ScreenView: View {
         ZStack {
             ScreenTrackpad(session: session)
             Text("Swipe to move. Tap to click. Hold to drag.")
-                .font(.footnote).foregroundStyle(.appSecondary)
+                .font(AppFont.footnote()).foregroundStyle(.appSecondary)
                 .multilineTextAlignment(.center).padding()
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -274,8 +274,8 @@ struct ScreenView: View {
 
     private var stillThere: some View {
         VStack(spacing: 8) {
-            Text("Still there?").font(.headline)
-            Text("Control returns to the bot in 1 minute.").font(.subheadline).foregroundStyle(.appSecondary)
+            Text("Still there?").font(AppFont.headline())
+            Text("Control returns to the bot in 1 minute.").font(AppFont.subheadline()).foregroundStyle(.appSecondary)
             Button("Keep Control") { session.keepControl() }
                 .buttonStyle(.appProminent)
         }
@@ -289,15 +289,15 @@ struct ScreenView: View {
     @ViewBuilder private var bottomControls: some View {
         VStack(spacing: 8) {
             if let text = noticeText {
-                Text(text).font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
+                Text(text).font(AppFont.footnote()).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if session.phase == .reconnecting, isMine {
                 Text("You still have control. The bot stays paused.")
-                    .font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
+                    .font(AppFont.footnote()).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if session.control == .other {
                 Text("The bot is blocked until someone hands back.")
-                    .font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
+                    .font(AppFont.footnote()).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if session.isHostLocked {
                 Group {
@@ -307,7 +307,7 @@ struct ScreenView: View {
                         Text("Screen is locked. Unlock it at the computer.")
                     }
                 }
-                .font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
+                .font(AppFont.footnote()).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if isMine {
                 if isTyping { keyRow }
@@ -344,7 +344,7 @@ struct ScreenView: View {
     @ViewBuilder private var staleTakeover: some View {
         if session.control == .other {
             Text("Another session holds control, so the bot is blocked until someone hands back.")
-                .font(.footnote).foregroundStyle(.appSecondary)
+                .font(AppFont.footnote()).foregroundStyle(.appSecondary)
             forceHandBackButton
         } else if isMine, movesHandBackToBottom {
             Button("Hand Back") { session.handBack() }
@@ -364,7 +364,7 @@ struct ScreenView: View {
 
     @ViewBuilder private var noticeLine: some View {
         if let text = noticeText {
-            Text(text).font(.footnote).foregroundStyle(.appSecondary)
+            Text(text).font(AppFont.footnote()).foregroundStyle(.appSecondary)
         }
     }
 
@@ -409,7 +409,7 @@ struct ScreenView: View {
 
     private func keyButton(_ text: String, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(verbatim: text).font(.footnote.weight(.medium)).padding(.horizontal, 4)
+            Text(verbatim: text).font(AppFont.footnote(weight: .medium)).padding(.horizontal, 4)
         }
         .buttonStyle(.bordered)
         .accessibilityLabel(label)
@@ -418,7 +418,7 @@ struct ScreenView: View {
     private func modifierButton(_ text: String, label: LocalizedStringKey, key: ScreenKey) -> some View {
         let latched = session.latchedModifiers.contains(key)
         return Button { session.toggleModifier(key) } label: {
-            Text(verbatim: text).font(.footnote.weight(.medium)).padding(.horizontal, 4)
+            Text(verbatim: text).font(AppFont.footnote(weight: .medium)).padding(.horizontal, 4)
         }
         .buttonStyle(.bordered)
         .tint(latched ? .accentColor : nil)
@@ -442,12 +442,12 @@ private struct ScreenNotice<Actions: View>: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text(title).font(.title3.weight(.semibold))
+            Text(title).font(AppFont.title3(weight: .semibold))
             if let message {
-                Text(message).font(.subheadline).foregroundStyle(.appSecondary)
+                Text(message).font(AppFont.subheadline()).foregroundStyle(.appSecondary)
             }
             if let detail {
-                Text(verbatim: detail).font(.subheadline).foregroundStyle(.appSecondary)
+                Text(verbatim: detail).font(AppFont.subheadline()).foregroundStyle(.appSecondary)
             }
             actions.padding(.top, 8)
         }

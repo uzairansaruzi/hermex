@@ -110,7 +110,7 @@ struct PluginChip: View {
     var body: some View {
         Button(action: action) {
             Text(verbatim: title)
-                .font(.footnote.weight(isSelected ? .semibold : .regular))
+                .font(AppFont.footnote(weight: isSelected ? .semibold : .regular))
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
                 .foregroundStyle(isSelected ? Color(.appCanvas) : Color(.appText))
@@ -137,10 +137,10 @@ private struct PluginShelf: View {
                         VStack(alignment: .leading, spacing: 4) {
                             PluginCatalogImage(url: entry.image, fallback: entry.title, size: CGSize(width: 228, height: 114), cornerRadius: 12)
                             Text(verbatim: entry.title)
-                                .font(.subheadline.weight(.semibold))
+                                .font(AppFont.subheadline(weight: .semibold))
                                 .lineLimit(1)
                             Text(verbatim: entry.summary)
-                                .font(.footnote)
+                                .font(AppFont.footnote())
                                 .foregroundStyle(.appSecondary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
@@ -171,14 +171,14 @@ private struct PluginCatalogRow: View {
             PluginCatalogImage(url: entry.image, fallback: entry.title, size: CGSize(width: 64, height: 32), cornerRadius: 6)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: entry.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .lineLimit(1)
                 Text(verbatim: entry.summary)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                 Text(verbatim: details)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appTertiary)
                     .lineLimit(1)
             }
@@ -191,7 +191,7 @@ private struct PluginCatalogRow: View {
     @ViewBuilder
     private var trailing: some View {
         if isInstalled == true {
-            Text("Installed").font(.footnote).foregroundStyle(.appSecondary)
+            Text("Installed").font(AppFont.footnote()).foregroundStyle(.appSecondary)
         } else if isInstalled == false, !isTooNew {
             Button("Get", action: onGet)
                 .buttonStyle(.bordered)
@@ -308,7 +308,7 @@ private struct PluginCatalogImage: View {
             Color(.appFillTertiary)
                 .overlay {
                     Text(verbatim: String(fallback.prefix(1)).uppercased())
-                        .font(.footnote.weight(.semibold))
+                        .font(AppFont.footnote(weight: .semibold))
                         .foregroundStyle(.appSecondary)
                 }
         }

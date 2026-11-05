@@ -21,7 +21,7 @@ import SwiftUI
                     BotRoomAvatars(room: reader.room, roster: roster, avatars: avatars, size: 84)
                     if reader.showsRename {
                         TextField("Group name", text: $name)
-                            .font(.title2.bold()).multilineTextAlignment(.center)
+                            .font(AppFont.title2().bold()).multilineTextAlignment(.center)
                             .focused($editingName).submitLabel(.done)
                             .disabled(!reader.mayRename)
                             .onSubmit { commitName() }
@@ -30,9 +30,9 @@ import SwiftUI
                                 .disabled(!reader.mayRename || !BotRoomRPC.validName(name))
                         }
                         if !BotRoomRPC.validName(name) {
-                            Text("Enter a name of up to 200 characters.").font(.caption)
+                            Text("Enter a name of up to 200 characters.").font(AppFont.caption())
                         }
-                    } else { Text(reader.room.name).font(.title2.bold()) }
+                    } else { Text(reader.room.name).font(AppFont.title2().bold()) }
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 24)
             }
@@ -46,11 +46,11 @@ import SwiftUI
                     } else { memberRow(member) }
                 }
             }
-            if reader.foreignAuthority { Text("Managed by another Hermes").font(.callout) }
-            if let message = reader.commandMessage { Text(message).font(.callout) }
-            if reader.finishingStop { Text("Finishing stop…").font(.callout) }
+            if reader.foreignAuthority { Text("Managed by another Hermes").font(AppFont.callout()) }
+            if let message = reader.commandMessage { Text(message).font(AppFont.callout()) }
+            if reader.finishingStop { Text("Finishing stop…").font(AppFont.callout()) }
             if reader.link == .stopped {
-                if let error = reader.errorMessage { Text(error).font(.callout) }
+                if let error = reader.errorMessage { Text(error).font(AppFont.callout()) }
                 // Reconnecting would only send the refused password again (#884).
                 if reader.needsSignIn {
                     Button("Update sign-in", action: onUpdateSignIn)

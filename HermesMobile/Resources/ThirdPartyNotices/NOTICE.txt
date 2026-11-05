@@ -23,3 +23,7 @@ with the iOS app.
   See LucideIcons-LICENSE.txt.
 - Open Bot Avatar (avatar paths and eye positions, design prompt adapted)
   See OpenBotAvatar-LICENSE.txt.
+- DM Sans (font, unmodified)
+  See DMSans-LICENSE.txt.
+- Lora (font, unmodified)
+  See Lora-LICENSE.txt.

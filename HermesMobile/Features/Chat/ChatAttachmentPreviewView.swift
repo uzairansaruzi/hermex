@@ -210,7 +210,7 @@ struct ChatAttachmentPreviewView: View {
             VStack(spacing: 8) {
                 Text(message)
                 Text(item.displayPath)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .fontDesign(.monospaced)
                     .foregroundStyle(.appSecondary)
                     .textSelection(.enabled)
@@ -221,14 +221,14 @@ struct ChatAttachmentPreviewView: View {
     private var fileHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(item.displayPath)
-                .font(.caption)
+                .font(AppFont.caption())
                 .fontDesign(.monospaced)
                 .foregroundStyle(.appSecondary)
                 .textSelection(.enabled)
 
             if let metadataText {
                 Text(metadataText)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
         }
@@ -343,7 +343,7 @@ struct StagedPasteSheet: View {
                     VStack(spacing: 0) {
                         if let notice = notice(for: paste) {
                             Text(notice)
-                                .font(.footnote)
+                                .font(AppFont.footnote())
                                 .foregroundStyle(.appSecondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(10)
@@ -377,12 +377,12 @@ struct StagedPasteSheet: View {
         ToolbarItem(placement: .principal) {
             VStack(spacing: 0) {
                 Text(item.attachment.name)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if !dynamicTypeSize.isAccessibilitySize, let subtitle {
                     Text(subtitle)
-                        .font(.caption2)
+                        .font(AppFont.caption2())
                         .foregroundStyle(.appSecondary)
                 }
             }

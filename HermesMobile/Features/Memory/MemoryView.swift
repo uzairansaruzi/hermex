@@ -118,7 +118,7 @@ struct MemoryView: View {
                             .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
                     } header: {
                         ProjectContextSectionHeader(modifiedAt: viewModel.projectContextMtime)
-                    } footer: {
+                    } appFooter: {
                         ProjectContextSectionFooter(
                             detail: viewModel.projectContextDetail,
                             isShadowed: viewModel.isProjectContextShadowed
@@ -158,7 +158,7 @@ private struct MemorySectionHeader: View {
             Spacer()
             if let modifiedAt {
                 Text("Modified \(modifiedAt, style: .relative) ago")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
             }
             if isReadOnly {
@@ -201,7 +201,7 @@ private struct ProjectContextSectionHeader: View {
             Spacer()
             if let modifiedAt {
                 Text("Modified \(modifiedAt, style: .relative) ago")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
             }
             Image(systemName: "lock.fill")
@@ -302,9 +302,9 @@ private struct MemoryEditSheet: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Label("Changed on the host", systemImage: "exclamationmark.triangle.fill")
                                 .symbolRenderingMode(.multicolor)
-                                .font(.headline)
+                                .font(AppFont.headline())
                             Text("\(section.title) changed since you opened it. Your draft is kept. Reload shows the host's text and drops this draft.")
-                                .font(.footnote)
+                                .font(AppFont.footnote())
                                 .foregroundStyle(.appSecondary)
                         }
                         .accessibilityElement(children: .combine)
@@ -330,7 +330,7 @@ private struct MemoryEditSheet: View {
                         .accessibilityLabel(section.title)
                 } header: {
                     Text(section.title)
-                } footer: {
+                } appFooter: {
                     if isReadOnly {
                         Label("Read-only", systemImage: "lock.fill")
                     } else if notesNextSession {
@@ -341,7 +341,7 @@ private struct MemoryEditSheet: View {
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .foregroundStyle(.red)
                     }
                 }
@@ -397,7 +397,7 @@ private struct MemoryEditTitle: View {
         let limit = count.limit.formatted()
         VStack(spacing: 1) {
             Text(title)
-                .font(.headline)
+                .font(AppFont.headline())
             Group {
                 if count.isOver {
                     Text("\(used) / \(limit) · \(count.overBy.formatted()) over")
@@ -409,7 +409,7 @@ private struct MemoryEditTitle: View {
                         .accessibilityLabel(Text("\(used) of \(limit) characters"))
                 }
             }
-            .font(.caption)
+            .font(AppFont.caption())
             .monospacedDigit()
         }
         .lineLimit(1)

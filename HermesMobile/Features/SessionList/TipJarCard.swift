@@ -28,13 +28,13 @@ struct TipJarCard: View {
             HStack(alignment: .top, spacing: 12) {
                 companion
                 Text("Keep Hermex going")
-                    .font(.headline)
+                    .font(AppFont.headline())
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, minHeight: faceSize, alignment: .leading)
                 closeButton
             }
             Text("Hermex is free and open source, with no ads and no tracking. Supporters make that possible.")
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             links
@@ -98,7 +98,7 @@ struct TipJarCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.subheadline(weight: .semibold))
             .buttonStyle(.appProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.large)
@@ -111,7 +111,7 @@ struct TipJarCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .accessibilityLabel("Buy Uzi a coffee, opens in browser")
         }
         .environment(\.openURL, OpenURLAction { url in

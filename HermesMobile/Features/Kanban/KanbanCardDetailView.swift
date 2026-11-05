@@ -199,7 +199,7 @@ private struct KanbanCardDetailContent: View {
                             HStack { commentMetadata(comment) }
                             VStack(alignment: .leading) { commentMetadata(comment) }
                         }
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                     }
                     .accessibilityElement(children: .combine)
@@ -229,7 +229,7 @@ private struct KanbanCardDetailContent: View {
             commentSubmissionMessage
         } header: {
             Text(KanbanCountFormatter.comments(state.detail?.comments?.count ?? 0))
-        } footer: {
+        } appFooter: {
             if !featureModel.canAddComments, featureModel.isOffline {
                 Text("Offline Data")
             } else if featureModel.unavailableWriteCapabilities.contains(.comments) {
@@ -261,7 +261,7 @@ private struct KanbanCardDetailContent: View {
                     .foregroundStyle(.red)
                 if let message = state.commentFailureMessage {
                     Text(verbatim: message)
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                 }
             }
         case .outcomeUncertain:
@@ -269,7 +269,7 @@ private struct KanbanCardDetailContent: View {
                 Label("Outcome Uncertain", systemImage: "questionmark.circle")
                     .foregroundStyle(.orange)
                 Text("Refresh to check the Card before trying again.")
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                 Button("Refresh") { Task { await state.refresh() } }
             }
         }
@@ -294,7 +294,7 @@ private struct KanbanCardDetailContent: View {
         if let card, let cardID = card.cardID {
             let ids = featureModel.displayedPrerequisites(for: cardID, canonical: canonicalIDs)
             VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(.headline)
+                Text(title).font(AppFont.headline())
                 ForEach(ids, id: \.self) { prerequisiteID in
                     HStack {
                         Text(verbatim: prerequisiteID)
@@ -360,7 +360,7 @@ private struct KanbanCardDetailContent: View {
                         .foregroundStyle(.red)
                     if let message = mutation.message {
                         Text(verbatim: message)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .textSelection(.enabled)
                     }
                     if case .undoArchive = mutation.kind {
@@ -372,7 +372,7 @@ private struct KanbanCardDetailContent: View {
                     Label("Outcome Uncertain", systemImage: "questionmark.circle")
                         .foregroundStyle(.orange)
                     Text("Refresh the Card to check the server result before trying again.")
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                     if case .undoArchive = mutation.kind {
                         EmptyView()
                     } else {
@@ -472,7 +472,7 @@ private struct KanbanCardDetailContent: View {
     @ViewBuilder
     private func dependencyGroup(title: String, ids: [String]) -> some View {
         VStack(alignment: .leading) {
-            Text(title).font(.headline)
+            Text(title).font(AppFont.headline())
             if !ids.isEmpty {
                 ForEach(ids, id: \.self) { id in
                     Text(verbatim: id)
@@ -512,7 +512,7 @@ private struct KanbanCardDetailContent: View {
                             .textSelection(.enabled)
                         if let date = KanbanDetailDateFormatter.format(event.createdAt) {
                             Text(verbatim: date)
-                                .font(.caption)
+                                .font(AppFont.caption())
                                 .foregroundStyle(.appSecondary)
                         }
                     }
@@ -530,7 +530,7 @@ private struct KanbanCardDetailContent: View {
                 ForEach(runs, id: \.presentationID) { run in
                     VStack(alignment: .leading) {
                         Text(verbatim: [run.status, run.outcome].compactMap { $0 }.joined(separator: " · "))
-                            .font(.headline)
+                            .font(AppFont.headline())
                         if let summary = nonEmpty(run.summary) {
                             Text(verbatim: summary).textSelection(.enabled)
                         }
@@ -541,7 +541,7 @@ private struct KanbanCardDetailContent: View {
                         }
                         if let range = runDateRange(run) {
                             Text(verbatim: range)
-                                .font(.caption)
+                                .font(AppFont.caption())
                                 .foregroundStyle(.appSecondary)
                         }
                         if let runID = nonEmpty(run.runID) {
@@ -602,7 +602,7 @@ private struct KanbanCardDetailContent: View {
             case let .loaded(log):
                 if log.truncated == true {
                     Label("Only the last part of this log is shown.", systemImage: "scissors")
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(.orange)
                 }
                 Text(verbatim: log.content ?? "")

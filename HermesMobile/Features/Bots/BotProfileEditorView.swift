@@ -105,14 +105,14 @@ import SwiftUI
                 sectionLabel("Description")
                 card {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Description").font(.caption).foregroundStyle(.appSecondary)
+                        Text("Description").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         TextField("Description", text: Binding(get: { editor.draft.description }, set: { editor.setDescription($0) }), axis: .vertical)
                             .lineLimit(2...4)
                     }
                     .padding(16)
                     Divider().padding(.leading, 16)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Instructions").font(.caption).foregroundStyle(.appSecondary)
+                        Text("Instructions").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         TextEditor(text: Binding(get: { editor.draft.instructions }, set: { editor.setInstructions($0) }))
                             .frame(minHeight: 130)
                             .scrollContentBackground(.hidden)
@@ -120,7 +120,7 @@ import SwiftUI
                     .padding(16)
                 }
                 Text("Saving replaces this Profile’s complete instructions.")
-                    .font(.caption2).foregroundStyle(.appTertiary).padding(.horizontal, 12).padding(.top, 7)
+                    .font(AppFont.caption2()).foregroundStyle(.appTertiary).padding(.horizontal, 12).padding(.top, 7)
 
                 sectionLabel("Model")
                 card { navigationRow(String(localized: "Default Model"), subtitle: editor.draft.model?.providerID,
@@ -138,11 +138,11 @@ import SwiftUI
                 sectionLabel("Server")
                 card {
                     HStack(spacing: 12) {
-                        Image(systemName: "circle.fill").font(.caption).foregroundStyle(.green)
+                        Image(systemName: "circle.fill").font(AppFont.caption()).foregroundStyle(.green)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(editor.connection.name)
                             Text(editor.connection.address.host ?? editor.connection.address.absoluteString)
-                                .font(.caption).foregroundStyle(.appSecondary)
+                                .font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
                         Spacer()
                     }
@@ -174,13 +174,13 @@ import SwiftUI
             }
             VStack(spacing: 10) {
                 Text(editor.draft.appearance.title.isEmpty ? editor.profile.name : editor.draft.appearance.title)
-                    .font(.title2.weight(.bold)).multilineTextAlignment(.center)
+                    .font(AppFont.title2(weight: .bold)).multilineTextAlignment(.center)
                 if !editor.draft.description.isEmpty {
-                    Text(editor.draft.description).font(.subheadline).foregroundStyle(.appSecondary)
+                    Text(editor.draft.description).font(AppFont.subheadline()).foregroundStyle(.appSecondary)
                         .multilineTextAlignment(.center).lineLimit(3)
                 }
                 Text(verbatim: "\(editor.profile.id) · \(editor.connection.name)")
-                    .font(.caption).foregroundStyle(.appTertiary)
+                    .font(AppFont.caption()).foregroundStyle(.appTertiary)
             }
             .accessibilityElement(children: .combine)
         }
@@ -243,16 +243,16 @@ import SwiftUI
         VStack(alignment: .leading, spacing: 10) {
             Text(editor.outcomes.values.contains(where: { if case .saved = $0 { return false }; return true })
                  ? String(localized: "Needs Attention") : String(localized: "Saved"))
-                .font(.headline)
+                .font(AppFont.headline())
             ForEach(BotProfileEditor.Field.allCases.filter { editor.outcomes[$0] != nil }) { field in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: resultIcon(editor.outcomes[field]!))
                         .foregroundStyle(resultColor(editor.outcomes[field]!)).frame(width: 20)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(field.title).font(.subheadline.weight(.semibold))
-                        Text(resultText(editor.outcomes[field]!)).font(.caption).foregroundStyle(.appSecondary)
+                        Text(field.title).font(AppFont.subheadline(weight: .semibold))
+                        Text(resultText(editor.outcomes[field]!)).font(AppFont.caption()).foregroundStyle(.appSecondary)
                         if editor.outcomes[field] == .conflict {
-                            Button("Reload") { Task { await editor.reloadAppearance() } }.font(.caption.weight(.semibold))
+                            Button("Reload") { Task { await editor.reloadAppearance() } }.font(AppFont.caption(weight: .semibold))
                         }
                     }
                 }
@@ -278,7 +278,7 @@ import SwiftUI
                                          set: { editor.setEnabled($0, field: field, id: item.id) })) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.name)
-                            if let detail = item.detail, !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.appSecondary) }
+                            if let detail = item.detail, !detail.isEmpty { Text(detail).font(AppFont.caption()).foregroundStyle(.appSecondary) }
                         }
                     }
                 }
@@ -306,7 +306,7 @@ import SwiftUI
     }
 
     private func sectionLabel(_ title: LocalizedStringKey) -> some View {
-        Text(title).font(.subheadline).foregroundStyle(.appTertiary).padding(.leading, 10).padding(.top, 24).padding(.bottom, 8)
+        Text(title).font(AppFont.subheadline()).foregroundStyle(.appTertiary).padding(.leading, 10).padding(.top, 24).padding(.bottom, 8)
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -316,7 +316,7 @@ import SwiftUI
 
     private func editorField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.caption).foregroundStyle(.appSecondary)
+            Text(title).font(AppFont.caption()).foregroundStyle(.appSecondary)
             TextField(title, text: text, axis: .vertical).lineLimit(1...3)
         }
         .padding(16)
@@ -329,11 +329,11 @@ import SwiftUI
                 Image(systemName: systemImage).foregroundStyle(.appSecondary).frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).foregroundStyle(.appPrimary)
-                    if let subtitle, !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.appSecondary).lineLimit(1) }
+                    if let subtitle, !subtitle.isEmpty { Text(subtitle).font(AppFont.caption()).foregroundStyle(.appSecondary).lineLimit(1) }
                 }
                 Spacer(minLength: 8)
-                Text(value).font(.subheadline).foregroundStyle(.appSecondary).lineLimit(1)
-                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.appTertiary)
+                Text(value).font(AppFont.subheadline()).foregroundStyle(.appSecondary).lineLimit(1)
+                Image(systemName: "chevron.forward").font(AppFont.caption(weight: .semibold)).foregroundStyle(.appTertiary)
             }
             .padding(16).contentShape(Rectangle())
         }

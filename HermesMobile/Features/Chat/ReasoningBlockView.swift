@@ -231,7 +231,7 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        let font = UIFont.preferredFont(forTextStyle: .caption1, at: context.environment.dynamicTypeSize)
+        let font = UIFont.app(forTextStyle: .caption1, at: context.environment.dynamicTypeSize)
         let textColor = UIColor.appText
         let layoutDirection = context.environment.layoutDirection
 

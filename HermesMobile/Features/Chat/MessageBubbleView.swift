@@ -144,6 +144,9 @@ struct MessageBubbleView: View {
                     .onChange(of: dynamicTypeSize) {
                         measureUserBubbleFold(text, rowWidth: userBubbleFold?.rowWidth, bodyFont: bodyFont)
                     }
+                    .onChange(of: AppFontSettings.shared.family) {
+                        measureUserBubbleFold(text, rowWidth: userBubbleFold?.rowWidth, bodyFont: bodyFont)
+                    }
             }
         }
     }
@@ -174,7 +177,7 @@ struct MessageBubbleView: View {
         VStack(alignment: .trailing, spacing: 4) {
             Label {
                 Text("Steer")
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
             } icon: {
                 Image(systemName: "wand.and.stars")
                     .font(.system(size: 11, weight: .semibold))
@@ -183,7 +186,7 @@ struct MessageBubbleView: View {
 
             if !message.steerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(message.steerText)
-                    .font(.callout)
+                    .font(AppFont.callout())
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -392,7 +395,7 @@ struct MessageBubbleView: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             ComposerChipTextLine.text(text, tokens: chips, style: chipStyle)
-                .font(.body)
+                .font(AppFont.body())
                 .lineLimit(isFolded ? UserBubbleFoldPolicy.visibleLines : nil)
                 .textSelection(.enabled)
                 .overlay(alignment: .bottom) {
@@ -448,7 +451,7 @@ struct MessageBubbleView: View {
                 Image(systemName: userBubbleIsExpanded ? "chevron.up" : "chevron.down")
                     .accessibilityHidden(true)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.subheadline(weight: .semibold))
             .contentShape(Rectangle())
         }
         .buttonStyle(.chatTactile(.compactControl))
@@ -642,7 +645,7 @@ struct MessageBubbleView: View {
 
     /// The body font at this view's text size, for measuring the fold.
     private var userBubbleBodyFont: UIFont {
-        .preferredFont(forTextStyle: .body, at: dynamicTypeSize)
+        .app(forTextStyle: .body, at: dynamicTypeSize)
     }
 
     /// Opaque even when queued, which mixes it toward the transcript's background, so the
@@ -846,7 +849,7 @@ private struct GridAttachmentCell: View {
                     .foregroundStyle(fileBadgeColor)
 
                 Text(fileDisplayName)
-                    .font(.caption2.weight(.medium))
+                    .font(AppFont.caption2(weight: .medium))
                     .foregroundStyle(Color(.appText))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
@@ -854,7 +857,7 @@ private struct GridAttachmentCell: View {
                     .frame(maxWidth: size - 18)
 
                 Text(fileExtensionLabel)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(AppFont.fixed(size: 11, weight: .bold))
                     .foregroundStyle(fileBadgeColor)
                     .lineLimit(1)
             }

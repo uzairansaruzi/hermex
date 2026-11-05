@@ -101,7 +101,7 @@ struct WebuiServerSections: View {
             }
         } header: {
             Text("Sessions")
-        } footer: {
+        } appFooter: {
             sessionSyncFootnote
         }
 
@@ -144,7 +144,7 @@ struct WebuiServerSections: View {
             }
         } header: {
             Text("Main Page")
-        } footer: {
+        } appFooter: {
             Text("An entry you turn off comes back only from here.")
         }
 
@@ -194,7 +194,7 @@ struct WebuiServerSections: View {
             .disabled(model.isClearingCache)
         } header: {
             Text("Offline Data")
-        } footer: {
+        } appFooter: {
             Text(model.cacheStatusMessage ?? String(localized: "Clears this server's cache only."))
         }
     }

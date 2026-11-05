@@ -31,7 +31,7 @@ struct DefaultProfilePickerView: View {
             AppList(rows: .plain) {
                 if let saveError {
                     Text(verbatim: saveError)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
@@ -127,7 +127,7 @@ struct DefaultProfilePickerView: View {
             showsCreateProfile = true
         } label: {
             Label("New Profile", systemImage: "plus")
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
                 .contentShape(Rectangle())
         }
@@ -186,7 +186,7 @@ struct DefaultProfilePickerView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(profile.displayName)
-                            .font(.body)
+                            .font(AppFont.body())
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
                         if selected {
@@ -198,7 +198,7 @@ struct DefaultProfilePickerView: View {
 
                     if let details = profileDetails(profile) {
                         Text(details)
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(
                                 selected ? Color(.appCanvas).opacity(0.7) : Color(.appTextSecondary)
                             )
@@ -214,7 +214,7 @@ struct DefaultProfilePickerView: View {
                         .tint(selected ? Color(.appCanvas) : Color(.appText))
                 } else if selected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -372,7 +372,7 @@ private struct CreateProfileSheet: View {
                     TextField("Profile name", text: $name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                } footer: {
+                } appFooter: {
                     Text("Lowercase letters, numbers, hyphens, and underscores; must start with a letter or number.")
                 }
 
@@ -382,7 +382,7 @@ private struct CreateProfileSheet: View {
 
                 Section {
                     modelPicker
-                } footer: {
+                } appFooter: {
                     Text("Choose from configured providers and models for this new profile.")
                 }
 
@@ -393,7 +393,7 @@ private struct CreateProfileSheet: View {
                         .textInputAutocapitalization(.never)
 
                     SecureField("API key", text: $apiKey)
-                } footer: {
+                } appFooter: {
                     if hasInvalidBaseURL {
                         Text("Base URL must start with http:// or https://.")
                             .foregroundStyle(.red)
@@ -405,7 +405,7 @@ private struct CreateProfileSheet: View {
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(.red)
                     }
                 }
@@ -531,7 +531,7 @@ private struct ProfileStatusBadge: View {
 
     var body: some View {
         Text(title)
-            .font(.caption2.weight(.semibold))
+            .font(AppFont.caption2(weight: .semibold))
             .foregroundStyle(isInverted ? Color(.appCanvas) : Color.accentColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)

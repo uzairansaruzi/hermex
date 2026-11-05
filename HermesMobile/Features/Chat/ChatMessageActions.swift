@@ -179,7 +179,7 @@ struct SelectableTextView: UIViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.backgroundColor = .appCanvas
-        textView.font = .preferredFont(forTextStyle: .body, at: context.environment.dynamicTypeSize)
+        textView.font = .app(forTextStyle: .body, at: context.environment.dynamicTypeSize)
         textView.adjustsFontForContentSizeCategory = true
         // A wrapped UITextView does not inherit SwiftUI's layoutDirection; `.natural`
         // lets each paragraph align by its own writing direction so RTL message text
@@ -209,7 +209,7 @@ struct EditMessageSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 TextEditor(text: $editDraft)
-                    .font(.body)
+                    .font(AppFont.body())
                     .padding()
                     .scrollContentBackground(.hidden)
                     .background(Color(.appGroupedCanvas))

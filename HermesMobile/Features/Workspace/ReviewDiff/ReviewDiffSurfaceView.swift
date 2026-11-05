@@ -63,6 +63,15 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
             restore(anchor)
         }
     }
+    var fontFamily: AppFontFamily {
+        get { canvas.fontFamily }
+        set {
+            guard newValue != canvas.fontFamily else { return }
+            let anchor = currentRowAnchor()
+            canvas.fontFamily = newValue
+            restore(anchor)
+        }
+    }
     /// Current scroll position; tests read it.
     var verticalOffset: CGFloat { scrollView.contentOffset.y }
 

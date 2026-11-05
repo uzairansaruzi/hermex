@@ -73,7 +73,7 @@ struct BotPendingRequestCard: View {
             }
             if let resolution {
                 Text(resolution.message(subject))
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(resolution.outcome == .answered ? Color(.appTextSecondary) : Color.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -125,7 +125,7 @@ private struct BotApprovalRequestBody: View {
         )
         if let consequence = approval.consequence {
             Text(consequence)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appPrimary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -144,7 +144,7 @@ private struct BotApprovalRequestBody: View {
         }
         if let scope = approval.scopeLine {
             Text(scope)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -250,13 +250,13 @@ private struct BotQuestionRequestBody: View {
         ForEach(question.questions) { item in
             VStack(alignment: .leading, spacing: 10) {
                 Text(item.prompt)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.appPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                     .pendingRequestBlockSurface()
                 if let locked = item.lockedAnswer {
                     Label(locked, systemImage: "checkmark.circle.fill")
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                         .accessibilityLabel(Text("Already answered: \(locked)"))
                 } else {
@@ -301,12 +301,12 @@ private struct BotQuestionRequestBody: View {
                         .accessibilityHidden(true)
                 }
                 Text(choice.label)
-                    .font(.callout.weight(.semibold))
+                    .font(AppFont.callout(weight: .semibold))
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                 if choice.isRecommended {
                     Text("Recommended")
-                        .font(.caption2.weight(.semibold))
+                        .font(AppFont.caption2(weight: .semibold))
                         .foregroundStyle(.appSecondary)
                 }
             }
@@ -395,7 +395,7 @@ private struct BotCredentialRequestBody: View {
     var body: some View {
         HermesRequestHeader(systemImage: symbol, tint: Color(.appTextSecondary), title: credential.title, identity: identity)
         Text(credential.detail)
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
         // A secret's storage name, so the user knows which of their keys to paste.
@@ -420,7 +420,7 @@ private struct BotCredentialRequestBody: View {
                 .accessibilityLabel(sendLabel)
         }
         Text(credential.handling)
-            .font(.caption)
+            .font(AppFont.caption())
             .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: false, vertical: true)
         Button { onCredential("") } label: {
@@ -470,7 +470,7 @@ struct BotRequestWithdrawalNote: View {
 
     var body: some View {
         Label(withdrawal.message, systemImage: withdrawal.systemImage)
-            .font(.caption)
+            .font(AppFont.caption())
             .foregroundStyle(.appSecondary)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)

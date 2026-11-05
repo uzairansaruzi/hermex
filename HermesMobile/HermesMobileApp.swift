@@ -98,6 +98,7 @@ struct HermesMobileApp: App {
         _ = RatingPromptState.shared
         ChatTranscriptDisplaySettings.migrateThinkingAndToolCards()
         CodeDisplaySettings.migrateWrapSetting()
+        AppBarFont.applyAtLaunch()
         NetworkPathMonitor.shared.start()
     }
 
@@ -107,6 +108,7 @@ struct HermesMobileApp: App {
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
                 .background(WindowBackgroundPainter())
+                .appRootFont()
                 // Signs in from `HERMEX_DEV_*` launch environment variables
                 // (`scripts/sim-login`); a no-op when they are absent.
                 .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
@@ -120,6 +122,7 @@ struct HermesMobileApp: App {
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
                 .background(WindowBackgroundPainter())
+                .appRootFont()
             #endif
         }
         .modelContainer(cacheContainer)

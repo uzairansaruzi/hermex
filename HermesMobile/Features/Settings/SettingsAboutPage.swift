@@ -153,7 +153,7 @@ private struct SupportDetailsSheet: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Read this before you share it. It has no server address, name or credentials.")
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(.appSecondary)
                 }
                 .padding()
@@ -200,7 +200,7 @@ struct SettingsDeveloperPage: View {
                 } label: {
                     SettingsLabel(title: "Theme Gallery", systemImage: "paintpalette")
                 }
-            } footer: {
+            } appFooter: {
                 Text(verbatim: "Debug builds only.")
             }
         }

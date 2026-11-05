@@ -91,7 +91,7 @@ struct SettingsView: View {
                 }
             } header: {
                 Text(verbatim: "Hermex")
-            } footer: {
+            } appFooter: {
                 Text("Applies on this iPhone to every server.")
             }
 
@@ -165,7 +165,7 @@ private struct SettingsServerRow: View {
                     .lineLimit(1)
 
                 Text(detail)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)

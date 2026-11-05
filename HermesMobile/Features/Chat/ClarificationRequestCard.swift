@@ -113,17 +113,17 @@ struct ClarificationRequestBar: View {
             Button(action: onExpand) {
                 HStack(spacing: 10) {
                     Image(systemName: "questionmark.circle")
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppFont.subheadline(weight: .semibold))
                         .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Input needed")
-                            .font(.caption.weight(.semibold))
+                            .font(AppFont.caption(weight: .semibold))
                             .foregroundStyle(.appSecondary)
 
                         Text(summary)
-                            .font(.subheadline)
+                            .font(AppFont.subheadline())
                             .foregroundStyle(.appPrimary)
                             .lineLimit(1)
                     }
@@ -131,7 +131,7 @@ struct ClarificationRequestBar: View {
                     Spacer(minLength: 8)
 
                     Image(systemName: "chevron.up")
-                        .font(.caption.weight(.semibold))
+                        .font(AppFont.caption(weight: .semibold))
                         .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
                 }
@@ -203,17 +203,17 @@ struct ClarificationRequestCard: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "questionmark.circle")
-                .font(.headline)
+                .font(AppFont.headline())
                 .foregroundStyle(.appSecondary)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Clarification Required")
-                    .font(.headline)
+                    .font(AppFont.headline())
 
                 if prompt.pendingCount > 1 {
                     Text("1 of \(prompt.pendingCount) pending")
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                 }
             }
@@ -250,7 +250,7 @@ struct ClarificationRequestCard: View {
 
     private var question: some View {
         Text(prompt.question)
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
             .pendingRequestBlockSurface()
@@ -312,7 +312,7 @@ struct ClarificationRequestCard: View {
     private var footer: some View {
         if let errorMessage = nonEmpty(errorMessage) {
             Text(errorMessage)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { proxy in
@@ -337,7 +337,7 @@ struct ClarificationRequestCard: View {
 
         return VStack(alignment: .trailing, spacing: 5) {
             Text(expirationText(remaining: remaining))
-                .font(.caption2.weight(.semibold))
+                .font(AppFont.caption2(weight: .semibold))
                 .foregroundStyle(.appSecondary)
 
             if !reduceMotion {
@@ -409,7 +409,7 @@ struct ClarificationRequestCard: View {
             onSubmit(choice)
         } label: {
             Text(choice)
-                .font(.callout.weight(.semibold))
+                .font(AppFont.callout(weight: .semibold))
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)

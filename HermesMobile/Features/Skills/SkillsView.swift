@@ -143,7 +143,7 @@ private struct SkillCategorySection: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(category)
                 .textCase(.uppercase)
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 4)
 
@@ -207,13 +207,13 @@ private struct SkillRow: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayName)
-                    .font(.body.weight(.semibold))
+                    .font(AppFont.body(weight: .semibold))
                     .foregroundStyle(.appPrimary)
                     .lineLimit(2)
 
                 if let description {
                     Text(description)
-                        .font(.subheadline)
+                        .font(AppFont.subheadline())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(3)
                 }
@@ -222,7 +222,7 @@ private struct SkillRow: View {
                     HStack(spacing: 6) {
                         if skill.disabled == true {
                             Text("Disabled")
-                                .font(.caption2.weight(.semibold))
+                                .font(AppFont.caption2(weight: .semibold))
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
                                 .foregroundStyle(.appSecondary)
@@ -231,7 +231,7 @@ private struct SkillRow: View {
 
                         ForEach(tags, id: \.self) { tag in
                             Text(tag)
-                                .font(.caption2.weight(.medium))
+                                .font(AppFont.caption2(weight: .medium))
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
                                 .foregroundStyle(.appSecondary)
@@ -256,7 +256,7 @@ private struct SkillRow: View {
             }
 
             Image(systemName: "chevron.forward")
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appTertiary)
                 .padding(.top, 12)
         }
@@ -439,7 +439,7 @@ private struct SkillLinkedFilesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Linked Files")
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 20)
 
@@ -450,20 +450,20 @@ private struct SkillLinkedFilesSection: View {
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "doc.text")
-                                .font(.subheadline.weight(.medium))
+                                .font(AppFont.subheadline(weight: .medium))
                                 .foregroundStyle(.appPrimary)
                                 .frame(width: 34, height: 34)
                                 .background(Color(.appFillTertiary).opacity(0.7), in: Circle())
 
                             Text(fileName)
-                                .font(.subheadline)
+                                .font(AppFont.subheadline())
                                 .foregroundStyle(.appPrimary)
                                 .lineLimit(1)
 
                             Spacer(minLength: 8)
 
                             Image(systemName: "chevron.forward")
-                                .font(.caption.weight(.semibold))
+                                .font(AppFont.caption(weight: .semibold))
                                 .foregroundStyle(.appTertiary)
                         }
                         .padding(.vertical, 9)
@@ -508,7 +508,7 @@ struct SkillLinkedFileView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if isTruncated {
                             Label("Preview truncated", systemImage: "scissors")
-                                .font(.caption)
+                                .font(AppFont.caption())
                                 .foregroundStyle(.appSecondary)
                         }
                         MarkdownRenderer(content: content)

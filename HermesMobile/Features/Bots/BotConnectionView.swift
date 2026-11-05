@@ -38,7 +38,7 @@ import Observation
         AppForm {
             if let saved = setup.saved { statusSection(saved) }
             Section {
-                Text("Connect to your dashboard").font(.title3.bold())
+                Text("Connect to your dashboard").font(AppFont.title3().bold())
                 Text("Use your Hermes dashboard sign-in.").foregroundStyle(.appSecondary)
             }
             .listRowBackground(Color.clear)
@@ -77,7 +77,7 @@ import Observation
                     SecureField("Password", text: $setup.password).textContentType(.password)
                         .focused($passwordFocused)
                 }
-            } footer: {
+            } appFooter: {
                 VStack(alignment: .leading, spacing: 4) {
                     // Under the password, so the focused field's keyboard never covers it.
                     if let error = setup.errorMessage {
@@ -128,14 +128,14 @@ import Observation
                     .frame(maxWidth: .infinity)
                     .accessibilityIdentifier("hermes-connection-replace-host")
                 }
-            } footer: {
+            } appFooter: {
                 if setup.offersHostReplacement {
                     Text("Connecting to this host instead clears this connection’s drafts, cached chats and notification pairing on this iPhone.")
                 }
             }
             Section("Need your connection details?") {
                 Text("Copy a prompt for your Hermes agent. It will check your setup and help you find the right address and sign-in details.")
-                    .font(.subheadline).foregroundStyle(.appSecondary)
+                    .font(AppFont.subheadline()).foregroundStyle(.appSecondary)
                 Button(copiedPrompt ? String(localized: "Copied") : String(localized: "Copy setup prompt"), systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = BotConnectionSetup.prompt
                     copiedPrompt = true
@@ -209,7 +209,7 @@ import Observation
                 LabeledContent("Connection Headers", value: count == 0 ? String(localized: "None") : count.formatted())
             }
             .accessibilityIdentifier("hermes-connection-headers")
-        } footer: {
+        } appFooter: {
             VStack(alignment: .leading, spacing: 4) {
                 if let rejection = setup.headerRejection, setup.browserHeaderRejection == nil {
                     Label {
@@ -271,7 +271,7 @@ import Observation
             .disabled(setup.hostStatus == .checking)
         } header: {
             Text("Status")
-        } footer: {
+        } appFooter: {
             if live != nil {
                 Text("The messaging gateway runs scheduled Tasks and messaging platforms. Bot chat notifications still arrive while it is stopped.")
             }
@@ -281,7 +281,7 @@ import Observation
     private func statusRow(_ label: LocalizedStringKey, value: String, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             LabeledContent(label, value: value)
-            if let note { Text(note).font(.footnote).foregroundStyle(.appSecondary) }
+            if let note { Text(note).font(AppFont.footnote()).foregroundStyle(.appSecondary) }
         }
         .accessibilityElement(children: .combine)
     }
@@ -710,13 +710,13 @@ struct BotConnectionWelcomeView: View {
             }
             .accessibilityHidden(true)
             VStack(spacing: 12) {
-                Text("Your bots, together.").font(.title2.bold())
+                Text("Your bots, together.").font(AppFont.title2().bold())
                 Text("Bots live in your Hermes dashboard. WebUI uses a separate connection, so sign in once here to bring them to Hermex.")
                     .foregroundStyle(.appSecondary)
             }
             .multilineTextAlignment(.center)
             Button("Connect", action: onConnect)
-                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                .font(AppFont.headline()).frame(maxWidth: .infinity).padding(.vertical, 14)
                 .foregroundStyle(Color(uiColor: .appCanvas))
                 .background(Color(uiColor: .appText), in: Capsule()).buttonStyle(.plain)
         }
@@ -797,7 +797,7 @@ struct ConnectionAttemptDetails: View {
                 .accessibilityIdentifier("hermes-connection-copy-details")
             }
         }
-        .font(.footnote)
+        .font(AppFont.footnote())
         // A newer attempt's record starts collapsed and uncopied.
         .onChange(of: attempt) { isExpanded = false; copied = false }
     }

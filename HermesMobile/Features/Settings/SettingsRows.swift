@@ -27,7 +27,7 @@ struct ServerProfileRow: View {
             } else {
                 LabeledContent("Profile") { Text(verbatim: selection) }
             }
-        } footer: {
+        } appFooter: {
             if let footer { Text(footer) }
         }
     }
@@ -46,7 +46,7 @@ struct SettingsLabel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                     Text(note)
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(.appSecondary)
                 }
             } else {
@@ -70,7 +70,7 @@ struct SettingsExternalLink: View {
         Link(destination: destination) {
             LabeledContent {
                 Image(systemName: "arrow.up.forward")
-                    .font(.footnote.weight(.semibold))
+                    .font(AppFont.footnote(weight: .semibold))
                     .foregroundStyle(.appTertiary)
             } label: {
                 SettingsLabel(title: title, systemImage: systemImage)
@@ -192,10 +192,10 @@ struct HeaderLogoColorSettings: View {
                 Spacer(minLength: 12)
 
                 Text(selectedColorName)
-                    .font(.caption.weight(.medium))
+                    .font(AppFont.caption(weight: .medium))
                     .foregroundStyle(.appSecondary)
             }
-            .font(.subheadline)
+            .font(AppFont.subheadline())
 
             HermesHeaderLogo(selectedColor: HeaderLogoColor.color(for: selectedHex))
                 .frame(maxWidth: .infinity)
@@ -221,7 +221,7 @@ struct HeaderLogoColorSettings: View {
             }
 
             ColorPicker("Custom", selection: customColor, supportsOpacity: false)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
         }
     }
 }
@@ -240,7 +240,7 @@ private struct HeaderLogoColorPresetButton: View {
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
+                        .font(AppFont.caption(weight: .bold))
                         .foregroundStyle(preset.hex == "#FFFFFF" ? .black : .white)
                         .accessibilityHidden(true)
                 }

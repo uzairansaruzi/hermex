@@ -321,7 +321,7 @@ struct ChatDecisionButtonStyle: ButtonStyle {
         let isPressed = isEnabled && configuration.isPressed
 
         configuration.label
-            .font(.callout.weight(.semibold))
+            .font(AppFont.callout(weight: .semibold))
             .foregroundStyle(foregroundColor)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)

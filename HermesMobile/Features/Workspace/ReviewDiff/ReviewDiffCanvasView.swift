@@ -91,6 +91,13 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
             restyle()
         }
     }
+    /// File headers and notices use the app's font; code stays monospaced.
+    var fontFamily = AppFontSettings.shared.family {
+        didSet {
+            guard fontFamily != oldValue else { return }
+            restyle()
+        }
+    }
     /// Syntax colour runs by row id, filled in for visible rows as the highlighter
     /// answers; rows without an entry draw in the plain text colour.
     var tokensByRowID: [String: [SourceHighlightRun]] = [:] {

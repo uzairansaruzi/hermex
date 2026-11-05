@@ -181,7 +181,7 @@ private struct AppLockSection: View {
             }
         } header: {
             Text("Privacy")
-        } footer: {
+        } appFooter: {
             Text(capability.hasPasscode
                 ? String(localized: "Notifications, Live Activities and sharing still show content.")
                 : String(localized: "Set a passcode in iOS Settings to use this."))

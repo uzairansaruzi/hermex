@@ -407,7 +407,7 @@ struct SessionsHeader: View {
         } label: {
             ZStack {
                 Text(avatar.initials)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(avatar.foreground)
                     .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
                     .background(avatar.color, in: Circle())
@@ -696,7 +696,7 @@ struct SessionSidebarUtilityRows: View {
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .font(.footnote.weight(.medium))
+                .font(AppFont.footnote(weight: .medium))
                 .foregroundStyle(.appSecondary)
                 .buttonStyle(.plain)
                 .accessibilityLabel("Show all projects")
@@ -711,7 +711,7 @@ struct SessionSidebarUtilityRows: View {
             presentProjectCreation()
         } label: {
             Image(systemName: "plus")
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .foregroundStyle(.appSecondary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -916,7 +916,7 @@ struct SessionListRowsSection: View {
             HStack(spacing: 10) {
                 if !isSearchActive {
                     Text("Sessions")
-                        .font(.title3.bold())
+                        .font(AppFont.title3().bold())
                         .foregroundStyle(.appPrimary)
                 }
 
@@ -960,7 +960,7 @@ struct SessionListRowsSection: View {
             )
 
             Button("Retry", action: actions.retryLoad)
-                .font(.subheadline.weight(.medium))
+                .font(AppFont.subheadline(weight: .medium))
                 .foregroundStyle(.appPrimary)
                 .buttonStyle(.plain)
                 .frame(minHeight: 44, alignment: .leading)
@@ -1132,7 +1132,7 @@ struct ScheduledSessionsDisclosure: View {
             userIsExpanded.toggle()
         } accessory: {
             Text("\(totalCount)")
-                .font(.footnote.weight(.semibold))
+                .font(AppFont.footnote(weight: .semibold))
                 .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
@@ -1169,10 +1169,10 @@ struct ScheduledSessionsDisclosure: View {
                         Image(systemName: "magnifyingglass")
                             .frame(width: 24)
                         Text("View all")
-                            .font(.subheadline.weight(.medium))
+                            .font(AppFont.subheadline(weight: .medium))
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.forward")
-                            .font(.caption.weight(.semibold))
+                            .font(AppFont.caption(weight: .semibold))
                     }
                     .foregroundStyle(.appSecondary)
                     .padding(.horizontal, 24)
@@ -1203,7 +1203,7 @@ struct NeedsYouSessionsSection: View {
             Spacer(minLength: 0)
             Text("\(sessions.count)")
         }
-        .font(.footnote.weight(.semibold))
+        .font(AppFont.footnote(weight: .semibold))
         .foregroundStyle(.appSecondary)
         .padding(.horizontal, 24)
         .padding(.top, 12)
@@ -1270,7 +1270,7 @@ struct ScheduledSessionsView: View {
             }
             if viewModel.isHermes && viewModel.hasMoreScheduledSessions && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button("Load more") { Task { await viewModel.loadMoreHermesScheduledSessions() } }
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.appSecondary)
                     .disabled(viewModel.isLoadingMoreScheduledSessions)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -1686,7 +1686,7 @@ struct SidebarNavButton: View {
                 SidebarUtilityIcon(assetImage: assetImage)
 
                 Text(title)
-                    .font(.body.weight(.semibold))
+                    .font(AppFont.body(weight: .semibold))
                     .foregroundStyle(.appPrimary)
                     .lineLimit(1)
 
@@ -1715,7 +1715,7 @@ struct SidebarDisclosureButton<Accessory: View>: View {
                 SidebarUtilityIcon(assetImage: assetImage, tint: tint)
 
                 Text(title)
-                    .font(.body.weight(.semibold))
+                    .font(AppFont.body(weight: .semibold))
                     .foregroundStyle(.appPrimary)
                     .lineLimit(1)
 
@@ -1745,7 +1745,7 @@ private struct SidebarDisclosureChevron: View {
     // rotation reverses there so the open state still points down (issue #294).
     var body: some View {
         Image(systemName: "chevron.forward")
-            .font(.caption.weight(.semibold))
+            .font(AppFont.caption(weight: .semibold))
             .foregroundStyle(.appSecondary)
             .frame(width: 24, height: 24)
             .rotationEffect(
@@ -1780,7 +1780,7 @@ struct SidebarUtilityIcon: View {
 struct SidebarSelectedSubrowIndicator: View {
     var body: some View {
         Image(systemName: "checkmark")
-            .font(.caption2.weight(.bold))
+            .font(AppFont.caption2(weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 18, height: 18)
             .background(Color.accentColor, in: Circle())
@@ -1830,12 +1830,12 @@ struct ActiveProfilePickerRow: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(profile.displayName)
-                        .font(.body)
+                        .font(AppFont.body())
                         .foregroundStyle(.appPrimary)
                         .lineLimit(1)
 
                     Text(defaultModelTitle)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                 }
@@ -1890,7 +1890,7 @@ struct ProjectFilterRow: View {
                     SidebarUtilityIcon(assetImage: "LucideFolder", tint: projectColor)
 
                     Text(displayName)
-                        .font(.body)
+                        .font(AppFont.body())
                         .foregroundStyle(.appPrimary)
                         .lineLimit(1)
 
@@ -1899,7 +1899,7 @@ struct ProjectFilterRow: View {
                     HStack(spacing: 8) {
                         if count > 0 {
                             Text("\(count)")
-                                .font(.caption.weight(.semibold))
+                                .font(AppFont.caption(weight: .semibold))
                                 .foregroundStyle(.appSecondary)
                         }
 
@@ -1951,7 +1951,7 @@ struct ProjectFilterRow: View {
         } label: {
             Label(String(localized: "Project actions for \(displayName)"), systemImage: "ellipsis")
                 .labelStyle(.iconOnly)
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .foregroundStyle(.appSecondary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
@@ -2040,13 +2040,13 @@ struct CompactStatusRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: systemImage)
-                .font(.body)
+                .font(AppFont.body())
                 .foregroundStyle(.appSecondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
             Text(title)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .lineLimit(2)
 
@@ -2065,21 +2065,21 @@ private struct SessionListStatusRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: systemImage)
-                .font(.body)
+                .font(AppFont.body())
                 .foregroundStyle(.appSecondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(.appSecondary)
                     .lineLimit(2)
                     .accessibilityAddTraits(.isHeader)
 
                 if let description {
                     Text(description)
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(descriptionLineLimit)
                         .fixedSize(horizontal: false, vertical: true)
@@ -2225,7 +2225,7 @@ struct OfflineCacheBanner: View {
                 .accessibilityHidden(true)
 
             Text("Offline - viewing cached version")
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .fontWeight(.semibold)
 
             Spacer()

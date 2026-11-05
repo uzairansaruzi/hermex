@@ -261,7 +261,7 @@ private struct ChatCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(displayLanguage)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
 
                 if let diff {
                     DiffCountsLabel(additions: diff.additions, deletions: diff.deletions)
@@ -373,7 +373,7 @@ private struct ChatCodeBlock: View {
                     Image(systemName: showsAllDiffLines ? "chevron.up" : "chevron.down")
                         .accessibilityHidden(true)
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline(weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.top, 11)
                 .padding(.bottom, 13)
@@ -1170,7 +1170,7 @@ private struct PlainMarkdownFallbackView: View {
     var body: some View {
         Text(verbatim: content)
             .responseSelectableText(content)
-            .font(.body)
+            .font(AppFont.body())
             .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
             .responseTextSelectionPolicy()
@@ -1230,6 +1230,7 @@ private extension MarkdownUI.Theme {
             .text {
                 ForegroundColor(Color(.appText))
                 BackgroundColor(nil)
+                FontFamily(AppFont.markdownFamily)
                 FontSize(bodySize)
             }
             .link {

@@ -45,7 +45,7 @@ struct APIKeyForm: View {
                 SecureField("New value", text: $value)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-            } footer: {
+            } appFooter: {
                 Text("Saved on the server in Profile “\(profile)”. Hermex doesn't keep a copy.")
             }
 
