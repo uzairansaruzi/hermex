@@ -56,7 +56,7 @@ struct SettingsDiagnosticsPage: View {
 
     var body: some View {
         let entries = model.entries ?? []
-        List {
+        AppList {
             if !entries.isEmpty {
                 Section {
                     ForEach(entries) { entry in
@@ -136,11 +136,11 @@ private struct DiagnosticRowLabel: View {
                 Text(title)
                 Text(detail)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }
@@ -162,6 +162,7 @@ private struct DiagnosticReportPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
         }
+        .themedPageBackground()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

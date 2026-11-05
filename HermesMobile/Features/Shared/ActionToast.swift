@@ -252,7 +252,7 @@ struct ActionToastView: View {
                 if showsClose {
                     if toast.actionTitle != nil {
                         Rectangle()
-                            .fill(Color(.separator))
+                            .fill(Color(.appSeparator))
                             .frame(width: 1, height: 20)
                             .accessibilityHidden(true)
                     }
@@ -277,7 +277,7 @@ struct ActionToastView: View {
                 ForEach(Array(toast.detailLines.enumerated()), id: \.offset) { _, line in
                     Text(line)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
         }
@@ -344,7 +344,7 @@ struct ActionToastView: View {
         } label: {
             Image(systemName: "xmark")
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(minWidth: 40, minHeight: 44)
                 .contentShape(Rectangle())
         }

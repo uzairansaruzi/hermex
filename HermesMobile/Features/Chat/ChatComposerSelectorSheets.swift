@@ -16,7 +16,7 @@ struct ChatSettingsSheet<WorkspacePicker: View, ProfileControl: View>: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 Button { showsWorkspacePicker = true } label: {
                     LabeledContent {
                         Text(workspaceTitle).lineLimit(1).truncationMode(.middle)
@@ -48,6 +48,7 @@ struct ChatSettingsSheet<WorkspacePicker: View, ProfileControl: View>: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Chat settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -57,6 +58,7 @@ struct ChatSettingsSheet<WorkspacePicker: View, ProfileControl: View>: View {
             }
             .sheet(isPresented: $showsWorkspacePicker) { workspacePicker() }
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -129,7 +131,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 Section {
                     currentModelRow
                     if selection.showsEffortControl { thinkingRow }
@@ -157,6 +159,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Model settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -166,6 +169,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
             }
             .sheet(isPresented: $showsAllModels) { allModelsPicker(select) }
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -176,18 +180,18 @@ struct ModelSettingsSheet<AllModels: View>: View {
                 HStack(spacing: 10) {
                     glyph(for: shownSelection.model)
                     Text(verbatim: shownSelection.model.displayName)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.forward")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.appTertiary)
                 }
                 // Keeps the requested level and the one the host sends apart (#1016).
                 Text(verbatim: [providerName, shownSelection.committedEffort == nil ? nil : shownSelection.effortTitle]
                     .compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     // One line, so a level's "sent as" never moves the rows below it.
                     .lineLimit(1)
                 statusLine(for: .model)
@@ -275,11 +279,11 @@ struct ModelSettingsSheet<AllModels: View>: View {
                 glyph(for: option)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: option.displayName)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(1)
                     Text(verbatim: option.id)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
@@ -327,7 +331,7 @@ private struct ModelSettingsStatusLine: View {
         case .failed(let message):
             Text(verbatim: message).font(.caption).foregroundStyle(.red)
         case .notice(let message):
-            Text(verbatim: message).font(.caption).foregroundStyle(.secondary)
+            Text(verbatim: message).font(.caption).foregroundStyle(.appSecondary)
         case nil:
             EmptyView()
         }
@@ -347,14 +351,14 @@ private struct ApprovalChoicesView: View {
     @State private var confirmsOff = false
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Toggle(isOn: Binding(get: { approvals.isYoloOn }, set: onSetYolo)) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: "YOLO")
                         Text("This chat runs commands without asking")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                 }
                 .disabled((isDisabled && !approvals.canTurnOffYolo) || approvals.isChanging || approvals.isYoloLocked)
@@ -382,6 +386,7 @@ private struct ApprovalChoicesView: View {
                 ModelSettingsStatusLine(status: status)
             }
         }
+        .themedPageBackground()
         .navigationTitle("Approvals")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -394,8 +399,8 @@ private struct ApprovalChoicesView: View {
         } label: {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: ComposerApprovals.title(for: mode)).foregroundStyle(.primary)
-                    Text(description).font(.caption).foregroundStyle(.secondary)
+                    Text(verbatim: ComposerApprovals.title(for: mode)).foregroundStyle(.appPrimary)
+                    Text(description).font(.caption).foregroundStyle(.appSecondary)
                 }
                 Spacer(minLength: 8)
                 if isCurrent {
@@ -434,7 +439,7 @@ struct ComposerWorkspacePickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 Section {
                     TextField("Workspace path", text: $prefix)
                         .textInputAutocapitalization(.never)
@@ -481,6 +486,7 @@ struct ComposerWorkspacePickerSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Choose Workspace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -528,17 +534,17 @@ struct ComposerWorkspacePickerSheet: View {
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: path == effectiveSelectedWorkspacePath ? "checkmark.circle.fill" : "folder")
-                    .foregroundStyle(path == effectiveSelectedWorkspacePath ? Color.accentColor : Color(.secondaryLabel))
+                    .foregroundStyle(path == effectiveSelectedWorkspacePath ? Color.accentColor : Color(.appTextSecondary))
                     .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name?.isEmpty == false ? name ?? path.lastPathComponentFallback : path.lastPathComponentFallback)
                         .font(.body)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
 
                     Text(path)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(2)
                 }
 

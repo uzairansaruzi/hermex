@@ -138,7 +138,7 @@ struct ComposerTextInputView: View {
                     .accessibilityHint(Text("Edit message"))
             } else if text.isEmpty && quotes.isEmpty {
                 Text(placeholder)
-                    .foregroundStyle(Color(.placeholderText))
+                    .foregroundStyle(Color(.appPlaceholder))
                     .padding(.horizontal, 16)
                     .padding(.vertical, verticalPadding)
                     .allowsHitTesting(false)
@@ -172,6 +172,7 @@ private struct ComposerCollapsedDraft: View {
     let placeholder: String
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appAppearance) private var appearance
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -181,7 +182,7 @@ private struct ComposerCollapsedDraft: View {
         line
             .lineLimit(1)
             .truncationMode(.tail)
-            .foregroundStyle(draft.isEmpty ? Color(.placeholderText) : Color(.label))
+            .foregroundStyle(draft.isEmpty ? Color(.appPlaceholder) : Color(.appText))
             .accessibilityLabel(Text(spokenDraft))
     }
 
@@ -211,7 +212,8 @@ private struct ComposerCollapsedDraft: View {
             contrast: colorSchemeContrast,
             layoutDirection: layoutDirection,
             dynamicTypeSize: dynamicTypeSize,
-            displayScale: displayScale
+            displayScale: displayScale,
+            appearance: appearance
         )
     }
 }

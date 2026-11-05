@@ -36,6 +36,21 @@ Ends a paused move without retrying the rest. Nothing in Hermes is undone; what 
 A chat the move couldn't confirm is in Hermes or missing from it. Never counted as missing, and never as copied.
 _Avoid_: missing, failed
 
+## Appearance
+
+**Color scheme**:
+System, Light or Dark. The code's `AppTheme` predates themes and means this.
+
+**Theme**:
+A named set of colors with a light and a dark palette. A user can pick a different one for each mode. Default is iOS's system colors.
+_Avoid_: skin, palette (for the user-facing choice)
+
+**Accent**:
+The color of tints and accent fills: the theme's own, or a user's pick, moved just far enough to stay readable.
+
+**Server color**:
+A server's header color, which identifies the server. It isn't part of a theme.
+
 ## Kanban
 
 **Kanban**:

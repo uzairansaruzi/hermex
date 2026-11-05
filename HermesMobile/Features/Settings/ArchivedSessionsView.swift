@@ -36,6 +36,7 @@ struct ArchivedSessionsView: View {
     var body: some View {
         content
             .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+            .themedPageBackground()
             .navigationTitle("Archived Sessions")
             .navigationDestination(item: $openedSession) { session in
                 // Opening an archived session reuses the normal read path —
@@ -115,14 +116,14 @@ struct ArchivedSessionsView: View {
 
                         Text(errorMessage)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(3)
 
                         Button("Try Again") {
                             Task { await load() }
                         }
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                     }
                     .padding(.horizontal, 24)
                 } else if viewModel.sessions.isEmpty && !viewModel.hasMore {
@@ -149,7 +150,7 @@ struct ArchivedSessionsView: View {
     private var loadMoreRow: some View {
         Button("Load more") { Task { await viewModel.loadMore() } }
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .disabled(viewModel.isLoadingMore)
             .frame(maxWidth: .infinity, minHeight: 44)
             .onAppear { Task { await viewModel.loadMore() } }
@@ -208,7 +209,7 @@ struct ArchivedSessionsView: View {
                 } else {
                     Image(systemName: "arrow.up.bin")
                         .font(.body)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
             .frame(width: 44, height: 44)
@@ -271,13 +272,13 @@ private struct ArchivedStatusRow: View {
         HStack(spacing: 14) {
             Image(systemName: systemImage)
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
             Text(title)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .lineLimit(2)
 
             Spacer(minLength: 0)

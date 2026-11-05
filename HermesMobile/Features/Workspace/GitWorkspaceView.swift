@@ -49,6 +49,7 @@ struct GitWorkspaceView: View {
         NavigationStack {
             content
                 .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
+                .themedPageBackground()
                 .navigationTitle("Git")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -63,6 +64,7 @@ struct GitWorkspaceView: View {
                 }
         }
         .onDisappear { retryTask?.cancel() }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
         .sheet(item: $openedReview) { opened in
@@ -168,7 +170,7 @@ struct GitWorkspaceView: View {
                 if status.truncated == true {
                     Text("Showing first 500 changed files.")
                         .font(AppFont.footnote())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 6)
                 }
@@ -242,7 +244,7 @@ struct GitWorkspaceView: View {
             }
 
             HStack(spacing: 8) {
-                Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
+                Image(systemName: "arrow.triangle.branch").foregroundStyle(.appSecondary)
                 Text(branch ?? "HEAD")
                     .font(AppFont.mono(style: .subheadline))
                     .lineLimit(1)
@@ -254,7 +256,7 @@ struct GitWorkspaceView: View {
             if let note {
                 Text(note)
                     .font(AppFont.footnote())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -297,8 +299,8 @@ private struct GitDetachedChip: View {
             .font(AppFont.caption2(weight: .semibold))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(Color.secondary.opacity(0.18), in: Capsule())
-            .foregroundStyle(.secondary)
+            .background(Color(.appTextSecondary).opacity(0.18), in: Capsule())
+            .foregroundStyle(.appSecondary)
     }
 }
 
@@ -310,7 +312,7 @@ struct GitAheadBehindBadges: View {
         if ahead > 0 || behind > 0 {
             Text(verbatim: "↑\(ahead) ↓\(behind)")
                 .font(AppFont.mono(style: .caption, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .monospacedDigit()
         }
     }
@@ -356,7 +358,7 @@ struct GitFileCard: View {
                 if let parent = file.parentDirectory {
                     Text(parent)
                         .font(AppFont.mono(style: .caption2))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -366,10 +368,10 @@ struct GitFileCard: View {
             GitStatusChip(kind: file.changeKind)
         }
         .padding(12)
-        .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 12))
+        .background(Color(.appSurface), in: .rect(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
         }
         .contentShape(.rect)
         .accessibilityElement(children: .combine)

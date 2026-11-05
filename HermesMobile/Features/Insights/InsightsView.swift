@@ -160,7 +160,7 @@ struct InsightsView: View {
 
                 Text(viewModel.sourceDescription)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
@@ -197,12 +197,12 @@ private struct UsageTitle: ViewModifier {
     func body(content: Content) -> some View {
         if let profile {
             if #available(iOS 26, *) {
-                content.navigationTitle("Usage").navigationSubtitle(profile)
+                content.themedPageBackground().navigationTitle("Usage").navigationSubtitle(profile)
             } else {
-                content.navigationTitle(Text(verbatim: "\(String(localized: "Usage")) · \(profile)"))
+                content.themedPageBackground().navigationTitle(Text(verbatim: "\(String(localized: "Usage")) · \(profile)"))
             }
         } else {
-            content.navigationTitle("Usage")
+            content.themedPageBackground().navigationTitle("Usage")
         }
     }
 }

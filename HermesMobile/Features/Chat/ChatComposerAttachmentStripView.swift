@@ -63,9 +63,9 @@ struct ComposerAttachmentPillPreview: View {
                 if attachments.count > visibleLimit {
                     Text("+\(attachments.count - visibleLimit)")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(.secondaryLabel))
+                        .foregroundStyle(Color(.appTextSecondary))
                         .frame(width: tileSize, height: tileSize)
-                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(Color(.appFillTertiary), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .accessibilityLabel(Text("\(attachments.count - visibleLimit) more attachments"))
                 }
             }
@@ -102,9 +102,9 @@ struct ComposerAttachmentPillPreview: View {
     private func placeholderTile(systemName: String) -> some View {
         Image(systemName: systemName)
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color(.secondaryLabel))
+            .foregroundStyle(Color(.appTextSecondary))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.tertiarySystemFill))
+            .background(Color(.appFillTertiary))
     }
 }
 
@@ -155,9 +155,9 @@ private struct ComposerAttachmentThumbnailView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
                     .frame(width: 24, height: 24)
-                    .background(Circle().fill(Color(.systemBackground)))
-                    .foregroundStyle(Color(.label))
-                    .overlay(Circle().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5))
+                    .background(Circle().fill(Color(.appCanvas)))
+                    .foregroundStyle(Color(.appText))
+                    .overlay(Circle().stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5))
             }
             .buttonStyle(.chatTactile(
                 .icon,
@@ -195,11 +195,11 @@ private struct ComposerAttachmentThumbnailView: View {
                     .scaledToFill()
             } else {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(.systemFill))
+                    .fill(Color(.appFill))
                     .overlay(
                         Image(systemName: "photo")
                             .font(.system(size: 30, weight: .regular))
-                            .foregroundStyle(Color(.tertiaryLabel))
+                            .foregroundStyle(Color(.appTextTertiary))
                     )
             }
         }
@@ -229,14 +229,14 @@ private struct ComposerAttachmentThumbnailView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(attachment.name)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Color(.label))
+                    .foregroundStyle(Color(.appText))
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(fileDetailText)
                     .font(.caption)
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .foregroundStyle(Color(.appTextSecondary))
                     .lineLimit(usesAccessibilityLayout ? 2 : 1)
             }
             .frame(width: usesAccessibilityLayout ? 160 : 128, alignment: .leading)
@@ -247,7 +247,7 @@ private struct ComposerAttachmentThumbnailView: View {
         .frame(minHeight: usesAccessibilityLayout ? 112 : 92)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(Color(.appSurface))
         )
         .overlay(previewBorder(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
@@ -275,7 +275,7 @@ private struct ComposerAttachmentThumbnailView: View {
 
     private func previewBorder(cornerRadius: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+            .stroke(Color(.appSeparator).opacity(0.25), lineWidth: 0.5)
     }
 
     private var fileExtensionLabel: String {

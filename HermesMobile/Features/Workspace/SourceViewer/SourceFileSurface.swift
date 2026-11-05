@@ -99,18 +99,18 @@ struct SourceFileSurface: View {
             Text("Plain text")
                 .font(AppFont.caption2(weight: .medium))
                 .textCase(.uppercase)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
-        .background(Color(.secondarySystemBackground))
+        .background(Color(.appSurface))
     }
 
     private func selectionBar(count: Int) -> some View {
         HStack(spacing: 12) {
             Text(count == 1 ? String(localized: "1 line selected") : String(localized: "\(count) lines selected"))
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Spacer(minLength: 8)
             Button("Clear") { viewModel.selection.clear() }
                 .font(AppFont.footnote())
@@ -131,7 +131,7 @@ struct SourceFileSurface: View {
         .tint(.primary)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(.appMaterial(.bar))
         .accessibilityElement(children: .contain)
     }
 
@@ -141,9 +141,9 @@ struct SourceFileSurface: View {
         Button(action: action) {
             Text(title)
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(Color(.systemBackground))
+                .foregroundStyle(Color(.appCanvas))
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.appProminent)
     }
 
     /// The requested line is selected and scrolled to once, when the rows first exist.

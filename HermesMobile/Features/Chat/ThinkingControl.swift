@@ -153,7 +153,7 @@ struct ThinkingControl: View {
                 Button { send(index) } label: {
                     Text(verbatim: ReasoningEffortOption.shortTitle(for: level))
                         .font(.caption2.weight(index == shownIndex ? .semibold : .regular))
-                        .foregroundStyle(index == shownIndex ? Color.primary : Color.secondary)
+                        .foregroundStyle(index == shownIndex ? Color(.appText) : Color(.appTextSecondary))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .frame(maxWidth: .infinity, minHeight: 28)
@@ -179,7 +179,7 @@ struct ThinkingControl: View {
                     if let level = ladder.commit(at: position) { onCommit(level) }
                 } label: {
                     HStack {
-                        Text(verbatim: ReasoningEffortOption.title(for: level)).foregroundStyle(.primary)
+                        Text(verbatim: ReasoningEffortOption.title(for: level)).foregroundStyle(.appPrimary)
                         Spacer(minLength: 8)
                         if position == ladder.currentIndex {
                             Image(systemName: "checkmark").accessibilityHidden(true)

@@ -24,7 +24,7 @@ struct SettingsView: View {
     @State private var isPushOn = false
 
     var body: some View {
-        List {
+        AppList {
             Section(String(localized: "Servers")) {
                 ForEach(authManager.servers) { account in
                     NavigationLink {
@@ -116,6 +116,7 @@ struct SettingsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .themedPageBackground()
         .navigationTitle("Settings")
         .onAppear {
             isPushOn = PushRegistrar.shared?.pairing(for: server) != nil
@@ -165,7 +166,7 @@ private struct SettingsServerRow: View {
 
                 Text(detail)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }

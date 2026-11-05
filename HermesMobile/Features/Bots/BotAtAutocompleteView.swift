@@ -85,7 +85,7 @@ struct BotAtAutocompleteView: View {
         Text(title)
             .font(.caption2.weight(.semibold))
             .textCase(.uppercase)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: headerHeight)
@@ -107,7 +107,7 @@ struct BotAtAutocompleteView: View {
         if matches.isEmpty {
             Text("Searching files…")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: rowHeight)

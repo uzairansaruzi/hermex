@@ -157,7 +157,7 @@ struct SlashCommandAutocompleteView: View {
             // stale frame before the newer rows land.
             Text("No commands or skills match \"\(parsed.commandName)\"")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
         } else {
@@ -297,14 +297,14 @@ struct SlashCommandAutocompleteView: View {
 
             Text(name)
                 .font(style.nameFont)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .lineLimit(1)
                 .layoutPriority(2)
 
             if let hint {
                 Text(hint)
                     .font(style.hintFont)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .layoutPriority(1)
             }
@@ -313,7 +313,7 @@ struct SlashCommandAutocompleteView: View {
 
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
@@ -341,7 +341,7 @@ struct SlashCommandAutocompleteView: View {
         if filtered.isEmpty {
             skillSubArgEmptyText
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
         } else {
@@ -377,7 +377,7 @@ struct SlashCommandAutocompleteView: View {
         if filtered.isEmpty {
             Text("No matches for \"\(parsed.argQuery)\"")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
         } else {
@@ -390,7 +390,7 @@ struct SlashCommandAutocompleteView: View {
                             HStack(spacing: 12) {
                                 Text(subArgDisplayText(item, for: command))
                                     .font(.subheadline)
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(.appPrimary)
                                     .lineLimit(1)
 
                                 Spacer(minLength: 0)

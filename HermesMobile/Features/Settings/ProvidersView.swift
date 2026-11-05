@@ -21,7 +21,7 @@ struct ProvidersView: View {
     }
 
     var body: some View {
-        List {
+        AppList(rows: .plain) {
             if viewModel.providers.isEmpty {
                 statusRow
                     .frame(maxWidth: .infinity)
@@ -51,14 +51,15 @@ struct ProvidersView: View {
 
                 Text("Provider keys are managed on the server. This screen is read-only.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 24, trailing: 16))
                     .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
+        .themedPageBackground()
         .navigationTitle("Providers")
         .task {
             await viewModel.load()
@@ -112,13 +113,13 @@ struct ProvidersView: View {
 
                 Text("Couldn't refresh. Showing previously loaded providers.")
                     .font(.footnote.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .multilineTextAlignment(.leading)
             }
 
             Text(verbatim: detail)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .lineLimit(2)
         }
         .padding(12)
@@ -166,7 +167,7 @@ private struct ProviderDisclosure: View {
             } label: {
                 header
             }
-            .tint(Color(.secondaryLabel))
+            .tint(Color(.appTextSecondary))
             .accessibilityHint("Shows this provider's model list.")
         } else {
             header
@@ -183,14 +184,14 @@ private struct ProviderDisclosure: View {
 
                 Text(ProvidersViewModel.displayName(for: provider))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .textCase(.uppercase)
 
                 if let count = ProvidersViewModel.modelCountLabel(for: provider) {
                     Text(verbatim: count)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .accessibilityLabel(modelCountAccessibilityLabel)
                 }
 
@@ -231,12 +232,12 @@ private struct ProviderDisclosure: View {
                 if let hasKey = provider.hasKey {
                     Image(systemName: hasKey ? "checkmark.seal.fill" : "key.slash")
                         .font(.caption)
-                        .foregroundStyle(hasKey ? Color.green : Color.secondary)
+                        .foregroundStyle(hasKey ? Color.green : Color(.appTextSecondary))
                         .accessibilityHidden(true)
 
                     Text(hasKey ? "Key configured" : "No key")
                         .font(.footnote)
-                        .foregroundStyle(hasKey ? Color.primary : Color.secondary)
+                        .foregroundStyle(hasKey ? Color(.appText) : Color(.appTextSecondary))
                         .multilineTextAlignment(.leading)
                 }
 
@@ -258,8 +259,8 @@ private struct ProviderDisclosure: View {
                         .font(.caption2.weight(.medium))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
-                        .foregroundStyle(.secondary)
+                        .background(Capsule().fill(Color(.appFillTertiary)))
+                        .foregroundStyle(.appSecondary)
                         .layoutPriority(1)
                 }
             }

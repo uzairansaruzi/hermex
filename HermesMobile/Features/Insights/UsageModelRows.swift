@@ -37,7 +37,7 @@ private struct UsageModelRow: View {
 
                 Text(secondaryLine)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -87,7 +87,7 @@ struct UsageTopSessionsCard: View {
 
                         Text(detail(for: session))
                             .font(AppFont.caption())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityElement(children: .combine)

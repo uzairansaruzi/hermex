@@ -85,7 +85,7 @@ struct ProviderGlyphGalleryView: View {
     }
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Button {
                     showsPicker = true
@@ -105,7 +105,7 @@ struct ProviderGlyphGalleryView: View {
                             } else {
                                 Image(systemName: "questionmark")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.appTertiary)
                             }
                         }
                         .frame(width: 17, height: 17)
@@ -116,20 +116,21 @@ struct ProviderGlyphGalleryView: View {
                                 .textCase(.uppercase)
                             Text(verbatim: provider.name)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
 
                         Spacer(minLength: 0)
 
                         Text(verbatim: ProviderGlyphKind.resolve(providerID: provider.id)?.rawValue ?? "no glyph")
                             .font(.caption.monospaced())
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.appTertiary)
                     }
                 }
             } header: {
                 Text(verbatim: "Documented provider IDs")
             }
         }
+        .themedPageBackground()
         .navigationTitle(Text(verbatim: "Provider Glyphs"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsPicker) {
@@ -150,6 +151,7 @@ struct ProviderGlyphGalleryView: View {
                 onToggleFavorite: { _ in },
                 onDeleteSavedCustom: { _ in }
             )
+            .themedPageBackground()
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }

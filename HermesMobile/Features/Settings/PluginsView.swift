@@ -21,7 +21,7 @@ struct PluginsView: View {
     }
 
     var body: some View {
-        List {
+        AppList {
             if let profile = model.profile {
                 ServerProfileRow(profiles: model.profiles, selection: profile) { name in
                     Task { await model.select(name) }
@@ -266,12 +266,12 @@ private struct PluginRow: View {
                     if !plugin.summary.isEmpty {
                         Text(verbatim: plugin.summary)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     }
                     Text(verbatim: details)
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.appTertiary)
                         .lineLimit(1)
                     if let removalReason {
                         Text(removalReason.isEmpty ? String(localized: "Removed from the catalog.")

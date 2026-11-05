@@ -88,6 +88,7 @@ struct FilePreviewView: View {
             }
         }
         .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
+        .themedPageBackground()
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -258,7 +259,7 @@ struct FilePreviewView: View {
                 Text(displayPath)
                     .font(.footnote)
                     .fontDesign(.monospaced)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
     }
@@ -281,7 +282,7 @@ struct FilePreviewView: View {
                 onReturnToChat: onReturnToChat
             )
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     /// Small files render as one document. Large ones render the chunks the view
@@ -326,7 +327,7 @@ struct FilePreviewView: View {
                 Label("Copy Contents", systemImage: "doc.on.doc")
             }
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private var isMarkdownFile: Bool {
@@ -349,7 +350,7 @@ struct FilePreviewView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .background(Color(.appCanvas))
         } else {
             ContentUnavailableView {
                 Label("Could Not Preview Image", systemImage: "photo")
@@ -364,19 +365,19 @@ struct FilePreviewView: View {
             Text(displayPath)
                 .font(.caption)
                 .fontDesign(.monospaced)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .textSelection(.enabled)
 
             if let metadataText {
                 Text(metadataText)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             if case let .text(file) = viewModel.preview, file.isTruncated {
                 Label("Preview truncated", systemImage: "scissors")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
     }

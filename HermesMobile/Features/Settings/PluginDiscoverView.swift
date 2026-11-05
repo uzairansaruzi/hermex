@@ -61,7 +61,7 @@ struct PluginDiscoverSections: View {
             } header: {
                 HStack(spacing: 6) {
                     Text(verbatim: group.tier.title)
-                    Text(verbatim: "\(group.entries.count)").foregroundStyle(.secondary)
+                    Text(verbatim: "\(group.entries.count)").foregroundStyle(.appSecondary)
                 }
             }
         }
@@ -113,8 +113,8 @@ struct PluginChip: View {
                 .font(.footnote.weight(isSelected ? .semibold : .regular))
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
-                .foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
-                .background(isSelected ? Color.primary : Color(.secondarySystemGroupedBackground), in: Capsule())
+                .foregroundStyle(isSelected ? Color(.appCanvas) : Color(.appText))
+                .background(isSelected ? Color(.appText) : Color(.appGroupedSurface), in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -141,7 +141,7 @@ private struct PluginShelf: View {
                                 .lineLimit(1)
                             Text(verbatim: entry.summary)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
@@ -175,11 +175,11 @@ private struct PluginCatalogRow: View {
                     .lineLimit(1)
                 Text(verbatim: entry.summary)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                 Text(verbatim: details)
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
@@ -191,7 +191,7 @@ private struct PluginCatalogRow: View {
     @ViewBuilder
     private var trailing: some View {
         if isInstalled == true {
-            Text("Installed").font(.footnote).foregroundStyle(.secondary)
+            Text("Installed").font(.footnote).foregroundStyle(.appSecondary)
         } else if isInstalled == false, !isTooNew {
             Button("Get", action: onGet)
                 .buttonStyle(.bordered)
@@ -220,7 +220,7 @@ private struct PluginCatalogDetail: View {
     private var isInstalled: Bool? { model.installedCatalogNames?.contains(entry.name) }
 
     var body: some View {
-        List {
+        AppList {
             if entry.image != nil {
                 PluginCatalogImage(url: entry.image, fallback: entry.title, size: nil, cornerRadius: 12)
                     .listRowInsets(EdgeInsets())
@@ -241,6 +241,7 @@ private struct PluginCatalogDetail: View {
             PluginCatalogReview(entry: entry, isTooNew: model.isTooNew(entry))
         }
         .listSectionSpacing(.compact)
+        .themedPageBackground()
         .navigationTitle(entry.title)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) {
@@ -250,12 +251,12 @@ private struct PluginCatalogDetail: View {
                 Text(isInstalled == true ? String(localized: "Installed on \(profile)") : String(localized: "Review and Install"))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.appProminent)
             .controlSize(.large)
             .disabled(isInstalled != false || model.isTooNew(entry))
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
-            .background(.bar)
+            .background(.appMaterial(.bar))
         }
         .sheet(isPresented: $isReviewing) { PluginInstallSheet(model: model, profile: profile, entry: entry) }
     }
@@ -304,11 +305,11 @@ private struct PluginCatalogImage: View {
                 .resizable()
                 .scaledToFill()
         } else {
-            Color(.tertiarySystemFill)
+            Color(.appFillTertiary)
                 .overlay {
                     Text(verbatim: String(fallback.prefix(1)).uppercased())
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
         }
     }

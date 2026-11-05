@@ -35,7 +35,7 @@ struct ChatActiveRunStatusView: View {
     private func label(now: Date) -> some View {
         Text(presentation.label(now: now))
             .font(.caption.weight(.semibold).monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             .minimumScaleFactor(0.88)
             .accessibilityLabel(presentation.accessibilityLabel(now: now))
@@ -72,7 +72,7 @@ private struct ChatActiveRunStatusPreviewStack: View {
             )
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 }
 

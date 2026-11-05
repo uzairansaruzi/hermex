@@ -27,6 +27,7 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     func body(content: Content) -> some View {
         content
             .modifier(HiddenBottomScrollEdge())
+            .themedPageBackground()
             .navigationTitle(home.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)

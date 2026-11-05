@@ -100,7 +100,7 @@ struct ToolActivityGroupView: View {
             HStack(alignment: wrapsTitle ? .top : .center, spacing: 6) {
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(width: 20, height: 18)
 
                 Text(title)

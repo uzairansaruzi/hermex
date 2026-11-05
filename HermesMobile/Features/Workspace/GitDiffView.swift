@@ -85,6 +85,7 @@ struct GitDiffView: View {
     var body: some View {
         NavigationStack {
             content
+                .themedPageBackground()
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -128,6 +129,7 @@ struct GitDiffView: View {
             refreshTask?.cancel()
             highlights.cancel()
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
     }
@@ -174,19 +176,19 @@ struct GitDiffView: View {
         HStack(spacing: 12) {
             Text(count == 1 ? String(localized: "1 line selected") : String(localized: "\(count) lines selected"))
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Spacer(minLength: 8)
             Button("Clear") { selection.clear() }
                 .font(AppFont.footnote())
             if onAddToPrompt != nil {
                 Button("Comment…") { commentComposer.context = selection.commentContext(in: rows) }
                     .font(AppFont.footnote(weight: .semibold))
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(.appMaterial(.bar))
         .accessibilityElement(children: .contain)
     }
 

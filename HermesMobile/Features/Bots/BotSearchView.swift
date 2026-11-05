@@ -111,12 +111,12 @@ import SwiftUI
                         // One "Searching…" at a time: the saved messages' first, then the host's.
                         if isSearchingBots && !isSearching { status("Searching…") }
                         else if let botSearchError, hitRequest == request {
-                            Text(verbatim: botSearchError).font(.callout).foregroundStyle(.secondary)
+                            Text(verbatim: botSearchError).font(.callout).foregroundStyle(.appSecondary)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(20)
                         }
                     }
                     Text("Messages saved on this iPhone")
-                        .font(.footnote).foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(.appSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20).padding(.top, 16)
                     if !request.query.isEmpty {
@@ -142,7 +142,8 @@ import SwiftUI
         }
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .top, spacing: 0) { searchBar }
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .appCanvas))
+        .themedPageBackground()
         .presentationDetents([.large])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(36)
@@ -163,7 +164,7 @@ import SwiftUI
                 .adaptiveGlass(isInteractive: true, in: Circle())
                 .keyboardShortcut(.cancelAction)
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(.appSecondary)
                     .accessibilityHidden(true)
                 TextField("Search", text: $query)
                     .focused($searchFocused)
@@ -177,7 +178,7 @@ import SwiftUI
                         query = ""
                         searchFocused = true
                     }
-                    .labelStyle(.iconOnly).foregroundStyle(.secondary)
+                    .labelStyle(.iconOnly).foregroundStyle(.appSecondary)
                     .frame(minWidth: 44, minHeight: 44)
                 }
             }
@@ -199,12 +200,12 @@ import SwiftUI
             .adaptiveGlass(isInteractive: true, in: Circle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.primary)
+        .foregroundStyle(.appPrimary)
         .padding(.horizontal, 16).padding(.vertical, 16)
     }
 
     private func status(_ text: LocalizedStringKey) -> some View {
-        Text(text).font(.callout).foregroundStyle(.secondary)
+        Text(text).font(.callout).foregroundStyle(.appSecondary)
             .frame(maxWidth: .infinity, alignment: .leading).padding(20)
     }
 
@@ -218,11 +219,11 @@ import SwiftUI
                          ? String(localized: "You to \(profile.name)") : String(localized: "\(profile.name) to you"))
                         .font(.body).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     Spacer(minLength: 8)
-                    Text("Message").font(.subheadline).foregroundStyle(.tertiary)
+                    Text("Message").font(.subheadline).foregroundStyle(.appTertiary)
                 }
                 if let snippet = hit.snippet {
                     Text(SessionSearchExcerpt(hermesSnippet: snippet, query: request.query).highlighted)
-                        .font(.body).foregroundStyle(.secondary)
+                        .font(.body).foregroundStyle(.appSecondary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 }
             }
@@ -240,10 +241,10 @@ import SwiftUI
                     Text(verbatim: [room.name, hit.message.sender].compactMap { $0 }.joined(separator: " · "))
                         .font(.body).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     Spacer(minLength: 8)
-                    Text("Message").font(.subheadline).foregroundStyle(.tertiary)
+                    Text("Message").font(.subheadline).foregroundStyle(.appTertiary)
                 }
                 Text(SessionSearchExcerpt(text: hit.excerpt, query: request.query).highlighted)
-                    .font(.body).foregroundStyle(.secondary)
+                    .font(.body).foregroundStyle(.appSecondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             }
         }
@@ -285,10 +286,10 @@ import SwiftUI
                     Text(profile.name).font(.body)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     Spacer(minLength: 8)
-                    Text("Bot").font(.subheadline).foregroundStyle(.tertiary)
+                    Text("Bot").font(.subheadline).foregroundStyle(.appTertiary)
                 }
                 if let description = profile.description {
-                    Text(description).font(.body).foregroundStyle(.secondary)
+                    Text(description).font(.body).foregroundStyle(.appSecondary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 }
             }

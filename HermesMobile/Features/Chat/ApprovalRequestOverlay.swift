@@ -62,7 +62,7 @@ struct ApprovalRequestOverlay: View {
         }
         .padding(16)
         .frame(maxWidth: 520, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.appMaterial(.regularMaterial), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(.primary.opacity(0.10), lineWidth: 1)
@@ -82,7 +82,7 @@ struct ApprovalRequestOverlay: View {
 
                 Text("Pending approvals: \(content.pendingCount)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
     }
@@ -92,7 +92,7 @@ struct ApprovalRequestOverlay: View {
             if let description = nonEmpty(content.description) {
                 Text(description)
                     .font(.subheadline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -104,7 +104,7 @@ struct ApprovalRequestOverlay: View {
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color(uiColor: .appSurface), in: RoundedRectangle(cornerRadius: 8))
             }
 
             if explainsApprovals, let summary {
@@ -114,14 +114,14 @@ struct ApprovalRequestOverlay: View {
             if let scope = content.scopeLine {
                 Text(scope)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             if content.pendingCount > 1 {
                 Text("1 of \(content.pendingCount) pending")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             if let errorMessage = nonEmpty(errorMessage) {

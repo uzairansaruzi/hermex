@@ -132,11 +132,13 @@ struct HermesMobileApp: App {
 
 /// Paints the window behind SwiftUI's content, which shows in the gap while a rotation outruns the
 /// content's layout (#1528). A window has no background of its own, so that gap flashes black.
+/// Also gives the window the accent, which SwiftUI's default tint and UIKit's controls both read.
 private struct WindowBackgroundPainter: UIViewRepresentable {
     final class PaintingView: UIView {
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            window?.backgroundColor = .systemBackground
+            window?.backgroundColor = .appCanvas
+            window?.tintColor = .appAccent
         }
     }
 

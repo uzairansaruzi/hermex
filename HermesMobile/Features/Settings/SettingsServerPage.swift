@@ -48,7 +48,7 @@ struct SettingsServerPage: View {
     private var activeHermesServer: URL? { isActive && account.kind == .hermes ? server : nil }
 
     var body: some View {
-        let page = List {
+        let page = AppList {
             Section(String(localized: "Identity")) {
                 ServerIdentityEditor(
                     displayName: $displayName,

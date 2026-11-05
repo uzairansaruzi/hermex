@@ -20,16 +20,16 @@ struct HermesDesktopTaskRequestBody: View {
 
     var body: some View {
         HermesRequestHeader(
-            systemImage: "desktopcomputer", tint: .secondary,
+            systemImage: "desktopcomputer", tint: Color(.appTextSecondary),
             title: String(localized: "Hermes Desktop is handling this"), identity: identity
         )
         Text(task.kind.title(subject))
             .font(.subheadline)
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
         Text(task.kind.detail(subject))
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: false, vertical: true)
         Button(role: .destructive, action: onStop) {
             Label("Stop current work", systemImage: "stop.fill").frame(maxWidth: .infinity)
@@ -53,7 +53,7 @@ struct HermesConnectionRequestBody: View {
     let onConnection: (BotConnectionOperation.Answer) -> Void
 
     var body: some View {
-        HermesRequestHeader(systemImage: "link", tint: .secondary, title: String(localized: "Connect apps"), identity: identity)
+        HermesRequestHeader(systemImage: "link", tint: Color(.appTextSecondary), title: String(localized: "Connect apps"), identity: identity)
         VStack(alignment: .leading, spacing: 4) {
             TimelineView(.everyMinute) { context in
                 let minutes = BotConnectionOperation.minutesLeft(until: operation.deadline, now: context.date)
@@ -64,7 +64,7 @@ struct HermesConnectionRequestBody: View {
             }
             Text(pausedLine)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         ForEach(operation.targets) { target in
@@ -78,7 +78,7 @@ struct HermesConnectionRequestBody: View {
         .disabled(!isEnabled || isAnswering)
         Text(releaseLine)
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -124,7 +124,7 @@ private struct HermesConnectionTargetRow: View {
                     Text(target.name)
                         .font(.callout.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
-                    if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
+                    if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.appSecondary) }
                 }
                 Spacer(minLength: 8)
                 stateLabel
@@ -132,7 +132,7 @@ private struct HermesConnectionTargetRow: View {
             ForEach(notes, id: \.self) { note in
                 Text(note)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             guidance
@@ -191,19 +191,19 @@ private struct HermesConnectionTargetRow: View {
                 Text("Finish on the Mac.").font(.caption.weight(.semibold))
                 Text("This sign-in returns to a browser on the Mac, so it can’t complete on iPhone.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } else if target.linkToOpen != nil {
             Text("Opens in your browser. Hermes notices when you finish.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else if target.canSkip, !target.canConnect, target.state == .failed || target.state == .expired {
             // Trying again from here is deferred; asking the agent covers it.
             Text(retryLine)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -259,15 +259,15 @@ private struct HermesConnectionTargetRow: View {
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
                 if field.isSecret {
-                    Text("secret").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("secret").font(.caption2.weight(.semibold)).foregroundStyle(.appSecondary)
                 } else if !field.isRequired {
-                    Text("optional").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("optional").font(.caption2.weight(.semibold)).foregroundStyle(.appSecondary)
                 }
             }
             if let prompt = field.prompt {
                 Text(prompt)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Group {
@@ -315,7 +315,7 @@ struct HermesRequestHeader: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.headline)
-                Text(identity).font(.caption).foregroundStyle(.secondary)
+                Text(identity).font(.caption).foregroundStyle(.appSecondary)
             }
             Spacer(minLength: 8)
         }

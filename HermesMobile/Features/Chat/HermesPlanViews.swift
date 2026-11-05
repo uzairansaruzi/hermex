@@ -21,7 +21,7 @@ struct HermesPlanRowView: View {
         ) {
             Image(systemName: "checklist")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         } status: {
             EmptyView()
         } expandedBody: {
@@ -40,10 +40,10 @@ struct HermesPlanItemList: View {
                 Label {
                     Text(item.content)
                         .strikethrough(item.isDone)
-                        .foregroundStyle(item.isDone ? .secondary : .primary)
+                        .foregroundStyle(item.isDone ? .appSecondary : .appPrimary)
                 } icon: {
                     Image(systemName: Self.symbol(for: item))
-                        .foregroundStyle(item.status == "in_progress" ? Color.accentColor : .secondary)
+                        .foregroundStyle(item.status == "in_progress" ? Color.accentColor : Color(.appTextSecondary))
                 }
                 .font(AppFont.caption())
                 .accessibilityLabel(Text("\(Self.stateLabel(for: item)): \(item.content)"))
@@ -116,18 +116,18 @@ struct HermesPlanStrip: View {
         HStack(spacing: 8) {
             Image(systemName: "checklist")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Text(count)
                 .font(.caption.weight(.semibold))
                 .fixedSize()
             Text(plan.current?.content ?? "")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 7)

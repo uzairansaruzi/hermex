@@ -32,7 +32,7 @@ struct MarkerMessageCardView: View {
             if isExpanded {
                 Text(cardBody.isEmpty ? kind.title : cardBody)
                     .font(AppFont.caption())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
@@ -66,7 +66,7 @@ struct MarkerMessageCardView: View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
             Image(systemName: iconName)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 18, height: 18)
 
             if usesStackedHeader {
@@ -85,7 +85,7 @@ struct MarkerMessageCardView: View {
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .contentShape(Rectangle())
     }
@@ -93,14 +93,14 @@ struct MarkerMessageCardView: View {
     private var titleText: some View {
         Text(kind.title)
             .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .lineLimit(1)
     }
 
     private func summaryText(_ value: String, lineLimit: Int) -> some View {
         Text(value)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(lineLimit)
     }
 
@@ -165,7 +165,7 @@ struct CronRunPromptCard: View {
                     if !prompt.body.isEmpty {
                         Text(prompt.body)
                             .font(.body)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.appPrimary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -184,7 +184,7 @@ struct CronRunPromptCard: View {
             }
         }
         .padding(12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15))
+        .background(.appMaterial(.thinMaterial), in: RoundedRectangle(cornerRadius: 15))
         .overlay {
             RoundedRectangle(cornerRadius: 15)
                 .stroke(.quaternary, lineWidth: 1)
@@ -207,11 +207,11 @@ struct CronRunPromptCard: View {
                 titleLayout {
                     Text("Scheduled task")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                     if !prompt.skills.isEmpty {
                         Text(prompt.skills.joined(separator: " "))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(1)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 1)
@@ -221,7 +221,7 @@ struct CronRunPromptCard: View {
                 if !isExpanded, let preview {
                     Text(preview)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 }
             }
@@ -229,7 +229,7 @@ struct CronRunPromptCard: View {
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.appTertiary)
                 .padding(.top, 6)
         }
         .contentShape(Rectangle())

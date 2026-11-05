@@ -38,7 +38,7 @@ struct ScreenView: View {
         NavigationStack {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(.systemGroupedBackground))
+                .background(Color(.appGroupedCanvas))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
                 .confirmationDialog("Remove the plugin from this host?", isPresented: $isConfirmingRemove, titleVisibility: .visible) {
@@ -84,7 +84,7 @@ struct ScreenView: View {
                         Text("Bot desktop")
                     }
                 }
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .combine)
         }
@@ -120,7 +120,7 @@ struct ScreenView: View {
             ScreenNotice(title: "Screen is off",
                          message: "Starting it uses about 1.5 GB of memory on the host. It stops after 30 minutes unused.") {
                 Button("Start Screen") { session.start() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
             }
         case .starting:
             ScreenNotice(title: "Starting the screen", message: "This takes a few seconds. You can leave and come back.") { EmptyView() }
@@ -138,7 +138,7 @@ struct ScreenView: View {
                         .textSelection(.enabled)
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color(.appGroupedSurface), in: RoundedRectangle(cornerRadius: 12))
                     Button("Copy Command") { UIPasteboard.general.string = command }
                         .buttonStyle(.bordered)
                 }
@@ -150,7 +150,7 @@ struct ScreenView: View {
             ScreenNotice(title: "Show this computer's desktop?",
                          message: "Hermex installs the hermex-screen plugin on this host. Anyone with this server's login can then see and control everything on this computer.") {
                 Button("Install Plugin") { session.installPlugin() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
                 staleTakeover
                 noticeLine
             }
@@ -162,7 +162,7 @@ struct ScreenView: View {
                              : "The plugin is installed. Restart the dashboard on the host, then check again.") {
                 if canRestart {
                     Button("Restart Hermes") { isConfirmingRestart = true }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.appProminent)
                 }
                 checkAgain
                 staleTakeover
@@ -191,7 +191,7 @@ struct ScreenView: View {
                     .font(.footnote.monospaced())
                     .textSelection(.enabled)
                 Text("Run this on the host to see what's wrong.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.appSecondary)
                 checkAgain
                 staleTakeover
                 noticeLine
@@ -240,7 +240,7 @@ struct ScreenView: View {
                 Text(status)
                     .font(.footnote.weight(.medium))
                     .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(.regularMaterial, in: Capsule())
+                    .background(.appMaterial(.regularMaterial), in: Capsule())
                     .padding(.top, 8)
                     .allowsHitTesting(false)
             }
@@ -264,40 +264,40 @@ struct ScreenView: View {
         ZStack {
             ScreenTrackpad(session: session)
             Text("Swipe to move. Tap to click. Hold to drag.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(.appSecondary)
                 .multilineTextAlignment(.center).padding()
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         }
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(Color(.appGroupedSurface))
     }
 
     private var stillThere: some View {
         VStack(spacing: 8) {
             Text("Still there?").font(.headline)
-            Text("Control returns to the bot in 1 minute.").font(.subheadline).foregroundStyle(.secondary)
+            Text("Control returns to the bot in 1 minute.").font(.subheadline).foregroundStyle(.appSecondary)
             Button("Keep Control") { session.keepControl() }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.appProminent)
         }
         .multilineTextAlignment(.center)
         .padding(16)
         .frame(maxWidth: .infinity)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(.appMaterial(.regularMaterial), in: RoundedRectangle(cornerRadius: 16))
         .padding(12)
     }
 
     @ViewBuilder private var bottomControls: some View {
         VStack(spacing: 8) {
             if let text = noticeText {
-                Text(text).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Text(text).font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if session.phase == .reconnecting, isMine {
                 Text("You still have control. The bot stays paused.")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if session.control == .other {
                 Text("The bot is blocked until someone hands back.")
-                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if session.isHostLocked {
                 Group {
@@ -307,7 +307,7 @@ struct ScreenView: View {
                         Text("Screen is locked. Unlock it at the computer.")
                     }
                 }
-                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .font(.footnote).foregroundStyle(.appSecondary).multilineTextAlignment(.center)
             }
             if isMine {
                 if isTyping { keyRow }
@@ -320,7 +320,7 @@ struct ScreenView: View {
                 Button { session.takeOver() } label: {
                     Text("Take Over").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.appProminent)
                 .disabled(session.phase != .live || (session.isHostLocked && !session.canUnlockHost))
                 if session.control == .other {
                     forceHandBackButton
@@ -344,7 +344,7 @@ struct ScreenView: View {
     @ViewBuilder private var staleTakeover: some View {
         if session.control == .other {
             Text("Another session holds control, so the bot is blocked until someone hands back.")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote).foregroundStyle(.appSecondary)
             forceHandBackButton
         } else if isMine, movesHandBackToBottom {
             Button("Hand Back") { session.handBack() }
@@ -364,7 +364,7 @@ struct ScreenView: View {
 
     @ViewBuilder private var noticeLine: some View {
         if let text = noticeText {
-            Text(text).font(.footnote).foregroundStyle(.secondary)
+            Text(text).font(.footnote).foregroundStyle(.appSecondary)
         }
     }
 
@@ -428,7 +428,7 @@ struct ScreenView: View {
 
     private var checkAgain: some View {
         Button("Check Again") { session.open() }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.appProminent)
     }
 }
 
@@ -444,10 +444,10 @@ private struct ScreenNotice<Actions: View>: View {
         VStack(spacing: 12) {
             Text(title).font(.title3.weight(.semibold))
             if let message {
-                Text(message).font(.subheadline).foregroundStyle(.secondary)
+                Text(message).font(.subheadline).foregroundStyle(.appSecondary)
             }
             if let detail {
-                Text(verbatim: detail).font(.subheadline).foregroundStyle(.secondary)
+                Text(verbatim: detail).font(.subheadline).foregroundStyle(.appSecondary)
             }
             actions.padding(.top, 8)
         }

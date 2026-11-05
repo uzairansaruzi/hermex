@@ -46,7 +46,7 @@ struct TaskDetailHeaderCard: View {
 
                 Text(scheduleSentence)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(2)
             }
 
@@ -70,7 +70,7 @@ struct TaskDetailHeaderCard: View {
                     .foregroundStyle(.blue)
                 Text("Running now")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .combine)
         } else if let next = job.nextRunAt?.date {
@@ -79,17 +79,17 @@ struct TaskDetailHeaderCard: View {
                     .font(.title2.weight(.semibold))
                 Text("Next run · \(next.formatted(date: .abbreviated, time: .shortened))")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .combine)
         } else if let last = job.lastRunAt?.date {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Not scheduled")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 Text("Last run · \(last.formatted(date: .abbreviated, time: .shortened))")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .combine)
         }
@@ -101,7 +101,7 @@ struct TaskDetailHeaderCard: View {
             Label {
                 Text(failure)
                     .font(.footnote)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(3)
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -180,7 +180,7 @@ struct TaskDetailHeaderCard: View {
                 } else {
                     Image(systemName: systemImage)
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
                 Text(title)
                     .font(.subheadline.weight(.semibold))

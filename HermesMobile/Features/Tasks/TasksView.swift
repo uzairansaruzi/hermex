@@ -42,6 +42,7 @@ struct TasksView: View {
 
     var body: some View {
         content
+            .themedPageBackground()
             .navigationTitle("Tasks")
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -165,7 +166,7 @@ struct TasksView: View {
             } else {
                 // The list stays mounted while the feed has rows, so switching
                 // to a filter with no tasks does not take "Ran Recently" away.
-                List {
+                AppList {
                     schedulerNotice
                     recentRunsSection
 
@@ -211,7 +212,7 @@ struct TasksView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(.appMaterial(.bar))
     }
 
     /// One line when a Hermes host's scheduler has stopped ticking (#1040), above

@@ -67,7 +67,7 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
                                 }
                             }
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                         }
                         .padding(.leading, CGFloat(min(worker.depth, 2)) * 12)
                     }
@@ -79,7 +79,7 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tint)
                 }
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(RoundedRectangle(cornerRadius: 15))
@@ -123,12 +123,12 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 if let error = work.errorMessage {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                 }
 
@@ -159,6 +159,7 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
                 }
             }
             .listStyle(.insetGrouped)
+            .themedPageBackground()
             .navigationTitle("Delegated work")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -210,11 +211,11 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(worker.goal)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                 Spacer(minLength: 8)
                 Text(worker.status.localizedUppercase)
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             HStack(spacing: 6) {
@@ -228,13 +229,13 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
                 }
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
 
             if work.loadingTail == worker.identity {
                 Text("Loading tail…")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             } else if let tail = work.tail, tail.worker == worker.identity {
                 tailView(tail)
             }
@@ -255,7 +256,7 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
                 if work.interruptedWorker == worker.identity {
                     Label("Interrupt sent", systemImage: "stop.circle")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 } else {
                     Button("Interrupt", role: .destructive) {
                         interruptAction = work.prepareInterrupt(worker)
@@ -283,7 +284,7 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
                 if tail.truncated {
                     Label("Showing the latest 16 KB", systemImage: "scissors")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
             .padding(10)
@@ -291,7 +292,7 @@ struct HermesDelegatedWorkInlineView: View, Equatable {
         } else {
             Text("Live output is no longer available for this worker.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }
@@ -315,17 +316,17 @@ struct HermesDelegationCompletionCard: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.appPrimary)
                         Text(summary)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .monospacedDigit()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     Image(systemName: "chevron.forward")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.appTertiary)
                         .padding(.top, 6)
                 }
 
@@ -333,7 +334,7 @@ struct HermesDelegationCompletionCard: View {
                     if let delegationID = completion.delegationID {
                         Text(delegationID)
                             .font(.caption2.monospaced())
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.appTertiary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -347,7 +348,7 @@ struct HermesDelegationCompletionCard: View {
             }
             .padding(12)
             .contentShape(RoundedRectangle(cornerRadius: 15))
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 15))
+            .background(.appMaterial(.thinMaterial), in: RoundedRectangle(cornerRadius: 15))
             .overlay {
                 RoundedRectangle(cornerRadius: 15)
                     .stroke(.quaternary, lineWidth: 1)
@@ -359,6 +360,7 @@ struct HermesDelegationCompletionCard: View {
         .accessibilityHint("Opens the complete delegated work report.")
         .sheet(isPresented: $showingResults) {
             HermesDelegationResultsSheet(completion: completion)
+                .themedPageBackground()
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -420,7 +422,7 @@ struct HermesDelegationResultsSheet: View {
                     if let delegationID = completion.delegationID {
                         Text(delegationID)
                             .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .textSelection(.enabled)
                     }
 
@@ -441,6 +443,7 @@ struct HermesDelegationResultsSheet: View {
                 }
                 .padding(16)
             }
+            .themedPageBackground()
             .navigationTitle("Delegated work")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

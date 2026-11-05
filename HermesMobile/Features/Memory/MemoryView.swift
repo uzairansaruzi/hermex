@@ -26,6 +26,7 @@ struct MemoryView: View {
 
     var body: some View {
         content
+            .themedPageBackground()
             .navigationTitle("Memory")
             .modifier(MemoryProfileSubtitle(profile: profile))
             .toolbar {
@@ -90,7 +91,7 @@ struct MemoryView: View {
         } else if !viewModel.hasLoaded {
             ProgressView("Loading memory...")
         } else {
-            List {
+            AppList {
                 ForEach(viewModel.visibleSections) { section in
                     Section {
                         MemorySectionContent(
@@ -129,7 +130,7 @@ struct MemoryView: View {
                 await loadMemory()
             }
             // Wide tables fade into the grouped row they sit on.
-            .environment(\.markdownTableEdgeFadeColor, Color(.secondarySystemGroupedBackground))
+            .environment(\.markdownTableEdgeFadeColor, Color(.appGroupedSurface))
         }
     }
 
@@ -158,11 +159,11 @@ private struct MemorySectionHeader: View {
             if let modifiedAt {
                 Text("Modified \(modifiedAt, style: .relative) ago")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             if isReadOnly {
                 Image(systemName: "lock.fill")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .accessibilityLabel(Text("Read-only"))
             } else {
                 Button(action: onEdit) {
@@ -201,10 +202,10 @@ private struct ProjectContextSectionHeader: View {
             if let modifiedAt {
                 Text("Modified \(modifiedAt, style: .relative) ago")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             Image(systemName: "lock.fill")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .accessibilityLabel(Text("Read-only"))
         }
     }
@@ -233,7 +234,7 @@ private struct MemorySectionContent: View {
     var body: some View {
         if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text(section.emptyMessage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .italic()
         } else {
             MarkdownRenderer(content: content)
@@ -295,7 +296,7 @@ private struct MemoryEditSheet: View {
         let count = limit.map { MemoryCharacterCount(draft: content, limit: $0) }
         let isBusy = isSaving || isReloading
         NavigationStack {
-            Form {
+            AppForm {
                 if isConflicted {
                     Section {
                         VStack(alignment: .leading, spacing: 4) {
@@ -304,7 +305,7 @@ private struct MemoryEditSheet: View {
                                 .font(.headline)
                             Text("\(section.title) changed since you opened it. Your draft is kept. Reload shows the host's text and drops this draft.")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
                         .accessibilityElement(children: .combine)
                         Button("Reload") {
@@ -345,6 +346,7 @@ private struct MemoryEditSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Edit \(section.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -403,7 +405,7 @@ private struct MemoryEditTitle: View {
                         .accessibilityLabel(Text("\(used) of \(limit) characters, \(count.overBy.formatted()) over the limit"))
                 } else {
                     Text(verbatim: "\(used) / \(limit)")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .accessibilityLabel(Text("\(used) of \(limit) characters"))
                 }
             }

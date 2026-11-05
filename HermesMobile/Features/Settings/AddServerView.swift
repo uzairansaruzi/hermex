@@ -100,8 +100,9 @@ struct AddServerView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 24)
             }
-            .background(Color(.systemBackground))
+            .background(Color(.appCanvas))
             .safeAreaInset(edge: .bottom, spacing: 0) { submitButton }
+            .themedPageBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -137,7 +138,7 @@ struct AddServerView: View {
         if let preview = form.addressPreview {
             Text("Will connect to \(preview.absoluteString + "\u{200E}")")
                 .font(AppFont.caption())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -230,7 +231,7 @@ struct AddServerView: View {
         if let reused = form.reusedSignIn {
             Label("Filled in from \(reused.serverName)’s Hermes connection.", systemImage: "checkmark.circle")
                 .font(AppFont.footnote())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             SettingsDivider()
         } else {
             ForEach(form.savedSignIns, id: \.connection.id) { saved in
@@ -248,7 +249,7 @@ struct AddServerView: View {
                                 .foregroundStyle(Color.accentColor)
                             Text("Fills in the username, password and headers.")
                                 .font(AppFont.caption())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
@@ -283,7 +284,7 @@ struct AddServerView: View {
                             .foregroundStyle(Color.accentColor)
                         Text("\(source.headers.count) headers")
                             .font(AppFont.caption())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -314,7 +315,7 @@ struct AddServerView: View {
             HStack(spacing: 12) {
                 Text("Connection Options")
                     .font(AppFont.subheadline())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                 Spacer(minLength: 12)
                 Group {
                     if changedOptionCount == 0 {
@@ -324,10 +325,10 @@ struct AddServerView: View {
                     }
                 }
                 .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 Image(systemName: "chevron.forward")
                     .font(AppFont.caption(weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .accessibilityHidden(true)
             }
             .frame(minHeight: 30)
@@ -346,13 +347,13 @@ struct AddServerView: View {
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 30)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.appProminent)
         .controlSize(.large)
         .disabled(!canSubmit)
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 12)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private func submit() { submit(replacingWebuiServer: false) }
@@ -448,7 +449,8 @@ private struct ConnectionOptionsPage: View {
             .padding(.top, 18)
             .padding(.bottom, 36)
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
+        .themedPageBackground()
         .navigationTitle(String(localized: "Connection Options"))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -496,7 +498,7 @@ struct ServerIdentityEditor: View {
 
                     Text("Stored on this device only.")
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
 
@@ -539,7 +541,7 @@ private struct SettingsCard<Content: View>: View {
                 Text(title)
                     .textCase(.uppercase)
                     .font(AppFont.caption(weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .padding(.horizontal, 4)
                     .padding(.bottom, 8)
             }
@@ -551,7 +553,7 @@ private struct SettingsCard<Content: View>: View {
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                shape.fill(Color(.secondarySystemBackground).opacity(cardFillOpacity))
+                shape.fill(Color(.appSurface).opacity(cardFillOpacity))
             }
             .adaptiveGlass(
                 .regular,
@@ -560,7 +562,7 @@ private struct SettingsCard<Content: View>: View {
             )
             .overlay {
                 shape
-                    .stroke(Color.primary.opacity(cardStrokeOpacity), lineWidth: 0.7)
+                    .stroke(Color(.appText).opacity(cardStrokeOpacity), lineWidth: 0.7)
                     .allowsHitTesting(false)
             }
         }
@@ -585,7 +587,7 @@ private struct SettingsFootnote: View {
     var body: some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -617,11 +619,11 @@ private struct SettingsButton: View {
                 }
             }
             .font(AppFont.subheadline(weight: .medium))
-            .foregroundStyle(role == .destructive ? .red : .primary)
+            .foregroundStyle(role == .destructive ? .red : Color(.appText))
             .frame(maxWidth: .infinity)
             .frame(minHeight: 46)
             .background {
-                shape.fill((role == .destructive ? Color.red : Color.primary).opacity(0.08))
+                shape.fill((role == .destructive ? Color.red : Color(.appText)).opacity(0.08))
             }
             .adaptiveGlass(
                 .regular,
@@ -632,7 +634,7 @@ private struct SettingsButton: View {
             )
             .overlay {
                 shape
-                    .stroke((role == .destructive ? Color.red : Color.primary).opacity(strokeOpacity), lineWidth: 0.7)
+                    .stroke((role == .destructive ? Color.red : Color(.appText)).opacity(strokeOpacity), lineWidth: 0.7)
                     .allowsHitTesting(false)
             }
             .contentShape(shape)

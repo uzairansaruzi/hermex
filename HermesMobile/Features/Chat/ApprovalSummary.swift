@@ -23,7 +23,7 @@ struct ApprovalSummaryLine: View {
             case .loading:
                 VStack(alignment: .leading, spacing: 4) {
                     Text("In plain words (AI summary)").font(.caption.weight(.semibold))
-                    Text("Summarizing…").font(.caption).foregroundStyle(.secondary)
+                    Text("Summarizing…").font(.caption).foregroundStyle(.appSecondary)
                 }
             case .ready(let text):
                 VStack(alignment: .leading, spacing: 4) {

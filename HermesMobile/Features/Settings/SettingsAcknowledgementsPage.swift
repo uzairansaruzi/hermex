@@ -51,9 +51,11 @@ struct SettingsAcknowledgementsPage: View {
     private static let notices = AcknowledgementNotice.loadAll()
 
     var body: some View {
-        List(Self.notices, id: \.url) { notice in
-            NavigationLink(notice.name) {
-                AcknowledgementNoticePage(notice: notice)
+        AppList {
+            ForEach(Self.notices, id: \.url) { notice in
+                NavigationLink(notice.name) {
+                    AcknowledgementNoticePage(notice: notice)
+                }
             }
         }
         .settingsPage(String(localized: "Acknowledgements"))
@@ -88,6 +90,7 @@ private struct AcknowledgementNoticePage: View {
                 Color.clear
             }
         }
+        .themedPageBackground()
         .navigationTitle(notice.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: notice.url) {

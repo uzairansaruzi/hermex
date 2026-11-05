@@ -15,13 +15,13 @@ struct ComposerVoiceStatusView: View {
         HStack(spacing: 6) {
             Label(status.text, systemImage: status.systemImage)
                 .font(.caption)
-                .foregroundStyle(status.isError ? Color.red : Color.secondary)
+                .foregroundStyle(status.isError ? Color.red : Color(.appTextSecondary))
 
             if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .frame(width: 44, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -46,7 +46,7 @@ struct ComposerDictationRow: View {
             Button(action: voiceInput.cancel) {
                 Image(systemName: "xmark")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
@@ -60,7 +60,7 @@ struct ComposerDictationRow: View {
                         TimelineView(.periodic(from: startedAt, by: 1)) { context in
                             Text(AudioDurationFormatter.string(from: context.date.timeIntervalSince(startedAt)))
                                 .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
                         .accessibilityHidden(true)
                     }
@@ -82,15 +82,15 @@ struct ComposerDictationRow: View {
             } else {
                 Text(waitingLabel)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
 
                 Image(systemName: "checkmark")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .frame(width: circleSize, height: circleSize)
-                    .background(Color(.tertiarySystemFill))
+                    .background(Color(.appFillTertiary))
                     .clipShape(Circle())
                     .accessibilityHidden(true)
             }
@@ -146,7 +146,7 @@ struct ComposerDictationWaveform: View {
             }
         }
         .frame(height: 24)
-        .foregroundStyle(.primary)
+        .foregroundStyle(.appPrimary)
         .accessibilityHidden(true)
     }
 }
@@ -203,7 +203,7 @@ struct ComposerVoiceControlButton: View {
         Image(systemName: symbolName)
             .font(.system(size: 18, weight: .regular))
             .frame(width: 44, height: 44)
-            .background(Circle().fill(Color(.tertiarySystemFill)).frame(width: 34, height: 34))
+            .background(Circle().fill(Color(.appFillTertiary)).frame(width: 34, height: 34))
             .foregroundStyle(isRecordingVoiceNote ? Color.red : color)
             .scaleEffect(reduceMotion ? 1 : (isRecordingVoiceNote ? 1.3 : 1))
             .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)
@@ -292,7 +292,7 @@ struct ComposerVoiceRecordingBar: View {
 
             Text(AudioDurationFormatter.string(from: elapsed))
                 .font(.callout.monospacedDigit())
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
 
             Spacer(minLength: 8)
 
@@ -304,7 +304,7 @@ struct ComposerVoiceRecordingBar: View {
                     systemImage: isCancelArmed ? "xmark.circle.fill" : "chevron.up"
                 )
                 .font(.caption)
-                .foregroundStyle(isCancelArmed ? Color.red : Color.secondary)
+                .foregroundStyle(isCancelArmed ? Color.red : Color(.appTextSecondary))
             } else {
                 Button(action: onCancel) {
                     Image(systemName: "xmark")
@@ -323,7 +323,7 @@ struct ComposerVoiceRecordingBar: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(Color(.appSurface))
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Recording voice note, \(AudioDurationFormatter.string(from: elapsed))"))

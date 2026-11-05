@@ -118,7 +118,8 @@ struct GoalSubmissionSheet: View {
                 .font(.body)
                 .padding()
                 .scrollContentBackground(.hidden)
-                .background(Color(.systemGroupedBackground))
+                .background(Color(.appGroupedCanvas))
+                .themedPageBackground()
                 .navigationTitle("Set Goal")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -137,6 +138,7 @@ struct GoalSubmissionSheet: View {
                     }
                 }
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .adaptiveFormPresentation()
     }

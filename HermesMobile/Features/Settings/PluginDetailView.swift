@@ -9,14 +9,14 @@ struct PluginDetailView: View {
     private var plugin: HermesPlugin? { model.plugins.first { $0.key == key } }
 
     var body: some View {
-        List {
+        AppList {
             if let notice = model.notice { Section { PluginNoticeRow(notice: notice) } }
             if let plugin {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(verbatim: plugin.name).font(.headline)
                         if !plugin.summary.isEmpty {
-                            Text(verbatim: plugin.summary).font(.footnote).foregroundStyle(.secondary)
+                            Text(verbatim: plugin.summary).font(.footnote).foregroundStyle(.appSecondary)
                         }
                     }
                     LabeledContent(String(localized: "Key")) { Text(verbatim: plugin.key).textSelection(.enabled) }
@@ -37,6 +37,7 @@ struct PluginDetailView: View {
             }
         }
         .listSectionSpacing(.compact)
+        .themedPageBackground()
         .navigationTitle(plugin?.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
@@ -133,7 +134,7 @@ private struct PluginSettingRow: View {
         VStack(alignment: .leading, spacing: 4) {
             control
             if !field.description.isEmpty {
-                Text(verbatim: field.description).font(.footnote).foregroundStyle(.secondary)
+                Text(verbatim: field.description).font(.footnote).foregroundStyle(.appSecondary)
             }
             if let problem {
                 Text(verbatim: problem).font(.footnote).foregroundStyle(.red)
@@ -214,7 +215,7 @@ private struct PluginSecretField: View {
             } label: {
                 Text(verbatim: label)
             }
-            Text(verbatim: env).font(.caption.monospaced()).foregroundStyle(.secondary)
+            Text(verbatim: env).font(.caption.monospaced()).foregroundStyle(.appSecondary)
             SecureField(isSet ? String(localized: "Replace the key") : String(localized: "Paste the key"), text: $value)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -264,7 +265,7 @@ struct PluginUpdateReviewSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 Section {
                     Text(verbatim: review.plugin.name).font(.headline)
                 }
@@ -287,13 +288,14 @@ struct PluginUpdateReviewSheet: View {
                                 Text(verbatim: finding.description).font(.footnote)
                                 Text(verbatim: [finding.severity, finding.location].filter { !$0.isEmpty }.joined(separator: " · "))
                                     .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.appSecondary)
                             }
                         }
                     }
                 }
             }
             .listSectionSpacing(.compact)
+            .themedPageBackground()
             .navigationTitle(String(localized: "Review Update"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -308,11 +310,11 @@ struct PluginUpdateReviewSheet: View {
                     } label: {
                         Text(verbatim: acceptTitle).frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
                     .controlSize(.large)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(.bar)
+                    .background(.appMaterial(.bar))
                 }
             }
         }

@@ -11,7 +11,7 @@ struct APIKeysView: View {
     }
 
     var body: some View {
-        List {
+        AppList {
             if let profile = model.profile {
                 profileSection(profile)
             }
@@ -89,7 +89,7 @@ struct APIKeysView: View {
                                 if let preview = key.preview {
                                     Text(verbatim: preview)
                                         .font(.callout.monospaced())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.appSecondary)
                                         .lineLimit(1)
                                 }
                             }
@@ -126,11 +126,11 @@ struct APIKeyRow<Trailing: View>: View {
         } label: {
             Text(verbatim: key.title)
                 .font(key.hasLabel ? .body : .body.monospaced())
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
             if key.hasLabel {
                 Text(verbatim: key.name)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .accessibilityElement(children: .combine)

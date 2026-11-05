@@ -145,7 +145,7 @@ private struct ProjectFormSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     TextField("Project name", text: $projectName)
                         .textInputAutocapitalization(.words)
@@ -174,6 +174,7 @@ private struct ProjectFormSheet: View {
                     .padding(.vertical, 4)
                 }
             }
+            .themedPageBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -244,7 +245,7 @@ private struct ProjectFormSheet: View {
             if folderNeedsMoreTyping {
                 Text("Type more of the folder name.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         } header: {
             Text("Folder")
@@ -277,7 +278,7 @@ private struct ProjectFormSheet: View {
                     .frame(width: 40, height: 40)
                     .overlay {
                         Circle()
-                            .strokeBorder(Color(.separator).opacity(0.3), lineWidth: 0.5)
+                            .strokeBorder(Color(.appSeparator).opacity(0.3), lineWidth: 0.5)
                     }
 
                 if isSelected {

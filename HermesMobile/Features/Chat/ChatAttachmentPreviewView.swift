@@ -116,6 +116,7 @@ struct ChatAttachmentPreviewView: View {
                     unavailableContent(String(localized: "Preview is not available for this attachment."))
                 }
             }
+            .themedPageBackground()
             .navigationTitle(item.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -163,7 +164,7 @@ struct ChatAttachmentPreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private func textContent(_ file: FileResponse) -> some View {
@@ -178,7 +179,7 @@ struct ChatAttachmentPreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     @ViewBuilder
@@ -196,7 +197,7 @@ struct ChatAttachmentPreviewView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .background(Color(.appCanvas))
         } else {
             unavailableContent(String(localized: "Could not preview this image."))
         }
@@ -211,7 +212,7 @@ struct ChatAttachmentPreviewView: View {
                 Text(item.displayPath)
                     .font(.footnote)
                     .fontDesign(.monospaced)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .textSelection(.enabled)
             }
         }
@@ -222,13 +223,13 @@ struct ChatAttachmentPreviewView: View {
             Text(item.displayPath)
                 .font(.caption)
                 .fontDesign(.monospaced)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .textSelection(.enabled)
 
             if let metadataText {
                 Text(metadataText)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
     }
@@ -343,10 +344,10 @@ struct StagedPasteSheet: View {
                         if let notice = notice(for: paste) {
                             Text(notice)
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(10)
-                                .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 10))
+                                .background(Color(.appSurface), in: .rect(cornerRadius: 10))
                                 .padding(.horizontal)
                                 .padding(.top, 8)
                         }
@@ -354,6 +355,7 @@ struct StagedPasteSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle(item.attachment.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
@@ -381,7 +383,7 @@ struct StagedPasteSheet: View {
                 if !dynamicTypeSize.isAccessibilitySize, let subtitle {
                     Text(subtitle)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -502,7 +504,7 @@ private struct StagedPasteTextView: UIViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.backgroundColor = .clear
-        textView.textColor = .label
+        textView.textColor = .appText
         textView.font = UIFontMetrics(forTextStyle: .body).scaledFont(
             for: .monospacedSystemFont(ofSize: 15, weight: .regular),
             compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(context.environment.dynamicTypeSize))

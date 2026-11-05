@@ -509,9 +509,9 @@ struct HermexAttachmentPanelSurface: ViewModifier {
         content
             .background {
                 if reduceTransparency {
-                    Color(.secondarySystemBackground)
+                    Color(.appSurface)
                 } else {
-                    Rectangle().fill(.regularMaterial)
+                    Rectangle().fill(.appMaterial(.regularMaterial))
                 }
             }
             .shadow(color: .black.opacity(0.24), radius: 27, y: 12)
@@ -732,7 +732,7 @@ struct HermexAttachmentPickerView: View {
                     spacing: spacing
                 ) {
                     ForEach(0..<15, id: \.self) { _ in
-                        Color(.secondarySystemBackground)
+                        Color(.appSurface)
                             .frame(width: side, height: side)
                     }
                 }
@@ -752,9 +752,9 @@ struct HermexAttachmentPickerView: View {
                 Text("Allow access in Settings to browse recent photos here.")
                     .font(.caption)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 Button("Open Settings", action: openSettings)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
             }
         }
     }
@@ -810,7 +810,7 @@ struct HermexAttachmentPickerView: View {
 
     private func placeholder<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 10, content: content)
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(32)
     }
@@ -1023,12 +1023,12 @@ struct HermexAttachmentMenuRow: View {
             HStack(spacing: 14) {
                 Image(systemName: systemImage)
                     .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .frame(width: 42, height: 42)
                     .background(.primary.opacity(0.08), in: Circle())
                 title
                     .font(.title3.weight(.regular))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)

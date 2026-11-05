@@ -28,7 +28,7 @@ struct DefaultProfilePickerView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList(rows: .plain) {
                 if let saveError {
                     Text(verbatim: saveError)
                         .font(.caption)
@@ -57,6 +57,7 @@ struct DefaultProfilePickerView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .themedPageBackground()
             .navigationTitle("Default Profile")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
@@ -131,10 +132,10 @@ struct DefaultProfilePickerView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.primary)
+        .foregroundStyle(Color(.appText))
         .padding(.horizontal, 12)
         .background(
-            Color(.tertiarySystemFill),
+            Color(.appFillTertiary),
             in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
         )
         .disabled(isLoading || isSaving)
@@ -199,7 +200,7 @@ struct DefaultProfilePickerView: View {
                         Text(details)
                             .font(.caption)
                             .foregroundStyle(
-                                selected ? Color(.systemBackground).opacity(0.7) : Color.secondary
+                                selected ? Color(.appCanvas).opacity(0.7) : Color(.appTextSecondary)
                             )
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
@@ -210,7 +211,7 @@ struct DefaultProfilePickerView: View {
                 if inFlight {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(selected ? Color(.systemBackground) : Color.primary)
+                        .tint(selected ? Color(.appCanvas) : Color(.appText))
                 } else if selected {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
@@ -366,7 +367,7 @@ private struct CreateProfileSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     TextField("Profile name", text: $name)
                         .autocorrectionDisabled()
@@ -410,6 +411,7 @@ private struct CreateProfileSheet: View {
                 }
             }
             .disabled(isCreating)
+            .themedPageBackground()
             .navigationTitle("New Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -530,11 +532,11 @@ private struct ProfileStatusBadge: View {
     var body: some View {
         Text(title)
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(isInverted ? Color(.systemBackground) : Color.accentColor)
+            .foregroundStyle(isInverted ? Color(.appCanvas) : Color.accentColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
-                isInverted ? Color(.systemBackground).opacity(0.22) : Color.accentColor.opacity(0.12),
+                isInverted ? Color(.appCanvas).opacity(0.22) : Color.accentColor.opacity(0.12),
                 in: Capsule(style: .continuous)
             )
     }

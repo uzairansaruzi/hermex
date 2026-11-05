@@ -1162,7 +1162,7 @@ struct ChatWorkingRowView: View {
 
                 Text("Working for \(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: context.date))")
                     .font(.caption.weight(.medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -1198,7 +1198,7 @@ struct BottomComposerMaterialFade: View {
 
             ZStack {
                 Rectangle()
-                    .fill(.bar)
+                    .fill(.appMaterial(.bar))
 
                 if colorScheme == .dark {
                     Rectangle()
@@ -1246,16 +1246,16 @@ struct StreamRecoveryStatusView: View {
 
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.88)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule(style: .continuous))
+        .background(.appMaterial(.regularMaterial), in: Capsule(style: .continuous))
         .overlay(
             Capsule(style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
@@ -1334,8 +1334,8 @@ private struct ChatTranscriptLoadingSkeletonRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(.secondarySystemFill))
-            .foregroundStyle(.primary)
+            .background(Color(.appFillSecondary))
+            .foregroundStyle(.appPrimary)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .redacted(reason: .placeholder)
@@ -1446,17 +1446,17 @@ struct PinnedLocalNoticeStack: View {
 
                     Text(Self.plainText(notice))
                         .font(.footnote)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12)
-                .background(.ultraThinMaterial)
+                .background(.appMaterial(.ultraThinMaterial))
                 .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.45), lineWidth: 0.5)
+                        .stroke(Color(.appSeparator).opacity(0.45), lineWidth: 0.5)
                 )
             }
         }
@@ -1537,7 +1537,7 @@ struct ShortcutTextNotice: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "info.circle.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(isWarning ? Color.orange : Color.secondary)
+                .foregroundStyle(isWarning ? Color.orange : Color(.appTextSecondary))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1555,7 +1555,7 @@ struct ShortcutTextNotice: View {
                         }
                     }
                     .font(.footnote)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                     if hasHiddenCharacters {
                         Button("Remove Hidden Characters", action: removeHiddenCharacters)
@@ -1568,7 +1568,7 @@ struct ShortcutTextNotice: View {
                 if let waiting {
                     Text("Another text is waiting.")
                         .font(.footnote)
-                        .foregroundStyle(origin != nil ? .secondary : .primary)
+                        .foregroundStyle(origin != nil ? .appSecondary : .appPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 16) {
                         Button("Open Next", action: waiting.openNext)
@@ -1583,7 +1583,7 @@ struct ShortcutTextNotice: View {
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .frame(minWidth: 28, minHeight: 28)
                         .contentShape(Rectangle())
                 }
@@ -1592,11 +1592,11 @@ struct ShortcutTextNotice: View {
             }
         }
         .padding(12)
-        .background(.ultraThinMaterial)
+        .background(.appMaterial(.ultraThinMaterial))
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
-                .stroke(Color(.separator).opacity(0.45), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.45), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
         .accessibilityElement(children: .contain)

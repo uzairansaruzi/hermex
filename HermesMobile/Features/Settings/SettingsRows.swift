@@ -47,14 +47,14 @@ struct SettingsLabel: View {
                     Text(title)
                     Text(note)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             } else {
                 Text(title)
             }
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }
@@ -71,12 +71,12 @@ struct SettingsExternalLink: View {
             LabeledContent {
                 Image(systemName: "arrow.up.forward")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
             } label: {
                 SettingsLabel(title: title, systemImage: systemImage)
             }
         }
-        .foregroundStyle(.primary)
+        .foregroundStyle(.appPrimary)
         .accessibilityLabel(accessibilityLabel ?? title)
     }
 }
@@ -100,7 +100,7 @@ struct ServerAvatarBadge: View {
 
 struct SettingsStatusPill: View {
     let label: String
-    var tint: Color = .secondary
+    var tint: Color = Color(.appTextSecondary)
 
     var body: some View {
         Text(label)
@@ -187,13 +187,13 @@ struct HeaderLogoColorSettings: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Text("Header Logo Color")
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
 
                 Spacer(minLength: 12)
 
                 Text(selectedColorName)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .font(.subheadline)
 
@@ -236,7 +236,7 @@ private struct HeaderLogoColorPresetButton: View {
             ZStack {
                 Circle()
                     .fill(preset.color)
-                    .overlay(Circle().stroke(Color.primary.opacity(0.18), lineWidth: 1))
+                    .overlay(Circle().stroke(Color(.appText).opacity(0.18), lineWidth: 1))
 
                 if isSelected {
                     Image(systemName: "checkmark")

@@ -315,7 +315,7 @@ struct ImageLightboxActionButton: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
-                .background(.ultraThinMaterial, in: Circle())
+                .background(.appMaterial(.ultraThinMaterial), in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)

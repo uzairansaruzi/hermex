@@ -114,17 +114,17 @@ struct ClarificationRequestBar: View {
                 HStack(spacing: 10) {
                     Image(systemName: "questionmark.circle")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Input needed")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
 
                         Text(summary)
                             .font(.subheadline)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.appPrimary)
                             .lineLimit(1)
                     }
 
@@ -132,7 +132,7 @@ struct ClarificationRequestBar: View {
 
                     Image(systemName: "chevron.up")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
@@ -204,7 +204,7 @@ struct ClarificationRequestCard: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "questionmark.circle")
                 .font(.headline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -214,7 +214,7 @@ struct ClarificationRequestCard: View {
                 if prompt.pendingCount > 1 {
                     Text("1 of \(prompt.pendingCount) pending")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
 
@@ -241,7 +241,7 @@ struct ClarificationRequestCard: View {
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: collapseButtonSize, height: collapseButtonSize)
                 .background(.primary.opacity(0.08))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .clipShape(Circle())
         }
         .buttonStyle(.chatTactile(.icon))
@@ -251,7 +251,7 @@ struct ClarificationRequestCard: View {
     private var question: some View {
         Text(prompt.question)
             .font(.subheadline)
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
             .pendingRequestBlockSurface()
     }
@@ -338,7 +338,7 @@ struct ClarificationRequestCard: View {
         return VStack(alignment: .trailing, spacing: 5) {
             Text(expirationText(remaining: remaining))
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             if !reduceMotion {
                 GeometryReader { proxy in
@@ -415,7 +415,7 @@ struct ClarificationRequestCard: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .pendingRequestChoiceSurface(reduceTransparency: reduceTransparency)
         }
         .buttonStyle(.chatTactile(.capsule))
@@ -583,8 +583,8 @@ struct HermesRequestInset: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: collapseButtonSize, height: collapseButtonSize)
-                .background(.regularMaterial, in: Circle())
-                .foregroundStyle(.secondary)
+                .background(.appMaterial(.regularMaterial), in: Circle())
+                .foregroundStyle(.appSecondary)
         }
         .buttonStyle(.chatTactile(.icon))
         .accessibilityLabel("Collapse clarification")

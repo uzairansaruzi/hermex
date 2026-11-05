@@ -78,6 +78,7 @@ struct TaskDetailView: View {
             }
             .padding()
         }
+        .themedPageBackground()
         .navigationTitle(viewModel.job.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await loadDetail() }
@@ -140,7 +141,7 @@ struct TaskDetailView: View {
                 ProgressView()
                 Text("Updating task...")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         } else if let actionErrorMessage = viewModel.actionErrorMessage {
             Text(actionErrorMessage)
@@ -225,20 +226,20 @@ struct TaskDetailView: View {
 
     private func configurationLabel(_ field: TaskConfigurationField) -> some View {
         Text(field.title)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: true, vertical: false)
     }
 
     private func configurationValue(_ field: TaskConfigurationField) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(field.value)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
 
             if let detail = field.detail {
                 Text(detail)
                     .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .lineLimit(1)
             }
         }

@@ -249,28 +249,30 @@ enum BotAvatarGeneration {
                 TextField("A tiny orange cat holding a wrench", text: $description, axis: .vertical)
                     .lineLimit(2...4)
                     .padding(10)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(Color(uiColor: .appGroupedSurface), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .disabled(describer.state == .running)
                 if describer.state == .running {
                     Text("Generating. This can take a few minutes.").font(.subheadline)
                     Button("Stop Waiting") { describer.stopWaiting() }.buttonStyle(.bordered)
                 } else {
                     Button("Generate") { describer.generate(description: description) }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.appProminent)
                         .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 if case .failed(let message) = describer.state {
                     Text(message).font(.caption).foregroundStyle(.red)
                 }
                 Text("Uses the host's model, with no tools. Your provider may bill for it, even if you stop waiting.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.appSecondary)
                 Spacer()
             }
             .padding(16)
+            .themedPageBackground()
             .navigationTitle("Describe It")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+        .themedPageBackground()
         .presentationDetents([.medium])
         .onChange(of: describer.state) { if describer.state == .finished { dismiss() } }
         .onDisappear { describer.stopWaiting() }
