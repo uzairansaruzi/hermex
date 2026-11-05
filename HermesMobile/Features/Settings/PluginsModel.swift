@@ -309,6 +309,9 @@ final class PluginsModel {
     func saveKey(_ name: String, value: String) async throws {
         guard let setup else { return }
         try await client.saveKey(name, value: value, profile: setup.profile)
+        // Tells the host, so a server that couldn't connect without this key tries again. The key is
+        // written by then, so a failed follow-up isn't a failed save.
+        _ = try? await client.saveSettings(key: setup.name, values: [:], profile: setup.profile)
         // A switch while it was saving ended this setup, and any new one isn't what was saved.
         guard self.setup?.profile == setup.profile, self.setup?.name == setup.name else { return }
         notice = .reported(String(localized: "\(name) is saved on \(setup.profile)."))

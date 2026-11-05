@@ -331,10 +331,15 @@ import XCTest
         _ = await model.install(.catalog(name: "homeassistant", pin: ""), profile: "dev", replace: false, enable: true)
         XCTAssertEqual(model.setup, .init(profile: "dev", name: "homeassistant", keys: ["HASS_TOKEN"]))
 
+        host.next("plugins.manage", .init(result: .object(["ok": .bool(true), "name": .string("homeassistant")])))
         try await model.saveKey("HASS_TOKEN", value: "secret")
 
         XCTAssertEqual(HermesHostFixture.requests.last { $0.url?.path == "/api/env" }?.httpMethod, "PUT")
         XCTAssertNil(model.setup, "the last key finishes it")
+        let params = try XCTUnwrap(host.requests.last { $0["params"]["action"].text == "settings" })["params"]
+        XCTAssertEqual(params["key"].text, "homeassistant")
+        XCTAssertEqual(params["profile"].text, "dev")
+        XCTAssertEqual(params["values"], .object([:]), "it tells the host, without the key's value")
     }
 
     func testAKeySaveEndingAfterASwitchLeavesTheNewProfileAlone() async throws {

@@ -177,12 +177,13 @@ struct PluginsView: View {
 
 private extension PluginsView {
     /// A user install's way out. hermex-push and hermex-screen go to the pages that manage them,
-    /// because each has its own pairing or hold to undo. Bundled plugins have none.
+    /// because each has its own pairing or hold to undo. Screen's page can remove it only while it's
+    /// running, so one that's off removes like any other. Bundled plugins have none.
     @ViewBuilder
     func pluginActions(_ plugin: HermesPlugin) -> some View {
         if plugin.key == "hermex-push" {
             Button("Manage", systemImage: "gearshape") { isShowingPushSettings = true }
-        } else if plugin.key == "hermex-screen" {
+        } else if plugin.key == "hermex-screen", plugin.isEnabled {
             Button("Manage", systemImage: "gearshape") { screenProfile = model.profile.map(InstallProfile.init) }
         } else if !plugin.isBundled {
             Button("Remove", systemImage: "trash", role: .destructive) { model.pendingRemoval = plugin }

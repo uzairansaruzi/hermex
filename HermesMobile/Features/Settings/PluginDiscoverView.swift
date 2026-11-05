@@ -315,7 +315,7 @@ private struct PluginCatalogImage: View {
 }
 
 /// Fetches and downsamples catalog images. The memory cache is bounded and clears itself under
-/// pressure, and nothing reaches the disk. The session refuses Low Data Mode, so an image then just
+/// pressure, and nothing stays on disk. The session refuses Low Data Mode, so an image then just
 /// stays a tile, and it sends no cookies or sign-ins: these requests go to GitHub, not the user's host.
 enum PluginImageLoader {
     private static let session: URLSession = {
@@ -335,11 +335,13 @@ enum PluginImageLoader {
     static func image(at url: URL, maxPixels: Int) async -> UIImage? {
         let key = "\(maxPixels)|\(url.absoluteString)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        guard let (data, response) = try? await session.data(from: url),
-              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        // To a file, so a huge banner never sits in memory whole. It's gone once it's decoded.
+        guard let (file, response) = try? await session.download(from: url) else { return nil }
+        defer { try? FileManager.default.removeItem(at: file) }
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         // Off the main thread, and it isn't worth finishing once the row has scrolled away.
         guard !Task.isCancelled, let image = await Task.detached(priority: .utility, operation: {
-            downsample(data, maxPixels: maxPixels)
+            downsample(file, maxPixels: maxPixels)
         }).value else { return nil }
         let cost = Int(image.size.width * image.scale * image.size.height * image.scale) * 4
         cache.setObject(image, forKey: key, cost: cost)
@@ -347,12 +349,12 @@ enum PluginImageLoader {
     }
 
     /// The first frame, which is all a GIF shows, decoded at the size it's drawn.
-    private static func downsample(_ data: Data, maxPixels: Int) -> UIImage? {
+    private static func downsample(_ file: URL, maxPixels: Int) -> UIImage? {
         let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                         kCGImageSourceCreateThumbnailWithTransform: true,
                                         kCGImageSourceShouldCacheImmediately: true,
                                         kCGImageSourceThumbnailMaxPixelSize: maxPixels]
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+        guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
         return UIImage(cgImage: image)
     }
