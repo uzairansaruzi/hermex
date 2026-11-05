@@ -84,7 +84,7 @@ import SwiftUI
         let toasted = navigationSurface
             .focusedSceneValue(\.hermexSceneActions, sceneActions)
             .fullScreenCover(item: $screenTarget) { target in
-                ScreenView(profile: target.profile, title: target.profile.name, server: server, connection: target.connection) {
+                ScreenView(profile: target.profile.id, title: target.profile.name, server: server, connection: target.connection) {
                     hostLacksScreen = true
                 }
             }

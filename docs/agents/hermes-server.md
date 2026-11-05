@@ -559,6 +559,58 @@ older hosts ignore the extra fields on an import. A 409 (`revision_conflict`, `s
 never resent: the row action rolls back and reloads, and Move to Hermes leaves the batch uncertain
 for its next run.
 
+## Managing plugins
+
+The Plugins screen (Settings → Server → Plugins, #1582) manages one Profile's plugins over
+`plugins.manage`, because the dashboard's REST mutations can't name a Profile and act on the one
+the dashboard runs as. A row's identity is its `key`: names collide across category folders
+(`image_gen/fal`, `video_gen/fal`).
+
+- A toggle can sync the Profile's Python packages first in either direction, which took 30 s on a
+  fresh host, so it waits three minutes. A refusal is 5026 with the host's message, which can be a
+  long `uv` error. Losing the connection or the deadline leaves the outcome unknown: the screen says
+  so, reads the list again and never resends.
+- `restart_required` is true on any disable, and on an enable when no gateway answered. An enable's
+  `activation.deferred` is what waits for the next session; a disable's `activation` can be an
+  earlier load's summary, so it is ignored.
+- `POST /api/gateway/restart?profile=` answers once the restart has started, not once it has
+  finished. On a multiplexed host it restarts the one gateway every Profile shares. Only a
+  confirmed action sends it.
+- An install takes minutes: it clones, scans, syncs packages and loads the plugin, and a small one
+  took 55 s. A catalog install sends only `catalog_name`, so the host resolves the repo and pin and
+  enforces its removal list; a name it doesn't list is never retried as a repository. Every refusal
+  is a bare 5026, so the sentence `… already exists …` is the only sign that Replace applies.
+- The install's `force` means two things: replace the existing copy, and accept a caution scan on a
+  repo source. A dangerous scan stays blocked, and a catalog install at its pin is trusted. Replace's
+  confirmation says so, because at this pin the findings can't be shown. A forced replacement of an
+  enabled plugin with dependencies can still be refused for lack of a terminal; the host's message
+  shows as is.
+- A catalog entry's Disclosure is the text after `Disclosure:` or `Disclosure —` in its `description`,
+  the marker upstream reads. A required key saved from the install's `missing_env` is written to the
+  Profile's `.env`, but `GET /api/env` doesn't list a key its catalog doesn't know.
+- Discover reads `GET /api/dashboard/plugins/catalog`, about 2.9 MB and 1.8 s through a tunnel, once
+  per screen and only in memory. The screen's Installed badges come from `plugins.manage list` on the
+  selected Profile, because this route's own `installed` field reads only the dashboard's Profile.
+  `removed` in the same reply is the only source of why Nous took a plugin out, so the catalog is also
+  read when a Profile has a user install.
+- Catalog images load directly from GitHub, on a session that refuses Low Data Mode: HTTPS on
+  `github.com`, `githubusercontent.com` or a subdomain, as upstream's Desktop allows. SVGs are skipped
+  and a GIF shows its first frame.
+- `update` re-pins a catalog install or pulls a git one, one plugin at a time. A re-pin that widens
+  the plugin answers `consent_required` with `delta_lines`, and a blocked scan answers `scan_blocked`
+  with its findings; neither changes anything. Only a caution verdict can be overridden. A git update
+  doesn't hit the dependency consent that a forced reinstall does, even when its dependencies change.
+  A catalog copy installed at a `ref` other than the catalog's pin counts as pinned off-catalog, and
+  the host refuses to update it.
+- A settings form's types on the wire are `string`, `number`, `boolean`, `enum`, `json` and `secret`.
+  `settings` refuses secrets: they go to `PUT /api/env` under the field's `env`, then an empty
+  `settings` call tells the host to reconnect the plugin's MCP servers on the new value. Only changed
+  fields are sent.
+- Which toggles ask first comes from `GET /api/memory?profile=` (`active`) and
+  `GET /api/messaging/platforms?profile=` (`enabled` and `configured`). Until those answer, or if
+  they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only
+  a user install can be the active one.
+
 ## Plugin routes need a host restart
 
 The dashboard mounts plugin routers once, when its process starts

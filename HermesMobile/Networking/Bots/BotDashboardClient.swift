@@ -57,7 +57,7 @@ import Foundation
     /// Restarts the agent gateway so a newly installed plugin is loaded. This interrupts
     /// the user's running work, so only a confirmed Enable or plugin update reaches it.
     func restartGateway() async throws {
-        _ = try await send(.restartGateway)
+        _ = try await send(.restartGateway())
     }
 
     /// Asks hermex-push 0.4.0 or newer to restart the dashboard process it runs in (#934). It

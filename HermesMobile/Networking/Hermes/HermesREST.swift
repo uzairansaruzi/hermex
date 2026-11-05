@@ -175,7 +175,14 @@ enum HermesREST: Equatable, Sendable {
     /// Hand Back. An id releases only itself; nil, with `force`, clears any holder.
     case screenRelease(viewerID: String?)
     case setPlugin(name: String, enabled: Bool)
-    case restartGateway
+    case restartGateway(profile: String? = nil)
+    /// One Profile's messaging platforms and their state (`{platforms: [{id, name, enabled,
+    /// configured, state, …}]}`). Rows also carry masked credentials, which are never decoded.
+    case messagingPlatforms(profile: String)
+    /// One Profile's memory state: `active` is its provider, empty for the built-in one.
+    case memoryStatus(profile: String)
+    /// `{entries, removed, generated_at}`, about 2.9 MB for 976 entries at 0.22.5. Not per Profile.
+    case pluginCatalog
     case pushPairing
     /// hermex-push's mounted routes (#1235, plugin 0.5.0): no side effects, never 409.
     case pluginCapabilities
@@ -479,7 +486,10 @@ enum HermesREST: Equatable, Sendable {
             let url = base.appendingPathComponent("api/dashboard/agent-plugins").appendingPathComponent(name)
                 .appendingPathComponent(enabled ? "enable" : "disable")
             return try Self.send("POST", url, [:])
-        case .restartGateway: return try Self.send("POST", base.appendingPathComponent("api/gateway/restart"), [:])
+        case .restartGateway(let profile): return try Self.send("POST", try Self.url(base, "api/gateway/restart", profile: profile), [:])
+        case .messagingPlatforms(let profile): return Self.get(try Self.url(base, "api/messaging/platforms", profile: profile))
+        case .memoryStatus(let profile): return Self.get(try Self.url(base, "api/memory", profile: profile))
+        case .pluginCatalog: return Self.get(base.appendingPathComponent("api/dashboard/plugins/catalog"))
         case .pushPairing: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/pairing"))
         case .pluginCapabilities: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/capabilities"))
         case .companionProviderQuota(let provider, let profile, let refresh):

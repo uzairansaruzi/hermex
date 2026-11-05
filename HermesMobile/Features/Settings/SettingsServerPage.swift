@@ -126,7 +126,7 @@ struct SettingsServerPage: View {
     }
 
     /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
-    /// and the host's update standing (#1075), then its archived sessions and API keys (#1318).
+    /// and the host's update standing (#1075), then its archived sessions, API keys (#1318) and plugins (#1582).
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
         Section {
@@ -173,6 +173,12 @@ struct SettingsServerPage: View {
                     APIKeysView(connection: hermesConnection, server: server)
                 } label: {
                     SettingsLabel(title: String(localized: "API Keys"), systemImage: "key")
+                }
+
+                NavigationLink {
+                    PluginsView(connection: hermesConnection, server: server)
+                } label: {
+                    SettingsLabel(title: String(localized: "Plugins"), systemImage: "puzzlepiece.extension")
                 }
             }
         }

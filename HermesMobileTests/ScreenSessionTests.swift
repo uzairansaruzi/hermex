@@ -477,10 +477,11 @@ import XCTest
     private let plugin = "/api/plugins/hermex-screen"
 
     /// A session on a host with no stock screen, whose plugin routes `rest` answers.
-    private func makeHostSession(rest: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> ScreenSession {
+    private func makeHostSession(removesFromItsProfile: Bool = false, rest: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> ScreenSession {
         host.always("display.status", .init(result: screen(supported: false)))
         let record = BotConnection(id: UUID(), name: "Host", address: server, username: "u", password: "p")
         var options = ScreenSession.Options()
+        options.removesFromItsProfile = removesFromItsProfile
         options.backoff = [.zero]
         options.pluginRecheck = .zero
         options.holds = holds
@@ -692,6 +693,25 @@ import XCTest
         await fulfillment(of: [deleted], timeout: 5)
         XCTAssertEqual(order, ["release", "delete"])
         XCTAssertNil(holds.hold(server: server, profile: "work"))
+        session.leave()
+    }
+
+    /// The Plugins screen names a Profile, and the REST route acts on the dashboard's instead (#1582).
+    func testRemovingFromThePluginsScreenNamesItsProfile() async throws {
+        host.always("plugins.manage", .init(result: .object(["ok": .bool(true), "name": .string(HermexScreenPlugin.name)])))
+        let removed = expectation(description: "the removal reached the host")
+        host.expect(removed, onNext: "plugins.manage")
+        let session = makeHostSession(removesFromItsProfile: true, rest: livePlugin({ _ in nil }))
+        session.open()
+        await socket(0).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.removePlugin()
+        await fulfillment(of: [removed], timeout: 5)
+
+        let params = try XCTUnwrap(host.requests.last { $0["method"].text == "plugins.manage" })["params"]
+        XCTAssertEqual(params["action"].text, "remove")
+        XCTAssertEqual(params["profile"].text, "work")
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.httpMethod == "DELETE" }.count, 0)
         session.leave()
     }
 

@@ -20,10 +20,13 @@ struct ScreenView: View {
     /// Tells the entries the host has no screen at all, so they hide.
     private let onUnavailable: () -> Void
 
-    init(profile: BotProfile, title: String, server: URL, connection: BotConnection, onUnavailable: @escaping () -> Void) {
+    init(profile: String, title: String, server: URL, connection: BotConnection, removesFromItsProfile: Bool = false,
+         onUnavailable: @escaping () -> Void) {
         self.onUnavailable = onUnavailable
+        var options = ScreenSession.Options()
+        options.removesFromItsProfile = removesFromItsProfile
         _session = State(initialValue: ScreenSession(
-            profile: profile.id, title: title, server: server, client: BotClient(saved: connection, server: server)))
+            profile: profile, title: title, server: server, client: BotClient(saved: connection, server: server), options: options))
         _usesTrackpad = AppStorage(wrappedValue: false, BotScreenSettings.trackpadKey(for: server))
     }
 
