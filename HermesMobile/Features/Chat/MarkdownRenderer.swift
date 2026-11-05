@@ -247,7 +247,7 @@ private struct ChatCodeBlock: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @State private var highlightedCode: NSAttributedString?
@@ -486,6 +486,7 @@ private struct PlainCodeBlockText: View {
     var wraps = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     private var lines: [MarkdownPlainCodeLine] {
         MarkdownPlainCodeFormatter.lines(in: content)
@@ -510,7 +511,7 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
         .foregroundStyle(.primary)
     }
 
@@ -528,6 +529,7 @@ private struct HighlightedCodeBlockText: View {
     var wraps = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     private var lines: [MarkdownAttributedCodeLine] {
         MarkdownAttributedCodeFormatter.lines(in: content)
@@ -553,7 +555,7 @@ private struct HighlightedCodeBlockText: View {
             }
         }
         // The highlighter strips its absolute fonts, so this sets every token's face and size.
-        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
     }
 
     private func combinedText(for line: MarkdownAttributedCodeLine) -> Text {
@@ -1210,8 +1212,11 @@ struct ChatTypography: Equatable {
         codeSize = scaled(13)
     }
 
-    /// The monospaced font for code block bodies (plain, highlighted, and diff).
-    var codeFont: SwiftUI.Font { .system(size: codeSize, weight: .regular, design: .monospaced) }
+    /// The monospaced font for code block bodies (plain, highlighted, and diff). `customSize`
+    /// is `CodeDisplaySettings.customSizeKey`'s value, which replaces the scaled size when set.
+    func codeFont(customSize: Double?) -> SwiftUI.Font {
+        .system(size: customSize.map { CGFloat($0) } ?? codeSize, weight: .regular, design: .monospaced)
+    }
 }
 
 enum ChatMarkdownInlineStyle {

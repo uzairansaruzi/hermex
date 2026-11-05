@@ -84,6 +84,13 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
             rebuildLayout(rows: layout.rows, collapsedFileIDs: layout.collapsedFileIDs)
         }
     }
+    /// Replaces the scaled code size when set (`CodeDisplaySettings.customSizeKey`).
+    var customCodeSize: CGFloat? {
+        didSet {
+            guard customCodeSize != oldValue else { return }
+            restyle()
+        }
+    }
     /// Syntax colour runs by row id, filled in for visible rows as the highlighter
     /// answers; rows without an entry draw in the plain text colour.
     var tokensByRowID: [String: [SourceHighlightRun]] = [:] {
@@ -158,8 +165,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
 
         // Dynamic Type resizes every row; appearance changes only need a repaint.
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: Self, _) in
-            view.style = ReviewDiffStyle.resolve(for: view.traitCollection, presentation: view.presentation)
-            view.rebuildLayout(rows: view.layout.rows, collapsedFileIDs: view.layout.collapsedFileIDs)
+            view.restyle()
         }
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self]) { (view: Self, _) in
             view.setNeedsDisplay()
@@ -169,6 +175,11 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    private func restyle() {
+        style = ReviewDiffStyle.resolve(for: traitCollection, presentation: presentation, customCodeSize: customCodeSize)
+        rebuildLayout(rows: layout.rows, collapsedFileIDs: layout.collapsedFileIDs)
     }
 
     deinit {

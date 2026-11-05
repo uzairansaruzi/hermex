@@ -53,6 +53,16 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
             restore(anchor)
         }
     }
+    /// Resizing changes row heights above the viewport too, so the same row stays put.
+    var customCodeSize: CGFloat? {
+        get { canvas.customCodeSize }
+        set {
+            guard newValue != canvas.customCodeSize else { return }
+            let anchor = currentRowAnchor()
+            canvas.customCodeSize = newValue
+            restore(anchor)
+        }
+    }
     /// Current scroll position; tests read it.
     var verticalOffset: CGFloat { scrollView.contentOffset.y }
 

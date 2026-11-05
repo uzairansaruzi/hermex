@@ -353,7 +353,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var currentStyle: ChipRenderStyle {
         ChipRenderStyle(
-            fontPointSize: (font ?? .preferredFont(forTextStyle: .body)).pointSize,
+            fontPointSize: (font ?? fallbackFont).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
             accessibilityContrast: traitCollection.accessibilityContrast,
             displayScale: traitCollection.displayScale,
@@ -362,13 +362,17 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         )
     }
 
+    private var fallbackFont: UIFont {
+        .preferredFont(forTextStyle: .body, compatibleWith: traitCollection)
+    }
+
     private var isRightToLeft: Bool {
         UIView.userInterfaceLayoutDirection(for: semanticContentAttribute) == .rightToLeft
     }
 
     private var baseAttributes: [NSAttributedString.Key: Any] {
         [
-            .font: font ?? .preferredFont(forTextStyle: .body),
+            .font: font ?? fallbackFont,
             .foregroundColor: textColor ?? .label
         ]
     }
@@ -379,7 +383,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         quotes: [ComposerQuote],
         sourceSelection: NSRange
     ) {
-        let font = self.font ?? .preferredFont(forTextStyle: .body)
+        let font = self.font ?? fallbackFont
         let textColor = self.textColor ?? .label
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
         let metrics = ComposerChipMetrics(editorFont: font)
@@ -471,7 +475,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             traits: traitCollection,
             isRightToLeft: isRightToLeft
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerChipAttachment(
             token: token,
             image: image,
@@ -497,7 +501,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             maximumWidth: currentStyle.quoteMaximumWidth,
             usesAccentIcon: true
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerQuoteAttachment(
             quote: quote,
             image: image,
