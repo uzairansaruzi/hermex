@@ -140,7 +140,10 @@ class StubHandler(BaseHTTPRequestHandler):
 def make_home(stub_port):
     """A fresh temporary HERMES_HOME wired to the stub. config.yaml is written as
     JSON, which is valid YAML, so no YAML library is needed."""
-    home = Path(tempfile.mkdtemp(prefix="hermex-local-hermes-"))
+    # Resolved, because macOS's temp path runs through a /var symlink, and at this pin the host
+    # compares a resolved plugin folder with the unresolved plugins folder: a mismatch reads a
+    # catalog install as a plain one, and its update is then refused as pinned.
+    home = Path(tempfile.mkdtemp(prefix="hermex-local-hermes-")).resolve()
     (home / "workspace").mkdir()
     config = {
         "model": {"provider": "custom", "base_url": "http://127.0.0.1:%d/v1" % stub_port, "default": MODEL,
@@ -166,6 +169,11 @@ def server_env(home, base):
     env.update({
         "no_proxy": no_proxy,
         "NO_PROXY": no_proxy,
+        # A plugin toggle or install syncs packages with uv on the server's side, which needs the
+        # same trust as the install below to work behind a TLS-inspecting proxy. The older name is
+        # the one the host's uv still reads.
+        "UV_SYSTEM_CERTS": "true",
+        "UV_NATIVE_TLS": "true",
         "HERMES_HOME": str(home),
         "HERMES_GATEWAY_LOCK_DIR": str(home / "locks"),
         "HERMES_DASHBOARD_BASIC_AUTH_USERNAME": USERNAME,
@@ -204,9 +212,9 @@ def pinned_release():
     return (REPO / "HERMES_AGENT_TESTED_SHA").read_text().splitlines()[1].strip()
 
 
-def run(command):
+def run(command, env=None):
     print("+ " + " ".join(command), flush=True)
-    subprocess.run(command, check=True, stdin=subprocess.DEVNULL)
+    subprocess.run(command, check=True, stdin=subprocess.DEVNULL, env=env)
 
 
 def ensure_install(sha):
@@ -247,10 +255,13 @@ def install(root, sha):
         except BaseException:
             shutil.rmtree(partial, ignore_errors=True)
             raise
-    # hermes-agent needs Python >=3.11,<3.14; uv fetches 3.13 if it is missing.
-    # --system-certs trusts the macOS store, as git does, so a TLS-inspecting proxy works.
-    run(["uv", "venv", "--quiet", "--system-certs", "--clear", "--python", "3.13", str(venv)])
-    run(["uv", "pip", "install", "--quiet", "--system-certs", "--python", str(venv / "bin" / "python"), "-e", str(source)])
+    # hermes-agent's core dependencies are declared only for Python 3.14 since 0.22, so uv fetches it
+    # if it is missing. Only `uv sync` applies the project's lockfile and overrides; a plain
+    # `uv pip install` can't resolve them. --system-certs trusts the macOS store, as git does, so a
+    # TLS-inspecting proxy works.
+    run(["uv", "venv", "--quiet", "--system-certs", "--clear", "--python", "3.14", str(venv)])
+    run(["uv", "sync", "--quiet", "--system-certs", "--frozen", "--python", "3.14", "--project", str(source)],
+        env={**os.environ, "UV_PROJECT_ENVIRONMENT": str(venv)})
 
 
 def require_free(port):

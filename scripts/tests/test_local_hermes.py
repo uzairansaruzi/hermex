@@ -83,6 +83,10 @@ class HomeTests(unittest.TestCase):
         self.assertIs(config["model"]["streaming"], False)
         self.assertEqual(config["approvals"]["mode"], "manual")
 
+    def test_a_home_is_a_resolved_path_so_the_host_can_match_its_plugins_folder(self):
+        home = self.make_home()
+        self.assertEqual(home, home.resolve())
+
     def test_every_home_carries_the_same_install_id(self):
         first, second = self.make_home(), self.make_home()
         self.assertNotEqual(first, second)
@@ -179,7 +183,7 @@ class InstallTests(unittest.TestCase):
                 patch.object(local.shutil, "which", return_value="/usr/bin/tool"):
             self.assertEqual(local.ensure_install(self.SHA), root / ".venv" / "bin" / "hermes")
             self.assertEqual([made.args[0][:3] for made in run.call_args_list],
-                             [["uv", "venv", "--quiet"], ["uv", "pip", "install"]])
+                             [["uv", "venv", "--quiet"], ["uv", "sync", "--quiet"]])
             run.reset_mock()
             local.ensure_install(self.SHA)
             self.assertEqual(run.call_args_list, [])
