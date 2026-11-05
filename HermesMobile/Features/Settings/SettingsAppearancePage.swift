@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Color scheme, text size, code display, the primary-button tint and the app icon (#1583). They
 /// apply on this iPhone to every server; the header color is per server, on the server's page.
-/// A real chat stays pinned on top, so each change shows without leaving the page.
+/// The Text and Code sections each open with a sample, so a change shows beside its control.
 struct SettingsAppearancePage: View {
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @AppStorage(AppTextSize.storageKey) private var textSizeStop = 0
@@ -12,55 +12,58 @@ struct SettingsAppearancePage: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(spacing: 0) {
-            AppearancePreview()
-            Divider()
-            List {
-                Section("Color Scheme") {
-                    Picker("Color Scheme", selection: $appThemeRawValue) {
-                        ForEach(AppTheme.allCases) { theme in
-                            Text(theme.title).tag(theme.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-
-                Section("Text") {
-                    textSizeRow
-                }
-
-                Section("Code") {
-                    Toggle(isOn: usesCustomCodeSize) {
-                        SettingsLabel(title: String(localized: "Custom Code Size"), systemImage: "chevron.left.forwardslash.chevron.right")
-                    }
-
-                    if let customCodeSize {
-                        customCodeSizeRow(customCodeSize)
-                    }
-
-                    Toggle(isOn: $wrapsCodeLines) {
-                        SettingsLabel(
-                            title: String(localized: "Wrap Lines"),
-                            systemImage: "arrow.turn.down.left",
-                            note: String(localized: "Or tap wrap in any code block.")
-                        )
+        List {
+            Section("Color Scheme") {
+                Picker("Color Scheme", selection: $appThemeRawValue) {
+                    ForEach(AppTheme.allCases) { theme in
+                        Text(theme.title).tag(theme.rawValue)
                     }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
 
-                Section("More") {
-                    Toggle(isOn: $tintsPrimaryActions) {
-                        SettingsLabel(title: String(localized: "Tint New Chat & Send"), systemImage: "paintbrush.pointed")
-                    }
-
-                    NavigationLink {
-                        ThinkingSliderPickerView()
-                    } label: {
-                        SettingsLabel(title: String(localized: "Thinking Slider"), systemImage: "slider.horizontal.below.rectangle")
-                    }
-
-                    AppIconSettingsSection()
+            Section("Text") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("The quick brown fox jumps over the lazy dog.")
+                    Text("Messages, labels, and headings scale with this size.")
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.secondary)
                 }
+                .listRowSeparator(.hidden)
+
+                textSizeRow
+            }
+
+            Section("Code") {
+                AppearanceCodePreview()
+                    .listRowSeparator(.hidden)
+
+                Toggle(isOn: usesCustomCodeSize) {
+                    SettingsLabel(title: String(localized: "Custom Code Size"), systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+
+                if let customCodeSize {
+                    customCodeSizeRow(customCodeSize)
+                }
+
+                Toggle(isOn: $wrapsCodeLines) {
+                    SettingsLabel(title: String(localized: "Wrap Lines"), systemImage: "arrow.turn.down.left")
+                }
+            }
+
+            Section("More") {
+                Toggle(isOn: $tintsPrimaryActions) {
+                    SettingsLabel(title: String(localized: "Tint New Chat & Send"), systemImage: "paintbrush.pointed")
+                }
+
+                NavigationLink {
+                    ThinkingSliderPickerView()
+                } label: {
+                    SettingsLabel(title: String(localized: "Thinking Slider"), systemImage: "slider.horizontal.below.rectangle")
+                }
+
+                AppIconSettingsSection()
             }
         }
         .settingsPage(String(localized: "Appearance"))
@@ -79,7 +82,14 @@ struct SettingsAppearancePage: View {
                 value: Binding(get: { Double(textSizeStop) }, set: { textSizeStop = Int($0.rounded()) }),
                 in: 0...Double(AppTextSize.stops.count - 1),
                 step: 1
-            )
+            ) {
+                EmptyView()
+            } minimumValueLabel: {
+                Text(verbatim: "A").font(.system(size: 13))
+            } maximumValueLabel: {
+                Text(verbatim: "A").font(.system(size: 22))
+            }
+            .foregroundStyle(.secondary)
             .accessibilityLabel("Text Size")
             .accessibilityValue(textSizeValue)
         }
@@ -121,95 +131,65 @@ struct SettingsAppearancePage: View {
     }
 }
 
-/// A short chat drawn by the transcript's own views, so it shows settings exactly as a chat will.
-/// It scrolls but does nothing else. At accessibility text sizes the controls need the room, so
-/// it takes less of the screen and drops the composer.
-private struct AppearancePreview: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    private let question = ChatMessage(
-        role: "user",
-        content: String(localized: "Fix the login retry bug"),
-        timestamp: nil,
-        messageId: "appearance-preview-question"
-    )
-    private let reply = ChatMessage(
-        role: "assistant",
-        content: String(localized: "**Found the cause.** The retry loop never resets. See `AuthManager.swift`.") + """
-
-
-        ```swift
-        func retry(_ attempt: Int) async throws {
-            guard attempt < limit else { throw RetryError.exhausted(after: attempt) }
-        }
-        ```
-        """,
-        timestamp: nil,
-        messageId: "appearance-preview-reply"
-    )
-    private let toolCall = ToolCall(
-        id: "appearance-preview-tool",
-        name: "terminal",
-        preview: "12 passed, 0 failed",
-        args: nil,
-        isCompleted: true
-    )
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 12) {
-                MessageBubbleView(message: question, transcriptMediaCacheNamespace: "appearance-preview")
-                MessageBubbleView(message: reply, transcriptMediaCacheNamespace: "appearance-preview")
-                ToolCallDetailBodyView(toolCall: toolCall, status: .success)
-            }
-            .padding(16)
-            .allowsHitTesting(false)
-        }
-        .scrollIndicators(.hidden)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !dynamicTypeSize.isAccessibilitySize {
-                AppearancePreviewComposer()
-            }
-        }
-        .containerRelativeFrame(.vertical) { height, _ in
-            height * (dynamicTypeSize.isAccessibilitySize ? 0.26 : 0.42)
-        }
-        .background(Color(.systemBackground))
-        // Sample text with nothing to act on; the controls below say what they changed.
-        .accessibilityHidden(true)
+/// A few lines of code in the chat's own highlighter and font, following both Code settings.
+private struct AppearanceCodePreview: View {
+    private static let code = """
+    func retry(_ attempt: Int) async throws {
+        guard attempt < limit else { throw RetryError.exhausted(after: attempt) }
     }
-}
+    """
 
-/// The composer at rest: its surface, placeholder and Send button colors, without its controls.
-private struct AppearancePreviewComposer: View {
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
-    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
+    @State private var highlight: (request: MarkdownCodeHighlightRequest, text: NSAttributedString)?
+
+    private var request: MarkdownCodeHighlightRequest {
+        MarkdownCodeHighlightRequest(code: Self.code, language: "swift", colorScheme: colorScheme, isStreaming: false)
+    }
 
     var body: some View {
-        let send = ChatComposerActionAppearance(
-            isStop: false,
-            isDisabled: false,
-            colorScheme: colorScheme,
-            tintsPrimaryActions: tintsPrimaryActions,
-            themeHex: headerLogoColorHex
-        )
-        HStack {
-            Text("Ask anything...")
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Image(systemName: "arrow.up")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(send.foreground)
-                .frame(width: 32, height: 32)
-                .background(send.background, in: Circle())
+        Group {
+            if wrapsLines {
+                lines
+            } else {
+                ScrollView(.horizontal) {
+                    lines.fixedSize(horizontal: true, vertical: false)
+                }
+                .scrollIndicators(.hidden)
+            }
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 6)
-        .padding(.vertical, 6)
-        .modifier(ChatComposerSurfaceStyle(isExpanded: false))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
+        .forcedLeftToRight()
+        .accessibilityHidden(true)
+        .task(id: request) {
+            let request = request
+            if case .highlighted(let text) = await MarkdownCodeHighlighter.shared.highlightedCode(for: request),
+               !Task.isCancelled {
+                highlight = (request, text)
+            }
+        }
+    }
+
+    private var lines: some View {
+        // Plain until this color scheme's highlight is ready, never the other scheme's colors.
+        let current = highlight?.request == request ? highlight?.text : nil
+        let content = MarkdownCodeHighlighter.shared.cachedHighlight(for: request)
+            ?? current
+            ?? NSAttributedString(string: Self.code)
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(MarkdownAttributedCodeFormatter.lines(in: content)) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(verbatim: "\(line.id + 1)")
+                        .foregroundStyle(.secondary)
+                    line.segments.reduce(Text(verbatim: "")) { partial, segment in
+                        partial + Text(AttributedString(segment.attributedText))
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
     }
 }

@@ -83309,112 +83309,6 @@
         }
       }
     },
-    "Or tap wrap in any code block." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "أو اضغط على زر الالتفاف في أي كتلة كود."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Oder tippe in einem Codeblock auf „Umbrechen“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O toca ajustar en cualquier bloque de código."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ou touchez Renvoi dans n’importe quel bloc de code."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "או הקש על גלישה בכל בלוק קוד."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Oppure tocca a capo in qualsiasi blocco di codice."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "または、コードブロックの折り返しをタップします。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "또는 코드 블록에서 줄 바꿈을 탭하세요."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Of tik op omloop in een codeblok."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Albo stuknij zawijanie w dowolnym bloku kodu."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ou toque em quebrar em qualquer bloco de código."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Или нажмите перенос в любом блоке кода."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ya da herhangi bir kod bloğunda kaydırmaya dokunun."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "یا کسی بھی کوڈ بلاک میں ریپ پر ٹیپ کریں۔"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "或在任何程式碼區塊中點一下換行。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "或在任何代码块中轻点换行。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "或在任何程式碼區塊中點一下換行。"
-          }
-        }
-      }
-    },
     "Other" : {
       "localizations" : {
         "ar" : {
@@ -172137,112 +172031,6 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "工作樹" } }
       }
     },
-    "Wrap Code Block Lines" : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "التفاف أسطر كتلة التعليمات البرمجية"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Zeilen in Codeblöcken umbrechen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ajustar líneas de bloque de código"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Retour à la ligne dans les blocs de code"
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "גלוש שורות בבלוק קוד"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "A capo automatico nelle righe di codice"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "コードブロックの行を折り返す"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "코드 블록 줄 바꿈"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Regels in codeblok afbreken"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Zawijaj wiersze bloku kodu"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Quebrar linhas de blocos de código"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Переносить строки в блоках кода"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Kod Bloğu Satırlarını Kaydır"
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "کوڈ بلاک کی سطریں لپیٹیں"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "代碼區塊換行"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "代码块换行"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "程式碼區塊換行"
-          }
-        }
-      }
-    },
     "%lld pt" : {
       "localizations" : {
         "de" : {
@@ -172345,112 +172133,6 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "%lld 點"
-          }
-        }
-      }
-    },
-    "**Found the cause.** The retry loop never resets. See `AuthManager.swift`." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Ursache gefunden.** Die Wiederholungsschleife wird nie zurückgesetzt. Siehe `AuthManager.swift`."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Encontré la causa.** El bucle de reintentos nunca se reinicia. Consulta `AuthManager.swift`."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Cause trouvée.** La boucle de nouvelles tentatives ne se réinitialise jamais. Voir `AuthManager.swift`."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Trovata la causa.** Il ciclo dei tentativi non si azzera mai. Vedi `AuthManager.swift`."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Znalazłem przyczynę.** Pętla ponawiania nigdy się nie resetuje. Zobacz `AuthManager.swift`."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Encontrei a causa.** O loop de novas tentativas nunca é reiniciado. Veja `AuthManager.swift`."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Oorzaak gevonden.** De herhaallus wordt nooit gereset. Zie `AuthManager.swift`."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Nedeni buldum.** Yeniden deneme döngüsü hiç sıfırlanmıyor. Bkz. `AuthManager.swift`."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**Причина найдена.** Цикл повторов никогда не сбрасывается. См. `AuthManager.swift`."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**原因が分かりました。** 再試行ループがリセットされていません。`AuthManager.swift` を参照してください。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**找到原因了。** 重试循环从未重置。请查看 `AuthManager.swift`。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**원인을 찾았어요.** 재시도 루프가 초기화되지 않습니다. `AuthManager.swift`를 확인하세요."
-          }
-        },
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**وجدت السبب.** لا تُعاد تهيئة حلقة إعادة المحاولة أبدًا. راجع `AuthManager.swift`."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**מצאתי את הסיבה.** לולאת הניסיונות החוזרים אף פעם לא מתאפסת. ראה `AuthManager.swift`."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**وجہ مل گئی۔** دوبارہ کوشش کا لوپ کبھی ری سیٹ نہیں ہوتا۔ `AuthManager.swift` دیکھیں۔"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**找到原因了。** 重試迴圈從未重設。請查看 `AuthManager.swift`。"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "**找到原因了。** 重試迴圈從未重設。請查看 `AuthManager.swift`。"
           }
         }
       }
@@ -172667,112 +172349,6 @@
         }
       }
     },
-    "Fix the login retry bug" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Behebe den Fehler bei der Anmeldewiederholung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Corrige el error de reintento de inicio de sesión"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Corrige le bug de nouvelle tentative de connexion"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Correggi il bug dei tentativi di accesso"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Napraw błąd ponawiania logowania"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Corrija o bug de nova tentativa de login"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Los de bug in de inlogherhaling op"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Giriş yeniden deneme hatasını düzelt"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Исправь ошибку повторного входа"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "ログイン再試行のバグを直して"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "修复登录重试的 bug"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "로그인 재시도 버그 고쳐 줘"
-          }
-        },
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "أصلح خطأ إعادة محاولة تسجيل الدخول"
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "תקן את באג הניסיון החוזר בכניסה"
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "لاگ ان دوبارہ کوشش والا بگ ٹھیک کرو"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "修復登入重試的錯誤"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "修復登入重試的錯誤"
-          }
-        }
-      }
-    },
     "Text" : {
       "localizations" : {
         "de" : {
@@ -172981,6 +172557,218 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "文字大小"
+          }
+        }
+      }
+    },
+    "Messages, labels, and headings scale with this size." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nachrichten, Beschriftungen und Überschriften passen sich dieser Größe an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Los mensajes, las etiquetas y los títulos se ajustan a este tamaño."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les messages, libellés et titres s’adaptent à cette taille."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Messaggi, etichette e titoli si adattano a queste dimensioni."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wiadomości, etykiety i nagłówki dopasowują się do tego rozmiaru."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mensagens, rótulos e títulos acompanham este tamanho."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Berichten, labels en koppen schalen mee met dit formaat."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mesajlar, etiketler ve başlıklar bu boyuta göre ölçeklenir."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Сообщения, подписи и заголовки подстраиваются под этот размер."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "メッセージ、ラベル、見出しがこのサイズに合わせて変わります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "消息、标签和标题会随此大小缩放。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "메시지, 레이블, 제목이 이 크기에 맞춰 조절됩니다."
+          }
+        },
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تتغير الرسائل والتسميات والعناوين وفق هذا الحجم."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הודעות, תוויות וכותרות משתנות בהתאם לגודל זה."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پیغامات، لیبل اور سرخیاں اس سائز کے مطابق بدلتی ہیں۔"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "訊息、標籤和標題會隨此大小縮放。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "訊息、標籤和標題會隨此大小縮放。"
+          }
+        }
+      }
+    },
+    "The quick brown fox jumps over the lazy dog." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Franz jagt im komplett verwahrlosten Taxi quer durch Bayern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El veloz murciélago hindú comía feliz cardillo y kiwi."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Portez ce vieux whisky au juge blond qui fume."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ma la volpe col suo balzo ha raggiunto il quieto Fido."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pchnąć w tę łódź jeża lub ośm skrzyń fig."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Um pequeno jabuti xereta viu dez cegonhas felizes."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pa’s wijze lynx bezag vroom het fikse aquaduct."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pijamalı hasta yağız şoföre çabucak güvendi."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Съешь же ещё этих мягких французских булок, да выпей чаю."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "すばやい茶色のキツネがのろまな犬を飛び越える。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "敏捷的棕色狐狸跳过了懒狗。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "빠른 갈색 여우가 게으른 개를 뛰어넘습니다."
+          }
+        },
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "قفز الثعلب البني السريع فوق الكلب الكسول."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "השועל החום המהיר קופץ מעל הכלב העצלן."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تیز بھورا لومڑ سست کتے کے اوپر سے چھلانگ لگاتا ہے۔"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "敏捷的棕色狐狸跳過了懶狗。"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "敏捷的棕色狐狸跳過了懶狗。"
           }
         }
       }
