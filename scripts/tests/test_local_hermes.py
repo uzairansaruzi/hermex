@@ -83,9 +83,13 @@ class HomeTests(unittest.TestCase):
         self.assertIs(config["model"]["streaming"], False)
         self.assertEqual(config["approvals"]["mode"], "manual")
 
-    def test_a_home_is_a_resolved_path_so_the_host_can_match_its_plugins_folder(self):
-        home = self.make_home()
-        self.assertEqual(home, home.resolve())
+    def test_a_home_behind_a_symlink_is_resolved_so_the_host_can_match_its_plugins_folder(self):
+        real = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, real)
+        (real / "home").mkdir()
+        (real / "link").symlink_to(real, target_is_directory=True)
+        with patch.object(local.tempfile, "mkdtemp", return_value=str(real / "link" / "home")):
+            self.assertEqual(local.make_home(stub_port=5123), real / "home")
 
     def test_every_home_carries_the_same_install_id(self):
         first, second = self.make_home(), self.make_home()
