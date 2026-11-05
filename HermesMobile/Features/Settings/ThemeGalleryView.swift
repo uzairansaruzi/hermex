@@ -70,6 +70,7 @@ struct ThemeGalleryView: View {
         .navigationTitle(Text(verbatim: "Theme Gallery"))
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: lightTheme) { AppAppearanceSettings.applyStoredToConnectedScenes() }
+        .onChange(of: darkTheme) { AppAppearanceSettings.applyStoredToConnectedScenes() }
     }
 }
 #endif
