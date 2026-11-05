@@ -346,6 +346,7 @@
 		1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */; };
 		125200000000000000000002 /* SettingsRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000001 /* SettingsRows.swift */; };
 		125200000000000000000004 /* SettingsAppPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000003 /* SettingsAppPages.swift */; };
+		158300000000000000000001 /* SettingsAppearancePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158300000000000000000002 /* SettingsAppearancePage.swift */; };
 		139600000000000000000001 /* SupportReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139600000000000000000002 /* SupportReport.swift */; };
 		139700000000000000000001 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000002 /* DiagnosticsLog.swift */; };
 		139700000000000000000003 /* SettingsDiagnosticsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000004 /* SettingsDiagnosticsPage.swift */; };
@@ -1073,6 +1074,7 @@
 		1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		125200000000000000000001 /* SettingsRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRows.swift; sourceTree = "<group>"; };
 		125200000000000000000003 /* SettingsAppPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAppPages.swift; sourceTree = "<group>"; };
+		158300000000000000000002 /* SettingsAppearancePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAppearancePage.swift; sourceTree = "<group>"; };
 		139600000000000000000002 /* SupportReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportReport.swift; sourceTree = "<group>"; };
 		139700000000000000000002 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
 		139700000000000000000004 /* SettingsDiagnosticsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDiagnosticsPage.swift; sourceTree = "<group>"; };
@@ -2253,6 +2255,7 @@
 				1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */,
 				125200000000000000000001 /* SettingsRows.swift */,
 				125200000000000000000003 /* SettingsAppPages.swift */,
+				158300000000000000000002 /* SettingsAppearancePage.swift */,
 				C15500000000000000000008 /* ThinkingSliderPickerView.swift */,
 				125200000000000000000005 /* SettingsAboutPage.swift */,
 				139600000000000000000002 /* SupportReport.swift */,
@@ -2868,6 +2871,7 @@
 				1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */,
 				125200000000000000000002 /* SettingsRows.swift in Sources */,
 				125200000000000000000004 /* SettingsAppPages.swift in Sources */,
+				158300000000000000000001 /* SettingsAppearancePage.swift in Sources */,
 				125200000000000000000006 /* SettingsAboutPage.swift in Sources */,
 				139600000000000000000001 /* SupportReport.swift in Sources */,
 				139700000000000000000001 /* DiagnosticsLog.swift in Sources */,

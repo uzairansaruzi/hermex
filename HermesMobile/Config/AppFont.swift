@@ -37,6 +37,11 @@ enum AppFont {
         system(style, design: .monospaced, weight: weight)
     }
 
+    /// Monospaced tool output: `customSize` points when set (`CodeDisplaySettings`), else `style`.
+    static func code(style: Font.TextStyle, customSize: Double?) -> Font {
+        customSize.map { .system(size: $0, design: .monospaced) } ?? mono(style: style)
+    }
+
     private static func system(
         _ style: Font.TextStyle,
         design: Font.Design = .default,

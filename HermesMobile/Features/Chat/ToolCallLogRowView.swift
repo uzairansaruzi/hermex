@@ -69,7 +69,8 @@ struct ToolCallLogRowView: View {
 struct ToolCallDetailBodyView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
-    @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
     /// Whether a long diff shows every line instead of the first `collapsedLineLimit`.
     @State private var showsAllDiffLines = false
 
@@ -228,13 +229,35 @@ struct ToolCallDetailBodyView: View {
                 .font(AppFont.caption2(weight: .semibold))
                 .foregroundStyle(.secondary)
 
-            Text(result.text)
-                .font(result.isMonospaced ? AppFont.mono(style: .caption) : AppFont.caption())
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(7)
-                .chatTimelineAccessoryInsetSurface()
+            Group {
+                if result.isMonospaced, !wrapsCodeBlockLines {
+                    unwrappedResultText(result.text)
+                } else {
+                    Text(result.text)
+                        .padding(7)
+                }
+            }
+            .font(result.isMonospaced ? AppFont.code(style: .caption, customSize: customCodeSize) : AppFont.caption())
+            .foregroundStyle(.primary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .chatTimelineAccessoryInsetSurface()
+        }
+    }
+
+    /// Output that scrolls sideways, split like a code block's lines because one `Text` can't
+    /// draw an arbitrarily wide line.
+    private func unwrappedResultText(_ text: String) -> some View {
+        ScrollView(.horizontal) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(MarkdownPlainCodeFormatter.lines(in: text)) { line in
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        ForEach(line.segments) { Text(verbatim: $0.text) }
+                    }
+                }
+            }
+            .fixedSize(horizontal: true, vertical: true)
+            .padding(7)
         }
     }
 
@@ -265,7 +288,7 @@ struct ToolCallDetailBodyView: View {
 
     private func argumentValue(_ value: String) -> some View {
         Text(value)
-            .font(AppFont.mono(style: .caption))
+            .font(AppFont.code(style: .caption, customSize: customCodeSize))
             .foregroundStyle(.primary)
             .textSelection(.enabled)
     }

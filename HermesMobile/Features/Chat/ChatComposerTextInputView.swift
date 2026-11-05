@@ -257,7 +257,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.textDropDelegate = context.coordinator
         textView.wantsDeferredFocus = { [weak coordinator = context.coordinator] in coordinator?.isFocused == true }
         textView.backgroundColor = .clear
-        textView.font = .preferredFont(forTextStyle: .body)
+        textView.font = .preferredFont(forTextStyle: .body, at: context.environment.dynamicTypeSize)
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
         textView.textContainerInset = .zero

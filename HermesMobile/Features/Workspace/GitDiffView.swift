@@ -38,7 +38,7 @@ struct GitDiffView: View {
     @State private var scrollTarget: ReviewDiffScrollTarget?
     @State private var isShowingFileJump = false
     @State private var highlights = ReviewDiffHighlightModel()
-    @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme

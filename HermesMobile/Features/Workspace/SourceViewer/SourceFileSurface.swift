@@ -5,8 +5,6 @@ import UIKit
 /// for the rows on screen, tap-to-select with Copy (and Comment… when the host has a
 /// chat draft), and an initial line placed 30 % down the viewport and highlighted.
 struct SourceFileSurface: View {
-    static let wrapsLinesKey = "workspace.sourceViewer.wrapsLines"
-
     let content: String
     let targetLine: Int?
     let isRefreshing: Bool
@@ -21,7 +19,7 @@ struct SourceFileSurface: View {
     private let serverLanguage: String?
     @State private var viewModel: SourceFileViewModel
     @State private var scrollTarget: ReviewDiffScrollTarget?
-    @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.colorScheme) private var colorScheme
 

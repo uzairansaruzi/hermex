@@ -925,7 +925,7 @@ struct KanbanStatusFocusView: View {
 
         func updateUIView(_ scrollView: UIScrollView, context: Context) {
             context.coordinator.parent = self
-            context.coordinator.update(height: height)
+            context.coordinator.update(height: height, dynamicTypeSize: context.environment.dynamicTypeSize)
         }
 
         @MainActor
@@ -982,7 +982,7 @@ struct KanbanStatusFocusView: View {
                 ])
             }
 
-            func update(height: CGFloat) {
+            func update(height: CGFloat, dynamicTypeSize: DynamicTypeSize) {
                 let statuses = parent.model.availableStatuses
                 if statuses != orderedStatuses {
                     rebuild(statuses)
@@ -996,7 +996,8 @@ struct KanbanStatusFocusView: View {
                         count: parent.model.statusCount(status),
                         color: UIColor(presentation.color),
                         isSelected: parent.model.selectedStatus == status,
-                        height: controlHeight
+                        height: controlHeight,
+                        dynamicTypeSize: dynamicTypeSize
                     )
                 }
             }
@@ -1095,16 +1096,17 @@ struct KanbanStatusFocusView: View {
                 count: Int,
                 color: UIColor,
                 isSelected: Bool,
-                height: CGFloat
+                height: CGFloat,
+                dynamicTypeSize: DynamicTypeSize
             ) {
                 titleLabel.text = title
-                let preferredTitleFont = UIFont.preferredFont(forTextStyle: .subheadline)
+                let preferredTitleFont = UIFont.preferredFont(forTextStyle: .subheadline, at: dynamicTypeSize)
                 titleLabel.font = .systemFont(
                     ofSize: preferredTitleFont.pointSize,
                     weight: isSelected ? .semibold : .regular
                 )
                 countLabel.font = .monospacedDigitSystemFont(
-                    ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize,
+                    ofSize: UIFont.preferredFont(forTextStyle: .caption1, at: dynamicTypeSize).pointSize,
                     weight: .regular
                 )
                 countLabel.text = "\(count)"

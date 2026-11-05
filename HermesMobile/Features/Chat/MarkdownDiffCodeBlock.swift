@@ -224,6 +224,7 @@ struct DiffCodeBlockText: View {
     var minRowWidth: CGFloat = 0
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     private static let theme = ReviewDiffTheme()
 
@@ -240,7 +241,7 @@ struct DiffCodeBlockText: View {
                     .accessibilityLabel(Self.accessibilityLabel(for: line))
             }
         }
-        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
     }
 
     @ViewBuilder

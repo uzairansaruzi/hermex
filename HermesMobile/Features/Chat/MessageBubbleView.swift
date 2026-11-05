@@ -640,10 +640,7 @@ struct MessageBubbleView: View {
 
     /// The body font at this view's text size, for measuring the fold.
     private var userBubbleBodyFont: UIFont {
-        UIFont.preferredFont(
-            forTextStyle: .body,
-            compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        )
+        .preferredFont(forTextStyle: .body, at: dynamicTypeSize)
     }
 
     /// Opaque even when queued, which mixes it toward the transcript's background, so the

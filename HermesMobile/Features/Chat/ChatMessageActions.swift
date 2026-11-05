@@ -178,7 +178,7 @@ struct SelectableTextView: UIViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.backgroundColor = .systemBackground
-        textView.font = .preferredFont(forTextStyle: .body)
+        textView.font = .preferredFont(forTextStyle: .body, at: context.environment.dynamicTypeSize)
         textView.adjustsFontForContentSizeCategory = true
         // A wrapped UITextView does not inherit SwiftUI's layoutDirection; `.natural`
         // lets each paragraph align by its own writing direction so RTL message text

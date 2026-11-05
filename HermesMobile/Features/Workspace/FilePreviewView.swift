@@ -34,7 +34,7 @@ struct FilePreviewView: View {
     @State private var saveConfirmationMessage: String?
     @State private var isSavingToPhotos = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
-    @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
 
     /// `initialLine` is one-based; the source surface scrolls to it and highlights it,
     /// so a Markdown file opened at a line starts in Source.

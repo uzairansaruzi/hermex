@@ -283,10 +283,8 @@ struct ComposerChipTextStyle {
         dynamicTypeSize: DynamicTypeSize,
         displayScale: CGFloat
     ) {
-        // Reading the size is what ties this value to Dynamic Type; the font
-        // itself comes from the same body style the editor uses.
-        _ = dynamicTypeSize
-        metrics = ComposerChipMetrics(editorFont: .preferredFont(forTextStyle: .body))
+        // The same body style the editor uses, at this view's text size.
+        metrics = ComposerChipMetrics(editorFont: .preferredFont(forTextStyle: .body, at: dynamicTypeSize))
         traits = UITraitCollection { traits in
             traits.displayScale = displayScale
             traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light

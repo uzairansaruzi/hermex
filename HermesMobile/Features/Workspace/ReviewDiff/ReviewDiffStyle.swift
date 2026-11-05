@@ -62,10 +62,19 @@ struct ReviewDiffStyle {
     var stickyWidth: CGFloat { changeBarWidth + gutterWidth }
     var codeStartX: CGFloat { stickyWidth + codePadding }
 
-    static func resolve(for traits: UITraitCollection, presentation: ReviewDiffPresentation = .diff) -> ReviewDiffStyle {
+    /// `customCodeSize` is `CodeDisplaySettings.customSizeKey`'s value. When set, it replaces
+    /// the scaled code size, and line numbers and hunk labels keep their proportion to it.
+    static func resolve(
+        for traits: UITraitCollection,
+        presentation: ReviewDiffPresentation = .diff,
+        customCodeSize: CGFloat? = nil
+    ) -> ReviewDiffStyle {
         let metrics = UIFontMetrics(forTextStyle: .body)
         func mono(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
-            metrics.scaledFont(
+            if let customCodeSize {
+                return .monospacedSystemFont(ofSize: customCodeSize * size / 12, weight: weight)
+            }
+            return metrics.scaledFont(
                 for: .monospacedSystemFont(ofSize: size, weight: weight),
                 maximumPointSize: size * 2.2,
                 compatibleWith: traits

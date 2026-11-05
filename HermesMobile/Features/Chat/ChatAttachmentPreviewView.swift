@@ -80,6 +80,8 @@ struct ChatAttachmentPreviewView: View {
     private let item: ChatAttachmentPreviewItem
     @State private var viewModel: ChatAttachmentPreviewViewModel
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsCodeLines = false
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     init(
         session: SessionSummary,
@@ -165,12 +167,12 @@ struct ChatAttachmentPreviewView: View {
     }
 
     private func textContent(_ file: FileResponse) -> some View {
-        ScrollView([.vertical, .horizontal]) {
+        ScrollView(wrapsCodeLines ? .vertical : [.vertical, .horizontal]) {
             VStack(alignment: .leading, spacing: 12) {
                 fileHeader
 
                 Text(file.content ?? "")
-                    .font(.system(.body, design: .monospaced))
+                    .font(AppFont.code(style: .body, customSize: customCodeSize))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -501,7 +503,10 @@ private struct StagedPasteTextView: UIViewRepresentable {
         textView.isSelectable = true
         textView.backgroundColor = .clear
         textView.textColor = .label
-        textView.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 15, weight: .regular))
+        textView.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: .monospacedSystemFont(ofSize: 15, weight: .regular),
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(context.environment.dynamicTypeSize))
+        )
         textView.adjustsFontForContentSizeCategory = true
         textView.textAlignment = .natural
         textView.textContainerInset = UIEdgeInsets(top: 12, left: 16, bottom: 32, right: 16)
