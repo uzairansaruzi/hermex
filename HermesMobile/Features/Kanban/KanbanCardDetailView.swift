@@ -17,6 +17,7 @@ struct KanbanCardDetailView: View {
                 ContentUnavailableView("Unavailable", systemImage: "exclamationmark.triangle")
             }
         }
+        .themedPageBackground()
         .navigationTitle(state?.detail?.card?.title ?? String(localized: "Loading"))
         .navigationBarTitleDisplayMode(.inline)
         .transcriptLinks()
@@ -110,7 +111,7 @@ private struct KanbanCardDetailContent: View {
     }
 
     private var detailList: some View {
-        List {
+        AppList {
             if featureModel.isOffline || featureModel.loadedDetailIsStale {
                 Label("Offline—showing previously loaded data", systemImage: "wifi.slash")
                     .foregroundStyle(.orange)
@@ -130,7 +131,7 @@ private struct KanbanCardDetailContent: View {
         .refreshable { await state.refresh() }
         .listStyle(.insetGrouped)
         // Wide tables fade into the grouped row they sit on.
-        .environment(\.markdownTableEdgeFadeColor, Color(.secondarySystemGroupedBackground))
+        .environment(\.markdownTableEdgeFadeColor, Color(.appGroupedSurface))
     }
 
     @ViewBuilder
@@ -141,7 +142,7 @@ private struct KanbanCardDetailContent: View {
                     .textSelection(.enabled)
             } else {
                 Text("No Content")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
     }
@@ -186,7 +187,7 @@ private struct KanbanCardDetailContent: View {
             let comments = state.detail?.comments ?? []
             if comments.isEmpty {
                 Text("No Content")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             } else {
                 ForEach(comments, id: \.presentationID) { comment in
                     VStack(alignment: .leading) {
@@ -199,7 +200,7 @@ private struct KanbanCardDetailContent: View {
                             VStack(alignment: .leading) { commentMetadata(comment) }
                         }
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -503,7 +504,7 @@ private struct KanbanCardDetailContent: View {
         DisclosureGroup("Events") {
             let events = state.detail?.events ?? []
             if events.isEmpty {
-                Text("No Content").foregroundStyle(.secondary)
+                Text("No Content").foregroundStyle(.appSecondary)
             } else {
                 ForEach(events, id: \.presentationID) { event in
                     VStack(alignment: .leading) {
@@ -512,7 +513,7 @@ private struct KanbanCardDetailContent: View {
                         if let date = KanbanDetailDateFormatter.format(event.createdAt) {
                             Text(verbatim: date)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
                     }
                 }
@@ -524,7 +525,7 @@ private struct KanbanCardDetailContent: View {
         DisclosureGroup("Dispatch Runs") {
             let runs = state.detail?.runs ?? []
             if runs.isEmpty {
-                Text("No Content").foregroundStyle(.secondary)
+                Text("No Content").foregroundStyle(.appSecondary)
             } else {
                 ForEach(runs, id: \.presentationID) { run in
                     VStack(alignment: .leading) {
@@ -541,7 +542,7 @@ private struct KanbanCardDetailContent: View {
                         if let range = runDateRange(run) {
                             Text(verbatim: range)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
                         if let runID = nonEmpty(run.runID) {
                             LabeledContent("Run ID") { selectable(runID) }
@@ -597,7 +598,7 @@ private struct KanbanCardDetailContent: View {
                 ProgressView("Loading")
             case .absent:
                 Text("No Content")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             case let .loaded(log):
                 if log.truncated == true {
                     Label("Only the last part of this log is shown.", systemImage: "scissors")

@@ -25,7 +25,7 @@ struct TaskRunOutputSheet: View {
                             if run.isScriptOutputCut {
                                 Text("The server shows only the start of this run's output.")
                                     .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.appSecondary)
                             }
                             Text(text)
                                 .font(.system(.footnote, design: .monospaced))
@@ -53,6 +53,7 @@ struct TaskRunOutputSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

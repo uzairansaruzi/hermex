@@ -81,7 +81,7 @@ struct CronJobEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section("Task") {
                     TextField("Name", text: $draft.name)
 
@@ -158,6 +158,7 @@ struct CronJobEditorSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             // A new loader is a new Profile's sources, so its loads start over. Once a
@@ -278,6 +279,6 @@ struct CronJobEditorSheet: View {
     }
 
     private var messageColor: Color {
-        errorMessage == nil ? .secondary : .red
+        errorMessage == nil ? Color(.appTextSecondary) : .red
     }
 }

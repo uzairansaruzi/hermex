@@ -367,6 +367,7 @@
 		870000000000000000000003 /* HitchMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000004 /* HitchMeter.swift */; };
 		B14050000000000000000001 /* RenderProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14050000000000000000002 /* RenderProbe.swift */; };
 		C09200000000000000000001 /* AppFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000002 /* AppFont.swift */; };
+		C09200000000000000000011 /* AppColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000012 /* AppColor.swift */; };
 		1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000101 /* AppTheme.swift */; };
 		863000000000000000000001 /* NotificationOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000002 /* NotificationOffer.swift */; };
 		C012400000000000000002 /* AppIconChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000001 /* AppIconChoice.swift */; };
@@ -441,6 +442,7 @@
 		C03120000000000000B007 /* GitWorkspaceViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */; };
 		C012400000000000000004 /* AppIconSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000003 /* AppIconSettingsSection.swift */; };
 		1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */; };
+		C23400000000000000000015 /* AppColorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000016 /* AppColorTests.swift */; };
 		863000000000000000000003 /* NotificationOfferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000004 /* NotificationOfferTests.swift */; };
 		C012400000000000000006 /* AppIconChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000005 /* AppIconChoiceTests.swift */; };
 		1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */; };
@@ -479,6 +481,7 @@
 		C21200000000000000000003 /* StreamingRevealGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000004 /* StreamingRevealGateTests.swift */; };
 		C21200000000000000000005 /* ChatViewModelStreamingPaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */; };
 		C23400000000000000000011 /* ProviderGlyphGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000012 /* ProviderGlyphGalleryView.swift */; };
+		C23400000000000000000013 /* ThemeGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000014 /* ThemeGalleryView.swift */; };
 		C14900000000000000000001 /* Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000002 /* Kanban.swift */; };
 		C14900000000000000000003 /* APIClient+Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000004 /* APIClient+Kanban.swift */; };
 		C14900000000000000000005 /* KanbanFeatureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000006 /* KanbanFeatureState.swift */; };
@@ -1095,6 +1098,7 @@
 		870000000000000000000004 /* HitchMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeter.swift; sourceTree = "<group>"; };
 		B14050000000000000000002 /* RenderProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderProbe.swift; sourceTree = "<group>"; };
 		C09200000000000000000002 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
+		C09200000000000000000012 /* AppColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColor.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000101 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		863000000000000000000002 /* NotificationOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOffer.swift; sourceTree = "<group>"; };
 		C012400000000000000001 /* AppIconChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoice.swift; sourceTree = "<group>"; };
@@ -1169,6 +1173,7 @@
 		C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorkspaceViewModelTests.swift; sourceTree = "<group>"; };
 		C012400000000000000003 /* AppIconSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettingsSection.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppThemeTests.swift; sourceTree = "<group>"; };
+		C23400000000000000000016 /* AppColorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColorTests.swift; sourceTree = "<group>"; };
 		863000000000000000000004 /* NotificationOfferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOfferTests.swift; sourceTree = "<group>"; };
 		C012400000000000000005 /* AppIconChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoiceTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
@@ -1254,6 +1259,7 @@
 		C21200000000000000000004 /* StreamingRevealGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingRevealGateTests.swift; sourceTree = "<group>"; };
 		C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelStreamingPaceTests.swift; sourceTree = "<group>"; };
 		C23400000000000000000012 /* ProviderGlyphGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyphGalleryView.swift; sourceTree = "<group>"; };
+		C23400000000000000000014 /* ThemeGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeGalleryView.swift; sourceTree = "<group>"; };
 		C14900000000000000000002 /* Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kanban.swift; sourceTree = "<group>"; };
 		C14900000000000000000004 /* APIClient+Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Kanban.swift"; sourceTree = "<group>"; };
 		C14900000000000000000006 /* KanbanFeatureState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanFeatureState.swift; sourceTree = "<group>"; };
@@ -1706,6 +1712,7 @@
 				C04400000000000000000004 /* CacheFallbackPolicyTests.swift */,
 				C86900000000000000000004 /* NetworkPathMonitorTests.swift */,
 				1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */,
+				C23400000000000000000016 /* AppColorTests.swift */,
 				863000000000000000000004 /* NotificationOfferTests.swift */,
 				C012400000000000000005 /* AppIconChoiceTests.swift */,
 				C03120000000000000F006 /* APIClientGitTests.swift */,
@@ -2274,6 +2281,7 @@
 				103200000000000000000001 /* DefaultProfilePickerView.swift */,
 				1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */,
 				C23400000000000000000012 /* ProviderGlyphGalleryView.swift */,
+				C23400000000000000000014 /* ThemeGalleryView.swift */,
 				1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */,
 				E1318000000000000000A010 /* APIKeyEditor.swift */,
 				E1318000000000000000A008 /* APIKeysView.swift */,
@@ -2300,6 +2308,7 @@
 				870000000000000000000002 /* PerformanceSignposts.swift */,
 				870000000000000000000004 /* HitchMeter.swift */,
 				B14050000000000000000002 /* RenderProbe.swift */,
+				C09200000000000000000012 /* AppColor.swift */,
 				C09200000000000000000002 /* AppFont.swift */,
 				1A2B3C4D5E6F700000000101 /* AppTheme.swift */,
 				863000000000000000000002 /* NotificationOffer.swift */,
@@ -2889,6 +2898,7 @@
 				103200000000000000000002 /* DefaultProfilePickerView.swift in Sources */,
 				1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */,
 				C23400000000000000000011 /* ProviderGlyphGalleryView.swift in Sources */,
+				C23400000000000000000013 /* ThemeGalleryView.swift in Sources */,
 				1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */,
 				E1318000000000000000A009 /* APIKeyEditor.swift in Sources */,
 				E1318000000000000000A007 /* APIKeysView.swift in Sources */,
@@ -2907,6 +2917,7 @@
 				870000000000000000000003 /* HitchMeter.swift in Sources */,
 				B14050000000000000000001 /* RenderProbe.swift in Sources */,
 				C09200000000000000000001 /* AppFont.swift in Sources */,
+				C09200000000000000000011 /* AppColor.swift in Sources */,
 				1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */,
 				863000000000000000000001 /* NotificationOffer.swift in Sources */,
 				C012400000000000000002 /* AppIconChoice.swift in Sources */,
@@ -3254,6 +3265,7 @@
 				C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */,
 				C86900000000000000000003 /* NetworkPathMonitorTests.swift in Sources */,
 				1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */,
+				C23400000000000000000015 /* AppColorTests.swift in Sources */,
 				863000000000000000000003 /* NotificationOfferTests.swift in Sources */,
 				C012400000000000000006 /* AppIconChoiceTests.swift in Sources */,
 				C03120000000000000B006 /* APIClientGitTests.swift in Sources */,

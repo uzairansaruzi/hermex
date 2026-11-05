@@ -83,14 +83,14 @@ struct HermesTurnOutcomeRow: View {
                         // Raw provider text is often a JSON blob: capped, and selectable to copy.
                         Text(detail)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(4)
                             .textSelection(.enabled)
                     }
                     if let resetsAt, resetsAt > Date() {
                         Label(Self.resetLine(resetsAt), systemImage: "clock")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

@@ -338,7 +338,7 @@ struct ChatDecisionButtonStyle: ButtonStyle {
 
     private var foregroundColor: Color {
         guard isEnabled else {
-            return Color(.secondaryLabel)
+            return Color(.appTextSecondary)
         }
 
         switch emphasis {
@@ -371,7 +371,7 @@ struct ChatDecisionButtonStyle: ButtonStyle {
         case .primary:
             return .clear
         case .secondary:
-            return Color(.separator).opacity(colorScheme == .dark ? 0.36 : 0.24)
+            return Color(.appSeparator).opacity(colorScheme == .dark ? 0.36 : 0.24)
         case .destructive:
             return Color.red.opacity(colorScheme == .dark ? 0.36 : 0.26)
         }

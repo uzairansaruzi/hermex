@@ -21,11 +21,11 @@ import SwiftUI
                         Button { editor.setExpression(expression) } label: {
                             VStack(spacing: 4) {
                                 BotAvatarMarkView(name: editor.profile.id, appearance: appearance(expression), size: 52)
-                                Text(expression.localizedName).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                Text(expression.localizedName).font(.caption2).foregroundStyle(.appSecondary).lineLimit(1)
                                     .minimumScaleFactor(0.8)
                             }
                             .frame(maxWidth: .infinity, minHeight: 78)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .background(Color(uiColor: .appGroupedSurface), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay {
                                 if selected == expression {
                                     RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(.secondary, lineWidth: 2)
@@ -41,7 +41,8 @@ import SwiftUI
             }
             .padding(.bottom, 32)
         }
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .appCanvas))
+        .themedPageBackground()
         .navigationTitle("Expression")
         .navigationBarTitleDisplayMode(.inline)
     }

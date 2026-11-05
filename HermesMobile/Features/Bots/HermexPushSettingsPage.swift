@@ -21,7 +21,7 @@ import SwiftUI
     }
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 pushSettings
             } header: {
@@ -82,7 +82,7 @@ import SwiftUI
         if let pairing = provisioner.pairing {
             if pairing.preferencesNeedSync == true {
                 Text("Not synced with the relay yet.")
-                    .font(AppFont.caption()).foregroundStyle(.secondary)
+                    .font(AppFont.caption()).foregroundStyle(.appSecondary)
                 Button("Try again.") {
                     preferenceTask = Task { await provisioner.updatePreferences(pairing.effectivePreferences) }
                 }
@@ -94,10 +94,10 @@ import SwiftUI
                 preferenceToggle(String(localized: "Show Previews"), keyPath: \.previews)
                 preferenceToggle(String(localized: "Quiet the Open Chat"), keyPath: \.presenceSuppression)
                 Text("Previews include message text.")
-                    .font(AppFont.caption()).foregroundStyle(.secondary)
+                    .font(AppFont.caption()).foregroundStyle(.appSecondary)
             }
             if provisioner.phase == .savingPreferences {
-                Text("Saving…").font(AppFont.caption()).foregroundStyle(.secondary)
+                Text("Saving…").font(AppFont.caption()).foregroundStyle(.appSecondary)
             }
             testNotificationRows(pairing)
             LabeledContent(String(localized: "Relay"), value: pairing.relayURL.host ?? pairing.relayURL.absoluteString)
@@ -123,7 +123,7 @@ import SwiftUI
                 ForEach(HermexPushProvisioner.Step.allCases) { step in stepRow(step) }
             }
             Text("The relay only ever sees encrypted text.")
-                .font(AppFont.caption()).foregroundStyle(.secondary)
+                .font(AppFont.caption()).foregroundStyle(.appSecondary)
         }
         // Also available after pairing, so an expired sign-in can be repaired
         // without searching through the server's detail screen.
@@ -165,10 +165,10 @@ import SwiftUI
         .disabled(!provisioner.canSendTest)
         .frame(minHeight: 44)
         Text("Reaches every paired iPhone; doesn’t test your host.")
-            .font(AppFont.caption()).foregroundStyle(.secondary)
+            .font(AppFont.caption()).foregroundStyle(.appSecondary)
         if !pairing.effectivePreferences.replies {
             Text("Turn on Reply Notifications to send a test.")
-                .font(AppFont.caption()).foregroundStyle(.secondary)
+                .font(AppFont.caption()).foregroundStyle(.appSecondary)
         } else if provisioner.testDelivered {
             Label {
                 Text("Sent. It should arrive in a few seconds.")
@@ -186,11 +186,11 @@ import SwiftUI
         let isRunning = provisioner.isRunning(step)
         return HStack(spacing: 10) {
             Image(systemName: isDone ? "checkmark.circle.fill" : (isRunning ? "circle.dashed" : "circle"))
-                .foregroundStyle(isDone ? Color.green : .secondary)
+                .foregroundStyle(isDone ? Color.green : Color(.appTextSecondary))
             Text(step.title).fontWeight(isRunning ? .semibold : .regular)
         }
         .font(.footnote)
-        .foregroundStyle(isDone || isRunning ? Color.primary : .secondary)
+        .foregroundStyle(isDone || isRunning ? Color(.appText) : Color(.appTextSecondary))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(isDone ? String(localized: "\(step.title): done")
                                  : (isRunning ? String(localized: "\(step.title): working")
@@ -203,10 +203,10 @@ import SwiftUI
         if let settingsURL = URL(string: UIApplication.openNotificationSettingsURLString) {
             Link(destination: settingsURL) {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Image(systemName: "bell.slash").foregroundStyle(.secondary).accessibilityHidden(true)
+                    Image(systemName: "bell.slash").foregroundStyle(.appSecondary).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        if let title { Text(title).fontWeight(.semibold).foregroundStyle(Color.primary) }
-                        Text(message).foregroundStyle(.secondary)
+                        if let title { Text(title).fontWeight(.semibold).foregroundStyle(Color(.appText)) }
+                        Text(message).foregroundStyle(.appSecondary)
                         Text("Open Settings").foregroundStyle(.tint).padding(.top, 2)
                     }
                     Spacer(minLength: 0)
@@ -231,7 +231,7 @@ import SwiftUI
                         ?? Text("Your Hermes host has an older hermex-push. The newest is \(newest)."),
                     action: String(localized: "Update plugin…")) { isConfirmingUpdate = true }
         case .updating(let step):
-            callout("circle.dashed", tint: .secondary, title: Text("Updating the plugin…"), message: Text(step.progress))
+            callout("circle.dashed", tint: Color(.appTextSecondary), title: Text("Updating the plugin…"), message: Text(step.progress))
         case .status(.restartNeeded(let loaded)) where HermexPushPlugin.canRestart(loaded):
             // The loaded plugin has the restart route, so restarting is the card's one action.
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
@@ -244,7 +244,7 @@ import SwiftUI
                 Task { await provisioner.checkPluginAgain() }
             }
         case .restarting:
-            callout("circle.dashed", tint: .secondary, title: Text("Restarting Hermes…"),
+            callout("circle.dashed", tint: Color(.appTextSecondary), title: Text("Restarting Hermes…"),
                     message: Text("Waiting for Hermes to come back"))
         case .status(.restartTimedOut):
             callout("exclamationmark.triangle.fill", tint: .red, title: Text("Hermes didn’t come back"),
@@ -282,8 +282,8 @@ import SwiftUI
         let card = HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: symbol).foregroundStyle(tint).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                title.fontWeight(.semibold).foregroundStyle(Color.primary)
-                message.foregroundStyle(.secondary)
+                title.fontWeight(.semibold).foregroundStyle(Color(.appText))
+                message.foregroundStyle(.appSecondary)
                 if let action { Text(action).foregroundStyle(.tint).padding(.top, 2) }
             }
             Spacer(minLength: 0)

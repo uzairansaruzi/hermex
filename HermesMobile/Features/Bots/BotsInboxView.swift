@@ -95,7 +95,7 @@ import SwiftUI
             .overlay(alignment: .bottom) {
                 if let toast {
                     Text(toast).font(.callout).padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .background(.appMaterial(.regularMaterial), in: RoundedRectangle(cornerRadius: 16))
                         .padding().accessibilityAddTraits(.updatesFrequently)
                 }
             }
@@ -164,7 +164,7 @@ import SwiftUI
     /// The rows alone. The list, its sheets and its lifecycle each sit in their
     /// own expression: together they were too much for the CI type-checker.
     private var list: some View {
-        List {
+        AppList(rows: .plain) {
             homeHeader
             // Not gated on the switch: a hand-back that failed as it was turned off still needs a way out.
             if let connection = inbox.connection {
@@ -194,7 +194,7 @@ import SwiftUI
                     home == nil ? Text("No bots yet. Tap + to create one.") : Text("No bots yet. Tap New Chat to create one.")
                 }
                 if let notice = inbox.notice {
-                    Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
+                    Text(notice).font(.callout).foregroundStyle(.appSecondary).listRowSeparator(.hidden)
                 }
                 let pinned = inbox.pinned
                 if !pinned.isEmpty {
@@ -234,7 +234,7 @@ import SwiftUI
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
                     }
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(.appSecondary)
                     .listRowSeparator(.hidden)
                 }
             } else {
@@ -244,7 +244,7 @@ import SwiftUI
         .listStyle(.plain)
         // A split view's sidebar paints gray behind a plain List; only its rows cover it.
         .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
         .overlay {
             if inbox.connection == nil {
                 GeometryReader { geometry in
@@ -256,7 +256,7 @@ import SwiftUI
                         }
                         .frame(minHeight: geometry.size.height)
                     }
-                    .background(Color(uiColor: .systemBackground))
+                    .background(Color(uiColor: .appCanvas))
                 }
             }
         }
@@ -356,7 +356,7 @@ import SwiftUI
                     Group {
                         if let name = section.name { Text(verbatim: name) } else { Text("Other chats") }
                     }
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.appSecondary)
                     .lineLimit(1).truncationMode(.tail).textCase(nil)
                     .accessibilityAddTraits(.isHeader)
                 }
@@ -529,7 +529,7 @@ import SwiftUI
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: bot?.name ?? profile).font(.headline)
-                    Text("You hold its screen").font(.subheadline).foregroundStyle(.secondary)
+                    Text("You hold its screen").font(.subheadline).foregroundStyle(.appSecondary)
                 }
             }
             .buttonStyle(.plain)
@@ -816,6 +816,7 @@ private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
             content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newChat }))
         } else {
             content
+                .themedPageBackground()
                 .navigationTitle("Bots")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(removing: .title)
@@ -844,7 +845,7 @@ private struct BotSectionOrderView: View {
     var body: some View {
         let sections = inbox.reorderableSectionNames
         NavigationStack {
-            List {
+            AppList {
                 Section {
                     ForEach(sections) { section in
                         Text(verbatim: section.name).lineLimit(1)
@@ -861,6 +862,7 @@ private struct BotSectionOrderView: View {
                 }
             }
             .environment(\.editMode, .constant(.active))
+            .themedPageBackground()
             .navigationTitle("Reorder Sections")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -903,7 +905,7 @@ private struct BotHeroTile: View {
             BotAvatarView(profile: profile, avatar: avatar, size: 84)
             VStack(spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(profile.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                    Text(profile.name).font(.body).foregroundStyle(.appSecondary).lineLimit(1)
                     if unread { BotUnreadDot() }
                 }
                 if let status {
@@ -926,7 +928,7 @@ private struct BotRoomHeroTile: View {
     var body: some View {
         VStack(spacing: 14) {
             BotRoomAvatars(room: room, roster: roster, avatars: avatars, size: 60).frame(height: 84)
-            Text(room.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
+            Text(room.name).font(.body).foregroundStyle(.appSecondary).lineLimit(1)
         }
         .frame(maxWidth: 132)
         .accessibilityElement(children: .combine)
@@ -972,7 +974,7 @@ private struct BotInboxRow: View {
                     }
                 }
                 HStack(spacing: 8) {
-                    Text(subline).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                    Text(subline).font(.body).foregroundStyle(.appSecondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if unread { BotUnreadDot() }
                 }
@@ -984,7 +986,7 @@ private struct BotInboxRow: View {
     @ViewBuilder private var nameAndChip: some View {
         Text(profile.name).font(.headline).lineLimit(1)
         if let chip {
-            Text(chip).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            Text(chip).font(.footnote).foregroundStyle(.appSecondary).lineLimit(1)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
                 .layoutPriority(-1)
@@ -998,7 +1000,7 @@ private struct BotInboxRow: View {
             BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold), isStale: statusIsStale)
                 .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
         } else if let date = profile.lastActive {
-            Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.secondary)
+            Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.appSecondary)
         }
     }
 }
@@ -1017,7 +1019,7 @@ private struct BotLiveStatusLabel: View {
         case .waiting: (String(localized: "Waiting for you"), Color("AttentionApproval"))
         }
         Text(word).font(font)
-            .foregroundStyle(isStale ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
+            .foregroundStyle(isStale ? AnyShapeStyle(.appSecondary) : AnyShapeStyle(tint))
             .accessibilityLabel(isStale ? String(localized: "Last known: \(word)") : word)
     }
 }

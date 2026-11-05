@@ -234,17 +234,17 @@ private extension TranscriptLinkPreviewView {
 
                 Text(displaySubtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.trailing, 10)
         }
         .frame(minHeight: 84, alignment: .center)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.appMaterial(.thinMaterial), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }

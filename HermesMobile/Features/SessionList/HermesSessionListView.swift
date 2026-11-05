@@ -139,7 +139,7 @@ struct HermesSessionListView: View {
 
     private var sessionRows: some View {
         let groups = viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID)
-        return List {
+        return AppList(rows: .plain) {
             if let home {
                 SessionsHeader(
                     logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
@@ -205,7 +205,7 @@ struct HermesSessionListView: View {
         .environment(\.defaultMinListRowHeight, 0)
         // A split view's sidebar paints gray behind a plain List; only its rows cover it.
         .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
         .modifier(chrome)
     }
 
@@ -238,10 +238,12 @@ struct HermesSessionListView: View {
             } onSave: { title in
                 Task { if await rename(session, to: title) { covers.renaming = nil } }
             }
+            .themedPageBackground()
             .presentationDetents([.medium])
         }
         .sheet(item: $navigation.covers.exported) { item in
             SessionExportShareSheet(fileURL: item.fileURL)
+                .themedPageBackground()
                 .presentationDetents([.medium, .large])
                 .ignoresSafeArea()
                 // Each export has its own temp directory (`SessionListViewModel.export`).
@@ -266,6 +268,7 @@ struct HermesSessionListView: View {
                     covers.creatingProject = nil
                 }
             }
+            .themedPageBackground()
             .presentationDetents([.medium, .large])
         }
         .sheet(item: $navigation.covers.renamingProject, onDismiss: { viewModel.clearProjectSheetError() }) { project in
@@ -275,6 +278,7 @@ struct HermesSessionListView: View {
             } onSave: { name, color in
                 Task { if await viewModel.rename(project, named: name, color: color) { covers.renamingProject = nil } }
             }
+            .themedPageBackground()
             .presentationDetents([.medium])
         }
         .alert(Text(verbatim: covers.moving?.title ?? ""), isPresented: Binding(get: { covers.moving != nil }, set: { if !$0 { covers.moving = nil } }),
@@ -649,7 +653,7 @@ struct HermesSessionListView: View {
     private var loadMoreRow: some View {
         Button("Load more") { Task { await loadMore() } }
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .disabled(viewModel.isLoadingMoreSessions)
             .frame(maxWidth: .infinity, minHeight: 44)
             .sessionsScreenListRow()
@@ -684,7 +688,7 @@ struct HermesSessionListView: View {
                     .font(.caption.weight(.semibold))
                     .accessibilityHidden(true)
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .padding(.horizontal, 24)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -1142,6 +1146,7 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
                             placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions")
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+                .themedPageBackground()
                 .navigationTitle("Sessions")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

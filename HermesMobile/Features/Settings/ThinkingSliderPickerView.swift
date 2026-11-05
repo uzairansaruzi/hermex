@@ -17,7 +17,7 @@ struct ThinkingSliderPickerView: View {
     }
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 // Buttons, not a segmented picker: pressing the current level has to put back any
                 // slider that has been dragged away from it.
@@ -31,7 +31,7 @@ struct ThinkingSliderPickerView: View {
                                 .frame(maxWidth: .infinity, minHeight: 32)
                         }
                         .buttonStyle(.bordered)
-                        .tint(level == sharedLevel ? Color.primary : Color.secondary)
+                        .tint(level == sharedLevel ? Color(.appText) : Color(.appTextSecondary))
                         .accessibilityAddTraits(level == sharedLevel ? .isSelected : [])
                     }
                 }
@@ -81,14 +81,14 @@ private struct ThinkingSliderPickerRow: View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: onSelect) {
                 HStack(spacing: 8) {
-                    Text(verbatim: look.name).foregroundStyle(.primary)
+                    Text(verbatim: look.name).foregroundStyle(.appPrimary)
                     Spacer(minLength: 8)
                     Text(verbatim: ReasoningEffortOption.title(for: shownLevel))
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        .foregroundStyle(isSelected ? Color(.appText) : Color(.appTextSecondary))
                         .accessibilityHidden(true)
                 }
                 .frame(minHeight: 32)

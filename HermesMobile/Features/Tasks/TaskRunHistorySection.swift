@@ -68,14 +68,14 @@ struct TaskRunHistorySection: View {
                 ProgressView()
                 Text("Loading runs...")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
         } else if errorMessage == nil {
             Text("This task has not produced any output yet.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.vertical, 4)
         }
     }
@@ -86,7 +86,7 @@ struct TaskRunHistorySection: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Button("Try Again", action: retry)
                 .font(.footnote.weight(.semibold))
                 .buttonStyle(.plain)
@@ -133,13 +133,13 @@ struct TaskRunHistoryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(titleText)
                     .font(.subheadline)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(2)
 
                 if let detail = detailText {
                     Text(detail)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(2)
                 }
             }
@@ -148,7 +148,7 @@ struct TaskRunHistoryRow: View {
 
             Image(systemName: "chevron.forward")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.appTertiary)
                 .accessibilityHidden(true)
         }
         .padding(.vertical, 10)
@@ -218,7 +218,7 @@ struct TaskRunHistoryRow: View {
         case .running: return .blue
         case .completed: return .green
         case .failed: return .red
-        case nil: return Color(uiColor: .tertiaryLabel)
+        case nil: return Color(uiColor: .appTextTertiary)
         }
     }
 }

@@ -158,7 +158,7 @@ struct WebuiServerSections: View {
                     SettingsLabel(title: String(localized: "Default Model"), systemImage: "cpu")
                 }
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .accessibilityHint("Opens the default model picker.")
 
             Button {
@@ -170,7 +170,7 @@ struct WebuiServerSections: View {
                     SettingsLabel(title: String(localized: "Default Profile"), systemImage: "person.crop.circle")
                 }
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .accessibilityHint("Opens the default profile picker.")
 
             NavigationLink {
@@ -296,7 +296,7 @@ struct WebuiServerSections: View {
         if model.serverVersion != nil, let serverUpdateState = model.serverUpdateState {
             switch serverUpdateState {
             case .upToDate:
-                updateNoteRow(systemImage: "checkmark.circle", tint: .secondary, text: String(localized: "Up to date"))
+                updateNoteRow(systemImage: "checkmark.circle", tint: Color(.appTextSecondary), text: String(localized: "Up to date"))
             case let .updateAvailable(behind):
                 updateNoteRow(systemImage: "arrow.up.circle", tint: .blue, text: String(localized: "Update available · \(behind) behind"))
             case .unavailable:
@@ -312,7 +312,7 @@ struct WebuiServerSections: View {
 
             Text(text)
                 .font(AppFont.footnote())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -336,7 +336,7 @@ struct WebuiServerSections: View {
         case .recovering:
             updateProgressRow(String(localized: "Updating & restarting…"))
         case .blocked:
-            updateMessageRow(systemImage: "clock", tint: .secondary)
+            updateMessageRow(systemImage: "clock", tint: Color(.appTextSecondary))
             updateActionButton(title: String(localized: "Retry update"))
         case .failed:
             updateMessageRow(systemImage: "exclamationmark.triangle", tint: .orange)
@@ -360,7 +360,7 @@ struct WebuiServerSections: View {
 
             Text(text)
                 .font(AppFont.footnote())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -372,7 +372,7 @@ struct WebuiServerSections: View {
 
             Text(model.updateApplyMessage ?? String(localized: "The update could not be applied."))
                 .font(AppFont.footnote())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -507,6 +507,7 @@ private struct CustomHeadersSettingsView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .themedPageBackground()
         .navigationTitle("Connection Headers")
         .navigationBarTitleDisplayMode(.inline)
         // Live-refresh the network clients on every edit (cheap, in-memory only)

@@ -21,7 +21,7 @@ struct SettingsAboutPage: View {
     var body: some View {
         // Rebuilt with the page, so it always describes the server that is active now.
         let report = SupportReport(server: server)
-        List {
+        AppList {
             Section {
                 LabeledContent(String(localized: "Version"), value: Self.appVersion)
                 LabeledContent(String(localized: "Build"), value: appBuild)
@@ -34,7 +34,7 @@ struct SettingsAboutPage: View {
                     } label: {
                         SettingsLabel(title: String(localized: "Troubleshoot with Hermes"), systemImage: "bubble.left.and.text.bubble.right")
                     }
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .accessibilityHint(String(localized: "Opens a new chat with your support details for you to review before sending."))
                 }
                 Button {
@@ -42,7 +42,7 @@ struct SettingsAboutPage: View {
                 } label: {
                     SettingsLabel(title: String(localized: "Copy Support Details"), systemImage: "doc.on.doc")
                 }
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 NavigationLink {
                     SettingsDiagnosticsPage(model: diagnostics)
                 } label: {
@@ -154,10 +154,11 @@ private struct SupportDetailsSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Text("Read this before you share it. It has no server address, name or credentials.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
                 .padding()
             }
+            .themedPageBackground()
             .navigationTitle(String(localized: "Support Details"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -182,7 +183,7 @@ private struct SupportDetailsSheet: View {
 /// Maintainer tools for Debug builds. Not localized.
 struct SettingsDeveloperPage: View {
     var body: some View {
-        List {
+        AppList {
             Section {
                 Button(String(localized: "Reset rating prompt state")) {
                     RatingPromptState.shared.reset()
@@ -192,6 +193,12 @@ struct SettingsDeveloperPage: View {
                     ProviderGlyphGalleryView()
                 } label: {
                     SettingsLabel(title: "Provider Glyphs", systemImage: "square.grid.2x2")
+                }
+
+                NavigationLink {
+                    ThemeGalleryView()
+                } label: {
+                    SettingsLabel(title: "Theme Gallery", systemImage: "paintpalette")
                 }
             } footer: {
                 Text(verbatim: "Debug builds only.")

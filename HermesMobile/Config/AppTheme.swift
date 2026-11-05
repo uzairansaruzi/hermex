@@ -246,8 +246,9 @@ extension Color {
 }
 
 /// User-facing switch (issue #261) for tinting the primary actions — the
-/// "New Chat" button and the composer "Send" button — with the chosen Header
-/// Logo Color instead of the default monochrome fill. Defaults to off (opt-in);
+/// "New Chat" button and the composer "Send" button — with the chosen accent, or
+/// the server's Header Logo Color if there is none, instead of the default
+/// monochrome fill. Defaults to off (opt-in);
 /// a control keeps its muted/monochrome look while disabled so a tinted-but-dead
 /// button never reads as interactive.
 enum PrimaryActionTintSettings {
@@ -257,6 +258,18 @@ enum PrimaryActionTintSettings {
     /// setting *and* the control is currently interactive.
     static func usesThemeColor(isEnabled: Bool, controlIsEnabled: Bool) -> Bool {
         isEnabled && controlIsEnabled
+    }
+
+    /// A tinted primary action's fill and label: the accent at its readable color if one is
+    /// chosen, otherwise the server's color.
+    static func colors(accentHex: String?, serverHex: String) -> (fill: Color, label: Color) {
+        if accentHex.flatMap(HeaderLogoColor.normalizedHex) != nil {
+            return (Color(.appAccent), Color(.appOnAccent))
+        }
+        return (
+            HeaderLogoColor.color(for: serverHex),
+            HeaderLogoColor.prefersDarkForeground(for: serverHex) ? .black : .white
+        )
     }
 }
 

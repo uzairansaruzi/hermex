@@ -46,10 +46,10 @@ struct BotMentionRow: View {
                     .accessibilityHidden(true)
                 Text(verbatim: "@" + item.tag)
                     .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(.primary).lineLimit(1).layoutPriority(2)
+                    .foregroundStyle(.appPrimary).lineLimit(1).layoutPriority(2)
                 Spacer(minLength: 8)
                 Text(verbatim: item.profile.name)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .font(.caption).foregroundStyle(.appSecondary).lineLimit(1)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .contentShape(Rectangle())

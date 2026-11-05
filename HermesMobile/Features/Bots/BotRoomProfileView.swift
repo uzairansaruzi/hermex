@@ -15,7 +15,7 @@ import SwiftUI
     @FocusState private var editingName: Bool
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 VStack(spacing: 24) {
                     BotRoomAvatars(room: reader.room, roster: roster, avatars: avatars, size: 84)

@@ -41,6 +41,7 @@ import SwiftUI
                 editorBody
             }
         }
+        .themedPageBackground()
         .navigationTitle(editor.profile.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -104,14 +105,14 @@ import SwiftUI
                 sectionLabel("Description")
                 card {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Description").font(.caption).foregroundStyle(.secondary)
+                        Text("Description").font(.caption).foregroundStyle(.appSecondary)
                         TextField("Description", text: Binding(get: { editor.draft.description }, set: { editor.setDescription($0) }), axis: .vertical)
                             .lineLimit(2...4)
                     }
                     .padding(16)
                     Divider().padding(.leading, 16)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Instructions").font(.caption).foregroundStyle(.secondary)
+                        Text("Instructions").font(.caption).foregroundStyle(.appSecondary)
                         TextEditor(text: Binding(get: { editor.draft.instructions }, set: { editor.setInstructions($0) }))
                             .frame(minHeight: 130)
                             .scrollContentBackground(.hidden)
@@ -119,7 +120,7 @@ import SwiftUI
                     .padding(16)
                 }
                 Text("Saving replaces this Profile’s complete instructions.")
-                    .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 7)
+                    .font(.caption2).foregroundStyle(.appTertiary).padding(.horizontal, 12).padding(.top, 7)
 
                 sectionLabel("Model")
                 card { navigationRow(String(localized: "Default Model"), subtitle: editor.draft.model?.providerID,
@@ -141,7 +142,7 @@ import SwiftUI
                         VStack(alignment: .leading, spacing: 2) {
                             Text(editor.connection.name)
                             Text(editor.connection.address.host ?? editor.connection.address.absoluteString)
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(.appSecondary)
                         }
                         Spacer()
                     }
@@ -151,10 +152,10 @@ import SwiftUI
             .padding(.horizontal, 16)
             .padding(.bottom, 36)
         }
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .appCanvas))
         .scrollDismissesKeyboard(.interactively)
         .disabled(editor.isSaving)
-        .overlay { if editor.isSaving { ProgressView().padding(18).background(.regularMaterial, in: Circle()) } }
+        .overlay { if editor.isSaving { ProgressView().padding(18).background(.appMaterial(.regularMaterial), in: Circle()) } }
     }
 
     private var identityHeader: some View {
@@ -175,11 +176,11 @@ import SwiftUI
                 Text(editor.draft.appearance.title.isEmpty ? editor.profile.name : editor.draft.appearance.title)
                     .font(.title2.weight(.bold)).multilineTextAlignment(.center)
                 if !editor.draft.description.isEmpty {
-                    Text(editor.draft.description).font(.subheadline).foregroundStyle(.secondary)
+                    Text(editor.draft.description).font(.subheadline).foregroundStyle(.appSecondary)
                         .multilineTextAlignment(.center).lineLimit(3)
                 }
                 Text(verbatim: "\(editor.profile.id) · \(editor.connection.name)")
-                    .font(.caption).foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.appTertiary)
             }
             .accessibilityElement(children: .combine)
         }
@@ -197,10 +198,10 @@ import SwiftUI
         } label: {
             Image(systemName: "camera.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .frame(width: 30, height: 30)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
-                .overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 3))
+                .background(Color(uiColor: .appGroupedSurface), in: Circle())
+                .overlay(Circle().stroke(Color(uiColor: .appCanvas), lineWidth: 3))
         }
         .offset(x: 6, y: 6)
         .accessibilityLabel("Change Photo")
@@ -249,7 +250,7 @@ import SwiftUI
                         .foregroundStyle(resultColor(editor.outcomes[field]!)).frame(width: 20)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(field.title).font(.subheadline.weight(.semibold))
-                        Text(resultText(editor.outcomes[field]!)).font(.caption).foregroundStyle(.secondary)
+                        Text(resultText(editor.outcomes[field]!)).font(.caption).foregroundStyle(.appSecondary)
                         if editor.outcomes[field] == .conflict {
                             Button("Reload") { Task { await editor.reloadAppearance() } }.font(.caption.weight(.semibold))
                         }
@@ -257,7 +258,7 @@ import SwiftUI
                 }
             }
         }
-        .padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        .padding(16).background(Color(uiColor: .appGroupedSurface), in: RoundedRectangle(cornerRadius: 18))
         .padding(.top, 10)
     }
 
@@ -271,15 +272,18 @@ import SwiftUI
 
     private func capabilityPicker(_ field: BotProfileEditor.Field) -> some View {
         NavigationStack {
-            List(capabilities(field)) { item in
-                Toggle(isOn: Binding(get: { capability(field, id: item.id)?.enabled == true },
-                                     set: { editor.setEnabled($0, field: field, id: item.id) })) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.name)
-                        if let detail = item.detail, !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary) }
+            AppList {
+                ForEach(capabilities(field)) { item in
+                    Toggle(isOn: Binding(get: { capability(field, id: item.id)?.enabled == true },
+                                         set: { editor.setEnabled($0, field: field, id: item.id) })) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name)
+                            if let detail = item.detail, !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.appSecondary) }
+                        }
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle(field.title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { capabilitySheet = nil } } }
         }
@@ -302,17 +306,17 @@ import SwiftUI
     }
 
     private func sectionLabel(_ title: LocalizedStringKey) -> some View {
-        Text(title).font(.subheadline).foregroundStyle(.tertiary).padding(.leading, 10).padding(.top, 24).padding(.bottom, 8)
+        Text(title).font(.subheadline).foregroundStyle(.appTertiary).padding(.leading, 10).padding(.top, 24).padding(.bottom, 8)
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0, content: content)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(uiColor: .appGroupedSurface), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func editorField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(.appSecondary)
             TextField(title, text: text, axis: .vertical).lineLimit(1...3)
         }
         .padding(16)
@@ -322,14 +326,14 @@ import SwiftUI
                                action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: systemImage).foregroundStyle(.secondary).frame(width: 24)
+                Image(systemName: systemImage).foregroundStyle(.appSecondary).frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(.primary)
-                    if let subtitle, !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    Text(title).foregroundStyle(.appPrimary)
+                    if let subtitle, !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.appSecondary).lineLimit(1) }
                 }
                 Spacer(minLength: 8)
-                Text(value).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                Text(value).font(.subheadline).foregroundStyle(.appSecondary).lineLimit(1)
+                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.appTertiary)
             }
             .padding(16).contentShape(Rectangle())
         }

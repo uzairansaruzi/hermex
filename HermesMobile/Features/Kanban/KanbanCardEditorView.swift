@@ -17,7 +17,7 @@ struct KanbanCardEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 primaryFields
                 assignmentFields
                 if state.isEditing {
@@ -28,6 +28,7 @@ struct KanbanCardEditorView: View {
                 submissionSection
             }
             .disabled(state.submission.isInFlight)
+            .themedPageBackground()
             .navigationTitle(state.isEditing ? String(localized: "Edit Card") : String(localized: "New Card"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { editorToolbar }

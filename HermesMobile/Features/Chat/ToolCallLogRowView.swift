@@ -22,7 +22,7 @@ struct ToolCallLogRowView: View {
         ) {
             Image(systemName: row.icon)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(row.isFailure ? Color.red : Color.secondary)
+                .foregroundStyle(row.isFailure ? Color.red : Color(.appTextSecondary))
         } accessory: {
             if let counts = row.diffCounts {
                 DiffCountsLabel(additions: counts.additions, deletions: counts.deletions)
@@ -48,7 +48,7 @@ struct ToolCallLogRowView: View {
         case .success:
             Image(systemName: "checkmark")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         case .failure:
             Image(systemName: "xmark")
                 .font(.system(size: 11, weight: .semibold))
@@ -56,11 +56,11 @@ struct ToolCallLogRowView: View {
         case .running:
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         case .interrupted:
             Image(systemName: "minus")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }
@@ -104,7 +104,7 @@ struct ToolCallDetailBodyView: View {
     }
 
     private var statusColor: Color {
-        status == .failure ? .red : .secondary
+        status == .failure ? .red : Color(.appTextSecondary)
     }
 
     private var statusText: String {
@@ -134,7 +134,7 @@ struct ToolCallDetailBodyView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Status")
                 .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Text(value)
                 .font(AppFont.caption())
@@ -176,7 +176,7 @@ struct ToolCallDetailBodyView: View {
                 Text("Partial diff. The server sent only the first part of this edit.")
             }
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .accessibilityElement(children: .combine)
         }
     }
@@ -211,7 +211,7 @@ struct ToolCallDetailBodyView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Arguments")
                 .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(rows) { row in
@@ -227,7 +227,7 @@ struct ToolCallDetailBodyView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(result.title)
                 .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Group {
                 if result.isMonospaced, !wrapsCodeBlockLines, Self.fitsOnOneTextLine(result.text) {
@@ -242,7 +242,7 @@ struct ToolCallDetailBodyView: View {
                 }
             }
             .font(result.isMonospaced ? AppFont.code(style: .caption, customSize: customCodeSize) : AppFont.caption())
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
             .chatTimelineAccessoryInsetSurface()
@@ -276,14 +276,14 @@ struct ToolCallDetailBodyView: View {
     private func argumentKey(_ value: String) -> some View {
         Text(value)
             .font(AppFont.mono(style: .caption2, weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
     }
 
     private func argumentValue(_ value: String) -> some View {
         Text(value)
             .font(AppFont.code(style: .caption, customSize: customCodeSize))
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .textSelection(.enabled)
     }
 }
@@ -299,7 +299,7 @@ struct ClarifyHistoryBody: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exchange.question)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
 
                     ClarifyText.answer(exchange)
                 }
@@ -330,7 +330,7 @@ struct ClarifyAnswerLineView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: "questionmark.bubble")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -356,7 +356,7 @@ struct ClarifyAnswerLineView: View {
     private var questionText: Text {
         Text(line.exchange.question)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
     }
 }
 
@@ -367,11 +367,11 @@ private enum ClarifyText {
         if let answer = exchange.answerText {
             return Text(answer)
                 .font(AppFont.caption(weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
         }
         return Text("No answer")
             .font(AppFont.caption(weight: .medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
     }
 
     /// How the wait ended, as the server worded it.
@@ -379,6 +379,6 @@ private enum ClarifyText {
         Text(note)
             .font(AppFont.caption2())
             .italic()
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TipJarCard: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isAppThemed) private var isThemed
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -34,13 +35,13 @@ struct TipJarCard: View {
             }
             Text("Hermex is free and open source, with no ads and no tracking. Supporters make that possible.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             links
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(colorScheme == .dark ? Color(white: 0.14) : .white,
+        .background(isThemed ? Color(.appSurface) : colorScheme == .dark ? Color(white: 0.14) : .white,
                     in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
@@ -98,7 +99,7 @@ struct TipJarCard: View {
                     .frame(maxWidth: .infinity)
             }
             .font(.subheadline.weight(.semibold))
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.appProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.large)
             .tint(accent)
@@ -106,7 +107,7 @@ struct TipJarCard: View {
 
             Link(destination: AppConfig.tipURL) {
                 Text("or buy Uzi a coffee")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
@@ -126,7 +127,7 @@ struct TipJarCard: View {
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 28, height: 28)
                 .background(.fill.tertiary, in: Circle())
                 .frame(width: 44, height: 44)

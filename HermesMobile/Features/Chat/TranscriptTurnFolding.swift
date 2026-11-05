@@ -242,12 +242,12 @@ struct TranscriptTurnFoldRowView: View {
             HStack(spacing: 8) {
                 Text(fold.label.title)
                     .font(AppFont.subheadline(weight: .medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
 
                 Spacer(minLength: 0)
             }
@@ -256,7 +256,7 @@ struct TranscriptTurnFoldRowView: View {
             .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color(.separator).opacity(0.5))
+                    .fill(Color(.appSeparator).opacity(0.5))
                     .frame(height: 0.5)
             }
         }

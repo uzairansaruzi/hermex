@@ -98,15 +98,15 @@ private struct ComposerStatusView: View {
     }
 
     private var textColor: Color {
-        isError ? Color(.label) : Color.secondary
+        isError ? Color(.appText) : Color(.appTextSecondary)
     }
 
     private var backgroundColor: Color {
-        isError ? Color.red.opacity(0.08) : Color(.secondarySystemBackground)
+        isError ? Color.red.opacity(0.08) : Color(.appSurface)
     }
 
     private var borderColor: Color {
-        isError ? Color.red.opacity(0.25) : Color(.separator).opacity(0.25)
+        isError ? Color.red.opacity(0.25) : Color(.appSeparator).opacity(0.25)
     }
 }
 
@@ -125,6 +125,7 @@ private struct ComposerQuoteDetailView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }
+            .themedPageBackground()
             .navigationTitle("Quoted passage")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -147,6 +148,7 @@ struct MessageComposerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(AppAppearanceSettings.accentHexKey) private var accentHex: String?
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var plusIconSize: CGFloat = 20
@@ -720,7 +722,7 @@ struct MessageComposerView: View {
                         // the keyboard gap and the bottom safe area, so no strip
                         // of transcript shows around the row.
                         .background(
-                            Color(.systemBackground)
+                            Color(.appCanvas)
                                 .padding(.top, -10)
                                 .padding(.bottom, -12)
                                 .ignoresSafeArea(edges: .bottom)
@@ -898,6 +900,7 @@ struct MessageComposerView: View {
                     selectedQuote = nil
                 }
             )
+            .themedPageBackground()
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
@@ -1183,6 +1186,7 @@ struct MessageComposerView: View {
             },
             onRegistryChanged: onWorkspaceRegistryChanged
         )
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
@@ -1496,6 +1500,7 @@ struct MessageComposerView: View {
                 recentModelKeys = ModelRecentsStore(server: server).removeRecent(for: option)
             }
         )
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
@@ -1600,7 +1605,7 @@ struct MessageComposerView: View {
     }
 
     private var metaControlColor: Color {
-        Color(.secondaryLabel)
+        Color(.appTextSecondary)
     }
 
     private var workspaceTitle: String {
@@ -1665,7 +1670,7 @@ struct MessageComposerView: View {
         ChatComposerActionAppearance(
             isStop: isStop, isDisabled: isDisabled,
             colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
-            themeHex: headerLogoColorHex
+            tint: PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: headerLogoColorHex)
         )
     }
 

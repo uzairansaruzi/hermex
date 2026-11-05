@@ -68,7 +68,7 @@ private struct AdaptiveGlassDebugFixture: View {
         }
         .padding(24)
         .frame(maxWidth: 390)
-        .background(Color(.systemGroupedBackground))
+        .background(Color(.appGroupedCanvas))
     }
 
     private func sampleCard(
@@ -88,7 +88,7 @@ private struct AdaptiveGlassDebugFixture: View {
                     .font(.subheadline.weight(.semibold))
                 Text(subtitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)

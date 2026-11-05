@@ -420,7 +420,7 @@ struct HermexAttachmentCameraPanel: View {
                     .foregroundStyle(.white.opacity(0.72))
                     .multilineTextAlignment(.center)
                 Button("Open Settings", action: openSettings)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
                     .tint(.accentColor)
             }
             .foregroundStyle(.white)

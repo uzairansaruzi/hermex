@@ -48,19 +48,19 @@ struct ForkOriginRowView: View {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.branch")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .accessibilityHidden(true)
 
                 Text(origin.title)
                     .font(AppFont.subheadline(weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.forward")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
@@ -68,7 +68,7 @@ struct ForkOriginRowView: View {
             .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color(.separator).opacity(0.5))
+                    .fill(Color(.appSeparator).opacity(0.5))
                     .frame(height: 0.5)
             }
         }

@@ -232,7 +232,7 @@ struct DiffCodeBlockText: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(lines) { line in
                 rowText(for: line)
-                    .foregroundStyle(Self.isMuted(line.kind) ? SwiftUI.Color.secondary : SwiftUI.Color.primary)
+                    .foregroundStyle(Self.isMuted(line.kind) ? SwiftUI.Color(.appTextSecondary) : SwiftUI.Color(.appText))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 1.5)
                     .frame(minWidth: minRowWidth, maxWidth: .infinity, alignment: .leading)

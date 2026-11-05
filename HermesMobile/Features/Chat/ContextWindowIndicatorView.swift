@@ -45,7 +45,7 @@ struct ContextWindowIndicatorView: View {
 
                 Text(presentation.percentageLabel)
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(presentation.isInteractive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(presentation.isInteractive ? AnyShapeStyle(.appPrimary) : AnyShapeStyle(.appSecondary))
             }
             .frame(width: ringSize, height: ringSize)
             .frame(width: tapTargetSize, height: tapTargetSize)
@@ -130,7 +130,7 @@ private struct ContextWindowInfoRow: View {
         HStack {
             Text(label)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Spacer()
             Text(value)
                 .font(.caption)

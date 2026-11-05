@@ -27,7 +27,7 @@ struct WorkspaceManagerView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 if let errorMessage = viewModel.errorMessage {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -40,7 +40,7 @@ struct WorkspaceManagerView: View {
                     Section {
                         Text("Workspace management isn't available on this server.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                 }
 
@@ -77,6 +77,7 @@ struct WorkspaceManagerView: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Manage Workspaces")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -166,7 +167,7 @@ struct WorkspaceManagerView: View {
             if let path = workspace.path {
                 Text(path)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(2)
             }
         }
@@ -226,7 +227,7 @@ private struct WorkspaceAddSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 Section {
                     TextField("Workspace path", text: $path)
                         .textInputAutocapitalization(.never)
@@ -255,10 +256,10 @@ private struct WorkspaceAddSheet: View {
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "folder")
-                                        .foregroundStyle(Color(.secondaryLabel))
+                                        .foregroundStyle(Color(.appTextSecondary))
                                     Text(suggestion)
                                         .font(.callout)
-                                        .foregroundStyle(.primary)
+                                        .foregroundStyle(.appPrimary)
                                         .lineLimit(2)
                                 }
                             }
@@ -267,6 +268,7 @@ private struct WorkspaceAddSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Add Workspace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -69,7 +69,7 @@ struct HermesBtwBar: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
@@ -131,7 +131,7 @@ struct HermesBtwFullScreen: View {
                             .accessibilityLabel("Side question")
                         Text(sessionTitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(1)
                     }
                     .accessibilityElement(children: .combine)
@@ -167,7 +167,7 @@ private struct HermesBtwHeader: View {
                     .font(.system(size: 12, weight: .semibold))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(.primary.opacity(0.08), in: Circle())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .buttonStyle(.chatTactile(.icon))
             .accessibilityLabel("Expand side question")
@@ -181,7 +181,7 @@ private struct HermesBtwLabel: View {
     var body: some View {
         Label { Text(verbatim: "BTW") } icon: { Image(systemName: "text.bubble") }
             .font(.caption.weight(.bold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .accessibilityLabel("Side question")
     }
 }
@@ -197,7 +197,7 @@ private struct HermesBtwCloseButton: View {
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: buttonSize, height: buttonSize)
                 .background(.primary.opacity(0.08), in: Circle())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .buttonStyle(.chatTactile(.icon))
         .accessibilityLabel("Close side question")
@@ -221,19 +221,19 @@ private struct HermesBtwAnswer: View {
                 Text("Answering from a snapshot of this chat")
             }
             .font(.footnote.weight(.medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
         case .answered(let text):
             VStack(alignment: .leading, spacing: 8) {
                 if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("No answer produced.")
                         .font(isFullScreen ? .body : .subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 } else {
                     MarkdownRenderer(content: text)
                 }
                 Text("From a snapshot · no tools")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         case .unavailable:
             HStack(alignment: .top, spacing: 9) {
@@ -245,7 +245,7 @@ private struct HermesBtwAnswer: View {
                         .font(.subheadline.weight(.semibold))
                     Text("The stream reconnected without this answer. Ask again with /btw.")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -266,11 +266,11 @@ private struct HermesBtwRunPill: View {
                 .accessibilityHidden(true)
             Text(status.label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
+        .background(.appMaterial(.regularMaterial), in: Capsule())
         .overlay(Capsule().stroke(.primary.opacity(0.08), lineWidth: 0.5))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(status.accessibilityLabel)

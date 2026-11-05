@@ -35,18 +35,18 @@ import Observation
     }
 
     var body: some View {
-        Form {
+        AppForm {
             if let saved = setup.saved { statusSection(saved) }
             Section {
                 Text("Connect to your dashboard").font(.title3.bold())
-                Text("Use your Hermes dashboard sign-in.").foregroundStyle(.secondary)
+                Text("Use your Hermes dashboard sign-in.").foregroundStyle(.appSecondary)
             }
             .listRowBackground(Color.clear)
             Section {
                 if setup.isServerSignIn {
                     // A Hermes server's address is its identity: removing the server is how
                     // it changes, through Settings → Servers.
-                    Text(verbatim: setup.address).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(verbatim: setup.address).foregroundStyle(.appSecondary).textSelection(.enabled)
                         .accessibilityLabel(Text("Hermes address")).accessibilityValue(setup.address)
                         .accessibilityIdentifier("hermes-connection-address")
                 } else {
@@ -68,7 +68,7 @@ import Observation
                 }
                 switch setup.signInMethod {
                 case .browser:
-                    Text("This server signs in through your browser.").foregroundStyle(.secondary)
+                    Text("This server signs in through your browser.").foregroundStyle(.appSecondary)
                 case .open:
                     OpenDashboardWarning()
                 case .password:
@@ -135,7 +135,7 @@ import Observation
             }
             Section("Need your connection details?") {
                 Text("Copy a prompt for your Hermes agent. It will check your setup and help you find the right address and sign-in details.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(.appSecondary)
                 Button(copiedPrompt ? String(localized: "Copied") : String(localized: "Copy setup prompt"), systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = BotConnectionSetup.prompt
                     copiedPrompt = true
@@ -159,6 +159,7 @@ import Observation
                 }
             }
         }
+        .themedPageBackground()
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -200,6 +201,7 @@ import Observation
                         .padding(20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .themedPageBackground()
                 .navigationTitle("Connection Headers")
                 .navigationBarTitleDisplayMode(.inline)
             } label: {
@@ -279,7 +281,7 @@ import Observation
     private func statusRow(_ label: LocalizedStringKey, value: String, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             LabeledContent(label, value: value)
-            if let note { Text(note).font(.footnote).foregroundStyle(.secondary) }
+            if let note { Text(note).font(.footnote).foregroundStyle(.appSecondary) }
         }
         .accessibilityElement(children: .combine)
     }
@@ -710,13 +712,13 @@ struct BotConnectionWelcomeView: View {
             VStack(spacing: 12) {
                 Text("Your bots, together.").font(.title2.bold())
                 Text("Bots live in your Hermes dashboard. WebUI uses a separate connection, so sign in once here to bring them to Hermex.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .multilineTextAlignment(.center)
             Button("Connect", action: onConnect)
                 .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
-                .foregroundStyle(Color(uiColor: .systemBackground))
-                .background(Color(uiColor: .label), in: Capsule()).buttonStyle(.plain)
+                .foregroundStyle(Color(uiColor: .appCanvas))
+                .background(Color(uiColor: .appText), in: Capsule()).buttonStyle(.plain)
         }
         .frame(maxWidth: 360).padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -809,7 +811,7 @@ struct ConnectionAttemptDetails: View {
             layout {
                 Text(stage.title)
                 if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
-                Text(outcome.title).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(outcome.title).foregroundStyle(.appSecondary).textSelection(.enabled)
             }
         }
         .accessibilityElement(children: .combine)
@@ -851,7 +853,7 @@ private extension HermesAttemptRecord.Outcome {
 
     var tint: AnyShapeStyle {
         switch self {
-        case .notChecked: return AnyShapeStyle(.tertiary)
+        case .notChecked: return AnyShapeStyle(.appTertiary)
         case .passed: return AnyShapeStyle(.green)
         case .failed: return AnyShapeStyle(.red)
         }

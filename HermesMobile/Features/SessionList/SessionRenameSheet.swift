@@ -27,7 +27,7 @@ struct SessionRenameSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     TextField("Session title", text: $sessionTitle)
                         .textInputAutocapitalization(.sentences)
@@ -40,6 +40,7 @@ struct SessionRenameSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Rename Session")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

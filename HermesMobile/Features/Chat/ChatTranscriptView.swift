@@ -275,7 +275,7 @@ struct ChatTranscriptView: View {
                     }
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
-                .background(Color(.systemBackground))
+                .background(Color(.appCanvas))
                 .background {
                     StreamingFollowTrigger(trigger: streamingScrollTrigger) {
                         if isFollowingLatestContent {
@@ -1027,7 +1027,7 @@ private struct ChatWaitingSendRow: View {
             HStack(spacing: 10) {
                 Text("Waiting for connection")
                     .font(AppFont.caption(weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .accessibilityHidden(true)
                 Button("Cancel", action: onCancel)
                     .font(AppFont.caption(weight: .semibold))
@@ -1181,7 +1181,7 @@ struct ChatScrollToBottomButton: View {
             Image(systemName: "arrow.down")
                 .font(.system(size: 13, weight: .semibold))
                 .frame(width: 32, height: 32)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .adaptiveGlass(
                     .regular,
                     isInteractive: true,
@@ -1231,13 +1231,13 @@ struct LoadOlderMessagesButton: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.88)
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.regularMaterial, in: Capsule(style: .continuous))
+            .background(.appMaterial(.regularMaterial), in: Capsule(style: .continuous))
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(Color(.separator).opacity(0.32), lineWidth: 0.5)
+                    .stroke(Color(.appSeparator).opacity(0.32), lineWidth: 0.5)
             )
         }
         .buttonStyle(.chatTactile(.capsule))

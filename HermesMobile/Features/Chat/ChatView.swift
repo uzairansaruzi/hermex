@@ -185,7 +185,7 @@ private struct ListenPlaybackBar: View {
 
             Divider()
         }
-        .background(.regularMaterial)
+        .background(.appMaterial(.regularMaterial))
         .accessibilityElement(children: .contain)
     }
 
@@ -240,7 +240,7 @@ private struct ListenPlaybackBar: View {
             Spacer(minLength: 0)
         }
         .font(AppFont.caption2().monospacedDigit())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.appSecondary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "\(AudioDurationFormatter.string(from: boundedDisplayTime)) of \(AudioDurationFormatter.string(from: duration))"))
     }
@@ -265,7 +265,7 @@ private struct ListenPlaybackBar: View {
                 .monospacedDigit()
                 .frame(minWidth: 36, minHeight: 30)
                 .padding(.horizontal, 6)
-                .background(Color(.secondarySystemBackground), in: Capsule())
+                .background(Color(.appSurface), in: Capsule())
         }
         .disabled(!isReady)
         .accessibilityLabel(String(localized: "Playback speed"))
@@ -276,7 +276,7 @@ private struct ListenPlaybackBar: View {
         Button(action: onStop) {
             Image(systemName: "xmark")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 30, height: 30)
                 .contentShape(Circle())
         }
@@ -1108,6 +1108,7 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
         }
+        .themedPageBackground()
         .navigationTitle(viewModel.hermesBotChat?.botProfile?.name ?? displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         // A bot's pill names the chat; its title stays only for Back on screens pushed over it.
@@ -1412,6 +1413,7 @@ struct ChatView: View {
             .sheet(isPresented: $showsDelegatedWork) {
                 if let work = viewModel.hermesActivity?.delegatedWork {
                     HermesDelegatedWorkView(work: work)
+                        .themedPageBackground()
                         .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
                 }
@@ -1613,6 +1615,7 @@ struct ChatView: View {
                 onCreate: closeBranchPicker(checkingOut:),
                 onRefresh: { Task { await gitAvailabilityViewModel.loadBranches() } }
             )
+            .themedPageBackground()
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
@@ -4404,14 +4407,14 @@ struct ChatToolbarTitleLabel: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             if showsSubtitle, let subtitle {
                 Text(subtitle)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -4465,7 +4468,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
             content
                 .padding(.horizontal, 4)
                 .background(
-                    Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.24 : 0.42),
+                    Color(.appSurface).opacity(colorScheme == .dark ? 0.24 : 0.42),
                     in: Capsule()
                 )
                 .adaptiveGlass(
@@ -4477,7 +4480,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
                 .clipShape(Capsule())
                 .overlay {
                     Capsule()
-                        .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.38 : 0.24), lineWidth: 0.5)
+                        .stroke(Color(.appSeparator).opacity(colorScheme == .dark ? 0.38 : 0.24), lineWidth: 0.5)
                         .allowsHitTesting(false)
                 }
         }
@@ -4630,6 +4633,7 @@ private struct ChatDraftSyncModifier: ViewModifier {
 /// scroll-edge detection. UIKit extends this native background through the status bar.
 struct ChatNavigationBackground: ViewModifier {
     let reduceTransparency: Bool
+    @Environment(\.isAppThemed) private var isThemed
 
     func body(content: Content) -> some View {
         content
@@ -4638,10 +4642,11 @@ struct ChatNavigationBackground: ViewModifier {
     }
 
     private var backgroundStyle: AnyShapeStyle {
-        if #available(iOS 26, *), !reduceTransparency {
+        // iOS's material grays a theme's canvas out, so a theme draws its own.
+        if #available(iOS 26, *), !reduceTransparency, !isThemed {
             return AnyShapeStyle(.regularMaterial)
         }
-        return AnyShapeStyle(Color(uiColor: .systemBackground))
+        return AnyShapeStyle(Color(uiColor: .appCanvas))
     }
 }
 

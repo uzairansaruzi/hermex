@@ -11,7 +11,7 @@ struct SettingsComposerPage: View {
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Picker(selection: $streamingSendBehaviorRawValue) {
                     ForEach(StreamingSendBehavior.allCases) { behavior in
@@ -69,7 +69,7 @@ struct SettingsChatPage: View {
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Picker(selection: $thinkingAndToolCards) {
                     ForEach(ThinkingAndToolCards.allCases) { mode in
@@ -136,7 +136,7 @@ struct SettingsGeneralPage: View {
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Toggle(isOn: $isHapticsEnabled) {
                     SettingsLabel(title: String(localized: "Haptic Feedback"), systemImage: "iphone.radiowaves.left.and.right")

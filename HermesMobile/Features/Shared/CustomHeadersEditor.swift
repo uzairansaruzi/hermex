@@ -24,7 +24,7 @@ struct CustomHeadersEditor: View {
 
             Text("Sent with every request to your server, including media and live streams. Use for a reverse proxy (e.g. Authentik) or token auth, such as an Authorization header.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -36,7 +36,7 @@ struct CustomHeadersEditor: View {
                     TextField("Header name", text: header.name)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                         .accessibilityLabel("Header name")
                 }
 
@@ -53,7 +53,7 @@ struct CustomHeadersEditor: View {
 
             field {
                 SecureField("Value", text: header.value)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .accessibilityLabel("Header value")
             }
         }
@@ -64,10 +64,10 @@ struct CustomHeadersEditor: View {
             .font(.subheadline)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(Color(.appSurface), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color(.separator), lineWidth: 1)
+                    .strokeBorder(Color(.appSeparator), lineWidth: 1)
             )
     }
 

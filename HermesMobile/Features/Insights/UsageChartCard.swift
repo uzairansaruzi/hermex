@@ -31,7 +31,7 @@ struct UsageChartCard: View {
                 if let hourlyNote {
                     Text(hourlyNote)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -57,7 +57,7 @@ struct UsageChartCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(hero.label)
                     .font(AppFont.subheadline())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
 
                 Text(hero.value)
                     .font(AppFont.title(weight: .bold))
@@ -67,7 +67,7 @@ struct UsageChartCard: View {
 
                 Text(hero.caption)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -131,7 +131,7 @@ struct UsageChartCard: View {
         } else {
             Text("No activity in this window.")
                 .font(AppFont.body())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: Self.chartHeight)
         }
@@ -188,7 +188,7 @@ struct UsageChartCard: View {
             }
         }
         .font(AppFont.caption2())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.appSecondary)
         .accessibilityHidden(!hasActivity)
     }
 

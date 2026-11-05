@@ -126,7 +126,7 @@ struct GitActionsMenuButton: View {
             Label {
                 Text("+\(status.totalAdditions)").foregroundStyle(.green)
                 + Text("  −\(status.totalDeletions)").foregroundStyle(.red)
-                + Text("  \(status.changedCount)").foregroundStyle(.secondary)
+                + Text("  \(status.changedCount)").foregroundStyle(.appSecondary)
             } icon: {
                 Image(systemName: "doc.text.magnifyingglass")
             }

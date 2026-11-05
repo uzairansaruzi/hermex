@@ -278,7 +278,7 @@ struct BotChatTitlePill: View {
         Button(action: onOpen) {
             HStack(spacing: 8) {
                 BotAvatarView(profile: profile, avatar: avatar, size: 30, motion: motion, expression: face.expression)
-                Text(profile.name).font(.headline).foregroundStyle(.primary).lineLimit(1)
+                Text(profile.name).font(.headline).foregroundStyle(.appPrimary).lineLimit(1)
             }
             .modifier(BotChatTitlePillFallback())
         }
@@ -295,7 +295,7 @@ struct BotChatTitlePillFallback: ViewModifier {
             content
         } else {
             content.padding(.leading, 4).padding(.trailing, 12).padding(.vertical, 4)
-                .background(.regularMaterial, in: Capsule())
+                .background(.appMaterial(.regularMaterial), in: Capsule())
         }
     }
 }

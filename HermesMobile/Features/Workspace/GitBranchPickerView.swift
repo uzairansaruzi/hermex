@@ -34,7 +34,7 @@ struct GitBranchPickerButton: View {
                 Image(systemName: "chevron.down")
                     .font(AppFont.caption2())
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .padding(.horizontal, 6)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -94,7 +94,7 @@ struct GitBranchPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 Section("Local") {
                     ForEach(localBranches, id: \.name) { branch in
                         branchButton(branch, mode: .local)
@@ -130,6 +130,7 @@ struct GitBranchPickerSheet: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .themedPageBackground()
             .navigationTitle("Branches")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search branches")
@@ -167,13 +168,13 @@ struct GitBranchPickerSheet: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: isCurrent ? "checkmark" : "arrow.triangle.branch")
-                    .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
+                    .foregroundStyle(isCurrent ? Color.accentColor : Color(.appTextSecondary))
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(name).foregroundStyle(.primary)
+                    Text(name).foregroundStyle(.appPrimary)
                     if let subject = branch.subject, !subject.isEmpty {
-                        Text(subject).font(AppFont.caption()).foregroundStyle(.secondary).lineLimit(1)
+                        Text(subject).font(AppFont.caption()).foregroundStyle(.appSecondary).lineLimit(1)
                     }
                 }
 
@@ -184,7 +185,7 @@ struct GitBranchPickerSheet: View {
                 if (branch.ahead ?? 0) > 0 || (branch.behind ?? 0) > 0 {
                     Text("↑\(branch.ahead ?? 0) ↓\(branch.behind ?? 0)")
                         .font(AppFont.mono(style: .caption2))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
         }
@@ -196,6 +197,6 @@ struct GitBranchPickerSheet: View {
             .font(AppFont.mono(style: .caption2))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(Color(.secondarySystemFill), in: Capsule())
+            .background(Color(.appFillSecondary), in: Capsule())
     }
 }

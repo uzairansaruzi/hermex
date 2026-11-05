@@ -167,7 +167,7 @@ final class ReviewDiffCanvasView: UIView, UIGestureRecognizerDelegate {
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: Self, _) in
             view.restyle()
         }
-        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self]) { (view: Self, _) in
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, AppAppearanceTrait.self, UITraitAccessibilityContrast.self]) { (view: Self, _) in
             view.setNeedsDisplay()
         }
     }

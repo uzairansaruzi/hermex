@@ -43,7 +43,7 @@ struct PluginInstallSheet: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-                List {
+                AppList {
                     if entry == nil { inputSection }
                     if let refusal { refusalSection(refusal).id(Self.refusalID) }
                     reviewSections
@@ -53,6 +53,7 @@ struct PluginInstallSheet: View {
                 // The button stays on screen however far the review scrolled, so its answer must too.
                 .onChange(of: refusal) { if refusal != nil { proxy.scrollTo(Self.refusalID, anchor: .top) } }
             }
+            .themedPageBackground()
             .navigationTitle(entry == nil ? String(localized: "Install Plugin") : String(localized: "Review Install"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -125,7 +126,7 @@ struct PluginInstallSheet: View {
             }
         case .loadingCatalog:
             Section {
-                Text("Looking in the catalog…").foregroundStyle(.secondary)
+                Text("Looking in the catalog…").foregroundStyle(.appSecondary)
             }
         case .none, .invalid, .notInCatalog, .catalogUnavailable:
             EmptyView()
@@ -159,18 +160,18 @@ struct PluginInstallSheet: View {
                 Text(isInstalling ? String(localized: "Installing…") : String(localized: "Install on \(profile)"))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.appProminent)
             .controlSize(.large)
             .disabled(source == nil || isInstalling)
             if isInstalling {
                 Text("The host is downloading it, which can take a few minutes.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(.appMaterial(.bar))
     }
 
     /// One attempt, which the user asked for. An unconfirmed result closes the sheet like a success,
@@ -207,7 +208,7 @@ struct PluginCatalogReview: View {
                 Text(verbatim: entry.title).font(.headline)
                 Text(verbatim: [entry.tier.title, entry.maintainer, entry.version].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             if isTooNew {
                 PluginWarningRow(level: .strongest, text: String(localized: "This plugin needs Hermes \(entry.minimumHermes) or later, so this host can't install it yet."))
@@ -285,7 +286,7 @@ private struct PluginWarningRow: View {
             Text(verbatim: text).font(.footnote)
         } icon: {
             switch level {
-            case .plain: Image(systemName: "info.circle.fill").foregroundStyle(.secondary)
+            case .plain: Image(systemName: "info.circle.fill").foregroundStyle(.appSecondary)
             case .strong: Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             case .strongest: Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
             }

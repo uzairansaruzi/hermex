@@ -46,12 +46,12 @@ struct CronJobModelRow: View {
                 HStack(spacing: 6) {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(title)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.appPrimary)
 
                         if let providerID = selection?.providerID {
                             Text(verbatim: providerID)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
                     }
                     .multilineTextAlignment(.trailing)
@@ -114,7 +114,7 @@ struct CronJobProfileRow: View {
             LabeledContent {
                 HStack(spacing: 6) {
                     Text(title)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(2)
 
                     CronJobPickerChevron()
@@ -163,7 +163,7 @@ struct CronJobPickerChevron: View {
     var body: some View {
         Image(systemName: "chevron.up.chevron.down")
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.appTertiary)
             .accessibilityHidden(true)
     }
 }
@@ -188,7 +188,7 @@ struct CronJobProfilePickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList(rows: .plain) {
                 if trimmedSearchQuery.isEmpty {
                     serverDefaultRow
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
@@ -206,6 +206,7 @@ struct CronJobProfilePickerSheet: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .themedPageBackground()
             .navigationTitle("Task Profile")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
@@ -346,7 +347,7 @@ struct CronJobProfilePickerSheet: View {
                         Text(details)
                             .font(.caption)
                             .foregroundStyle(
-                                selected ? Color(.systemBackground).opacity(0.7) : Color.secondary
+                                selected ? Color(.appCanvas).opacity(0.7) : Color(.appTextSecondary)
                             )
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }

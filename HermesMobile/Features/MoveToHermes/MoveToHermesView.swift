@@ -26,6 +26,7 @@ struct MoveToHermesSheet: View {
     var body: some View {
         NavigationStack {
             content
+                .themedPageBackground()
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
@@ -128,11 +129,11 @@ struct MoveToHermesSheet: View {
     // MARK: D
 
     private var hostChoice: some View {
-        List {
+        AppList {
             Section {
                 Text(model.savedHost == nil ? String(localized: "\(source) has no saved Hermes sign-in. Pick the host that should take its chats.")
                                             : String(localized: "Pick the host that should take \(source)’s chats. The first is its saved Hermes sign-in."))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             Section {
                 if let saved = model.savedHost {
@@ -167,7 +168,7 @@ struct MoveToHermesSheet: View {
     private var checking: some View {
         let state = model.checking
         let failed = state.hostError != nil || state.webuiFailed
-        return List {
+        return AppList {
             Section {
                 MoveToHermesStep(state: state.signedIn ? .done : (state.hostError != nil ? .failed : .current(1)),
                                  title: String(localized: "Signed in to \(destination)"), detail: state.hostError)
@@ -198,20 +199,20 @@ struct MoveToHermesSheet: View {
             MoveToHermesNoticeScreen(
                 tint: .orange, title: String(localized: "Update Hermes first"),
                 message: String(localized: "\(destination) runs \(version). Moving needs \(HermesCompatibility.minimumVersion) or later. \(source) keeps working as it is.")) {
-                Button("OK") { dismiss() }.buttonStyle(.borderedProminent)
+                Button("OK") { dismiss() }.buttonStyle(.appProminent)
             }
         case .sourceUnreadable:
             MoveToHermesNoticeScreen(
                 tint: .orange, title: String(localized: "Couldn’t read \(source)’s chats"),
                 message: String(localized: "\(source) didn’t answer. Check that it’s running and that you’re signed in.")) {
-                Button("Try Again") { model.retryCheckedPass() }.buttonStyle(.borderedProminent)
+                Button("Try Again") { model.retryCheckedPass() }.buttonStyle(.appProminent)
                 Button("Close") { dismiss() }.buttonStyle(.bordered)
             }
         case .running(let count):
             MoveToHermesNoticeScreen(
                 tint: .orange, title: String(localized: "Wait for running chats"),
                 message: String(localized: "\(count) chats on \(source) are still running. Move once they finish, so no reply is lost.")) {
-                Button("OK") { dismiss() }.buttonStyle(.borderedProminent)
+                Button("OK") { dismiss() }.buttonStyle(.appProminent)
             }
         }
     }
@@ -222,7 +223,7 @@ struct MoveToHermesSheet: View {
     private var review: some View {
         if let review = model.review {
             let counts = model.counts
-            List {
+            AppList {
                 Section {
                     Group {
                         if review.connection.hasNoCredentials {
@@ -233,7 +234,7 @@ struct MoveToHermesSheet: View {
                                  ?? String(localized: "Signed in to \(destination) as \(review.connection.username)."))
                         }
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     if review.connection.hasNoCredentials {
                         OpenDashboardWarning()
                     }
@@ -285,7 +286,7 @@ struct MoveToHermesSheet: View {
                 Section("Stays behind") {
                     Text("Project tags (Hermes groups by folder). Cleared history: Hermes shows the full transcript. Offline copies: Hermes caches its own.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
                 Section {
                     Button(review.isRepeat ? String(localized: "Copy Missing Chats Again") : String(localized: "Move")) { model.move() }
@@ -303,12 +304,12 @@ struct MoveToHermesSheet: View {
                 Text(choice.sameName ? String(localized: "\(choice.chats) chats · same name")
                                      : String(localized: "\(choice.chats) chats · no Profile with this name"))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             Spacer(minLength: 8)
             switch model.mapping[choice.source] {
-            case .hermes(let profile)?: Text(profile).foregroundStyle(.secondary)
-            case .keepOnWebui?: Text("Keep on \(source)").foregroundStyle(.secondary)
+            case .hermes(let profile)?: Text(profile).foregroundStyle(.appSecondary)
+            case .keepOnWebui?: Text("Keep on \(source)").foregroundStyle(.appSecondary)
             case nil: Text("Choose…").foregroundStyle(.tint)
             }
         }
@@ -324,7 +325,7 @@ struct MoveToHermesSheet: View {
             position < index ? .done : (position == index ? .current(position + 2) : .waiting)
         }
         let copied = model.runner?.copyProgress
-        return List {
+        return AppList {
             Section {
                 MoveToHermesStep(state: index >= 0 || model.destinationAdded ? .done : .current(1),
                                  title: String(localized: "\(destination) added"),
@@ -352,14 +353,14 @@ struct MoveToHermesSheet: View {
             MoveToHermesNoticeScreen(
                 tint: .blue, title: String(localized: "Can’t read this move right now"),
                 message: String(localized: "This iPhone can’t read the move’s progress right now, which can happen before it’s unlocked for the first time. Nothing more is sent until it can be read.")) {
-                Button("Try Again") { model.resume() }.buttonStyle(.borderedProminent)
+                Button("Try Again") { model.resume() }.buttonStyle(.appProminent)
             }
         case .damaged, .needsRescan:
             MoveToHermesNoticeScreen(
                 tint: .orange, title: String(localized: "This move’s progress was lost"),
                 message: String(localized: "The record of what was sent can’t be trusted, so nothing more will be sent from it. Copy Missing Chats Again checks \(source) again and copies what \(destination) still lacks. It can’t finish titles, pins, folders or drafts for chats already in \(destination).")) {
                 Button("Copy Missing Chats Again…") { model.copyMissingChatsAgain() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
                     .disabled(model.source == nil)
                 Button("Close") { dismiss() }.buttonStyle(.bordered)
             }
@@ -367,7 +368,7 @@ struct MoveToHermesSheet: View {
             MoveToHermesNoticeScreen(
                 tint: .red, title: String(localized: "\(destination) was removed"),
                 message: String(localized: "The move stopped when \(destination) was removed from this iPhone. Chats it copied stay in \(destination). \(source) works as before and can be moved again.")) {
-                Button("OK") { dismiss() }.buttonStyle(.borderedProminent)
+                Button("OK") { dismiss() }.buttonStyle(.appProminent)
             }
         }
     }
@@ -376,7 +377,7 @@ struct MoveToHermesSheet: View {
         let snapshot = model.snapshot
         let report = snapshot?.report
         let signedOut = pause == .destinationUnavailable && !model.destinationIsSignedIn
-        return List {
+        return AppList {
             Section {
                 switch pause {
                 case .destinationUnavailable where signedOut:
@@ -493,7 +494,7 @@ struct MoveToHermesSheet: View {
         }
         return MoveToHermesNoticeScreen(tint: .red, title: String(localized: "Couldn’t start the move"),
                                         message: reason + " " + String(localized: "Nothing was changed.")) {
-            Button("OK") { dismiss() }.buttonStyle(.borderedProminent)
+            Button("OK") { dismiss() }.buttonStyle(.appProminent)
         }
     }
 }
@@ -507,12 +508,12 @@ private struct MoveToHermesProfilePicker: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 ForEach(model.review?.hermesProfiles ?? [], id: \.self) { profile in
                     Button { pick(.hermes(profile: profile)) } label: {
                         HStack {
-                            Text(profile).foregroundStyle(.primary)
+                            Text(profile).foregroundStyle(.appPrimary)
                             Spacer()
                             if model.mapping[choice.source] == .hermes(profile: profile) {
                                 Image(systemName: "checkmark").foregroundStyle(.tint).accessibilityLabel("Selected")
@@ -527,10 +528,10 @@ private struct MoveToHermesProfilePicker: View {
                 Button { pick(.keepOnWebui) } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Keep on \(model.sourceName)").foregroundStyle(.primary)
+                            Text("Keep on \(model.sourceName)").foregroundStyle(.appPrimary)
                             Text("Its \(choice.chats) chats stay there, and its Shortcuts keep opening \(model.sourceName) while it’s configured.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.appSecondary)
                         }
                         Spacer()
                         if model.mapping[choice.source] == .keepOnWebui {
@@ -540,6 +541,7 @@ private struct MoveToHermesProfilePicker: View {
                 }
             }
         }
+        .themedPageBackground()
         .navigationTitle(choice.source)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -570,7 +572,7 @@ private struct MoveToHermesReportView: View {
     let remove: (() -> Void)?
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 MoveToHermesStep(state: .done, title: String(localized: "\(report.chatsInHermes) chats in \(destination)"),
                                  detail: report.presentUnconfirmed.isEmpty
@@ -621,7 +623,7 @@ private struct MoveToHermesReportView: View {
     private var actions: some View {
         VStack(spacing: 8) {
             Button(action: done) { Text("Done").frame(maxWidth: .infinity) }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.appProminent)
             if let next {
                 Button(action: moveNext) { Text("Move \(next) Next").frame(maxWidth: .infinity) }
                     .buttonStyle(.bordered)
@@ -633,7 +635,7 @@ private struct MoveToHermesReportView: View {
                 Text("\(source)’s chats stay on its host. Only Hermex’s copy of the server is removed.")
                     .font(.footnote)
                     .fontWeight(.regular)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .multilineTextAlignment(.center)
             }
         }
@@ -641,7 +643,7 @@ private struct MoveToHermesReportView: View {
         .fontWeight(.semibold)
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(.bar)
+        .background(.appMaterial(.bar))
     }
 
     private var staying: Int { report.notCopied.count + report.rejected.count + report.oversized.count + report.keptOnWebui.count }
@@ -726,7 +728,7 @@ struct MoveToHermesStep: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let detail, !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
+                    Text(detail).font(.caption).foregroundStyle(.appSecondary)
                 }
             }
         }
@@ -738,7 +740,7 @@ struct MoveToHermesStep: View {
     private var glyph: some View {
         switch state {
         case .done: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-        case .waiting: Image(systemName: "circle").foregroundStyle(.tertiary)
+        case .waiting: Image(systemName: "circle").foregroundStyle(.appTertiary)
         case .attention: Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
         case .failed: Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
         case .current(let number): Image(systemName: "\(number).circle").foregroundStyle(.tint)
@@ -765,12 +767,12 @@ private struct MoveToHermesRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).foregroundStyle(.primary)
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(title).foregroundStyle(.appPrimary)
+                Text(detail).font(.caption).foregroundStyle(.appSecondary)
             }
             Spacer()
             if chevron {
-                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.appTertiary)
                     .accessibilityHidden(true)
             }
         }
@@ -793,7 +795,7 @@ private struct MoveToHermesNoticeScreen<Actions: View>: View {
                     .foregroundStyle(tint)
                     .accessibilityHidden(true)
                 Text(title).font(.title3.weight(.semibold))
-                Text(message).foregroundStyle(.secondary)
+                Text(message).foregroundStyle(.appSecondary)
                 VStack(spacing: 10) { actions }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 8)
@@ -866,12 +868,12 @@ struct MoveToHermesBanner: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Move \(source) to Hermes").fontWeight(.semibold)
-                Text("Bring your chats to Hermes.").foregroundStyle(.secondary)
+                Text("Bring your chats to Hermes.").foregroundStyle(.appSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             Button("Move") { request = Request(sourceID: serverID, notice: nil, entry: .start) }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.appProminent)
                 .buttonBorderShape(.capsule)
                 .controlSize(.small)
                 .fontWeight(.semibold)
@@ -879,13 +881,13 @@ struct MoveToHermesBanner: View {
             Button { auth.noteMovePrompt(.dismissed, forSource: serverID) } label: {
                 Image(systemName: "xmark")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(Text("Dismiss"))
         }
         .font(.subheadline)
-        .moveToHermesCard(Color(.secondarySystemBackground))
+        .moveToHermesCard(Color(.appSurface))
     }
 
     private func banner(_ notice: MoveToHermesNotice) -> some View {
@@ -1079,6 +1081,7 @@ private struct MoveToHermesQuestionSheet: View {
                 ask
             }
         }
+        .themedPageBackground()
         .presentationDetents(isMoving ? [.large] : [.medium, .large])
     }
 
@@ -1098,7 +1101,7 @@ private struct MoveToHermesQuestionSheet: View {
                     .font(.title3.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 Text("Hermex now talks to Hermes directly. Your chats, titles, pins and drafts come with you.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 VStack(alignment: .leading, spacing: 8) {
                     point(String(localized: "Nothing is deleted. \(source) keeps working until you remove it."))
                     point(question.hasBotsSignIn
@@ -1109,7 +1112,7 @@ private struct MoveToHermesQuestionSheet: View {
                     Button { isMoving = true } label: {
                         Text("Move to Hermes").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
                     Button { dismiss() } label: {
                         Text("Not Now").frame(maxWidth: .infinity)
                     }
@@ -1150,6 +1153,7 @@ private struct MoveToHermesOfferSheet: View {
                 question
             }
         }
+        .themedPageBackground()
         .presentationDetents(isBringing ? [.large] : [.medium, .large])
     }
 
@@ -1165,12 +1169,12 @@ private struct MoveToHermesOfferSheet: View {
                     .font(.title3.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
                 Text("Bring your chats from \(source)? Hermex checks which ones Hermes already has, then shows you what it will copy before it starts.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 VStack(spacing: 10) {
                     Button { isBringing = true } label: {
                         Text("Bring My Chats").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
                     Button { dismiss() } label: {
                         Text("Not Now").frame(maxWidth: .infinity)
                     }
@@ -1180,7 +1184,7 @@ private struct MoveToHermesOfferSheet: View {
                 .padding(.top, 8)
                 Text("You can do this later in Settings › \(source).")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
             }

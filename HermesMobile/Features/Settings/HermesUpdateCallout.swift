@@ -63,7 +63,7 @@ import UIKit
     }
 
     private var updating: Card {
-        Card(symbol: "circle.dashed", tint: .secondary, title: String(localized: "Updating…"),
+        Card(symbol: "circle.dashed", tint: Color(.appTextSecondary), title: String(localized: "Updating…"),
              message: behind.map { String(localized: "Hermes is installing \($0) commits on your host.") }
                 ?? String(localized: "Hermes is installing the update on your host."))
     }
@@ -74,7 +74,7 @@ import UIKit
         switch state {
         case .applying: return updating
         case .recovering:
-            return Card(symbol: "circle.dashed", tint: .secondary, title: String(localized: "Restarting Hermes…"),
+            return Card(symbol: "circle.dashed", tint: Color(.appTextSecondary), title: String(localized: "Restarting Hermes…"),
                         message: String(localized: "Waiting for Hermes to come back"))
         case .done(let installed):
             return Card(symbol: "checkmark.circle.fill", tint: .green,
@@ -95,7 +95,7 @@ import UIKit
                         message: String(localized: "The update finished, but Hermes hasn’t answered for 2 minutes. Run this on your host, then check again."),
                         command: Self.dashboardCommand, action: .checkAgain)
         case .stillRunning:
-            return Card(symbol: "circle.dashed", tint: .secondary, title: String(localized: "Updating…"),
+            return Card(symbol: "circle.dashed", tint: Color(.appTextSecondary), title: String(localized: "Updating…"),
                         message: String(localized: "Hermes is still updating after 10 minutes. Check again later."),
                         action: .checkAgain)
         }
@@ -111,12 +111,12 @@ import UIKit
             // The host's own message says which release, and why, for both of these.
             let newer = String(localized: "Newer than the latest release")
             if check.offer == .held {
-                return Card(symbol: "checkmark.circle.fill", tint: .secondary, title: newer, message: check.message, action: .check)
+                return Card(symbol: "checkmark.circle.fill", tint: Color(.appTextSecondary), title: newer, message: check.message, action: .check)
             }
             if check.offer == .moveBack {
                 return check.canApply
-                    ? Card(symbol: "arrow.uturn.backward.circle", tint: .secondary, title: newer, message: check.message, action: .moveBack)
-                    : Card(symbol: "arrow.uturn.backward.circle", tint: .secondary, title: newer, message: check.message, command: check.hostCommand)
+                    ? Card(symbol: "arrow.uturn.backward.circle", tint: Color(.appTextSecondary), title: newer, message: check.message, action: .moveBack)
+                    : Card(symbol: "arrow.uturn.backward.circle", tint: Color(.appTextSecondary), title: newer, message: check.message, command: check.hostCommand)
             }
             if check.updateAvailable {
                 let behind = check.behind.flatMap { $0 > 0 ? String(localized: "\($0) commits behind.") : nil }
@@ -138,7 +138,7 @@ import UIKit
             // An install the dashboard can't update (Docker, a package manager, a managed
             // runtime) says how it updates, or a check that couldn't run says why.
             guard check.canApply else {
-                return Card(symbol: "arrow.up.circle", tint: .secondary, title: String(localized: "Update Hermes on your host"),
+                return Card(symbol: "arrow.up.circle", tint: Color(.appTextSecondary), title: String(localized: "Update Hermes on your host"),
                             message: check.message, command: check.hostCommand, action: .check)
             }
             return Card(symbol: "exclamationmark.triangle.fill", tint: .orange,
@@ -183,8 +183,8 @@ import UIKit
         let content = HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: card.symbol).foregroundStyle(card.tint).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(card.title).fontWeight(.semibold).foregroundStyle(Color.primary)
-                if let message = card.message { Text(message).foregroundStyle(.secondary) }
+                Text(card.title).fontWeight(.semibold).foregroundStyle(Color(.appText))
+                if let message = card.message { Text(message).foregroundStyle(.appSecondary) }
                 if let command = card.command { commandRow(command) }
                 if let action = card.action {
                     if card.command == nil {
@@ -218,7 +218,7 @@ import UIKit
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: command)
                 .font(AppFont.footnote().monospaced())
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(Color(.appText))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button {
@@ -229,7 +229,7 @@ import UIKit
             .buttonStyle(.borderless)
         }
         .padding(.vertical, 6).padding(.horizontal, 8)
-        .background(Color(.systemBackground).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color(.appCanvas).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
         .padding(.top, 4)
     }
 }

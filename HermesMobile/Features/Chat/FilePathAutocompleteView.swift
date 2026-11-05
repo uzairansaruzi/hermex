@@ -23,7 +23,7 @@ struct FilePathAutocompleteView: View {
             if search.matches.isEmpty {
                 emptyText
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
             } else {
@@ -95,7 +95,7 @@ struct FilePathRow: View {
 
                 Text(match.name)
                     .font(Font.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .layoutPriority(2)
@@ -103,7 +103,7 @@ struct FilePathRow: View {
                 if !match.parentPath.isEmpty {
                     Text(match.parentPath)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                         .truncationMode(.head)
                         .layoutPriority(1)
@@ -114,7 +114,7 @@ struct FilePathRow: View {
                 if match.isDirectory {
                     Image(systemName: "chevron.forward")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.appTertiary)
                 }
             }
             .padding(.horizontal, 16)

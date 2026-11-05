@@ -209,6 +209,7 @@ struct KanbanStatusFocusView: View {
         .navigationDestination(item: $presentedCardID) { cardID in
             KanbanCardDetailView(featureModel: model, cardID: cardID)
         }
+        .themedPageBackground()
         .navigationTitle(String(localized: "Kanban"))
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $model.searchText, prompt: Text("Search Cards"))
@@ -333,7 +334,7 @@ struct KanbanStatusFocusView: View {
         VStack(spacing: 12) {
             ProgressView()
             Text("Loading Kanban")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
@@ -383,6 +384,7 @@ struct KanbanStatusFocusView: View {
                 dispatcherPanel
                     .padding()
             }
+            .themedPageBackground()
             .navigationTitle("Dispatcher")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -391,6 +393,7 @@ struct KanbanStatusFocusView: View {
                 }
             }
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .alert("Run Dispatcher", isPresented: $confirmsRunDispatcher) {
@@ -420,13 +423,13 @@ struct KanbanStatusFocusView: View {
 
             Text("Preview is advisory and may become stale. It never starts workers.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             if let dispatcherUnavailableReason,
                model.dispatchState?.phase.isInFlight != true {
                 Text(dispatcherUnavailableReason)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             if let dispatch = model.dispatchState {
@@ -450,7 +453,7 @@ struct KanbanStatusFocusView: View {
         Button("Run Dispatcher") {
             confirmsRunDispatcher = true
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.appProminent)
         .disabled(model.dispatcherAvailability != .available)
         .frame(minHeight: 44)
     }
@@ -464,7 +467,7 @@ struct KanbanStatusFocusView: View {
                 if let completedAt = dispatch.completedAt {
                     Text(completedAt, style: .time)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
                 Spacer()
                 if !dispatch.phase.isInFlight, dispatch.phase != .outcomeUncertain {
@@ -502,7 +505,7 @@ struct KanbanStatusFocusView: View {
             if dispatch.phase == .outcomeUncertain {
                 Text("Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 if dispatch.canAcknowledgeUncertainOutcome {
                     Button("I Reviewed the Board") {
                         model.dismissDispatchResult()
@@ -518,11 +521,11 @@ struct KanbanStatusFocusView: View {
             } else if dispatch.phase == .refused {
                 Text("The server refused this Dispatcher request. Hermex did not retry it.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             } else if dispatch.phase == .boardUnavailable {
                 Text("This Board no longer exists. Choose another Board.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .accessibilityElement(children: .contain)
@@ -733,7 +736,7 @@ struct KanbanStatusFocusView: View {
             if let explanation = bulkDisabledExplanation {
                 Text(explanation)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .padding(.horizontal)
@@ -775,7 +778,7 @@ struct KanbanStatusFocusView: View {
                     .lineLimit(2)
                 if recoveryPhase == .failed, let message = recovery?.message {
                     Text(verbatim: message)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
             Spacer()
@@ -827,7 +830,7 @@ struct KanbanStatusFocusView: View {
             .frame(minWidth: 44, minHeight: 44)
         }
         .font(.footnote)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.appSecondary)
         .padding(.horizontal)
         .padding(.vertical, 4)
         .background(.secondary.opacity(0.08))
@@ -848,7 +851,7 @@ struct KanbanStatusFocusView: View {
     private var liveUpdatesDelayedBanner: some View {
         Label("Live updates delayed", systemImage: "arrow.clockwise.circle")
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .padding(.horizontal)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1068,7 +1071,7 @@ struct KanbanStatusFocusView: View {
                     ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize,
                     weight: .regular
                 )
-                countLabel.textColor = .secondaryLabel
+                countLabel.textColor = .appTextSecondary
 
                 stackView.axis = .horizontal
                 stackView.alignment = .center
@@ -1131,7 +1134,7 @@ struct KanbanStatusFocusView: View {
     }
 
     private var cardList: some View {
-        List {
+        AppList(rows: .plain) {
             if model.showsBoardLoadingRow {
                 HStack {
                     Spacer()
@@ -1256,7 +1259,7 @@ struct KanbanStatusFocusView: View {
             }
         } label: {
             Image(systemName: "ellipsis.circle")
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .frame(minWidth: 44, minHeight: 44)
         }
         .tint(.primary)
@@ -1270,10 +1273,10 @@ struct KanbanStatusFocusView: View {
             switch mutation.phase {
             case .updating:
                 Label("Updating task...", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.appSecondary)
             case .checkingResult:
                 Label("Checking Result", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.appSecondary)
             case .succeeded:
                 Label("Updated", systemImage: "checkmark.circle.fill")
                     .font(.footnote).foregroundStyle(.green)
@@ -1286,7 +1289,7 @@ struct KanbanStatusFocusView: View {
                     }
                     if let message = mutation.message {
                         Text(verbatim: message)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                 }
                 .font(.footnote)
@@ -1558,7 +1561,7 @@ private struct KanbanBoardManagementView: View {
     @State private var pendingActivation: KanbanBoard?
 
     var body: some View {
-        List {
+        AppList {
             if let mutation = model.boardMutationState {
                 Section {
                     boardMutationStatus(mutation)
@@ -1573,6 +1576,7 @@ private struct KanbanBoardManagementView: View {
                 Text("Browsing a Board stays local to Hermex. Making a Board active changes shared server state.")
             }
         }
+        .themedPageBackground()
         .navigationTitle("Manage")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1694,7 +1698,7 @@ private struct KanbanBoardManagementView: View {
                     if let slug = board.slug {
                         Text(slug)
                             .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                     }
                 }
             }
@@ -1709,18 +1713,18 @@ private struct KanbanBoardManagementView: View {
                     }
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .labelStyle(KanbanBoardStatusLabelStyle())
             }
 
             if let description = board.description, !description.isEmpty {
                 Text(description)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             Text(KanbanCountFormatter.cards(board.total ?? 0))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .padding(.vertical, 4)
     }
@@ -1789,11 +1793,11 @@ private struct KanbanBoardManagementView: View {
                 Text(boardMutationAction(mutation.kind))
                     .font(.headline)
                 Text(boardMutationPhase(mutation.phase))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 if let message = mutation.message {
                     Text(verbatim: message)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
             Spacer()
@@ -1865,7 +1869,7 @@ private struct KanbanBoardEditorView: View {
     }
 
     var body: some View {
-        Form {
+        AppForm {
             Section {
                 TextField("Slug", text: $slug)
                     .textInputAutocapitalization(.never)
@@ -1908,6 +1912,7 @@ private struct KanbanBoardEditorView: View {
                 }
             }
         }
+        .themedPageBackground()
         .navigationTitle(isEditing ? "Edit" : "Create")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1976,7 +1981,7 @@ private struct KanbanBulkActionsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     Text(KanbanCountFormatter.cards(model.selectedCardCount))
                         .font(.headline)
@@ -2031,6 +2036,7 @@ private struct KanbanBulkActionsView: View {
                     .frame(minHeight: 44)
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Bulk Actions")
             .navigationBarTitleDisplayMode(.inline)
             .interactiveDismissDisabled(model.bulkActionPhase != nil)
@@ -2067,7 +2073,7 @@ private struct KanbanFiltersView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section("Profile") {
                     Picker("Assigned Profile", selection: $draft.profile) {
                         Text("All Profiles").tag(String?.none)
@@ -2113,6 +2119,7 @@ private struct KanbanFiltersView: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Card Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -2149,7 +2156,7 @@ struct KanbanCardSummaryView: View {
                 }
                 Text(card.cardID ?? String(localized: "Unknown Card"))
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 Spacer(minLength: 4)
                 if let age = card.ageSeconds {
                     HStack(spacing: 3) {
@@ -2172,7 +2179,7 @@ struct KanbanCardSummaryView: View {
             if let body = card.body, !body.isEmpty {
                 Text(markdownPreview(body))
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(3)
                     .padding(.trailing, trailingActionInset)
             }
@@ -2187,7 +2194,7 @@ struct KanbanCardSummaryView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .padding(.trailing, trailingActionInset)
         }
         .padding(.vertical, 6)

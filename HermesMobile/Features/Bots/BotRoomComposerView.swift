@@ -10,6 +10,7 @@ struct BotRoomComposerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(AppAppearanceSettings.accentHexKey) private var accentHex: String?
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var selection = ComposerSelection()
     @State private var focused = false
@@ -59,7 +60,8 @@ struct BotRoomComposerView: View {
         let stop = reader.showsStop
         let enabled = stop ? reader.mayStop : reader.maySend(in: threadID)
         let appearance = ChatComposerActionAppearance(isStop: stop, isDisabled: !enabled,
-            colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions, themeHex: themeHex)
+            colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
+            tint: PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: themeHex))
         return Button {
             if stop { Task { await reader.stop() } } else { send() }
         } label: {
@@ -117,7 +119,7 @@ struct BotRoomActionCard: View {
                 summary: reader.summaryPresentation(for: action))
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                Text(identity).font(.caption).foregroundStyle(.secondary)
+                Text(identity).font(.caption).foregroundStyle(.appSecondary)
                 if action.isRetry {
                     Button("Retry") { Task { await reader.act(action) } }.disabled(!reader.mayAct(action))
                 } else {
@@ -203,9 +205,9 @@ struct BotComposerPillView: View {
         .lineLimit(3)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
-        .foregroundStyle(.primary)
+        .foregroundStyle(.appPrimary)
         .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(.regularMaterial, in: Capsule())
+        .background(.appMaterial(.regularMaterial), in: Capsule())
         .overlay(Capsule().stroke(.primary.opacity(0.10), lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 24)

@@ -19,7 +19,7 @@ struct CronJobSkillsRow: View {
             LabeledContent {
                 HStack(spacing: 6) {
                     Text(title)
-                        .foregroundStyle(selection.isEmpty ? .secondary : .primary)
+                        .foregroundStyle(selection.isEmpty ? .appSecondary : .appPrimary)
                         .multilineTextAlignment(.trailing)
                         .lineLimit(2)
 
@@ -82,7 +82,7 @@ struct CronJobSkillsPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList(rows: .plain) {
                 if trimmedSearchQuery.isEmpty {
                     clearRow
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
@@ -104,6 +104,7 @@ struct CronJobSkillsPickerSheet: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .themedPageBackground()
             .navigationTitle("Task Skills")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
@@ -194,7 +195,7 @@ struct CronJobSkillsPickerSheet: View {
                 .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
                 .background(
-                    Color(.tertiarySystemFill),
+                    Color(.appFillTertiary),
                     in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
                 )
 
@@ -211,11 +212,11 @@ struct CronJobSkillsPickerSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(isArmed ? Color(.systemBackground) : Color(.tertiaryLabel))
+            .foregroundStyle(isArmed ? Color(.appCanvas) : Color(.appTextTertiary))
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
             .background(
-                isArmed ? Color.primary : Color.clear,
+                isArmed ? Color(.appText) : Color.clear,
                 in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
             )
             .disabled(!isArmed)
@@ -275,7 +276,7 @@ struct CronJobSkillsPickerSheet: View {
                         Text(verbatim: details)
                             .font(.caption)
                             .foregroundStyle(
-                                selected ? Color(.systemBackground).opacity(0.7) : Color.secondary
+                                selected ? Color(.appCanvas).opacity(0.7) : Color(.appTextSecondary)
                             )
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     }

@@ -23,7 +23,7 @@ struct TaskRecentRunRowView: View {
 
             Text(relativeTime)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .lineLimit(1)
         }
         .padding(.vertical, 2)
