@@ -28,11 +28,23 @@ struct PluginsView: View {
             }
             noticeSection
             if let setup = model.setup { PluginSetupSection(setup: setup, model: model) }
-            content
+            Picker("View", selection: $model.tab) {
+                Text("Installed").tag(PluginsModel.Tab.installed)
+                Text("Discover").tag(PluginsModel.Tab.discover)
+            }
+            .pickerStyle(.segmented)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            switch model.tab {
+            case .installed: content
+            case .discover:
+                if let profile = model.profile { PluginDiscoverSections(model: model, profile: profile) }
+            }
         }
         .settingsPage(String(localized: "Plugins"))
         .listSectionSpacing(.compact)
-        .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search installed"))
+        .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: model.tab == .installed ? Text("Search installed") : Text("Search plugins"))
         // Closing search otherwise slides the bar back and resizes the list for the keyboard at once,
         // which drops frames on a phone. The list stays still, and scrolling reaches what's under the keyboard.
         .searchPresentationToolbarBehavior(.avoidHidingContent)
@@ -50,6 +62,10 @@ struct PluginsView: View {
         }
         .task { await model.load() }
         .refreshable { await model.load() }
+        .task(id: model.tab) {
+            if model.tab == .discover { await model.loadCatalog() }
+        }
+        .onChange(of: model.tab) { model.query = "" }
         .sheet(item: $installProfile) { PluginInstallSheet(model: model, profile: $0.name) }
         .navigationDestination(isPresented: $isShowingPushSettings) { SettingsNotificationsPage(server: server) }
         .fullScreenCover(item: $screenProfile, onDismiss: { Task { await model.load() } }) { profile in
@@ -139,7 +155,8 @@ struct PluginsView: View {
             ForEach(groups) { group in
                 Section {
                     ForEach(group.plugins) { plugin in
-                        PluginRow(plugin: plugin, isOn: model.isOn(plugin), isBusy: model.isToggling(plugin)) { turningOn in
+                        PluginRow(plugin: plugin, isOn: model.isOn(plugin), isBusy: model.isToggling(plugin),
+                                  removalReason: model.removalReason(for: plugin)) { turningOn in
                             model.requestToggle(plugin, to: turningOn)
                         }
                         .swipeActions { pluginActions(plugin) }
@@ -206,25 +223,16 @@ private struct PluginFilterChips: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(PluginsModel.Filter.allCases, id: \.self) { filter in
-                    let isSelected = model.filter == filter
-                    Button {
+                    PluginChip(title: "\(filter.title) \(model.count(of: filter))", isSelected: model.filter == filter) {
                         model.filter = filter
-                    } label: {
-                        Text(verbatim: "\(filter.title) \(model.count(of: filter))")
-                            .font(.footnote.weight(isSelected ? .semibold : .regular))
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 5)
-                            .foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
-                            .background(isSelected ? Color.primary : Color(.secondarySystemGroupedBackground), in: Capsule())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
         }
         .scrollClipDisabled()
         .listRowInsets(EdgeInsets())
         .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 }
 
@@ -233,6 +241,8 @@ private struct PluginRow: View {
     let plugin: HermesPlugin
     let isOn: Bool
     let isBusy: Bool
+    /// Why Nous took this plugin out of the catalog, when it did.
+    let removalReason: String?
     let onChange: (Bool) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -253,6 +263,12 @@ private struct PluginRow: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
+                if let removalReason {
+                    Text(removalReason.isEmpty ? String(localized: "Removed from the catalog.")
+                                               : String(localized: "Removed from the catalog: \(removalReason)"))
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .disabled(isBusy)

@@ -50,6 +50,8 @@ final class PluginsModel {
         case unconfirmed(String)
     }
 
+    enum Tab: Hashable { case installed, discover }
+
     enum CatalogState: Equatable {
         case idle, loading
         case loaded(HermesPluginCatalog)
@@ -97,8 +99,11 @@ final class PluginsModel {
     private(set) var profile: String?
     private(set) var notice: Notice?
     private(set) var isRestarting = false
+    var tab = Tab.installed
     var query = ""
     var filter = Filter.all
+    /// The Discover category, or nil for all of them.
+    var discoverCategory: String?
     var pendingToggle: PendingToggle?
     /// A user install waiting for the user to confirm its removal.
     var pendingRemoval: HermesPlugin?
@@ -208,6 +213,31 @@ final class PluginsModel {
             }
         }
         await catalogLoad?.value
+    }
+
+    /// What Discover lists now, or nothing until the catalog arrives.
+    var discoverGroups: [PluginDiscoverGroup] {
+        guard case .loaded(let catalog) = catalog else { return [] }
+        return catalog.groups(query: query, category: discoverCategory)
+    }
+
+    var discoverCategories: [String] {
+        guard case .loaded(let catalog) = catalog else { return [] }
+        return catalog.categories
+    }
+
+    /// The catalog entries on the shown Profile, or nil until its list is read, which is no time to
+    /// offer an install. The catalog's own `installed` field isn't used, because its route reads only
+    /// the dashboard's Profile.
+    var installedCatalogNames: Set<String>? {
+        guard case .loaded(let plugins) = state else { return nil }
+        return Set(plugins.map { $0.catalogName ?? $0.name })
+    }
+
+    /// Why Nous took `plugin` out of the catalog, once the catalog has arrived.
+    func removalReason(for plugin: HermesPlugin) -> String? {
+        guard !plugin.isBundled, case .loaded(let catalog) = catalog else { return nil }
+        return catalog.removalReasons[plugin.catalogName ?? plugin.name]
     }
 
     /// Resolves the install field against the catalog. A removal reason wins, so a name Nous took out
@@ -382,6 +412,8 @@ final class PluginsModel {
             guard serial == readSerial else { return }
             guard change == changeSerial else { return await read() }
             state = .loaded(plugins)
+            // Only the catalog knows what Nous removed, and only a user install can be on that list.
+            if plugins.contains(where: { !$0.isBundled }), catalog == .idle { Task { await loadCatalog() } }
         } catch {
             guard serial == readSerial else { return }
             guard change == changeSerial else { return await read() }

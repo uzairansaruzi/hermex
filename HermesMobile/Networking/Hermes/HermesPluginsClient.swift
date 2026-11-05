@@ -18,6 +18,8 @@ struct HermesPlugin: Identifiable, Equatable, Sendable {
     let summary: String
     /// The catalog tier a catalog install came from, or else where it came from: `bundled`, `user`, `git`.
     let origin: String
+    /// The catalog entry a catalog install came from.
+    let catalogName: String?
     /// False for anything the user installed, which the host's `source` marks as other than bundled.
     let isBundled: Bool
     let isEnabled: Bool
@@ -46,6 +48,7 @@ struct HermesPlugin: Identifiable, Equatable, Sendable {
             .trimmingCharacters(in: .whitespaces)
         let source = row["source"].text ?? ""
         origin = row["catalog_tier"].text ?? source
+        catalogName = row["catalog_name"].text
         isBundled = source == "bundled"
         isEnabled = row["status"].text == "enabled"
         hasUpdate = row["update_available"].flag == true

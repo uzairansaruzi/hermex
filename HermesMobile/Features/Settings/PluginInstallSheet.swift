@@ -8,9 +8,11 @@ import SwiftUI
 struct PluginInstallSheet: View {
     let model: PluginsModel
     let profile: String
+    /// Set when Discover opened this for one entry, which needs no field.
+    private let entry: HermesCatalogEntry?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var input = ""
+    @State private var input: String
     @State private var enablesAfterInstall = true
     @State private var isInstalling = false
     @State private var refusal: String?
@@ -18,6 +20,13 @@ struct PluginInstallSheet: View {
     @State private var isConfirmingReplace = false
 
     private static let refusalID = "refusal"
+
+    init(model: PluginsModel, profile: String, entry: HermesCatalogEntry? = nil) {
+        self.model = model
+        self.profile = profile
+        self.entry = entry
+        _input = State(initialValue: entry?.name ?? "")
+    }
 
     private var parsed: PluginInstallInput { PluginInstallInput(input) }
     private var review: PluginsModel.InstallReview { model.review(of: parsed) }
@@ -35,7 +44,7 @@ struct PluginInstallSheet: View {
         NavigationStack {
             ScrollViewReader { proxy in
                 List {
-                    inputSection
+                    if entry == nil { inputSection }
                     if let refusal { refusalSection(refusal).id(Self.refusalID) }
                     reviewSections
                     if source != nil { installOptions }
@@ -44,7 +53,7 @@ struct PluginInstallSheet: View {
                 // The button stays on screen however far the review scrolled, so its answer must too.
                 .onChange(of: refusal) { if refusal != nil { proxy.scrollTo(Self.refusalID, anchor: .top) } }
             }
-            .navigationTitle(String(localized: "Install Plugin"))
+            .navigationTitle(entry == nil ? String(localized: "Install Plugin") : String(localized: "Review Install"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -161,6 +170,7 @@ struct PluginInstallSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .background(.bar)
     }
 
     /// One attempt, which the user asked for. An unconfirmed result closes the sheet like a success,
@@ -183,27 +193,29 @@ struct PluginInstallSheet: View {
     }
 }
 
-/// A catalog entry's review: who publishes it, the pinned commit, the Disclosure word for word, the
-/// keys it needs, and the Profile it lands on. A plugin needing a newer Hermes says so and can't be
-/// installed; OS limits are only labels.
-private struct PluginCatalogReview: View {
+/// A catalog entry's facts: who publishes it, the pinned commit, the Disclosure word for word and the
+/// keys it needs. With a `profile` it's the review, which adds what installing means and where it
+/// lands. A plugin needing a newer Hermes says so and can't be installed; OS limits are only labels.
+struct PluginCatalogReview: View {
     let entry: HermesCatalogEntry
-    let profile: String
+    var profile: String?
     let isTooNew: Bool
 
     var body: some View {
         Section {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: entry.title).font(.headline)
-                Text(verbatim: [tierName, entry.maintainer, entry.version].filter { !$0.isEmpty }.joined(separator: " · "))
+                Text(verbatim: [entry.tier.title, entry.maintainer, entry.version].filter { !$0.isEmpty }.joined(separator: " · "))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
             if isTooNew {
                 PluginWarningRow(level: .strongest, text: String(localized: "This plugin needs Hermes \(entry.minimumHermes) or later, so this host can't install it yet."))
             }
-            PluginWarningRow(level: warningLevel, text: warning)
-            LabeledContent(String(localized: "Installs to")) { Text(verbatim: profile) }
+            if let profile {
+                PluginWarningRow(level: warningLevel, text: warning)
+                LabeledContent(String(localized: "Installs to")) { Text(verbatim: profile) }
+            }
             LabeledContent(String(localized: "Source")) { Text(verbatim: entry.source).textSelection(.enabled) }
             LabeledContent(String(localized: "Commit")) { Text(verbatim: entry.commit).monospaced() }
             if !entry.requiredKeys.isEmpty {
@@ -234,14 +246,6 @@ private struct PluginCatalogReview: View {
         }
     }
 
-    private var tierName: String {
-        switch entry.tier {
-        case .official: String(localized: "Official")
-        case .verified: String(localized: "Verified")
-        case .community: String(localized: "Community")
-        }
-    }
-
     private var warningLevel: PluginWarningRow.Level { entry.tier == .community ? .strong : .plain }
 
     private var warning: String {
@@ -256,6 +260,16 @@ private struct PluginCatalogReview: View {
     private var githubURL: URL? {
         guard let url = URL(string: entry.repo), url.scheme == "https", url.host == "github.com" else { return nil }
         return url
+    }
+}
+
+extension HermesCatalogEntry.Tier {
+    var title: String {
+        switch self {
+        case .official: String(localized: "Official")
+        case .verified: String(localized: "Verified")
+        case .community: String(localized: "Community")
+        }
     }
 }
 

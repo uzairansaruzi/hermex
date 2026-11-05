@@ -14,6 +14,7 @@
 		D14090000000000000000015 /* ProviderLimitsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000004 /* ProviderLimitsSnapshotTests.swift */; };
 		E1582000000000000000A009 /* HermesPluginCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A010 /* HermesPluginCatalog.swift */; };
 		E1582000000000000000A011 /* PluginInstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A012 /* PluginInstallSheet.swift */; };
+		E1582000000000000000A013 /* PluginDiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A014 /* PluginDiscoverView.swift */; };
 		E1582000000000000000A001 /* HermesPluginsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A002 /* HermesPluginsClient.swift */; };
 		E1582000000000000000A003 /* PluginsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A004 /* PluginsModel.swift */; };
 		E1582000000000000000A005 /* PluginsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A006 /* PluginsView.swift */; };
@@ -752,6 +753,7 @@
 		E1318000000000000000A010 /* APIKeyEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyEditor.swift; sourceTree = "<group>"; };
 		E1582000000000000000A010 /* HermesPluginCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesPluginCatalog.swift"; sourceTree = "<group>"; };
 		E1582000000000000000A012 /* PluginInstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginInstallSheet.swift; sourceTree = "<group>"; };
+		E1582000000000000000A014 /* PluginDiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginDiscoverView.swift; sourceTree = "<group>"; };
 		E1582000000000000000A002 /* HermesPluginsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesPluginsClient.swift"; sourceTree = "<group>"; };
 		E1582000000000000000A004 /* PluginsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsModel.swift; sourceTree = "<group>"; };
 		E1582000000000000000A006 /* PluginsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsView.swift; sourceTree = "<group>"; };
@@ -2274,6 +2276,7 @@
 				E1582000000000000000A004 /* PluginsModel.swift */,
 				E1582000000000000000A006 /* PluginsView.swift */,
 				E1582000000000000000A012 /* PluginInstallSheet.swift */,
+				E1582000000000000000A014 /* PluginDiscoverView.swift */,
 				19C1150000000000000000A2 /* CliSessionsSyncModel.swift */,
 				26AB000000000000000000F2 /* ProvidersView.swift */,
 				26AB000000000000000000F1 /* ProvidersViewModel.swift */,
@@ -2886,6 +2889,7 @@
 				E1582000000000000000A003 /* PluginsModel.swift in Sources */,
 				E1582000000000000000A005 /* PluginsView.swift in Sources */,
 				E1582000000000000000A011 /* PluginInstallSheet.swift in Sources */,
+				E1582000000000000000A013 /* PluginDiscoverView.swift in Sources */,
 				19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */,
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
 				532000000000000000000001 /* RatingPromptState.swift in Sources */,

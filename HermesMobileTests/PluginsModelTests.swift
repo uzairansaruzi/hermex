@@ -416,6 +416,56 @@ import XCTest
         XCTAssertFalse(entry.isTooNew(forHost: nil), "the host checks an unread version itself")
     }
 
+    func testDiscoverOrdersByTierAndKeepsDesktopPluginsOutOfTheMainList() throws {
+        let catalog = try HermesPluginCatalog(try JSONEncoder().encode(BotJSON.object(["entries": .array([
+            entry("zeta", tier: "community", category: "tools"), entry("meet", tier: "official", category: "tools"),
+            entry("palette", tier: "official", category: "desktop"), entry("pay", tier: "verified", category: "web"),
+            entry("odd", tier: "brand-new-tier", category: "tools")
+        ])])))
+
+        XCTAssertEqual(catalog.groups(query: "", category: nil).map { $0.entries.map(\.name) }, [["meet"], ["pay"], ["zeta", "odd"]])
+        XCTAssertEqual(catalog.groups(query: "", category: "desktop").flatMap(\.entries).map(\.name), ["palette"])
+        XCTAssertEqual(catalog.groups(query: " PALETTE ", category: nil).flatMap(\.entries).map(\.name), ["palette"], "search finds them")
+        XCTAssertEqual(catalog.groups(query: "meet", category: "web"), [], "search stays inside a category")
+    }
+
+    func testOnlyGitHubHTTPSImagesAreFetchedAndSVGsAreSkipped() {
+        let allowed = ["https://raw.githubusercontent.com/o/r/abc/banner.png", "https://github.com/o/r/raw/main/a.jpg",
+                       "https://gist.githubusercontent.com/o/1/raw/a.gif"]
+        let refused = ["http://raw.githubusercontent.com/o/r/a.png", "https://example.com/a.png",
+                       "https://githubusercontent.com.evil.example/a.png", "https://raw.githubusercontent.com/o/r/a.SVG", ""]
+        for url in allowed { XCTAssertNotNil(PluginCatalogImageRule.url(url), url) }
+        for url in refused { XCTAssertNil(PluginCatalogImageRule.url(url), url) }
+    }
+
+    func testInstalledAndRemovedAreReadForTheShownProfile() async throws {
+        let host = hostWithPlugins([row("hermex-push", source: "user")])
+        let catalog: BotJSON = .object([
+            "entries": .array([.object(["name": .string("apify"), "installed": .bool(true)])]),
+            "removed": .array([.object(["name": .string("or-picker"), "reason": .string("Folded into openrouter-picker.")])])
+        ])
+        let model = PluginsModel(client: HermesPluginsClient(http: host.connection(record, rest: { request in
+            request.url?.path == "/api/dashboard/plugins/catalog" ? .json(200, catalog) : nil
+        })))
+        host.next("plugins.manage", .init(result: list([
+            .object(["key": .string("or_picker"), "name": .string("or_picker"), "source": .string("user"), "status": .string("enabled"),
+                     "catalog_name": .string("or-picker")])
+        ])))
+        await model.load()
+        await model.loadCatalog()
+
+        let removed = try XCTUnwrap(model.plugins.first)
+        XCTAssertEqual(model.removalReason(for: removed), "Folded into openrouter-picker.")
+        XCTAssertEqual(model.installedCatalogNames, ["or-picker"], "the catalog's own `installed` reads another Profile")
+
+        await model.select("dev")
+        XCTAssertEqual(model.installedCatalogNames, ["hermex-push"])
+
+        host.next("plugins.manage", .init(error: 4064, message: "profile 'gone' not found"))
+        await model.select("gone")
+        XCTAssertNil(model.installedCatalogNames, "a Profile whose list failed offers no installs")
+    }
+
     // MARK: Fixtures
 
     private var profiles: BotJSON {
@@ -446,6 +496,10 @@ import XCTest
     private func toggled(_ plugin: BotJSON, extra: [String: BotJSON] = [:]) -> BotJSON {
         .object(["ok": .bool(true), "unchanged": .bool(false), "restart_required": .bool(false),
                  "gateway_reloaded": .bool(false), "name": plugin["key"], "plugin": plugin].merging(extra) { $1 })
+    }
+
+    private func entry(_ name: String, tier: String, category: String) -> BotJSON {
+        .object(["name": .string(name), "tier": .string(tier), "category": .string(category)])
     }
 
     private func installed(_ name: String, extra: [String: BotJSON] = [:]) -> BotJSON {

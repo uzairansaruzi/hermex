@@ -588,6 +588,14 @@ the dashboard runs as. A row's identity is its `key`: names collide across categ
 - A catalog entry's Disclosure is the text after `Disclosure:` or `Disclosure —` in its `description`,
   the marker upstream reads. A required key saved from the install's `missing_env` is written to the
   Profile's `.env`, but `GET /api/env` doesn't list a key its catalog doesn't know.
+- Discover reads `GET /api/dashboard/plugins/catalog`, about 2.9 MB and 1.8 s through a tunnel, once
+  per screen and only in memory. The screen's Installed badges come from `plugins.manage list` on the
+  selected Profile, because this route's own `installed` field reads only the dashboard's Profile.
+  `removed` in the same reply is the only source of why Nous took a plugin out, so the catalog is also
+  read when a Profile has a user install.
+- Catalog images load directly from GitHub, on a session that refuses Low Data Mode: HTTPS on
+  `github.com`, `githubusercontent.com` or a subdomain, as upstream's Desktop allows. SVGs are skipped
+  and a GIF shows its first frame.
 - Which toggles ask first comes from `GET /api/memory?profile=` (`active`) and
   `GET /api/messaging/platforms?profile=` (`enabled` and `configured`). Until those answer, or if
   they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only

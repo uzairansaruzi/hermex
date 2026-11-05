@@ -4,7 +4,7 @@ import Foundation
 /// the host. `name` is what an install sends.
 struct HermesCatalogEntry: Identifiable, Equatable, Sendable {
     /// An unknown tier reads as community, the one the review warns about most.
-    enum Tier: Equatable, Sendable {
+    enum Tier: Hashable, CaseIterable, Sendable {
         case official, verified, community
 
         init(_ raw: String?) {
@@ -32,6 +32,11 @@ struct HermesCatalogEntry: Identifiable, Equatable, Sendable {
     /// The reviewer's disclosure, word for word.
     let disclosure: String?
     let requiresHermes: String
+    /// The banner and screenshots this app may fetch (`PluginCatalogImageRule`).
+    let image: URL?
+    let screenshots: [URL]
+    /// Everything search looks through, lowercased once because the catalog runs to about a thousand rows.
+    let searchText: String
     let platforms: [String]
     let requiredKeys: [String]
     let knownIssues: [String]
@@ -56,6 +61,9 @@ struct HermesCatalogEntry: Identifiable, Equatable, Sendable {
         platforms = (row["platforms"].list ?? []).compactMap(\.text)
         requiredKeys = (row["capabilities"]["requires_env"].list ?? []).compactMap(\.text)
         knownIssues = (row["known_issues"].list ?? []).compactMap(\.text)
+        image = PluginCatalogImageRule.url(row["image"].text)
+        screenshots = (row["screenshots"].list ?? []).compactMap { PluginCatalogImageRule.url($0.text) }
+        searchText = [name, title, summary, maintainer, category].joined(separator: " ").lowercased()
     }
 
     /// The repository as `owner/name` when it's on GitHub, otherwise as the host gave it.
@@ -84,9 +92,31 @@ struct HermesCatalogEntry: Identifiable, Equatable, Sendable {
     }
 }
 
+/// Which catalog images may be fetched: HTTPS on a GitHub host, matching upstream's allowlist. SVGs
+/// are skipped; a GIF shows its first frame.
+enum PluginCatalogImageRule {
+    static func url(_ raw: String?) -> URL? {
+        guard let raw, let url = URL(string: raw), url.scheme == "https", let host = url.host?.lowercased(),
+              host == "github.com" || host == "githubusercontent.com" || host.hasSuffix(".githubusercontent.com"),
+              url.pathExtension.lowercased() != "svg"
+        else { return nil }
+        return url
+    }
+}
+
+/// One group of the Discover list.
+struct PluginDiscoverGroup: Identifiable, Equatable {
+    let tier: HermesCatalogEntry.Tier
+    let entries: [HermesCatalogEntry]
+    var id: HermesCatalogEntry.Tier { tier }
+}
+
 /// The host's catalog, held in memory while the Plugins screen is open and never written to disk.
 struct HermesPluginCatalog: Equatable, Sendable {
     let entries: [String: HermesCatalogEntry]
+    /// Official, then Verified, then Community, each in the host's order. Featured picks and stars
+    /// exist only in the public feed, so nothing else ranks them.
+    private let ordered: [HermesCatalogEntry]
     /// Why Nous took a name out of the catalog, by name.
     let removalReasons: [String: String]
 
@@ -94,11 +124,34 @@ struct HermesPluginCatalog: Equatable, Sendable {
     init(_ body: Data) throws {
         let reply: BotJSON
         do { reply = try JSONDecoder().decode(BotJSON.self, from: body) } catch { throw APIError.decoding(underlying: error) }
-        entries = Dictionary((reply["entries"].list ?? []).compactMap(HermesCatalogEntry.init).map { ($0.name, $0) },
-                             uniquingKeysWith: { first, _ in first })
+        let rows = (reply["entries"].list ?? []).compactMap(HermesCatalogEntry.init)
+        entries = Dictionary(rows.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        ordered = HermesCatalogEntry.Tier.allCases.flatMap { tier in rows.filter { $0.tier == tier } }
         removalReasons = Dictionary((reply["removed"].list ?? []).compactMap { row in
             row["name"].text.map { ($0, row["reason"].text ?? "") }
         }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The categories to filter by: the usual ones in a set order, then any others the host adds.
+    var categories: [String] {
+        let known = ["tools", "memory", "web", "models", "voice", "automation", "platform", "general", "desktop"]
+        let present = Set(ordered.map(\.category)).subtracting([""])
+        return known.filter(present.contains) + present.subtracting(known).sorted()
+    }
+
+    /// The entries a search and category leave, by tier. Desktop plugins need Hermes Desktop, so they
+    /// show only under their own category and in search.
+    func groups(query: String, category: String?) -> [PluginDiscoverGroup] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let shown = ordered.filter { entry in
+            if let category, entry.category != category { return false }
+            if entry.needsDesktop, category == nil, query.isEmpty { return false }
+            return query.isEmpty || entry.searchText.contains(query)
+        }
+        return HermesCatalogEntry.Tier.allCases.compactMap { tier in
+            let entries = shown.filter { $0.tier == tier }
+            return entries.isEmpty ? nil : PluginDiscoverGroup(tier: tier, entries: entries)
+        }
     }
 }
 
