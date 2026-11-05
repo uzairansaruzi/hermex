@@ -611,15 +611,26 @@ the dashboard runs as. A row's identity is its `key`: names collide across categ
   they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only
   a user install can be the active one.
 
-## Plugin routes need a host restart
+## Plugin routes and host restarts
 
-The dashboard mounts plugin routers once, when its process starts
-(`_mount_plugin_api_routes` in `hermes_cli/web_server.py`); a plugin disabled while it runs
-keeps its router until then, behind a per-request gate. `POST /api/gateway/restart`
-restarts only the messaging gateway, so a new or updated plugin's routes appear only
-after `hermes dashboard` restarts. hermex-push 0.4.0 and newer mounts its own restart
-route (#934); anything older costs the user one restart on the host. A plugin adds REST
-routes, hooks, tools and its own sockets, but no RPC method and no `/api/ws` event, so a
-gap the companion plugin fills is always a REST route, and each new route costs a
-restart: ship them in batches, and gate each feature on `/capabilities`, never on a
-version number.
+The dashboard mounts the routers of enabled plugins when its process starts
+(`_mount_plugin_api_routes` in `hermes_cli/web_server_dashboard.py`). At the pin, a plugin
+installed or enabled later mounts without a restart: its first unmatched HTTP request under
+`/api/plugins/<name>/` mounts its router and is answered by it (`_try_hot_mount_plugin_api`).
+The decision is the dashboard's own Profile's, so a plugin enabled only on another Profile
+mounts this way only if it's bundled. Older hosts don't do this (it isn't in the 0.21 commit
+`ca678285`), so a missing route can still mean a restart (`HermexScreenPlugin.State`,
+`HermexPushProvisioner`).
+
+A router that's already mounted is never replaced. A plugin disabled while the dashboard runs
+keeps its router behind a per-request gate, and an updated plugin keeps its old HTTP handlers.
+So a new or changed route on a mounted plugin appears only after `hermes dashboard` restarts.
+`POST /api/gateway/restart` restarts only the messaging gateway and doesn't help. The host's
+`restart_required` is about the gateway too, so the Plugins screen's "updated and live now"
+doesn't cover a plugin's own HTTP routes. hermex-push 0.4.0 and newer mounts its own restart
+route (#934); anything older costs the user one restart on the host.
+
+A plugin adds REST routes, hooks, tools and its own sockets, but no RPC method and no `/api/ws`
+event, so a gap the companion plugin fills is always a REST route, and each new route on an
+installed hermex-push costs a restart: ship them in batches, and gate each feature on
+`/capabilities`, never on a version number.
