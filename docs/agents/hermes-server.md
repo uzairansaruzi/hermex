@@ -596,6 +596,16 @@ the dashboard runs as. A row's identity is its `key`: names collide across categ
 - Catalog images load directly from GitHub, on a session that refuses Low Data Mode: HTTPS on
   `github.com`, `githubusercontent.com` or a subdomain, as upstream's Desktop allows. SVGs are skipped
   and a GIF shows its first frame.
+- `update` re-pins a catalog install or pulls a git one, one plugin at a time. A re-pin that widens
+  the plugin answers `consent_required` with `delta_lines`, and a blocked scan answers `scan_blocked`
+  with its findings; neither changes anything. Only a caution verdict can be overridden. A git update
+  doesn't hit the dependency consent that a forced reinstall does, even when its dependencies change.
+  A catalog copy installed at a `ref` other than the catalog's pin counts as pinned off-catalog, and
+  the host refuses to update it.
+- A settings form's types on the wire are `string`, `number`, `boolean`, `enum`, `json` and `secret`.
+  `settings` refuses secrets: they go to `PUT /api/env` under the field's `env`, then an empty
+  `settings` call tells the host to reconnect the plugin's MCP servers on the new value. Only changed
+  fields are sent.
 - Which toggles ask first comes from `GET /api/memory?profile=` (`active`) and
   `GET /api/messaging/platforms?profile=` (`enabled` and `configured`). Until those answer, or if
   they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only

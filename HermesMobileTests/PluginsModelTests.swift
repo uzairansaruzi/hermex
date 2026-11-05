@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 @testable import HermesMobile
 
@@ -466,6 +467,144 @@ import XCTest
         XCTAssertNil(model.installedCatalogNames, "a Profile whose list failed offers no installs")
     }
 
+    func testAWideningUpdateThenACautionScanEachWaitForTheirOwnAnswer() async throws {
+        let host = hostWithPlugins([row("spotify", source: "user")])
+        let model = model(on: host)
+        await model.load()
+        let plugin = try XCTUnwrap(model.plugins.first)
+
+        host.next("plugins.manage", .init(result: .object(["ok": .bool(false), "consent_required": .bool(true),
+                                                           "delta_lines": .array([.string("tools: spotify_library")])])))
+        await model.update(plugin)
+        XCTAssertEqual(model.updateReview?.reason, .newAbilities(["tools: spotify_library"]))
+        XCTAssertEqual(updates(on: host).last?["accept_capabilities"], .null, "the first ask accepts nothing")
+
+        host.next("plugins.manage", .init(result: scan("caution")))
+        await accepting(try XCTUnwrap(model.updateReview), on: model, host: host)
+        XCTAssertEqual(updates(on: host).last?["accept_capabilities"], .bool(true))
+        XCTAssertEqual(updates(on: host).last?["force"], .null, "consent isn't an answer to a scan")
+        await waitForReview(on: model)
+        guard case .scan(true, let findings) = model.updateReview?.reason else { return XCTFail("Expected findings to read") }
+        XCTAssertEqual(findings.first?.location, "a.py:3")
+
+        host.next("plugins.manage", .init(result: .object(["ok": .bool(true), "unchanged": .bool(false)])))
+        await accepting(try XCTUnwrap(model.updateReview), on: model, host: host)
+        XCTAssertEqual(updates(on: host).last?["force"], .bool(true))
+        XCTAssertEqual(updates(on: host).last?["accept_capabilities"], .bool(true), "the earlier answer holds")
+    }
+
+    func testADangerousScanOrAFutureVerdictCanNeverBeAccepted() async throws {
+        for verdict in ["dangerous", "a-future-verdict"] {
+            let host = hostWithPlugins([row("spotify", source: "user")])
+            let model = model(on: host)
+            await model.load()
+            host.next("plugins.manage", .init(result: scan(verdict)))
+            await model.update(try XCTUnwrap(model.plugins.first))
+            let review = try XCTUnwrap(model.updateReview)
+            let sent = updates(on: host).count
+
+            model.accept(review)
+            await model.load() // a round trip, so anything accepting queued has gone out by now
+
+            XCTAssertEqual(model.updateReview, review, verdict)
+            XCTAssertEqual(updates(on: host).count, sent, verdict)
+        }
+    }
+
+    func testAcceptingAReviewThatsNoLongerShownSendsNothing() async throws {
+        let host = hostWithPlugins([row("spotify", source: "user")])
+        let model = model(on: host)
+        await model.load()
+        host.next("plugins.manage", .init(result: scan("caution")))
+        await model.update(try XCTUnwrap(model.plugins.first))
+        let shown = try XCTUnwrap(model.updateReview)
+        let sent = updates(on: host).count
+
+        await model.select("dev")
+        model.accept(shown)
+        await model.load() // a round trip, so anything accepting queued has gone out by now
+
+        XCTAssertNil(model.updateReview)
+        XCTAssertEqual(updates(on: host).count, sent, "a switch ended it, and an answer can't reach another Profile")
+    }
+
+    func testAnUpdateCutOffByADroppedConnectionIsUnconfirmedAndNeverResent() async throws {
+        let host = hostWithPlugins([row("spotify", source: "user")])
+        let http = host.connection(record)
+        let model = PluginsModel(client: HermesPluginsClient(http: http))
+        await model.load()
+        let plugin = try XCTUnwrap(model.plugins.first)
+
+        host.withhold("plugins.manage")
+        let sent = expectation(description: "the update reached the host")
+        host.expect(sent, onNext: "plugins.manage")
+        let update = Task { await model.update(plugin) }
+        await fulfillment(of: [sent], timeout: 5)
+        host.allow("plugins.manage")
+        http.gateway.dropSocket()
+        await update.value
+
+        guard case .unconfirmed = model.notice else { return XCTFail("Expected an unconfirmed result, got \(String(describing: model.notice))") }
+        XCTAssertEqual(updates(on: host).count, 1)
+    }
+
+    func testEachFieldTypeReadsItsTextAsTheHostNeedsIt() throws {
+        func field(_ type: String, value: BotJSON = .null) throws -> HermesPluginSetting {
+            try XCTUnwrap(HermesPluginSetting(.object(["key": .string("k"), "type": .string(type), "value": value])))
+        }
+        XCTAssertEqual(try field("string").parse(""), .unset, "an empty field with no value isn't a change")
+        XCTAssertEqual(try field("number").parse("5"), .value(.number(5)))
+        XCTAssertEqual(try field("number", value: .number(3)).text, "3")
+        guard case .invalid = try field("number").parse("five") else { return XCTFail("Expected a problem") }
+        XCTAssertEqual(try field("boolean").parse(""), .unset, "an untouched switch with no value isn't a change")
+        XCTAssertEqual(try field("json").parse("[\"a\"]"), .value(.array([.string("a")])))
+        guard case .invalid = try field("json").parse("5") else { return XCTFail("The host takes only a list or object") }
+        XCTAssertEqual(try field("json", value: .object(["k": .number(1)])).text, "{\"k\":1}")
+        XCTAssertNil(HermesPluginSetting(.object(["key": .string("k"), "type": .string("a-future-type")])), "an unknown type isn't shown or sent")
+        XCTAssertNil(HermesPluginSetting(.object(["key": .string("k"), "type": .string("secret")])), "a secret needs somewhere to go")
+    }
+
+    func testSettingsGoToTheShownProfileAndShowTheHostsRefusal() async throws {
+        let schema: BotJSON = .array([.object(["key": .string("retries"), "type": .string("number"), "value": .number(3)])])
+        let rowWithForm: BotJSON = .object(["key": .string("form"), "name": .string("form"), "source": .string("user"),
+                                            "status": .string("enabled"), "settings_schema": schema])
+        let host = hostWithPlugins([rowWithForm])
+        let model = model(on: host)
+        await model.load()
+        await model.select("dev")
+        host.next("plugins.manage", .init(error: 4021, message: "'retries' should be number (got str)"))
+        let plugin = try XCTUnwrap(model.plugins.first)
+
+        let refusal = await model.saveSettings(plugin, values: ["retries": .number(5)])
+
+        XCTAssertEqual(refusal, "'retries' should be number (got str)")
+        let params = try XCTUnwrap(host.requests.last { $0["params"]["action"].text == "settings" })["params"]
+        XCTAssertEqual(params["profile"].text, "dev")
+        XCTAssertEqual(params["key"].text, "form")
+    }
+
+    func testASecretGoesToTheEnvAndOnlyAnEmptySettingsCallFollows() async throws {
+        let host = hostWithPlugins([row("form", source: "user")])
+        let model = PluginsModel(client: HermesPluginsClient(http: host.connection(record, rest: { request in
+            request.url?.path == "/api/env" ? .json(200, .object(["ok": .bool(true)])) : nil
+        })))
+        await model.load()
+        await model.select("dev")
+        host.next("plugins.manage", .init(result: .object(["ok": .bool(true), "name": .string("form")])))
+
+        try await model.setSecret("FORM_TOKEN", value: "secret", of: try XCTUnwrap(model.plugins.first))
+
+        XCTAssertEqual(HermesHostFixture.requests.last { $0.url?.path == "/api/env" }?.httpMethod, "PUT")
+        let params = try XCTUnwrap(host.requests.last { $0["params"]["action"].text == "settings" })["params"]
+        XCTAssertEqual(params["profile"].text, "dev")
+        XCTAssertEqual(params["values"], .object([:]), "a secret's value never reaches plugins.manage")
+    }
+
+    func testHermexManagedPluginsNeverOfferAnUpdateHere() throws {
+        let row: BotJSON = .object(["key": .string("hermex-screen"), "update_available": .bool(true)])
+        XCTAssertFalse(try XCTUnwrap(HermesPlugin(row)).hasUpdate, "its own page and the app's pin update it")
+    }
+
     // MARK: Fixtures
 
     private var profiles: BotJSON {
@@ -483,6 +622,37 @@ import XCTest
 
     private func model(on host: BotSocketHost) -> PluginsModel {
         PluginsModel(client: HermesPluginsClient(http: host.connection(record)))
+    }
+
+    /// Lets the accepted update's reply land, which opens the next review.
+    private func waitForReview(on model: PluginsModel) async {
+        let reviewed = expectation(description: "the next review opened")
+        reviewed.assertForOverFulfill = false
+        func observe() {
+            withObservationTracking { if model.updateReview != nil { reviewed.fulfill() } } onChange: {
+                Task { @MainActor in observe() }
+            }
+        }
+        observe()
+        await fulfillment(of: [reviewed], timeout: 5)
+    }
+
+    private func scan(_ verdict: String) -> BotJSON {
+        .object(["ok": .bool(false), "scan_blocked": .bool(true), "scan_verdict": .string(verdict),
+                 "scan_findings": .array([.object(["severity": .string("high"), "description": .string("Runs curl"),
+                                                   "file": .string("a.py"), "line": .number(3)])])])
+    }
+
+    /// Accepts `review` and waits for what that sends to reach the host.
+    private func accepting(_ review: PluginsModel.UpdateReview, on model: PluginsModel, host: BotSocketHost) async {
+        let sent = expectation(description: "the accepted update reached the host")
+        host.expect(sent, onNext: "plugins.manage")
+        model.accept(review)
+        await fulfillment(of: [sent], timeout: 5)
+    }
+
+    private func updates(on host: BotSocketHost) -> [BotJSON] {
+        host.requests.filter { $0["params"]["action"].text == "update" }.map { $0["params"] }
     }
 
     private func toggles(on host: BotSocketHost) -> Int {

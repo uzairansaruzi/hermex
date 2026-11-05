@@ -81,6 +81,21 @@ final class PluginsModel {
         case refused(String)
     }
 
+    /// An update the host held back until the user reads why.
+    struct UpdateReview: Identifiable, Equatable {
+        enum Reason: Equatable {
+            case newAbilities([String])
+            case scan(canOverride: Bool, findings: [HermesPluginUpdate.Finding])
+        }
+
+        let plugin: HermesPlugin
+        let profile: String
+        let reason: Reason
+        /// Already accepted, so a scan after a consent keeps that answer.
+        let acceptedCapabilities: Bool
+        var id: String { plugin.key }
+    }
+
     /// The keys a plugin installed just now needs before it can run.
     struct PluginSetup: Equatable {
         let profile: String
@@ -109,6 +124,7 @@ final class PluginsModel {
     var pendingRemoval: HermesPlugin?
     private(set) var catalog = CatalogState.idle
     private(set) var setup: PluginSetup?
+    var updateReview: UpdateReview?
 
     private let client: HermesPluginsClient
     private var stakes = HermesPluginStakes()
@@ -302,6 +318,99 @@ final class PluginsModel {
 
     func dismissSetup() { setup = nil }
 
+    /// Updates one plugin, on the Profile shown when it was asked for. Nothing is retried: the two
+    /// accepts come only from the user answering a review, and there's no way to update them all.
+    func update(_ plugin: HermesPlugin) async {
+        guard let profile else { return }
+        await update(plugin, profile: profile, acceptCapabilities: false, acceptCaution: false)
+    }
+
+    private func update(_ plugin: HermesPlugin, profile: String, acceptCapabilities: Bool, acceptCaution: Bool) async {
+        let target = Target(profile: profile, key: plugin.key)
+        guard toggling[target] == nil else { return }
+        toggling[target] = plugin.isEnabled
+        notice = nil
+        defer { toggling[target] = nil }
+        do {
+            let update = try await client.update(key: plugin.key, profile: profile, acceptCapabilities: acceptCapabilities, acceptCaution: acceptCaution)
+            switch update {
+            case .finished(let change):
+                if change.needsRestart { awaitingRestart.insert(target) }
+                changeSerial += 1
+                guard self.profile == profile else { return }
+                notice = .reported(Self.report(update: change, name: plugin.name, profile: profile))
+                await read()
+            case .needsConsent(let abilities):
+                guard self.profile == profile else { return }
+                updateReview = UpdateReview(plugin: plugin, profile: profile, reason: .newAbilities(abilities), acceptedCapabilities: acceptCapabilities)
+            case .blockedByScan(let canOverride, let findings):
+                guard self.profile == profile else { return }
+                updateReview = UpdateReview(plugin: plugin, profile: profile, reason: .scan(canOverride: canOverride, findings: findings), acceptedCapabilities: acceptCapabilities)
+            }
+        } catch BotSettingFailure.rejected(_, let message) {
+            if self.profile == profile { notice = .refused(message) }
+        } catch {
+            guard self.profile == profile else { return }
+            notice = .unconfirmed(String(localized: "The server didn't confirm the update of \(plugin.name). This list shows what it reports now."))
+            await read()
+        }
+    }
+
+    /// The user accepted `review`, the one on their screen. It answers only that review, on its own
+    /// Profile: anything newer hasn't been read, and a scan that can't be overridden can't be accepted.
+    func accept(_ review: UpdateReview) {
+        guard review == updateReview, review.profile == profile else { return }
+        let acceptsCaution: Bool
+        switch review.reason {
+        case .newAbilities: acceptsCaution = false
+        case .scan(let canOverride, _):
+            guard canOverride else { return }
+            acceptsCaution = true
+        }
+        updateReview = nil
+        Task {
+            await update(review.plugin, profile: review.profile,
+                         acceptCapabilities: review.acceptedCapabilities || !acceptsCaution, acceptCaution: acceptsCaution)
+        }
+    }
+
+    /// Saves changed settings for `plugin` on the shown Profile. Answers the host's refusal for the
+    /// form to show, or nil when the notice has said everything.
+    func saveSettings(_ plugin: HermesPlugin, values: [String: BotJSON]) async -> String? {
+        guard let profile else { return nil }
+        do {
+            let row = try await client.saveSettings(key: plugin.key, values: values, profile: profile)
+            changeSerial += 1
+            guard self.profile == profile else { return nil }
+            notice = .reported(String(localized: "\(plugin.name)'s settings are saved on \(profile)."))
+            if let row { replace(row) } else { await read() }
+            return nil
+        } catch BotSettingFailure.rejected(_, let message) {
+            return message
+        } catch {
+            guard self.profile == profile else { return nil }
+            notice = .unconfirmed(String(localized: "The server didn't confirm the settings for \(plugin.name). This page shows what it reports now."))
+            await read()
+            return nil
+        }
+    }
+
+    /// Writes or removes `plugin`'s secret field's `.env` value, then tells the host, which reconnects
+    /// anything that reads it, and reads the list for whether it's set. Throws the host's refusal of
+    /// the write for the form to show. The value is written by then, so a failed follow-up isn't one.
+    func setSecret(_ env: String, value: String?, of plugin: HermesPlugin) async throws {
+        guard let profile else { return }
+        if let value {
+            try await client.saveKey(env, value: value, profile: profile)
+        } else {
+            try await client.removeKey(env, profile: profile)
+        }
+        _ = try? await client.saveSettings(key: plugin.key, values: [:], profile: profile)
+        guard self.profile == profile else { return }
+        notice = .reported(value == nil ? String(localized: "\(env) is removed from \(profile).") : String(localized: "\(env) is saved on \(profile)."))
+        await read()
+    }
+
     /// The user confirmed the pending removal. Synchronous, because the alert clears `pendingRemoval`
     /// as it closes, before a task started from its button would run.
     func confirmPendingRemoval() {
@@ -391,6 +500,7 @@ final class PluginsModel {
         notice = nil
         pendingToggle = nil
         pendingRemoval = nil
+        updateReview = nil
         setup = nil
         stakes = HermesPluginStakes()
     }
@@ -437,6 +547,20 @@ final class PluginsModel {
         case .catalog(let name, _): name
         case .repo(let identifier): identifier
         }
+    }
+
+    private static func report(update change: HermesPluginChange, name: String, profile: String) -> String {
+        if change.isUnchanged { return String(localized: "\(name) is already up to date on \(profile).") }
+        var report: String
+        switch (change.needsRestart, change.waitsForNextSession) {
+        case (true, _): report = String(localized: "\(name) is updated on \(profile). It takes full effect after a restart.")
+        case (false, true): report = String(localized: "\(name) is updated on \(profile). New tools start in new sessions.")
+        case (false, false): report = String(localized: "\(name) is updated on \(profile) and live now.")
+        }
+        for server in change.failedServers {
+            report += " " + String(localized: "MCP server \(server) didn't connect.")
+        }
+        return report
     }
 
     private static func report(_ install: HermesPluginInstall, profile: String) -> String {

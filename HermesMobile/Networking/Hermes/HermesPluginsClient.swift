@@ -24,6 +24,10 @@ struct HermesPlugin: Identifiable, Equatable, Sendable {
     let isBundled: Bool
     let isEnabled: Bool
     let hasUpdate: Bool
+    /// The version a catalog install would update to, when the host knows it.
+    let updateVersion: String?
+    /// The manifest's settings form, empty for most plugins.
+    let settings: [HermesPluginSetting]
 
     var id: String { key }
 
@@ -51,7 +55,11 @@ struct HermesPlugin: Identifiable, Equatable, Sendable {
         catalogName = row["catalog_name"].text
         isBundled = source == "bundled"
         isEnabled = row["status"].text == "enabled"
-        hasUpdate = row["update_available"].flag == true
+        // This build pins hermex-push and hermex-screen, and their own pages update them or the app
+        // does, so they never offer an Update here.
+        hasUpdate = row["update_available"].flag == true && key != "hermex-push" && key != "hermex-screen"
+        updateVersion = row["catalog_version"].text
+        settings = (row["settings_schema"].list ?? []).compactMap(HermesPluginSetting.init)
     }
 }
 
@@ -75,6 +83,131 @@ struct HermesPluginChange: Equatable, Sendable {
         waitsForNextSession = !(activation["deferred"].fields ?? [:]).isEmpty
         failedServers = (activation["live_now"]["mcp_servers"].list ?? []).compactMap { server in
             server["connected"].flag == true ? nil : server["name"].text
+        }
+    }
+}
+
+/// What an update came back with (#1582). The last two changed nothing, and wait for the user.
+enum HermesPluginUpdate: Equatable, Sendable {
+    /// One thing a security scan found, with the file and line it found it on.
+    struct Finding: Equatable, Sendable, Identifiable {
+        let id = UUID()
+        let severity: String
+        let description: String
+        let location: String
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            (lhs.severity, lhs.description, lhs.location) == (rhs.severity, rhs.description, rhs.location)
+        }
+    }
+
+    case finished(HermesPluginChange)
+    /// A re-pin that gives the plugin new abilities, in the host's own lines.
+    case needsConsent(newAbilities: [String])
+    /// `canOverride` only for a caution verdict. A dangerous one, or any the app doesn't know, can't be.
+    case blockedByScan(canOverride: Bool, findings: [Finding])
+
+    /// A reply with none of these is a host this client doesn't understand, so it's nil.
+    init?(_ reply: BotJSON) {
+        if reply["consent_required"].flag == true {
+            self = .needsConsent(newAbilities: (reply["delta_lines"].list ?? []).compactMap(\.text))
+        } else if reply["scan_blocked"].flag == true {
+            self = .blockedByScan(canOverride: reply["scan_verdict"].text == "caution", findings: (reply["scan_findings"].list ?? []).map { finding in
+                let line = finding["line"].integer.map { ":\($0)" } ?? ""
+                return Finding(severity: finding["severity"].text ?? "", description: finding["description"].text ?? "",
+                               location: (finding["file"].text ?? "") + line)
+            })
+        } else if reply["ok"].flag == true {
+            self = .finished(HermesPluginChange(reply, enabling: true))
+        } else {
+            return nil
+        }
+    }
+}
+
+/// One field of a plugin's settings form (#1582). A field of a type this build doesn't know isn't
+/// shown, so it's never sent. A secret never carries its value, only whether it's set.
+struct HermesPluginSetting: Identifiable, Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case string, number, boolean, json
+        case choice([String])
+        case secret(env: String, isSet: Bool)
+    }
+
+    /// What a field's text comes to.
+    enum Parsed: Equatable {
+        case value(BotJSON)
+        /// Empty, on a field with no value to clear.
+        case unset
+        case invalid(String)
+    }
+
+    let key: String
+    let label: String
+    let description: String
+    let isRequired: Bool
+    let kind: Kind
+    /// The saved value, or else the manifest's default. Null when it has neither.
+    let value: BotJSON
+
+    var id: String { key }
+
+    init?(_ row: BotJSON) {
+        guard let key = row["key"].text, !key.isEmpty else { return nil }
+        switch row["type"].text {
+        case "string": kind = .string
+        case "number": kind = .number
+        case "boolean": kind = .boolean
+        case "json": kind = .json
+        case "enum": kind = .choice((row["choices"].list ?? []).compactMap(\.text))
+        case "secret":
+            guard let env = row["env"].text, !env.isEmpty else { return nil }
+            kind = .secret(env: env, isSet: row["has_value"].flag == true)
+        default: return nil
+        }
+        self.key = key
+        label = row["label"].text ?? key
+        description = row["description"].text ?? ""
+        isRequired = row["required"].flag == true
+        value = row["value"]
+    }
+
+    /// The text a form starts from.
+    var text: String {
+        switch (kind, value) {
+        case (_, .null): return ""
+        case (_, .string(let text)): return text
+        case (_, .bool(let flag)): return flag ? "true" : "false"
+        case (_, .number(let number)):
+            return number == number.rounded() && abs(number) < 1e15 ? String(Int64(number)) : String(number)
+        default:
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            return (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        }
+    }
+
+    /// What `text` means for this field. A list or object is the only JSON the host accepts here.
+    func parse(_ text: String) -> Parsed {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch kind {
+        case .string: return value == .null && text.isEmpty ? .unset : .value(.string(text))
+        case .choice: return trimmed.isEmpty ? .unset : .value(.string(trimmed))
+        case .boolean: return trimmed.isEmpty ? .unset : .value(.bool(trimmed == "true"))
+        case .number:
+            if trimmed.isEmpty { return value == .null ? .unset : .invalid(String(localized: "Enter a number.")) }
+            guard let number = Double(trimmed), number.isFinite else { return .invalid(String(localized: "Enter a number.")) }
+            return .value(.number(number))
+        case .json:
+            if trimmed.isEmpty { return value == .null ? .unset : .invalid(String(localized: "Enter a JSON list or object.")) }
+            guard let parsed = try? JSONDecoder().decode(BotJSON.self, from: Data(trimmed.utf8)) else {
+                return .invalid(String(localized: "Enter a JSON list or object."))
+            }
+            switch parsed {
+            case .array, .object: return .value(parsed)
+            default: return .invalid(String(localized: "Enter a JSON list or object."))
+            }
+        case .secret: return .unset
         }
     }
 }
@@ -191,6 +324,23 @@ struct HermesPluginStakes: Equatable, Sendable {
     /// the Profile back on the built-in one.
     func remove(key: String, profile: String) async throws -> Bool {
         try await gateway(.pluginsRemove(profile: profile, key: key))["cleared_memory_provider"].flag == true
+    }
+
+    /// Updates a user install on `profile`. The two accepts are the user's answers to an earlier reply.
+    func update(key: String, profile: String, acceptCapabilities: Bool, acceptCaution: Bool) async throws -> HermesPluginUpdate {
+        let reply = try await gateway(.pluginsUpdate(profile: profile, key: key, acceptCapabilities: acceptCapabilities, acceptCaution: acceptCaution))
+        guard let update = HermesPluginUpdate(reply) else { throw BotFailure.unsupported }
+        return update
+    }
+
+    /// Writes settings for `key` on `profile`, and answers with the row the host read back.
+    func saveSettings(key: String, values: [String: BotJSON], profile: String) async throws -> HermesPlugin? {
+        HermesPlugin(try await gateway(.pluginsSettings(profile: profile, key: key, values: values))["plugin"])
+    }
+
+    /// Takes one key off `profile`'s `.env`.
+    func removeKey(_ name: String, profile: String) async throws {
+        try await HermesEnvironmentClient(http: http).remove(name, profile: profile)
     }
 
     /// Writes one required key to `profile`'s `.env`. The value goes out once and isn't read back.

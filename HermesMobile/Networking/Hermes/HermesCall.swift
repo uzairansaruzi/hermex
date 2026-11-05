@@ -76,6 +76,17 @@ enum HermesCall: Equatable, Sendable {
     case pluginsInstall(profile: String, source: HermesPluginSource, replace: Bool, enable: Bool)
     /// `{ok, name, cleared_memory_provider?}`. The host refuses a bundled plugin with 5026.
     case pluginsRemove(profile: String, key: String)
+    /// Re-pins a catalog install or pulls a git one. `{ok: true, unchanged, restart_required, …}`, or
+    /// `{ok: false}` with nothing changed and either `consent_required`, `delta_lines` for a re-pin
+    /// that widens the plugin, or `scan_blocked`, `scan_verdict`, `scan_findings`. `acceptCapabilities`
+    /// answers the first and `acceptCaution` a caution scan; a dangerous one never updates. Each is
+    /// sent only after the user read what it accepts. Any other refusal is 4021.
+    case pluginsUpdate(profile: String, key: String, acceptCapabilities: Bool, acceptCaution: Bool)
+    /// `{ok, name, written, plugin}`. `values` are the manifest's non-secret keys; a wrong type or
+    /// a secret is 4021, and secrets go to `/api/env`. A plugin the host lacks is 4020. Empty `values`
+    /// follow a secret's write, as Desktop's do: this call is what tells the host to reconnect the
+    /// plugin's MCP servers on the new value and tell its other clients.
+    case pluginsSettings(profile: String, key: String, values: [String: BotJSON])
 
     // The canonical Bot Chat
     /// Finds the Profile's Bot Chat by its exact title, hidden rows included.
@@ -342,7 +353,7 @@ enum HermesCall: Equatable, Sendable {
         case .profilesSetAsset: return "profiles.set_asset"
         case .profilesConfigure: return "profiles.configure"
         case .profilesCreate: return "profiles.create"
-        case .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove: return "plugins.manage"
+        case .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove, .pluginsUpdate, .pluginsSettings: return "plugins.manage"
         case .sessionList: return "session.list"
         case .sessionCreate, .sessionNew: return "session.create"
         case .sessionTitle, .sessionRename: return "session.title"
@@ -431,6 +442,13 @@ enum HermesCall: Equatable, Sendable {
             return params
         case .pluginsRemove(let profile, let key):
             return ["action": .string("remove"), "profile": .string(profile), "name": .string(key)]
+        case .pluginsUpdate(let profile, let key, let acceptCapabilities, let acceptCaution):
+            var params: [String: BotJSON] = ["action": .string("update"), "profile": .string(profile), "name": .string(key)]
+            if acceptCapabilities { params["accept_capabilities"] = .bool(true) }
+            if acceptCaution { params["force"] = .bool(true) }
+            return params
+        case .pluginsSettings(let profile, let key, let values):
+            return ["action": .string("settings"), "profile": .string(profile), "key": .string(key), "values": .object(values)]
         case .profilesGetAsset(let name): return ["name": .string(name), "asset": .string("avatar")]
         case .profilesSetAsset(let name, .replace(let data)):
             return ["name": .string(name), "asset": .string("avatar"), "data": .string(data)]
@@ -641,7 +659,9 @@ enum HermesCall: Equatable, Sendable {
         switch self {
         case .profilesDescribe(let name): valid = !name.isEmpty
         case .pluginsList(let profile): valid = !profile.isEmpty
-        case .pluginsToggle(let profile, let key, _), .pluginsRemove(let profile, let key): valid = !profile.isEmpty && !key.isEmpty
+        case .pluginsToggle(let profile, let key, _), .pluginsRemove(let profile, let key), .pluginsUpdate(let profile, let key, _, _):
+            valid = !profile.isEmpty && !key.isEmpty
+        case .pluginsSettings(let profile, let key, _): valid = !profile.isEmpty && !key.isEmpty
         case .pluginsInstall(let profile, .catalog(let identifier, _), _, _), .pluginsInstall(let profile, .repo(let identifier), _, _):
             valid = !profile.isEmpty && !identifier.isEmpty
         case .profilesSetAsset(let name, let avatar):

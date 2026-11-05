@@ -538,7 +538,8 @@ private extension HermesCall {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
              .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
-             .displayStart, .displayStop, .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove: return true
+             .displayStart, .displayStop, .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove, .pluginsUpdate,
+             .pluginsSettings: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }
@@ -553,12 +554,12 @@ private extension HermesCall {
     /// take a sandbox's container as well as a desktop, so `display.start` waits two minutes.
     /// The plugin list reads the host's live catalog, so it waits twice the usual deadline, and a
     /// plugin toggle can sync the Profile's Python packages, so it waits three minutes. An install
-    /// also clones the plugin first, and took 55 s for a small one, so it waits five.
+    /// also clones the plugin first, and took 55 s for a small one, so it and an update wait five.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
         case .slashExec, .pluginsList: return standard * 2
         case .pluginsToggle: return standard * 6
-        case .pluginsInstall: return standard * 10
+        case .pluginsInstall, .pluginsUpdate: return standard * 10
         case .approvalSummary: return min(standard, .seconds(20))
         case .commitMessage, .displayStart: return .seconds(120)
         case .sessionCompress: return .seconds(660)
@@ -574,7 +575,7 @@ private extension HermesCall {
     /// a refused `/compress`, whose 5005 message says why the compaction failed (#1050), a
     /// refused project change or move, such as 5063 naming the project that has the folder (#1052),
     /// a refused branch, whose 5008 message names the session using its name (#1051), and a
-    /// refused plugin toggle, install or removal, whose 5026 message says why (#1582).
+    /// refused plugin toggle, install, removal, update or setting, whose message says why (#1582).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         if method.hasPrefix("display.") { return .screen }
@@ -584,7 +585,7 @@ private extension HermesCall {
         case .commandDispatch(let name, _, _) where name == "goal": return .setting
         case .slashExec, .sessionRename, .promptRewind, .sessionUndo, .sessionCompress, .sessionWorkspaceMove,
              .projectsCreate, .projectsUpdate, .projectsDelete, .sessionBranch, .pluginsToggle, .pluginsInstall,
-             .pluginsRemove: return .setting
+             .pluginsRemove, .pluginsUpdate, .pluginsSettings: return .setting
         default: return .plain
         }
     }

@@ -10,6 +10,7 @@ struct PluginsView: View {
     @State private var installProfile: InstallProfile?
     @State private var isShowingPushSettings = false
     @State private var screenProfile: InstallProfile?
+    @State private var openedPlugin: String?
     private let connection: BotConnection
     private let server: URL
 
@@ -68,6 +69,8 @@ struct PluginsView: View {
         .onChange(of: model.tab) { model.query = "" }
         .sheet(item: $installProfile) { PluginInstallSheet(model: model, profile: $0.name) }
         .navigationDestination(isPresented: $isShowingPushSettings) { SettingsNotificationsPage(server: server) }
+        .navigationDestination(item: $openedPlugin) { PluginDetailView(key: $0, model: model) }
+        .sheet(item: $model.updateReview) { PluginUpdateReviewSheet(review: $0, model: model) }
         .fullScreenCover(item: $screenProfile, onDismiss: { Task { await model.load() } }) { profile in
             ScreenView(profile: profile.name, title: profile.name, server: server, connection: connection, removesFromItsProfile: true) {}
         }
@@ -156,7 +159,9 @@ struct PluginsView: View {
                 Section {
                     ForEach(group.plugins) { plugin in
                         PluginRow(plugin: plugin, isOn: model.isOn(plugin), isBusy: model.isToggling(plugin),
-                                  removalReason: model.removalReason(for: plugin)) { turningOn in
+                                  removalReason: model.removalReason(for: plugin),
+                                  onOpen: { openedPlugin = plugin.key },
+                                  onUpdate: { Task { await model.update(plugin) } }) { turningOn in
                             model.requestToggle(plugin, to: turningOn)
                         }
                         .swipeActions { pluginActions(plugin) }
@@ -236,55 +241,70 @@ private struct PluginFilterChips: View {
     }
 }
 
-/// One dense plugin row. The switch shows the state asked for and stays off limits until the host answers.
+/// One dense plugin row: tap it for its page, and the switch shows the state asked for and stays off
+/// limits until the host answers. An update has its own button, one plugin at a time.
 private struct PluginRow: View {
     let plugin: HermesPlugin
     let isOn: Bool
     let isBusy: Bool
     /// Why Nous took this plugin out of the catalog, when it did.
     let removalReason: String?
+    let onOpen: () -> Void
+    let onUpdate: () -> Void
     let onChange: (Bool) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        Toggle(isOn: Binding(get: { isOn }, set: onChange)) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: plugin.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                if !plugin.summary.isEmpty {
-                    Text(verbatim: plugin.summary)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
-                }
-                Text(verbatim: details)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                if let removalReason {
-                    Text(removalReason.isEmpty ? String(localized: "Removed from the catalog.")
-                                               : String(localized: "Removed from the catalog: \(removalReason)"))
+        HStack(spacing: 10) {
+            Button(action: onOpen) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: plugin.name)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    if !plugin.summary.isEmpty {
+                        Text(verbatim: plugin.summary)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
+                    }
+                    Text(verbatim: details)
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                    if let removalReason {
+                        Text(removalReason.isEmpty ? String(localized: "Removed from the catalog.")
+                                                   : String(localized: "Removed from the catalog: \(removalReason)"))
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            if plugin.hasUpdate {
+                Button(String(localized: "Update"), action: onUpdate)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isBusy)
+                    .accessibilityLabel(Text("Update \(plugin.name)"))
+            }
+            Toggle(isOn: Binding(get: { isOn }, set: onChange)) { Text(verbatim: plugin.name) }
+                .labelsHidden()
+                .disabled(isBusy)
         }
-        .disabled(isBusy)
     }
 
     /// Its folder, which tells apart plugins with the same name, then its version and origin. While
     /// the host works, which can take minutes on a toggle that syncs packages, it says so instead.
     private var details: String {
         if isBusy { return String(localized: "Applying…") }
-        var parts = [plugin.category, plugin.version, plugin.origin].compactMap { $0 }.filter { !$0.isEmpty }
-        if plugin.hasUpdate { parts.append(String(localized: "Update available")) }
-        return parts.joined(separator: " · ")
+        return [plugin.category, plugin.version, plugin.origin].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }
 
-private struct PluginNoticeRow: View {
+struct PluginNoticeRow: View {
     let notice: PluginsModel.Notice
 
     var body: some View {
