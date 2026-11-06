@@ -18,9 +18,11 @@ struct AcknowledgementNotice: Hashable {
     /// The project's home page, from `Package.resolved` (Lucide is a bundled asset, not a package).
     var projectURL: URL? {
         switch name {
+        case "DM Sans": URL(staticString: "https://github.com/googlefonts/dm-fonts")
         case "Highlightr": URL(staticString: "https://github.com/raspu/Highlightr")
         case "KeychainAccess": URL(staticString: "https://github.com/kishikawakatsumi/KeychainAccess")
         case "LDSwiftEventSource": URL(staticString: "https://github.com/LaunchDarkly/swift-eventsource")
+        case "Lora": URL(staticString: "https://github.com/cyrealtype/Lora-Cyrillic")
         case "Lucide icons": URL(staticString: "https://github.com/lucide-icons/lucide")
         case "Open Bot Avatar": URL(staticString: "https://github.com/DominikScholz/open-bot-avatar")
         case "MarkdownUI": URL(staticString: "https://github.com/gonzalezreal/swift-markdown-ui")
@@ -39,6 +41,7 @@ struct AcknowledgementNotice: Hashable {
             name.removeLast(suffix.count)
         }
         switch name {
+        case "DMSans": return "DM Sans"
         case "LucideIcons": return "Lucide icons"
         case "OpenBotAvatar": return "Open Bot Avatar"
         default: return name
@@ -77,7 +80,7 @@ private struct AcknowledgementNoticePage: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if let projectURL = notice.projectURL {
                             Link((projectURL.host() ?? "") + projectURL.path(), destination: projectURL)
-                                .font(.footnote)
+                                .font(AppFont.footnote())
                         }
                         Text(verbatim: text)
                             .font(.footnote.monospaced())

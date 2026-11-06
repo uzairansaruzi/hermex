@@ -181,7 +181,7 @@ struct MoveToHermesSheet: View {
                 MoveToHermesStep(state: state.chats == nil || failed ? .waiting : .current(3),
                                  title: String(localized: "Checking which are in \(destination)"),
                                  detail: state.chats.map { String(localized: "Checked \(state.located) of \($0)") })
-            } footer: {
+            } appFooter: {
                 Text("Nothing has been changed yet. Cancel leaves both servers as they are.")
             }
             if failed {
@@ -243,7 +243,7 @@ struct MoveToHermesSheet: View {
                             Text("Only “\(only)” was checked.").fontWeight(.semibold)
                             Text("\(source) shows one Profile at a time, so chats in its other Profiles aren’t counted or copied by this move.")
                         }
-                        .font(.subheadline)
+                        .font(AppFont.subheadline())
                         .foregroundStyle(.orange)
                         .accessibilityElement(children: .combine)
                     }
@@ -253,7 +253,7 @@ struct MoveToHermesSheet: View {
                     Text("\(counts.toCopy) to copy")
                     if counts.overLimit > 0 { Text("\(counts.overLimit) over 10,000 messages") }
                     if counts.unchecked > 0 { Text("\(counts.unchecked) couldn’t be checked") }
-                } footer: {
+                } appFooter: {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("A chat over 5 MB is found only while copying and is listed when the move ends.")
                         if counts.unchecked > 0 {
@@ -275,7 +275,7 @@ struct MoveToHermesSheet: View {
                     }
                 } header: {
                     Text("Profiles")
-                } footer: {
+                } appFooter: {
                     if let unchosen = model.unchosenProfile { Text("Choose where “\(unchosen)” goes to continue.") }
                 }
                 Section("Also brought over") {
@@ -285,7 +285,7 @@ struct MoveToHermesSheet: View {
                 }
                 Section("Stays behind") {
                     Text("Project tags (Hermes groups by folder). Cleared history: Hermes shows the full transcript. Offline copies: Hermes caches its own.")
-                        .font(.subheadline)
+                        .font(AppFont.subheadline())
                         .foregroundStyle(.appSecondary)
                 }
                 Section {
@@ -303,7 +303,7 @@ struct MoveToHermesSheet: View {
                 Text(choice.source)
                 Text(choice.sameName ? String(localized: "\(choice.chats) chats · same name")
                                      : String(localized: "\(choice.chats) chats · no Profile with this name"))
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
             }
             Spacer(minLength: 8)
@@ -335,7 +335,7 @@ struct MoveToHermesSheet: View {
                                  detail: copied.map { String(localized: "\($0.settled) of \($0.total)") })
                 MoveToHermesStep(state: state(2), title: String(localized: "Applying titles, pins and folders"))
                 MoveToHermesStep(state: state(3), title: String(localized: "Moving drafts"))
-            } footer: {
+            } appFooter: {
                 Text("You can close this or quit the app. The move resumes where it stopped. Any change it can’t confirm is listed for you to check, not applied again.")
             }
             Section { Button("Close") { dismiss() } }
@@ -410,7 +410,7 @@ struct MoveToHermesSheet: View {
                             ? String(localized: "\(report.draftsMoved) moved. \(snapshot.draftsLeft) still to move.")
                             : String(localized: "\(report.draftsMoved) moved."))
                 }
-            } footer: {
+            } appFooter: {
                 Text(pausedLine(pause, signedOut: signedOut))
             }
             Section {
@@ -530,7 +530,7 @@ private struct MoveToHermesProfilePicker: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Keep on \(model.sourceName)").foregroundStyle(.appPrimary)
                             Text("Its \(choice.chats) chats stay there, and its Shortcuts keep opening \(model.sourceName) while it’s configured.")
-                                .font(.caption)
+                                .font(AppFont.caption())
                                 .foregroundStyle(.appSecondary)
                         }
                         Spacer()
@@ -633,7 +633,7 @@ private struct MoveToHermesReportView: View {
                 Button(role: .destructive, action: remove) { Text("Remove \(source)…").frame(maxWidth: .infinity) }
                     .buttonStyle(.bordered)
                 Text("\(source)’s chats stay on its host. Only Hermex’s copy of the server is removed.")
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .fontWeight(.regular)
                     .foregroundStyle(.appSecondary)
                     .multilineTextAlignment(.center)
@@ -723,12 +723,12 @@ struct MoveToHermesStep: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             glyph
-                .font(.body)
+                .font(AppFont.body())
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let detail, !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.appSecondary)
+                    Text(detail).font(AppFont.caption()).foregroundStyle(.appSecondary)
                 }
             }
         }
@@ -768,11 +768,11 @@ private struct MoveToHermesRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).foregroundStyle(.appPrimary)
-                Text(detail).font(.caption).foregroundStyle(.appSecondary)
+                Text(detail).font(AppFont.caption()).foregroundStyle(.appSecondary)
             }
             Spacer()
             if chevron {
-                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.appTertiary)
+                Image(systemName: "chevron.forward").font(AppFont.caption(weight: .semibold)).foregroundStyle(.appTertiary)
                     .accessibilityHidden(true)
             }
         }
@@ -791,10 +791,10 @@ private struct MoveToHermesNoticeScreen<Actions: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "exclamationmark.circle.fill")
-                    .font(.largeTitle)
+                    .font(AppFont.largeTitle())
                     .foregroundStyle(tint)
                     .accessibilityHidden(true)
-                Text(title).font(.title3.weight(.semibold))
+                Text(title).font(AppFont.title3(weight: .semibold))
                 Text(message).foregroundStyle(.appSecondary)
                 VStack(spacing: 10) { actions }
                     .frame(maxWidth: .infinity)
@@ -863,7 +863,7 @@ struct MoveToHermesBanner: View {
         let source = sourceName(serverID)
         return HStack(spacing: 12) {
             Image(systemName: "arrow.right")
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .foregroundStyle(.tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
@@ -880,13 +880,13 @@ struct MoveToHermesBanner: View {
                 .accessibilityLabel(Text("Move \(source) to Hermes"))
             Button { auth.noteMovePrompt(.dismissed, forSource: serverID) } label: {
                 Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
+                    .font(AppFont.footnote(weight: .semibold))
                     .foregroundStyle(.appSecondary)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(Text("Dismiss"))
         }
-        .font(.subheadline)
+        .font(AppFont.subheadline())
         .moveToHermesCard(Color(.appSurface))
     }
 
@@ -929,7 +929,7 @@ struct MoveToHermesBanner: View {
             .fontWeight(.semibold)
             .buttonStyle(.borderless)
         }
-        .font(.subheadline)
+        .font(AppFont.subheadline())
         .moveToHermesCard(Color.orange.opacity(0.12))
     }
 
@@ -1091,14 +1091,14 @@ private struct MoveToHermesQuestionSheet: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Image(systemName: "arrow.right")
-                    .font(.title2.weight(.semibold))
+                    .font(AppFont.title2(weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 48, height: 48)
                     .background(LinearGradient(colors: [.indigo, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
                                 in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityHidden(true)
                 Text("Move \(source) to Hermes")
-                    .font(.title3.weight(.semibold))
+                    .font(AppFont.title3(weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
                 Text("Hermex now talks to Hermes directly. Your chats, titles, pins and drafts come with you.")
                     .foregroundStyle(.appSecondary)
@@ -1129,9 +1129,9 @@ private struct MoveToHermesQuestionSheet: View {
 
     private func point(_ text: String) -> some View {
         Label {
-            Text(text).font(.subheadline)
+            Text(text).font(AppFont.subheadline())
         } icon: {
-            Image(systemName: "checkmark").font(.subheadline.weight(.bold)).foregroundStyle(.green)
+            Image(systemName: "checkmark").font(AppFont.subheadline(weight: .bold)).foregroundStyle(.green)
         }
     }
 }
@@ -1166,7 +1166,7 @@ private struct MoveToHermesOfferSheet: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Signed in to \(URL(string: offer.destinationID)?.host ?? offer.destinationID)")
-                    .font(.title3.weight(.semibold))
+                    .font(AppFont.title3(weight: .semibold))
                     .accessibilityAddTraits(.isHeader)
                 Text("Bring your chats from \(source)? Hermex checks which ones Hermes already has, then shows you what it will copy before it starts.")
                     .foregroundStyle(.appSecondary)
@@ -1183,7 +1183,7 @@ private struct MoveToHermesOfferSheet: View {
                 .controlSize(.large)
                 .padding(.top, 8)
                 Text("You can do this later in Settings › \(source).")
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)

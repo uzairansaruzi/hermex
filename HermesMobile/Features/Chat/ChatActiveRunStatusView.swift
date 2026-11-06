@@ -34,7 +34,7 @@ struct ChatActiveRunStatusView: View {
 
     private func label(now: Date) -> some View {
         Text(presentation.label(now: now))
-            .font(.caption.weight(.semibold).monospacedDigit())
+            .font(AppFont.caption(weight: .semibold).monospacedDigit())
             .foregroundStyle(.appSecondary)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             .minimumScaleFactor(0.88)

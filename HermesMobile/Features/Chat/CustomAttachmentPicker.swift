@@ -415,8 +415,9 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
             isPresented: isPresented,
             anchor: controller,
             // This sibling host does not inherit SwiftUI's scene environment.
-            // Forward it so camera/media work starts and stops with its owner.
-            overlay: AnyView(overlay().environment(\.scenePhase, scenePhase))
+            // Forward it so camera/media work starts and stops with its owner,
+            // and set the root font it would otherwise miss.
+            overlay: AnyView(overlay().environment(\.scenePhase, scenePhase).appRootFont())
         )
     }
 
@@ -666,7 +667,7 @@ struct HermexAttachmentPickerView: View {
                             Text(confirmLabel)
                         }
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(model.selectionCount == 0 ? .white.opacity(0.58) : .white)
                     .padding(.horizontal, 18)
                     .frame(minHeight: 46)
@@ -684,7 +685,7 @@ struct HermexAttachmentPickerView: View {
 
             if model.hasLimitedAccess {
                 Button("Manage Access", action: openSettings)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .frame(height: 36)
@@ -742,15 +743,15 @@ struct HermexAttachmentPickerView: View {
             }
         case .empty:
             placeholder {
-                Image(systemName: "photo.on.rectangle").font(.title2)
+                Image(systemName: "photo.on.rectangle").font(AppFont.title2())
                 Text("No photos are available.")
             }
         case .denied:
             placeholder {
-                Image(systemName: "photo.badge.exclamationmark").font(.title2)
-                Text("Photo access is off").font(.headline)
+                Image(systemName: "photo.badge.exclamationmark").font(AppFont.title2())
+                Text("Photo access is off").font(AppFont.headline())
                 Text("Allow access in Settings to browse recent photos here.")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.appSecondary)
                 Button("Open Settings", action: openSettings)
@@ -770,7 +771,7 @@ struct HermexAttachmentPickerView: View {
                 .overlay(alignment: .bottomTrailing) {
                     if let order {
                         Text("\(order)")
-                            .font(.caption.weight(.bold))
+                            .font(AppFont.caption(weight: .bold))
                             .monospacedDigit()
                             .foregroundStyle(.white)
                             .frame(width: 24, height: 24)
@@ -797,7 +798,7 @@ struct HermexAttachmentPickerView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .foregroundStyle(.white.opacity(enabled ? 1 : 0.45))
                 .frame(width: 46, height: 46)
                 .background(.black.opacity(0.54), in: Circle())
@@ -1027,7 +1028,7 @@ struct HermexAttachmentMenuRow: View {
                     .frame(width: 42, height: 42)
                     .background(.primary.opacity(0.08), in: Circle())
                 title
-                    .font(.title3.weight(.regular))
+                    .font(AppFont.title3(weight: .regular))
                     .foregroundStyle(.appPrimary)
                 Spacer(minLength: 0)
             }

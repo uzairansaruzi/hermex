@@ -16,13 +16,13 @@ struct TaskRecentRunRowView: View {
                 .accessibilityHidden(true)
 
             Text(completion.displayName)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
 
             Spacer(minLength: 8)
 
             Text(relativeTime)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
                 .lineLimit(1)
         }

@@ -24,11 +24,11 @@ struct HermesDesktopTaskRequestBody: View {
             title: String(localized: "Hermes Desktop is handling this"), identity: identity
         )
         Text(task.kind.title(subject))
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
         Text(task.kind.detail(subject))
-            .font(.caption)
+            .font(AppFont.caption())
             .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: false, vertical: true)
         Button(role: .destructive, action: onStop) {
@@ -60,10 +60,10 @@ struct HermesConnectionRequestBody: View {
                 // The system's own unit wording, so every language gets its plural right.
                 let left = Duration.seconds(minutes * 60).formatted(.units(allowed: [.minutes], width: .abbreviated))
                 Text("Waiting · \(left) left")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
             }
             Text(pausedLine)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -77,7 +77,7 @@ struct HermesConnectionRequestBody: View {
         .buttonStyle(.chatDecision(.secondary))
         .disabled(!isEnabled || isAnswering)
         Text(releaseLine)
-            .font(.caption)
+            .font(AppFont.caption())
             .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -122,16 +122,16 @@ private struct HermesConnectionTargetRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(target.name)
-                        .font(.callout.weight(.semibold))
+                        .font(AppFont.callout(weight: .semibold))
                         .fixedSize(horizontal: false, vertical: true)
-                    if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.appSecondary) }
+                    if let subtitle { Text(subtitle).font(AppFont.caption()).foregroundStyle(.appSecondary) }
                 }
                 Spacer(minLength: 8)
                 stateLabel
             }
             ForEach(notes, id: \.self) { note in
                 Text(note)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -179,7 +179,7 @@ private struct HermesConnectionTargetRow: View {
             if let symbol { Image(systemName: symbol).accessibilityHidden(true) }
             Text(title)
         }
-        .font(.caption.weight(.semibold))
+        .font(AppFont.caption(weight: .semibold))
         .foregroundStyle(tint)
         .fixedSize()
     }
@@ -188,21 +188,21 @@ private struct HermesConnectionTargetRow: View {
     @ViewBuilder private var guidance: some View {
         if target.finishesOnTheMac {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Finish on the Mac.").font(.caption.weight(.semibold))
+                Text("Finish on the Mac.").font(AppFont.caption(weight: .semibold))
                 Text("This sign-in returns to a browser on the Mac, so it can’t complete on iPhone.")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } else if target.linkToOpen != nil {
             Text("Opens in your browser. Hermes notices when you finish.")
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else if target.canSkip, !target.canConnect, target.state == .failed || target.state == .expired {
             // Trying again from here is deferred; asking the agent covers it.
             Text(retryLine)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -259,14 +259,14 @@ private struct HermesConnectionTargetRow: View {
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
                 if field.isSecret {
-                    Text("secret").font(.caption2.weight(.semibold)).foregroundStyle(.appSecondary)
+                    Text("secret").font(AppFont.caption2(weight: .semibold)).foregroundStyle(.appSecondary)
                 } else if !field.isRequired {
-                    Text("optional").font(.caption2.weight(.semibold)).foregroundStyle(.appSecondary)
+                    Text("optional").font(AppFont.caption2(weight: .semibold)).foregroundStyle(.appSecondary)
                 }
             }
             if let prompt = field.prompt {
                 Text(prompt)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -314,8 +314,8 @@ struct HermesRequestHeader: View {
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline)
-                Text(identity).font(.caption).foregroundStyle(.appSecondary)
+                Text(title).font(AppFont.headline())
+                Text(identity).font(AppFont.caption()).foregroundStyle(.appSecondary)
             }
             Spacer(minLength: 8)
         }

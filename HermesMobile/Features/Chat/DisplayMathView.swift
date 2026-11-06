@@ -340,7 +340,7 @@ struct MathInlineText: View {
                     .accessibilityLabel(rendered.accessibilityText)
             }
         }
-        .font(.system(size: fontSize * fontScale, weight: weight))
+        .font(AppFont.fixed(size: fontSize * fontScale, weight: weight))
         .task(id: loadIdentity) {
             guard loadIdentity != nil else { return }
             try? await currentRequest.renderWithRetries(images: images) { result in

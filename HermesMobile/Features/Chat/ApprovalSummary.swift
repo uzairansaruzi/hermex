@@ -22,13 +22,13 @@ struct ApprovalSummaryLine: View {
             switch presentation.summaries.states[presentation.key] ?? .loading {
             case .loading:
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("In plain words (AI summary)").font(.caption.weight(.semibold))
-                    Text("Summarizing…").font(.caption).foregroundStyle(.appSecondary)
+                    Text("In plain words (AI summary)").font(AppFont.caption(weight: .semibold))
+                    Text("Summarizing…").font(AppFont.caption()).foregroundStyle(.appSecondary)
                 }
             case .ready(let text):
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("In plain words (AI summary)").font(.caption.weight(.semibold))
-                    Text(verbatim: text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                    Text("In plain words (AI summary)").font(AppFont.caption(weight: .semibold))
+                    Text(verbatim: text).font(AppFont.subheadline()).fixedSize(horizontal: false, vertical: true)
                 }
             case .unavailable:
                 EmptyView()
@@ -51,7 +51,7 @@ struct ApprovalSummarySettingsSection: View {
             Toggle(isOn: $explainsApprovals) {
                 SettingsLabel(title: String(localized: "Explain approvals in plain words"), systemImage: "text.bubble")
             }
-        } footer: {
+        } appFooter: {
             Text("Asks the Hermes server’s model for a short summary of each approval. Chats on a webui server don’t show one.")
         }
     }

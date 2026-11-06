@@ -156,7 +156,7 @@ struct SlashCommandAutocompleteView: View {
             // panel when no skill matches, so an empty pass here only means a
             // stale frame before the newer rows land.
             Text("No commands or skills match \"\(parsed.commandName)\"")
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
@@ -264,7 +264,7 @@ struct SlashCommandAutocompleteView: View {
             case .command, .skill:
                 return .system(.subheadline, design: .monospaced).weight(.semibold)
             case .skillName:
-                return Font.subheadline.weight(.semibold)
+                return AppFont.subheadline(weight: .semibold)
             }
         }
 
@@ -273,7 +273,7 @@ struct SlashCommandAutocompleteView: View {
             case .command:
                 return .system(.footnote, design: .monospaced)
             case .skill, .skillName:
-                return .footnote
+                return AppFont.footnote()
             }
         }
     }
@@ -290,7 +290,7 @@ struct SlashCommandAutocompleteView: View {
         HStack(spacing: 12) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.caption2.weight(.semibold))
+                    .font(AppFont.caption2(weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .accessibilityHidden(true)
             }
@@ -312,7 +312,7 @@ struct SlashCommandAutocompleteView: View {
             Spacer(minLength: 8)
 
             Text(detail)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -340,7 +340,7 @@ struct SlashCommandAutocompleteView: View {
     private func skillSubArgList(_ filtered: [SkillSlashSuggestion]) -> some View {
         if filtered.isEmpty {
             skillSubArgEmptyText
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
@@ -376,7 +376,7 @@ struct SlashCommandAutocompleteView: View {
 
         if filtered.isEmpty {
             Text("No matches for \"\(parsed.argQuery)\"")
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
@@ -389,7 +389,7 @@ struct SlashCommandAutocompleteView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Text(subArgDisplayText(item, for: command))
-                                    .font(.subheadline)
+                                    .font(AppFont.subheadline())
                                     .foregroundStyle(.appPrimary)
                                     .lineLimit(1)
 
@@ -398,14 +398,14 @@ struct SlashCommandAutocompleteView: View {
                                 if command.subArgs == .models,
                                    item == selectedModelID {
                                     Image(systemName: "checkmark")
-                                        .font(.caption)
+                                        .font(AppFont.caption())
                                         .foregroundStyle(Color.accentColor)
                                 }
 
                                 if command.subArgs == .reasoningLevels,
                                    item == selectedReasoningEffort {
                                     Image(systemName: "checkmark")
-                                        .font(.caption)
+                                        .font(AppFont.caption())
                                         .foregroundStyle(Color.accentColor)
                                 }
                             }

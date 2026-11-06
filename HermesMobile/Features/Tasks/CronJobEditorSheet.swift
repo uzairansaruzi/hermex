@@ -142,7 +142,7 @@ struct CronJobEditorSheet: View {
                     )
                 } header: {
                     Text("Configuration")
-                } footer: {
+                } appFooter: {
                     // States what upstream already does rather than
                     // reimplementing it: `_selected_profile_snapshot_updates`
                     // fills in the model from the profile only while the model
@@ -153,7 +153,7 @@ struct CronJobEditorSheet: View {
                 if let formMessage {
                     Section {
                         Text(formMessage)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .foregroundStyle(messageColor)
                     }
                 }

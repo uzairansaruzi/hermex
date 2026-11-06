@@ -259,7 +259,8 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.textDropDelegate = context.coordinator
         textView.wantsDeferredFocus = { [weak coordinator = context.coordinator] in coordinator?.isFocused == true }
         textView.backgroundColor = .clear
-        textView.font = .preferredFont(forTextStyle: .body, at: context.environment.dynamicTypeSize)
+        textView.font = .app(forTextStyle: .body, at: context.environment.dynamicTypeSize)
+        context.coordinator.fontFamily = AppFontSettings.shared.family
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
         textView.textContainerInset = .zero
@@ -285,6 +286,12 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: ComposerChipTextView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
+        if context.coordinator.fontFamily != AppFontSettings.shared.family {
+            context.coordinator.fontFamily = AppFontSettings.shared.family
+            textView.font = .app(forTextStyle: .body, at: context.environment.dynamicTypeSize)
+            textView.refreshChipsIfNeeded()
+            context.coordinator.reportHeight(for: textView)
+        }
         // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
         // layoutDirection environment does not propagate into a wrapped UITextView,
         // so set the base direction directly so the cursor/empty-field rests on the
@@ -336,6 +343,7 @@ private struct ComposerTextView: UIViewRepresentable {
         @Binding var renderedChips: [ComposerChipToken]
         var onHeightChange: (CGFloat) -> Void
         var acceptsAttachments = true
+        var fontFamily = AppFontFamily.sanFrancisco
         var onDropFileProviders: ([NSItemProvider]) -> Void = { _ in }
         var onDropImageProviders: ([NSItemProvider]) -> Void = { _ in }
         private var pendingFocusTarget: Bool?

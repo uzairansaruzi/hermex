@@ -4406,14 +4406,14 @@ struct ChatToolbarTitleLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline(weight: .semibold))
                 .foregroundStyle(.appPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             if showsSubtitle, let subtitle {
                 Text(subtitle)
-                    .font(.caption2)
+                    .font(AppFont.caption2())
                     .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -4497,7 +4497,7 @@ struct ChatToolbarActionSlot<Content: View>: View {
     var body: some View {
         content
             .labelStyle(.iconOnly)
-            .font(.body)
+            .font(AppFont.body())
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }

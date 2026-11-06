@@ -94,7 +94,7 @@ import SwiftUI
             }
             .overlay(alignment: .bottom) {
                 if let toast {
-                    Text(toast).font(.callout).padding()
+                    Text(toast).font(AppFont.callout()).padding()
                         .background(.appMaterial(.regularMaterial), in: RoundedRectangle(cornerRadius: 16))
                         .padding().accessibilityAddTraits(.updatesFrequently)
                 }
@@ -174,7 +174,7 @@ import SwiftUI
             }
             if inbox.connection != nil {
                 if let message = inbox.errorMessage ?? inbox.routeAdvice {
-                    Text(message).font(.callout)
+                    Text(message).font(AppFont.callout())
                     // Reconnecting would only send the refused password again (#884).
                     if inbox.needsSignIn {
                         Button("Update sign-in", action: updateSignIn)
@@ -194,7 +194,7 @@ import SwiftUI
                     home == nil ? Text("No bots yet. Tap + to create one.") : Text("No bots yet. Tap New Chat to create one.")
                 }
                 if let notice = inbox.notice {
-                    Text(notice).font(.callout).foregroundStyle(.appSecondary).listRowSeparator(.hidden)
+                    Text(notice).font(AppFont.callout()).foregroundStyle(.appSecondary).listRowSeparator(.hidden)
                 }
                 let pinned = inbox.pinned
                 if !pinned.isEmpty {
@@ -234,7 +234,7 @@ import SwiftUI
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
                     }
-                    .font(.subheadline).foregroundStyle(.appSecondary)
+                    .font(AppFont.subheadline()).foregroundStyle(.appSecondary)
                     .listRowSeparator(.hidden)
                 }
             } else {
@@ -356,7 +356,7 @@ import SwiftUI
                     Group {
                         if let name = section.name { Text(verbatim: name) } else { Text("Other chats") }
                     }
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.appSecondary)
+                    .font(AppFont.subheadline(weight: .semibold)).foregroundStyle(.appSecondary)
                     .lineLimit(1).truncationMode(.tail).textCase(nil)
                     .accessibilityAddTraits(.isHeader)
                 }
@@ -528,8 +528,8 @@ import SwiftUI
                 if let bot { openScreen(bot) }
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: bot?.name ?? profile).font(.headline)
-                    Text("You hold its screen").font(.subheadline).foregroundStyle(.appSecondary)
+                    Text(verbatim: bot?.name ?? profile).font(AppFont.headline())
+                    Text("You hold its screen").font(AppFont.subheadline()).foregroundStyle(.appSecondary)
                 }
             }
             .buttonStyle(.plain)
@@ -905,12 +905,12 @@ private struct BotHeroTile: View {
             BotAvatarView(profile: profile, avatar: avatar, size: 84)
             VStack(spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(profile.name).font(.body).foregroundStyle(.appSecondary).lineLimit(1)
+                    Text(profile.name).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
                     if unread { BotUnreadDot() }
                 }
                 if let status {
                     // Two lines, so a long translation at a large size still reads whole.
-                    BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold), isStale: statusIsStale)
+                    BotLiveStatusLabel(status: status, font: AppFont.footnote(weight: .semibold), isStale: statusIsStale)
                         .lineLimit(2).multilineTextAlignment(.center)
                 }
             }
@@ -928,7 +928,7 @@ private struct BotRoomHeroTile: View {
     var body: some View {
         VStack(spacing: 14) {
             BotRoomAvatars(room: room, roster: roster, avatars: avatars, size: 60).frame(height: 84)
-            Text(room.name).font(.body).foregroundStyle(.appSecondary).lineLimit(1)
+            Text(room.name).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
         }
         .frame(maxWidth: 132)
         .accessibilityElement(children: .combine)
@@ -974,7 +974,7 @@ private struct BotInboxRow: View {
                     }
                 }
                 HStack(spacing: 8) {
-                    Text(subline).font(.body).foregroundStyle(.appSecondary).lineLimit(1)
+                    Text(subline).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if unread { BotUnreadDot() }
                 }
@@ -984,9 +984,9 @@ private struct BotInboxRow: View {
     }
 
     @ViewBuilder private var nameAndChip: some View {
-        Text(profile.name).font(.headline).lineLimit(1)
+        Text(profile.name).font(AppFont.headline()).lineLimit(1)
         if let chip {
-            Text(chip).font(.footnote).foregroundStyle(.appSecondary).lineLimit(1)
+            Text(chip).font(AppFont.footnote()).foregroundStyle(.appSecondary).lineLimit(1)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
                 .layoutPriority(-1)
@@ -997,10 +997,10 @@ private struct BotInboxRow: View {
     /// otherwise the last activity.
     @ViewBuilder private var trailingSlot: some View {
         if let status {
-            BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold), isStale: statusIsStale)
+            BotLiveStatusLabel(status: status, font: AppFont.subheadline(weight: .semibold), isStale: statusIsStale)
                 .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
         } else if let date = profile.lastActive {
-            Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.appSecondary)
+            Text(BotInboxDateLabel.text(for: date)).font(AppFont.subheadline()).foregroundStyle(.appSecondary)
         }
     }
 }
@@ -1032,11 +1032,11 @@ private struct BotInboxSkeletonRow: View {
             Circle().fill(.fill.tertiary).frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(verbatim: "Chief of Staff").font(.headline)
+                    Text(verbatim: "Chief of Staff").font(AppFont.headline())
                     Spacer(minLength: 8)
-                    Text(verbatim: "Saturday").font(.subheadline)
+                    Text(verbatim: "Saturday").font(AppFont.subheadline())
                 }
-                Text(verbatim: "Reading the latest conversation").font(.body)
+                Text(verbatim: "Reading the latest conversation").font(AppFont.body())
             }
             .redacted(reason: .placeholder)
         }

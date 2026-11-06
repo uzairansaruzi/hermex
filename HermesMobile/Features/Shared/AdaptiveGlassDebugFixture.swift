@@ -28,7 +28,7 @@ private struct AdaptiveGlassDebugFixture: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text(verbatim: "Adaptive surfaces")
-                .font(.headline)
+                .font(AppFont.headline())
 
             HStack(spacing: 14) {
                 AdaptiveGlassContainer(spacing: 14) {
@@ -53,7 +53,7 @@ private struct AdaptiveGlassDebugFixture: View {
             Button {
             } label: {
                 Label { Text(verbatim: "Interactive") } icon: { Image(systemName: "hand.tap") }
-                    .font(.callout.weight(.semibold))
+                    .font(AppFont.callout(weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
             }
@@ -79,15 +79,15 @@ private struct AdaptiveGlassDebugFixture: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Image(systemName: systemImage)
-                .font(.title2.weight(.semibold))
+                .font(AppFont.title2(weight: .semibold))
                 .foregroundStyle(tint ?? .secondary)
                 .scaleEffect(reduceMotion ? 1 : 1.04)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                 Text(subtitle)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
             }
         }

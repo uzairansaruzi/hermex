@@ -93,7 +93,7 @@ struct PluginInstallSheet: View {
                 .disabled(isInstalling)
         } header: {
             Text("Repository or URL")
-        } footer: {
+        } appFooter: {
             Text(verbatim: inputFooter)
         }
     }
@@ -137,7 +137,7 @@ struct PluginInstallSheet: View {
         Section {
             Toggle("Enable after install", isOn: $enablesAfterInstall)
                 .disabled(isInstalling)
-        } footer: {
+        } appFooter: {
             Text("Makes it available to new sessions on \(profile).")
         }
     }
@@ -165,7 +165,7 @@ struct PluginInstallSheet: View {
             .disabled(source == nil || isInstalling)
             if isInstalling {
                 Text("The host is downloading it, which can take a few minutes.")
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
         }
@@ -205,9 +205,9 @@ struct PluginCatalogReview: View {
     var body: some View {
         Section {
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: entry.title).font(.headline)
+                Text(verbatim: entry.title).font(AppFont.headline())
                 Text(verbatim: [entry.tier.title, entry.maintainer, entry.version].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
             if isTooNew {
@@ -235,14 +235,14 @@ struct PluginCatalogReview: View {
             }
         }
         if !entry.summary.isEmpty {
-            Section(String(localized: "About")) { Text(verbatim: entry.summary).font(.footnote) }
+            Section(String(localized: "About")) { Text(verbatim: entry.summary).font(AppFont.footnote()) }
         }
         if let disclosure = entry.disclosure {
-            Section(String(localized: "Disclosure")) { Text(verbatim: disclosure).font(.footnote) }
+            Section(String(localized: "Disclosure")) { Text(verbatim: disclosure).font(AppFont.footnote()) }
         }
         if !entry.knownIssues.isEmpty {
             Section(String(localized: "Known Issues")) {
-                ForEach(entry.knownIssues, id: \.self) { Text(verbatim: $0).font(.footnote) }
+                ForEach(entry.knownIssues, id: \.self) { Text(verbatim: $0).font(AppFont.footnote()) }
             }
         }
     }
@@ -283,7 +283,7 @@ private struct PluginWarningRow: View {
 
     var body: some View {
         Label {
-            Text(verbatim: text).font(.footnote)
+            Text(verbatim: text).font(AppFont.footnote())
         } icon: {
             switch level {
             case .plain: Image(systemName: "info.circle.fill").foregroundStyle(.appSecondary)
@@ -306,7 +306,7 @@ struct PluginSetupSection: View {
             Button("Not Now") { model.dismissSetup() }
         } header: {
             Text("Finish Setup")
-        } footer: {
+        } appFooter: {
             Text("\(setup.name) needs these on \(setup.profile) before it can run.")
         }
     }
@@ -327,7 +327,7 @@ private struct PluginKeyRow: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             if let failure {
-                Text(verbatim: failure).font(.footnote).foregroundStyle(.red)
+                Text(verbatim: failure).font(AppFont.footnote()).foregroundStyle(.red)
             }
             // Borderless so only the button saves, not a tap anywhere in the row.
             Button("Save Key") { Task { await save() } }

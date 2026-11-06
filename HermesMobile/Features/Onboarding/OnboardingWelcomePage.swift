@@ -42,7 +42,7 @@ struct OnboardingWelcomePage: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .contentShape(Rectangle())
             }
-            .font(.footnote.weight(.medium))
+            .font(AppFont.footnote(weight: .medium))
             .foregroundStyle(.white.opacity(0.55))
             .buttonStyle(.plain)
         }
@@ -110,14 +110,14 @@ struct OnboardingWelcomePage: View {
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Control your Hermes agent from iPhone or iPad.")
-                        .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 27 : 31, weight: .bold))
+                        .font(AppFont.fixed(size: dynamicTypeSize.isAccessibilitySize ? 27 : 31, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(3)
                         .minimumScaleFactor(0.86)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text("Connect to your self-hosted server over a private network, such as Tailscale or NetBird.")
-                        .font(.subheadline)
+                        .font(AppFont.subheadline())
                         .foregroundStyle(.white.opacity(0.58))
                         .fixedSize(horizontal: false, vertical: true)
 

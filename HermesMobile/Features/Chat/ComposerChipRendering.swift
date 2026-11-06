@@ -72,7 +72,7 @@ struct ComposerChipMetrics: Equatable {
     let horizontalPadding: CGFloat
 
     init(editorFont: UIFont) {
-        let labelFont = UIFont.systemFont(ofSize: max(12, editorFont.pointSize - 2), weight: .medium)
+        let labelFont = UIFont.app(size: max(12, editorFont.pointSize - 2), weight: .medium)
         let height = ceil(labelFont.lineHeight + 6)
         let scale = height / 24
 
@@ -123,6 +123,7 @@ struct ComposerChipMetrics: Equatable {
         let values: [NSObject] = [
             label as NSString,
             icon.cacheKey,
+            metrics.labelFont.fontName as NSString,
             String(describing: metrics.labelFont.pointSize) as NSString,
             String(describing: metrics.height) as NSString,
             String(traits.userInterfaceStyle.rawValue) as NSString,
@@ -286,7 +287,7 @@ struct ComposerChipTextStyle {
         appearance: AppAppearance
     ) {
         // The same body style the editor uses, at this view's text size.
-        metrics = ComposerChipMetrics(editorFont: .preferredFont(forTextStyle: .body, at: dynamicTypeSize))
+        metrics = ComposerChipMetrics(editorFont: .app(forTextStyle: .body, at: dynamicTypeSize))
         traits = UITraitCollection { traits in
             traits[AppAppearanceTrait.self] = appearance
             traits.displayScale = displayScale

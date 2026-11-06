@@ -84,7 +84,7 @@ struct MarkerMessageCardView: View {
             Spacer(minLength: 6)
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appSecondary)
         }
         .contentShape(Rectangle())
@@ -164,7 +164,7 @@ struct CronRunPromptCard: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     if !prompt.body.isEmpty {
                         Text(prompt.body)
-                            .font(.body)
+                            .font(AppFont.body())
                             .foregroundStyle(.appPrimary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,7 +172,7 @@ struct CronRunPromptCard: View {
                     if let onCopy {
                         Button(action: onCopy) {
                             Label("Copy", systemImage: "doc.on.doc")
-                                .font(.caption.weight(.semibold))
+                                .font(AppFont.caption(weight: .semibold))
                                 .foregroundStyle(.tint)
                                 .chatMinimumHitTarget(in: Rectangle())
                         }
@@ -206,11 +206,11 @@ struct CronRunPromptCard: View {
                     : AnyLayout(HStackLayout(spacing: 7))
                 titleLayout {
                     Text("Scheduled task")
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppFont.subheadline(weight: .semibold))
                         .foregroundStyle(.appPrimary)
                     if !prompt.skills.isEmpty {
                         Text(prompt.skills.joined(separator: " "))
-                            .font(.caption.weight(.semibold))
+                            .font(AppFont.caption(weight: .semibold))
                             .foregroundStyle(.appSecondary)
                             .lineLimit(1)
                             .padding(.horizontal, 8)
@@ -220,7 +220,7 @@ struct CronRunPromptCard: View {
                 }
                 if !isExpanded, let preview {
                     Text(preview)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 }
@@ -228,7 +228,7 @@ struct CronRunPromptCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appTertiary)
                 .padding(.top, 6)
         }

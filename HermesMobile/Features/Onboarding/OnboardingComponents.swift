@@ -7,7 +7,7 @@ struct HeroBadge: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.caption.weight(.medium))
+            .font(AppFont.caption(weight: .medium))
             .foregroundStyle(.white.opacity(0.68))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -27,7 +27,7 @@ struct SetupStepRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
-                .font(.caption.weight(.bold))
+                .font(AppFont.caption(weight: .bold))
                 .foregroundStyle(.black)
                 .frame(width: 23, height: 23)
                 .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: Circle())
@@ -35,11 +35,11 @@ struct SetupStepRow: View {
 
             VStack(alignment: .leading, spacing: 7) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(.white)
 
                 Text(subtitle)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.white.opacity(0.5))
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -106,7 +106,7 @@ struct OnboardingCommandPill: View {
 struct OnboardingPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.subheadline(weight: .semibold))
             .foregroundStyle(.black)
             .lineLimit(1)
             .minimumScaleFactor(0.78)
@@ -144,18 +144,18 @@ struct OnboardingStepHeader: View {
 
             VStack(spacing: 10) {
                 Text("STEP \(stepNumber)")
-                    .font(.caption2.weight(.bold))
+                    .font(AppFont.caption2(weight: .bold))
                     .foregroundStyle(accent.opacity(0.8))
                     .kerning(1.5)
 
                 Text(title)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(AppFont.fixed(size: 28, weight: .bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(description)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.white.opacity(0.45))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -190,7 +190,7 @@ struct OnboardingAgentPromptCard: View {
                 }
             } label: {
                 Label(isCopied ? String(localized: "Copied") : String(localized: "Copy prompt"), systemImage: isCopied ? "checkmark" : "doc.on.doc")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnboardingPrimaryButtonStyle())

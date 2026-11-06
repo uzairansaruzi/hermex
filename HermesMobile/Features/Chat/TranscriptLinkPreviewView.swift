@@ -229,11 +229,11 @@ private extension TranscriptLinkPreviewView {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .lineLimit(2)
 
                 Text(displaySubtitle)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
                     .lineLimit(1)
             }

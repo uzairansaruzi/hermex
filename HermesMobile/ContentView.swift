@@ -985,7 +985,7 @@ private struct HermesServerAvatarButton: View {
             )
         } label: {
             Text(identity.initials)
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(HeaderLogoColor.prefersDarkForeground(for: identity.colorHex) ? Color.black : Color.white)
                 .frame(width: 32, height: 32)
                 .background(HeaderLogoColor.color(for: identity.colorHex), in: Circle())

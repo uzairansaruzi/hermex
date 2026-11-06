@@ -196,7 +196,7 @@ struct ToolCallDetailBodyView: View {
                 Image(systemName: showsAllDiffLines ? "chevron.up" : "chevron.down")
                     .accessibilityHidden(true)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.subheadline(weight: .semibold))
             .frame(maxWidth: .infinity)
             .padding(.top, 11)
             .padding(.bottom, 13)

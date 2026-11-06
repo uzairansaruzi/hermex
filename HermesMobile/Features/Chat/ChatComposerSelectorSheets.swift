@@ -147,7 +147,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
                             Text("Favorites")
                             Spacer(minLength: 8)
                             Button("All models") { showsAllModels = true }
-                                .font(.caption.weight(.semibold))
+                                .font(AppFont.caption(weight: .semibold))
                                 .textCase(nil)
                         }
                     }
@@ -184,13 +184,13 @@ struct ModelSettingsSheet<AllModels: View>: View {
                         .lineLimit(1)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.forward")
-                        .font(.caption.weight(.semibold))
+                        .font(AppFont.caption(weight: .semibold))
                         .foregroundStyle(.appTertiary)
                 }
                 // Keeps the requested level and the one the host sends apart (#1016).
                 Text(verbatim: [providerName, shownSelection.committedEffort == nil ? nil : shownSelection.effortTitle]
                     .compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.appSecondary)
                     // One line, so a level's "sent as" never moves the rows below it.
                     .lineLimit(1)
@@ -282,14 +282,14 @@ struct ModelSettingsSheet<AllModels: View>: View {
                         .foregroundStyle(.appPrimary)
                         .lineLimit(1)
                     Text(verbatim: option.id)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 if isCurrent {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -329,9 +329,9 @@ private struct ModelSettingsStatusLine: View {
     var body: some View {
         switch status {
         case .failed(let message):
-            Text(verbatim: message).font(.caption).foregroundStyle(.red)
+            Text(verbatim: message).font(AppFont.caption()).foregroundStyle(.red)
         case .notice(let message):
-            Text(verbatim: message).font(.caption).foregroundStyle(.appSecondary)
+            Text(verbatim: message).font(AppFont.caption()).foregroundStyle(.appSecondary)
         case nil:
             EmptyView()
         }
@@ -357,12 +357,12 @@ private struct ApprovalChoicesView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: "YOLO")
                         Text("This chat runs commands without asking")
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(.appSecondary)
                     }
                 }
                 .disabled((isDisabled && !approvals.canTurnOffYolo) || approvals.isChanging || approvals.isYoloLocked)
-            } footer: {
+            } appFooter: {
                 if approvals.isYoloLocked {
                     Text("The host runs without approval prompts, so this chat can't turn YOLO off.")
                 }
@@ -400,12 +400,12 @@ private struct ApprovalChoicesView: View {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: ComposerApprovals.title(for: mode)).foregroundStyle(.appPrimary)
-                    Text(description).font(.caption).foregroundStyle(.appSecondary)
+                    Text(description).font(AppFont.caption()).foregroundStyle(.appSecondary)
                 }
                 Spacer(minLength: 8)
                 if isCurrent {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -444,7 +444,7 @@ struct ComposerWorkspacePickerSheet: View {
                     TextField("Workspace path", text: $prefix)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                } footer: {
+                } appFooter: {
                     if allowsCustomPath {
                         Text("Change the working directory for this chat. The host must accept the path before it changes.")
                     } else {
@@ -539,11 +539,11 @@ struct ComposerWorkspacePickerSheet: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name?.isEmpty == false ? name ?? path.lastPathComponentFallback : path.lastPathComponentFallback)
-                        .font(.body)
+                        .font(AppFont.body())
                         .foregroundStyle(.appPrimary)
 
                     Text(path)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(2)
                 }

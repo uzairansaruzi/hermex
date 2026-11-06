@@ -443,6 +443,7 @@
 		C012400000000000000004 /* AppIconSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000003 /* AppIconSettingsSection.swift */; };
 		1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */; };
 		C23400000000000000000015 /* AppColorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000016 /* AppColorTests.swift */; };
+		C23400000000000000000017 /* AppFontTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000018 /* AppFontTests.swift */; };
 		863000000000000000000003 /* NotificationOfferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000004 /* NotificationOfferTests.swift */; };
 		C012400000000000000006 /* AppIconChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000005 /* AppIconChoiceTests.swift */; };
 		1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */; };
@@ -464,6 +465,7 @@
 		1A2B3C4D5E6F70000000212 /* SkillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000213 /* SkillsView.swift */; };
 		1A2B3C4D5E6F70000000214 /* SkillsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000215 /* SkillsViewModel.swift */; };
 		1A2B3C4D5E6F70000000300 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000301 /* PrivacyInfo.xcprivacy */; };
+		C09200000000000000000021 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000022 /* Fonts */; };
 		9E2A653D968A4ACDA19A8142 /* ThirdPartyNotices in Resources */ = {isa = PBXBuildFile; fileRef = 488791F556304AD2AC59BC5D /* ThirdPartyNotices */; };
 		B5A100000000000000000001 /* SharedDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000010 /* SharedDraftStore.swift */; };
 		B5A100000000000000000002 /* SharedDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000010 /* SharedDraftStore.swift */; };
@@ -1174,6 +1176,7 @@
 		C012400000000000000003 /* AppIconSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettingsSection.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppThemeTests.swift; sourceTree = "<group>"; };
 		C23400000000000000000016 /* AppColorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColorTests.swift; sourceTree = "<group>"; };
+		C23400000000000000000018 /* AppFontTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFontTests.swift; sourceTree = "<group>"; };
 		863000000000000000000004 /* NotificationOfferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOfferTests.swift; sourceTree = "<group>"; };
 		C012400000000000000005 /* AppIconChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoiceTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
@@ -1246,6 +1249,7 @@
 		B5A100000000000000000013 /* HermesShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesShareExtension.entitlements; sourceTree = "<group>"; };
 		B5A100000000000000000014 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B5A100000000000000000015 /* HermesMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesMobile.entitlements; sourceTree = "<group>"; };
+		C09200000000000000000022 /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fonts; sourceTree = "<group>"; };
 		488791F556304AD2AC59BC5D /* ThirdPartyNotices */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ThirdPartyNotices; sourceTree = "<group>"; };
 		B5A100000000000000000016 /* SharedDraftStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDraftStoreTests.swift; sourceTree = "<group>"; };
 		B5A100000000000000000019 /* ShareInputReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareInputReaderTests.swift; sourceTree = "<group>"; };
@@ -1553,6 +1557,7 @@
 				1A2B3C4D5E6F700000000013 /* Info.plist */,
 				B5A100000000000000000015 /* HermesMobile.entitlements */,
 				1A2B3C4D5E6F70000000301 /* PrivacyInfo.xcprivacy */,
+				C09200000000000000000022 /* Fonts */,
 				488791F556304AD2AC59BC5D /* ThirdPartyNotices */,
 			);
 			path = Resources;
@@ -1713,6 +1718,7 @@
 				C86900000000000000000004 /* NetworkPathMonitorTests.swift */,
 				1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */,
 				C23400000000000000000016 /* AppColorTests.swift */,
+				C23400000000000000000018 /* AppFontTests.swift */,
 				863000000000000000000004 /* NotificationOfferTests.swift */,
 				C012400000000000000005 /* AppIconChoiceTests.swift */,
 				C03120000000000000F006 /* APIClientGitTests.swift */,
@@ -2645,6 +2651,7 @@
 				10CA110C0DE000000000B001 /* Localizable.xcstrings in Resources */,
 				10CA110C0DE000000000B004 /* AppShortcuts.xcstrings in Resources */,
 				1A2B3C4D5E6F70000000300 /* PrivacyInfo.xcprivacy in Resources */,
+				C09200000000000000000021 /* Fonts in Resources */,
 				9E2A653D968A4ACDA19A8142 /* ThirdPartyNotices in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -3266,6 +3273,7 @@
 				C86900000000000000000003 /* NetworkPathMonitorTests.swift in Sources */,
 				1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */,
 				C23400000000000000000015 /* AppColorTests.swift in Sources */,
+				C23400000000000000000017 /* AppFontTests.swift in Sources */,
 				863000000000000000000003 /* NotificationOfferTests.swift in Sources */,
 				C012400000000000000006 /* AppIconChoiceTests.swift in Sources */,
 				C03120000000000000B006 /* APIClientGitTests.swift in Sources */,

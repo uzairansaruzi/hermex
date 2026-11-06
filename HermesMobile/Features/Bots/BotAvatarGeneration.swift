@@ -252,7 +252,7 @@ enum BotAvatarGeneration {
                     .background(Color(uiColor: .appGroupedSurface), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .disabled(describer.state == .running)
                 if describer.state == .running {
-                    Text("Generating. This can take a few minutes.").font(.subheadline)
+                    Text("Generating. This can take a few minutes.").font(AppFont.subheadline())
                     Button("Stop Waiting") { describer.stopWaiting() }.buttonStyle(.bordered)
                 } else {
                     Button("Generate") { describer.generate(description: description) }
@@ -260,10 +260,10 @@ enum BotAvatarGeneration {
                         .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 if case .failed(let message) = describer.state {
-                    Text(message).font(.caption).foregroundStyle(.red)
+                    Text(message).font(AppFont.caption()).foregroundStyle(.red)
                 }
                 Text("Uses the host's model, with no tools. Your provider may bill for it, even if you stop waiting.")
-                    .font(.caption).foregroundStyle(.appSecondary)
+                    .font(AppFont.caption()).foregroundStyle(.appSecondary)
                 Spacer()
             }
             .padding(16)

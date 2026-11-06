@@ -92,7 +92,7 @@ struct ProviderGlyphGalleryView: View {
                 } label: {
                     Text(verbatim: "Open Model Picker with Every Provider")
                 }
-            } footer: {
+            } appFooter: {
                 Text(verbatim: "Same picker as the composer, fed a synthetic catalog with one group per documented provider ID. OpenRouter carries 400 models to exercise Show all models.")
             }
 
@@ -104,7 +104,7 @@ struct ProviderGlyphGalleryView: View {
                                 ProviderGlyph(providerID: provider.id)
                             } else {
                                 Image(systemName: "questionmark")
-                                    .font(.caption.weight(.semibold))
+                                    .font(AppFont.caption(weight: .semibold))
                                     .foregroundStyle(.appTertiary)
                             }
                         }
@@ -112,10 +112,10 @@ struct ProviderGlyphGalleryView: View {
 
                         VStack(alignment: .leading, spacing: 1) {
                             Text(verbatim: provider.id)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(AppFont.fixed(size: 14, weight: .semibold))
                                 .textCase(.uppercase)
                             Text(verbatim: provider.name)
-                                .font(.footnote)
+                                .font(AppFont.footnote())
                                 .foregroundStyle(.appSecondary)
                         }
 

@@ -261,22 +261,22 @@ private struct PluginRow: View {
             Button(action: onOpen) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: plugin.name)
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppFont.subheadline(weight: .semibold))
                         .lineLimit(1)
                     if !plugin.summary.isEmpty {
                         Text(verbatim: plugin.summary)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .foregroundStyle(.appSecondary)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     }
                     Text(verbatim: details)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appTertiary)
                         .lineLimit(1)
                     if let removalReason {
                         Text(removalReason.isEmpty ? String(localized: "Removed from the catalog.")
                                                    : String(localized: "Removed from the catalog: \(removalReason)"))
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(.orange)
                     }
                 }
@@ -312,13 +312,13 @@ struct PluginNoticeRow: View {
         switch notice {
         case .reported(let text):
             Label { Text(verbatim: text) } icon: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                .font(.footnote)
+                .font(AppFont.footnote())
         case .refused(let text):
             Label { Text(verbatim: text) } icon: { Image(systemName: "xmark.circle.fill").foregroundStyle(.red) }
-                .font(.footnote)
+                .font(AppFont.footnote())
         case .unconfirmed(let text):
             Label { Text(verbatim: text) } icon: { Image(systemName: "questionmark.circle.fill").foregroundStyle(.orange) }
-                .font(.footnote)
+                .font(AppFont.footnote())
         }
     }
 }

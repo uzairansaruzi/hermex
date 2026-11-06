@@ -44,7 +44,7 @@ struct ContextWindowIndicatorView: View {
                 }
 
                 Text(presentation.percentageLabel)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(AppFont.fixed(size: 9, weight: .semibold))
                     .foregroundStyle(presentation.isInteractive ? AnyShapeStyle(.appPrimary) : AnyShapeStyle(.appSecondary))
             }
             .frame(width: ringSize, height: ringSize)
@@ -89,7 +89,7 @@ private struct ContextWindowPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(ContextWindowFormatter.tokensLabel(from: snapshot))
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .fontWeight(.semibold)
 
             Divider()
@@ -129,11 +129,11 @@ private struct ContextWindowInfoRow: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
             Spacer()
             Text(value)
-                .font(.caption)
+                .font(AppFont.caption())
                 .fontWeight(.medium)
         }
     }

@@ -91,7 +91,7 @@ struct OnboardingView: View {
             Button("Already have a server?") {
                 isAddingServer = true
             }
-            .font(.footnote.weight(.medium))
+            .font(AppFont.footnote(weight: .medium))
             .foregroundStyle(.white.opacity(0.55))
             .buttonStyle(.plain)
             .accessibilityHint("Skips setup and opens the connect screen.")

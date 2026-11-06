@@ -47,6 +47,10 @@ struct SettingsAppearancePage: View {
                 .listRowSeparator(.hidden)
 
                 textSizeRow
+
+                Picker("Font", selection: Bindable(AppFontSettings.shared).family) {
+                    ForEach(AppFontFamily.allCases) { Text(verbatim: $0.title).tag($0) }
+                }
             }
 
             Section("Code") {
@@ -102,9 +106,9 @@ struct SettingsAppearancePage: View {
             ) {
                 EmptyView()
             } minimumValueLabel: {
-                Text(verbatim: "A").font(.system(size: 13))
+                Text(verbatim: "A").font(AppFont.fixed(size: 13))
             } maximumValueLabel: {
-                Text(verbatim: "A").font(.system(size: 22))
+                Text(verbatim: "A").font(AppFont.fixed(size: 22))
             }
             .foregroundStyle(.appSecondary)
             .accessibilityLabel("Text Size")

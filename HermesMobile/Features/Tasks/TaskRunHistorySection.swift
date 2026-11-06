@@ -67,14 +67,14 @@ struct TaskRunHistorySection: View {
             HStack(spacing: 8) {
                 ProgressView()
                 Text("Loading runs...")
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
         } else if errorMessage == nil {
             Text("This task has not produced any output yet.")
-                .font(.footnote)
+                .font(AppFont.footnote())
                 .foregroundStyle(.appSecondary)
                 .padding(.vertical, 4)
         }
@@ -85,10 +85,10 @@ struct TaskRunHistorySection: View {
     private func inlineError(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(message)
-                .font(.footnote)
+                .font(AppFont.footnote())
                 .foregroundStyle(.appSecondary)
             Button("Try Again", action: retry)
-                .font(.footnote.weight(.semibold))
+                .font(AppFont.footnote(weight: .semibold))
                 .buttonStyle(.plain)
                 .foregroundStyle(.tint)
         }
@@ -103,7 +103,7 @@ struct TaskRunHistorySection: View {
                     ProgressView()
                 }
                 Text(remainingCount > 0 ? String(localized: "Load \(remainingCount) more") : String(localized: "Load more"))
-                    .font(.footnote.weight(.semibold))
+                    .font(AppFont.footnote(weight: .semibold))
                 Spacer(minLength: 0)
             }
             .padding(.vertical, 10)
@@ -132,13 +132,13 @@ struct TaskRunHistoryRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(titleText)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.appPrimary)
                     .lineLimit(2)
 
                 if let detail = detailText {
                     Text(detail)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(2)
                 }
@@ -147,7 +147,7 @@ struct TaskRunHistoryRow: View {
             Spacer(minLength: 8)
 
             Image(systemName: "chevron.forward")
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appTertiary)
                 .accessibilityHidden(true)
         }

@@ -14,13 +14,13 @@ struct ComposerVoiceStatusView: View {
     var body: some View {
         HStack(spacing: 6) {
             Label(status.text, systemImage: status.systemImage)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(status.isError ? Color.red : Color(.appTextSecondary))
 
             if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.caption2.weight(.semibold))
+                        .font(AppFont.caption2(weight: .semibold))
                         .foregroundStyle(.appSecondary)
                         .frame(width: 44, height: 28)
                         .contentShape(Rectangle())
@@ -59,7 +59,7 @@ struct ComposerDictationRow: View {
                     if let startedAt = voiceInput.captureStartedAt {
                         TimelineView(.periodic(from: startedAt, by: 1)) { context in
                             Text(AudioDurationFormatter.string(from: context.date.timeIntervalSince(startedAt)))
-                                .font(.caption.monospacedDigit())
+                                .font(AppFont.caption().monospacedDigit())
                                 .foregroundStyle(.appSecondary)
                         }
                         .accessibilityHidden(true)
@@ -81,7 +81,7 @@ struct ComposerDictationRow: View {
                 .accessibilityLabel(Text("Stop voice input"))
             } else {
                 Text(waitingLabel)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
@@ -291,7 +291,7 @@ struct ComposerVoiceRecordingBar: View {
                 .opacity(isCancelArmed ? 0.4 : 1)
 
             Text(AudioDurationFormatter.string(from: elapsed))
-                .font(.callout.monospacedDigit())
+                .font(AppFont.callout().monospacedDigit())
                 .foregroundStyle(.appPrimary)
 
             Spacer(minLength: 8)
@@ -303,7 +303,7 @@ struct ComposerVoiceRecordingBar: View {
                         : String(localized: "Slide up to cancel"),
                     systemImage: isCancelArmed ? "xmark.circle.fill" : "chevron.up"
                 )
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(isCancelArmed ? Color.red : Color(.appTextSecondary))
             } else {
                 Button(action: onCancel) {

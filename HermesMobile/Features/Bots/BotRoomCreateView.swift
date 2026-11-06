@@ -63,7 +63,7 @@ import SwiftUI
                         .accessibilityLabel("Find group members")
                 }
                 .padding(.vertical, 8)
-            } footer: {
+            } appFooter: {
                 if creator.selected.count == 6 { Text("Groups can have up to six members.") }
                 else { Text("Choose two to six bots.") }
             }
@@ -92,7 +92,7 @@ import SwiftUI
             HStack(spacing: 6) {
                 BotAvatarView(profile: bot, avatar: avatars[bot.id], size: 24, motion: .still)
                 Text(bot.name)
-                Image(systemName: "xmark").font(.caption)
+                Image(systemName: "xmark").font(AppFont.caption())
             }
             .padding(8).background(.quaternary, in: Capsule())
         }
@@ -105,15 +105,15 @@ import SwiftUI
                 BotRoomAvatars(room: creator.preview, roster: creator.roster, avatars: avatars, size: 84)
                     .padding(.top, 48)
                 TextField("Group name", text: $creator.name)
-                    .font(.title2.bold()).multilineTextAlignment(.center)
+                    .font(AppFont.title2().bold()).multilineTextAlignment(.center)
                     .padding(20).background(.quaternary, in: RoundedRectangle(cornerRadius: 20))
                     .focused($focused, equals: .name).disabled(creator.locked)
                     .submitLabel(.done)
                     .onSubmit { if creator.mayCreate { Task { await creator.create() } } }
                 if !BotRoomRPC.validName(creator.name) {
-                    Text("Enter a name of up to 200 characters.").font(.caption).foregroundStyle(.appSecondary)
+                    Text("Enter a name of up to 200 characters.").font(AppFont.caption()).foregroundStyle(.appSecondary)
                 }
-                if let message = creator.message { Text(message).font(.callout) }
+                if let message = creator.message { Text(message).font(AppFont.callout()) }
                 Button(creator.busy ? "Creating…" : creator.locked ? "Try Again" : "Create") {
                     focused = nil
                     Task { await creator.create() }

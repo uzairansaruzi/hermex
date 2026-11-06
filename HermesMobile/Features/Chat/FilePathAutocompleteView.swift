@@ -22,7 +22,7 @@ struct FilePathAutocompleteView: View {
         VStack(spacing: 0) {
             if search.matches.isEmpty {
                 emptyText
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.appSecondary)
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
@@ -94,7 +94,7 @@ struct FilePathRow: View {
                     .frame(width: 20)
 
                 Text(match.name)
-                    .font(Font.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -102,7 +102,7 @@ struct FilePathRow: View {
 
                 if !match.parentPath.isEmpty {
                     Text(match.parentPath)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                         .truncationMode(.head)
@@ -113,7 +113,7 @@ struct FilePathRow: View {
 
                 if match.isDirectory {
                     Image(systemName: "chevron.forward")
-                        .font(.caption2.weight(.semibold))
+                        .font(AppFont.caption2(weight: .semibold))
                         .foregroundStyle(.appTertiary)
                 }
             }

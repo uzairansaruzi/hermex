@@ -151,7 +151,7 @@ struct SettingsServerPage: View {
             HermesUpdateCallout(model: HermesUpdateModel.for(server: server), version: account.serverVersion)
         } header: {
             Text("Server")
-        } footer: {
+        } appFooter: {
             if hermesConnection?.hasNoCredentials == true {
                 OpenDashboardWarning()
             }
@@ -232,7 +232,7 @@ struct SettingsServerPage: View {
                 Button(String(localized: "Sign Out of This Server"), role: .destructive) {
                     isConfirmingSignOut = true
                 }
-            } footer: {
+            } appFooter: {
                 Text("Deletes the saved sign-in; the server stays.")
             }
         }
@@ -248,7 +248,7 @@ struct SettingsServerPage: View {
                 }
             }
             .disabled(isRemoving)
-        } footer: {
+        } appFooter: {
             Text(removeFootnote)
         }
     }
@@ -354,7 +354,7 @@ private struct MoveToHermesSection: View {
             }
         } header: {
             Text("Move to Hermes")
-        } footer: {
+        } appFooter: {
             footer
         }
     }
@@ -429,7 +429,7 @@ private struct BotScreenToggleSection: View {
             Toggle(isOn: $isEnabled) {
                 SettingsLabel(title: String(localized: "Bot Screen (beta)"), systemImage: "display")
             }
-        } footer: {
+        } appFooter: {
             Text("Watch and control this host's screen. Anyone with this server's login could do the same.")
         }
         // Turning it off also hands back any control, since nothing would show that it's held.

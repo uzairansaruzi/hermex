@@ -14,9 +14,9 @@ struct PluginDetailView: View {
             if let plugin {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(verbatim: plugin.name).font(.headline)
+                        Text(verbatim: plugin.name).font(AppFont.headline())
                         if !plugin.summary.isEmpty {
-                            Text(verbatim: plugin.summary).font(.footnote).foregroundStyle(.appSecondary)
+                            Text(verbatim: plugin.summary).font(AppFont.footnote()).foregroundStyle(.appSecondary)
                         }
                     }
                     LabeledContent(String(localized: "Key")) { Text(verbatim: plugin.key).textSelection(.enabled) }
@@ -90,7 +90,7 @@ private struct PluginSettingsForm: View {
             }
             if plugin.settings.contains(where: { if case .secret = $0.kind { false } else { true } }) {
                 if let refusal {
-                    Text(verbatim: refusal).font(.footnote).foregroundStyle(.red)
+                    Text(verbatim: refusal).font(AppFont.footnote()).foregroundStyle(.red)
                 }
                 Button(isSaving ? String(localized: "Saving…") : String(localized: "Save Settings")) {
                     Task { await save() }
@@ -134,10 +134,10 @@ private struct PluginSettingRow: View {
         VStack(alignment: .leading, spacing: 4) {
             control
             if !field.description.isEmpty {
-                Text(verbatim: field.description).font(.footnote).foregroundStyle(.appSecondary)
+                Text(verbatim: field.description).font(AppFont.footnote()).foregroundStyle(.appSecondary)
             }
             if let problem {
-                Text(verbatim: problem).font(.footnote).foregroundStyle(.red)
+                Text(verbatim: problem).font(AppFont.footnote()).foregroundStyle(.red)
             }
         }
     }
@@ -220,7 +220,7 @@ private struct PluginSecretField: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             if let failure {
-                Text(verbatim: failure).font(.footnote).foregroundStyle(.red)
+                Text(verbatim: failure).font(AppFont.footnote()).foregroundStyle(.red)
             }
             HStack(spacing: 16) {
                 // Borderless so each button takes only its own taps, not the whole row's.
@@ -267,25 +267,25 @@ struct PluginUpdateReviewSheet: View {
         NavigationStack {
             AppList {
                 Section {
-                    Text(verbatim: review.plugin.name).font(.headline)
+                    Text(verbatim: review.plugin.name).font(AppFont.headline())
                 }
                 switch review.reason {
                 case .newAbilities(let abilities):
                     Section {
-                        Text("This update gives the plugin new abilities. Nothing changes until you accept.").font(.footnote)
-                        ForEach(abilities, id: \.self) { Text(verbatim: $0).font(.footnote) }
+                        Text("This update gives the plugin new abilities. Nothing changes until you accept.").font(AppFont.footnote())
+                        ForEach(abilities, id: \.self) { Text(verbatim: $0).font(AppFont.footnote()) }
                     }
                 case .scan(let canOverride, let findings):
                     Section {
                         Text(canOverride
                              ? String(localized: "Hermes's security scan flagged this update. Nothing changes unless you update anyway.")
                              : String(localized: "Hermes's security scan found this update dangerous, so it can't be applied."))
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                     }
                     Section(String(localized: "Findings")) {
                         ForEach(findings) { finding in
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(verbatim: finding.description).font(.footnote)
+                                Text(verbatim: finding.description).font(AppFont.footnote())
                                 Text(verbatim: [finding.severity, finding.location].filter { !$0.isEmpty }.joined(separator: " · "))
                                     .font(.caption.monospaced())
                                     .foregroundStyle(.appSecondary)

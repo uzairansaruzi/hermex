@@ -115,14 +115,14 @@ struct ArchivedSessionsView: View {
                         ArchivedStatusRow(title: String(localized: "Could not load archived sessions"), systemImage: "exclamationmark.triangle")
 
                         Text(errorMessage)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .foregroundStyle(.appSecondary)
                             .lineLimit(3)
 
                         Button("Try Again") {
                             Task { await load() }
                         }
-                        .font(.subheadline.weight(.medium))
+                        .font(AppFont.subheadline(weight: .medium))
                         .foregroundStyle(.appPrimary)
                     }
                     .padding(.horizontal, 24)
@@ -149,7 +149,7 @@ struct ArchivedSessionsView: View {
     /// and a tap tries again after a failed one.
     private var loadMoreRow: some View {
         Button("Load more") { Task { await viewModel.loadMore() } }
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .foregroundStyle(.appSecondary)
             .disabled(viewModel.isLoadingMore)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -208,7 +208,7 @@ struct ArchivedSessionsView: View {
                         .controlSize(.small)
                 } else {
                     Image(systemName: "arrow.up.bin")
-                        .font(.body)
+                        .font(AppFont.body())
                         .foregroundStyle(.appSecondary)
                 }
             }
@@ -271,13 +271,13 @@ private struct ArchivedStatusRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: systemImage)
-                .font(.body)
+                .font(AppFont.body())
                 .foregroundStyle(.appSecondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
             Text(title)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .lineLimit(2)
 

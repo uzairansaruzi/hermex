@@ -82,8 +82,8 @@ struct ReviewDiffStyle {
         }
         let codeFont = mono(12, .regular)
         let lineNumberFont = mono(11, .regular)
-        let fileHeaderFont = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).withWeight(.semibold)
-        let noticeFont = UIFont.preferredFont(forTextStyle: .footnote, compatibleWith: traits)
+        let fileHeaderFont = UIFont.app(forTextStyle: .subheadline, compatibleWith: traits).withWeight(.semibold)
+        let noticeFont = UIFont.app(forTextStyle: .footnote, compatibleWith: traits)
 
         let sample = String(repeating: "M", count: 64)
         let characterWidth = (sample as NSString).size(withAttributes: [.font: codeFont, .ligature: 0]).width / 64

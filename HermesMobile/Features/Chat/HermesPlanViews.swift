@@ -115,18 +115,18 @@ struct HermesPlanStrip: View {
     private var line: some View {
         HStack(spacing: 8) {
             Image(systemName: "checklist")
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appSecondary)
             Text(count)
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .fixedSize()
             Text(plan.current?.content ?? "")
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: isExpanded ? "chevron.down" : "chevron.up")
-                .font(.caption2.weight(.semibold))
+                .font(AppFont.caption2(weight: .semibold))
                 .foregroundStyle(.appSecondary)
         }
         .padding(.horizontal, 11)

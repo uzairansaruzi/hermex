@@ -16,14 +16,14 @@ struct CustomHeadersEditor: View {
                 headers.append(CustomHeader())
             } label: {
                 Label("Add Header", systemImage: "plus.circle.fill")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Add header")
 
             Text("Sent with every request to your server, including media and live streams. Use for a reverse proxy (e.g. Authentik) or token auth, such as an Authorization header.")
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -44,7 +44,7 @@ struct CustomHeadersEditor: View {
                     remove(header.wrappedValue)
                 } label: {
                     Image(systemName: "minus.circle.fill")
-                        .font(.title3)
+                        .font(AppFont.title3())
                         .foregroundStyle(.red)
                 }
                 .buttonStyle(.plain)
@@ -61,7 +61,7 @@ struct CustomHeadersEditor: View {
 
     private func field<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(Color(.appSurface), in: RoundedRectangle(cornerRadius: 8, style: .continuous))

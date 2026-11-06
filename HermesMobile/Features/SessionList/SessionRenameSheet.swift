@@ -33,7 +33,7 @@ struct SessionRenameSheet: View {
                         .textInputAutocapitalization(.sentences)
                         .focused($titleIsFocused)
                         .disabled(isSaving)
-                } footer: {
+                } appFooter: {
                     if let errorMessage {
                         Text(verbatim: errorMessage)
                             .foregroundStyle(.red)

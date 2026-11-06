@@ -64,7 +64,7 @@ struct ModelPickerSheet: View {
             AppList(rows: .plain) {
                 if let errorMessage {
                     Text(verbatim: errorMessage)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, minHeight: rowContentMinHeight(verticalInsets: 8), alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
@@ -176,14 +176,14 @@ struct ModelPickerSheet: View {
         } label: {
             HStack(spacing: 12) {
                 Text(clearAction.title)
-                    .font(.body)
+                    .font(AppFont.body())
                     .lineLimit(2)
 
                 Spacer(minLength: 0)
 
                 if clearAction.isSelected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -221,7 +221,7 @@ struct ModelPickerSheet: View {
                             }
                         } label: {
                             Image(systemName: "chevron.down")
-                                .font(.footnote.weight(.semibold))
+                                .font(AppFont.footnote(weight: .semibold))
                                 .foregroundStyle(.appSecondary)
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
@@ -243,7 +243,7 @@ struct ModelPickerSheet: View {
                                     .tint(customEntryForeground)
                             } else {
                                 Label(configuration.customActionTitle, systemImage: "plus")
-                                    .font(.body.weight(.semibold))
+                                    .font(AppFont.body(weight: .semibold))
                             }
 
                             Spacer(minLength: 0)
@@ -300,7 +300,7 @@ struct ModelPickerSheet: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: isFavorite ? "star.fill" : "star")
-                .font(.body)
+                .font(AppFont.body())
                 .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
         }
@@ -362,7 +362,7 @@ struct ModelPickerSheet: View {
                 }
 
                 Text(group.name)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(AppFont.fixed(size: 14, weight: .semibold))
                     .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .textCase(.uppercase)
@@ -372,7 +372,7 @@ struct ModelPickerSheet: View {
                         ? "\(displayedModels.count) / \(totalModelCount)"
                         : "\(displayedModels.count)"
                 )
-                    .font(.system(size: 12, weight: .medium))
+                    .font(AppFont.fixed(size: 12, weight: .medium))
                     .foregroundStyle(.appSecondary)
                     .accessibilityLabel(
                         Text("Showing \(displayedModels.count) of \(totalModelCount) models")
@@ -413,7 +413,7 @@ struct ModelPickerSheet: View {
                         ? String(localized: "Show fewer models")
                         : String(localized: "Show all models")
                 )
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(AppFont.fixed(size: 13, weight: .semibold))
 
                 Spacer(minLength: 0)
 
@@ -472,7 +472,7 @@ struct ModelPickerSheet: View {
             } label: {
                 HStack(spacing: 12) {
                     Text(option.displayName)
-                        .font(.body)
+                        .font(AppFont.body())
                         .lineLimit(2)
 
                     Spacer(minLength: 0)
@@ -483,7 +483,7 @@ struct ModelPickerSheet: View {
                             .tint(selected ? Color(.appCanvas) : Color(.appText))
                     } else if selected {
                         Image(systemName: "checkmark")
-                            .font(.body.weight(.semibold))
+                            .font(AppFont.body(weight: .semibold))
                             .accessibilityHidden(true)
                     }
                 }
@@ -775,7 +775,7 @@ private struct ModelProviderChoice: Identifiable, Hashable {
 private struct CustomModelFieldStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .font(.body)
+            .font(AppFont.body())
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
             .background(

@@ -62,7 +62,7 @@ struct ComposerAttachmentPillPreview: View {
 
                 if attachments.count > visibleLimit {
                     Text("+\(attachments.count - visibleLimit)")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(AppFont.fixed(size: 11, weight: .bold))
                         .foregroundStyle(Color(.appTextSecondary))
                         .frame(width: tileSize, height: tileSize)
                         .background(Color(.appFillTertiary), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -153,7 +153,7 @@ private struct ComposerAttachmentThumbnailView: View {
 
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(AppFont.fixed(size: 11, weight: .bold))
                     .frame(width: 24, height: 24)
                     .background(Circle().fill(Color(.appCanvas)))
                     .foregroundStyle(Color(.appText))
@@ -228,14 +228,14 @@ private struct ComposerAttachmentThumbnailView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(attachment.name)
-                    .font(.subheadline.weight(.medium))
+                    .font(AppFont.subheadline(weight: .medium))
                     .foregroundStyle(Color(.appText))
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(fileDetailText)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(Color(.appTextSecondary))
                     .lineLimit(usesAccessibilityLayout ? 2 : 1)
             }
@@ -265,7 +265,7 @@ private struct ComposerAttachmentThumbnailView: View {
                 Image(systemName: fileIconName)
                     .font(.system(size: 24, weight: .semibold))
                 Text(fileExtensionLabel)
-                    .font(.system(size: 9, weight: .bold))
+                    .font(AppFont.fixed(size: 9, weight: .bold))
                     .lineLimit(1)
             }
             .foregroundStyle(fileBadgeColor)

@@ -140,12 +140,12 @@ struct TaskDetailView: View {
             HStack(spacing: 8) {
                 ProgressView()
                 Text("Updating task...")
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
             }
         } else if let actionErrorMessage = viewModel.actionErrorMessage {
             Text(actionErrorMessage)
-                .font(.footnote)
+                .font(AppFont.footnote())
                 .foregroundStyle(.red)
         }
     }
@@ -155,7 +155,7 @@ struct TaskDetailView: View {
         if let prompt = viewModel.job.prompt, !prompt.isEmpty {
             SectionCard(title: String(localized: "Prompt")) {
                 Text(prompt)
-                    .font(.callout)
+                    .font(AppFont.callout())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -219,7 +219,7 @@ struct TaskDetailView: View {
                     }
                 }
             }
-            .font(.footnote)
+            .font(AppFont.footnote())
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

@@ -652,7 +652,7 @@ struct HermesSessionListView: View {
     /// it never retries on its own.
     private var loadMoreRow: some View {
         Button("Load more") { Task { await loadMore() } }
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .foregroundStyle(.appSecondary)
             .disabled(viewModel.isLoadingMoreSessions)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -681,11 +681,11 @@ struct HermesSessionListView: View {
                     .frame(width: 24)
                     .accessibilityHidden(true)
                 Text("Archived Sessions")
-                    .font(.subheadline.weight(.medium))
+                    .font(AppFont.subheadline(weight: .medium))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.forward")
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .accessibilityHidden(true)
             }
             .foregroundStyle(.appSecondary)
@@ -1168,7 +1168,7 @@ private struct SessionsToolbarTitle: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Text("Sessions").font(.headline).accessibilityAddTraits(.isHeader)
+            Text("Sessions").font(AppFont.headline()).accessibilityAddTraits(.isHeader)
             HomeConnectionStatusLine(driver: connectionStatus, reconnectNow: reconnectNow)
         }
         .drivesHomeConnectionStatus(connectionStatus, connection: connection)

@@ -86,6 +86,7 @@ struct ReviewDiffSurface: UIViewRepresentable {
         }
         if view.wrapsLines != wrapsLines { view.wrapsLines = wrapsLines }
         view.customCodeSize = customCodeSize.map { CGFloat($0) }
+        view.fontFamily = AppFontSettings.shared.family
         if coordinator.appliedTokensVersion != tokensVersion {
             coordinator.appliedTokensVersion = tokensVersion
             view.tokensByRowID = tokensByRowID

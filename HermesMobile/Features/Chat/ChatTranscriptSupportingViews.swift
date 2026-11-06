@@ -1161,7 +1161,7 @@ struct ChatWorkingRowView: View {
                 dots
 
                 Text("Working for \(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: context.date))")
-                    .font(.caption.weight(.medium).monospacedDigit())
+                    .font(AppFont.caption(weight: .medium).monospacedDigit())
                     .foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .ignore)
@@ -1245,7 +1245,7 @@ struct StreamRecoveryStatusView: View {
             }
 
             Text(label)
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(.appSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.88)
@@ -1344,7 +1344,7 @@ private struct ChatTranscriptLoadingSkeletonRow: View {
 
     private func skeletonLine(_ line: ChatTranscriptSkeletonLine) -> some View {
         Text(verbatim: line.text)
-            .font(.body)
+            .font(AppFont.body())
             .lineLimit(1)
             .frame(maxWidth: line.maxWidth, alignment: configuration.role == .user ? .trailing : .leading)
     }
@@ -1416,7 +1416,7 @@ struct ChatOfflineCacheBanner: View {
                 .imageScale(.small)
 
             Text("Offline — viewing cached version")
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .fontWeight(.semibold)
 
             Spacer()
@@ -1445,7 +1445,7 @@ struct PinnedLocalNoticeStack: View {
                         .foregroundStyle(Color.green)
 
                     Text(Self.plainText(notice))
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(.appPrimary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1554,27 +1554,27 @@ struct ShortcutTextNotice: View {
                             Text("Added from Troubleshooting. Review before sending.")
                         }
                     }
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.appPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                     if hasHiddenCharacters {
                         Button("Remove Hidden Characters", action: removeHiddenCharacters)
-                            .font(.footnote.weight(.semibold))
+                            .font(AppFont.footnote(weight: .semibold))
                     } else if canUndoRemoval {
                         Button("Undo", action: undoRemoval)
-                            .font(.footnote.weight(.semibold))
+                            .font(AppFont.footnote(weight: .semibold))
                     }
                 }
                 if let waiting {
                     Text("Another text is waiting.")
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(origin != nil ? .appSecondary : .appPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 16) {
                         Button("Open Next", action: waiting.openNext)
                         Button("Discard", role: .destructive, action: waiting.discard)
                     }
-                    .font(.footnote.weight(.semibold))
+                    .font(AppFont.footnote(weight: .semibold))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1582,7 +1582,7 @@ struct ShortcutTextNotice: View {
             if origin != nil {
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
+                        .font(AppFont.footnote(weight: .semibold))
                         .foregroundStyle(.appSecondary)
                         .frame(minWidth: 28, minHeight: 28)
                         .contentShape(Rectangle())

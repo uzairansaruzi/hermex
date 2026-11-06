@@ -1222,12 +1222,12 @@ struct LoadOlderMessagesButton: View {
                         .accessibilityHidden(true)
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.caption.weight(.semibold))
+                        .font(AppFont.caption(weight: .semibold))
                         .accessibilityHidden(true)
                 }
 
                 Text(isLoading ? String(localized: "Loading older messages") : String(localized: "Load older messages"))
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.88)
             }

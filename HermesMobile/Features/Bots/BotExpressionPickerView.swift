@@ -21,7 +21,7 @@ import SwiftUI
                         Button { editor.setExpression(expression) } label: {
                             VStack(spacing: 4) {
                                 BotAvatarMarkView(name: editor.profile.id, appearance: appearance(expression), size: 52)
-                                Text(expression.localizedName).font(.caption2).foregroundStyle(.appSecondary).lineLimit(1)
+                                Text(expression.localizedName).font(AppFont.caption2()).foregroundStyle(.appSecondary).lineLimit(1)
                                     .minimumScaleFactor(0.8)
                             }
                             .frame(maxWidth: .infinity, minHeight: 78)
