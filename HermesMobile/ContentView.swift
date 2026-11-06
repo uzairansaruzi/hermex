@@ -736,7 +736,7 @@ struct HermesServerHome: View {
 
     var body: some View {
         let identity = HermesServerIdentity(account: authManager.activeServer, server: server)
-        let home = HermesHome(title: identity.title, avatar: avatar(identity), tab: $tab)
+        let home = HermesHome(title: identity.title, avatar: avatar(identity), tab: $tab, isSidebar: usesSplit)
         Group {
             if usesSplit {
                 homeContent(home)
