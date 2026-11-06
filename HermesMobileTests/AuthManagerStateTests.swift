@@ -888,10 +888,12 @@ final class AuthManagerStateTests: XCTestCase {
                            hermesConnections: HermesConnections(), preferences: .ephemeral())
     }
 
-    /// The connect form for `entry` against the scripted Hermes host.
+    /// The connect form for `entry` against the scripted Hermes host, whose gateway opens `socket`.
     private func makeForm(entry: OnboardingViewModel.Entry, moveSource: OnboardingViewModel.MoveSource? = nil,
+                          socket: @escaping () -> BotScriptedSocket = { BotScriptedSocket() },
                           host script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> OnboardingViewModel {
-        OnboardingViewModel(entry: entry, moveSource: moveSource, hermesConfiguration: { HermesHostFixture.configuration(script) })
+        OnboardingViewModel(entry: entry, moveSource: moveSource, hermesConfiguration: { HermesHostFixture.configuration(script) },
+                            hermesGateway: .init(socketFactory: { _ in socket() }))
     }
 
     func testTheConnectFormAddsAHermesServerFromOnboardingAndFromAddServer() async throws {
@@ -924,6 +926,28 @@ final class AuthManagerStateTests: XCTestCase {
             XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 1, "\(entry): one sign-in")
             XCTAssertTrue(headers.snapshot().isEmpty, "\(entry): the webui's headers never go to a Hermes server")
         }
+    }
+
+    /// A gateway's own listener (the 0.23.0 Webapp) signs in over HTTP, then its `gateway.ready`
+    /// claims `session_authority` (#1598): the form names it and saves nothing.
+    func testAddServerRefusesAGatewayListenerAndSavesNothing() async throws {
+        defer { HermesHostFixture.reset() }
+        HermesHostFixture.reset()
+        let keychain = InMemoryKeychainStore()
+        let manager = makeFormManager(keychain: keychain)
+        await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
+        let form = makeForm(entry: .addServer, socket: { BotScriptedSocket(ready: #"{"replay_epoch":"epoch","session_authority":true}"#) })
+        form.serverURLString = "hermes.example"
+        _ = await form.connect(authManager: manager)
+        form.username = "me"
+        form.password = "secret"
+
+        let added = await form.connect(authManager: manager)
+
+        XCTAssertNil(added)
+        XCTAssertEqual(form.errorMessage, BotConnectionAdvice.message(for: BotFailure.gatewayListener, address: hermesServer))
+        XCTAssertFalse(manager.servers.contains { $0.id == hermesServer.absoluteString }, "No server is saved")
+        XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: hermesServer))
     }
 
     /// Opened from Move to Hermes (#1266), the normal form offers the webui server's headers as

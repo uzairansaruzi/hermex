@@ -97,6 +97,8 @@ final class OnboardingViewModel {
 
     /// The URL session setup for the form's own Hermes connections; tests script the host with it.
     @ObservationIgnored private let hermesConfiguration: () -> URLSessionConfiguration
+    /// The gateway socket Add Server opens once before saving a Hermes server; tests script it.
+    @ObservationIgnored private let hermesGateway: HermesGateway.Options
     // Identity + generation of the probe that produced `authStatus` or `detectedKind`.
     @ObservationIgnored private var probedConnectionIdentity: String?
     @ObservationIgnored private var operationGeneration = 0
@@ -107,11 +109,13 @@ final class OnboardingViewModel {
         savedServer: URL? = nil,
         savedHeaders: [CustomHeader] = [],
         initialErrorMessage: String? = nil,
-        hermesConfiguration: @escaping () -> URLSessionConfiguration = { .ephemeral }
+        hermesConfiguration: @escaping () -> URLSessionConfiguration = { .ephemeral },
+        hermesGateway: HermesGateway.Options = HermesGateway.Options()
     ) {
         self.entry = entry
         self.moveSource = moveSource
         self.hermesConfiguration = hermesConfiguration
+        self.hermesGateway = hermesGateway
         if let savedServer {
             serverURLString = savedServer.absoluteString
             // Only a webui server signs in again here, and it had a password to sign out of.
@@ -504,8 +508,10 @@ final class OnboardingViewModel {
     }
 
     /// Signs the detected dashboard in once with the form's username, password and headers,
-    /// or with no credentials when it has no sign-in, on a connection of its own, then adds it
-    /// as a Hermes server, switching to it unless a move opened the form. A failure shows
+    /// or with no credentials when it has no sign-in, on a connection of its own, and opens its
+    /// gateway socket once, so an address that signs in but can never chat (a gateway's own
+    /// listener, a proxy that refuses the upgrade) is refused here rather than saved (#1598).
+    /// Then it adds it as a Hermes server, switching to it unless a move opened the form. A failure shows
     /// `BotConnectionAdvice`'s copy, and nothing is retried (#884). A webui server saved at the
     /// address is replaced only when `replacingWebuiServer`, and only after the sign-in
     /// succeeded; otherwise it stops here with the Replace offer (#1027), which a move never
@@ -536,16 +542,19 @@ final class OnboardingViewModel {
             username: isOpen ? "" : username.trimmingCharacters(in: .whitespacesAndNewlines), password: isOpen ? "" : password,
             installID: reusedSignIn?.connection.installID, headers: headers.isEmpty ? nil : headers
         )
-        let http = HermesConnection(connection: candidate, configuration: hermesConfiguration())
+        let http = HermesConnection(connection: candidate, configuration: hermesConfiguration(), gateway: hermesGateway)
+        let socket = BotClient(http: http)
+        defer { socket.close() }
         do {
             if signInMethod == .browser {
                 try await HermesBrowserSignIn.signIn(http, presenter: browser)
             } else {
                 try await http.signIn()
             }
+            try await socket.connect()
         } catch {
             guard token == operationGeneration, identity == currentConnectionIdentity(),
-                  !(error is CancellationError) else { return nil }
+                  !(error is CancellationError), !Task.isCancelled else { return nil }
             errorMessage = BotConnectionAdvice.message(for: error, address: address)
             lastAttempt = http.lastAttempt
             return nil

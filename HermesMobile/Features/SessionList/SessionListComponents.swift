@@ -175,6 +175,9 @@ struct SessionListRowActions {
     let createProject: (SessionSummary) -> Void
     let refreshProjects: () -> Void
     let export: (SessionSummary, SessionExportFormat) -> Void
+    /// A Hermes home's Add Server, which replaces Retry when the address is a gateway's own
+    /// listener (#1598): its address can't change, and retrying reaches the same listener.
+    var addServer: (() -> Void)?
 }
 
 /// Which row actions a session offers. A Hermes server's row (#1046, #1048) offers pin,
@@ -988,14 +991,20 @@ struct SessionListRowsSection: View {
                 descriptionLineLimit: 3
             )
 
-            Button("Retry", action: actions.retryLoad)
-                .font(AppFont.subheadline(weight: .medium))
-                .foregroundStyle(.appPrimary)
-                .buttonStyle(.plain)
-                .frame(minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Retry loading sessions")
-                .accessibilityHint("Attempts to reconnect to the server and reload sessions.")
+            Group {
+                if let addServer = actions.addServer, viewModel.sessionLoadError as? BotFailure == .gatewayListener {
+                    Button("Add Server", action: addServer)
+                } else {
+                    Button("Retry", action: actions.retryLoad)
+                        .accessibilityLabel("Retry loading sessions")
+                        .accessibilityHint("Attempts to reconnect to the server and reload sessions.")
+                }
+            }
+            .font(AppFont.subheadline(weight: .medium))
+            .foregroundStyle(.appPrimary)
+            .buttonStyle(.plain)
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .padding(.horizontal, 24)
     }

@@ -182,6 +182,15 @@ import SwiftUI
                     // Reconnecting would only send the refused password again (#884).
                     if inbox.needsSignIn {
                         Button("Update sign-in", action: updateSignIn)
+                    } else if inbox.needsAddress {
+                        // Reconnecting reaches the same listener (#1598). A Hermes server's address
+                        // is fixed, so its way out is another server; a webui's Bot connection
+                        // edits its own.
+                        if let home {
+                            Button("Add Server", action: home.avatar.addServer)
+                        } else {
+                            Button("Hermes connection") { showingSetup = true }
+                        }
                     } else {
                         Button("Reconnect") { revision = UUID() }
                     }
