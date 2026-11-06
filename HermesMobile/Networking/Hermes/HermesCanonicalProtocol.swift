@@ -31,8 +31,9 @@ extension HermesCall {
             params["request_id"] = nil
             params["prompt_id"] = .string(promptID)
             params.merge(fence.params) { $1 }
-        // A session-scoped bypass is the canonical default, and the host refuses `scope: session`.
-        case .configSet(_, _, .yolo): params["scope"] = nil
+        // A session-scoped bypass and Fast are the canonical default, and the host refuses
+        // `scope: session` for either (#1602, #1604).
+        case .configSet(_, _, .yolo), .configSet(_, _, .fast): params["scope"] = nil
         default: break
         }
         return params

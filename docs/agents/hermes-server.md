@@ -439,7 +439,9 @@ repeat, a session on a second Profile, and a turn's admission receipts, two queu
 sends, a withdrawn one's `message.complete`, a `stale_generation` stop, the next
 turn's start under the next generation, a clarify prompt's lifecycle, and the
 `session.mutate` edits (rename, a revision conflict, a stale-generation rewind, a
-branch, a rewind, a compaction, a busy and a settled delete, a titled create).
+branch, a rewind, a compaction, a busy and a settled delete, a titled create), and the
+session settings (a `model` edit, Fast, reasoning, personality and approval mode, and the
+`config.set model` and scoped Fast refusals).
 
 ## Reconnect contract
 

@@ -1339,6 +1339,9 @@ struct HermesLostTurn: Equatable {
             if let usage = Self.contextWindow(payload["usage"]) { delegate?.hermesApplyUsage(usage) }
         case "session.info":
             applyInfo(payload)
+        case "session.updated":
+            // A canonical host asking to confirm the model pick it deferred to this turn's end (#1604).
+            settings.controls.receiveDeferredConfirmation(payload)
         case "message.complete":
             // A queued admission a canonical host withdrew before it ran settles without a
             // generation: no turn ran, so the running one goes on.

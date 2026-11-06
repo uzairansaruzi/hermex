@@ -72,6 +72,110 @@ import Observation
         XCTAssertNil(controls.errorMessage)
     }
 
+    /// On a canonical host (#1604) a pick is the session's fenced `model` edit, never `config.set`.
+    /// An expensive one asks first, and Confirm resends exactly the token the host gave. A token
+    /// another change made stale is answered with a fresh confirmation, asked again, never applied.
+    func testACanonicalExpensiveModelConfirmsWithExactlyTheHostsToken() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        func asks(_ token: String) -> BotSocketHost.Reply {
+            .init(result: .object(["session_id": .string("tip"), "operation": .string("model"),
+                                   "status": .string("confirmation_required"), "confirm_required": .bool(true),
+                                   "confirm": .string(token), "confirm_message": .string("Opus costs about 5x more.")]))
+        }
+        chat.host.next("session.mutate", asks("t1"))
+        chat.host.next("session.mutate", asks("t2"))
+        chat.host.next("session.mutate", .init(result: try settingsFixture("model")["result"]))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        // As the sheet's button does: it captures the confirmation, dismisses, then confirms it.
+        func tapChangeModel() async throws {
+            let shown = try XCTUnwrap(controls.confirmation)
+            controls.cancelConfirmation()
+            await controls.confirm(shown)
+        }
+        let picked = await chat.model.selectComposerModel(Self.opus)
+        XCTAssertFalse(picked)
+        XCTAssertEqual(controls.confirmation?.message, "Opus costs about 5x more.")
+        try await tapChangeModel()
+        XCTAssertNotNil(controls.confirmation, "a stale token is asked about again")
+        try await tapChangeModel()
+        XCTAssertNil(controls.confirmation)
+
+        let edits = chat.writes("session.mutate")
+        XCTAssertEqual(edits.map { $0["operation"] }, Array(repeating: .string("model"), count: 3))
+        XCTAssertEqual(edits.map { $0["payload"]?["confirm"] }, [.null, .string("t1"), .string("t2")])
+        XCTAssertEqual(edits.first?["payload"]?["model"], .string("claude-opus"))
+        XCTAssertEqual(edits.first?["expected_generation"], .number(1))
+        XCTAssertEqual(chat.writes("config.set"), [], "the host refuses config.set model")
+        XCTAssertEqual(chat.model.selectedModelID, "claude-opus")
+    }
+
+    /// A guarded model picked while a reply runs is deferred; at the reply's end the canonical host
+    /// reports the old model in `session.info`, then asks to confirm the pick in `session.updated`,
+    /// and the sheet's Confirm sends that token.
+    func testADeferredCanonicalPickAsksAtTheTurnsEndAndConfirmsWithItsToken() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.host.next("session.mutate", .init(result: .object(["session_id": .string("tip"), "operation": .string("model"),
+                                                                "status": .string("deferred"), "revision": .number(2)])))
+        _ = await chat.model.selectComposerModel(Self.opus)
+        XCTAssertEqual(chat.model.composerConfigurationNotice, "Switches to claude-opus after this response.")
+        XCTAssertNil(controls.confirmation)
+
+        chat.receive(.object(["session_id": .string("tip"), "seq": .number(1), "type": .string("session.info"),
+                              "payload": .object(["running": .bool(false), "model": .string("claude-sonnet")])]))
+        chat.receive(.object(["session_id": .string("tip"), "seq": .number(2), "type": .string("session.updated"),
+                              "payload": .object(["status": .string("confirmation_required"), "confirm_required": .bool(true),
+                                                  "confirm": .string("t9"), "confirm_message": .string("Opus costs about 5x more."),
+                                                  "payload": .object(["model": .string("claude-opus"), "provider": .string("anthropic")])])]))
+        let shown = try XCTUnwrap(controls.confirmation)
+        XCTAssertEqual(shown.message, "Opus costs about 5x more.")
+        chat.host.next("session.mutate", .init(result: try settingsFixture("model")["result"]))
+        controls.cancelConfirmation()
+        await controls.confirm(shown)
+        XCTAssertEqual(chat.writes("session.mutate").last?["payload"]?["confirm"], .string("t9"))
+    }
+
+    /// A canonical model edit the host refuses because the chat changed first applies nothing,
+    /// says so and resends nothing; the next pick carries the fences the refusal named.
+    func testARefusedCanonicalModelEditKeepsTheModelAndTheNextPickCarriesTheNewFences() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.host.next("session.mutate", .init(error: 4001, message: "revision_conflict", data: .object([
+            "reason": .string("revision_conflict"), "revision": .number(5), "execution_generation": .number(3)
+        ])))
+        let refused = await chat.model.selectComposerModel(Self.opus)
+        XCTAssertFalse(refused)
+        XCTAssertEqual(controls.errorMessage, "This chat changed on the server. Reopen it and try again.")
+        XCTAssertNotEqual(chat.model.selectedModelID, "claude-opus")
+        XCTAssertEqual(chat.writes("session.mutate").count, 1, "nothing was resent")
+
+        chat.host.next("session.mutate", .init(result: try settingsFixture("model")["result"]))
+        _ = await chat.model.selectComposerModel(Self.opus)
+        XCTAssertEqual(chat.writes("session.mutate").last?["expected_revision"], .number(5))
+        XCTAssertEqual(chat.writes("session.mutate").last?["expected_generation"], .number(3))
+    }
+
+    /// A canonical Fast toggle is `config.set fast` without the `scope` the host refuses there,
+    /// acknowledged as recorded; it changes this chat alone.
+    func testACanonicalFastToggleSendsNoScope() async throws {
+        let chat = await openChat(canonical: true)
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await chat.turn.settings.controls.reload()
+        chat.receive(.object(["session_id": .string("tip"), "seq": .number(1), "type": .string("session.info"),
+                              "payload": .object(["fast": .bool(true)])]))
+        await waitUntil("fast") { chat.model.composerFastMode == true }
+        chat.host.always("config.set", .init(result: try settingsFixture("fast_normal")["result"]))
+
+        let off = await chat.model.selectFastMode(false)
+        XCTAssertTrue(off)
+        XCTAssertEqual(chat.model.composerFastMode, false)
+        XCTAssertEqual(chat.writes("config.set").first?["key"], .string("fast"))
+        XCTAssertNil(chat.writes("config.set").first?["scope"])
+        assertNeverWritesHostDefaults(chat)
+    }
+
     /// A pick the host holds for the running response shows as the chip's model, with a notice.
     func testADeferredPickShowsUntilTheResponseEnds() async {
         let chat = await openChat()
@@ -599,6 +703,13 @@ import Observation
         ])])
     }
 
+    /// One of the recorded canonical settings (`scripts/capture-hermes-fixtures --local --gateway`).
+    private func settingsFixture(_ name: String) throws -> BotJSON {
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/HermesAgent/canonical-settings.json")
+        guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
+        return try JSONDecoder().decode(BotJSON.self, from: data)["reply"][name]
+    }
+
     private static func modelReply(confirm: Bool = false, deferred: Bool = false) -> BotJSON {
         .object(["key": .string("model"), "value": .string("claude-opus"), "scope": .string("session"),
                  "confirm_required": .bool(confirm), "confirm_message": .string("Opus costs about 5x more."),
@@ -630,13 +741,20 @@ import Observation
 
     /// A chat in Profile `work`, a new one unless `target` names a stored one, attached on
     /// `runtime`, with its catalog read.
-    private func openChat(target: ConversationTarget = .new(profile: "work")) async -> Chat {
+    /// `canonical` attaches stored session `tip` over a canonical socket (#1604), whose id is its
+    /// runtime, at revision 2 and generation 1.
+    private func openChat(target: ConversationTarget = .new(profile: "work"), canonical: Bool = false) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.create", .init(result: .object([
             "session_id": .string("runtime"), "stored_session_id": .string("tip")
         ])))
-        host.always("session.resume", .init(result: .object([
+        host.always("session.resume", .init(result: canonical ? .object([
+            "session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
+            "subscription_id": .string("sub-1"), "revision": .number(2), "execution_generation": .number(1),
+            "running": .bool(false), "messages": .array([]), "pending": .array([]), "prompts": .array([]),
+            "info": .object(["profile_name": .string("work")])
+        ]) : .object([
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
             "messages": .array([]), "info": .object(["profile_name": .string("work")])
         ])))
@@ -646,9 +764,9 @@ import Observation
             .object(["name": .string("default")]), .object(["name": .string("work")]),
             .object(["name": .string("setup"), "role": .string("setup"), "previous_names": .array([])])
         ])])))
-        let client = BotClient(http: host.connection(Self.connection))
+        let client = BotClient(http: host.connection(Self.connection, canonical: canonical))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: target, wire: client)
+                                        target: canonical ? .session(profile: "work", key: "tip") : target, wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
         let model = ChatViewModel(

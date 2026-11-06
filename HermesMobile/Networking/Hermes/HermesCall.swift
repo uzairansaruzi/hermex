@@ -298,6 +298,9 @@ enum HermesCall: Equatable, Sendable {
             case rewind(targetMessageID: Int)
             case compress(focus: String?)
             case workspace(cwd: String)
+            /// This session's model and provider (#1604). `confirm` is the token a
+            /// `confirmation_required` answer gave for exactly this selection.
+            case model(id: String, provider: String, confirm: String?)
 
             var name: String {
                 switch self {
@@ -307,6 +310,7 @@ enum HermesCall: Equatable, Sendable {
                 case .rewind: return "rewind"
                 case .compress: return "compress"
                 case .workspace: return "workspace"
+                case .model: return "model"
                 }
             }
 
@@ -322,6 +326,10 @@ enum HermesCall: Equatable, Sendable {
                 case .rewind(let target): return ["target_message_id": .number(Double(target))]
                 case .compress(let focus): return focus.map { ["focus": .string($0)] } ?? [:]
                 case .workspace(let cwd): return ["cwd": .string(cwd)]
+                case .model(let id, let provider, let confirm):
+                    var payload: [String: BotJSON] = ["model": .string(id), "provider": .string(provider)]
+                    if let confirm { payload["confirm"] = .string(confirm) }
+                    return payload
                 }
             }
         }

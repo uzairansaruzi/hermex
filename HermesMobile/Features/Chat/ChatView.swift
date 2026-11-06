@@ -4734,7 +4734,7 @@ struct HermesModelConfirmationModifier: ViewModifier {
                 // Dismissing clears `confirmation`, so the pending pick is captured first.
                 Button("Change model") {
                     controls.cancelConfirmation()
-                    Task { await controls.apply(confirmation.action, confirmed: true) }
+                    Task { await controls.confirm(confirmation) }
                 }
                 .disabled(!controls.mayChangeModel)
             }

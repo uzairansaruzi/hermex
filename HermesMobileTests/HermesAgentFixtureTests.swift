@@ -152,6 +152,20 @@ import XCTest
         }
     }
 
+    /// A canonical host's session settings (#1604): it refuses `config.set model` and a scoped
+    /// Fast, which is why the chat sends a `model` edit and Fast without a scope, and acknowledges
+    /// reasoning, personality and approval mode in the shapes the chat reads.
+    func testCanonicalSettingsAnswerAsTheChatReadsThem() throws {
+        let settings = try fixture("canonical-settings")["reply"]
+        XCTAssertEqual(settings["config_set_model"]["error"]["data"]["reason"].text, "use_session_mutation_model")
+        XCTAssertNotNil(settings["fast_scoped"]["error"]["code"].integer)
+        XCTAssertEqual(settings["model"]["result"]["operation"].text, "model")
+        XCTAssertEqual(settings["fast_normal"]["result"], .object(["key": .string("fast"), "value": .string("normal")]))
+        XCTAssertEqual(settings["reasoning"]["result"]["key"].text, "reasoning")
+        XCTAssertEqual(settings["personality"]["result"]["key"].text, "personality")
+        XCTAssertEqual(settings["approval_mode"]["result"], .object(["key": .string("approvals.mode"), "value": .string("manual")]))
+    }
+
     private static let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                               username: "user", password: "fixture")
 

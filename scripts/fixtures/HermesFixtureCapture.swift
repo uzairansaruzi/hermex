@@ -118,7 +118,8 @@ struct Mode {
             return Sanitizer.keptStrings.union(["replay_epoch", "epoch", "subscription_id", "admission_id", "prompt_id",
                                                 "kind", "choices", "command", "submission_id", "input_id", "outcome",
                                                 "reason", "message", "question", "description", "operation",
-                                                "branched_session_id", "deleted_ids", "headline"])
+                                                "branched_session_id", "deleted_ids", "headline", "key", "value", "scope",
+                                                "provider"])
         }
         return local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
     }
@@ -639,8 +640,8 @@ struct CanonicalCapture {
         ("canonical-withdrawn-complete.json", "withdrawn_complete"), ("canonical-stale-generation.json", "stale_generation"),
         ("canonical-second-turn-start.json", "second_turn_start"),
         ("canonical-clarify-lifecycle.json", "clarify_lifecycle"),
-        // Session edits (#1603)
-        ("canonical-mutations.json", "mutations")
+        // Session edits (#1603) and settings (#1604)
+        ("canonical-mutations.json", "mutations"), ("canonical-settings.json", "settings")
     ]
 
     func run() async throws -> JSON {
@@ -698,13 +699,43 @@ struct CanonicalCapture {
         let sibling = try await capture.call("session.create", ["profile": .string(Mode.sibling), "source": .string("gui")])
         let turns = try await captureTurns()
         let mutations = try await captureMutations()
+        let settings = try await captureSettings()
 
         return .object([
             "status": status, "ready": .object(ready), "create": create, "resume_idle": idle, "resume_repeat": repeated,
             "resume_running": running, "replay": replayed, "replay_epoch_mismatch": mismatch,
             "replay_gap": gap, "detach": .array([detached, stale]), "profile_create": sibling,
             "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
-        ].merging(turns) { $1 }.merging(["mutations": mutations]) { $1 })
+        ].merging(turns) { $1 }.merging(["mutations": mutations, "settings": settings]) { $1 })
+    }
+
+    /// #1604's settings on a canonical session, as Hermex sends them: the model as a fenced
+    /// `model` edit, then Fast without a scope, the session's reasoning, and the Profile's
+    /// personality and approval mode. The stub model has no price, so no selection guard asks to
+    /// confirm, and the stub runs no Fast tier: `normal` is acknowledged, `fast` refused.
+    private func captureSettings() async throws -> JSON {
+        let profile = JSON.string(mode.profile)
+        guard let session = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])["session_id"].text
+        else { throw Failure("session.create returned no session_id") }
+        let snapshot = try await capture.call("session.resume", ["profile": profile, "session_id": .string(session),
+                                                                 "source": .string("gui"), "omit_messages": .bool(true)])
+        func set(_ key: String, _ value: String, scope: String? = nil) async throws -> JSON {
+            var params: [String: JSON] = ["profile": profile, "session_id": .string(session), "key": .string(key), "value": .string(value)]
+            if let scope { params["scope"] = .string(scope) }
+            return try await capture.reply("config.set", params)
+        }
+        let model = try await capture.reply("session.mutate", [
+            "profile": profile, "session_id": .string(session), "request_id": .string(UUID().uuidString),
+            "expected_revision": snapshot["revision"], "expected_generation": snapshot["execution_generation"],
+            "operation": .string("model"), "payload": .object(["model": .string("hermex-stub"), "provider": .string("custom")])
+        ])
+        let configModel = try await set("model", "hermex-stub --provider custom --session", scope: "session")
+        return .object([
+            "model": model, "config_set_model": configModel, "fast_normal": try await set("fast", "normal"),
+            "fast_scoped": try await set("fast", "fast", scope: "session"),
+            "reasoning": try await set("reasoning", "high", scope: "session"),
+            "personality": try await set("personality", "none"), "approval_mode": try await set("approvals.mode", "manual")
+        ])
     }
 
     /// #1603's `session.mutate` edits, as Hermex sends them, on a session with two settled turns:
