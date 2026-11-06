@@ -83,6 +83,14 @@ class HomeTests(unittest.TestCase):
         self.assertIs(config["model"]["streaming"], False)
         self.assertEqual(config["approvals"]["mode"], "manual")
 
+    def test_a_gateway_home_serves_the_webapp_behind_sign_in_on_its_loopback_port(self):
+        home = local.make_home(stub_port=5123, webapp_port=9121)
+        self.addCleanup(shutil.rmtree, home)
+        webapp = json.loads((home / "config.yaml").read_text())["webapp"]
+        self.assertEqual(webapp, {"enabled": True, "host": "127.0.0.1", "port": 9121,
+                                  "public_url": "http://hermex-local.invalid"})
+        self.assertNotIn("webapp", json.loads((self.make_home() / "config.yaml").read_text()))
+
     def test_a_home_behind_a_symlink_is_resolved_so_the_host_can_match_its_plugins_folder(self):
         real = Path(tempfile.mkdtemp()).resolve()
         self.addCleanup(shutil.rmtree, real)

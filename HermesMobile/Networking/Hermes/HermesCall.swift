@@ -97,7 +97,13 @@ enum HermesCall: Equatable, Sendable {
     case sessionTitle(sessionID: String)
     /// Attaches to a session without closing it when this socket drops.
     case sessionResume(profile: String, sessionID: String, omitMessages: Bool)
-    case sessionEventsSince(sessionID: String, lastSeen: Int)
+    /// The runtime's frames after `lastSeen`. `profile` and `replayEpoch`, the session's own
+    /// epoch from its last snapshot, go only to a canonical host (`canonicalParams`).
+    case sessionEventsSince(profile: String, sessionID: String, lastSeen: Int, replayEpoch: String?)
+    /// Ends this socket's subscription to a session on a canonical host (#1601), sent by the
+    /// gateway when the last screen holding it leaves (`HermesCanonicalSubscriptions`). A stale
+    /// `subscriptionID` answers `detached: false`. Never sent to the dashboard.
+    case sessionDetach(profile: String, sessionID: String, subscriptionID: String)
     /// The inbox's live-status read. `current_session_id` only marks a TUI's
     /// focused row, which Hermex never has.
     case sessionActiveList
@@ -368,6 +374,7 @@ enum HermesCall: Equatable, Sendable {
         case .projectsDelete: return "projects.delete"
         case .sessionResume: return "session.resume"
         case .sessionEventsSince: return "session.events.since"
+        case .sessionDetach: return "session.detach"
         case .sessionActiveList: return "session.active_list"
         case .sessionMostRecent: return "session.most_recent"
         case .displayStatus: return "display.status"
@@ -514,8 +521,10 @@ enum HermesCall: Equatable, Sendable {
                                              "close_on_disconnect": .bool(false), "source": .string(Self.source)]
             if omitMessages { params["omit_messages"] = .bool(true) }
             return params
-        case .sessionEventsSince(let sessionID, let lastSeen):
+        case .sessionEventsSince(_, let sessionID, let lastSeen, _):
             return ["session_id": .string(sessionID), "last_seen": .number(Double(lastSeen))]
+        case .sessionDetach(let profile, let sessionID, let subscriptionID):
+            return ["profile": .string(profile), "session_id": .string(sessionID), "subscription_id": .string(subscriptionID)]
         case .sessionActiveList, .groupsCapabilities: return [:]
         case .promptSubmit(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
@@ -681,6 +690,8 @@ enum HermesCall: Equatable, Sendable {
         case .sessionRename(let runtime, let title):
             valid = !runtime.isEmpty && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .sessionDelete(let profile, let storedKey): valid = !profile.isEmpty && !storedKey.isEmpty
+        case .sessionDetach(let profile, let sessionID, let subscriptionID):
+            valid = !profile.isEmpty && !sessionID.isEmpty && !subscriptionID.isEmpty
         case .sessionBranch(let runtime, let name, let count):
             valid = !runtime.isEmpty && name.map(Self.isBlank) != true && (count ?? 1) > 0
         case .sessionWorkspaceMove(let profile, let storedKey, let cwd):

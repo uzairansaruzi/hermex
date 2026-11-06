@@ -364,6 +364,8 @@ HERMEX_BOT_ADDRESS=http://127.0.0.1:9199 HERMEX_BOT_USERNAME=hermex HERMEX_BOT_P
 
 That also saves it as your webui server's own Hermes connection if that server has none yet. To point an existing webui server's connection at it instead, open Settings → your server → **Hermes connection**, enter `http://127.0.0.1:9199` and the printed credentials, and save. This replaces that server's saved Hermes connection until you enter the real one again. `scripts/sim-login` never replaces an existing connection, so it won't switch back for you.
 
+`scripts/local-hermes --gateway` runs `hermes gateway run` with the Webapp on instead, at `http://127.0.0.1:9121` with the same credentials: the gateway's own listener, whose sockets speak the canonical session protocol (#1341). Hermex refuses that address until #1606 ships. `scripts/capture-hermes-fixtures --local --gateway` records its attach, replay and detach replies as `HermesMobileTests/Fixtures/HermesAgent/canonical-*.json`.
+
 ## Launch arguments and profiling
 
 Debug builds read these launch arguments; Release builds compile none of them in.

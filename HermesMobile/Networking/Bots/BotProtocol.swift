@@ -296,6 +296,9 @@ extension HermesAttemptRecord.Outcome {
 /// the socket every screen of the saved connection shares.
 @MainActor protocol BotTransport: AnyObject {
     var replayEpoch: String? { get }
+    /// Whether the socket speaks the canonical session protocol (#1341): each session then
+    /// replays under its own snapshot's `replay_epoch`, not the socket's `replayEpoch`.
+    var speaksCanonicalProtocol: Bool { get }
     var serverVersion: String? { get }
     /// `install_id` from `/api/status` at the last connect; nil when the host omits it.
     var serverInstallID: String? { get }
@@ -372,6 +375,7 @@ extension HermesAttemptRecord.Outcome {
 }
 
 extension BotTransport {
+    var speaksCanonicalProtocol: Bool { false }
     var serverVersion: String? { nil }
     var serverInstallID: String? { nil }
     var unavailableMethods: Set<String> { [] }

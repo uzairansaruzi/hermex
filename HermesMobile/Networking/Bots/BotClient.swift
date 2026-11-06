@@ -16,6 +16,7 @@ import Foundation
     private var imageUploads: [UUID: Task<String, Error>] = [:]
     private var artifactTasks: [UUID: Task<Data, Error>] = [:]
     var replayEpoch: String? { gateway.replayEpoch }
+    var speaksCanonicalProtocol: Bool { gateway.speaksCanonicalProtocol }
     /// `version` from the connection's last `/api/status` read, before the auth gate; nil when omitted.
     var serverVersion: String? { http.serverVersion }
     /// `install_id` from the same read; nil when omitted.

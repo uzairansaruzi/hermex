@@ -10,9 +10,10 @@ import OSLog
 /// the creators reconnect on their next Create.
 ///
 /// Every socket mints a fresh ticket and runs one handshake before anything else:
-/// `gateway.ready` (recording `replay_epoch`), then `client.capabilities` as the first
-/// outbound frame, then the keepalive. Screens that connect while it opens wait for that
-/// one attempt, so several screens reconnecting after the same drop make one replacement.
+/// `gateway.ready` (recording `replay_epoch` and whether it speaks the canonical session
+/// protocol), then `client.capabilities` as the first outbound frame, then the keepalive.
+/// Screens that connect while it opens wait for that one attempt, so several screens
+/// reconnecting after the same drop make one replacement.
 ///
 /// The receive loop multiplexes, so a quiet tool never blocks a Stop request. A reply
 /// settles only the call that sent it. Every event and string-id server request goes to
@@ -25,6 +26,10 @@ import OSLog
 /// attached screen's part, and each hears it once; anything later from that socket is
 /// dropped by its generation. `retire()` does the same with `.stale` when the
 /// connection's server or configuration is replaced, and refuses reconnects.
+///
+/// A canonical socket (#1341, a gateway's own listener) takes some calls in another shape
+/// (`HermesCall.canonicalParams`), and its session subscriptions outlive a screen: the last
+/// screen holding a session detaches it as it leaves (`HermesCanonicalSubscriptions`).
 ///
 /// A Wi-Fi to cellular handover can leave the socket open but dead. `probe()` checks it when
 /// the network path changes: no frame within `probeDeadline` is a lost socket (#1372).
@@ -39,11 +44,19 @@ import OSLog
         var probeDeadline: Duration = .seconds(8)
         /// Gets the finished gateway upgrade; nil opens a native socket on the connection's session.
         var socketFactory: ((URLRequest) -> any BotSocket)?
+        /// Whether a socket that speaks the canonical session protocol opens. Until Hermex speaks
+        /// all of it (#1606) production refuses one with `.gatewayListener`; tests turn it on.
+        var opensCanonicalSockets = false
     }
 
     let http: HermesConnection
     /// `replay_epoch` from the last socket's `gateway.ready`.
     private(set) var replayEpoch: String?
+    /// Whether the last socket's `gateway.ready` said `session_authority`: a gateway's own
+    /// listener, whose sessions keep their own replay epochs and subscriptions (#1341).
+    private(set) var speaksCanonicalProtocol = false
+    /// The open canonical socket's sessions and the screens holding each.
+    private var subscriptions = HermesCanonicalSubscriptions()
     private let options: Options
     private var socket: (any BotSocket)?
     /// The open attempt every connecting screen waits on; nil once the socket is open.
@@ -62,6 +75,8 @@ import OSLog
     private var consumers: [Consumer] = []
     private var consumerCount = 0
     private var nextID = 0
+    /// Numbers the detaches' string ids.
+    private var detachCount = 0
     private var pending: [Int: Pending] = [:]
 
     private struct Consumer {
@@ -116,7 +131,8 @@ import OSLog
     }
 
     /// Ends `client`'s part: its calls in flight fail with `.transport` and their late
-    /// replies reach no one. The last screen to leave closes the socket, silently.
+    /// replies reach no one. The last screen to leave closes the socket, silently. On a
+    /// canonical socket another screen keeps open, the sessions only it held are detached.
     func leave(_ client: BotClient) {
         consumers.removeAll { $0.id == client.consumerID }
         for (id, entry) in pending where entry.consumer == client.consumerID {
@@ -124,7 +140,11 @@ import OSLog
             entry.deadline.cancel()
             entry.continuation.resume(throwing: BotFailure.transport)
         }
-        guard !consumers.contains(where: { $0.client != nil }) else { return }
+        let detaches = subscriptions.release(client.consumerID)
+        guard !consumers.contains(where: { $0.client != nil }) else {
+            detach(detaches)
+            return
+        }
         if socket != nil || opening != nil {
             let label = socketLabel(generation)
             HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, last screen left")
@@ -206,10 +226,14 @@ import OSLog
     /// receive and shapes it for the release the last sign-in read; `validateDispatch`
     /// runs at the actual socket write.
     func send(_ call: HermesCall, for consumer: Int?, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
-        let params = try call.params(hostVersion: http.serverVersion)
+        var params = try call.params(hostVersion: http.serverVersion)
         guard let socket, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
+        if speaksCanonicalProtocol { params = call.canonicalParams(params) }
         nextID += 1
         let id = nextID, owner = generation
+        if speaksCanonicalProtocol, let consumer, let attachment = call.attachment {
+            subscriptions.willAttach(id, profile: attachment.profile, requested: attachment.requested, consumer: consumer)
+        }
         let frame = BotJSON.object([
             "jsonrpc": .string("2.0"), "id": .number(Double(id)),
             "method": .string(call.method), "params": .object(params)
@@ -256,6 +280,27 @@ import OSLog
         default: break
         }
         return reply
+    }
+
+    /// Writes each detach now, ahead of any later call, without waiting for its reply, which no
+    /// screen reads: its string id, like the keepalive's, makes `consume` drop the reply. A lost
+    /// one leaves the subscription until the socket closes.
+    private func detach(_ calls: [HermesCall]) {
+        guard let socket, opening == nil else { return }
+        let owner = generation
+        for call in calls {
+            guard let params = try? call.canonicalParams(call.params(hostVersion: http.serverVersion)) else { continue }
+            detachCount += 1
+            let frame = BotJSON.object([
+                "jsonrpc": .string("2.0"), "id": .string("detach-\(detachCount)"),
+                "method": .string(call.method), "params": .object(params)
+            ])
+            guard let data = try? JSONEncoder().encode(frame) else { continue }
+            let text = String(decoding: data, as: UTF8.self)
+            Task { [weak self] in
+                do { try await socket.send(.string(text)) } catch { self?.fail(error, generation: owner) }
+            }
+        }
     }
 
     /// A cancelled read discards its late reply. Any other cancelled call may have reached
@@ -343,9 +388,11 @@ import OSLog
               let epoch = ready["params"]["payload"]["replay_epoch"].text, !epoch.isEmpty
         else { throw BotFailure.unsupported }
         // A gateway's own listener (0.22.1+) owns its sessions under a protocol Hermex doesn't speak
-        // yet (#1341): signed in, every chat would fail.
-        if ready["params"]["payload"]["session_authority"].flag == true { throw BotFailure.gatewayListener }
+        // all of yet (#1341): signed in, every chat would fail.
+        let canonical = ready["params"]["payload"]["session_authority"].flag == true
+        if canonical, !options.opensCanonicalSockets { throw BotFailure.gatewayListener }
         replayEpoch = epoch
+        speaksCanonicalProtocol = canonical
         startReader(socket, generation: owner)
         // Without this the host treats the socket as a build that predates
         // server→client requests: approvals are withdrawn unsent, clarify is
@@ -430,8 +477,10 @@ import OSLog
         // Server requests have string ids and no replay sequence. Forward the
         // original envelope so screens cannot mistake them for sequenced events.
         if frame["id"].text != nil, frame["method"].text != nil { deliver(frame, generation: owner); return }
-        // The keepalive's pongs have string ids and are dropped here, unlogged.
+        // The keepalive's pongs and the detaches' replies have string ids and are dropped here, unlogged.
         guard let id = frame["id"].integer else { return }
+        // Read before the call's own settling, so an attach whose screen has left is still detached.
+        if speaksCanonicalProtocol, let detach = subscriptions.didAnswer(id, with: frame["result"]) { self.detach([detach]) }
         guard let entry = pending.removeValue(forKey: id) else {
             // Usually a late reply to a screen that has left.
             let label = socketLabel(owner)
@@ -495,6 +544,7 @@ import OSLog
         pending.removeAll()
         let lost = consumers.filter(\.attached).compactMap(\.client)
         consumers.removeAll()
+        subscriptions.removeAll()
         for entry in interrupted {
             entry.deadline.cancel()
             entry.continuation.resume(throwing: BotFailure.transport)

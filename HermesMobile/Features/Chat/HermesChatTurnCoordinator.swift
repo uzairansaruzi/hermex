@@ -1302,12 +1302,15 @@ struct HermesChatTranscript: Equatable {
 
     /// Settles the turn against an attach's snapshot, then rebuilds the transcript from the
     /// history and it when frames were lost. Without a rebuild the replay already continued
-    /// the turn.
+    /// the turn. A canonical snapshot (#1341) lists the session's admissions in `pending`, the
+    /// first still queued being the queued prompt, and carries no turn start time.
     private func reconcile(with snapshot: BotJSON) {
         let running = snapshot["running"].flag ?? snapshot["info"]["running"].flag ?? false
         let startedAt = snapshot["turn_started_at"].number ?? snapshot["inflight"]["started_at"].number
         hostRunning = running
-        queuedPrompt = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : BotMentions.displayText($0) }
+        let queued = snapshot["queued"]["user"].text
+            ?? snapshot["pending"].list?.first { $0["status"].text == "queued" }?["text"].text
+        queuedPrompt = queued.flatMap { $0.isEmpty ? nil : BotMentions.displayText($0) }
         requests.didReadSnapshot(snapshot)
         if let model = snapshot["info"]["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         noteInfo(snapshot["info"])

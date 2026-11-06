@@ -431,7 +431,11 @@ the `hermex-fixtures` Profile, replaces every string outside an allow-list of id
 event and status vocabulary, the release and the canned turn's text, and writes
 nothing if the output still holds the host, the account, the socket ticket, a
 home path, the install id or another Profile's name. `--keep-raw` and
-`--from-raw` re-sanitize one capture without another live session.
+`--from-raw` re-sanitize one capture without another live session. `--local --gateway` records
+the canonical session protocol (#1341) from `scripts/local-hermes --gateway` into
+`canonical-*.json`: `gateway.ready`, a create, idle, repeated and running resumes, a
+replay under the session's own epoch, its epoch mismatch and gap, a detach and its stale
+repeat, and a session on a second Profile.
 
 ## Reconnect contract
 

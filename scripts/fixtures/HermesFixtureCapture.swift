@@ -9,7 +9,8 @@ import Foundation
 /// The capture signs in like `BotClient.connect`, reads `/api/status` and
 /// `profiles.list`, runs one turn in a disposable hidden session (see `Mode`),
 /// resumes it, then closes and deletes it. In local mode it also reads the
-/// Profile's analytics while that session exists. Nothing reaches disk until the
+/// Profile's analytics while that session exists. `--gateway` records the canonical
+/// session protocol instead (`CanonicalCapture`). Nothing reaches disk until the
 /// allow-list sanitizer and the leak check have both passed.
 @main
 struct HermesFixtureCapture {
@@ -18,9 +19,9 @@ struct HermesFixtureCapture {
     static func main() async {
         let arguments = Array(CommandLine.arguments.dropFirst())
         do {
-            guard let root = arguments.first else { throw Failure("usage: HermesFixtureCapture <repo-root> [--local] [--keep-raw <file> | --from-raw <file>]") }
+            guard let root = arguments.first else { throw Failure("usage: HermesFixtureCapture <repo-root> [--local [--gateway]] [--keep-raw <file> | --from-raw <file>]") }
             let options = try Options(Array(arguments.dropFirst()))
-            let mode = Mode(local: options.local)
+            let mode = Mode(local: options.local, gateway: options.gateway)
             let repo = URL(fileURLWithPath: root)
             let pin = try Pin(repo.appendingPathComponent("HERMES_AGENT_TESTED_SHA"))
             var secrets = try Secrets.fromEnvironment()
@@ -76,12 +77,14 @@ struct Failure: Error, CustomStringConvertible {
 
 struct Options {
     var local = false
+    var gateway = false
     var keepRaw: URL?
     var fromRaw: URL?
     init(_ arguments: [String]) throws {
         var rest = arguments[...]
         while let flag = rest.popFirst() {
             if flag == "--local" { local = true; continue }
+            if flag == "--gateway" { gateway = true; continue }
             guard let value = rest.popFirst() else { throw Failure("\(flag) needs a file") }
             switch flag {
             case "--keep-raw": keepRaw = URL(fileURLWithPath: value)
@@ -90,6 +93,7 @@ struct Options {
             }
         }
         if keepRaw != nil, fromRaw != nil { throw Failure("--keep-raw and --from-raw are exclusive") }
+        if gateway, !local { throw Failure("--gateway records scripts/local-hermes --gateway, so it needs --local") }
     }
 }
 
@@ -98,14 +102,23 @@ struct Options {
 /// scripted tool and approval turn from `scripts/local-hermes` on its `default`
 /// Profile, and is the only mode that lets that traffic and its fields through. It
 /// also records that Profile's 30-day analytics, the Insights screen's three reads.
+/// `--local --gateway` records the canonical protocol from `scripts/local-hermes --gateway`
+/// instead (`CanonicalCapture`).
 struct Mode {
     let local: Bool
+    var gateway = false
     var profile: String { local ? "default" : "hermex-fixtures" }
+    /// The second Profile the gateway capture makes, whose sessions route by `profile`.
+    static let sibling = "fixtures-sibling"
     var prompt: String { local ? "Run the quick check." : "Reply with exactly: ok. Do not use tools." }
     /// String keys the sanitizer keeps: `Sanitizer.keptStrings`, plus what the tool
     /// and approval fixture test reads in local mode.
     var keptStrings: Set<String> {
-        local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
+        if gateway {
+            return Sanitizer.keptStrings.union(["replay_epoch", "epoch", "subscription_id", "admission_id", "prompt_id",
+                                                "kind", "choices", "command", "submission_id", "input_id"])
+        }
+        return local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
     }
 }
 
@@ -189,8 +202,11 @@ final class Capture {
     private let mode: Mode
     private let session = URLSession(configuration: .ephemeral)
     private var socket: URLSessionWebSocketTask?
-    private var frames: [JSON] = []
+    /// Every inbound frame that was not a reply, in order.
+    private(set) var frames: [JSON] = []
     private var nextID = 0
+    /// The last socket's `gateway.ready` payload.
+    private(set) var readyPayload = JSON.null
 
     init(secrets: Secrets, pin: Pin, mode: Mode) { self.secrets = secrets; self.pin = pin; self.mode = mode }
 
@@ -210,6 +226,7 @@ final class Capture {
         guard try await http("api/auth/me")["provider"].text == "basic" else { throw Failure("unexpected identity provider") }
         defer { socket?.cancel(with: .normalClosure, reason: nil) }
         let ticket = try await openSocket()
+        if mode.gateway { return (try await CanonicalCapture(capture: self, mode: mode, status: status).run(), ticket) }
         let profiles = try await call("profiles.list", ["include_sessions": .bool(true)])
 
         var runtimes: [String] = []
@@ -273,7 +290,7 @@ final class Capture {
 
     /// Opens a socket the way `BotClient.connect` does: a fresh ticket, the ticket
     /// subprotocol, `gateway.ready`, then `client.capabilities`. Returns the ticket.
-    private func openSocket() async throws -> String {
+    func openSocket() async throws -> String {
         guard let ticket = try await http("api/auth/ws-ticket", body: .object([:]))["ticket"].text, !ticket.isEmpty else {
             throw Failure("no socket ticket")
         }
@@ -286,6 +303,7 @@ final class Capture {
         socket = task
         let ready = try await receive(timeout: 30)
         guard ready["params"]["type"].text == "gateway.ready" else { throw Failure("the socket did not open with gateway.ready") }
+        readyPayload = ready["params"]["payload"]
         // The same first frame BotClient sends, so the host treats this socket as Hermex.
         _ = try await call("client.capabilities", ["server_requests": .bool(true)])
         return ticket
@@ -365,7 +383,7 @@ final class Capture {
         return try JSONDecoder().decode(JSON.self, from: data)
     }
 
-    private func call(_ method: String, _ params: [String: JSON]) async throws -> JSON {
+    func call(_ method: String, _ params: [String: JSON]) async throws -> JSON {
         guard let socket else { throw Failure("no socket") }
         nextID += 1
         let id = nextID
@@ -376,6 +394,18 @@ final class Capture {
             guard reply["id"].integer == id, reply["method"] == .null else { frames.append(reply); continue }
             if let code = reply["error"]["code"].integer { throw RPCFailure(method: method, code: code) }
             return reply["result"]
+        }
+    }
+
+    /// Reads frames until one matches `stop`, keeping each in `frames`; 180 s at most.
+    func readFrames(until stop: (JSON) -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(180)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { throw Failure("the awaited frame did not arrive within 180 s") }
+            let frame = try await receive(timeout: remaining)
+            frames.append(frame)
+            if stop(frame) { return }
         }
     }
 
@@ -427,6 +457,7 @@ enum Sanitizer {
     static func fixtures(raw: JSON, pin: Pin, mode: Mode) throws -> [String: Data] {
         let status = raw["status"]
         guard status["version"].text == pin.release else { throw Failure("the capture is from \(status["version"].text ?? "an unknown release"), the pin is \(pin.release)") }
+        if mode.gateway { return try CanonicalCapture.fixtures(raw: raw, pin: pin, mode: mode) }
         guard let runtime = raw["runtime_id"].text, let frames = raw["frames"].list else { throw Failure("the capture has no turn") }
         let turn = try settledTurn(frames, runtime: runtime, mode: mode)
         let stamp: [String: JSON] = [
@@ -524,7 +555,7 @@ enum Sanitizer {
             guard let key else { return .string(placeholder) }
             if identities.contains(key) { return .string("fixture-install") }
             if paths.contains(key) { return .string("/fixture/\(key)") }
-            if text == mode.profile || mode.keptStrings.contains(key) || extra.contains(key) || (transcript && key == "text")
+            if text == mode.profile || (mode.gateway && text == Mode.sibling) || mode.keptStrings.contains(key) || extra.contains(key) || (transcript && key == "text")
                 || (key == "auth_providers") { return .string(text) }
             return .string(placeholder)
         default:
@@ -567,5 +598,113 @@ enum LeakCheck {
         case .array(let items): return items.flatMap { values(of: key, in: $0) }
         default: return []
         }
+    }
+}
+
+// MARK: - Canonical gateway capture
+
+/// `--local --gateway`: what a gateway's own listener (`scripts/local-hermes --gateway`) answers
+/// on a canonical socket (`gateway.ready` with `session_authority`), sent as Hermex sends it
+/// there (#1601). It records the ready payload; a session's create, an idle resume and a second
+/// resume repeating its subscription; a resume while the scripted turn waits on its approval;
+/// a replay of that turn from the session's own epoch, one from the socket's (the epoch
+/// mismatch) and one from past the host's cursor (the gap); a detach and its stale repeat; and a
+/// session on a second Profile, routed by `profile`. The approval is answered once so the turn
+/// ends. The sessions stay in the local gateway's temporary home, which goes when it stops.
+struct CanonicalCapture {
+    let capture: Capture
+    let mode: Mode
+    let status: JSON
+
+    /// Each fixture file and the raw capture's key it holds.
+    static let files: [(name: String, key: String)] = [
+        ("canonical-ready.json", "ready"), ("canonical-create.json", "create"),
+        ("canonical-resume-idle.json", "resume_idle"), ("canonical-resume-repeat.json", "resume_repeat"),
+        ("canonical-resume-running.json", "resume_running"),
+        ("canonical-replay.json", "replay"), ("canonical-replay-epoch-mismatch.json", "replay_epoch_mismatch"),
+        ("canonical-replay-gap.json", "replay_gap"), ("canonical-detach.json", "detach"),
+        ("canonical-profile-create.json", "profile_create")
+    ]
+
+    func run() async throws -> JSON {
+        var ready = capture.readyPayload.fields ?? [:]
+        guard ready["session_authority"]?.flag == true else {
+            throw Failure("gateway.ready has no session_authority; start scripts/local-hermes --gateway")
+        }
+        ready["skin"] = nil
+        let socketEpoch = ready["replay_epoch"] ?? .null
+        let profile = JSON.string(mode.profile)
+
+        // As `HermesCall.sessionNew` and `.sessionResume` reach the canonical wire.
+        let create = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])
+        guard let session = create["session_id"].text else { throw Failure("session.create returned no session_id") }
+        print("Canonical session: \(session).")
+        func resume() async throws -> JSON {
+            try await capture.call("session.resume", ["profile": profile, "session_id": .string(session),
+                                                      "source": .string("gui"), "omit_messages": .bool(true)])
+        }
+        let idle = try await resume()
+        let repeated = try await resume()
+        guard idle["subscription_id"] == repeated["subscription_id"] else { throw Failure("a second resume changed the subscription") }
+
+        _ = try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session),
+                                                     "text": .string(mode.prompt), "submission_id": .string(UUID().uuidString)])
+        try await capture.readFrames { Self.event($0, of: session) == "approval.request" }
+        let running = try await resume()
+        guard running["running"].flag == true, let prompt = running["prompts"].list?.first else {
+            throw Failure("the resume during the turn shows no running turn waiting on its approval")
+        }
+        _ = try await capture.call("approval.respond", [
+            "profile": profile, "session_id": .string(session), "execution_generation": prompt["execution_generation"],
+            "prompt_id": prompt["prompt_id"], "choice": .string("once")
+        ])
+        try await capture.readFrames { Self.event($0, of: session) == "message.complete" }
+
+        func replay(_ epoch: JSON, from cursor: Int) async throws -> JSON {
+            try await capture.call("session.events.since", ["profile": profile, "session_id": .string(session),
+                                                            "last_seen": .number(Double(cursor)), "replay_epoch": epoch])
+        }
+        let ownEpoch = running["replay_epoch"]
+        let replayed = try await replay(ownEpoch, from: 0)
+        let mismatch = try await replay(socketEpoch, from: 0)
+        let gap = try await replay(ownEpoch, from: (replayed["latest_seq"].integer ?? 0) + 100)
+        guard replayed["snapshot_required"].flag == false, mismatch["snapshot_required"].flag == true,
+              gap["snapshot_required"].flag == true else { throw Failure("the replays did not answer as the contract says") }
+
+        let detach: [String: JSON] = ["profile": profile, "session_id": .string(session), "subscription_id": running["subscription_id"]]
+        let detached = try await capture.call("session.detach", detach)
+        let stale = try await capture.call("session.detach", detach)
+
+        do { _ = try await capture.call("profiles.create", ["name": .string(Mode.sibling)]) }
+        catch let failure as RPCFailure where failure.code == 4062 {} // made by an earlier run on this gateway
+        let sibling = try await capture.call("session.create", ["profile": .string(Mode.sibling), "source": .string("gui")])
+
+        return .object([
+            "status": status, "ready": .object(ready), "create": create, "resume_idle": idle, "resume_repeat": repeated,
+            "resume_running": running, "replay": replayed, "replay_epoch_mismatch": mismatch,
+            "replay_gap": gap, "detach": .array([detached, stale]), "profile_create": sibling,
+            "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
+        ])
+    }
+
+    /// The event type of a frame for `session`; nil for any other frame.
+    static func event(_ frame: JSON, of session: String) -> String? {
+        guard frame["method"].text == "event", frame["params"]["session_id"].text == session else { return nil }
+        return frame["params"]["type"].text
+    }
+
+    /// One file per fixture, each stamped with the pin, its reply under `reply`.
+    static func fixtures(raw: JSON, pin: Pin, mode: Mode) throws -> [String: Data] {
+        let stamp: [String: JSON] = [
+            "hermes_agent_sha": .string(pin.sha), "version": .string(pin.release),
+            "captured_at": .string(raw["captured_at"].text ?? ISO8601DateFormatter().string(from: Date()))
+        ]
+        var files: [String: Data] = [:]
+        for (name, key) in Self.files {
+            guard raw[key] != .null else { throw Failure("the capture has no \(key); record it again") }
+            let file = stamp.merging(["reply": Sanitizer.clean(raw[key], transcript: true, mode: mode)]) { $1 }
+            files[name] = try HermesFixtureCapture.encode(.object(file))
+        }
+        return files
     }
 }

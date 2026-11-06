@@ -111,6 +111,50 @@ import XCTest
         XCTAssertEqual(snapshot["running"].flag, false)
     }
 
+    // MARK: Canonical gateway (#1601), from `scripts/capture-hermes-fixtures --local --gateway`
+
+    /// The recorded canonical snapshot and replay attach a session over a canonical socket: the
+    /// snapshot is this attach's though it has no `session_key`, and the replay goes under the
+    /// session's own epoch, not `gateway.ready`'s. A reattach the host answers with its recorded
+    /// epoch mismatch or replay gap (`snapshot_required`, no events) rebuilds from the snapshot.
+    func testCanonicalSnapshotAndReplayAttachUnderTheSessionsEpoch() async throws {
+        let ready = try fixture("canonical-ready")["reply"]
+        let snapshot = try fixture("canonical-resume-running")["reply"]
+        let replay = try fixture("canonical-replay")["reply"]
+        XCTAssertEqual(ready["session_authority"].flag, true)
+        let epoch = try XCTUnwrap(snapshot["replay_epoch"].text)
+        XCTAssertNotEqual(ready["replay_epoch"].text, epoch, "a session replays under its own epoch")
+        let session = try XCTUnwrap(snapshot["session_id"].text)
+
+        let host = BotSocketHost()
+        host.always("session.resume", .init(result: snapshot))
+        host.always("session.events.since", .init(result: replay))
+        let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.record,
+                                        target: .session(profile: "default", key: session),
+                                        wire: BotClient(http: host.connection(Self.record, canonical: true)))
+        await engine.activate()
+        defer { engine.suspend(); HermesHostFixture.reset() }
+        XCTAssertEqual(engine.connectionState, .connected)
+        XCTAssertTrue(engine.isCurrent(snapshot))
+        XCTAssertEqual(engine.sequence, replay["latest_seq"].integer)
+        let sent = host.requests.first { $0["method"].text == "session.events.since" }?["params"]
+        XCTAssertEqual(sent?["replay_epoch"].text, epoch)
+        await engine.activate()
+        XCTAssertFalse(engine.replayWasReset, "a reattach under the same epoch continues")
+
+        for refusal in ["canonical-replay-epoch-mismatch", "canonical-replay-gap"] {
+            let reply = try fixture(refusal)["reply"]
+            XCTAssertEqual(reply["snapshot_required"].flag, true, refusal)
+            host.next("session.events.since", .init(result: reply))
+            await engine.activate()
+            XCTAssertEqual(engine.connectionState, .connected, refusal)
+            XCTAssertTrue(engine.replayWasReset, "\(refusal) rebuilds from the snapshot")
+        }
+    }
+
+    private static let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
+                                              username: "user", password: "fixture")
+
     func testTurnFramesAreOneContiguousSettledTurn() throws {
         let frames = try XCTUnwrap(fixture("turn-frames").list)
         XCTAssertTrue(frames.allSatisfy { $0["method"].text == "event" })

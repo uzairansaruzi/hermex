@@ -124,6 +124,12 @@ extension HermesConversationOwner {
 ///
 /// Two ids per session: the stored key names it and goes in the drafts and caches; the
 /// runtime id keys session-scoped calls and `seq`, changes after a reap, and is never kept.
+///
+/// On a canonical socket (#1341) the two ids are one, the resume reply is a canonical
+/// snapshot (`stored_session_id`, no `session_key`), and each session replays under its own
+/// snapshot's `replay_epoch`, which the replay carries; the socket's epoch would answer
+/// `snapshot_required` with no events. The gateway shapes the calls and detaches the session
+/// when this screen leaves.
 @MainActor @Observable final class HermesConversation {
     enum ConnectionState { case disconnected, recovering, connected }
 
@@ -374,14 +380,17 @@ extension HermesConversationOwner {
             try await identify(attempt)
             // Identity only: the read after the replay is the one that carries live state.
             let first = try await resume(attempt: attempt)
-            guard let foundKey = attachedKey(first), let foundRuntime = first["session_id"].text,
-                  !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
+            let canonicalEpoch = first["replay_epoch"].text.flatMap { $0.isEmpty ? nil : $0 }
+            guard let foundKey = attachedKey(first), let foundRuntime = first["session_id"].text, !foundRuntime.isEmpty,
+                  let foundEpoch = wire.speaksCanonicalProtocol ? canonicalEpoch : wire.replayEpoch
+            else { throw BotFailure.wrongIdentity }
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
             let newRuntime = runtime != foundRuntime
             if replayWasReset { sequence = 0 }
             runtime = foundRuntime; epoch = foundEpoch; storedKey = foundKey
             owner?.conversationWillReplay(newRuntime: newRuntime)
-            let replay = try await request(.sessionEventsSince(sessionID: foundRuntime, lastSeen: sequence), attempt: attempt)
+            let replay = try await request(.sessionEventsSince(profile: target.profile, sessionID: foundRuntime,
+                                                               lastSeen: sequence, replayEpoch: foundEpoch), attempt: attempt)
             let missed = try reconcile(replay)
             owner?.conversationDidReplay(replay, frames: missed)
             let snapshot = try await resume(attempt: attempt)
@@ -436,12 +445,16 @@ extension HermesConversationOwner {
 
     /// The stored key a `session.resume` reply attached. A Bot Chat's must be the tip its
     /// lookup found. A session takes the key the host resolved: `session_key`, or
-    /// `stored_session_id` in the reduced reply of a session that has not started.
+    /// `stored_session_id` in the reduced reply of a session that has not started. A canonical
+    /// snapshot names it only as `stored_session_id`, started or not.
     private func attachedKey(_ reply: BotJSON) -> String? {
+        let canonical = wire.speaksCanonicalProtocol
         if case .canonicalChat = target {
-            return reply["session_key"].text == storedKey ? storedKey : nil
+            let key = canonical ? reply["stored_session_id"].text : reply["session_key"].text
+            return key == storedKey ? storedKey : nil
         }
-        guard let key = reply["session_key"].text ?? reply["stored_session_id"].text, !key.isEmpty else { return nil }
+        let resolved = canonical ? reply["stored_session_id"].text : reply["session_key"].text ?? reply["stored_session_id"].text
+        guard let key = resolved, !key.isEmpty else { return nil }
         return key
     }
 

@@ -126,6 +126,75 @@ import XCTest
         XCTAssertEqual(inboxHeard, [changed, request])
     }
 
+    /// On a canonical socket every screen attached to a session shares the socket's one
+    /// subscription (#1601), and holds it from the moment its resume is sent: an older screen
+    /// leaving while a newer one's resume is in flight detaches nothing, which would end the
+    /// subscription that resume is joining. The last holder's leaving detaches it, once, by the
+    /// subscription the host named, while the inbox keeps the socket.
+    func testACanonicalSessionIsDetachedOnlyWhenItsLastScreenLeaves() async throws {
+        let http = connection(canonical: true)
+        let older = BotClient(http: http), newer = BotClient(http: http), inbox = BotClient(http: http)
+        for client in [older, newer, inbox] { try await client.connect() }
+        defer { older.close(); newer.close(); inbox.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.reply = Self.canonicalReply
+        _ = try await older.call(.sessionResume(profile: "default", sessionID: "tip", omitMessages: true))
+        let sent = expectation(description: "the newer resume is on the wire")
+        let detached = expectation(description: "the session is detached")
+        socket.withholdReply = { request in
+            if request["method"].text == "session.detach" { detached.fulfill() }
+            guard request["method"].text == "session.resume" else { return false }
+            sent.fulfill()
+            return true
+        }
+        let attaching = Task { try await newer.call(.sessionResume(profile: "default", sessionID: "tip", omitMessages: true)) }
+        await fulfillment(of: [sent], timeout: 2)
+
+        older.close()
+        // A read through the inbox goes out after anything the leaving screen sent.
+        _ = try await inbox.call(.sessionActiveList)
+        XCTAssertFalse(socket.sentRequests.contains { $0["method"].text == "session.detach" })
+        newer.close()
+        await fulfillment(of: [detached], timeout: 2)
+        let detaches = socket.sentRequests.filter { $0["method"].text == "session.detach" }.map { $0["params"] }
+        XCTAssertEqual(detaches, [.object(["profile": .string("default"), "session_id": .string("tip"), "subscription_id": .string("sub-1")])])
+        _ = try? await attaching.value
+    }
+
+    /// A chat that leaves before its resume is answered, as one backed out of while it opens,
+    /// still has the subscription the late reply names detached while the inbox keeps the socket.
+    func testACanonicalAttachAnsweredAfterItsScreenLeftIsDetached() async throws {
+        let http = connection(canonical: true)
+        let chat = BotClient(http: http), inbox = BotClient(http: http)
+        for client in [chat, inbox] { try await client.connect() }
+        defer { chat.close(); inbox.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        let sent = expectation(description: "the resume is on the wire")
+        let detached = expectation(description: "the late subscription is detached")
+        socket.withholdReply = { request in
+            if request["method"].text == "session.detach" { detached.fulfill() }
+            guard request["method"].text == "session.resume" else { return false }
+            sent.fulfill()
+            return true
+        }
+        let attaching = Task { try await chat.call(.sessionResume(profile: "default", sessionID: "tip", omitMessages: true)) }
+        await fulfillment(of: [sent], timeout: 2)
+        chat.close()
+        let resume = try XCTUnwrap(socket.sentRequests.first { $0["method"].text == "session.resume" })
+        socket.enqueue(frame(Self.canonicalReply(resume).fields ?? [:]))
+        await fulfillment(of: [detached], timeout: 2)
+        let detach = socket.sentRequests.first { $0["method"].text == "session.detach" }?["params"]
+        XCTAssertEqual(detach?["subscription_id"].text, "sub-1")
+        _ = try? await attaching.value
+    }
+
+    /// A canonical host's reply: a snapshot of `tip` under `sub-1` for a resume, else empty.
+    private nonisolated static func canonicalReply(_ request: BotJSON) -> BotJSON {
+        let snapshot = BotJSON.object(["session_id": .string("tip"), "stored_session_id": .string("tip"),
+                                       "subscription_id": .string("sub-1"), "replay_epoch": .string("session-epoch")])
+        return .object(["id": request["id"], "result": request["method"].text == "session.resume" ? snapshot : .object([:])])
+    }
+
     func testASocketFaultTellsEachConsumerOnceAndTheirReconnectsShareOneReplacement() async throws {
         let http = connection()
         let chat = BotClient(http: http), inbox = BotClient(http: http)
@@ -536,15 +605,17 @@ import XCTest
                        [.passed, .failed(.http(401)), .notChecked, .notChecked, .notChecked])
     }
 
-    /// A saved connection whose gateway opens scripted sockets, kept in `sockets`.
-    private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30),
+    /// A saved connection whose gateway opens scripted sockets, kept in `sockets`. `canonical`
+    /// sockets open with `session_authority` in `gateway.ready` (#1341).
+    private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30), canonical: Bool = false,
                             _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
-        HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
-                         gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline) { [weak self] _ in
-                             let socket = BotScriptedSocket()
-                             self?.sockets.append(socket)
-                             return socket
-                         })
+        let ready = canonical ? #"{"replay_epoch":"epoch","session_authority":true}"# : #"{"replay_epoch":"epoch"}"#
+        return HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
+                                gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline, socketFactory: { [weak self] _ in
+                                    let socket = BotScriptedSocket(ready: ready)
+                                    self?.sockets.append(socket)
+                                    return socket
+                                }, opensCanonicalSockets: canonical))
     }
 
     /// Answers the first sent request for `method`.
