@@ -49,12 +49,15 @@ extension HermesCall {
     }
 }
 
-/// A canonical host refused a stop, correction or answer because the session's execution generation
-/// moved on (`stale_generation`): a newer turn started first. Nothing took effect, and nothing is
-/// resent; the user acts again on the newer turn. `generation` is the newer one when the refusal
-/// names it.
-struct HermesStaleGeneration: Error, Equatable {
-    let generation: Int?
+/// A canonical host refused a call because a fence it carried moved on: the session's execution
+/// generation (`stale_generation`, a newer turn started first) or its revision (`revision_conflict`,
+/// an edit landed first, #1603). Nothing took effect, and nothing is resent; the user acts again.
+/// `revision` and `generation` are the host's current ones when the refusal names them.
+struct HermesFenceRefusal: Error, Equatable {
+    enum Reason: Equatable { case generation, revision }
+    let reason: Reason
+    var revision: Int?
+    var generation: Int?
 }
 
 /// The sessions one canonical socket is subscribed to, and which screens hold each. The host
@@ -163,5 +166,20 @@ enum HermesCanonicalPrompts {
         guard !prompts.isEmpty, var fields = snapshot.fields else { return snapshot }
         fields["open_requests"] = .array((snapshot["open_requests"].list ?? []) + prompts)
         return .object(fields)
+    }
+}
+
+extension BotTransport {
+    /// One fenced edit of a stored session no chat holds attached here, such as a delete or a
+    /// folder move from the Sessions list (#1603): an identity `session.resume` reads its fences,
+    /// then the edit goes out once under them. A refusal throws as `HermesCall.sessionMutate` says.
+    func mutateStoredSession(profile: String, key: String,
+                             _ operation: HermesCall.SessionMutation.Operation) async throws -> BotJSON {
+        let snapshot = try await call(.sessionResume(profile: profile, sessionID: key, omitMessages: true), validateDispatch: nil)
+        guard let session = snapshot["session_id"].text, !session.isEmpty, let revision = snapshot["revision"].integer
+        else { throw BotFailure.unsupported }
+        return try await call(.sessionMutate(.init(profile: profile, sessionID: session, requestID: UUID().uuidString,
+                                                   revision: revision, generation: snapshot["execution_generation"].integer,
+                                                   operation: operation)), validateDispatch: nil)
     }
 }

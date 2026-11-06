@@ -175,7 +175,7 @@ enum HermesCall: Equatable, Sendable {
     /// holding the lock answers `{lock_held, message}`. Refused while a turn runs (4009).
     case sessionCompress(runtime: String, focus: String?, profile: String)
     /// On a canonical host `fence` names the running generation the correction or stop is for,
-    /// and a newer one refuses it (`HermesStaleGeneration`).
+    /// and a newer one refuses it (`HermesFenceRefusal`).
     case sessionSteer(sessionID: String, text: String, fence: Fence? = nil)
     case sessionRedirect(sessionID: String, text: String, fence: Fence? = nil)
     case sessionInterrupt(sessionID: String, fence: Fence? = nil)
@@ -200,6 +200,11 @@ enum HermesCall: Equatable, Sendable {
     case approvalRespond(sessionID: String, requestID: String, choice: BotApprovalRequest.Choice, fence: Fence? = nil)
     /// A canonical host's single clarify prompt (#1602): `{status: resolved | already_resolved}`.
     case clarifyRespond(sessionID: String, promptID: String, answer: String, fence: Fence)
+    /// One revision-fenced edit of a session on a canonical host (#1603), where the dashboard's
+    /// rename, delete, branch, undo, rewind, compress and folder calls don't exist. Answers
+    /// `{session_id, revision, execution_generation, operation, …}`; a fence that moved on throws
+    /// `HermesFenceRefusal`, any other refusal `BotSettingFailure` with the host's reason.
+    case sessionMutate(SessionMutation)
     case requestAnswer(id: String, result: RequestAnswer)
     case clarifyLock(requestID: String, questionID: String, answer: String)
     case connectionRespond(sessionID: String, opID: String, answer: BotConnectionOperation.Answer)
@@ -278,6 +283,68 @@ enum HermesCall: Equatable, Sendable {
     enum AvatarChange: Equatable, Sendable {
         case replace(String)
         case clear
+    }
+
+    /// One `session.mutate` (#1603): the edit, under the fences it was prepared at. A retry of
+    /// the same edit after a lost reply sends this exact value again, `requestID` included, so the
+    /// host answers from its receipt instead of applying it twice.
+    struct SessionMutation: Equatable, Sendable {
+        enum Operation: Equatable, Sendable {
+            case rename(String)
+            case delete
+            /// Keeps the rows through `throughMessageID`, a saved row's id; nil copies them all.
+            case branch(title: String?, throughMessageID: Int?)
+            /// Removes the user row `targetMessageID` and every row after it.
+            case rewind(targetMessageID: Int)
+            case compress(focus: String?)
+            case workspace(cwd: String)
+
+            var name: String {
+                switch self {
+                case .rename: return "rename"
+                case .delete: return "delete"
+                case .branch: return "branch"
+                case .rewind: return "rewind"
+                case .compress: return "compress"
+                case .workspace: return "workspace"
+                }
+            }
+
+            var payload: [String: BotJSON] {
+                switch self {
+                case .rename(let title): return ["title": .string(title)]
+                case .delete: return [:]
+                case .branch(let title, let through):
+                    var payload: [String: BotJSON] = [:]
+                    if let title { payload["title"] = .string(title) }
+                    if let through { payload["through_message_id"] = .number(Double(through)) }
+                    return payload
+                case .rewind(let target): return ["target_message_id": .number(Double(target))]
+                case .compress(let focus): return focus.map { ["focus": .string($0)] } ?? [:]
+                case .workspace(let cwd): return ["cwd": .string(cwd)]
+                }
+            }
+        }
+
+        var profile: String
+        var sessionID: String
+        var requestID: String
+        var revision: Int
+        /// Every edit but a rename is fenced by the execution generation too, as Desktop sends them.
+        var generation: Int?
+        var operation: Operation
+
+        var params: [String: BotJSON] {
+            var params: [String: BotJSON] = [
+                "profile": .string(profile), "session_id": .string(sessionID), "request_id": .string(requestID),
+                "expected_revision": .number(Double(revision)), "operation": .string(operation.name),
+                "payload": .object(operation.payload)
+            ]
+            if case .rename = operation {} else if let generation {
+                params["expected_generation"] = .number(Double(generation))
+            }
+            return params
+        }
     }
 
     /// What a canonical host (#1341) fences a session call by: the session's Profile, which routes
@@ -424,6 +491,7 @@ enum HermesCall: Equatable, Sendable {
         case .promptCancel: return "prompt.cancel"
         case .promptResolveUnknown: return "prompt.resolve_unknown"
         case .clarifyRespond: return "clarify.respond"
+        case .sessionMutate: return "session.mutate"
         case .sessionUndo: return "session.undo"
         case .sessionCompress: return "session.compress"
         case .fileAttach: return "file.attach"
@@ -588,6 +656,7 @@ enum HermesCall: Equatable, Sendable {
         case .clarifyRespond(let sessionID, let promptID, let answer, let fence):
             return ["session_id": .string(sessionID), "prompt_id": .string(promptID), "answer": .string(answer)]
                 .merging(fence.params) { $1 }
+        case .sessionMutate(let mutation): return mutation.params
         case .approvalRespond(let sessionID, let requestID, let choice, _):
             return ["session_id": .string(sessionID), "request_id": .string(requestID), "choice": .string(choice.rawValue)]
         case .requestAnswer(let id, let result): return ["id": .string(id), "result": result.json]
@@ -811,7 +880,7 @@ enum HermesCall: Equatable, Sendable {
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(eventID) && BotRoomRPC.validName(name)
         case .profilesList, .profilesGetAsset, .sessionList, .sessionResume, .sessionEventsSince, .sessionActiveList,
              .promptSubmit, .sessionSteer, .sessionRedirect, .sessionInterrupt, .fileAttach, .approvalRespond,
-             .promptCancel, .promptResolveUnknown, .clarifyRespond,
+             .promptCancel, .promptResolveUnknown, .clarifyRespond, .sessionMutate,
              .requestAnswer, .clarifyLock, .modelOptions, .configuredModelOptions, .sessionCwdSet, .sessionControlRead,
              .sessionControl, .groupsCapabilities, .clientCapabilities:
             valid = true

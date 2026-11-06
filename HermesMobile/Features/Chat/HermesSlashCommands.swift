@@ -277,9 +277,12 @@ struct HermesSlashCompletion: Equatable {
     }
 
     /// `/title` (#1048): renames the session on its runtime and returns the title the host
-    /// kept. A title in use or too long throws the host's message as `BotSettingFailure`.
+    /// kept. A title in use or too long throws the host's message as `BotSettingFailure`. A
+    /// canonical host renames with a fenced `rename` edit (#1603).
     func rename(_ title: String) async throws -> String {
-        let reply = try await write { .sessionRename(runtime: $0, title: title) }
+        let reply = engine.wire.speaksCanonicalProtocol
+            ? try await mutate(.rename(title))
+            : try await write { .sessionRename(runtime: $0, title: title) }
         return reply["title"].text.flatMap { $0.isEmpty ? nil : $0 } ?? title
     }
 
@@ -303,6 +306,19 @@ struct HermesSlashCompletion: Equatable {
             return try await engine.write(call(runtime), attempt: engine.generation, runtime: runtime) { dispatched = true }
         } catch {
             if HermesChatSideTasks.isReaped(error) { onNeedsReattach() }
+            throw dispatched ? error : HermesChatTurnCoordinator.NotSent(underlying: error)
+        }
+    }
+
+    /// One canonical edit bound to the attached runtime (#1603). Throws `NotSent` when it never went out.
+    private func mutate(_ operation: HermesCall.SessionMutation.Operation) async throws -> BotJSON {
+        guard engine.connectionState == .connected, let runtime = engine.runtime else {
+            throw HermesChatTurnCoordinator.NotSent(underlying: BotFailure.transport)
+        }
+        var dispatched = false
+        do {
+            return try await engine.mutate(operation, attempt: engine.generation, runtime: runtime) { dispatched = true }
+        } catch {
             throw dispatched ? error : HermesChatTurnCoordinator.NotSent(underlying: error)
         }
     }

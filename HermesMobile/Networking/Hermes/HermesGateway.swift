@@ -509,8 +509,11 @@ import OSLog
             // The host lacks this method, so every screen on the connection leaves it off.
             // The handshake's own `client.capabilities` is exempt: an older host connects as before.
             if code == -32601, entry.consumer != nil { http.noteUnavailable(entry.method) }
-            if speaksCanonicalProtocol, frame["error"]["data"]["reason"].text == "stale_generation" {
-                entry.continuation.resume(throwing: HermesStaleGeneration(generation: frame["error"]["data"]["execution_generation"].integer))
+            let data = frame["error"]["data"]
+            if speaksCanonicalProtocol, let reason = ["stale_generation": HermesFenceRefusal.Reason.generation,
+                                                       "revision_conflict": .revision][data["reason"].text ?? ""] {
+                entry.continuation.resume(throwing: HermesFenceRefusal(reason: reason, revision: data["revision"].integer,
+                                                                       generation: data["execution_generation"].integer))
                 return
             }
             switch entry.rejection {
@@ -626,6 +629,7 @@ private extension HermesCall {
     /// The plugin list reads the host's live catalog, so it waits twice the usual deadline, and a
     /// plugin toggle can sync the Profile's Python packages, so it waits three minutes. An install
     /// also clones the plugin first, and took 55 s for a small one, so it and an update wait five.
+    /// A canonical compaction (#1603) waits as `session.compress` does.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
         case .slashExec, .pluginsList: return standard * 2
@@ -634,6 +638,7 @@ private extension HermesCall {
         case .approvalSummary: return min(standard, .seconds(20))
         case .commitMessage, .displayStart: return .seconds(120)
         case .sessionCompress: return .seconds(660)
+        case .sessionMutate(let mutation) where mutation.operation.name == "compress": return .seconds(660)
         default: return standard
         }
     }
@@ -654,7 +659,7 @@ private extension HermesCall {
         case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .profileModelOptions,
              .sessionControlRead: return .setting
         case .commandDispatch(let name, _, _) where name == "goal": return .setting
-        case .slashExec, .sessionRename, .promptRewind, .sessionUndo, .sessionCompress, .sessionWorkspaceMove,
+        case .slashExec, .sessionRename, .promptRewind, .sessionUndo, .sessionCompress, .sessionWorkspaceMove, .sessionMutate,
              .projectsCreate, .projectsUpdate, .projectsDelete, .sessionBranch, .pluginsToggle, .pluginsInstall,
              .pluginsRemove, .pluginsUpdate, .pluginsSettings: return .setting
         default: return .plain

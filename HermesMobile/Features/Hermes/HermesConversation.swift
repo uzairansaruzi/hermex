@@ -167,6 +167,16 @@ extension HermesConversationOwner {
     /// or frames named, never this engine's own attach count. Stops and corrections carry it, so a
     /// newer turn refuses one meant for an older; nil until the host names one.
     private(set) var executionGeneration: Int?
+    /// A canonical host's revision for this session (#1603): the newest its snapshot, `session.info`,
+    /// an edit's receipt or a refusal named. Every edit is fenced by it.
+    private(set) var revision: Int?
+    /// The last edit sent whose answer never came, kept so the same edit tapped again goes out
+    /// identical and the host answers from its receipt instead of applying it twice (#1603).
+    @ObservationIgnored private var unansweredMutation: HermesCall.SessionMutation?
+
+    /// The edit whose answer was lost, if any, for a caller that derives its edit from history the
+    /// lost one may already have changed (`/undo`).
+    var unansweredOperation: HermesCall.SessionMutation.Operation? { unansweredMutation?.operation }
     /// True when frames were lost since the last attach began; the owner rebuilds.
     private(set) var replayWasReset = false
     /// True from `activate()` until `suspend()`: the screen wants this session connected,
@@ -237,6 +247,42 @@ extension HermesConversationOwner {
     func adoptGeneration(_ generation: Int?) {
         guard let generation, generation > executionGeneration ?? -1 else { return }
         executionGeneration = generation
+    }
+
+    /// Keeps the newer fences a reply, refusal or frame named; older ones are late.
+    func adoptFences(revision: Int?, generation: Int?) {
+        if let revision, revision > self.revision ?? -1 { self.revision = revision }
+        adoptGeneration(generation)
+    }
+
+    /// One fenced edit of this session on a canonical host (#1603), sent once as `write` sends it.
+    /// The host's answer, a receipt or a refusal, retires it and its fences are adopted. A lost
+    /// answer keeps it: the same edit asked for again re-sends it identical, which the host answers
+    /// from its receipt. Throws `.stale` before any snapshot named a revision.
+    func mutate(_ operation: HermesCall.SessionMutation.Operation, attempt: Int, runtime: String,
+                stillCurrent: (() throws -> Void)? = nil) async throws -> BotJSON {
+        let mutation: HermesCall.SessionMutation
+        if let unanswered = unansweredMutation, unanswered.sessionID == runtime, unanswered.operation == operation {
+            mutation = unanswered
+        } else {
+            guard let revision else { throw BotFailure.stale }
+            mutation = .init(profile: target.profile, sessionID: runtime, requestID: UUID().uuidString, revision: revision,
+                             generation: executionGeneration, operation: operation)
+        }
+        unansweredMutation = mutation
+        do {
+            let reply = try await write(.sessionMutate(mutation), attempt: attempt, runtime: runtime, stillCurrent: stillCurrent)
+            unansweredMutation = nil
+            adoptFences(revision: reply["revision"].integer, generation: reply["execution_generation"].integer)
+            return reply
+        } catch let refusal as HermesFenceRefusal {
+            unansweredMutation = nil
+            adoptFences(revision: refusal.revision, generation: refusal.generation)
+            throw refusal
+        } catch let error as BotSettingFailure {
+            unansweredMutation = nil
+            throw error
+        }
     }
 
     /// Throws `.stale` once a newer attach began or the task was cancelled.
@@ -436,16 +482,16 @@ extension HermesConversationOwner {
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
             let newRuntime = runtime != foundRuntime
             if replayWasReset { sequence = 0 }
-            if newRuntime { executionGeneration = nil }
+            if newRuntime { executionGeneration = nil; revision = nil }
             runtime = foundRuntime; epoch = foundEpoch; storedKey = foundKey
-            adoptGeneration(first["execution_generation"].integer)
+            adoptFences(revision: first["revision"].integer, generation: first["execution_generation"].integer)
             owner?.conversationWillReplay(newRuntime: newRuntime)
             let replay = try await request(.sessionEventsSince(profile: target.profile, sessionID: foundRuntime,
                                                                lastSeen: sequence, replayEpoch: foundEpoch), attempt: attempt)
             let missed = try reconcile(replay)
             owner?.conversationDidReplay(replay, frames: missed)
             let snapshot = try await resume(attempt: attempt)
-            adoptGeneration(snapshot["execution_generation"].integer)
+            adoptFences(revision: snapshot["revision"].integer, generation: snapshot["execution_generation"].integer)
             try await owner?.conversationDidReadSnapshot(snapshot, runtime: foundRuntime, attempt: attempt)
             try check(attempt)
             guard connectionState == .recovering else { throw BotFailure.transport }
@@ -526,7 +572,7 @@ extension HermesConversationOwner {
             if next <= cursor { continue }
             if next != cursor + 1 { replayWasReset = true }
             cursor = next
-            adoptGeneration(event["execution_generation"].integer)
+            adoptFrameFences(event)
             missed.append(event)
         }
         if cursor < latest { replayWasReset = true }
@@ -576,6 +622,14 @@ extension HermesConversationOwner {
         return session
     }
 
+    /// A canonical frame's generation, and a revision `session.info` or `session.updated` reports:
+    /// a turn moves the revision without an edit, and another viewer's edit announces its own.
+    private func adoptFrameFences(_ event: BotJSON) {
+        let reportsRevision = ["session.info", "session.updated"].contains(event["type"].text ?? "")
+        adoptFences(revision: reportsRevision ? event["payload"]["revision"].integer : nil,
+                    generation: event["execution_generation"].integer)
+    }
+
     /// Hands one of this runtime's frames to the owner in `seq` order, saying when frames
     /// before it were lost. A repeat of the last frame is dropped.
     private func admit(_ event: BotJSON) {
@@ -588,7 +642,7 @@ extension HermesConversationOwner {
         let gap = next != sequence + 1
         if gap { replayWasReset = true }
         sequence = next
-        adoptGeneration(event["execution_generation"].integer)
+        adoptFrameFences(event)
         owner?.conversation(didReceive: event, afterGap: gap)
     }
 

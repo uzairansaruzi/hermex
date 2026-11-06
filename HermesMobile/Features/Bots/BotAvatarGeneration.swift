@@ -119,6 +119,11 @@ enum BotAvatarGeneration {
             transport.onEvent = priorEvent
             transport.onDisconnect = priorDisconnect
             Task { @MainActor in
+                // A canonical draft has no runtime to close: one fenced delete removes it (#1603).
+                if transport.speaksCanonicalProtocol {
+                    _ = try? await transport.mutateStoredSession(profile: profile, key: stored ?? runtime, .delete)
+                    return
+                }
                 _ = try? await transport.call(.sessionClose(runtime: runtime), validateDispatch: nil)
                 guard let stored else { return }
                 // The host refuses to delete a session it is still closing, so this tries a few times.

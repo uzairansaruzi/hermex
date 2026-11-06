@@ -71,7 +71,7 @@ enum BotPromptMode: CaseIterable, Hashable, SendChoice {
 
     func definitelyRejected(_ error: Error) -> Bool {
         // A newer turn refused it before anything took effect.
-        if error is HermesStaleGeneration { return true }
+        if error is HermesFenceRefusal { return true }
         guard case BotFailure.rejected(let code) = error else { return false }
         if [401, 403, 4001, 4090, -32601, -32602].contains(code) { return true }
         return (self == .steer || self == .redirect) && [4002, 4010].contains(code)

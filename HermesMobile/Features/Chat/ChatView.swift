@@ -2317,7 +2317,13 @@ struct ChatView: View {
         return HermesTurnOutcomeRow(
             failure: activity.failure, notice: activity.notice,
             offersRetry: activity.retryTarget != nil, mayRetry: viewModel.mayRetryHermesTurn,
-            onRetry: { Task { await viewModel.retryHermesFailedTurn() } }
+            onRetry: {
+                Task {
+                    await viewModel.retryHermesFailedTurn()
+                    // A canonical cut that went through without its send leaves the prompt to send again.
+                    if let unsent = viewModel.takeUnsentHermesEdit() { restoreUnsentEdit(unsent) }
+                }
+            }
         )
     }
 
@@ -2990,6 +2996,16 @@ struct ChatView: View {
                 submittedDraft: submittedDraft,
                 submittedDraftRevision: submittedDraftRevision
             )
+            // A canonical `/retry` whose cut went through without its send: the prompt takes the
+            // command's place, or joins what was typed since.
+            if let unsent = viewModel.takeUnsentHermesEdit() {
+                if draftRevision == submittedDraftRevision {
+                    draftMessage = unsent
+                    persistDraftEdit(unsent)
+                } else {
+                    restoreUnsentEdit(unsent)
+                }
+            }
             if let lastError = viewModel.lastError {
                 onAPIError(lastError)
             }
@@ -4405,6 +4421,7 @@ struct ChatView: View {
         showRegenerateDiscardConfirmation = false
 
         _ = await viewModel.regenerateAssistantResponse(context, modelContext: modelContext)
+        if let unsent = viewModel.takeUnsentHermesEdit() { restoreUnsentEdit(unsent) }
 
         if let lastError = viewModel.lastError {
             onAPIError(lastError)

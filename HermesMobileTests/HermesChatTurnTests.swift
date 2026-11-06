@@ -622,6 +622,25 @@ import SwiftUI
         XCTAssertEqual(blocked.model.queuedPromptMessages.map(\.content), ["Then the tests"])
     }
 
+    /// An older queued admission that starts while a Send is out, as when another client discards
+    /// the lost turn holding it, shows its own prompt; the Send then waits behind it as a bubble.
+    func testAnOlderAdmissionStartingDuringASendShowsItsOwnPrompt() async throws {
+        var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
+        receipt["admission_id"] = .string("a3")
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(pending: [
+            admission("lost", "unknown", "Earlier", generation: 1), admission("a2", "queued", "Then the tests")
+        ]), canonical: true)
+        chat.host.next("prompt.submit", .init(result: .object(receipt), before: [
+            canonicalEvent(1, "session.info", ["pending": .array([admission("a2", "queued", "Then the tests")])],
+                           admission: "a2", generation: nil),
+            canonicalEvent(2, "message.start", admission: "a2", generation: 2)
+        ]))
+        let sent = await chat.model.sendMessage("Run the quick check.")
+        XCTAssertTrue(sent)
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.map(\.content), ["Then the tests"])
+        XCTAssertEqual(chat.model.queuedPromptMessages.map(\.content), ["Run the quick check."])
+    }
+
     /// Sends queued behind a canonical turn stay separate admissions, one bubble each in the
     /// host's order, as its recorded `pending` lists them, and the next turn takes only its own.
     func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
@@ -697,6 +716,56 @@ import SwiftUI
         ]], "the host refuses any other key")
         XCTAssertNil(chat.model.lostTurn)
         XCTAssertEqual(chat.writes("prompt.submit"), [])
+    }
+
+    /// Fork From Here on a canonical host (#1603) is one fenced `branch` edit that keeps the rows
+    /// through the selected row's own id, with nothing counted, and opens the branch the recorded
+    /// receipt names.
+    func testACanonicalBranchKeepsTheRowsThroughTheSelectedRowsID() async throws {
+        let branch = try canonical("canonical-mutations")["branch"]["result"]
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.mutate", .init(result: branch))
+        let key = try await chat.turn.branch(through: 81, name: "Branched")
+        XCTAssertEqual(key, branch["branched_session_id"].text)
+        let sent = try XCTUnwrap(chat.writes("session.mutate").first)
+        XCTAssertEqual(sent["operation"], .string("branch"))
+        XCTAssertEqual(sent["payload"], .object(["title": .string("Branched"), "through_message_id": .number(81)]))
+        XCTAssertEqual(sent["expected_revision"], .number(2))
+        XCTAssertEqual(sent["expected_generation"], .number(1))
+    }
+
+    /// An `/undo` whose answer was lost goes out again identical, same row and request id, though
+    /// the history read since no longer holds that exchange: deriving a target again would undo
+    /// another one.
+    func testALostCanonicalUndoIsSentAgainIdentical() async throws {
+        let chat = await openChat(runtime: "tip", history: [userRow("First", id: 1), assistantRow("One", id: 2),
+                                                             userRow("Second", id: 3), assistantRow("Two", id: 4)],
+                                  snapshot: canonicalSnapshot(), rpcDeadline: .milliseconds(300), canonical: true)
+        chat.host.withhold("session.mutate")
+        do { try await chat.turn.undo(); XCTFail("The undo's answer was lost") } catch {}
+
+        chat.host.allow("session.mutate")
+        chat.host.always("session.mutate", .init(result: .object(["rewound_count": .number(0)])))
+        serveHistory([userRow("First", id: 1), assistantRow("One", id: 2)])
+        // The lost answer ended the chat's connection, which reattaches on its own.
+        await waitUntil("reattached") { chat.turn.engine.connectionState == .connected }
+        try await chat.turn.undo()
+        let tries = chat.writes("session.mutate")
+        XCTAssertEqual(tries.count, 2)
+        XCTAssertEqual(tries.map { $0["payload"] }, Array(repeating: .object(["target_message_id": .number(3)]), count: 2))
+        XCTAssertEqual(tries[0]["request_id"], tries[1]["request_id"])
+    }
+
+    /// `/compress` on a canonical host is a fenced `compress` edit; its recorded `noop` receipt
+    /// removed nothing and says why, and the transcript stays.
+    func testACanonicalCompressIsAFencedEdit() async throws {
+        let noop = try canonical("canonical-mutations")["compress"]["result"]
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.mutate", .init(result: noop))
+        let compression = try await chat.turn.compress(focus: nil)
+        XCTAssertEqual(compression, .unchanged(noop["summary"]["headline"].text))
+        XCTAssertEqual(chat.writes("session.mutate").map { $0["operation"] }, [.string("compress")])
+        XCTAssertEqual(chat.writes("session.compress"), [])
     }
 
     /// A refused password (#884, #942) is never sent again unasked: neither returning from the
@@ -1751,7 +1820,7 @@ import SwiftUI
     private func canonicalSnapshot(running: Bool = false, generation: Int = 1, pending: [BotJSON] = [],
                                    prompts: [BotJSON] = []) -> BotJSON {
         .object(["session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
-                 "subscription_id": .string("sub-1"), "execution_generation": .number(Double(generation)),
+                 "subscription_id": .string("sub-1"), "execution_generation": .number(Double(generation)), "revision": .number(2),
                  "running": .bool(running), "messages": .array([]), "pending": .array(pending), "prompts": .array(prompts),
                  "info": .object(["profile_name": .string("default")])])
     }

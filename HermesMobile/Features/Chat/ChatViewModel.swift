@@ -3394,7 +3394,7 @@ final class ChatViewModel {
                 } else {
                     sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
                 }
-            } else if error is HermesStaleGeneration {
+            } else if error is HermesFenceRefusal {
                 drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey)
                 sendErrorMessage = String(localized: "The reply moved on before your message reached it. Send it again.")
             } else if mode.definitelyRejected(error) {
@@ -6402,7 +6402,9 @@ final class ChatViewModel {
     /// cards it replaced go, and the turn streams after it; the turn's end re-reads the newest
     /// rows. `retrying` is Retry on the last turn, which failed: when the chat showed that turn's
     /// prompt and it is still unsaved as the last one, it is cut as its row, and a 4018 hides
-    /// Retry. Returns why it failed, with nothing cut, or nil.
+    /// Retry. Returns why it failed, with nothing cut, or nil. On a canonical host the cut can go
+    /// through while the send doesn't (#1341, decision 5): the rows go, the text waits in
+    /// `unsentHermesEdit` for the composer, and the reason says so.
     private func rewindHermesTranscript(before rowID: Int, sending text: String, on hermes: HermesChatTurnCoordinator,
                                         reconnect: String, retrying: HermesChatActivity.RetryTarget? = nil) async -> String? {
         guard !isHermesSubmissionUncertain else { return reconnect }
@@ -6420,22 +6422,31 @@ final class ChatViewModel {
         defer { isStartingChat = false }
         do {
             try await hermes.rewind(before: rowID, text: text, discardsLaterPrompts: discardsLaterPrompts)
+        } catch is HermesChatTurnCoordinator.RewoundButNotSent {
+            removeCutRows(cut, insertingPrompt: nil)
+            unsentHermesEdit = text
+            return String(localized: "The later messages were removed, but your edited message wasn’t sent. It’s in the message box: send it again.")
         } catch {
             if retrying != nil, case BotSettingFailure.rejected(4018, _) = error { hermes.retryWasRefused(at: rowID) }
             return hermesHistoryFailure(error, on: hermes, reconnect: reconnect)
         }
-        // Rows the turn's first frames added stay after the prompt.
+        removeCutRows(cut, insertingPrompt: HermesChatTurnCoordinator.displayed(ChatMessage(
+            role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: "local-\(UUID().uuidString)"
+        )))
+        return nil
+    }
+
+    /// Drops the rows a rewind cut, with the cards anchored to them, and puts `prompt`, when
+    /// there is one, where the cut began. Rows the turn's first frames added stay after it.
+    private func removeCutRows(_ cut: Set<String>, insertingPrompt prompt: ChatMessage?) {
         let start = messages.firstIndex { cut.contains($0.id) } ?? messages.endIndex
         var next = messages.filter { !cut.contains($0.id) }
-        next.insert(HermesChatTurnCoordinator.displayed(ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970,
-                                                                    messageId: "local-\(UUID().uuidString)")),
-                    at: min(start, next.endIndex))
+        if let prompt { next.insert(prompt, at: min(start, next.endIndex)) }
         messages = next
         transcriptRevision &+= 1
         // A card without an anchor follows the last row, which the cut always takes.
         setCompletedToolCallGroups(completedToolCallGroups.filter { $0.anchorMessageID.map { !cut.contains($0) } ?? false })
         completedReasoningGroups = completedReasoningGroups.filter { $0.anchorMessageID.map { !cut.contains($0) } ?? false }
-        return nil
     }
 
     /// Why a Hermes rewind or `/undo` failed. A refusal is the host's own message, except busy
@@ -6447,6 +6458,14 @@ final class ChatViewModel {
         switch error {
         case let notSent as HermesChatTurnCoordinator.NotSent where notSent.followedReplacedChat:
             return Self.notSentToReplacedChat
+        // A canonical host (#1603) names its refusal: a reply still running, a row it can't cut,
+        // or a fence that moved on, whose newer fences are kept for the next try.
+        case BotSettingFailure.rejected(4001, "session_busy"):
+            return String(localized: "Wait for the current reply to finish.")
+        case BotSettingFailure.rejected(4001, "invalid_params"):
+            return String(localized: "This message can’t be changed any more.")
+        case is HermesFenceRefusal:
+            return String(localized: "This chat changed on the server. Reopen it and try again.")
         case is HermesChatTurnCoordinator.NotSent, BotSettingFailure.rejected(4001, _):
             return reconnect
         case BotSettingFailure.rejected(4009, _):
@@ -6526,7 +6545,7 @@ final class ChatViewModel {
             // Accepted is not idle: the turn's own ending frames settle it.
             do {
                 return try await hermesTurn.interrupt()
-            } catch is HermesStaleGeneration {
+            } catch is HermesFenceRefusal {
                 sendErrorMessage = String(localized: "The reply moved on before Stop reached it. Tap Stop again.")
                 return false
             } catch {

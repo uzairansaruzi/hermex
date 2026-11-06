@@ -117,7 +117,8 @@ struct Mode {
         if gateway {
             return Sanitizer.keptStrings.union(["replay_epoch", "epoch", "subscription_id", "admission_id", "prompt_id",
                                                 "kind", "choices", "command", "submission_id", "input_id", "outcome",
-                                                "reason", "message", "question", "description"])
+                                                "reason", "message", "question", "description", "operation",
+                                                "branched_session_id", "deleted_ids", "headline"])
         }
         return local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
     }
@@ -367,7 +368,7 @@ final class Capture {
         }
     }
 
-    private func http(_ path: String, query: [URLQueryItem] = [], body: JSON? = nil) async throws -> JSON {
+    func http(_ path: String, query: [URLQueryItem] = [], body: JSON? = nil) async throws -> JSON {
         var parts = URLComponents(url: secrets.address.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { parts.queryItems = query }
         var request = URLRequest(url: parts.url!)
@@ -637,7 +638,9 @@ struct CanonicalCapture {
         ("canonical-receipts.json", "receipts"), ("canonical-resume-queued.json", "resume_queued"),
         ("canonical-withdrawn-complete.json", "withdrawn_complete"), ("canonical-stale-generation.json", "stale_generation"),
         ("canonical-second-turn-start.json", "second_turn_start"),
-        ("canonical-clarify-lifecycle.json", "clarify_lifecycle")
+        ("canonical-clarify-lifecycle.json", "clarify_lifecycle"),
+        // Session edits (#1603)
+        ("canonical-mutations.json", "mutations")
     ]
 
     func run() async throws -> JSON {
@@ -694,13 +697,102 @@ struct CanonicalCapture {
         catch let failure as RPCFailure where failure.code == 4062 {} // made by an earlier run on this gateway
         let sibling = try await capture.call("session.create", ["profile": .string(Mode.sibling), "source": .string("gui")])
         let turns = try await captureTurns()
+        let mutations = try await captureMutations()
 
         return .object([
             "status": status, "ready": .object(ready), "create": create, "resume_idle": idle, "resume_repeat": repeated,
             "resume_running": running, "replay": replayed, "replay_epoch_mismatch": mismatch,
             "replay_gap": gap, "detach": .array([detached, stale]), "profile_create": sibling,
             "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
-        ].merging(turns) { $1 })
+        ].merging(turns) { $1 }.merging(["mutations": mutations]) { $1 })
+    }
+
+    /// #1603's `session.mutate` edits, as Hermex sends them, on a session with two settled turns:
+    /// a rename, the same edit at an older revision (the conflict), a rewind at an older generation,
+    /// a branch through the first reply's row, a rewind of the last prompt, a compaction, a delete
+    /// refused while a turn runs, and the delete once it stopped. Also a titled Bot Chat create.
+    private func captureMutations() async throws -> JSON {
+        let profile = JSON.string(mode.profile)
+        guard let session = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])["session_id"].text
+        else { throw Failure("session.create returned no session_id") }
+        func settle(_ text: String) async throws {
+            let start = capture.frames.count
+            _ = try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session), "text": .string(text),
+                                                         "queued": .bool(true), "submission_id": .string(UUID().uuidString)])
+            try await capture.readFrames(from: start) { Self.event($0, of: session) == "approval.request" }
+            guard let asked = capture.frames.dropFirst(start).last(where: { Self.event($0, of: session) == "approval.request" }) else {
+                throw Failure("no approval")
+            }
+            _ = try await capture.call("approval.respond", [
+                "profile": profile, "session_id": .string(session), "execution_generation": asked["params"]["payload"]["execution_generation"],
+                "prompt_id": asked["params"]["payload"]["prompt_id"], "choice": .string("once")
+            ])
+            try await capture.readFrames(from: start) {
+                Self.event($0, of: session) == "session.info" && $0["params"]["payload"]["running"].flag == false
+                    && capture.frames.dropFirst(start).contains { Self.event($0, of: session) == "message.complete" }
+            }
+        }
+        func fences() async throws -> (revision: JSON, generation: JSON) {
+            let snapshot = try await capture.call("session.resume", ["profile": profile, "session_id": .string(session),
+                                                                     "source": .string("gui"), "omit_messages": .bool(true)])
+            return (snapshot["revision"], snapshot["execution_generation"])
+        }
+        func mutate(_ operation: String, _ payload: [String: JSON], revision: JSON, generation: JSON?) async throws -> JSON {
+            var params: [String: JSON] = ["profile": profile, "session_id": .string(session), "request_id": .string(UUID().uuidString),
+                                          "expected_revision": revision, "operation": .string(operation), "payload": .object(payload)]
+            if let generation { params["expected_generation"] = generation }
+            return try await capture.reply("session.mutate", params)
+        }
+        try await settle(mode.prompt)
+        try await settle("Then run it again.")
+        let rows = try await capture.http("api/sessions/\(session)/messages")["messages"].list ?? []
+        guard let firstReply = rows.first(where: { $0["role"].text == "assistant" })?["id"],
+              let lastPrompt = rows.last(where: { $0["role"].text == "user" })?["id"] else { throw Failure("the turns saved no rows") }
+
+        // Titles are unique per Profile, and a gateway keeps the last run's sessions.
+        let run = UUID().uuidString.prefix(8)
+        var fence = try await fences()
+        let renamed = try await mutate("rename", ["title": .string("Renamed \(run)")], revision: fence.revision, generation: nil)
+        let conflict = try await mutate("rename", ["title": .string("Again \(run)")], revision: fence.revision, generation: nil)
+        fence = try await fences()
+        let staleRewind = try await mutate("rewind", ["target_message_id": lastPrompt], revision: fence.revision,
+                                           generation: .number(Double((fence.generation.integer ?? 1) - 1)))
+        let branched = try await mutate("branch", ["title": .string("Branched \(run)"), "through_message_id": firstReply],
+                                        revision: fence.revision, generation: fence.generation)
+        fence = try await fences()
+        let rewound = try await mutate("rewind", ["target_message_id": lastPrompt], revision: fence.revision, generation: fence.generation)
+        fence = try await fences()
+        let compacted = try await mutate("compress", [:], revision: fence.revision, generation: fence.generation)
+
+        let start = capture.frames.count
+        _ = try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session), "text": .string(mode.prompt),
+                                                     "queued": .bool(true), "submission_id": .string(UUID().uuidString)])
+        try await capture.readFrames(from: start) { Self.event($0, of: session) == "approval.request" }
+        fence = try await fences()
+        let busy = try await mutate("delete", [:], revision: fence.revision, generation: fence.generation)
+        _ = try await capture.call("session.interrupt", ["profile": profile, "session_id": .string(session),
+                                                         "execution_generation": fence.generation])
+        try await capture.readFrames(from: start) {
+            Self.event($0, of: session) == "session.info" && $0["params"]["payload"]["running"].flag == false
+                && capture.frames.dropFirst(start).contains { Self.event($0, of: session) == "message.complete" }
+        }
+        fence = try await fences()
+        let deleted = try await mutate("delete", [:], revision: fence.revision, generation: fence.generation)
+
+        let titled = try await capture.call("session.create", ["profile": profile, "title": .string("Bot Chat"), "hidden": .bool(true),
+                                                               "follow_profile_config": .bool(true), "source": .string("gui")])
+        let expected: [(String, Bool)] = [
+            ("rename", renamed["result"] != .null), ("revision conflict", conflict["error"]["data"]["reason"].text == "revision_conflict"),
+            ("stale rewind", staleRewind["error"]["data"]["reason"].text == "stale_generation"), ("branch", branched["result"] != .null),
+            ("rewind", rewound["result"] != .null), ("compress", compacted["result"] != .null), ("busy delete", busy["error"] != .null),
+            ("delete", deleted["result"] != .null)
+        ]
+        if let wrong = expected.first(where: { !$0.1 })?.0 { throw Failure("the \(wrong) edit did not answer as the contract says") }
+        return .object([
+            "rows": .array(rows.map { .object(["id": $0["id"], "role": $0["role"]]) }),
+            "rename": renamed, "revision_conflict": conflict, "stale_generation": staleRewind, "branch": branched,
+            "rewind": rewound, "compress": compacted, "busy_delete": busy, "delete": deleted, "titled_create": titled
+        ])
     }
 
     /// #1602's turns, sent as Hermex sends them. One session runs the scripted turn while two more

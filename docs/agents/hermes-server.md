@@ -437,7 +437,9 @@ the canonical session protocol (#1341) from `scripts/local-hermes --gateway` int
 replay under the session's own epoch, its epoch mismatch and gap, a detach and its stale
 repeat, a session on a second Profile, and a turn's admission receipts, two queued
 sends, a withdrawn one's `message.complete`, a `stale_generation` stop, the next
-turn's start under the next generation, and a clarify prompt's lifecycle.
+turn's start under the next generation, a clarify prompt's lifecycle, and the
+`session.mutate` edits (rename, a revision conflict, a stale-generation rewind, a
+branch, a rewind, a compaction, a busy and a settled delete, a titled create).
 
 ## Reconnect contract
 
