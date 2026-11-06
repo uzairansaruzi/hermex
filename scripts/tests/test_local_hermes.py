@@ -49,6 +49,12 @@ class StubModelTests(unittest.TestCase):
         self.assertEqual([c["function"]["name"] for c in calls], ["terminal"])
         self.assertEqual(json.loads(calls[0]["function"]["arguments"]), {"command": 'python3 -c "print(1)"'})
 
+    def test_a_prompt_that_mentions_clarify_asks_one_question_instead(self):
+        call = self.answer({"tools": TOOLS, "messages": [{"role": "user", "content": "Please clarify"}]})["message"]["tool_calls"][0]
+        self.assertEqual(call["function"]["name"], "clarify")
+        questions = json.loads(call["function"]["arguments"])["questions"]
+        self.assertEqual([q["question"] for q in questions], ["Which check should I run?"])
+
     def test_a_tool_result_gets_the_closing_text_with_its_first_line(self):
         choice = self.answer({"tools": TOOLS, "messages": [
             {"role": "user", "content": "hi"},

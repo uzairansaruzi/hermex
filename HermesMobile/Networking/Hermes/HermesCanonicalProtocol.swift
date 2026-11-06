@@ -20,6 +20,19 @@ extension HermesCall {
         case .sessionEventsSince(let profile, _, _, let replayEpoch):
             params["profile"] = .string(profile)
             if let replayEpoch { params["replay_epoch"] = .string(replayEpoch) }
+        // The host admits identified input only; each send is one deliberate send, never resent.
+        case .promptSubmit(_, _, let fence):
+            params["submission_id"] = .string(UUID().uuidString)
+            if let fence { params["profile"] = .string(fence.profile) }
+        case .sessionSteer(_, _, let fence?), .sessionRedirect(_, _, let fence?), .sessionInterrupt(_, let fence?):
+            params.merge(fence.params) { $1 }
+        // An approval is answered by its prompt: the generation replaces the queue's request id.
+        case .approvalRespond(_, let promptID, _, let fence?):
+            params["request_id"] = nil
+            params["prompt_id"] = .string(promptID)
+            params.merge(fence.params) { $1 }
+        // A session-scoped bypass is the canonical default, and the host refuses `scope: session`.
+        case .configSet(_, _, .yolo): params["scope"] = nil
         default: break
         }
         return params
@@ -34,6 +47,14 @@ extension HermesCall {
         default: return nil
         }
     }
+}
+
+/// A canonical host refused a stop, correction or answer because the session's execution generation
+/// moved on (`stale_generation`): a newer turn started first. Nothing took effect, and nothing is
+/// resent; the user acts again on the newer turn. `generation` is the newer one when the refusal
+/// names it.
+struct HermesStaleGeneration: Error, Equatable {
+    let generation: Int?
 }
 
 /// The sessions one canonical socket is subscribed to, and which screens hold each. The host
@@ -114,5 +135,33 @@ struct HermesCanonicalSubscriptions {
         guard entry.holders.isEmpty else { entries[session] = entry; return nil }
         entries[session] = nil
         return entry.subscription.map { .sessionDetach(profile: session.profile, sessionID: session.id, subscriptionID: $0) }
+    }
+}
+
+/// A canonical host's approval and clarify prompts (#1602) as the server-request envelopes the
+/// chat's request cards read, as Desktop projects them (`canonicalPromptParams`). They arrive as
+/// `approval.request` and `clarify.request` events and the snapshot's `prompts`, each with a
+/// `prompt_id` and the execution generation its answer carries; a `.settled` event retires one.
+/// Sudo, secret and a batch clarify stay ordinary server requests.
+enum HermesCanonicalPrompts {
+    /// The envelope for one prompt of `sessionID`: its `prompt_id` as the envelope id (and an
+    /// approval's `request_id`), its generation in `execution_generation`. Nil for anything else.
+    static func envelope(_ prompt: BotJSON, sessionID: String) -> BotJSON? {
+        guard let id = prompt["prompt_id"].text, !id.isEmpty, let kind = prompt["kind"].text,
+              ["approval", "clarify"].contains(kind), prompt["execution_generation"].integer != nil,
+              var params = prompt.fields else { return nil }
+        params["kind"] = nil; params["prompt_id"] = nil
+        params["session_id"] = .string(sessionID)
+        if kind == "approval" { params["request_id"] = .string(id) }
+        return .object(["id": .string(id), "method": .string(kind), "params": .object(params)])
+    }
+
+    /// `snapshot` with its `prompts` added to its `open_requests`, which a canonical snapshot
+    /// keeps for server requests only; unchanged when it holds no prompt.
+    static func projecting(_ snapshot: BotJSON, sessionID: String) -> BotJSON {
+        let prompts = (snapshot["prompts"].list ?? []).compactMap { envelope($0, sessionID: sessionID) }
+        guard !prompts.isEmpty, var fields = snapshot.fields else { return snapshot }
+        fields["open_requests"] = .array((snapshot["open_requests"].list ?? []) + prompts)
+        return .object(fields)
     }
 }

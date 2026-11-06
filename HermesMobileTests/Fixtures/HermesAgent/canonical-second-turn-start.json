@@ -1,0 +1,15 @@
+{
+  "captured_at" : "2026-11-06T20:43:34Z",
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "reply" : {
+    "admission_id" : "d8fb83a67d5a44d2b7cf3f6cada4399a",
+    "authority_epoch" : 1,
+    "execution_generation" : 2,
+    "payload" : {},
+    "replay_epoch" : "53dd2ae42004452d8bfd769b64081bda",
+    "seq" : 25,
+    "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e",
+    "type" : "message.start"
+  },
+  "version" : "0.23.0"
+}

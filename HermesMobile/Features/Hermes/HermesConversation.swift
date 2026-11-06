@@ -39,8 +39,15 @@ enum ConversationTarget: Hashable, Sendable {
 
 /// What an answer to a host request is checked against at the socket write: the attach and
 /// runtime it was tapped under, and the request it answers (the approval queue's
-/// `request_id`, or the envelope id of a question or credential prompt).
-struct HermesAnswerAction: Equatable { let generation: Int; let runtime: String; let requestID: String }
+/// `request_id`, or the envelope id of a question or credential prompt). `promptGeneration` is a
+/// canonical host's prompt's own execution generation, which its answer carries (#1602); nil for
+/// a server request.
+struct HermesAnswerAction: Equatable {
+    let generation: Int
+    let runtime: String
+    let requestID: String
+    var promptGeneration: Int? = nil
+}
 
 /// One answer to a host request, as `HermesConversation.answer` sends it.
 enum HermesRequestAnswer: Equatable {
@@ -156,6 +163,10 @@ extension HermesConversationOwner {
     private(set) var runtime: String?
     private(set) var sequence = 0
     private(set) var epoch: String?
+    /// A canonical host's execution generation for this session (#1602): the newest its snapshot
+    /// or frames named, never this engine's own attach count. Stops and corrections carry it, so a
+    /// newer turn refuses one meant for an older; nil until the host names one.
+    private(set) var executionGeneration: Int?
     /// True when frames were lost since the last attach began; the owner rebuilds.
     private(set) var replayWasReset = false
     /// True from `activate()` until `suspend()`: the screen wants this session connected,
@@ -216,6 +227,16 @@ extension HermesConversationOwner {
     func adoptStoredKey(_ key: String?) {
         guard let key, !key.isEmpty, key != storedKey, connectionState == .connected else { return }
         storedKey = key
+    }
+
+    /// What a session call on a canonical host is fenced by: the target's Profile and the newest
+    /// execution generation the host named. The dashboard ignores it.
+    var fence: HermesCall.Fence { .init(profile: target.profile, generation: executionGeneration) }
+
+    /// Keeps a newer execution generation the host named; an older one is a late frame.
+    func adoptGeneration(_ generation: Int?) {
+        guard let generation, generation > executionGeneration ?? -1 else { return }
+        executionGeneration = generation
     }
 
     /// Throws `.stale` once a newer attach began or the task was cancelled.
@@ -310,13 +331,41 @@ extension HermesConversationOwner {
             try await write(call, attempt: action.generation, runtime: action.runtime, stillCurrent: stillCurrent)
         }
         // The `request.answer` proxy gives a definitive ok/expired receipt for live and
-        // restored requests alike, unlike a bare JSON-RPC response frame.
+        // restored requests alike, unlike a bare JSON-RPC response frame. A canonical host takes
+        // only the response frame, whose write is the answer: its proxy reports "expired" for a
+        // request that still waits.
         func proxy(_ result: HermesCall.RequestAnswer) async throws -> BotJSON {
+            if wire.speaksCanonicalProtocol {
+                try await wire.respond(toRequest: action.requestID, result: result.json) { [weak self] in
+                    guard let self else { throw BotFailure.stale }
+                    try self.check(action.generation)
+                    guard self.runtime == action.runtime else { throw BotFailure.stale }
+                    try stillCurrent()
+                }
+                return .object(["status": .string("ok")])
+            }
             let reply = try await send(.requestAnswer(id: action.requestID, result: result))
             guard ["ok", "expired"].contains(reply["status"].text ?? "") else { throw BotFailure.unsupported }
             return reply
         }
+        // A canonical prompt's own receipt: `resolved`, or `already_resolved` once answered elsewhere.
+        func promptOutcome(_ reply: BotJSON) throws -> BotRequestResolution.Outcome {
+            switch reply["status"].text {
+            case "resolved": return .answered
+            case "already_resolved": return .alreadyResolved
+            default: throw BotFailure.unsupported
+            }
+        }
+        let promptFence = action.promptGeneration.map { HermesCall.Fence(profile: target.profile, generation: $0) }
         switch answer {
+        case .approval(let choice) where promptFence != nil:
+            return try promptOutcome(try await send(.approvalRespond(sessionID: action.runtime, requestID: action.requestID,
+                                                                     choice: choice, fence: promptFence)))
+        case .questions(let answers) where promptFence != nil:
+            // A canonical clarify prompt asks one question, answered unkeyed.
+            guard let promptFence, answers.count == 1, answers[0].questionID == nil else { throw BotFailure.unsupported }
+            return try promptOutcome(try await send(.clarifyRespond(sessionID: action.runtime, promptID: action.requestID,
+                                                                    answer: answers[0].text, fence: promptFence)))
         case .approval(let choice):
             let reply = try await send(.approvalRespond(sessionID: action.runtime, requestID: action.requestID, choice: choice))
             // `resolved` counts what the host actually unblocked. Zero means the queue no
@@ -387,13 +436,16 @@ extension HermesConversationOwner {
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
             let newRuntime = runtime != foundRuntime
             if replayWasReset { sequence = 0 }
+            if newRuntime { executionGeneration = nil }
             runtime = foundRuntime; epoch = foundEpoch; storedKey = foundKey
+            adoptGeneration(first["execution_generation"].integer)
             owner?.conversationWillReplay(newRuntime: newRuntime)
             let replay = try await request(.sessionEventsSince(profile: target.profile, sessionID: foundRuntime,
                                                                lastSeen: sequence, replayEpoch: foundEpoch), attempt: attempt)
             let missed = try reconcile(replay)
             owner?.conversationDidReplay(replay, frames: missed)
             let snapshot = try await resume(attempt: attempt)
+            adoptGeneration(snapshot["execution_generation"].integer)
             try await owner?.conversationDidReadSnapshot(snapshot, runtime: foundRuntime, attempt: attempt)
             try check(attempt)
             guard connectionState == .recovering else { throw BotFailure.transport }
@@ -474,6 +526,7 @@ extension HermesConversationOwner {
             if next <= cursor { continue }
             if next != cursor + 1 { replayWasReset = true }
             cursor = next
+            adoptGeneration(event["execution_generation"].integer)
             missed.append(event)
         }
         if cursor < latest { replayWasReset = true }
@@ -535,6 +588,7 @@ extension HermesConversationOwner {
         let gap = next != sequence + 1
         if gap { replayWasReset = true }
         sequence = next
+        adoptGeneration(event["execution_generation"].integer)
         owner?.conversation(didReceive: event, afterGap: gap)
     }
 

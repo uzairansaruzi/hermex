@@ -282,6 +282,23 @@ import OSLog
         return reply
     }
 
+    /// Answers the host's server request `id` (a canonical host's `sudo` or `secret`, #1602) with a
+    /// bare JSON-RPC response frame, for `consumer`. No reply comes back: the host settles the
+    /// request, and its `request.cancel` withdraws the card. Throws `.stale` when the screen left or
+    /// `validateDispatch` refuses, and `.transport` when the write fails, which ends the socket.
+    func respond(toRequest id: String, result: BotJSON, for consumer: Int,
+                 validateDispatch: (() throws -> Void)?) async throws {
+        guard let socket, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
+        try validateDispatch?()
+        let frame = BotJSON.object(["jsonrpc": .string("2.0"), "id": .string(id), "result": result])
+        let text = String(decoding: try JSONEncoder().encode(frame), as: UTF8.self)
+        let owner = generation
+        do { try await socket.send(.string(text)) } catch {
+            fail(error, generation: owner)
+            throw BotFailure.transport
+        }
+    }
+
     /// Writes each detach now, ahead of any later call, without waiting for its reply, which no
     /// screen reads: its string id, like the keepalive's, makes `consume` drop the reply. A lost
     /// one leaves the subscription until the socket closes.
@@ -492,6 +509,10 @@ import OSLog
             // The host lacks this method, so every screen on the connection leaves it off.
             // The handshake's own `client.capabilities` is exempt: an older host connects as before.
             if code == -32601, entry.consumer != nil { http.noteUnavailable(entry.method) }
+            if speaksCanonicalProtocol, frame["error"]["data"]["reason"].text == "stale_generation" {
+                entry.continuation.resume(throwing: HermesStaleGeneration(generation: frame["error"]["data"]["execution_generation"].integer))
+                return
+            }
             switch entry.rejection {
             case .room:
                 entry.continuation.resume(throwing: BotRoomFailure(code: code, reason: frame["error"]["data"]["reason"].text))

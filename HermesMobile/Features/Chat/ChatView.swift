@@ -2439,7 +2439,9 @@ struct ChatView: View {
             settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
             settledPlanAfterRenderID: settledPlanAfterRenderID,
             turnOutcome: hermesTurnOutcome,
-            queuedPrompt: viewModel.queuedPromptMessage,
+            queuedPrompts: viewModel.queuedPromptMessages,
+            lostTurn: viewModel.lostTurn,
+            onDiscardLostTurn: { Task { await viewModel.discardLostTurn() } },
             isCronRun: isCronRun,
             onCopyQueuedPrompt: { text in
                 UIPasteboard.general.string = text
@@ -4180,7 +4182,7 @@ struct ChatView: View {
     ) {
         // An empty chat still draws the transcript for a queued prompt (#1379), a waiting send (#1407)
         // or live workers.
-        guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil
+        guard !viewModel.messages.isEmpty || !viewModel.queuedPromptMessages.isEmpty || viewModel.lostTurn != nil
             || viewModel.waitingSendMessage != nil || (delegatedWork?.activeCount ?? 0) > 0 else { return }
 
         scheduleFollowScroll(

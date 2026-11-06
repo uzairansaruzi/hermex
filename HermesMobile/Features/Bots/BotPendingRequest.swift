@@ -46,6 +46,9 @@ struct BotServerRequest: Equatable {
     let method: String
     let sessionID: String
     let pending: BotPendingRequest?
+    /// A canonical host's approval or clarify prompt's execution generation, which its answer
+    /// carries (`HermesCanonicalPrompts`, #1602); nil for a server request.
+    let promptGeneration: Int?
 
     init?(_ frame: BotJSON) {
         guard let id = frame["id"].text, !id.isEmpty,
@@ -55,6 +58,7 @@ struct BotServerRequest: Equatable {
         self.id = id
         self.method = method
         self.sessionID = sessionID
+        promptGeneration = params["execution_generation"]?.integer
         if method == "approval" {
             pending = BotApprovalRequest(.object(params)).map(BotPendingRequest.approval)
         } else if method == "clarify" {

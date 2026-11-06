@@ -156,8 +156,9 @@ enum HermesCall: Equatable, Sendable {
 
     // Turns
     /// Always `queued`: even an idle Send can race Desktop, so a fresh send never
-    /// inherits a host setting that converts it into a redirect or steer.
-    case promptSubmit(sessionID: String, text: String)
+    /// inherits a host setting that converts it into a redirect or steer. `fence` goes only to
+    /// a canonical host (#1602), which also gets a `submission_id` minted for this one send.
+    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil)
     /// Cuts the transcript at one durable prompt row and starts the turn again with
     /// `text`, in one call under the host's history lock. Never `queued`: the host
     /// refuses a cut while busy (4009) instead of queueing or steering it. A Hermes
@@ -173,9 +174,18 @@ enum HermesCall: Equatable, Sendable {
     /// steered by `focus`, and answers `{status, removed, summary, info}`; another compressor
     /// holding the lock answers `{lock_held, message}`. Refused while a turn runs (4009).
     case sessionCompress(runtime: String, focus: String?, profile: String)
-    case sessionSteer(sessionID: String, text: String)
-    case sessionRedirect(sessionID: String, text: String)
-    case sessionInterrupt(sessionID: String)
+    /// On a canonical host `fence` names the running generation the correction or stop is for,
+    /// and a newer one refuses it (`HermesStaleGeneration`).
+    case sessionSteer(sessionID: String, text: String, fence: Fence? = nil)
+    case sessionRedirect(sessionID: String, text: String, fence: Fence? = nil)
+    case sessionInterrupt(sessionID: String, fence: Fence? = nil)
+    /// Withdraws one queued admission on a canonical host (#1602); a started one is interrupted
+    /// in the same call. Answers its receipt, `terminal` once withdrawn.
+    case promptCancel(profile: String, sessionID: String, admissionID: String)
+    /// Acknowledges a turn a canonical host lost across its restart (`status: unknown`), so the
+    /// admissions behind it run (#1602). `fence` is that admission's own generation. Never
+    /// requeues the lost prompt.
+    case promptResolveUnknown(sessionID: String, admissionID: String, fence: Fence)
     case fileAttach(sessionID: String, name: String, dataURL: String)
 
     // Side work (#1013): each runs beside the session's turn, even mid-turn, and answers
@@ -186,7 +196,10 @@ enum HermesCall: Equatable, Sendable {
     case promptBackground(sessionID: String, text: String)
 
     // Answers to the host's requests
-    case approvalRespond(sessionID: String, requestID: String, choice: BotApprovalRequest.Choice)
+    /// On a canonical host `requestID` is the prompt's `prompt_id` and `fence` its generation.
+    case approvalRespond(sessionID: String, requestID: String, choice: BotApprovalRequest.Choice, fence: Fence? = nil)
+    /// A canonical host's single clarify prompt (#1602): `{status: resolved | already_resolved}`.
+    case clarifyRespond(sessionID: String, promptID: String, answer: String, fence: Fence)
     case requestAnswer(id: String, result: RequestAnswer)
     case clarifyLock(requestID: String, questionID: String, answer: String)
     case connectionRespond(sessionID: String, opID: String, answer: BotConnectionOperation.Answer)
@@ -267,6 +280,19 @@ enum HermesCall: Equatable, Sendable {
         case clear
     }
 
+    /// What a canonical host (#1341) fences a session call by: the session's Profile, which routes
+    /// it, and the execution generation it acts on. The dashboard never receives either.
+    struct Fence: Equatable, Sendable {
+        var profile: String
+        var generation: Int?
+
+        var params: [String: BotJSON] {
+            var params: [String: BotJSON] = ["profile": .string(profile)]
+            if let generation { params["execution_generation"] = .number(Double(generation)) }
+            return params
+        }
+    }
+
     /// A model the host resolves under one provider.
     struct Model: Hashable, Sendable {
         var id: String
@@ -310,6 +336,14 @@ enum HermesCall: Equatable, Sendable {
     enum RequestAnswer: Equatable, Sendable {
         case value(String)
         case answer(String)
+
+        /// The server request's result: `{value}` for sudo and secret, `{answer}` for a question.
+        var json: BotJSON {
+            switch self {
+            case .value(let value): return .object(["value": .string(value)])
+            case .answer(let answer): return .object(["answer": .string(answer)])
+            }
+        }
     }
 
     /// The writes `config.set` may carry. All are runtime-scoped except `personality` and
@@ -387,6 +421,9 @@ enum HermesCall: Equatable, Sendable {
         case .sessionSteer: return "session.steer"
         case .sessionRedirect: return "session.redirect"
         case .sessionInterrupt: return "session.interrupt"
+        case .promptCancel: return "prompt.cancel"
+        case .promptResolveUnknown: return "prompt.resolve_unknown"
+        case .clarifyRespond: return "clarify.respond"
         case .sessionUndo: return "session.undo"
         case .sessionCompress: return "session.compress"
         case .fileAttach: return "file.attach"
@@ -526,7 +563,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionDetach(let profile, let sessionID, let subscriptionID):
             return ["profile": .string(profile), "session_id": .string(sessionID), "subscription_id": .string(subscriptionID)]
         case .sessionActiveList, .groupsCapabilities: return [:]
-        case .promptSubmit(let sessionID, let text):
+        case .promptSubmit(let sessionID, let text, _):
             return ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
         case .promptRewind(let sessionID, let text, let rowID, let deep):
             // `confirm_empty_truncate` too, as Desktop sends whenever it names a row:
@@ -537,19 +574,23 @@ enum HermesCall: Equatable, Sendable {
             ]
             if deep { params["confirm_deep_truncate"] = .bool(true) }
             return params
-        case .sessionSteer(let sessionID, let text), .sessionRedirect(let sessionID, let text),
+        case .sessionSteer(let sessionID, let text, _), .sessionRedirect(let sessionID, let text, _),
              .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text)]
-        case .sessionInterrupt(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID):
+        case .sessionInterrupt(let sessionID, _), .commandsCatalog(let sessionID), .subagentList(let sessionID):
             return ["session_id": .string(sessionID)]
         case .fileAttach(let sessionID, let name, let dataURL):
             return ["session_id": .string(sessionID), "name": .string(name), "data_url": .string(dataURL)]
-        case .approvalRespond(let sessionID, let requestID, let choice):
+        case .promptCancel(let profile, let sessionID, let admissionID):
+            return ["profile": .string(profile), "session_id": .string(sessionID), "admission_id": .string(admissionID)]
+        case .promptResolveUnknown(let sessionID, let admissionID, let fence):
+            return ["session_id": .string(sessionID), "admission_id": .string(admissionID)].merging(fence.params) { $1 }
+        case .clarifyRespond(let sessionID, let promptID, let answer, let fence):
+            return ["session_id": .string(sessionID), "prompt_id": .string(promptID), "answer": .string(answer)]
+                .merging(fence.params) { $1 }
+        case .approvalRespond(let sessionID, let requestID, let choice, _):
             return ["session_id": .string(sessionID), "request_id": .string(requestID), "choice": .string(choice.rawValue)]
-        case .requestAnswer(let id, .value(let value)):
-            return ["id": .string(id), "result": .object(["value": .string(value)])]
-        case .requestAnswer(let id, .answer(let answer)):
-            return ["id": .string(id), "result": .object(["answer": .string(answer)])]
+        case .requestAnswer(let id, let result): return ["id": .string(id), "result": result.json]
         case .clarifyLock(let requestID, let questionID, let answer):
             return ["request_id": .string(requestID), "question_id": .string(questionID), "answer": .string(answer)]
         case .connectionRespond(let sessionID, let opID, let answer):
@@ -770,6 +811,7 @@ enum HermesCall: Equatable, Sendable {
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(eventID) && BotRoomRPC.validName(name)
         case .profilesList, .profilesGetAsset, .sessionList, .sessionResume, .sessionEventsSince, .sessionActiveList,
              .promptSubmit, .sessionSteer, .sessionRedirect, .sessionInterrupt, .fileAttach, .approvalRespond,
+             .promptCancel, .promptResolveUnknown, .clarifyRespond,
              .requestAnswer, .clarifyLock, .modelOptions, .configuredModelOptions, .sessionCwdSet, .sessionControlRead,
              .sessionControl, .groupsCapabilities, .clientCapabilities:
             valid = true

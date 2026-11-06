@@ -6,7 +6,8 @@ A deterministic Hermes host for the simulator and for
 touches a real host. Every turn goes: "Let me run a quick check.", then a
 `terminal` call for `python3 -c "print(1)"` that waits for manual approval, then
 "The command returned: <first line of the result>." Approving really runs that
-command on this Mac.
+command on this Mac. A prompt that mentions "clarify" asks one `clarify` question
+instead.
 
 The first run clones the commit on line 1 of HERMES_AGENT_TESTED_SHA into
 ~/Library/Caches/hermex-local-hermes/<sha>/ and installs it with uv; later runs
@@ -63,12 +64,12 @@ READY_TIMEOUT = 120
 LOOPBACK = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
-def completion(text, tool_call_id=None):
-    """One non-streaming chat completion; a tool_call_id adds the terminal call."""
+def completion(text, tool_call_id=None, tool=("terminal", {"command": COMMAND})):
+    """One non-streaming chat completion; a tool_call_id adds the `tool` call, (name, arguments)."""
     message = {"role": "assistant", "content": text}
     if tool_call_id:
         message["tool_calls"] = [{"id": tool_call_id, "type": "function", "function": {
-            "name": "terminal", "arguments": json.dumps({"command": COMMAND})}}]
+            "name": tool[0], "arguments": json.dumps(tool[1])}}]
     return {
         "id": "chatcmpl-" + MODEL, "object": "chat.completion", "created": 0, "model": MODEL,
         "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if tool_call_id else "stop"}],
@@ -107,7 +108,12 @@ def stub_reply(body):
         return 200, completion("OK.")
     if last.get("role") == "user":
         # Unique per request within a conversation, and still a pure function of it.
-        return 200, completion("Let me run a quick check.", tool_call_id="call_%d" % len(messages))
+        call_id = "call_%d" % len(messages)
+        prompt = str(last.get("content") or "").lower()
+        if "clarify" in prompt:
+            questions = [{"question": "Which check should I run?", "choices": ["Unit tests", "Lint"]}]
+            return 200, completion("Let me ask first.", tool_call_id=call_id, tool=("clarify", {"questions": questions}))
+        return 200, completion("Let me run a quick check.", tool_call_id=call_id)
     if last.get("role") == "tool":
         return 200, completion("The command returned: %s." % tool_summary(last.get("content")).rstrip("."))
     return 200, completion("OK.")

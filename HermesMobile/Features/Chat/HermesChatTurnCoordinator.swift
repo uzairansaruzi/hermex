@@ -129,6 +129,23 @@ struct HermesChatTranscript: Equatable {
     }
 }
 
+/// One prompt the host holds for a later turn, as the transcript's pending bubble shows it. A
+/// canonical host's admission keeps its `admission_id` (#1602); the dashboard's one merged slot
+/// is `dashboardSlot`.
+struct HermesQueuedPrompt: Equatable, Identifiable {
+    static let dashboardSlot = "queued"
+    let id: String
+    let text: String
+}
+
+/// A turn a canonical host lost across its restart (`pending` status `unknown`, #1602): its prompt
+/// and the generation `prompt.resolve_unknown` acknowledges it with.
+struct HermesLostTurn: Equatable {
+    let admissionID: String
+    let generation: Int
+    let text: String
+}
+
 /// Runs a Hermes session's turns in the main chat (#1010). It owns the session's
 /// `HermesConversation`, which attaches, replays and reconnects, and reduces the engine's
 /// ordered frames onto the chat's `ChatStreamCoordinatorDelegate`, so message building,
@@ -169,9 +186,17 @@ struct HermesChatTranscript: Equatable {
     private(set) var activeRunStartedAt: Date?
     private(set) var latestRunEnding: ChatRunEnding?
     private(set) var successfulResponseCompletion: ChatStreamCoordinator.SuccessfulResponseCompletion?
-    /// The prompt the host holds for its next turn: one slot, merged as the host merges
-    /// text-only prompts. Restored from the snapshot's `queued`; a Stop discards it.
-    private(set) var queuedPrompt: String?
+    /// The prompts the host holds for later turns, in the order it runs them. The dashboard keeps
+    /// one slot, merged as it merges text-only prompts, restored from the snapshot's `queued`. A
+    /// canonical host keeps each send as its own admission (#1602), which its `pending` lists. A
+    /// Stop discards them.
+    private(set) var queuedPrompts: [HermesQueuedPrompt] = []
+    /// A turn a canonical host lost across its restart, which holds its queue until Discard
+    /// (`discardLostTurn`, #1602). From `pending`.
+    private(set) var lostTurn: HermesLostTurn?
+    /// The admission a canonical host's running turn started (its `message.start`), so a receipt
+    /// for it that lands after its frames is no follow-up.
+    @ObservationIgnored private var runningAdmission: String?
     /// Host requests open on this runtime (#1011, #1141): an approval, a question, a credential
     /// prompt, a Desktop task, a connection operation.
     let requests: HermesChatRequests
@@ -388,7 +413,10 @@ struct HermesChatTranscript: Equatable {
 
     /// Stop asks first only when it would lose something: the host's queued prompt, or a
     /// request (an approval the stop denies). Desktop's own task loses nothing.
-    var stopNeedsConfirmation: Bool { queuedPrompt != nil || requests.stopWithdrawsAnswers }
+    var stopNeedsConfirmation: Bool { !queuedPrompts.isEmpty || requests.stopWithdrawsAnswers }
+
+    /// Whether the session runs on a canonical host (#1341).
+    private var isCanonical: Bool { engine.wire.speaksCanonicalProtocol }
 
     /// Attaches the session, creating a new one on the first attach, or joins the attach
     /// already running so a new session is never created twice.
@@ -540,14 +568,18 @@ struct HermesChatTranscript: Equatable {
         var dispatched = false
         let reply: BotJSON
         do {
-            reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote), attempt: attempt,
-                                           runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
+            reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote, fence: engine.fence),
+                                           attempt: attempt, runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
         } catch {
+            if let stale = error as? HermesStaleGeneration { engine.adoptGeneration(stale.generation) }
             // A reaped runtime (4001): reattach to the stored key, which reads only.
             if case BotFailure.rejected(4001) = error { reattach() }
             throw dispatched ? error : NotSent(underlying: error)
         }
-        let outcome = mode.outcome(reply)
+        // A lost turn holds the canonical queue, so a send then waits behind it like a follow-up.
+        let ownTurnStarted = reply["admission_id"].text.map { $0 == runningAdmission } ?? false
+        let behind = (activeStreamID != nil && !ownTurnStarted) || lostTurn != nil
+        let outcome = mode.outcome(reply, turnRunning: behind, canonical: isCanonical)
         switch outcome {
         case .started:
             startedTurn = true
@@ -557,7 +589,15 @@ struct HermesChatTranscript: Equatable {
                 awaitingStart = true
             }
         case .followUpQueued, .redirectQueued:
-            queuedPrompt = queuedPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt
+            if let admission = reply["admission_id"].text, !admission.isEmpty {
+                // The `pending` the host reports next may already list it.
+                if !queuedPrompts.contains(where: { $0.id == admission }) {
+                    queuedPrompts.append(HermesQueuedPrompt(id: admission, text: prompt))
+                }
+            } else {
+                let merged = queuedPrompts.first.map { "\($0.text)\n\n\(prompt)" } ?? prompt
+                queuedPrompts = [HermesQueuedPrompt(id: HermesQueuedPrompt.dashboardSlot, text: merged)]
+            }
         case .guidanceQueued, .redirected, .voiceStopped:
             // None of these withdraws a request: a redirect while a tool waits on one only
             // steers, and a stop phrase ends voice mode. The host's `request.cancel` says
@@ -824,20 +864,35 @@ struct HermesChatTranscript: Equatable {
 
     /// Stops the running turn (`session.interrupt`); false when there is none or a stop is
     /// already in. The host also discards its queued prompt, withdraws open requests and
-    /// denies pending approvals. Idle still waits for the turn's own ending frames.
+    /// denies pending approvals. Idle still waits for the turn's own ending frames. A canonical
+    /// host keeps its queue through an interrupt, so the known queued admissions are withdrawn
+    /// first (`prompt.cancel`), then the running generation is interrupted (#1341, decision 3).
+    /// One a newer turn refuses throws `HermesStaleGeneration` and sends nothing more.
     func interrupt() async throws -> Bool {
         guard activeStreamID != nil, !stopRequested else { return false }
         guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.transport }
         stopRequested = true
         requests.isStoppingHere = true
         defer { requests.isStoppingHere = false }
+        let attempt = engine.generation
+        // The generation this Stop is for: a turn starting while the queue is withdrawn is not it.
+        let fence = engine.fence
         do {
-            _ = try await engine.write(.sessionInterrupt(sessionID: runtime), attempt: engine.generation, runtime: runtime)
+            if isCanonical {
+                for queued in queuedPrompts {
+                    _ = try await engine.write(.promptCancel(profile: engine.target.profile, sessionID: runtime, admissionID: queued.id),
+                                               attempt: attempt, runtime: runtime)
+                    queuedPrompts.removeAll { $0.id == queued.id }
+                }
+            }
+            _ = try await engine.write(.sessionInterrupt(sessionID: runtime, fence: fence), attempt: attempt, runtime: runtime)
         } catch {
+            if let stale = error as? HermesStaleGeneration { engine.adoptGeneration(stale.generation) }
             stopRequested = false
             throw error
         }
-        queuedPrompt = nil
+        // A canonical queue lost only what was withdrawn above; its `pending` reports the rest.
+        if !isCanonical { queuedPrompts = [] }
         requests.withdrawAll()
         return true
     }
@@ -1135,7 +1190,15 @@ struct HermesChatTranscript: Equatable {
                 finish(pendingEnding ?? .completed)
             }
             var prompt: String?
-            if !isSubmittingSend { prompt = queuedPrompt; queuedPrompt = nil }
+            runningAdmission = frame["admission_id"].text
+            if let admission = frame["admission_id"].text, !admission.isEmpty {
+                // A canonical turn starts one admission: the queued one it names, if any.
+                if let index = queuedPrompts.firstIndex(where: { $0.id == admission }) {
+                    prompt = queuedPrompts.remove(at: index).text
+                }
+            } else if !isSubmittingSend {
+                prompt = queuedPrompts.first?.text; queuedPrompts = []
+            }
             beginTurn(startedAt: hostTurnStartedAt, prompt: prompt)
         case "message.delta":
             if let seq = frame["seq"].integer, deltasInRebuild.remove(seq) != nil { return }
@@ -1176,7 +1239,18 @@ struct HermesChatTranscript: Equatable {
         case "session.info":
             applyInfo(payload)
         case "message.complete":
+            // A queued admission a canonical host withdrew before it ran settles without a
+            // generation: no turn ran, so the running one goes on.
+            if frame["admission_id"].text != nil, frame["execution_generation"] == .null { return }
             complete(payload)
+        case "approval.request", "clarify.request":
+            if let envelope = HermesCanonicalPrompts.envelope(payload, sessionID: frame["session_id"].text ?? "") {
+                requests.receive(envelope)
+            }
+        case "approval.settled", "clarify.settled":
+            // Answered here, elsewhere, or withdrawn with its turn: the host's word that it went.
+            guard let id = payload["prompt_id"].text, let kind = frame["type"].text?.split(separator: ".").first else { return }
+            requests.cancel(.object(["id": .string(id), "method": .string(String(kind)), "reason": .string("resolved")]))
         case "error":
             if let message = payload["message"].text, !message.isEmpty {
                 delegate?.streamCoordinatorDidReceiveErrorMessage(message)
@@ -1212,8 +1286,39 @@ struct HermesChatTranscript: Equatable {
         }
     }
 
+    /// A canonical host's `pending` admissions (#1602), from a snapshot or `session.info`: the
+    /// queued ones in order, not yet handed to the running turn, and a turn lost across a restart.
+    private func applyPending(_ rows: BotJSON) {
+        let rows = rows.list ?? []
+        queuedPrompts = rows.compactMap { row in
+            guard row["status"].text == "queued", row["steering"].flag != true,
+                  let id = row["admission_id"].text, !id.isEmpty else { return nil }
+            return HermesQueuedPrompt(id: id, text: BotMentions.displayText(row["text"].text ?? ""))
+        }
+        lostTurn = rows.lazy.compactMap { row -> HermesLostTurn? in
+            guard row["status"].text == "unknown", let id = row["admission_id"].text, !id.isEmpty,
+                  let generation = row["execution_generation"].integer else { return nil }
+            return HermesLostTurn(admissionID: id, generation: generation, text: BotMentions.displayText(row["text"].text ?? ""))
+        }.first
+    }
+
+    /// Discard on a lost turn's row (#1341, decision 4): acknowledges it with its own generation, so
+    /// the admissions behind it run. Sent once, from the tap; the host's next `pending` retires the
+    /// row. Never resends the lost prompt.
+    func discardLostTurn() async throws {
+        guard let lost = lostTurn else { return }
+        guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.transport }
+        let fence = HermesCall.Fence(profile: engine.target.profile, generation: lost.generation)
+        _ = try await engine.write(.promptResolveUnknown(sessionID: runtime, admissionID: lost.admissionID, fence: fence),
+                                   attempt: engine.generation, runtime: runtime) { [weak self] in
+            guard self?.lostTurn == lost else { throw BotFailure.stale }
+        }
+        if lostTurn == lost { lostTurn = nil }
+    }
+
     private func applyInfo(_ info: BotJSON) {
         if let model = info["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
+        if info["pending"].list != nil { applyPending(info["pending"]) }
         // A legacy compaction, `/compress` or mid-turn, moves the session to a new key (#1050).
         engine.adoptStoredKey(info["stored_session_id"].text)
         syncLiveActivityPushKey()
@@ -1271,9 +1376,10 @@ struct HermesChatTranscript: Equatable {
             savedTurn = SavedTurn(promptRowID: receipt["user_row_id"].integer, replyRowID: reply)
         }
         if ending == .cancelled {
-            // A stop from any client discards the host's queued prompt and withdraws its
-            // requests, so a receipt for this chat's queued prompt would never send.
-            queuedPrompt = nil
+            // A stop from any client discards the dashboard's queued prompt and withdraws its
+            // requests, so a receipt for this chat's queued prompt would never send. A canonical
+            // host keeps its queue, which its `pending` reports.
+            if !isCanonical { queuedPrompts = [] }
             requests.withdrawAll()
         }
         pendingEnding = ending
@@ -1308,10 +1414,13 @@ struct HermesChatTranscript: Equatable {
         let running = snapshot["running"].flag ?? snapshot["info"]["running"].flag ?? false
         let startedAt = snapshot["turn_started_at"].number ?? snapshot["inflight"]["started_at"].number
         hostRunning = running
-        let queued = snapshot["queued"]["user"].text
-            ?? snapshot["pending"].list?.first { $0["status"].text == "queued" }?["text"].text
-        queuedPrompt = queued.flatMap { $0.isEmpty ? nil : BotMentions.displayText($0) }
-        requests.didReadSnapshot(snapshot)
+        if snapshot["pending"].list != nil {
+            applyPending(snapshot["pending"])
+        } else {
+            let queued = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : BotMentions.displayText($0) }
+            queuedPrompts = queued.map { [HermesQueuedPrompt(id: HermesQueuedPrompt.dashboardSlot, text: $0)] } ?? []
+        }
+        requests.didReadSnapshot(HermesCanonicalPrompts.projecting(snapshot, sessionID: engine.runtime ?? ""))
         if let model = snapshot["info"]["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         noteInfo(snapshot["info"])
         // The chips' effort and Fast mode, restored when the controls reconnect (#1142).
@@ -1884,7 +1993,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     /// history and snapshot and rebuilds.
     func conversationDidFollowReplacedChat() {
         followedReplacements += 1
-        savedTurn = nil; completedFailed = false; queuedPrompt = nil; turnBase = nil
+        savedTurn = nil; completedFailed = false; queuedPrompts = []; lostTurn = nil; runningAdmission = nil; turnBase = nil
         finish(.cancelled)
         sideTasks.forgetChat()
         forgetHistoryUntilRebuild()

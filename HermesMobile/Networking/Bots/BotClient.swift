@@ -67,6 +67,10 @@ import Foundation
         try await gateway.send(call, for: consumerID, validateDispatch: validateDispatch)
     }
 
+    func respond(toRequest id: String, result: BotJSON, validateDispatch: (() throws -> Void)?) async throws {
+        try await gateway.respond(toRequest: id, result: result, for: consumerID, validateDispatch: validateDispatch)
+    }
+
     func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data {
         guard context.connectionID == http.connection.id, gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt

@@ -1,0 +1,12 @@
+{
+  "captured_at" : "2026-11-06T20:43:34Z",
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "reply" : {
+    "code" : 4001,
+    "data" : {
+      "reason" : "stale_generation"
+    },
+    "message" : "stale_generation"
+  },
+  "version" : "0.23.0"
+}

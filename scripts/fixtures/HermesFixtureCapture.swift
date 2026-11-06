@@ -116,7 +116,8 @@ struct Mode {
     var keptStrings: Set<String> {
         if gateway {
             return Sanitizer.keptStrings.union(["replay_epoch", "epoch", "subscription_id", "admission_id", "prompt_id",
-                                                "kind", "choices", "command", "submission_id", "input_id"])
+                                                "kind", "choices", "command", "submission_id", "input_id", "outcome",
+                                                "reason", "message", "question", "description"])
         }
         return local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
     }
@@ -384,6 +385,13 @@ final class Capture {
     }
 
     func call(_ method: String, _ params: [String: JSON]) async throws -> JSON {
+        let reply = try await reply(method, params)
+        if let code = reply["error"]["code"].integer { throw RPCFailure(method: method, code: code) }
+        return reply["result"]
+    }
+
+    /// The whole reply frame to one call, a refusal's `error` included.
+    func reply(_ method: String, _ params: [String: JSON]) async throws -> JSON {
         guard let socket else { throw Failure("no socket") }
         nextID += 1
         let id = nextID
@@ -392,8 +400,7 @@ final class Capture {
         while true {
             let reply = try await receive(timeout: 30)
             guard reply["id"].integer == id, reply["method"] == .null else { frames.append(reply); continue }
-            if let code = reply["error"]["code"].integer { throw RPCFailure(method: method, code: code) }
-            return reply["result"]
+            return reply
         }
     }
 
@@ -625,7 +632,12 @@ struct CanonicalCapture {
         ("canonical-resume-running.json", "resume_running"),
         ("canonical-replay.json", "replay"), ("canonical-replay-epoch-mismatch.json", "replay_epoch_mismatch"),
         ("canonical-replay-gap.json", "replay_gap"), ("canonical-detach.json", "detach"),
-        ("canonical-profile-create.json", "profile_create")
+        ("canonical-profile-create.json", "profile_create"),
+        // Turns (#1602)
+        ("canonical-receipts.json", "receipts"), ("canonical-resume-queued.json", "resume_queued"),
+        ("canonical-withdrawn-complete.json", "withdrawn_complete"), ("canonical-stale-generation.json", "stale_generation"),
+        ("canonical-second-turn-start.json", "second_turn_start"),
+        ("canonical-clarify-lifecycle.json", "clarify_lifecycle")
     ]
 
     func run() async throws -> JSON {
@@ -681,13 +693,82 @@ struct CanonicalCapture {
         do { _ = try await capture.call("profiles.create", ["name": .string(Mode.sibling)]) }
         catch let failure as RPCFailure where failure.code == 4062 {} // made by an earlier run on this gateway
         let sibling = try await capture.call("session.create", ["profile": .string(Mode.sibling), "source": .string("gui")])
+        let turns = try await captureTurns()
 
         return .object([
             "status": status, "ready": .object(ready), "create": create, "resume_idle": idle, "resume_repeat": repeated,
             "resume_running": running, "replay": replayed, "replay_epoch_mismatch": mismatch,
             "replay_gap": gap, "detach": .array([detached, stale]), "profile_create": sibling,
             "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
+        ].merging(turns) { $1 })
+    }
+
+    /// #1602's turns, sent as Hermex sends them. One session runs the scripted turn while two more
+    /// sends queue behind it: their receipts, a resume listing all three, the newest withdrawn
+    /// (its receipt and the `message.complete` it settles with), a stop refused for a stale
+    /// generation, and once the approval is answered, the next turn's start under the next
+    /// generation, stopped. Another session asks the stub's clarify question: the request, the
+    /// `clarify.respond` receipt and the settled event.
+    private func captureTurns() async throws -> [String: JSON] {
+        let profile = JSON.string(mode.profile)
+        func session() async throws -> String {
+            guard let id = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])["session_id"].text
+            else { throw Failure("session.create returned no session_id") }
+            return id
+        }
+        func submit(_ session: String, _ text: String) async throws -> JSON {
+            try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session), "text": .string(text),
+                                                     "queued": .bool(true), "submission_id": .string(UUID().uuidString)])
+        }
+        func event(_ type: String, of session: String, from start: Int, where match: (JSON) -> Bool = { _ in true }) async throws -> JSON {
+            let found = { (frame: JSON) in Self.event(frame, of: session) == type && match(frame["params"]) }
+            try await capture.readFrames(from: start, until: found)
+            guard let frame = capture.frames.dropFirst(start).first(where: found) else { throw Failure("no \(type)") }
+            return frame["params"]
+        }
+
+        let running = try await session()
+        let start = capture.frames.count
+        let idle = try await submit(running, mode.prompt)
+        let approval = try await event("approval.request", of: running, from: start)
+        let behind = try await submit(running, "Then the tests")
+        let newest = try await submit(running, "And the docs")
+        let queued = try await capture.call("session.resume", ["profile": profile, "session_id": .string(running),
+                                                               "source": .string("gui"), "omit_messages": .bool(true)])
+        guard queued["pending"].list?.count == 3, let generation = queued["execution_generation"].integer else {
+            throw Failure("the resume does not list the running turn and two queued sends")
+        }
+        let cancelled = try await capture.call("prompt.cancel", ["profile": profile, "session_id": .string(running),
+                                                                 "admission_id": newest["admission_id"]])
+        let withdrawn = try await event("message.complete", of: running, from: start) { $0["admission_id"] == newest["admission_id"] }
+        let stale = try await capture.reply("session.interrupt", ["profile": profile, "session_id": .string(running),
+                                                                  "execution_generation": .number(Double(generation - 1))])
+        guard stale["error"]["data"]["reason"].text == "stale_generation" else { throw Failure("an older generation's stop was not refused as stale") }
+        _ = try await capture.call("approval.respond", [
+            "profile": profile, "session_id": .string(running), "execution_generation": approval["payload"]["execution_generation"],
+            "prompt_id": approval["payload"]["prompt_id"], "choice": .string("once")
         ])
+        let next = try await event("message.start", of: running, from: start) { $0["admission_id"] == behind["admission_id"] }
+        guard next["execution_generation"].integer == generation + 1 else { throw Failure("the next turn kept the generation") }
+        _ = try await capture.call("session.interrupt", ["profile": profile, "session_id": .string(running),
+                                                         "execution_generation": next["execution_generation"]])
+
+        let asking = try await session()
+        let askStart = capture.frames.count
+        _ = try await submit(asking, "Please clarify")
+        let question = try await event("clarify.request", of: asking, from: askStart)
+        let answer = try await capture.call("clarify.respond", [
+            "profile": profile, "session_id": .string(asking), "execution_generation": question["payload"]["execution_generation"],
+            "prompt_id": question["payload"]["prompt_id"], "answer": .string("Lint")
+        ])
+        let answered = try await event("clarify.settled", of: asking, from: askStart)
+
+        return [
+            "receipts": .object(["idle": idle, "behind_running": behind, "cancelled": cancelled]),
+            "resume_queued": queued, "withdrawn_complete": withdrawn, "stale_generation": stale["error"],
+            "second_turn_start": next,
+            "clarify_lifecycle": .array([question, answer, answered])
+        ]
     }
 
     /// The event type of a frame for `session`; nil for any other frame.

@@ -610,19 +610,41 @@ final class ChatViewModel {
     /// The one composer line shown while this chat's own messages wait behind
     /// the run. It is derived from the queue, so it goes away when the queue
     /// drains or is handed over, and it never enters a stream snapshot. A Hermes
-    /// session's queued prompt shows as `queuedPromptMessage` instead.
+    /// session's queued prompts show as `queuedPromptMessages` instead.
     var queuedMessagesReceipt: String? {
         guard !queuedSlashMessages.isEmpty else { return nil }
         return String(localized: "Queued, sends when this run finishes")
     }
-    /// The prompt a Hermes host holds for its next turn, as the transcript's pending bubble
-    /// shows it (#1379): outside `messages`, and gone once that turn's start shows the real
-    /// row or a Stop discards it. Its reference lines are chips, as on a sent row.
-    var queuedPromptMessage: ChatMessage? {
-        hermesTurn?.queuedPrompt.map {
+    /// The prompts a Hermes host holds for later turns, as the transcript's pending bubbles show
+    /// them (#1379): outside `messages`, in the order the host runs them, one per canonical
+    /// admission (#1602), and each gone once its turn's start shows the real row or a Stop
+    /// discards it. Their reference lines are chips, as on a sent row.
+    var queuedPromptMessages: [ChatMessage] {
+        (hermesTurn?.queuedPrompts ?? []).map {
             HermesChatTurnCoordinator.displayed(ChatMessage(
-                role: "user", content: $0, timestamp: nil, messageId: "hermes-queued-prompt"
+                role: "user", content: $0.text, timestamp: nil, messageId: "hermes-queued-prompt-\($0.id)"
             ))
+        }
+    }
+
+    /// A turn a canonical host lost across its restart (#1602), as its row shows it: with its
+    /// prompt's bubble only when the transcript doesn't already end on that prompt.
+    var lostTurn: ChatLostTurn? {
+        guard let lost = hermesTurn?.lostTurn else { return nil }
+        let last = messages.last
+        let shown = last?.role == "user" && last?.content?.trimmingCharacters(in: .whitespacesAndNewlines)
+            == lost.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ChatLostTurn(prompt: shown ? nil : HermesChatTurnCoordinator.displayed(ChatMessage(
+            role: "user", content: lost.text, timestamp: nil, messageId: "hermes-lost-turn-\(lost.admissionID)"
+        )))
+    }
+
+    /// Discard on the lost turn's row: the host runs the prompts queued behind it.
+    func discardLostTurn() async {
+        guard let hermesTurn else { return }
+        do { try await hermesTurn.discardLostTurn() } catch {
+            if error as? BotFailure == .stale { return }
+            sendErrorMessage = String(localized: "Couldn’t discard the lost reply. Try again.")
         }
     }
     private(set) var steeringConfirmationNotice: String?
@@ -3286,7 +3308,7 @@ final class ChatViewModel {
 
     /// Sends one prompt to the Hermes session in `mode`, once (#1010). A Send shows the
     /// prompt at once and a Stop & send once it takes over; a steer shows its echo once
-    /// accepted; a queued prompt shows as `queuedPromptMessage` until the host runs it.
+    /// accepted; a queued prompt shows in `queuedPromptMessages` until the host runs it.
     /// `.kept` keeps the draft: the host refused it, did not confirm it, or it was not sent.
     /// `shown` is the prompt's row when it differs from what is sent, as for a goal's message;
     /// such a prompt leaves the staged files where they are. A plain-text Send passes
@@ -3372,6 +3394,9 @@ final class ChatViewModel {
                 } else {
                     sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
                 }
+            } else if error is HermesStaleGeneration {
+                drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey)
+                sendErrorMessage = String(localized: "The reply moved on before your message reached it. Send it again.")
             } else if mode.definitelyRejected(error) {
                 drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey)
                 sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
@@ -6501,6 +6526,9 @@ final class ChatViewModel {
             // Accepted is not idle: the turn's own ending frames settle it.
             do {
                 return try await hermesTurn.interrupt()
+            } catch is HermesStaleGeneration {
+                sendErrorMessage = String(localized: "The reply moved on before Stop reached it. Tap Stop again.")
+                return false
             } catch {
                 sendErrorMessage = String(localized: "The server could not stop the current response.")
                 return false

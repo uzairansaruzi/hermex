@@ -317,6 +317,9 @@ extension HermesAttemptRecord.Outcome {
     /// Sends one typed request. `validateDispatch` runs immediately before the
     /// socket write, so an action that went stale while queued is never sent.
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON
+    /// Answers the host's server request `id` with a JSON-RPC response frame carrying `result`, as a
+    /// canonical host takes a sudo or secret value (#1602). No reply comes back.
+    func respond(toRequest id: String, result: BotJSON, validateDispatch: (() throws -> Void)?) async throws
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String
     /// One file the host serves by `path` under `context`'s Profile and session. `limit` caps a
     /// preview's bytes; nil reads the whole file, as a MEDIA file's export does (#1112).
@@ -376,6 +379,10 @@ extension HermesAttemptRecord.Outcome {
 
 extension BotTransport {
     var speaksCanonicalProtocol: Bool { false }
+
+    func respond(toRequest id: String, result: BotJSON, validateDispatch: (() throws -> Void)?) async throws {
+        throw BotFailure.unsupported
+    }
     var serverVersion: String? { nil }
     var serverInstallID: String? { nil }
     var unavailableMethods: Set<String> { [] }

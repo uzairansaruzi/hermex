@@ -14,6 +14,8 @@ final class BotSocketHost: @unchecked Sendable {
         var error: Int?
         /// The error's message.
         var message = "refused"
+        /// The error's `data`, such as a canonical host's refusal `reason`.
+        var data: BotJSON = .null
         /// Event frames written ahead of the reply.
         var before: [BotJSON] = []
     }
@@ -96,7 +98,8 @@ final class BotSocketHost: @unchecked Sendable {
             socket?.enqueue(Self.message(["method": .string("event"), "params": frame]))
         }
         if let code = reply?.error {
-            return .object(["id": request["id"], "error": .object(["code": .number(Double(code)), "message": .string(reply?.message ?? "refused")])])
+            return .object(["id": request["id"], "error": .object(["code": .number(Double(code)), "message": .string(reply?.message ?? "refused"),
+                                                                    "data": reply?.data ?? .null])])
         }
         if let reply { return .object(["id": request["id"], "result": reply.result]) }
         guard method == "session.resume" else {

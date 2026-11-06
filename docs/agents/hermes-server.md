@@ -435,7 +435,9 @@ home path, the install id or another Profile's name. `--keep-raw` and
 the canonical session protocol (#1341) from `scripts/local-hermes --gateway` into
 `canonical-*.json`: `gateway.ready`, a create, idle, repeated and running resumes, a
 replay under the session's own epoch, its epoch mismatch and gap, a detach and its stale
-repeat, and a session on a second Profile.
+repeat, a session on a second Profile, and a turn's admission receipts, two queued
+sends, a withdrawn one's `message.complete`, a `stale_generation` stop, the next
+turn's start under the next generation, and a clarify prompt's lifecycle.
 
 ## Reconnect contract
 
