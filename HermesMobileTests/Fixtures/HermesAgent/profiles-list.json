@@ -24,7 +24,7 @@
       "path" : "/fixture/path",
       "previous_names" : [],
       "provider" : "fixture-redacted",
-      "skill_count" : 145,
+      "skill_count" : 146,
       "ui_meta" : {
         "hermes-bots" : {
           "custom" : true,

@@ -17,7 +17,7 @@
     "running" : false,
     "service_tier" : "fixture-redacted",
     "skills" : {},
-    "stored_session_id" : "20261103_194156_fe3075",
+    "stored_session_id" : "20261106_111607_abe930",
     "system_prompt" : "fixture-redacted",
     "terminal_backend" : "fixture-redacted",
     "title" : "fixture-redacted",
@@ -27,33 +27,33 @@
     "update_command" : "fixture-redacted",
     "usage" : {
       "active_subagents" : 0,
-      "avg_latency_s" : 27.8,
-      "avg_tps" : 3.1,
+      "avg_latency_s" : 2,
+      "avg_tps" : 20.6,
       "calls" : 1,
-      "completion" : 87,
+      "completion" : 42,
       "compressions" : 0,
       "context_estimated" : false,
       "context_max" : 1048576,
       "context_percent" : 2,
       "context_source" : "fixture-redacted",
-      "context_used" : 17737,
-      "input" : 17737,
+      "context_used" : 16699,
+      "input" : 16699,
       "model" : "fixture-redacted",
-      "output" : 87,
-      "prompt" : 17737,
-      "reasoning" : 85,
-      "total" : 17824
+      "output" : 42,
+      "prompt" : 16699,
+      "reasoning" : 40,
+      "total" : 16741
     },
-    "version" : "0.22.5",
+    "version" : "0.23.0",
     "yolo" : false
   },
   "message_count" : 2,
   "messages" : [
     {
       "role" : "user",
-      "row_id" : 26,
+      "row_id" : 29,
       "text" : "Reply with exactly: ok. Do not use tools.",
-      "timestamp" : 1793752917.184438
+      "timestamp" : 1793981767.9876459
     },
     {
       "reasoning_details" : [
@@ -67,17 +67,17 @@
         }
       ],
       "role" : "assistant",
-      "row_id" : 27,
+      "row_id" : 30,
       "text" : "ok.",
-      "timestamp" : 1793752945.2451892
+      "timestamp" : 1793981772.038184
     }
   ],
   "messages_omitted" : false,
   "resumed" : "fixture-redacted",
   "running" : false,
-  "session_id" : "adbd9dfc",
-  "session_key" : "20261103_194156_fe3075",
-  "started_at" : 1793752916.978716,
+  "session_id" : "bc7fbed6",
+  "session_key" : "20261106_111607_abe930",
+  "started_at" : 1793981767.7659981,
   "status" : "idle",
   "turn_started_at" : null
 }

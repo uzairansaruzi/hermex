@@ -1,5 +1,5 @@
 {
-  "captured_at" : "2026-11-04T00:18:32Z",
+  "captured_at" : "2026-11-06T16:19:16Z",
   "frames" : [
     {
       "jsonrpc" : "2.0",
@@ -23,12 +23,12 @@
           "running" : true,
           "service_tier" : "fixture-redacted",
           "skills" : {},
-          "stored_session_id" : "20261103_191828_96b243",
+          "stored_session_id" : "20261106_111907_9f8864",
           "system_prompt" : "fixture-redacted",
           "terminal_backend" : "fixture-redacted",
           "title" : "fixture-redacted",
           "tools" : {},
-          "turn_started_at" : 1793751508.709746,
+          "turn_started_at" : 1793981948.542836,
           "update_behind" : null,
           "update_command" : "fixture-redacted",
           "usage" : {
@@ -43,11 +43,11 @@
             "reasoning" : 0,
             "total" : 0
           },
-          "version" : "0.22.5",
+          "version" : "0.23.0",
           "yolo" : false
         },
         "seq" : 1,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "session.info"
       }
     },
@@ -55,8 +55,11 @@
       "jsonrpc" : "2.0",
       "method" : "event",
       "params" : {
+        "payload" : {
+          "turn_id" : "fixture-redacted"
+        },
         "seq" : 2,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "message.start"
       }
     },
@@ -65,10 +68,10 @@
       "method" : "event",
       "params" : {
         "payload" : {
-          "text" : "( ͡° ͜ʖ ͡°) computing..."
+          "text" : "(⌐■_■) pondering..."
         },
         "seq" : 3,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "thinking.delta"
       }
     },
@@ -80,7 +83,7 @@
           "text" : ""
         },
         "seq" : 4,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "thinking.delta"
       }
     },
@@ -89,23 +92,13 @@
       "method" : "event",
       "params" : {
         "payload" : {
-          "text" : "Let me run a quick check."
+          "already_streamed" : false,
+          "segment" : 0,
+          "text" : "Let me run a quick check.",
+          "turn_id" : "fixture-redacted"
         },
         "seq" : 5,
-        "session_id" : "4f098166",
-        "type" : "reasoning.available"
-      }
-    },
-    {
-      "jsonrpc" : "2.0",
-      "method" : "event",
-      "params" : {
-        "payload" : {
-          "already_streamed" : false,
-          "text" : "Let me run a quick check."
-        },
-        "seq" : 6,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "message.interim"
       }
     },
@@ -121,13 +114,13 @@
           "name" : "terminal",
           "tool_id" : "fixture-redacted"
         },
-        "seq" : 7,
-        "session_id" : "4f098166",
+        "seq" : 6,
+        "session_id" : "efca9d53",
         "type" : "tool.start"
       }
     },
     {
-      "id" : "srq-b3fb5f90a2e2",
+      "id" : "srq-887bd6d4ee82",
       "jsonrpc" : "2.0",
       "method" : "approval",
       "params" : {
@@ -145,8 +138,9 @@
         "pattern_keys" : [
           "fixture-redacted"
         ],
-        "request_id" : "e01b75f95008443b99067bd4135e896f",
-        "session_id" : "4f098166"
+        "request_id" : "c41ffe0cb9e4406dae96aad9ab15f373",
+        "session_id" : "efca9d53",
+        "timeout_s" : 300
       }
     },
     {
@@ -154,13 +148,37 @@
       "method" : "event",
       "params" : {
         "payload" : {
-          "id" : "srq-b3fb5f90a2e2",
+          "id" : "srq-887bd6d4ee82",
           "method" : "approval",
           "reason" : "fixture-redacted"
         },
-        "seq" : 8,
-        "session_id" : "4f098166",
+        "seq" : 7,
+        "session_id" : "efca9d53",
         "type" : "request.cancel"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "usage" : {
+            "active_subagents" : 0,
+            "avg_latency_s" : 1,
+            "calls" : 1,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          }
+        },
+        "seq" : 8,
+        "session_id" : "efca9d53",
+        "type" : "session.usage"
       }
     },
     {
@@ -171,7 +189,7 @@
           "args" : {
             "command" : "python3 -c \"print(1)\""
           },
-          "duration_s" : 0.5736010074615479,
+          "duration_s" : 0.7401442527770996,
           "name" : "terminal",
           "result" : {
             "approval" : "fixture-redacted",
@@ -182,7 +200,7 @@
           "tool_id" : "fixture-redacted"
         },
         "seq" : 9,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "tool.complete"
       }
     },
@@ -191,10 +209,10 @@
       "method" : "event",
       "params" : {
         "payload" : {
-          "text" : "(¬‿¬) reasoning..."
+          "text" : "(°ロ°) mulling..."
         },
         "seq" : 10,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "thinking.delta"
       }
     },
@@ -206,20 +224,8 @@
           "text" : ""
         },
         "seq" : 11,
-        "session_id" : "4f098166",
+        "session_id" : "efca9d53",
         "type" : "thinking.delta"
-      }
-    },
-    {
-      "jsonrpc" : "2.0",
-      "method" : "event",
-      "params" : {
-        "payload" : {
-          "text" : "The command returned: 1."
-        },
-        "seq" : 12,
-        "session_id" : "4f098166",
-        "type" : "reasoning.available"
       }
     },
     {
@@ -245,7 +251,7 @@
           "text" : "The command returned: 1.",
           "usage" : {
             "active_subagents" : 0,
-            "avg_latency_s" : 0.2,
+            "avg_latency_s" : 0.5,
             "calls" : 2,
             "completion" : 0,
             "compressions" : 0,
@@ -257,8 +263,8 @@
             "total" : 0
           }
         },
-        "seq" : 13,
-        "session_id" : "4f098166",
+        "seq" : 12,
+        "session_id" : "efca9d53",
         "type" : "message.complete"
       }
     },
@@ -284,7 +290,7 @@
           "running" : false,
           "service_tier" : "fixture-redacted",
           "skills" : {},
-          "stored_session_id" : "20261103_191828_96b243",
+          "stored_session_id" : "20261106_111907_9f8864",
           "system_prompt" : "fixture-redacted",
           "terminal_backend" : "fixture-redacted",
           "title" : "fixture-redacted",
@@ -294,7 +300,7 @@
           "update_command" : "fixture-redacted",
           "usage" : {
             "active_subagents" : 0,
-            "avg_latency_s" : 0.2,
+            "avg_latency_s" : 0.5,
             "calls" : 2,
             "completion" : 0,
             "compressions" : 0,
@@ -305,15 +311,15 @@
             "reasoning" : 0,
             "total" : 0
           },
-          "version" : "0.22.5",
+          "version" : "0.23.0",
           "yolo" : false
         },
-        "seq" : 14,
-        "session_id" : "4f098166",
+        "seq" : 13,
+        "session_id" : "efca9d53",
         "type" : "session.info"
       }
     }
   ],
-  "hermes_agent_sha" : "bf0203a794a07aac3ff764972ab9087baa4e4f4e",
-  "version" : "0.22.5"
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "version" : "0.23.0"
 }
