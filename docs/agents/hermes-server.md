@@ -177,8 +177,11 @@ non-JSON 401 on `/api/status`), a host with no sign-in Hermex can use (`.browser
 a refused gateway upgrade (`.upgradeRefused`), and a gateway's own listener, whose
 `gateway.ready` sets `session_authority` (`.gatewayListener`; its protocol is #1341). The
 inbox and chat use the same copy for the messages they show, and none of these retries on
-its own. Adding a server signs in over HTTP only, so a listener with a password is saved
-and refused at its first gateway connect.
+its own. Adding a server opens the gateway socket once after the sign-in, so a listener
+(0.23.0 serves the Webapp from it, port 9120) or a refused upgrade stops the form and
+nothing is saved. For a listener the inbox and the Sessions list offer Add Server (a Bot
+connection on a webui server, its connection form) in place of Reconnect or Retry, since
+its address can't change.
 A rejected password (`.rejected(401)`) offers "Update sign-in" in place of
 Reconnect in the inbox, a chat and a room: it opens the connection form with the
 password focused, from the inbox, because a chat's or room's client is bound to

@@ -406,7 +406,8 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         entry: OnboardingViewModel.Entry = .onboarding,
         _ script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }
     ) -> OnboardingViewModel {
-        OnboardingViewModel(entry: entry, hermesConfiguration: { HermesHostFixture.configuration(script) })
+        OnboardingViewModel(entry: entry, hermesConfiguration: { HermesHostFixture.configuration(script) },
+                            hermesGateway: .init(socketFactory: { _ in BotScriptedSocket() }))
     }
 
     func testAHermesStatusRevealsTheDashboardSignInAndNeverReachesTheWebui() async throws {
@@ -565,7 +566,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
                 default: return nil
                 }
             }
-        })
+        }, hermesGateway: .init(socketFactory: { _ in BotScriptedSocket() }))
         form.serverURLString = "hermes.example"
         await form.connect(authManager: manager)
         XCTAssertEqual(form.signInMethod, .browser)

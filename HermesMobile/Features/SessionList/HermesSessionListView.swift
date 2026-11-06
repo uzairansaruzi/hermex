@@ -772,7 +772,8 @@ struct HermesSessionListView: View {
                         covers.present(SessionExportShareItem(fileURL: url), startedAt: generation)
                     }
                 }
-            }
+            },
+            addServer: home?.avatar.addServer
         )
     }
 

@@ -173,6 +173,9 @@ import UIKit
     /// The inbox offers the sign-in form instead of Reconnect, and `open()` never sends
     /// that record again until it changes or the form saves a sign-in (#884).
     private(set) var needsSignIn = false
+    /// True after the address turned out to be a gateway's own listener (`.gatewayListener`),
+    /// which no reconnect fixes: the inbox offers a way to a new address instead (#1598).
+    private(set) var needsAddress = false
     /// What to check once an empty inbox has failed to reach the host
     /// `routeFailuresBeforeAdvice` times in a row. The quiet retry goes on behind it,
     /// and `open()` leaves it alone so it holds steady between attempts.
@@ -366,7 +369,7 @@ import UIKit
             if connection?.id != saved?.id || connection?.address != saved?.address {
                 routeFailures = 0; routeAdvice = nil
             }
-            if connection != saved { needsSignIn = false }
+            if connection != saved { needsSignIn = false; needsAddress = false }
             connection = saved
             guard var saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
@@ -433,6 +436,7 @@ import UIKit
                 // still a visible failure with the Reconnect path, not a stale roster.
                 link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription
                 needsSignIn = error as? BotFailure == .rejected(401)
+                needsAddress = error as? BotFailure == .gatewayListener
                 setLiveStatuses([:]); setReconnecting(false)
             }
         }
@@ -470,7 +474,7 @@ import UIKit
         close(); setLiveStatuses([:]); link = .disconnected
         routeFailures = 0; routeAdvice = nil
         errorMessage = BotConnectionAdvice.message(for: BotFailure.rejected(401), address: rejected.address)
-        needsSignIn = true
+        needsSignIn = true; needsAddress = false
     }
 
     /// The device's network path changed (#1372): a quiet reconnect waiting on its backoff runs
@@ -937,7 +941,8 @@ import UIKit
     /// the inbox stays open, and held while the device is offline; the roster and its last known
     /// statuses stay on screen meanwhile, and `isReconnecting` says so. Only a refusal the user
     /// has to act on (`BotConnectionAdvice.isRetryable`) clears the statuses and shows a message
-    /// and the Reconnect button (Update sign-in for a rejected password). An empty inbox shows
+    /// and the Reconnect button (Update sign-in for a rejected password, a new address for a
+    /// gateway's own listener). An empty inbox shows
     /// `routeAdvice` if the host stays unreachable.
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
@@ -951,6 +956,7 @@ import UIKit
             errorMessage = address.map { BotConnectionAdvice.message(for: error, address: $0) }
                 ?? (error as? BotFailure ?? .transport).localizedDescription
             needsSignIn = error as? BotFailure == .rejected(401)
+            needsAddress = error as? BotFailure == .gatewayListener
             return
         }
         if Self.isRouteFailure(error) { routeFailures += 1 } else { routeFailures = 0; routeAdvice = nil }
