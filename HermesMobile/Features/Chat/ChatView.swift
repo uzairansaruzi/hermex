@@ -1259,7 +1259,7 @@ struct ChatView: View {
     /// Toolbar, navigation, and presentations over `chatLifecycle`.
     private var chatContent: some View {
         chatLifecycle
-            .toolbar {
+            .verticalBarToolbar { hasVerticalBar in
                 // A bot's chat swaps the title for the bot's pill (#1145).
                 if let botChat = viewModel.hermesBotChat {
                     ToolbarItem(placement: .topBarLeading) {
@@ -1276,50 +1276,19 @@ struct ChatView: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    ChatToolbarActionCluster {
-                        // A bot's chat has no subtitle to tap, since the pill opens its bot.
-                        if viewModel.hermesBotChat != nil {
-                            ChatToolbarActionSlot {
-                                Button { showsChatSettings = true } label: {
-                                    Label("Chat settings", systemImage: "slider.horizontal.3")
-                                }
-                                .accessibilityLabel("Chat settings")
-                            }
-                        }
-
-                        if viewModel.showsGoalControls {
-                            ChatToolbarActionSlot {
-                                goalControlMenu
-                            }
-                        }
-
-                        if showsFilesButton, !isHermesSession || browsableHermesWorkspace != nil {
-                            ChatToolbarActionSlot {
-                                NavigationLink {
-                                    FileBrowserView(
-                                        files: workspaceFiles,
-                                        search: viewModel.workspaceFileSearch,
-                                        onAPIError: onAPIError,
-                                        onAddToPrompt: reviewCommentHook
-                                    )
-                                } label: {
-                                    Label("Files", systemImage: "folder")
-                                }
-                                .disabled(viewModel.isViewingCachedData)
-                                .accessibilityLabel("Files")
-                            }
-                        }
-
-                        if showsGitControls, gitAvailabilityViewModel.hasRepository {
-                            ChatToolbarActionSlot {
-                                gitActionsMenu
-                            }
+                if #available(iOS 27.1, *), hasVerticalBar {
+                    chatActionRailItems
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ChatToolbarActionCluster {
+                            if showsBotChatSettingsButton { ChatToolbarActionSlot { botChatSettingsButton } }
+                            if viewModel.showsGoalControls { ChatToolbarActionSlot { goalControlMenu } }
+                            if showsFilesLink { ChatToolbarActionSlot { filesLink } }
+                            if showsGitMenu { ChatToolbarActionSlot { gitActionsMenu } }
                         }
                     }
+                    delegatedWorkToolbarItem
                 }
-
-                delegatedWorkToolbarItem
             }
             .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
@@ -2253,6 +2222,63 @@ struct ChatView: View {
     /// A Hermes chat's delegated workers (#1140). Nil on the offline cache's copy, which lists none.
     private var delegatedWork: HermesDelegatedWork? {
         viewModel.isViewingCachedData ? nil : viewModel.hermesActivity?.delegatedWork
+    }
+
+    /// A bot's chat has no subtitle to tap, since the pill opens its bot.
+    private var showsBotChatSettingsButton: Bool { viewModel.hermesBotChat != nil }
+
+    private var showsFilesLink: Bool { showsFilesButton && (!isHermesSession || browsableHermesWorkspace != nil) }
+
+    private var showsGitMenu: Bool { showsGitControls && gitAvailabilityViewModel.hasRepository }
+
+    private var botChatSettingsButton: some View {
+        Button { showsChatSettings = true } label: {
+            Label("Chat settings", systemImage: "slider.horizontal.3")
+        }
+        .accessibilityLabel("Chat settings")
+    }
+
+    private var filesLink: some View {
+        NavigationLink {
+            FileBrowserView(
+                files: workspaceFiles,
+                search: viewModel.workspaceFileSearch,
+                onAPIError: onAPIError,
+                onAddToPrompt: reviewCommentHook
+            )
+        } label: {
+            Label("Files", systemImage: "folder")
+        }
+        .disabled(viewModel.isViewingCachedData)
+        .accessibilityLabel("Files")
+    }
+
+    /// The trailing actions where the system draws a vertical bar (iPhone Duo): one item each,
+    /// since the bar can't hold the cluster's custom view. Custom labels prefer the vertical bar
+    /// explicitly, or they fall back to a horizontal one.
+    @available(iOS 27.1, *)
+    @ToolbarContentBuilder
+    private var chatActionRailItems: some ToolbarContent {
+        if showsBotChatSettingsButton {
+            ToolbarItem(placement: .topBarTrailing) { botChatSettingsButton }
+        }
+        if viewModel.showsGoalControls {
+            ToolbarItem(placement: .topBarTrailing) { goalControlMenu }
+                .axisBehavior(.verticalPreferred)
+        }
+        if showsFilesLink {
+            ToolbarItem(placement: .topBarTrailing) { filesLink }
+        }
+        if showsGitMenu {
+            ToolbarItem(placement: .topBarTrailing) { gitActionsMenu }
+                .axisBehavior(.verticalPreferred)
+        }
+        if let work = delegatedWork, work.activeCount > 0 {
+            ToolbarItem(placement: .topBarTrailing) {
+                HermesDelegatedWorkButton(count: work.activeCount, action: openDelegatedWork)
+            }
+            .axisBehavior(.verticalPreferred)
+        }
     }
 
     /// A Hermes chat's workers button (#1140), its own glass beside the cluster while any

@@ -252,7 +252,12 @@ bar on the trailing edge, and 951x669 open, regular width, in the split.
   `.axisBehavior(.verticalPreferred)`, and a custom-label `Menu` needs that
   modifier. Content inside a list never moves. `HermesHomeChrome` reads
   `toolbarVerticalEdge` and swaps the home's switch and header pill for bar
-  buttons; the split's sidebar keeps horizontal bars, so it opts out.
+  buttons, and the chat splits its trailing cluster into one item each.
+- Unfolded, the vertical bar is the split's detail column's, so the detail
+  root carries the home's items (`HermesHomeDetailBar`) and the sidebar shows
+  none. The sidebar's own `toolbarVerticalEdge` follows whether it shows a bar,
+  so `SessionSplitView` reads it in the detail. Removing the system sidebar
+  toggle must come before the sidebar's column width, or the sidebar narrows.
 
 ## PR CI
 
