@@ -40,6 +40,9 @@ import Observation
     /// A canonical pick the host deferred to the running response's end, kept apart from
     /// `pendingModel` (a display state `session.info` clears) until the host asks to confirm it.
     private var deferredModel: ModelCatalogOption?
+    /// The host's ask to confirm `deferredModel` that a reattach replayed before these controls
+    /// reconnected; shown once they do, on the same chat.
+    private var heldConfirmation: BotJSON?
     private(set) var confirmation: Confirmation?
     private(set) var errorMessage: String?
     private(set) var isApplying = false
@@ -79,11 +82,15 @@ import Observation
         if lastContext?.connectionID != context.connectionID || lastContext?.profile != context.profile {
             pendingModel = nil; refused = []; errorMessage = nil
         }
-        if lastContext?.runtime != context.runtime { pendingModel = nil; deferredModel = nil }
+        if lastContext?.runtime != context.runtime { pendingModel = nil; deferredModel = nil; heldConfirmation = nil }
         lastContext = context
         catalog = HermesModelCatalog(.null); effort = nil; fast = nil
         self.context = context; self.wire = wire; self.mutate = mutate
         await reload()
+        if self.context == context, let held = heldConfirmation {
+            heldConfirmation = nil
+            receiveDeferredConfirmation(held)
+        }
     }
 
     func disconnect() {
@@ -170,8 +177,12 @@ import Observation
     /// deferred (`session.updated` with a `confirmation_required` model edit, #1604): the sheet
     /// asks for it as it would have at once, its token kept for the confirmed resend.
     func receiveDeferredConfirmation(_ payload: BotJSON) {
+        guard let context else {
+            if deferredModel != nil { heldConfirmation = payload }
+            return
+        }
         // The event is the edit's own answer plus `payload`, the selection it deferred.
-        guard let context, let option = deferredModel, payload["status"].text == "confirmation_required",
+        guard let option = deferredModel, payload["status"].text == "confirmation_required",
               let token = payload["confirm"].text, !token.isEmpty, payload["payload"]["model"].text == option.id
         else { return }
         deferredModel = nil

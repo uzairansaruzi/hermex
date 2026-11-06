@@ -373,6 +373,9 @@ extension HermesAttemptRecord.Outcome {
     /// (`session.branch`, #1051) and have not closed, so a delete can tell its own from another
     /// app's (#1048).
     var attachedRuntimes: Set<String> { get }
+    /// Gives up this screen's hold on one canonical session it attached only to read, detaching
+    /// it when no other screen holds it (`HermesCanonicalSubscriptions`).
+    func release(profile: String, sessionID: String)
     /// Ends this screen's calls, uploads and downloads; the shared socket stays for others.
     func close()
 }
@@ -466,6 +469,7 @@ extension BotTransport {
     }
 
     var attachedRuntimes: Set<String> { [] }
+    func release(profile: String, sessionID: String) {}
 
     func call(_ call: HermesCall) async throws -> BotJSON {
         try await self.call(call, validateDispatch: nil)

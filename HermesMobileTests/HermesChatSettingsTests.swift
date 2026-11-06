@@ -113,7 +113,8 @@ import Observation
 
     /// A guarded model picked while a reply runs is deferred; at the reply's end the canonical host
     /// reports the old model in `session.info`, then asks to confirm the pick in `session.updated`,
-    /// and the sheet's Confirm sends that token.
+    /// and the sheet's Confirm sends that token. A reattach replays that ask before the controls
+    /// reconnect, so it shows once they do.
     func testADeferredCanonicalPickAsksAtTheTurnsEndAndConfirmsWithItsToken() async throws {
         let chat = await openChat(canonical: true)
         let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
@@ -123,12 +124,15 @@ import Observation
         XCTAssertEqual(chat.model.composerConfigurationNotice, "Switches to claude-opus after this response.")
         XCTAssertNil(controls.confirmation)
 
+        chat.turn.settings.disconnect()
         chat.receive(.object(["session_id": .string("tip"), "seq": .number(1), "type": .string("session.info"),
                               "payload": .object(["running": .bool(false), "model": .string("claude-sonnet")])]))
         chat.receive(.object(["session_id": .string("tip"), "seq": .number(2), "type": .string("session.updated"),
                               "payload": .object(["status": .string("confirmation_required"), "confirm_required": .bool(true),
                                                   "confirm": .string("t9"), "confirm_message": .string("Opus costs about 5x more."),
                                                   "payload": .object(["model": .string("claude-opus"), "provider": .string("anthropic")])])]))
+        XCTAssertNil(controls.confirmation)
+        await chat.turn.settings.connect(runtime: "tip", attempt: chat.turn.engine.generation)
         let shown = try XCTUnwrap(controls.confirmation)
         XCTAssertEqual(shown.message, "Opus costs about 5x more.")
         chat.host.next("session.mutate", .init(result: try settingsFixture("model")["result"]))

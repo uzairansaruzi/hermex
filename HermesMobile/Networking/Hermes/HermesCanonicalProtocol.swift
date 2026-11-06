@@ -136,7 +136,7 @@ struct HermesCanonicalSubscriptions {
     /// The detach for `session` once `consumer` was its last holder; nil while another holds it
     /// or no reply named its subscription.
     @discardableResult
-    private mutating func release(_ consumer: Int, from session: Session) -> HermesCall? {
+    mutating func release(_ consumer: Int, from session: Session) -> HermesCall? {
         guard var entry = entries[session], entry.holders.remove(consumer) != nil else { return nil }
         guard entry.holders.isEmpty else { entries[session] = entry; return nil }
         entries[session] = nil
@@ -175,12 +175,14 @@ enum HermesCanonicalPrompts {
 extension BotTransport {
     /// One fenced edit of a stored session no chat holds attached here, such as a delete or a
     /// folder move from the Sessions list (#1603): an identity `session.resume` reads its fences,
-    /// then the edit goes out once under them. A refusal throws as `HermesCall.sessionMutate` says.
+    /// then the edit goes out once under them, and the read's hold is released after. A refusal
+    /// throws as `HermesCall.sessionMutate` says.
     func mutateStoredSession(profile: String, key: String,
                              _ operation: HermesCall.SessionMutation.Operation) async throws -> BotJSON {
         let snapshot = try await call(.sessionResume(profile: profile, sessionID: key, omitMessages: true), validateDispatch: nil)
-        guard let session = snapshot["session_id"].text, !session.isEmpty, let revision = snapshot["revision"].integer
-        else { throw BotFailure.unsupported }
+        guard let session = snapshot["session_id"].text, !session.isEmpty else { throw BotFailure.unsupported }
+        defer { release(profile: profile, sessionID: session) }
+        guard let revision = snapshot["revision"].integer else { throw BotFailure.unsupported }
         return try await call(.sessionMutate(.init(profile: profile, sessionID: session, requestID: UUID().uuidString,
                                                    revision: revision, generation: snapshot["execution_generation"].integer,
                                                    operation: operation)), validateDispatch: nil)

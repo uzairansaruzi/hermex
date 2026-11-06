@@ -303,6 +303,7 @@ import Foundation
     }
 
     var attachedRuntimes: Set<String> { http.attachedRuntimes }
+    func release(profile: String, sessionID: String) { gateway.release(consumerID, from: .init(profile: profile, id: sessionID)) }
 
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
         guard context.connectionID == http.connection.id, gateway.isAttached(consumerID) else { throw BotFailure.stale }

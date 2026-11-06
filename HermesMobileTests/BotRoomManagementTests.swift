@@ -55,6 +55,9 @@ import XCTest
         XCTAssertTrue(wire.writes.isEmpty)
         XCTAssertNil(creator.created)
         XCTAssertNotNil(creator.message)
+        // The picker follows the host's answer: the refused bot leaves, and one it seats now shows.
+        XCTAssertEqual(creator.selected.map(\.id), ["default"])
+        XCTAssertEqual(creator.remaining.map(\.id), ["bot1"])
         XCTAssertTrue(try self.creator(RoomWire(), seatable: ["dev"]).tooFewToSeat)
 
         // The host refuses an unseatable member before it looks for the room, so a Try Again after

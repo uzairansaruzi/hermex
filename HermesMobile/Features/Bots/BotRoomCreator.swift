@@ -8,8 +8,9 @@ import Observation
     let server: URL
     let roster: [BotProfile]
     /// The Profiles a canonical host can seat (`BotRoomCapabilities.seatableProfiles`, #1605); nil
-    /// on a dashboard, which seats its whole roster. No other bot is offered or sent.
-    let seatable: Set<String>?
+    /// on a dashboard, which seats its whole roster. No other bot is offered or sent. Create
+    /// refreshes it from the host's latest answer.
+    private(set) var seatable: Set<String>?
     private(set) var selected: [BotProfile] = []
     var name = "Group Chat"
     var query = ""
@@ -85,13 +86,15 @@ import Observation
             // Rechecked at create: a bot the host stopped seating since the sheet opened is never sent.
             // The host refuses such a member before it looks for the room, so a Try Again reads the
             // rooms instead: the room it made, or an unlocked choice when it made none.
-            if let seatable = caps.seatableProfiles, !selected.allSatisfy({ seatable.contains($0.id) }) {
+            if let fresh = caps.seatableProfiles, !selected.allSatisfy({ fresh.contains($0.id) }) {
                 if let attempt {
                     let rooms = try await BotRoomList.read(client) { try self.check(owner, client) }
                     try check(owner, client); onReconciled(rooms)
                     if let room = Self.room(made: attempt, in: rooms, authority: authority) { created = room; return }
                     self.attempt = nil
                 }
+                seatable = fresh
+                selected.removeAll { !fresh.contains($0.id) }
                 message = String(localized: "A bot you chose can’t join group chats on this Hermes any more. Go back and choose again.")
                 return
             }

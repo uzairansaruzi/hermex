@@ -188,6 +188,30 @@ import XCTest
         _ = try? await attaching.value
     }
 
+    /// An edit from the Sessions list attaches only to read the session's fences, so the list
+    /// doesn't stay subscribed to it afterwards (#1603).
+    func testAStoredSessionEditReleasesItsReadAfterwards() async throws {
+        let list = BotClient(http: connection(canonical: true))
+        try await list.connect()
+        defer { list.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        let detached = expectation(description: "the session is detached")
+        socket.withholdReply = { request in
+            if request["method"].text == "session.detach" { detached.fulfill() }
+            return false
+        }
+        socket.reply = { request in
+            guard request["method"].text == "session.resume" else { return .object(["id": request["id"], "result": .object([:])]) }
+            var snapshot = Self.canonicalReply(request)["result"].fields ?? [:]
+            snapshot["revision"] = .number(1); snapshot["execution_generation"] = .number(1)
+            return .object(["id": request["id"], "result": .object(snapshot)])
+        }
+        _ = try await list.mutateStoredSession(profile: "default", key: "tip", .workspace(cwd: "/work"))
+        await fulfillment(of: [detached], timeout: 2)
+        let detach = socket.sentRequests.first { $0["method"].text == "session.detach" }?["params"]
+        XCTAssertEqual(detach?["subscription_id"].text, "sub-1")
+    }
+
     /// A canonical host's reply: a snapshot of `tip` under `sub-1` for a resume, else empty.
     private nonisolated static func canonicalReply(_ request: BotJSON) -> BotJSON {
         let snapshot = BotJSON.object(["session_id": .string("tip"), "stored_session_id": .string("tip"),

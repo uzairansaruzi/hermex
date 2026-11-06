@@ -299,6 +299,11 @@ import OSLog
         }
     }
 
+    /// `consumer` gives up its hold on `session` alone; the session is detached once nobody holds it.
+    func release(_ consumer: Int, from session: HermesCanonicalSubscriptions.Session) {
+        detach(subscriptions.release(consumer, from: session).map { [$0] } ?? [])
+    }
+
     /// Writes each detach now, ahead of any later call, without waiting for its reply, which no
     /// screen reads: its string id, like the keepalive's, makes `consume` drop the reply. A lost
     /// one leaves the subscription until the socket closes.
