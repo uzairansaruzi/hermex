@@ -30,12 +30,12 @@
       "status" : "ok"
     }
   },
-  "config_version" : 51,
+  "config_version" : 52,
   "disk" : {
-    "free_mb" : 30519,
+    "free_mb" : 29024,
     "pressure" : "fixture-redacted",
     "total_mb" : 471482,
-    "used_percent" : 93.5
+    "used_percent" : 93.8
   },
   "gateway_busy" : false,
   "gateway_drainable" : true,
@@ -50,7 +50,7 @@
   "gateway_state" : "fixture-redacted",
   "gateway_updated_at" : "fixture-redacted",
   "install_id" : "fixture-install",
-  "latest_config_version" : 51,
+  "latest_config_version" : 52,
   "memory" : {
     "boot_id" : "fixture-redacted",
     "gateway_rss_mb" : null,
@@ -72,5 +72,5 @@
   "release_date" : "fixture-redacted",
   "restart_drain_timeout" : 60,
   "shared_profile_warning" : false,
-  "version" : "0.22.5"
+  "version" : "0.23.0"
 }

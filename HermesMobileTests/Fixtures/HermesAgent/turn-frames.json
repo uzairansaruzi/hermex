@@ -21,12 +21,12 @@
         "running" : true,
         "service_tier" : "fixture-redacted",
         "skills" : {},
-        "stored_session_id" : "20261103_194156_fe3075",
+        "stored_session_id" : "20261106_111607_abe930",
         "system_prompt" : "fixture-redacted",
         "terminal_backend" : "fixture-redacted",
         "title" : "fixture-redacted",
         "tools" : {},
-        "turn_started_at" : 1793752917.158151,
+        "turn_started_at" : 1793981767.904626,
         "update_behind" : 0,
         "update_command" : "fixture-redacted",
         "usage" : {
@@ -41,11 +41,11 @@
           "reasoning" : 0,
           "total" : 0
         },
-        "version" : "0.22.5",
+        "version" : "0.23.0",
         "yolo" : false
       },
       "seq" : 1,
-      "session_id" : "adbd9dfc",
+      "session_id" : "bc7fbed6",
       "type" : "session.info"
     }
   },
@@ -53,8 +53,11 @@
     "jsonrpc" : "2.0",
     "method" : "event",
     "params" : {
+      "payload" : {
+        "turn_id" : "fixture-redacted"
+      },
       "seq" : 2,
-      "session_id" : "adbd9dfc",
+      "session_id" : "bc7fbed6",
       "type" : "message.start"
     }
   },
@@ -63,11 +66,11 @@
     "method" : "event",
     "params" : {
       "payload" : {
-        "session_id" : "20261103_194156_fe3075",
+        "session_id" : "20261106_111607_abe930",
         "title" : "fixture-redacted"
       },
       "seq" : 3,
-      "session_id" : "adbd9dfc",
+      "session_id" : "bc7fbed6",
       "type" : "session.title"
     }
   },
@@ -76,10 +79,10 @@
     "method" : "event",
     "params" : {
       "payload" : {
-        "text" : "( ˘⌣˘)♡ processing..."
+        "text" : "(｡•́︿•̀｡) computing..."
       },
       "seq" : 4,
-      "session_id" : "adbd9dfc",
+      "session_id" : "bc7fbed6",
       "type" : "thinking.delta"
     }
   },
@@ -88,12 +91,11 @@
     "method" : "event",
     "params" : {
       "payload" : {
-        "session_id" : "20261103_194156_fe3075",
-        "title" : "fixture-redacted"
+        "text" : ""
       },
       "seq" : 5,
-      "session_id" : "adbd9dfc",
-      "type" : "session.title"
+      "session_id" : "bc7fbed6",
+      "type" : "thinking.delta"
     }
   },
   {
@@ -101,70 +103,13 @@
     "method" : "event",
     "params" : {
       "payload" : {
-        "text" : ""
+        "offset" : 0,
+        "segment" : 0,
+        "text" : "ok.",
+        "turn_id" : "fixture-redacted"
       },
       "seq" : 6,
-      "session_id" : "adbd9dfc",
-      "type" : "thinking.delta"
-    }
-  },
-  {
-    "jsonrpc" : "2.0",
-    "method" : "event",
-    "params" : {
-      "payload" : {
-        "text" : "⏳ waiting on provider — retrying in 2s (attempt 1/3)"
-      },
-      "seq" : 7,
-      "session_id" : "adbd9dfc",
-      "type" : "thinking.delta"
-    }
-  },
-  {
-    "jsonrpc" : "2.0",
-    "method" : "event",
-    "params" : {
-      "payload" : {
-        "text" : ""
-      },
-      "seq" : 8,
-      "session_id" : "adbd9dfc",
-      "type" : "thinking.delta"
-    }
-  },
-  {
-    "jsonrpc" : "2.0",
-    "method" : "event",
-    "params" : {
-      "payload" : {
-        "text" : "⏳ waiting on provider — retrying in 5s (attempt 2/3)"
-      },
-      "seq" : 9,
-      "session_id" : "adbd9dfc",
-      "type" : "thinking.delta"
-    }
-  },
-  {
-    "jsonrpc" : "2.0",
-    "method" : "event",
-    "params" : {
-      "payload" : {
-        "text" : ""
-      },
-      "seq" : 10,
-      "session_id" : "adbd9dfc",
-      "type" : "thinking.delta"
-    }
-  },
-  {
-    "jsonrpc" : "2.0",
-    "method" : "event",
-    "params" : {
-      "payload" : {
-        "text" : "ok."
-      },
-      "seq" : 11,
-      "session_id" : "adbd9dfc",
+      "session_id" : "bc7fbed6",
       "type" : "message.delta"
     }
   },
@@ -175,21 +120,9 @@
       "payload" : {
         "text" : ""
       },
-      "seq" : 12,
-      "session_id" : "adbd9dfc",
+      "seq" : 7,
+      "session_id" : "bc7fbed6",
       "type" : "thinking.delta"
-    }
-  },
-  {
-    "jsonrpc" : "2.0",
-    "method" : "event",
-    "params" : {
-      "payload" : {
-        "text" : "ok."
-      },
-      "seq" : 13,
-      "session_id" : "adbd9dfc",
-      "type" : "reasoning.available"
     }
   },
   {
@@ -199,40 +132,40 @@
       "payload" : {
         "persisted_turn" : {
           "complete" : true,
-          "final_assistant_row_id" : 27,
+          "final_assistant_row_id" : 30,
           "row_ids" : [
-            26,
-            27
+            29,
+            30
           ],
-          "user_row_id" : 26,
+          "user_row_id" : 29,
           "user_row_ids" : [
-            26
+            29
           ]
         },
         "status" : "complete",
         "text" : "ok.",
         "usage" : {
           "active_subagents" : 0,
-          "avg_latency_s" : 27.8,
-          "avg_tps" : 3.1,
+          "avg_latency_s" : 2,
+          "avg_tps" : 20.6,
           "calls" : 1,
-          "completion" : 87,
+          "completion" : 42,
           "compressions" : 0,
           "context_estimated" : false,
           "context_max" : 1048576,
           "context_percent" : 2,
           "context_source" : "fixture-redacted",
-          "context_used" : 17737,
-          "input" : 17737,
+          "context_used" : 16699,
+          "input" : 16699,
           "model" : "fixture-redacted",
-          "output" : 87,
-          "prompt" : 17737,
-          "reasoning" : 85,
-          "total" : 17824
+          "output" : 42,
+          "prompt" : 16699,
+          "reasoning" : 40,
+          "total" : 16741
         }
       },
-      "seq" : 14,
-      "session_id" : "adbd9dfc",
+      "seq" : 8,
+      "session_id" : "bc7fbed6",
       "type" : "message.complete"
     }
   },
@@ -258,7 +191,7 @@
         "running" : false,
         "service_tier" : "fixture-redacted",
         "skills" : {},
-        "stored_session_id" : "20261103_194156_fe3075",
+        "stored_session_id" : "20261106_111607_abe930",
         "system_prompt" : "fixture-redacted",
         "terminal_backend" : "fixture-redacted",
         "title" : "fixture-redacted",
@@ -268,28 +201,28 @@
         "update_command" : "fixture-redacted",
         "usage" : {
           "active_subagents" : 0,
-          "avg_latency_s" : 27.8,
-          "avg_tps" : 3.1,
+          "avg_latency_s" : 2,
+          "avg_tps" : 20.6,
           "calls" : 1,
-          "completion" : 87,
+          "completion" : 42,
           "compressions" : 0,
           "context_estimated" : false,
           "context_max" : 1048576,
           "context_percent" : 2,
           "context_source" : "fixture-redacted",
-          "context_used" : 17737,
-          "input" : 17737,
+          "context_used" : 16699,
+          "input" : 16699,
           "model" : "fixture-redacted",
-          "output" : 87,
-          "prompt" : 17737,
-          "reasoning" : 85,
-          "total" : 17824
+          "output" : 42,
+          "prompt" : 16699,
+          "reasoning" : 40,
+          "total" : 16741
         },
-        "version" : "0.22.5",
+        "version" : "0.23.0",
         "yolo" : false
       },
-      "seq" : 15,
-      "session_id" : "adbd9dfc",
+      "seq" : 9,
+      "session_id" : "bc7fbed6",
       "type" : "session.info"
     }
   }

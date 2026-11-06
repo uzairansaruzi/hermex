@@ -46,19 +46,20 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 
 ## Upstream RPC methods Hermex never calls
 
-At the pin (0.22.5, `bf0203a7`) the gateway contract has 258 methods and `HermesCall` sends
-61 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
+At the pin (0.23.0, `2bd378ed`) the gateway contract has 261 methods and `HermesCall` sends
+68 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
 
 | Family | Methods | Status | Note |
 | :--- | :--- | :---: | :--- |
 | Shell and CLI | `cli.exec`, `shell.exec` | n-a | A generic host shell; never sent. |
 | Bot relay | `bot_relay.*` | n-a | Gateway-to-gateway traffic. |
 | Room peers | `groups.promote`, `groups.demote`, `groups.replicate`, `groups.replica_state`, `groups.peer.*` | n-a | No peer administration (`bots.md` § Group rooms). |
+| Room extras | `groups.attachment.upload`, `groups.attachment.download`, `groups.context`, `groups.continue`, `groups.discard` | untriaged | Room attachments, a room's purpose and notes, one more budget for a discussion paused at its cap, and discarding an indeterminate task (#1341). |
 | Billing | `billing.*`, `subscription.*`, `free_tier.*`, `usage.bars` | n-a | Nous account billing. |
 | Diagnostics | `diagnostics.share_nous`, `session.events.stats` | n-a | Uploads a debug bundle; replay-buffer telemetry. |
 | Reloads | `reload.env`, `reload.mcp` | n-a | Host administration that resets live sessions. |
 | Bot Screen | `display.status`, `display.observe`, `display.lease.acquire`, `display.lease.release`, `display.start`, `display.stop` | covered | `docs/agents/screen.md` (#1567). Behind the per-server Bot Screen switch. `display.install` and `display.thumbnail` stay unused. |
-| Desktop and terminal | `browser.*`, `clipboard.paste`, `paste.collapse`, `input.detect_drop`, `terminal.resize`, `system.battery`, `preview.restart`, `pet.*`, `wake.*`, `voice.record`, `voice.toggle` | n-a | Host screen, microphone, terminal or desktop UI. |
+| Desktop and terminal | `browser.*`, `image.render`, `clipboard.paste`, `paste.collapse`, `input.detect_drop`, `terminal.resize`, `system.battery`, `preview.restart`, `pet.*`, `wake.*`, `voice.record`, `voice.toggle` | n-a | Host screen, microphone, terminal or desktop UI. |
 | Host setup | `onboarding.*`, `setup.*` | n-a | First-run setup on the host. |
 | Desktop telemetry and locale | `shared_metrics.*`, `i18n.*`, `machine.facts` | n-a | Desktop's usage metrics, its string catalog and the host's hardware facts. |
 | Foreign sessions | `session.foreign.*` | n-a | Claude Code and Codex sessions on the host. |
@@ -68,7 +69,7 @@ At the pin (0.22.5, `bf0203a7`) the gateway contract has 258 methods and `Hermes
 | Host capabilities | `gateway.capabilities` | untriaged | What the build enforces; could replace some probes in `hermes-server.md`. |
 | Session extras | `session.usage`, `session.context_breakdown`, `session.status`, `session.set_hidden`, `session.save`, `session.archive` | untriaged | Per-chat cost and context, `/status` text, hide/unhide, export to the host. |
 | Projects | `projects.list`, `projects.get`, `projects.archive`, `projects.add_folder`, `projects.remove_folder`, `projects.set_primary`, `projects.set_active`, `projects.for_cwd`, `projects.project_sessions`, `projects.discover_repos`, `projects.record_repos`, `project.facts` | untriaged | Hermex reads `projects.tree` and creates, renames and deletes. |
-| Subagents and processes | `subagent.steer`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.*` | untriaged | Hermex previews up to three live workers in chat; View all opens the session's list, tail and interrupt controls. Completed delegations keep their transcript result cards. |
+| Subagents and processes | `subagent.steer`, `subagent.roster`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.*` | untriaged | Hermex previews up to three live workers in chat; View all opens the session's list, tail and interrupt controls. Completed delegations keep their transcript result cards. |
 | Checkpoints | `rollback.*` | untriaged | Restore a working tree to a checkpoint. |
 | Tools and MCP | `tools.*`, `toolsets.list`, `mcp.*` | untriaged | Toolset switches and MCP server setup, including OAuth. |
 | Connectors | `connectors.*` | untriaged | Hermex answers `connection.*` requests only. |

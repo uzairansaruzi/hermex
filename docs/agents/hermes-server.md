@@ -404,7 +404,7 @@ adding per-route policy. The probe never opens a socket.
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
-counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.22.5 (`bf0203a7`); sections
+counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.23.0 (`2bd378ed`); sections
 of these docs that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
 and the connection screen stores it on the `BotConnection` record.
 `HermesCompatibility` holds the tested release and the minimum, 0.21.3: 0.21.2
