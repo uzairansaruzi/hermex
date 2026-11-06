@@ -813,7 +813,9 @@ private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         if let home {
-            content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newChat }))
+            content.modifier(HermesHomeChrome(home: home, search: HermesHomeSearch(label: "Search bots and messages",
+                                                                               isDisabled: isOffline, open: search),
+                                               filter: { filter }, newChat: { newChat }))
         } else {
             content
                 .themedPageBackground()

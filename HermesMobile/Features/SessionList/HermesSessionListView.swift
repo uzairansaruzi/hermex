@@ -79,6 +79,8 @@ struct HermesSessionListView: View {
     @State private var navigation: HermesSessionListNavigation
     @State private var actionToast = ActionToastState()
     @FocusState private var isSearchFieldFocused: Bool
+    /// Counts the home's search requests, each of which scrolls the header back (`HomeHeaderScroll`).
+    @State private var searchRequests = 0
 
     /// The list a chat's `/sessions` pushed.
     init(entry: HermesSessionListEntry) {
@@ -151,6 +153,7 @@ struct HermesSessionListView: View {
                     openSearch: openSearch
                 )
                 .sessionsTopChromeListRow()
+                .id(HomeHeaderScroll.headerID)
                 MoveToHermesBanner(serverID: entry.server.absoluteString)
             }
             if viewModel.showsOfflineCache {
@@ -209,6 +212,7 @@ struct HermesSessionListView: View {
         .scrollContentBackground(.hidden)
         .background(Color(.appCanvas))
         .modifier(chrome)
+        .modifier(HomeHeaderScroll(requests: searchRequests))
     }
 
     var body: some View {
@@ -527,12 +531,18 @@ struct HermesSessionListView: View {
     private var chrome: some ViewModifier {
         HermesSessionListChrome(home: home, searchText: $navigation.searchText, isSearchPresented: $navigation.isSearchExpanded,
                                 connection: viewModel.hermesConnection, reconnectNow: viewModel.reconnectNow,
-                                profileMenu: { profileMenu }, filter: { profileFilter }, newSession: { newSessionButton })
+                                openSearch: openSearch, profileMenu: { profileMenu }, filter: { profileFilter }, newSession: { newSessionButton })
     }
 
+    /// The header's search, ⌘F, and the iPhone Duo rail's Search. Focus waits a turn for a scrolled
+    /// list to bring the header's field back (`HomeHeaderScroll`).
     private func openSearch() {
         withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) { isSearchExpanded = true }
-        isSearchFieldFocused = true
+        if home != nil { searchRequests += 1 }
+        Task { @MainActor in
+            await Task.yield()
+            isSearchFieldFocused = true
+        }
     }
 
     private func closeSearch() {
@@ -1128,6 +1138,20 @@ private struct SearchScope: Hashable {
     let showingScheduled: Bool
 }
 
+/// Scrolls the home's list back to its header on each search request, since a scrolled list has
+/// recycled the header and its field: the iPhone Duo rail's Search and ⌘F work from any row, even
+/// with search already open.
+private struct HomeHeaderScroll: ViewModifier {
+    static let headerID = "home-header"
+    let requests: Int
+
+    func body(content: Content) -> some View {
+        ScrollViewReader { proxy in
+            content.onChange(of: requests) { proxy.scrollTo(Self.headerID, anchor: .top) }
+        }
+    }
+}
+
 /// The Sessions list's title and toolbar. As the Hermes home's Sessions side it takes the home's
 /// bar, with the Profile filter and New Session at its ends, and searches from its header; pushed,
 /// it is titled "Sessions", with the home's reconnect line under the title (#1374), its Profile
@@ -1139,22 +1163,25 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
     @Binding var isSearchPresented: Bool
     let connection: HomeConnectionStatus.Facts
     let reconnectNow: () -> Void
+    /// The home's search button, which grows the header's field.
+    let openSearch: () -> Void
     let profileMenu: ProfileMenu
     let filter: Filter
     let newSession: NewSession
 
     init(home: HermesHome?, searchText: Binding<String>, isSearchPresented: Binding<Bool>,
          connection: HomeConnectionStatus.Facts, reconnectNow: @escaping () -> Void,
-         @ViewBuilder profileMenu: () -> ProfileMenu, @ViewBuilder filter: () -> Filter,
+         openSearch: @escaping () -> Void, @ViewBuilder profileMenu: () -> ProfileMenu, @ViewBuilder filter: () -> Filter,
          @ViewBuilder newSession: () -> NewSession) {
         self.home = home; _searchText = searchText; _isSearchPresented = isSearchPresented
-        self.connection = connection; self.reconnectNow = reconnectNow
+        self.connection = connection; self.reconnectNow = reconnectNow; self.openSearch = openSearch
         self.profileMenu = profileMenu(); self.filter = filter(); self.newSession = newSession()
     }
 
     func body(content: Content) -> some View {
         if let home {
-            content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newSession }))
+            content.modifier(HermesHomeChrome(home: home, search: HermesHomeSearch(label: "Search sessions", open: openSearch),
+                                               filter: { filter }, newChat: { newSession }))
         } else {
             content
                 .searchable(text: $searchText, isPresented: $isSearchPresented,

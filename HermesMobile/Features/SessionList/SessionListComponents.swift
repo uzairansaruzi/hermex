@@ -255,7 +255,9 @@ enum SessionListMotion {
 /// Settings and a hold switches servers. With a `field`, search grows the pill into a text field
 /// that pushes the wordmark out and turns the avatar into Close; without one (the Bots side,
 /// whose search is a sheet) the pill stays put and `openSearch` alone runs. A Hermes home's
-/// list passes `connection` for the status line under the wordmark (#1374).
+/// list passes `connection` for the status line under the wordmark (#1374). Where the home's bar
+/// holds search and the avatar (`homeBarOwnsSearch`, iPhone Duo), the pill shows only while the
+/// field is open.
 struct SessionsHeader: View {
     /// The pill's search field and the state it grows with.
     struct Field {
@@ -281,6 +283,7 @@ struct SessionsHeader: View {
     private static let iconHitTarget: CGFloat = 44
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.homeBarOwnsSearch) private var barOwnsSearch
     let logoColor: Color
     let avatar: Avatar
     var field: Field?
@@ -302,8 +305,10 @@ struct SessionsHeader: View {
                     .clipped()
                     .accessibilityHidden(isExpanded)
 
-                pill
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if isExpanded || !barOwnsSearch {
+                    pill
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             HomeConnectionStatusLine(driver: connectionStatus, reconnectNow: reconnectNow)
         }

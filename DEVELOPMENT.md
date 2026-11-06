@@ -247,6 +247,12 @@ bar on the trailing edge, and 951x669 open, regular width, in the split.
   keeps what it heard.
 - The detail column spans the window behind the sidebar. Anything measured or
   pinned to it uses its safe area, not its bounds.
+- Only bar items reach the vertical bar, and only ones that fit it. A segmented
+  picker floats in a horizontal bar of its own even with
+  `.axisBehavior(.verticalPreferred)`, and a custom-label `Menu` needs that
+  modifier. Content inside a list never moves. `HermesHomeChrome` reads
+  `toolbarVerticalEdge` and swaps the home's switch and header pill for bar
+  buttons; the split's sidebar keeps horizontal bars, so it opts out.
 
 ## PR CI
 
