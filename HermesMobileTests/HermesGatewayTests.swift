@@ -195,6 +195,25 @@ import XCTest
         return .object(["id": request["id"], "result": request["method"].text == "session.resume" ? snapshot : .object([:])])
     }
 
+    /// A canonical host fences a room retry by member and generation, which the dashboard's
+    /// shape leaves out (#1605), and a stale one stays a room failure that says to reopen.
+    func testACanonicalRoomRetryCarriesItsFenceAndAStaleOneSaysToReopen() async throws {
+        let client = BotClient(http: connection(canonical: true))
+        try await client.connect()
+        defer { client.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.reply = { request in .object(["id": request["id"], "error": .object(["code": .number(4001),
+            "message": .string("stale_generation"), "data": .object(["reason": .string("stale_generation")])])]) }
+        let retry = HermesCall.groupsRetry(roomID: "room", taskID: "task", attempt: .init(memberID: "dev", executionGeneration: 3))
+        do { _ = try await client.call(retry); XCTFail("The stale retry was refused") } catch {
+            XCTAssertEqual((error as? BotRoomFailure)?.reason, "stale_generation")
+            XCTAssertTrue(error.localizedDescription.contains("Reopen it"))
+        }
+        let sent = try XCTUnwrap(socket.sentRequests.first { $0["method"].text == "groups.retry" })
+        XCTAssertEqual(sent["params"]["member_id"].text, "dev")
+        XCTAssertEqual(sent["params"]["execution_generation"].integer, 3)
+    }
+
     func testASocketFaultTellsEachConsumerOnceAndTheirReconnectsShareOneReplacement() async throws {
         let http = connection()
         let chat = BotClient(http: http), inbox = BotClient(http: http)

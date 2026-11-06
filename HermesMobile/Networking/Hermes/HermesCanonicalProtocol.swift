@@ -31,6 +31,8 @@ extension HermesCall {
             params["request_id"] = nil
             params["prompt_id"] = .string(promptID)
             params.merge(fence.params) { $1 }
+        // A canonical room retry names the attempt it retries (#1605).
+        case .groupsRetry(_, _, let attempt?): params.merge(attempt.params) { $1 }
         // A session-scoped bypass and Fast are the canonical default, and the host refuses
         // `scope: session` for either (#1602, #1604).
         case .configSet(_, _, .yolo), .configSet(_, _, .fast): params["scope"] = nil

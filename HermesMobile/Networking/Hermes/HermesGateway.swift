@@ -510,8 +510,10 @@ import OSLog
             // The handshake's own `client.capabilities` is exempt: an older host connects as before.
             if code == -32601, entry.consumer != nil { http.noteUnavailable(entry.method) }
             let data = frame["error"]["data"]
-            if speaksCanonicalProtocol, let reason = ["stale_generation": HermesFenceRefusal.Reason.generation,
-                                                       "revision_conflict": .revision][data["reason"].text ?? ""] {
+            // A room's refusals keep their room reason (`BotRoomFailure`), as on the dashboard.
+            if speaksCanonicalProtocol, entry.rejection != .room,
+               let reason = ["stale_generation": HermesFenceRefusal.Reason.generation,
+                             "revision_conflict": .revision][data["reason"].text ?? ""] {
                 entry.continuation.resume(throwing: HermesFenceRefusal(reason: reason, revision: data["revision"].integer,
                                                                        generation: data["execution_generation"].integer))
                 return

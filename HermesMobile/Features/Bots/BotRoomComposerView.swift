@@ -108,6 +108,9 @@ enum BotRoomMentions {
 struct BotRoomActionCard: View {
     let reader: BotRoomReader
     let action: BotRoomAction
+    /// The action whose Discard is being confirmed, kept apart from `action`: the room's cards are
+    /// keyed by position, so a poll can hand this card another task while the sheet is open.
+    @State private var confirmingDiscard: BotRoomAction?
     var body: some View {
         if let approval = action.approval {
             BotPendingRequestCard(request: .approval(approval), identity: identity,
@@ -122,6 +125,20 @@ struct BotRoomActionCard: View {
                 Text(identity).font(AppFont.caption()).foregroundStyle(.appSecondary)
                 if action.isRetry {
                     Button("Retry") { Task { await reader.act(action) } }.disabled(!reader.mayAct(action))
+                } else if action.isDiscard {
+                    // A canonical host lost this task's reply in a restart (#1605); discarding is permanent.
+                    Text("Hermes restarted while this bot was replying, so its reply is lost.")
+                        .font(AppFont.callout())
+                    Button("Discard", role: .destructive) { confirmingDiscard = action }
+                        .disabled(!reader.mayAct(action))
+                        .confirmationDialog("Discard this reply?", isPresented: Binding(
+                            get: { confirmingDiscard != nil }, set: { if !$0 { confirmingDiscard = nil } }),
+                            titleVisibility: .visible, presenting: confirmingDiscard) { confirmed in
+                            Button("Discard", role: .destructive) { Task { await reader.act(confirmed) } }
+                            Button("Cancel", role: .cancel) {}
+                        } message: { _ in
+                            Text("The bot won’t finish it, and it isn’t retried. The group carries on.")
+                        }
                 } else {
                     Label("Needs attention. Answer the request in Hermes Desktop on this same connection.", systemImage: "desktopcomputer")
                         .font(AppFont.callout())

@@ -271,7 +271,12 @@ enum HermesCall: Equatable, Sendable {
     case groupsStop(roomID: String, cancelID: String)
     case groupsApprove(roomID: String, memberID: String, taskID: String, executionGeneration: Int,
                        requestID: String, choice: BotApprovalRequest.Choice)
-    case groupsRetry(roomID: String, taskID: String)
+    /// `attempt` names the member and execution generation a canonical host's retry is fenced by
+    /// (#1605); the dashboard takes room and task only.
+    case groupsRetry(roomID: String, taskID: String, attempt: RoomAttempt? = nil)
+    /// Gives up a canonical room task whose outcome is unknown (`indeterminate`, #1605), after the
+    /// user confirmed; the group carries on and it isn't retried. Answers `{discarded, task}`.
+    case groupsDiscard(roomID: String, taskID: String, attempt: RoomAttempt)
     case groupsCreate(RoomCreation)
     case groupsRename(roomID: String, eventID: String, name: String)
     case groupsDisband(roomID: String)
@@ -283,6 +288,19 @@ enum HermesCall: Equatable, Sendable {
     enum AvatarChange: Equatable, Sendable {
         case replace(String)
         case clear
+    }
+
+    /// The member and execution generation a canonical host fences one room task by (#1605).
+    /// `memberID` is echoed back as the host named it, which isn't always one member id: a
+    /// stalled preparation's Retry names every member it couldn't wake (`"chief, coder"`).
+    struct RoomAttempt: Equatable, Sendable {
+        var memberID: String
+        var executionGeneration: Int
+
+        var params: [String: BotJSON] {
+            ["member_id": .string(memberID), "execution_generation": .number(Double(executionGeneration))]
+        }
+        var isAdmissible: Bool { !memberID.isEmpty && executionGeneration > 0 }
     }
 
     /// One `session.mutate` (#1603): the edit, under the fences it was prepared at. A retry of
@@ -532,6 +550,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsStop: return "groups.stop"
         case .groupsApprove: return "groups.approve"
         case .groupsRetry: return "groups.retry"
+        case .groupsDiscard: return "groups.discard"
         case .groupsCreate: return "groups.create"
         case .groupsRename: return "groups.rename"
         case .groupsDisband: return "groups.disband"
@@ -755,7 +774,9 @@ enum HermesCall: Equatable, Sendable {
             return ["room_id": .string(roomID), "member_id": .string(memberID), "task_id": .string(taskID),
                     "execution_generation": .number(Double(executionGeneration)),
                     "request_id": .string(requestID), "choice": .string(choice.rawValue)]
-        case .groupsRetry(let roomID, let taskID): return ["room_id": .string(roomID), "task_id": .string(taskID)]
+        case .groupsRetry(let roomID, let taskID, _): return ["room_id": .string(roomID), "task_id": .string(taskID)]
+        case .groupsDiscard(let roomID, let taskID, let attempt):
+            return ["room_id": .string(roomID), "task_id": .string(taskID)].merging(attempt.params) { $1 }
         case .groupsCreate(let room):
             return ["room_id": .string(room.roomID), "name": .string(room.name), "members": .array(room.members.map(\.json))]
         case .groupsRename(let roomID, let eventID, let name):
@@ -882,7 +903,10 @@ enum HermesCall: Equatable, Sendable {
         case .groupsApprove(let roomID, let memberID, let taskID, let executionGeneration, let requestID, let choice):
             valid = [roomID, memberID, taskID, requestID].allSatisfy(BotRoomRPC.validID) && executionGeneration > 0
                 && [.once, .deny].contains(choice)
-        case .groupsRetry(let roomID, let taskID): valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID)
+        case .groupsRetry(let roomID, let taskID, let attempt):
+            valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID) && attempt?.isAdmissible != false
+        case .groupsDiscard(let roomID, let taskID, let attempt):
+            valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID) && attempt.isAdmissible
         case .groupsCreate(let room): valid = room.isAdmissible
         case .groupsRename(let roomID, let eventID, let name):
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(eventID) && BotRoomRPC.validName(name)

@@ -64,10 +64,17 @@ import SwiftUI
                 }
                 .padding(.vertical, 8)
             } appFooter: {
-                if creator.selected.count == 6 { Text("Groups can have up to six members.") }
-                else { Text("Choose two to six bots.") }
+                VStack(alignment: .leading, spacing: 4) {
+                    if creator.selected.count == 6 { Text("Groups can have up to six members.") }
+                    else { Text("Choose two to six bots.") }
+                    if creator.leavesOutBots { Text("Some bots can’t join group chats on this Hermes, so they aren’t listed.") }
+                }
             }
             Section {
+                if creator.tooFewToSeat {
+                    Text("Fewer than two bots can join group chats on this Hermes.")
+                        .font(AppFont.callout()).foregroundStyle(.appSecondary)
+                }
                 ForEach(creator.remaining) { bot in
                     Button { creator.select(bot) } label: {
                         HStack(spacing: 14) {
