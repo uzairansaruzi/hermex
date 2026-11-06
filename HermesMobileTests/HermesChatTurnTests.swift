@@ -588,15 +588,19 @@ import SwiftUI
 
     /// A canonical send carries the Profile and a `submission_id` the host admits it by, and its
     /// recorded receipt, `queued` even on an idle session, clears the draft. Its own turn can start
-    /// ahead of that receipt, which then names the running admission: no queued bubble for it.
+    /// ahead of that receipt, listed as queued first: its prompt shows once, with no queued bubble.
     /// While a lost turn holds the queue, a send waits behind it as a queued bubble, with no turn
     /// shown running.
     func testACanonicalReceiptForTheRunningOrABlockedAdmissionShowsNoPhantomTurn() async throws {
         var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
         receipt["admission_id"] = .string("a1")
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
-        chat.host.next("prompt.submit", .init(result: .object(receipt),
-                                              before: [canonicalEvent(1, "message.start", admission: "a1", generation: 1)]))
+        // The recorded order: `pending` lists the send's admission as queued, then its turn starts.
+        chat.host.next("prompt.submit", .init(result: .object(receipt), before: [
+            canonicalEvent(1, "session.info", ["pending": .array([admission("a1", "queued", "Run the quick check.")])],
+                           admission: "a1", generation: nil),
+            canonicalEvent(2, "message.start", admission: "a1", generation: 1)
+        ]))
         let sent = await chat.model.sendMessage("Run the quick check.")
         XCTAssertTrue(sent, "true clears the draft")
         let params = try XCTUnwrap(chat.writes("prompt.submit").first)
@@ -604,6 +608,8 @@ import SwiftUI
         XCTAssertEqual(params["submission_id"]?.text?.isEmpty, false)
         XCTAssertNotNil(chat.model.activeStreamID)
         XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty, "the running admission is no follow-up")
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.map(\.content), ["Run the quick check."],
+                       "the send's prompt shows once")
 
         let blocked = await openChat(runtime: "tip", snapshot: canonicalSnapshot(pending: [
             admission("lost", "unknown", "Run the quick check.", generation: 2)

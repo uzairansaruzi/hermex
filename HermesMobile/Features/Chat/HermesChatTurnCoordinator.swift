@@ -1192,9 +1192,11 @@ struct HermesLostTurn: Equatable {
             var prompt: String?
             runningAdmission = frame["admission_id"].text
             if let admission = frame["admission_id"].text, !admission.isEmpty {
-                // A canonical turn starts one admission: the queued one it names, if any.
+                // A canonical turn starts one admission: the queued one it names, if any. A send's
+                // own admission can be listed as queued just before it starts; its row is shown.
                 if let index = queuedPrompts.firstIndex(where: { $0.id == admission }) {
-                    prompt = queuedPrompts.remove(at: index).text
+                    let queued = queuedPrompts.remove(at: index).text
+                    if !isSubmittingSend { prompt = queued }
                 }
             } else if !isSubmittingSend {
                 prompt = queuedPrompts.first?.text; queuedPrompts = []
