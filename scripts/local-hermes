@@ -310,7 +310,9 @@ def main(argv=None):
     sha = pinned_commit()
     hermes = ensure_install(sha)
     require_free(args.port)
-    # Terminal hang-up and a plain kill stop the server just like Ctrl-C.
+    # Ctrl-C, terminal hang-up and a plain kill all stop the server. SIGINT is set too because a
+    # shell starts a background job (`local-hermes &`) with it ignored, and Python keeps that.
+    signal.signal(signal.SIGINT, interrupt)
     signal.signal(signal.SIGTERM, interrupt)
     signal.signal(signal.SIGHUP, interrupt)
 
