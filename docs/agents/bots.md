@@ -252,13 +252,14 @@ cache's copy) that opens `HermesDelegatedWorkView`. A history row with
 arrives with the newest rows the delivery's turn re-reads when it ends.
 
 Its host requests are `HermesChatRequests` (#1011, #1141), on the Bot request model below and
-the engine's `answer`. An approval takes the Sessions overlay with only the host's choices
-(`ApprovalScope.Host.hermes`); a question, a sudo or secret prompt, a Desktop task and a
-connection operation take the clarification's slot above the composer as the Bot request
-card, whose copy names Hermes, or the bot in a bot's chat (`HermesRequestSubject`; the
-Desktop-task and connection bodies live in `Features/Chat/HermesRequestCards.swift`). A
-Desktop task is shown, never answered: its card keeps the chat's Stop, which asks first only
-when something else would be lost. A connection operation follows the rules below, answered
+the engine's `answer`. Each takes the clarification's slot above the composer, collapsible
+to its bar while the transcript stays readable. An approval shows as `ApprovalRequestInset`
+with only the host's choices (`ApprovalScope.Host.hermes`, #1584); a question, a sudo or secret
+prompt, a Desktop task and a connection operation show as the Bot request card, whose copy
+names Hermes, or the bot in a bot's chat (`HermesRequestSubject`; the Desktop-task and
+connection bodies live in `Features/Chat/HermesRequestCards.swift`). A Desktop task is shown,
+never answered: its card keeps the chat's Stop, which asks first only when something else
+would be lost. A connection operation follows the rules below, answered
 with `connection.respond` from the card; 4004 leaves the card inert and reattaches, and a lost
 reply warns on the card and reconnects. Account operations' global `connection.update` never
 reaches a session. Password-vault prompts and unknown methods get no card and are never answered (#1148). A batch question never
@@ -508,7 +509,7 @@ from the server-request envelope id. `resolved: 0` means already resolved.
 
 It also reads `pattern_keys` (else `[pattern_key]`) and `tool_name`, all
 optional, for the one scope line under the command. `ApprovalScope` (in
-`Models/Approval.swift`, shared with the Sessions overlay) turns the keys into a
+`Models/Approval.swift`, shared with the Sessions approval card) turns the keys into a
 sentence saying what Allow session covers in this chat and what Always allow
 covers for this Profile; a raw key never reaches the screen. A shell key is the
 host's danger description, quoted as sent. A `plugin_rule:` key names its tool,

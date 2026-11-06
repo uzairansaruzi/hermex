@@ -995,47 +995,60 @@ struct ChatView: View {
             ?? "\(server.absoluteString)|\(transcriptMediaSessionID ?? "local:\(session.id)")"
     }
 
-    /// Extracted from `body` so the view's single chained expression stays
-    /// inside the compiler's type-checking budget.
-    @ViewBuilder
-    private var approvalOverlay: some View {
-        if let requests = viewModel.hermesRequests {
-            if case .approval(let approval)? = requests.onScreen {
-                hermesApprovalOverlay(approval, requests: requests)
-            }
-        } else if let approvalPrompt = viewModel.approvalPrompt {
-            ApprovalRequestOverlay(
-                prompt: approvalPrompt,
-                isResponding: viewModel.isRespondingToApproval,
-                errorMessage: viewModel.approvalErrorMessage,
-                onChoice: { choice in
-                    Task {
-                        let didRespond = await viewModel.respondToApproval(choice)
-                        if didRespond {
-                            ChatHaptics.approvalSubmitted(choice, isEnabled: isHapticsEnabled)
-                        }
-                    }
-                },
-                onSkipAll: {
-                    Task {
-                        let didSkip = await viewModel.skipApprovalsForCurrentSession()
-                        if didSkip {
-                            ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
-                        }
+    /// A webui server's pending approval, in the clarification's slot (#1584).
+    private func webuiApprovalInset(_ prompt: ApprovalPromptState, maximumExpandedHeight: CGFloat) -> some View {
+        ApprovalRequestInset(
+            content: prompt.requestContent,
+            maximumExpandedHeight: maximumExpandedHeight,
+            isResponding: viewModel.isRespondingToApproval,
+            isStopping: viewModel.isCancellingStream,
+            errorMessage: viewModel.approvalErrorMessage,
+            isHapticsEnabled: isHapticsEnabled,
+            onChoice: { choice in
+                Task {
+                    let didRespond = await viewModel.respondToApproval(choice)
+                    if didRespond {
+                        ChatHaptics.approvalSubmitted(choice, isEnabled: isHapticsEnabled)
                     }
                 }
-            )
-            .zIndex(10)
-        }
+            },
+            onSkipAll: {
+                Task {
+                    let didSkip = await viewModel.skipApprovalsForCurrentSession()
+                    if didSkip {
+                        ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
+                    }
+                }
+            },
+            onStop: {
+                Task { await cancelStream() }
+            },
+            onDismissKeyboard: dismissKeyboard,
+            onFootprintChange: { height in
+                clarificationBarHeight = height
+            }
+        )
+        .id(prompt.id)
+        .padding(.horizontal, 16)
+        .padding(.bottom, composerHeight + 8)
+        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
-    /// A Hermes session's approval (#1011): only the host's choices, each answered once, and
-    /// Skip all, which turns the session's bypass on and releases this approval.
-    private func hermesApprovalOverlay(_ approval: BotApprovalRequest, requests: HermesChatRequests) -> some View {
-        ApprovalRequestOverlay(
-            content: approval.overlayContent(pendingCount: requests.approvalCount),
+    /// A Hermes session's approval (#1011, #1584): only the host's choices, each answered once,
+    /// and Skip all, which turns the session's bypass on and releases this approval.
+    private func hermesApprovalInset(
+        _ approval: BotApprovalRequest,
+        requests: HermesChatRequests,
+        maximumExpandedHeight: CGFloat
+    ) -> some View {
+        ApprovalRequestInset(
+            content: approval.requestContent(pendingCount: requests.approvalCount),
+            maximumExpandedHeight: maximumExpandedHeight,
             isResponding: !requests.mayAnswer,
+            isStopping: viewModel.isCancellingStream,
             errorMessage: requests.errorMessage,
+            summary: requests.summaryPresentation(for: approval, workingDirectory: viewModel.hermesWorkspace?.cwd),
+            isHapticsEnabled: isHapticsEnabled,
             onChoice: { choice in
                 guard let action = requests.prepareAnswer(),
                       let answer = BotApprovalRequest.Choice(rawValue: choice.rawValue) else { return }
@@ -1053,9 +1066,18 @@ struct ChatView: View {
                     }
                 }
             },
-            summary: requests.summaryPresentation(for: approval, workingDirectory: viewModel.hermesWorkspace?.cwd)
+            onStop: {
+                Task { await cancelStream() }
+            },
+            onDismissKeyboard: dismissKeyboard,
+            onFootprintChange: { height in
+                clarificationBarHeight = height
+            }
         )
-        .zIndex(10)
+        .id(approval.requestID)
+        .padding(.horizontal, 16)
+        .padding(.bottom, composerHeight + 8)
+        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
     /// The chat scaffold: layout, title, and push presence. `body` is built in
@@ -1099,8 +1121,6 @@ struct ChatView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, composerHeight + 8)
                     .zIndex(9)
-
-                approvalOverlay
             }
         }
         .overlay(alignment: .top) {
@@ -1933,14 +1953,17 @@ struct ChatView: View {
         }
     }
 
-    /// The pending clarification, pinned above the composer. Sits in the same
-    /// bottom stack as the composer so it rides the keyboard with it.
+    /// The pending clarification or approval, pinned above the composer. Sits in the
+    /// same bottom stack as the composer so it rides the keyboard with it. One request
+    /// at a time: a question before an approval, as `HermesChatRequests.onScreen` orders.
     private func clarificationInset(maximumExpandedHeight: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
             if let requests = viewModel.hermesRequests {
                 // Below the request inset, whose expanded card rises over it.
                 btwInset(maximumExpandedHeight: maximumExpandedHeight)
-                if let request = hermesInsetRequest {
+                if case .approval(let approval)? = hermesInsetRequest {
+                    hermesApprovalInset(approval, requests: requests, maximumExpandedHeight: maximumExpandedHeight)
+                } else if let request = hermesInsetRequest {
                     hermesRequestInset(request, requests: requests, maximumExpandedHeight: maximumExpandedHeight)
                 }
             } else if let clarificationPrompt = viewModel.clarificationPrompt {
@@ -1971,6 +1994,8 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, composerHeight + 8)
                 .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            } else if let approvalPrompt = viewModel.approvalPrompt {
+                webuiApprovalInset(approvalPrompt, maximumExpandedHeight: maximumExpandedHeight)
             }
         }
         .zIndex(9)
@@ -2091,17 +2116,16 @@ struct ChatView: View {
         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
-    /// The Hermes request the clarification slot shows: a question, a sudo or secret prompt, a
-    /// Desktop task or a connection operation. An approval takes the overlay instead.
+    /// The Hermes request the clarification slot shows: a question, an approval, a sudo or
+    /// secret prompt, a Desktop task or a connection operation.
     private var hermesInsetRequest: BotPendingRequest? {
-        guard let request = viewModel.hermesRequests?.onScreen else { return nil }
-        if case .approval = request { return nil }
-        return request
+        viewModel.hermesRequests?.onScreen
     }
 
-    /// The request in the clarification slot: a webui clarification, or a Hermes inset request.
+    /// The request in the clarification slot: a webui clarification or approval, or a Hermes
+    /// inset request.
     private var requestInsetID: String? {
-        hermesInsetRequest?.requestID ?? viewModel.clarificationPrompt?.id
+        hermesInsetRequest?.requestID ?? viewModel.clarificationPrompt?.id ?? viewModel.approvalPrompt?.id
     }
 
     @ViewBuilder
@@ -2511,7 +2535,8 @@ struct ChatView: View {
         ChatWorkingRowPolicy.startedAt(
             activeRunStartedAt: viewModel.activeRunStartedAt,
             isCancellingStream: viewModel.isCancellingStream,
-            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil || viewModel.isWaitingForUser
+            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil || viewModel.approvalPrompt != nil
+                || viewModel.isWaitingForUser
         )
     }
 
