@@ -40,6 +40,7 @@ struct HermesSessionListView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsWorkspace = true
+    @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionSidebarDisclosureSettings.scheduledSessionsAreExpandedKey)
     private var scheduledSessionsAreExpanded = SessionSidebarDisclosureSettings.defaultScheduledSessionsAreExpanded
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -50,6 +51,7 @@ struct HermesSessionListView: View {
     @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkills = true
     @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemory = true
     @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsights = true
+    @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjects = true
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     private let entry: HermesSessionListEntry
     private let home: HermesHome?
@@ -138,7 +140,7 @@ struct HermesSessionListView: View {
     }
 
     private var sessionRows: some View {
-        let groups = viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID)
+        let groups = scheduledSessionGroups
         return AppList(rows: .plain) {
             if let home {
                 SessionsHeader(
@@ -334,6 +336,10 @@ struct HermesSessionListView: View {
             // server switch, a layout change), so it closes even beside a chat.
             if usesSplit { viewModel.closeHermes() } else { covers.listDisappeared(viewModel) }
         }
+        // Hiding Projects in Settings clears its lane, since "All" lives in the hidden header and
+        // the list would stay on one project with no way back. Checked on appear too, for a
+        // switch flipped while this list was gone.
+        .onChange(of: showsProjects, initial: true) { if !showsProjects { selectedProjectID = nil } }
         // A lane the host no longer lists (deleted here or on Desktop, or another Profile's) clears.
         .onChange(of: viewModel.projects) {
             if let selectedProjectID, !viewModel.projects.contains(where: { $0.projectId == selectedProjectID }) {
@@ -475,7 +481,7 @@ struct HermesSessionListView: View {
 
     /// View all of the Profile's scheduled sessions, pushed on a phone and the detail beside the rows.
     private var scheduledSessions: some View {
-        ScheduledSessionsView(viewModel: viewModel, showsCronSessions: true,
+        ScheduledSessionsView(viewModel: viewModel, showsCronSessions: showsCronSessions,
                               showsMessageCount: showsMessageCount, showsWorkspace: showsWorkspace,
                               selectedSessionID: nil, actions: actions, actionToast: actionToast)
     }
@@ -485,14 +491,14 @@ struct HermesSessionListView: View {
     private var profile: String? { viewModel.hermesProfile ?? entry.profile }
 
     /// The home's Tasks, Kanban, Skills, Memory and Usage rows, as Settings shows them (#709), and
-    /// the project lanes of the one listed Profile. A search drops the links but keeps the lanes,
-    /// so the lane it searches in stays in view and can change.
+    /// the project lanes of the one listed Profile unless Settings hides them (#1585). A search
+    /// drops the links but keeps the lanes, so the lane it searches in stays in view and can change.
     private var sectionVisibility: SidebarSectionVisibility {
         let isHome = home != nil && !isSearchExpanded
         return SidebarSectionVisibility(
             bots: false, tasks: isHome && showsTasks, kanban: isHome && showsKanban, skills: isHome && showsSkills,
             memory: isHome && showsMemory, insights: isHome && showsInsights, activeProfile: false,
-            projects: !viewModel.hermesShowsAllProfiles
+            projects: showsProjects && !viewModel.hermesShowsAllProfiles
         )
     }
 
@@ -573,8 +579,17 @@ struct HermesSessionListView: View {
     /// project lane, skipping Scheduled so ⌘1 does not depend on that disclosure. Grouped only on
     /// a key press, never in `body`.
     private var keyboardShortcutSessions: [SessionSummary] {
-        let groups = viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID)
+        let groups = scheduledSessionGroups
         return groups.needsYou + groups.ordinary
+    }
+
+    /// The rows the list shows, in its sections. Cron sessions drop out everywhere, Scheduled
+    /// included, when Settings hides them (#1585), as on a webui list.
+    private var scheduledSessionGroups: ScheduledSessionGroups {
+        var automated = AutomatedSessionVisibility.showAll
+        automated.showsCron = showsCronSessions
+        return viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID,
+                                                automatedVisibility: automated)
     }
 
     /// ⌘F: a phone's rows come forward from what covers them, then the search opens, the home
