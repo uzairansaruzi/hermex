@@ -397,8 +397,10 @@ final class Capture {
         }
     }
 
-    /// Reads frames until one matches `stop`, keeping each in `frames`; 180 s at most.
-    func readFrames(until stop: (JSON) -> Bool) async throws {
+    /// Returns once a frame from index `start` on matches `stop`, counting those `call` already
+    /// kept while it waited for a reply, and keeps each frame it reads in `frames`; 180 s at most.
+    func readFrames(from start: Int, until stop: (JSON) -> Bool) async throws {
+        if frames.dropFirst(start).contains(where: stop) { return }
         let deadline = Date().addingTimeInterval(180)
         while true {
             let remaining = deadline.timeIntervalSinceNow
@@ -647,9 +649,10 @@ struct CanonicalCapture {
         let repeated = try await resume()
         guard idle["subscription_id"] == repeated["subscription_id"] else { throw Failure("a second resume changed the subscription") }
 
+        let submitted = capture.frames.count
         _ = try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session),
                                                      "text": .string(mode.prompt), "submission_id": .string(UUID().uuidString)])
-        try await capture.readFrames { Self.event($0, of: session) == "approval.request" }
+        try await capture.readFrames(from: submitted) { Self.event($0, of: session) == "approval.request" }
         let running = try await resume()
         guard running["running"].flag == true, let prompt = running["prompts"].list?.first else {
             throw Failure("the resume during the turn shows no running turn waiting on its approval")
@@ -658,7 +661,7 @@ struct CanonicalCapture {
             "profile": profile, "session_id": .string(session), "execution_generation": prompt["execution_generation"],
             "prompt_id": prompt["prompt_id"], "choice": .string("once")
         ])
-        try await capture.readFrames { Self.event($0, of: session) == "message.complete" }
+        try await capture.readFrames(from: submitted) { Self.event($0, of: session) == "message.complete" }
 
         func replay(_ epoch: JSON, from cursor: Int) async throws -> JSON {
             try await capture.call("session.events.since", ["profile": profile, "session_id": .string(session),
