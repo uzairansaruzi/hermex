@@ -10,10 +10,11 @@ export function desktopInput(rfb) {
     const abort = new AbortController();
     const pointers = new Map();
     const modifiers = new Set();
+    const pendingInput = [];
     let trackpad = false, zoom = 1, tx = 0, ty = 0, gesture = null, cursor = null, mask = 0;
     let lastTap = null, lastTrackpadTap = null;
     let lastMouseRight = null;
-    let pairFrame = 0;
+    let pairFrame = 0, inputFrame = 0;
     let pendingPaste = null, pasteTimer = null;
     const mouseButtons = bits => (bits & 1) | ((bits & 2) << 1) | ((bits & 4) >> 1);
     const buttonBit = button => [1, 2, 4][button] ?? 0;
@@ -53,8 +54,32 @@ export function desktopInput(rfb) {
         pendingPaste = null;
     }
 
-    function release() {
+    function afterPaste(action) {
+        if (pendingPaste) pendingInput.push(action);
+        else action();
+    }
+
+    function finishPaste() {
         cancelPaste();
+        while (pendingInput.length && !pendingPaste) {
+            if (abort.signal.aborted || rfb.viewOnly || rfb._rfbConnectionState !== 'connected') {
+                release();
+                return;
+            }
+            pendingInput.shift()();
+        }
+    }
+
+    function release(cancelInput = true) {
+        if (cancelInput) {
+            cancelPaste();
+            pendingInput.length = 0;
+            cancelAnimationFrame(pairFrame);
+            cancelAnimationFrame(inputFrame);
+            pairFrame = inputFrame = 0;
+            pointers.clear();
+            gesture = null;
+        }
         if (mask) pointer(cursor, 0);
         modifiers.clear();
         mask = 0;
@@ -112,17 +137,35 @@ export function desktopInput(rfb) {
         updatePair();
     }
 
-    function rememberMouseRight(event) {
-        lastMouseRight = { x: event.clientX, y: event.clientY, time: performance.now() };
+    function rememberMouseRight(event, time) {
+        lastMouseRight = { x: event.clientX, y: event.clientY, time };
     }
 
-    function on(type, callback) { overlay.addEventListener(type, callback, { signal: abort.signal }); }
-    on('pointerdown', event => {
-        // WebKit can refuse capture while a touch is changing targets. Still track the tap.
-        try { overlay.setPointerCapture(event.pointerId); } catch (_) {}
+    function on(type, callback) {
+        overlay.addEventListener(type, event => {
+            // Browser effects must happen during dispatch, even when remote input waits.
+            if (type === 'wheel' || type === 'contextmenu') event.preventDefault();
+            if (type === 'pointerdown') {
+                // WebKit can refuse capture while a touch is changing targets.
+                try { overlay.setPointerCapture(event.pointerId); } catch (_) {}
+            }
+            const time = performance.now();
+            const waiting = pendingPaste !== null;
+            afterPaste(() => callback(event, time));
+            // Preserve original frame boundaries when replaying paired moves, so
+            // an out-and-back pinch or scroll cannot collapse into a two-finger tap.
+            if (waiting && type === 'pointermove' && !inputFrame) {
+                inputFrame = requestAnimationFrame(() => {
+                    inputFrame = 0;
+                    afterPaste(flushPair);
+                });
+            }
+        }, { signal: abort.signal });
+    }
+    on('pointerdown', (event, time) => {
         pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (pointers.size === 1) {
-            gesture = { x: event.clientX, y: event.clientY, start: performance.now(), moved: false, mouse: event.pointerType === 'mouse' };
+            gesture = { x: event.clientX, y: event.clientY, start: time, moved: false, mouse: event.pointerType === 'mouse' };
             gesture.trackDrag = trackpad && lastTrackpadTap && gesture.start - lastTrackpadTap.time < 300 &&
                 Math.hypot(gesture.x - lastTrackpadTap.x, gesture.y - lastTrackpadTap.y) < 24;
             if (gesture.mouse) {
@@ -133,7 +176,7 @@ export function desktopInput(rfb) {
             }
         } else if (pointers.size === 2) {
             if (mask) pointer(cursor, 0);
-            gesture = { pair: pair(), zoom, tx, ty, start: gesture?.start ?? performance.now(), scrollX: 0, scrollY: 0 };
+            gesture = { pair: pair(), zoom, tx, ty, start: gesture?.start ?? time, scrollX: 0, scrollY: 0 };
         } else {
             gesture = null;
         }
@@ -172,20 +215,20 @@ export function desktopInput(rfb) {
             }
         }
     });
-    function finish(event) {
+    function finish(event, time) {
         flushPair();
         if (!pointers.delete(event.pointerId)) return;
         if (gesture?.pair) {
             if (event.type === 'pointercancel') { gesture = null; return; }
             if (pointers.size > 0) return;
-            if (!gesture.mode && performance.now() - gesture.start < 300) {
+            if (!gesture.mode && time - gesture.start < 300) {
                 click(trackpad ? cursor : point(gesture.pair.x, gesture.pair.y), 4);
             }
         } else if (gesture) {
             const position = trackpad && !gesture.mouse ? cursor : point(event.clientX, event.clientY);
             if (mask) pointer(position ?? cursor, 0);
             else if (event.type === 'pointerup' && !gesture.mouse && !gesture.moved) {
-                const now = performance.now();
+                const now = time;
                 if (rfb.viewOnly && now - gesture.start < 500) {
                     const x = event.clientX, y = event.clientY;
                     if (lastTap && now - lastTap.time < 300 && Math.hypot(x - lastTap.x, y - lastTap.y) < 24) {
@@ -199,14 +242,13 @@ export function desktopInput(rfb) {
                     }
                 }
             }
-            if (gesture.mouse && gesture.right) rememberMouseRight(event);
+            if (gesture.mouse && gesture.right) rememberMouseRight(event, time);
         }
         gesture = null;
     }
     on('pointerup', finish);
     on('pointercancel', finish);
-    on('contextmenu', event => {
-        event.preventDefault();
+    on('contextmenu', (event, time) => {
         // Touch long-press is handled on pointerup. Some WebKit mouse paths
         // send only contextmenu; others send it alongside pointerdown/up.
         if (event.pointerType === 'touch' || event.pointerType === 'pen' ||
@@ -218,14 +260,14 @@ export function desktopInput(rfb) {
             }
             return;
         }
-        if (lastMouseRight && performance.now() - lastMouseRight.time < 300 &&
+        if (lastMouseRight && time - lastMouseRight.time < 300 &&
             Math.hypot(event.clientX - lastMouseRight.x, event.clientY - lastMouseRight.y) < 8) {
             lastMouseRight = null;
             return;
         }
         click(point(event.clientX, event.clientY), 4);
     });
-    on('wheel', event => { event.preventDefault(); wheel(point(event.clientX, event.clientY), event.deltaX, event.deltaY); });
+    on('wheel', event => { wheel(point(event.clientX, event.clientY), event.deltaX, event.deltaY); });
 
     function press(key) {
         for (const modifier of modifiers) rfb.sendKey(modifier, null, true);
@@ -252,14 +294,14 @@ export function desktopInput(rfb) {
             if (pendingPaste !== paste) return;
             pasteTimer = null;
             if (abort.signal.aborted || rfb.viewOnly || rfb._rfbConnectionState !== 'connected') {
-                cancelPaste();
+                release();
                 return;
             }
             // Yield between bounded batches so native can drain key events and
             // control loss / teardown can cancel before the next batch.
             for (let i = 0; i < 64; i++) {
                 const next = paste.next();
-                if (next.done) { cancelPaste(); return; }
+                if (next.done) { finishPaste(); return; }
                 type(next.value);
             }
             pasteTimer = setTimeout(sendChunk, 16);
@@ -268,7 +310,7 @@ export function desktopInput(rfb) {
     }
 
     return {
-        command(name, args) {
+        command: function command(name, args) {
             if (name === 'control') {
                 if (!args.enabled) release();
                 cancelAnimationFrame(pairFrame);
@@ -280,6 +322,12 @@ export function desktopInput(rfb) {
                 showCursor();
                 return;
             }
+            // Keep commands and gestures in receipt order until the entire paste is sent.
+            // Lifecycle/release stay immediate, and a newer paste replaces the remainder.
+            if (pendingPaste && name !== 'release' && name !== 'paste') {
+                pendingInput.push(() => command(name, args));
+                return;
+            }
             if (name === 'fit') { transform(1, 0, 0); return; }
             if (rfb.viewOnly || rfb._rfbConnectionState !== 'connected') return;
             switch (name) {
@@ -288,7 +336,7 @@ export function desktopInput(rfb) {
                 case 'key': if (Number.isInteger(args.key)) press(args.key); break;
                 case 'combo':
                     if (!Array.isArray(args.keys) || args.keys.length > 4 || !args.keys.every(Number.isInteger)) break;
-                    release();
+                    release(false);
                     for (const key of args.keys) rfb.sendKey(key, null, true);
                     for (const key of [...args.keys].reverse()) rfb.sendKey(key, null, false);
                     break;
@@ -300,6 +348,7 @@ export function desktopInput(rfb) {
                 case 'type': if (typeof args.text === 'string') type(args.text.slice(0, 1000)); break;
                 case 'paste': {
                     if (typeof args.text !== 'string') break;
+                    flushPair();
                     cancelPaste();
                     const text = args.text;
                     if (/[^\u0000-\u00ff]/.test(text)) pasteUnicode(text);
@@ -308,7 +357,8 @@ export function desktopInput(rfb) {
                         rfb.sendKey(0xffe3, null, true);
                         rfb.sendKey(0x76);
                         rfb.sendKey(0xffe3, null, false);
-                        release();
+                        release(false);
+                        finishPaste();
                     }
                     break;
                 }

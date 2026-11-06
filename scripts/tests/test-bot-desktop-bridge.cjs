@@ -9,6 +9,7 @@ const bundle = path.resolve(__dirname, '../../HermesMobile/Resources/BotDesktop.
 
 function fixture() {
     const messages = [];
+    const wire = [];
     const instances = [];
     const microtasks = [];
     const handlers = new Map(), animationFrames = new Map(), pointerMasks = [];
@@ -34,11 +35,11 @@ function fixture() {
             if (type === 'connect') this._rfbConnectionState = 'connected';
             this.events[type]?.({ detail });
         }
-        sendKey(...args) { this.keys.push(args); }
+        sendKey(...args) { this.keys.push(args); wire.push(['key', ...args]); }
         clipboardPasteFrom(text) { this.clipboard.push(text); }
         disconnect() { this.disconnected = true; this.channel.close(); }
     }
-    RFB.messages = { pointerEvent: (_sock, _x, _y, mask) => pointerMasks.push(mask) };
+    RFB.messages = { pointerEvent: (_sock, x, y, mask) => { pointerMasks.push(mask); wire.push(['pointer', x, y, mask]); } };
     const canvas = { width: 200, height: 200, getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 200 }) };
     const window = { webkit: { messageHandlers: { desktop: {
         postMessage: message => messages.push(JSON.parse(JSON.stringify(message)))
@@ -71,7 +72,7 @@ function fixture() {
     vm.runInContext(input, context);
     const source = fs.readFileSync(path.join(bundle, 'bridge.js'), 'utf8').replace(/^import .*;\n/gm, '');
     vm.runInContext(source, context);
-    return { api: window.HermexDesktop, instances, messages, pointerMasks,
+    return { api: window.HermexDesktop, instances, messages, pointerMasks, wire,
         get pendingTimers() { return timers.size; },
         tick: () => {
             for (const [id, callback] of [...timers]) {
@@ -229,6 +230,127 @@ test('Unicode paste sends all 10,000 accepted characters in bounded asynchronous
     }
 });
 
+test('later keys, text, modifiers, pointer input and combos wait for the whole paste in receipt order', () => {
+    const f = fixture();
+    f.api.open(1);
+    const rfb = f.instances[0];
+    rfb.emit('connect');
+    f.api.input('control', { enabled: true }, 1);
+    f.api.input('paste', { text: '中'.repeat(65) }, 1);
+    f.tick();
+    const paste = Array.from({ length: 65 }, () => ['key', 0x01004e2d]);
+    f.api.input('key', { key: 0xff09 }, 1);
+    f.api.input('type', { text: 'a' }, 1);
+    f.api.input('modifier', { key: 0xffe1 }, 1);
+    f.api.input('key', { key: 0x62 }, 1);
+    f.fire('pointerdown', { pointerType: 'mouse', button: 0, buttons: 1 });
+    f.fire('pointermove', { pointerType: 'mouse', buttons: 1, clientX: 75 });
+    f.fire('pointerup', { pointerType: 'mouse', clientX: 75 });
+    f.api.input('combo', { keys: [0xffe3, 0x61] }, 1);
+    let prevented = false;
+    f.fire('wheel', { deltaX: 0, deltaY: 16, preventDefault() { prevented = true; } });
+    f.api.input('key', { key: 0xff0d }, 1);
+    assert(prevented, 'browser scrolling is prevented immediately, not at replay');
+    assert.deepEqual(f.wire, paste.slice(0, 64));
+    f.drainTimers();
+    assert.deepEqual(f.wire, [...paste,
+        ['key', 0xff09], ['key', 0x61],
+        ['key', 0xffe1, null, true], ['key', 0x62], ['key', 0xffe1, null, false],
+        ['pointer', 50, 50, 1], ['pointer', 75, 50, 1], ['pointer', 75, 50, 0],
+        ['key', 0xffe3, null, true], ['key', 0x61, null, true],
+        ['key', 0x61, null, false], ['key', 0xffe3, null, false],
+        ['pointer', 50, 50, 16], ['pointer', 50, 50, 0], ['key', 0xff0d]
+    ]);
+});
+
+test('deferred gestures retain receipt timing and trackpad movement', () => {
+    const f = fixture();
+    f.api.open(1);
+    f.instances[0].emit('connect');
+    f.api.input('control', { enabled: true }, 1);
+    f.api.input('paste', { text: '中'.repeat(65) }, 1);
+    f.fire('pointerdown');
+    f.advance(550);
+    f.fire('pointerup');
+    const mouse = { pointerType: 'mouse', button: 2, buttons: 2 };
+    f.fire('pointerdown', mouse);
+    f.fire('pointerup', mouse);
+    f.fire('contextmenu', mouse);
+    f.api.input('trackpad', { enabled: true }, 1);
+    f.fire('pointerdown');
+    f.fire('pointermove', { clientX: 60 });
+    f.fire('pointermove', { clientX: 70 });
+    f.fire('pointerup', { clientX: 70 });
+    f.advance(5000);
+    assert.deepEqual(f.pointerMasks, []);
+    f.drainTimers();
+    assert.deepEqual(f.wire.filter(event => event[0] === 'pointer'), [
+        ['pointer', 50, 50, 4], ['pointer', 50, 50, 0],
+        ['pointer', 50, 50, 4], ['pointer', 50, 50, 0],
+        ['pointer', 100, 100, 0], ['pointer', 110, 100, 0], ['pointer', 120, 100, 0]
+    ]);
+});
+
+test('pending two-finger scrolling is flushed before paste and queued commands', () => {
+    const f = fixture();
+    f.api.open(1);
+    f.instances[0].emit('connect');
+    f.api.input('control', { enabled: true }, 1);
+    const scroll = () => {
+        f.fire('pointerdown');
+        f.fire('pointerdown', { pointerId: 2, clientX: 110 });
+        f.fire('pointermove', { clientX: 18 });
+        f.fire('pointermove', { pointerId: 2, clientX: 78 });
+    };
+    scroll();
+    f.api.input('paste', { text: '中'.repeat(65) }, 1);
+    assert.deepEqual(f.pointerMasks, [64, 0, 64, 0]);
+    f.frame();
+    f.fire('pointerup');
+    f.fire('pointerup', { pointerId: 2 });
+    scroll();
+    f.frame();
+    f.api.input('key', { key: 0xff0d }, 1);
+    f.fire('pointerup');
+    f.fire('pointerup', { pointerId: 2 });
+    f.tick();
+    assert.equal(f.wire.length, 4 + 64, 'no pending animation frame can scroll mid-paste');
+    f.drainTimers();
+    assert.deepEqual(f.wire.slice(4 + 65), [
+        ['pointer', 48, 50, 64], ['pointer', 48, 50, 0],
+        ['pointer', 48, 50, 64], ['pointer', 48, 50, 0], ['key', 0xff0d]
+    ]);
+});
+
+test('deferred paired gestures preserve distinct animation frames instead of becoming a right-click', () => {
+    for (const mode of ['zoom', 'scroll']) {
+        const perform = delayed => {
+            const f = fixture();
+            f.api.open(1);
+            f.instances[0].emit('connect');
+            f.api.input('control', { enabled: true }, 1);
+            if (delayed) f.api.input('paste', { text: '中'.repeat(65) }, 1);
+            f.fire('pointerdown');
+            f.fire('pointerdown', { pointerId: 2, clientX: 110 });
+            f.fire('pointermove', { clientX: mode === 'zoom' ? 30 : 18 });
+            f.fire('pointermove', { pointerId: 2, clientX: mode === 'zoom' ? 130 : 78 });
+            f.frame();
+            f.fire('pointermove', { clientX: 50 });
+            f.fire('pointermove', { pointerId: 2, clientX: 110 });
+            f.frame();
+            f.fire('pointerup');
+            f.fire('pointerup', { pointerId: 2 });
+            if (delayed) assert.deepEqual(f.pointerMasks, []);
+            f.drainTimers();
+            f.frame();
+            return f.pointerMasks;
+        };
+        const expected = mode === 'zoom' ? [] : [64, 0, 64, 0, 32, 0, 32, 0];
+        assert.deepEqual(perform(false), expected, mode);
+        assert.deepEqual(perform(true), expected, mode);
+    }
+});
+
 test('pending Unicode paste is canceled on control loss, release, disconnect and reopen', () => {
     for (const stop of ['control', 'release', 'disconnect', 'reopen', 'remote-disconnect']) {
         const f = fixture();
@@ -236,8 +358,14 @@ test('pending Unicode paste is canceled on control loss, release, disconnect and
         const rfb = f.instances[0];
         rfb.emit('connect');
         f.api.input('control', { enabled: true }, 1);
+        f.fire('pointerdown', { pointerType: 'mouse', button: 0, buttons: 1 });
         f.api.input('paste', { text: '中'.repeat(10000) }, 1);
         f.tick();
+        f.api.input('key', { key: 0xff0d }, 1);
+        f.api.input('type', { text: 'queued' }, 1);
+        f.fire('pointerup', { pointerType: 'mouse' });
+        f.fire('pointerdown');
+        f.fire('pointerup');
         const sent = rfb.keys.length;
         if (stop === 'disconnect') f.api.disconnect();
         else if (stop === 'reopen') {
@@ -249,9 +377,25 @@ test('pending Unicode paste is canceled on control loss, release, disconnect and
         f.api.input('control', { enabled: true }, 1);
         f.drainTimers();
         assert.equal(rfb.keys.length, sent, stop);
+        assert.deepEqual(f.pointerMasks, [1, 0], stop);
         if (stop === 'reopen') assert.deepEqual(f.instances[1].keys, []);
         assert.equal(f.pendingTimers, 0);
     }
+});
+
+test('release discards queued gestures and lets a new touch work without re-enabling control', () => {
+    const f = fixture();
+    f.api.open(1);
+    f.instances[0].emit('connect');
+    f.api.input('control', { enabled: true }, 1);
+    f.fire('pointerdown');
+    f.api.input('paste', { text: '中'.repeat(65) }, 1);
+    f.fire('pointerup');
+    f.api.input('release', {}, 1);
+    f.fire('pointerdown', { pointerId: 2 });
+    f.fire('pointerup', { pointerId: 2 });
+    f.drainTimers();
+    assert.deepEqual(f.wire, [['pointer', 50, 50, 1], ['pointer', 50, 50, 0]]);
 });
 
 test('repeated pastes replace unsent text without accumulating work and can finish again', () => {
