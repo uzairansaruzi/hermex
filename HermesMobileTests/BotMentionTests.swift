@@ -225,7 +225,9 @@ final class BotMentionTests: XCTestCase {
     /// pictures itself, for its pill and its `@` panel. A session loads none.
     func testABotChatLoadsItsRostersPictures() async throws {
         let chat = await openChat(target: .canonicalChat(profile: "default"), roster: Self.pictured)
-        await waitUntil("the pictures") { chat.turn.settings.avatars.count == 2 }
+        // The bound only ends a broken pass: the fetch and its decode ride the shared
+        // store and the main actor, which a loaded runner can hold well past 5 s (#1475).
+        await waitUntil("the pictures", timeout: 30) { chat.turn.settings.avatars.count == 2 }
         XCTAssertEqual(chat.turn.settings.avatars.keys.sorted(), ["default", "helper"])
         XCTAssertEqual(chat.writes("profiles.get_asset").compactMap { $0["name"]?.text }, ["default", "helper"])
 
@@ -361,10 +363,13 @@ final class BotMentionTests: XCTestCase {
             ComposerChipRenderer.image(label: "Inbox Triage", icon: icon, metrics: metrics, traits: traits, isRightToLeft: false)
         }
         XCTAssertTrue(render(first) === render(first))
-        XCTAssertNotEqual(render(first).pngData(), render(second).pngData())
+        // Identity, not pixel bytes: the avatar icon is a SwiftUI `ImageRenderer` bake,
+        // which a loaded runner can fail to produce at all — what must never happen is
+        // one bot's cached picture being handed out for another bot's avatar (#523).
+        XCTAssertFalse(render(first) === render(second), "another bot's avatar bakes its own picture")
         let fallback = render(.bot(ComposerBotReference(profile: bot(), avatar: nil)))
         XCTAssertEqual(fallback.size.width, render(.symbol("person")).size.width)
-        XCTAssertNotEqual(fallback.pngData(), render(first).pngData())
+        XCTAssertFalse(fallback === render(first), "a drawn face is not the first bot's picture either")
     }
 
     private func image(_ color: UIColor) -> UIImage {

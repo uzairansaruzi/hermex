@@ -731,7 +731,7 @@ extension CronManagementViewModelTests {
 @MainActor final class RunNowClock {
     private(set) var begun = 0
     private var sleepers: [Int: CheckedContinuation<Void, Error>] = [:]
-    private var watchers: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var watchers: [(count: Int, fulfill: () -> Void)] = []
 
     /// What the view models wait on.
     var sleep: @MainActor @Sendable (Duration) async throws -> Void { { try await self.hold($0) } }
@@ -745,7 +745,7 @@ extension CronManagementViewModelTests {
                 sleepers[id] = continuation
                 let met = watchers.filter { $0.count <= id }
                 watchers.removeAll { $0.count <= id }
-                met.forEach { $0.continuation.resume() }
+                met.forEach { $0.fulfill() }
             }
         } onCancel: {
             Task { @MainActor in self.sleepers.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
@@ -754,7 +754,13 @@ extension CronManagementViewModelTests {
 
     func waitUntilSleeping(_ count: Int) async {
         guard begun < count else { return }
-        await withCheckedContinuation { watchers.append((count, $0)) }
+        // The bound only ends a broken pass: a machine that never reaches this sleep
+        // would otherwise hold the test, and the runner, forever (#1475's CI hang).
+        let sleeping = XCTestExpectation(description: "sleep \(count) begun")
+        watchers.append((count, sleeping.fulfill))
+        guard await XCTWaiter().fulfillment(of: [sleeping], timeout: 30) == .completed else {
+            return XCTFail("the run now machine never began sleep \(count)")
+        }
     }
 
     func advance() {
