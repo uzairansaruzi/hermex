@@ -12,7 +12,8 @@ https://github.com/novnc/noVNC/archive/63107bd06d9e1f6136ff21aeda8cd62cbf0d433e.
 
 ## Licenses
 
-- noVNC core: Mozilla Public License 2.0, including modified `core/rfb.js`.
+- noVNC core: Mozilla Public License 2.0, including modified `core/rfb.js`
+  and `core/decoders/jpeg.js`.
   See `novnc/LICENSE.txt`, `novnc/AUTHORS`, and
   `novnc/docs/LICENSE.MPL-2.0`. Original per-file copyright and license
   headers are retained in the included source.
@@ -37,6 +38,11 @@ source (2026-11-03):
 3. Consume and discard standard and extended server clipboard payloads
    while view-only, before parsing, dispatching or replying to them.
 
+`novnc/core/decoders/jpeg.js` also has Hermex safety limits (2026-11-06):
+JPEG images are bounded to 16 MiB and 1,024 segments across receive calls,
+including unfinished scans and reused tables. Repeated start-of-image markers
+are rejected. Protocol errors use the existing generic connection-failure path.
+
 No other upstream source files are modified. Trailing whitespace in AUTHORS and
 license notice text is removed without changing its content. Keep the source, notices and
 this modification record when redistributing or updating this bundle.
@@ -46,7 +52,7 @@ this modification record when redistributing or updating this bundle.
 From the repository root, with Node/npm installed:
 
     scripts/build-bot-desktop-viewer.sh
-    node --test scripts/tests/test-bot-desktop-bridge.cjs
+    node --test scripts/tests/test-bot-desktop-*.cjs
 
 The build tool is pinned to esbuild 0.25.12 and fetched from the official npm
 registry if not cached. It is a build-only dependency. `viewer.js` is checked
@@ -79,7 +85,13 @@ does not receive touch events. It starts view-only. Only a server-confirmed
 lease enables remote input or clipboard, and the Hermes server also filters
 these messages by lease at the RFB boundary.
 
+Unicode pastes preserve all text accepted by the native 10,000-character limit.
+They send 64 code points per timer turn, yielding 16 ms between batches. Control
+loss, release or teardown cancels pending text; a new paste replaces the unsent
+remainder of the previous paste. Latin-1 pastes retain the clipboard/Ctrl-V path.
+
 Browser networking is blocked by CSP. Native code validates message shape and
 generation, bounds outgoing queues and incoming WebSocket messages, and awaits
 delivery of each receive chunk. Receive chunks are limited to 4 MiB and send
 chunks to 64 KiB. Only received changes drive noVNC rendering.
+

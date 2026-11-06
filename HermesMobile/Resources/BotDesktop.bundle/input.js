@@ -14,6 +14,7 @@ export function desktopInput(rfb) {
     let lastTap = null, lastTrackpadTap = null;
     let lastMouseRight = null;
     let pairFrame = 0;
+    let pendingPaste = null, pasteTimer = null;
     const mouseButtons = bits => (bits & 1) | ((bits & 2) << 1) | ((bits & 4) >> 1);
     const buttonBit = button => [1, 2, 4][button] ?? 0;
 
@@ -46,7 +47,14 @@ export function desktopInput(rfb) {
         pointer(position, 0);
     }
 
+    function cancelPaste() {
+        clearTimeout(pasteTimer);
+        pasteTimer = null;
+        pendingPaste = null;
+    }
+
     function release() {
+        cancelPaste();
         if (mask) pointer(cursor, 0);
         modifiers.clear();
         mask = 0;
@@ -234,6 +242,31 @@ export function desktopInput(rfb) {
         }
     }
 
+    function pasteUnicode(text) {
+        // Native already limits paste to 10,000 Swift Characters, not UTF-16
+        // units. Iterate the whole accepted text without splitting surrogate pairs.
+        // Keep just one paste; a newer paste replaces any unsent remainder.
+        const paste = text[Symbol.iterator]();
+        pendingPaste = paste;
+        function sendChunk() {
+            if (pendingPaste !== paste) return;
+            pasteTimer = null;
+            if (abort.signal.aborted || rfb.viewOnly || rfb._rfbConnectionState !== 'connected') {
+                cancelPaste();
+                return;
+            }
+            // Yield between bounded batches so native can drain key events and
+            // control loss / teardown can cancel before the next batch.
+            for (let i = 0; i < 64; i++) {
+                const next = paste.next();
+                if (next.done) { cancelPaste(); return; }
+                type(next.value);
+            }
+            pasteTimer = setTimeout(sendChunk, 16);
+        }
+        pasteTimer = setTimeout(sendChunk, 0);
+    }
+
     return {
         command(name, args) {
             if (name === 'control') {
@@ -267,8 +300,9 @@ export function desktopInput(rfb) {
                 case 'type': if (typeof args.text === 'string') type(args.text.slice(0, 1000)); break;
                 case 'paste': {
                     if (typeof args.text !== 'string') break;
-                    const text = args.text.slice(0, 10000);
-                    if (/[^\u0000-\u00ff]/.test(text)) type(text.slice(0, 1000));
+                    cancelPaste();
+                    const text = args.text;
+                    if (/[^\u0000-\u00ff]/.test(text)) pasteUnicode(text);
                     else {
                         rfb.clipboardPasteFrom(text);
                         rfb.sendKey(0xffe3, null, true);
@@ -289,3 +323,4 @@ export function desktopInput(rfb) {
         }
     };
 }
+

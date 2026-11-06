@@ -12,6 +12,8 @@ function fixture() {
     const instances = [];
     const microtasks = [];
     const handlers = new Map(), animationFrames = new Map(), pointerMasks = [];
+    const timers = new Map();
+    let timerID = 0;
     let frameID = 0, time = 0;
     let clears = 0;
     class RFB {
@@ -21,6 +23,7 @@ function fixture() {
             this.events = {};
             this.frames = [];
             this.keys = [];
+            this.clipboard = [];
             this.disconnected = false;
             channel.onmessage = event => this.frames.push(new Uint8Array(event.data));
             channel.onclose = () => this.emit('disconnect');
@@ -32,6 +35,7 @@ function fixture() {
             this.events[type]?.({ detail });
         }
         sendKey(...args) { this.keys.push(args); }
+        clipboardPasteFrom(text) { this.clipboard.push(text); }
         disconnect() { this.disconnected = true; this.channel.close(); }
     }
     RFB.messages = { pointerEvent: (_sock, _x, _y, mask) => pointerMasks.push(mask) };
@@ -42,6 +46,8 @@ function fixture() {
     const context = vm.createContext({
         window, RFB, ArrayBuffer, Uint8Array, AbortController,
         performance: { now: () => time },
+        setTimeout: callback => { timers.set(++timerID, callback); return timerID; },
+        clearTimeout: id => timers.delete(id),
         requestAnimationFrame: callback => { animationFrames.set(++frameID, callback); return frameID; },
         cancelAnimationFrame: id => animationFrames.delete(id),
         initLogging: level => assert.equal(level, 'none'),
@@ -66,6 +72,20 @@ function fixture() {
     const source = fs.readFileSync(path.join(bundle, 'bridge.js'), 'utf8').replace(/^import .*;\n/gm, '');
     vm.runInContext(source, context);
     return { api: window.HermexDesktop, instances, messages, pointerMasks,
+        get pendingTimers() { return timers.size; },
+        tick: () => {
+            for (const [id, callback] of [...timers]) {
+                if (timers.delete(id)) callback();
+            }
+        },
+        drainTimers: () => {
+            for (let turn = 0; timers.size; turn++) {
+                assert(turn < 1000, 'paste must finish in bounded timer turns');
+                for (const [id, callback] of [...timers]) {
+                    if (timers.delete(id)) callback();
+                }
+            }
+        },
         fire: (type, event = {}) => handlers.get(type)({ type, pointerId: 1, pointerType: 'touch',
             clientX: 50, clientY: 50, preventDefault() {}, ...event }),
         advance: ms => { time += ms; },
@@ -180,6 +200,97 @@ test('remote input and clipboard are gated by current generation and control', (
     rfb.emit('clipboard', { text: 'blocked' });
     assert.equal(rfb.keys.length, 3);
     assert.equal(f.messages.at(-1).text, 'allowed');
+});
+
+test('Unicode paste sends all 10,000 accepted characters in bounded asynchronous chunks', () => {
+    for (const text of [
+        '中'.repeat(10000),
+        '😀'.repeat(10000),
+        'a'.repeat(999) + '😀' + 'a'.repeat(8999) + '😀',
+        ('a'.repeat(63) + '😀中e\u0301').repeat(149)
+    ]) {
+        const f = fixture();
+        f.api.open(1);
+        const rfb = f.instances[0];
+        rfb.emit('connect');
+        f.api.input('control', { enabled: true }, 1);
+        f.api.input('paste', { text }, 1);
+        assert.equal(rfb.keys.length, 0, 'the paste yields before sending');
+        f.tick();
+        assert.equal(rfb.keys.length, 64, 'one turn sends only a bounded batch');
+        assert.equal(f.pendingTimers, 1);
+        f.drainTimers();
+        assert.deepEqual(rfb.keys, Array.from(text, char => {
+            const code = char.codePointAt(0);
+            return [code < 256 ? code : 0x01000000 | code];
+        }));
+        assert.deepEqual(rfb.clipboard, []);
+        assert.equal(f.pendingTimers, 0);
+    }
+});
+
+test('pending Unicode paste is canceled on control loss, release, disconnect and reopen', () => {
+    for (const stop of ['control', 'release', 'disconnect', 'reopen', 'remote-disconnect']) {
+        const f = fixture();
+        f.api.open(1);
+        const rfb = f.instances[0];
+        rfb.emit('connect');
+        f.api.input('control', { enabled: true }, 1);
+        f.api.input('paste', { text: '中'.repeat(10000) }, 1);
+        f.tick();
+        const sent = rfb.keys.length;
+        if (stop === 'disconnect') f.api.disconnect();
+        else if (stop === 'reopen') {
+            f.api.open(1);
+            f.instances[1].emit('connect');
+            f.api.input('control', { enabled: true }, 1);
+        } else if (stop === 'remote-disconnect') rfb.emit('disconnect');
+        else f.api.input(stop, { enabled: false }, 1);
+        f.api.input('control', { enabled: true }, 1);
+        f.drainTimers();
+        assert.equal(rfb.keys.length, sent, stop);
+        if (stop === 'reopen') assert.deepEqual(f.instances[1].keys, []);
+        assert.equal(f.pendingTimers, 0);
+    }
+});
+
+test('repeated pastes replace unsent text without accumulating work and can finish again', () => {
+    const f = fixture();
+    f.api.open(1);
+    const rfb = f.instances[0];
+    rfb.emit('connect');
+    f.api.input('control', { enabled: true }, 1);
+    f.api.input('paste', { text: '中'.repeat(10000) }, 1);
+    f.tick();
+    for (let i = 0; i < 100; i++) {
+        f.api.input('paste', { text: '文'.repeat(10000) }, 1);
+        assert.equal(f.pendingTimers, 1);
+    }
+    f.api.input('paste', { text: '😀\t\r\n' }, 1);
+    f.drainTimers();
+    assert.deepEqual(rfb.keys.slice(64), [[0x0101f600], [0xff09], [0xff0d]]);
+    assert.equal(rfb.keys.length, 67);
+    f.api.input('paste', { text: '完' }, 1);
+    f.drainTimers();
+    assert.deepEqual(rfb.keys.at(-1), [0x01005b8c]);
+    assert.equal(f.pendingTimers, 0);
+});
+
+test('Latin-1 paste keeps the full clipboard and Ctrl-V path and cancels Unicode remainder', () => {
+    const f = fixture();
+    f.api.open(1);
+    const rfb = f.instances[0];
+    rfb.emit('connect');
+    f.api.input('paste', { text: 'blocked' }, 1);
+    assert.deepEqual(rfb.clipboard, []);
+    f.api.input('control', { enabled: true }, 1);
+    f.api.input('paste', { text: '中'.repeat(10000) }, 1);
+    const text = 'é'.repeat(10000);
+    f.api.input('paste', { text }, 1);
+    f.drainTimers();
+    assert.deepEqual(rfb.clipboard, [text]);
+    assert.deepEqual(rfb.keys, [[0xffe3, null, true], [0x76], [0xffe3, null, false]]);
+    assert.equal(f.pendingTimers, 0);
 });
 
 test('binary transport preserves arbitrary bytes and typed-array slice boundaries', () => {
@@ -330,3 +441,4 @@ test('built viewer performs real RFB handshake and paints pixels without network
         await browser.close();
     }
 });
+

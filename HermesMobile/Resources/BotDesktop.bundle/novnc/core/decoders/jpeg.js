@@ -7,6 +7,10 @@
  *
  */
 
+// Hermex: bound a whole image, not just each WebSocket receive chunk.
+const MAX_JPEG_BYTES = 16 * 1024 * 1024;
+const MAX_JPEG_SEGMENTS = 1024;
+
 export default class JPEGDecoder {
     constructor() {
         // RealVNC will reuse the quantization tables
@@ -15,6 +19,7 @@ export default class JPEGDecoder {
         this._cachedHuffmanTables = [];
 
         this._segments = [];
+        this._segmentBytes = 0;
     }
 
     decodeRect(x, y, width, height, sock, display, depth) {
@@ -25,6 +30,7 @@ export default class JPEGDecoder {
                 return false;
             }
             this._segments.push(segment);
+            this._segmentBytes += segment.length;
             // End of image?
             if (segment[1] === 0xD9) {
                 break;
@@ -51,19 +57,15 @@ export default class JPEGDecoder {
             throw new Error("Illegal JPEG image without SOF");
         }
 
-        if (quantTables.length === 0) {
-            this._segments.splice(sofIndex+1, 0,
-                                  ...this._cachedQuantTables);
-        }
-        if (huffmanTables.length === 0) {
-            this._segments.splice(sofIndex+1, 0,
-                                  ...this._cachedHuffmanTables);
-        }
+        const cachedTables = [
+            ...(huffmanTables.length === 0 ? this._cachedHuffmanTables : []),
+            ...(quantTables.length === 0 ? this._cachedQuantTables : []),
+        ];
+        const cachedBytes = cachedTables.reduce((sum, segment) => sum + segment.length, 0);
+        this._checkLimits(cachedBytes, cachedTables.length);
+        this._segments.splice(sofIndex+1, 0, ...cachedTables);
 
-        let length = 0;
-        for (let segment of this._segments) {
-            length += segment.length;
-        }
+        let length = this._segmentBytes + cachedBytes;
 
         let data = new Uint8Array(length);
         length = 0;
@@ -82,8 +84,16 @@ export default class JPEGDecoder {
         }
 
         this._segments = [];
+        this._segmentBytes = 0;
 
         return true;
+    }
+
+    _checkLimits(bytes, segments = 1) {
+        if (this._segmentBytes + bytes > MAX_JPEG_BYTES ||
+            this._segments.length + segments > MAX_JPEG_SEGMENTS) {
+            throw new Error("JPEG image exceeds size or segment limit");
+        }
     }
 
     _readSegment(sock) {
@@ -97,6 +107,10 @@ export default class JPEGDecoder {
                                marker + ")");
         }
         let type = sock.rQshift8();
+        if (type === 0xD8 && this._segments.length !== 0) {
+            throw new Error("Illegal repeated JPEG start marker");
+        }
+        this._checkLimits(2);
         if (type >= 0xD0 && type <= 0xD9 || type == 0x01) {
             // No length after marker
             return new Uint8Array([marker, type]);
@@ -111,6 +125,7 @@ export default class JPEGDecoder {
             throw new Error("Illegal JPEG length received (length: " +
                                length + ")");
         }
+        this._checkLimits(2 + length);
 
         if (sock.rQwait("JPEG", length-2, 4)) {
             return null;
@@ -129,11 +144,14 @@ export default class JPEGDecoder {
             while (true) {
                 let idx = data.indexOf(0xFF, length-2+extra);
                 if (idx === -1) {
+                    this._checkLimits(4 + len);
                     sock.rQwait("JPEG", Infinity, 4);
                     return null;
                 }
 
                 if (idx === len-1) {
+                    // The final FF might begin the next marker, not scan data.
+                    this._checkLimits(4 + len - 1);
                     sock.rQwait("JPEG", Infinity, 4);
                     return null;
                 }
@@ -149,6 +167,7 @@ export default class JPEGDecoder {
             }
         }
 
+        this._checkLimits(2 + length + extra);
         let segment = new Uint8Array(2 + length + extra);
         segment[0] = marker;
         segment[1] = type;
@@ -159,3 +178,4 @@ export default class JPEGDecoder {
         return segment;
     }
 }
+
