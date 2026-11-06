@@ -11,7 +11,8 @@ struct HermesHome {
     let title: String
     let avatar: SessionsHeader.Avatar
     let tab: Binding<HermesHomeTab>
-    /// The home is a split's sidebar, whose bars stay horizontal beside a vertical one.
+    /// The home is a split's sidebar, whose bars stay horizontal beside a vertical one; the
+    /// detail column takes its rail items (`HermesHomeDetailBar`).
     var isSidebar = false
 }
 
@@ -30,18 +31,21 @@ struct HermesHomeSearch {
 /// On iOS 26 the bar's glass pills float over the list: the system's bottom scroll edge effect
 /// read as a solid band behind them, so it is hidden.
 ///
-/// Where the system draws a vertical bar (iPhone Duo), the header's search and avatar move into
-/// it with the bar's buttons: New Chat, Search and the filter at its top, and Bots, Sessions and
-/// the avatar at its foot. The header then drops its pill (`homeBarOwnsSearch`).
+/// Where the system draws a vertical bar (iPhone Duo), the bar's buttons and the header's search
+/// and avatar move into it (`HermesHomeRailItems`) and the header drops its pill
+/// (`homeBarOwnsSearch`). Unfolded, the rail is the split's detail column's, so the detail carries
+/// them (`HermesHomeDetailBar`) and this sidebar shows no bar.
 struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     let home: HermesHome
     let search: HermesHomeSearch
     @ViewBuilder let filter: Filter
     @ViewBuilder let newChat: NewChat
+    @Environment(\.splitDetailHasVerticalBar) private var detailHasVerticalBar
 
     func body(content: Content) -> some View {
         VerticalBarReader { hasVerticalBar in
-            let usesVerticalBar = hasVerticalBar && !home.isSidebar
+            let ownsRail = hasVerticalBar && !home.isSidebar
+            let detailOwnsRail = home.isSidebar && detailHasVerticalBar
             content
                 .modifier(HiddenBottomScrollEdge())
                 .themedPageBackground()
@@ -49,16 +53,16 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
                 .navigationBarTitleDisplayMode(.inline)
                 // The vertical bar carries the navigation bar's items, so it stays; its title would
                 // be a row of its own above the header.
-                .toolbar(usesVerticalBar ? .automatic : .hidden, for: .navigationBar)
-                .toolbar(removing: usesVerticalBar ? .title : nil)
+                .toolbar(ownsRail ? .automatic : .hidden, for: .navigationBar)
+                .toolbar(removing: ownsRail ? .title : nil)
                 .toolbar {
-                    if #available(iOS 27.1, *), usesVerticalBar {
-                        verticalBarItems
-                    } else {
+                    if #available(iOS 27.1, *), ownsRail {
+                        HermesHomeRailItems(home: home, search: search, filter: filter, newChat: newChat)
+                    } else if !detailOwnsRail {
                         bottomBarItems
                     }
                 }
-                .environment(\.homeBarOwnsSearch, usesVerticalBar)
+                .environment(\.homeBarOwnsSearch, ownsRail || detailOwnsRail)
         }
     }
 
@@ -75,10 +79,37 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
         }
         ToolbarItem(placement: .bottomBar) { newChat }
     }
+}
 
-    /// The segmented switch is too wide for a vertical bar, so each side gets its own button.
-    @available(iOS 27.1, *)
-    @ToolbarContentBuilder private var verticalBarItems: some ToolbarContent {
+/// The unfolded iPhone Duo's rail belongs to the split's detail column, so a split home's detail
+/// root (its placeholder or chat) carries the home's rail items. A screen pushed over it shows
+/// only its own.
+struct HermesHomeDetailBar<Filter: View, NewChat: View>: ViewModifier {
+    let home: HermesHome?
+    let search: HermesHomeSearch
+    @ViewBuilder let filter: Filter
+    @ViewBuilder let newChat: NewChat
+
+    func body(content: Content) -> some View {
+        content.verticalBarToolbar { hasVerticalBar in
+            if #available(iOS 27.1, *), hasVerticalBar, let home, home.isSidebar {
+                HermesHomeRailItems(home: home, search: search, filter: filter, newChat: newChat)
+            }
+        }
+    }
+}
+
+/// The home's buttons in a vertical bar: New Chat, Search and the filter at its top, and Bots,
+/// Sessions and the avatar at its foot. The segmented switch is too wide for it, so each side
+/// gets its own button.
+@available(iOS 27.1, *)
+private struct HermesHomeRailItems<Filter: View, NewChat: View>: ToolbarContent {
+    let home: HermesHome
+    let search: HermesHomeSearch
+    let filter: Filter
+    let newChat: NewChat
+
+    var body: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) { newChat }
         ToolbarItem(placement: .topBarTrailing) {
             Button(search.label, systemImage: "magnifyingglass", action: search.open)
@@ -96,11 +127,23 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
 extension EnvironmentValues {
     /// The home's bar holds search and the avatar, so `SessionsHeader` leaves them out.
     @Entry var homeBarOwnsSearch = false
+    /// A split's detail column draws the vertical bar (unfolded iPhone Duo), so its sidebar leaves
+    /// its bar items to the detail (`SessionSplitView`).
+    @Entry var splitDetailHasVerticalBar = false
+}
+
+extension View {
+    /// `toolbar(content:)`, told whether the system draws a vertical bar here (`VerticalBarReader`).
+    func verticalBarToolbar<Items: ToolbarContent>(
+        @ToolbarContentBuilder _ items: @escaping (_ hasVerticalBar: Bool) -> Items
+    ) -> some View {
+        VerticalBarReader { hasVerticalBar in self.toolbar { items(hasVerticalBar) } }
+    }
 }
 
 /// Calls `content` with whether the system draws a vertical bar here (iOS 27.1, iPhone Duo). In a
-/// split it is the detail column's: the sidebar's bars stay horizontal (`HermesHome.isSidebar`).
-private struct VerticalBarReader<Content: View>: View {
+/// split it is the detail column's: the sidebar reads it too, but its bars stay horizontal.
+struct VerticalBarReader<Content: View>: View {
     @ViewBuilder let content: (Bool) -> Content
 
     var body: some View {

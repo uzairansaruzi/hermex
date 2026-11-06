@@ -79,7 +79,8 @@ struct HermesSessionListView: View {
     @State private var navigation: HermesSessionListNavigation
     @State private var actionToast = ActionToastState()
     @FocusState private var isSearchFieldFocused: Bool
-    /// Counts the home's search requests, each of which scrolls the header back (`HomeHeaderScroll`).
+    /// Counts the home's search requests, each of which scrolls the header back (`HomeHeaderScroll`)
+    /// and, in a split, shows the sidebar that holds it.
     @State private var searchRequests = 0
 
     /// The list a chat's `/sessions` pushed.
@@ -387,10 +388,13 @@ struct HermesSessionListView: View {
 
     @ViewBuilder private var navigationSurface: some View {
         if usesSplit {
-            SessionSplitView(rootRevision: covers.detailIdentity.hashValue, offersHideSidebar: true) {
+            SessionSplitView(rootRevision: covers.detailIdentity.hashValue, offersHideSidebar: true,
+                             sidebarRequests: searchRequests) {
                 sessionRows
             } detail: {
                 regularWidthDetail
+                    .modifier(HermesHomeDetailBar(home: home, search: HermesHomeSearch(label: "Search sessions", open: openSearch),
+                                                  filter: { profileFilter }, newChat: { newSessionButton }))
             }
         } else {
             compactSessionRows

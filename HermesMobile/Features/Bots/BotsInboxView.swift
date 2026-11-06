@@ -117,6 +117,10 @@ import SwiftUI
                 list
             } detail: {
                 regularWidthDetail
+                    .modifier(HermesHomeDetailBar(home: home, search: HermesHomeSearch(label: "Search bots and messages",
+                                                                                         isDisabled: inbox.connection == nil,
+                                                                                         open: { showingSearch = true }),
+                                                  filter: { filterMenu }, newChat: { newChatMenu }))
             }
         } else {
             compactList

@@ -19,8 +19,11 @@ enum HermesHomeLayout {
 struct SessionSplitView<Sidebar: View, Detail: View>: View {
     let rootRevision: Int
     /// The Hermes home's sidebar hides its top bar, and the system's toggle with it, so the detail
-    /// carries a way to hide an open sidebar.
+    /// carries a way to hide an open sidebar. Where the detail draws a vertical bar (unfolded iPhone
+    /// Duo) it shows the sidebar too, in place of the system's toggle, which would float outside it.
     var offersHideSidebar = false
+    /// Each change shows a hidden sidebar: the Sessions home's search, which opens in its header.
+    var sidebarRequests = 0
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -30,20 +33,36 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
     /// hidden `.automatic` sidebar.
     @State private var isCollapsedByUser = false
     @State private var detailColumn = DetailColumnNavigation()
+    /// Read in the detail column, whose bar is the vertical one: the sidebar's own reading follows
+    /// whether it shows a bar, which it doesn't once the detail takes its items.
+    @State private var detailHasVerticalBar = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
+                .toolbar(removing: offersSidebarToggle ? .sidebarToggle : nil)
                 .navigationSplitViewColumnWidth(min: 280, ideal: 380, max: 420)
+                .environment(\.splitDetailHasVerticalBar, detailHasVerticalBar)
         } detail: {
             NavigationStack {
                 detail
                     .background { DetailColumnNavigationReader(column: detailColumn) }
+                    .background {
+                        VerticalBarReader { hasVerticalBar in
+                            Color.clear.onChange(of: hasVerticalBar, initial: true) { detailHasVerticalBar = hasVerticalBar }
+                        }
+                    }
                     .toolbar {
                         if offersHideSidebar && columnVisibility.showsSidebar {
                             ToolbarItem(placement: .topBarLeading) {
                                 Button("Hide Sidebar", systemImage: "sidebar.left") {
                                     withAnimation(reduceMotion ? nil : .default) { columnVisibility = .detailOnly }
+                                }
+                            }
+                        } else if offersSidebarToggle {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Show Sidebar", systemImage: "sidebar.left") {
+                                    withAnimation(reduceMotion ? nil : .default) { columnVisibility = .doubleColumn }
                                 }
                             }
                         }
@@ -64,7 +83,12 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
             columnVisibility = .settled(isRoomy: isRoomy, isCollapsedByUser: isCollapsedByUser)
             detailColumn.popToRoot()
         }
+        .onChange(of: sidebarRequests) {
+            if !columnVisibility.showsSidebar { columnVisibility = .doubleColumn }
+        }
     }
+
+    private var offersSidebarToggle: Bool { offersHideSidebar && detailHasVerticalBar }
 }
 
 /// The detail column's `UINavigationController`. The split view adopts the detail
