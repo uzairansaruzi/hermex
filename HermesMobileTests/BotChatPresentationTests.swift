@@ -274,28 +274,31 @@ import XCTest
         XCTAssertTrue(field.isSecureTextEntry, "the password field, not the address or username, has focus")
     }
 
-    /// At the largest text size the Sessions approval overlay, with its scope
-    /// line, is taller than the screen; it scrolls so its last button stays
-    /// reachable.
-    func testSessionsApprovalOverlayScrollsToItsLastButtonAtTheLargestTextSize() async throws {
+    /// At the largest text size the Sessions approval card, with its scope
+    /// line, is taller than the space above the composer; it scrolls so its
+    /// last button stays reachable.
+    func testSessionsApprovalCardScrollsToItsLastButtonAtTheLargestTextSize() async throws {
         let pending = PendingApproval(
             command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh && rm -rf ./build",
             description: "Security scan — [medium] Shortened URL: The link hides where it points; recursive delete",
             patternKeys: ["tirith:shortened_url", "recursive delete"]
         )
-        let window = try show(ApprovalRequestOverlay(
-            prompt: ApprovalPromptState(sessionID: "s1", pending: pending, pendingCount: 1),
-            isResponding: false, errorMessage: nil, onChoice: { _ in }, onSkipAll: {}
-        ).environment(\.dynamicTypeSize, .accessibility5))
+        let inset = ApprovalRequestInset(
+            content: ApprovalPromptState(sessionID: "s1", pending: pending, pendingCount: 1).requestContent,
+            maximumExpandedHeight: 600, isResponding: false, isStopping: false, errorMessage: nil,
+            isHapticsEnabled: false, onChoice: { _ in }, onSkipAll: {}, onStop: {},
+            onDismissKeyboard: {}, onFootprintChange: { _ in }
+        )
+        let window = try show(VStack { Spacer(); inset }.environment(\.dynamicTypeSize, .accessibility5))
         defer { close(window) }
         await settle(window)
         let scroll = try XCTUnwrap(
             descendants(window).compactMap { $0 as? UIScrollView }.first { $0.contentSize.height > $0.bounds.height + 1 },
-            "The overlay outgrows the window but nothing scrolls vertically"
+            "The card outgrows the space above the composer but nothing scrolls vertically"
         )
         drag(scroll, to: scroll.contentSize.height - scroll.bounds.height)
         await settle(window)
-        let shown = try screenshot(window, name: "sessions-approval-overlay-ax5")
+        let shown = try screenshot(window, name: "sessions-approval-card-ax5")
         XCTAssertTrue(shown.contains("Skip all"), shown)
     }
 

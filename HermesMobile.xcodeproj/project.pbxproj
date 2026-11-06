@@ -200,7 +200,7 @@
 		A040C0DE0000000000000001 /* ProjectCreationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A040C0DE0000000000000002 /* ProjectCreationSheet.swift */; };
 		A048C0DE0000000000000001 /* SessionRenameSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A048C0DE0000000000000002 /* SessionRenameSheet.swift */; };
 		A04200000000000000000001 /* Approval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04200000000000000000002 /* Approval.swift */; };
-		A04200000000000000000003 /* ApprovalRequestOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04200000000000000000004 /* ApprovalRequestOverlay.swift */; };
+		A04200000000000000000003 /* ApprovalRequestInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04200000000000000000004 /* ApprovalRequestInset.swift */; };
 		C1A042000000000000000001 /* Clarification.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000002 /* Clarification.swift */; };
 		C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000004 /* ClarificationRequestCard.swift */; };
 		C1A0420000000000000000A3 /* PendingRequestSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */; };
@@ -933,7 +933,7 @@
 		A040C0DE0000000000000002 /* ProjectCreationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCreationSheet.swift; sourceTree = "<group>"; };
 		A048C0DE0000000000000002 /* SessionRenameSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRenameSheet.swift; sourceTree = "<group>"; };
 		A04200000000000000000002 /* Approval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Approval.swift; sourceTree = "<group>"; };
-		A04200000000000000000004 /* ApprovalRequestOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalRequestOverlay.swift; sourceTree = "<group>"; };
+		A04200000000000000000004 /* ApprovalRequestInset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalRequestInset.swift; sourceTree = "<group>"; };
 		C1A042000000000000000002 /* Clarification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clarification.swift; sourceTree = "<group>"; };
 		C1A042000000000000000004 /* ClarificationRequestCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationRequestCard.swift; sourceTree = "<group>"; };
 		C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRequestSurfaces.swift; sourceTree = "<group>"; };
@@ -2111,7 +2111,7 @@
 				C0DE22000000000000000002 /* ChatHaptics.swift */,
 				105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */,
 				A1022B000000000000000002 /* ApprovalSummary.swift */,
-				A04200000000000000000004 /* ApprovalRequestOverlay.swift */,
+				A04200000000000000000004 /* ApprovalRequestInset.swift */,
 				C1A042000000000000000004 /* ClarificationRequestCard.swift */,
 				C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */,
 				1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */,
@@ -3063,7 +3063,7 @@
 				1A2B3C4D5E6F70000000152 /* MessageAttachment.swift in Sources */,
 				A04200000000000000000001 /* Approval.swift in Sources */,
 				A1022B000000000000000001 /* ApprovalSummary.swift in Sources */,
-				A04200000000000000000003 /* ApprovalRequestOverlay.swift in Sources */,
+				A04200000000000000000003 /* ApprovalRequestInset.swift in Sources */,
 				C1A042000000000000000001 /* Clarification.swift in Sources */,
 				C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */,
 				C1A0420000000000000000A3 /* PendingRequestSurfaces.swift in Sources */,

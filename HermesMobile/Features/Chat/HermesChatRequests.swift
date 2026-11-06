@@ -122,7 +122,7 @@ import Observation
     /// Model settings' switch may turn the bypass off: only this session's own flag can be.
     var mayTurnOffApprovalBypass: Bool { approvalBypass && !hostApprovesAll && !bypassOutlivedTurnOff }
 
-    /// The open approvals, for the overlay's count.
+    /// The open approvals, for the approval card's count.
     var approvalCount: Int {
         open.filter { if case .approval? = $0.pending { return true }; return false }.count
     }

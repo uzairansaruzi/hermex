@@ -16,7 +16,7 @@ import Observation
         let summaries = ApprovalSummaries(), key = key()
         var calls = 0
         let presentation = ApprovalSummaryPresentation(key: key, summaries: summaries) { calls += 1; return "Not shown" }
-        let view = ApprovalRequestOverlay(content: content, isResponding: false, errorMessage: nil,
+        let view = ApprovalRequestCard(content: content, isResponding: false, errorMessage: nil,
                                           onChoice: { _ in }, onSkipAll: {}, summary: presentation)
         let window = try await host(view.defaultAppStorage(appStorage(explains: nil)))
         defer { close(window) }
@@ -35,7 +35,7 @@ import Observation
             return await withCheckedContinuation { reply = $0; started.fulfill() }
         }
         let presence = CardPresence()
-        let overlay = ApprovalRequestOverlay(content: content, isResponding: false, errorMessage: nil,
+        let overlay = ApprovalRequestCard(content: content, isResponding: false, errorMessage: nil,
                                              onChoice: { _ in }, onSkipAll: {}, summary: presentation)
         let window = try await host(PresenceHarness(presence: presence, card: overlay)
             .defaultAppStorage(appStorage(explains: true)))
@@ -66,7 +66,7 @@ import Observation
                 await withCheckedContinuation { reply = $0; started.fulfill() }
             } onCancel: { cancelled.fulfill() }
         }
-        let view = ApprovalRequestOverlay(content: content, isResponding: false, errorMessage: nil,
+        let view = ApprovalRequestCard(content: content, isResponding: false, errorMessage: nil,
             onChoice: { _ in }, onSkipAll: {}, summary: presentation).defaultAppStorage(defaults)
         let window = try await host(view)
         defer { close(window) }
@@ -79,7 +79,7 @@ import Observation
         XCTAssertEqual(summaries.states[key], .unavailable, "a late reply can't come back once the switch is off")
     }
 
-    private var content: ApprovalOverlayContent {
+    private var content: ApprovalRequestContent {
         .init(description: "Deletes a file", command: "rm ./draft.txt", scopeLine: nil,
               pendingCount: 1, choices: [.once, .deny])
     }

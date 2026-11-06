@@ -606,7 +606,7 @@ enum ChatActiveRunStatusPolicy {
 enum ChatWorkingRowPolicy {
     /// Start date for the transcript's "Working for" tail row, or nil when the
     /// row stays hidden: no active run, the run is being stopped, or the agent
-    /// is waiting on a clarification answer rather than working.
+    /// is waiting on a clarification or approval answer rather than working.
     static func startedAt(
         activeRunStartedAt: Date?,
         isCancellingStream: Bool,

@@ -118,7 +118,7 @@ import XCTest
         chat.host.always("approval.respond", .init(result: .object(["resolved": .number(1)])))
         chat.receive(approval)
         guard case .approval(let shown)? = chat.requests.onScreen else { return XCTFail("Expected the approval on screen") }
-        let content = shown.overlayContent(pendingCount: chat.requests.approvalCount)
+        let content = shown.requestContent(pendingCount: chat.requests.approvalCount)
         XCTAssertEqual(content.choices, [.once, .session, .always, .deny])
         XCTAssertEqual(content.pendingCount, 1)
         XCTAssertEqual(content.command, "python3 -c \"print(1)\"")
@@ -140,7 +140,7 @@ import XCTest
         let chat = await openChat()
         chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1", choices: ["once", "deny"]))
         guard case .approval(let shown)? = chat.requests.onScreen else { return XCTFail("Expected the approval on screen") }
-        XCTAssertEqual(shown.overlayContent(pendingCount: 1).choices, [.once, .deny])
+        XCTAssertEqual(shown.requestContent(pendingCount: 1).choices, [.once, .deny])
 
         let taken = await chat.requests.respond(try action(chat), choice: .always)
         XCTAssertFalse(taken)
