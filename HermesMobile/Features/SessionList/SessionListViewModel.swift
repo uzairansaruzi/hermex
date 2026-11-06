@@ -396,6 +396,7 @@ final class SessionListViewModel {
         }
         if hermes != nil {
             return sortedLocalMatches + hermesSearchMatches(excluding: sortedLocalMatches, selectedProjectID: selectedProjectID)
+                .filter { automatedVisibility.shows($0) }
         }
 
         let localMatchIDs = Set(sortedLocalMatches.compactMap(\.sessionId))

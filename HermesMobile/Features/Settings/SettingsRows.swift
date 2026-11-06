@@ -255,3 +255,79 @@ private struct HeaderLogoColorPresetButton: View {
         .accessibilityHint("Updates the Sessions header logo color.")
     }
 }
+
+/// A server page's Main Page switches (#190): which entries the home lists above its sessions.
+/// The switches are app-wide, so a webui page and a Hermes page (#1585) show the same ones;
+/// `includesWebuiEntries` adds the two only a webui home has, Active Profile and Bot Mode.
+struct MainPageSettingsSection: View {
+    let includesWebuiEntries: Bool
+
+    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasks = true
+    @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanban = true
+    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkills = true
+    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemory = true
+    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsights = true
+    @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfile = true
+    @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjects = true
+    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $showsTasks) {
+                SettingsLabel(title: String(localized: "Tasks"), systemImage: "calendar.badge.clock")
+            }
+
+            Toggle(isOn: $showsKanban) {
+                SettingsLabel(title: String(localized: "Kanban"), systemImage: "rectangle.split.3x1")
+            }
+
+            Toggle(isOn: $showsSkills) {
+                SettingsLabel(title: String(localized: "Skills"), systemImage: "hammer")
+            }
+
+            Toggle(isOn: $showsMemory) {
+                SettingsLabel(title: String(localized: "Memory"), systemImage: "brain")
+            }
+
+            Toggle(isOn: $showsInsights) {
+                SettingsLabel(title: String(localized: "Usage"), systemImage: "chart.bar")
+            }
+
+            if includesWebuiEntries {
+                Toggle(isOn: $showsActiveProfile) {
+                    SettingsLabel(title: String(localized: "Active Profile"), systemImage: "person.crop.circle")
+                }
+            }
+
+            Toggle(isOn: $showsProjects) {
+                SettingsLabel(title: String(localized: "Projects"), systemImage: "folder.badge.gearshape")
+            }
+
+            if includesWebuiEntries {
+                Toggle(isOn: $isBotModeEnabled) {
+                    SettingsLabel(
+                        title: String(localized: "Bot Mode (beta)"),
+                        systemImage: "cpu",
+                        note: String(localized: "Adds a Bots row to this server's home.")
+                    )
+                }
+            }
+        } header: {
+            Text("Main Page")
+        } appFooter: {
+            Text("An entry you turn off comes back only from here.")
+        }
+    }
+}
+
+/// The Cron Sessions switch on a server page's Sessions section: off, a home lists no cron
+/// session, Scheduled included. App-wide, like the Main Page switches.
+struct CronSessionsToggle: View {
+    @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
+
+    var body: some View {
+        Toggle(isOn: $showsCronSessions) {
+            SettingsLabel(title: String(localized: "Cron Sessions"), systemImage: "clock.arrow.2.circlepath")
+        }
+    }
+}

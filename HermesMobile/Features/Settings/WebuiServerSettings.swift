@@ -10,17 +10,8 @@ struct WebuiServerSections: View {
 
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
-    @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
     private var showsSubagentSessions = SessionRowDisplaySettings.defaultShowsSubagentSessions
-    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasksSection = true
-    @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanbanSection = true
-    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkillsSection = true
-    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemorySection = true
-    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
-    @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfileSection = true
-    @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
-    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
     private var server: URL { model.server }
 
@@ -77,9 +68,7 @@ struct WebuiServerSections: View {
                 SettingsLabel(title: String(localized: "Workspace"), systemImage: "folder")
             }
 
-            Toggle(isOn: $showsCronSessions) {
-                SettingsLabel(title: String(localized: "Cron Sessions"), systemImage: "clock.arrow.2.circlepath")
-            }
+            CronSessionsToggle()
 
             Toggle(isOn: Binding(
                 get: { model.cliSessionsSync.showsCliSessions },
@@ -105,48 +94,7 @@ struct WebuiServerSections: View {
             sessionSyncFootnote
         }
 
-        // Main Page configures only a webui server's home.
-        Section {
-            Toggle(isOn: $showsTasksSection) {
-                SettingsLabel(title: String(localized: "Tasks"), systemImage: "calendar.badge.clock")
-            }
-
-            Toggle(isOn: $showsKanbanSection) {
-                SettingsLabel(title: String(localized: "Kanban"), systemImage: "rectangle.split.3x1")
-            }
-
-            Toggle(isOn: $showsSkillsSection) {
-                SettingsLabel(title: String(localized: "Skills"), systemImage: "hammer")
-            }
-
-            Toggle(isOn: $showsMemorySection) {
-                SettingsLabel(title: String(localized: "Memory"), systemImage: "brain")
-            }
-
-            Toggle(isOn: $showsInsightsSection) {
-                SettingsLabel(title: String(localized: "Usage"), systemImage: "chart.bar")
-            }
-
-            Toggle(isOn: $showsActiveProfileSection) {
-                SettingsLabel(title: String(localized: "Active Profile"), systemImage: "person.crop.circle")
-            }
-
-            Toggle(isOn: $showsProjectsSection) {
-                SettingsLabel(title: String(localized: "Projects"), systemImage: "folder.badge.gearshape")
-            }
-
-            Toggle(isOn: $isBotModeEnabled) {
-                SettingsLabel(
-                    title: String(localized: "Bot Mode (beta)"),
-                    systemImage: "cpu",
-                    note: String(localized: "Adds a Bots row to this server's home.")
-                )
-            }
-        } header: {
-            Text("Main Page")
-        } appFooter: {
-            Text("An entry you turn off comes back only from here.")
-        }
+        MainPageSettingsSection(includesWebuiEntries: true)
 
         Section(String(localized: "Defaults")) {
             Button {

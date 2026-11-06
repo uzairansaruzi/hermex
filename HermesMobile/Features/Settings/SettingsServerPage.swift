@@ -126,7 +126,8 @@ struct SettingsServerPage: View {
     }
 
     /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
-    /// and the host's update standing (#1075), then its archived sessions, API keys (#1318) and plugins (#1582).
+    /// and the host's update standing (#1075), then its archived sessions, the home's Main Page
+    /// switches (#1585), API keys (#1318) and plugins (#1582).
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
         Section {
@@ -166,8 +167,14 @@ struct SettingsServerPage: View {
                 } label: {
                     SettingsLabel(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
                 }
-            }
 
+                CronSessionsToggle()
+            }
+        }
+
+        MainPageSettingsSection(includesWebuiEntries: false)
+
+        if let hermesConnection {
             Section {
                 NavigationLink {
                     APIKeysView(connection: hermesConnection, server: server)
