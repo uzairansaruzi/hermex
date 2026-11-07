@@ -36,8 +36,9 @@ why and helps you fix it from the phone.
   sending; a queued prompt shows as a pending bubble; answered questions stay
   readable; see the latest thought while the agent thinks; read the transcript
   while an approval waits; swipe between a message's images; see active
-  subagents inline; and a message typed offline sends once the chat reconnects.
-  ([#1447], [#1450], [#1451], [#1452], [#1513], [#1518], [#1557], [#1576],
+  subagents inline; and a message you send offline waits for the chat to
+  reconnect, returning to the composer if that takes over ten minutes or you
+  leave the chat. ([#1447], [#1450], [#1451], [#1452], [#1513], [#1518], [#1557], [#1576],
   [#1595])
 - Sessions waiting for you rise to the top, and a full swipe archives one.
   ([#1433], [#1441])
