@@ -56,11 +56,9 @@ import SwiftUI
                                 .lineLimit(1...3)
                         }
                         .padding(16)
-                        Divider().padding(.leading, 16)
                         navigationRow(String(localized: "Model"), subtitle: creator.draft.model?.providerID,
                                       value: creator.draft.model?.displayName ?? String(localized: "Host default"),
                                       systemImage: "cpu") { showsModels = true }
-                        Divider().padding(.leading, 16)
                         Toggle(isOn: Binding(get: { creator.draft.sharesCredentials }, set: { creator.setSharesCredentials($0) })) {
                             Text("Use this Hermes’s API keys")
                         }
@@ -181,10 +179,8 @@ import SwiftUI
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 10)
-            Divider().padding(.leading, 16)
             navigationRow(String(localized: "Describe It"), subtitle: nil, value: "", systemImage: "sparkles") { showsDescribe = true }
                 .disabled(!creator.holdsConnection)
-            Divider().padding(.leading, 16)
             navigationRow(String(localized: "Expression"), subtitle: nil,
                           value: BotAvatarExpression.resolve(creator.draft.appearance.expression).localizedName,
                           systemImage: "face.smiling") { showsExpressions = true }

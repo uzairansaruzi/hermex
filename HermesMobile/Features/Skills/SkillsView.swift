@@ -148,7 +148,7 @@ private struct SkillCategorySection: View {
                 .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
-                ForEach(Array(skills.enumerated()), id: \.offset) { index, skill in
+                ForEach(Array(skills.enumerated()), id: \.offset) { _, skill in
                     NavigationLink {
                         SkillDetailView(
                             skill: skill,
@@ -176,10 +176,6 @@ private struct SkillCategorySection: View {
                             }
                             .disabled(isToggling(skill))
                         }
-                    }
-
-                    if index < skills.count - 1 {
-                        Divider()
                     }
                 }
             }
@@ -444,7 +440,7 @@ private struct SkillLinkedFilesSection: View {
                 .padding(.horizontal, 20)
 
             VStack(spacing: 0) {
-                ForEach(Array(fileNames.enumerated()), id: \.element) { index, fileName in
+                ForEach(fileNames, id: \.self) { fileName in
                     Button {
                         onSelect(fileName)
                     } label: {
@@ -470,11 +466,6 @@ private struct SkillLinkedFilesSection: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-
-                    if index < fileNames.count - 1 {
-                        Divider()
-                            .padding(.leading, 54)
-                    }
                 }
             }
             .padding(.horizontal, 20)

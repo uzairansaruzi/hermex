@@ -167,28 +167,16 @@ struct SlashCommandAutocompleteView: View {
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(commands.enumerated()), id: \.element.id) { index, command in
+                    ForEach(commands, id: \.id) { command in
                         commandRow(command)
-
-                        if index < commands.count - 1 || !skills.isEmpty || !agentCommands.isEmpty {
-                            rowDivider
-                        }
                     }
 
-                    ForEach(Array(skills.enumerated()), id: \.element.id) { index, skill in
+                    ForEach(skills, id: \.id) { skill in
                         skillRow(skill)
-
-                        if index < skills.count - 1 || !agentCommands.isEmpty {
-                            rowDivider
-                        }
                     }
 
-                    ForEach(Array(agentCommands.enumerated()), id: \.element.id) { index, command in
+                    ForEach(agentCommands, id: \.id) { command in
                         agentCommandRow(command)
-
-                        if index < agentCommands.count - 1 {
-                            rowDivider
-                        }
                     }
                 }
             }
@@ -322,10 +310,6 @@ struct SlashCommandAutocompleteView: View {
         .contentShape(Rectangle())
     }
 
-    private var rowDivider: some View {
-        Divider()
-            .padding(.horizontal, 16)
-    }
 
     @ViewBuilder
     private func subArgList(for command: SlashCommand, results: SlashAutocompleteResults) -> some View {
@@ -347,12 +331,8 @@ struct SlashCommandAutocompleteView: View {
         } else {
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, skill in
+                    ForEach(filtered, id: \.id) { skill in
                         skillSubArgRow(skill)
-
-                        if index < filtered.count - 1 {
-                            rowDivider
-                        }
                     }
                 }
             }
@@ -383,7 +363,7 @@ struct SlashCommandAutocompleteView: View {
         } else {
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(filtered.enumerated()), id: \.offset) { index, item in
+                    ForEach(Array(filtered.enumerated()), id: \.offset) { _, item in
                         Button {
                             onSelectSubArg(item)
                         } label: {
@@ -414,11 +394,6 @@ struct SlashCommandAutocompleteView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-
-                        if index < filtered.count - 1 {
-                            Divider()
-                                .padding(.horizontal, 16)
-                        }
                     }
                 }
             }
@@ -454,17 +429,13 @@ struct SlashCommandAutocompleteView: View {
     private func hostArgumentList(_ items: [HermesSlashCompletion.Item]) -> some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     Button {
                         onSelectHostArgument(item)
                     } label: {
                         rowContent(name: item.display, hint: nil, detail: item.meta, style: .command)
                     }
                     .buttonStyle(.plain)
-
-                    if index < items.count - 1 {
-                        rowDivider
-                    }
                 }
             }
         }

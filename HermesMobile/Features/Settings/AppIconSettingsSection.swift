@@ -38,11 +38,7 @@ struct AppIconSettingsSection: View {
 
     private var appIconChoices: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(AppIconChoice.allCases.enumerated()), id: \.element.id) { index, icon in
-                if index > 0 {
-                    appIconDivider
-                }
-
+            ForEach(AppIconChoice.allCases, id: \.id) { icon in
                 HapticButton(feedbackStyle: .light) {
                     updateAppIcon(to: icon)
                 } label: {
@@ -58,11 +54,6 @@ struct AppIconSettingsSection: View {
         }
     }
 
-    private var appIconDivider: some View {
-        Divider()
-            .padding(.leading, 2)
-            .opacity(0.72)
-    }
 
     private func refreshSelectedAppIcon() {
         selectedAppIcon = AppIconChoice.current

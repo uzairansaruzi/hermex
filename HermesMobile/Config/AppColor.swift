@@ -377,7 +377,7 @@ enum ThemedListRows {
 }
 
 /// A `List` that follows the theme. On Default it's an ordinary `List`: nothing here applies, so
-/// rows keep iOS's own backgrounds and highlights.
+/// rows keep iOS's own backgrounds and highlights. Rows never draw dividers between them.
 struct AppList<Content: View>: View {
     var rows = ThemedListRows.grouped
     @ViewBuilder let content: Content
@@ -398,7 +398,8 @@ struct AppForm<Content: View>: View {
     }
 }
 
-/// Gives every row the theme's background. A row with its own `listRowBackground` keeps it.
+/// Gives every row the theme's background and hides its separators. A row with its own
+/// `listRowBackground` keeps it.
 private struct ThemedListContent<Content: View>: View {
     let rows: ThemedListRows
     let content: Content
@@ -406,7 +407,9 @@ private struct ThemedListContent<Content: View>: View {
     @Environment(\.isAppThemed) private var isThemed
 
     var body: some View {
-        content.listRowBackground(isThemed ? Color(rows == .grouped ? .appGroupedSurface : .appCanvas) : nil)
+        content
+            .listRowBackground(isThemed ? Color(rows == .grouped ? .appGroupedSurface : .appCanvas) : nil)
+            .listRowSeparator(.hidden)
     }
 }
 

@@ -32,11 +32,7 @@ struct TaskRunHistorySection: View {
                 if runs.isEmpty {
                     emptyState
                 } else {
-                    ForEach(Array(runs.enumerated()), id: \.element.id) { index, run in
-                        if index > 0 {
-                            Divider()
-                        }
-
+                    ForEach(runs, id: \.id) { run in
                         Button {
                             selectRun(run)
                         } label: {
@@ -46,7 +42,6 @@ struct TaskRunHistorySection: View {
                     }
 
                     if canLoadMore {
-                        Divider()
                         loadMoreRow
                     }
                 }

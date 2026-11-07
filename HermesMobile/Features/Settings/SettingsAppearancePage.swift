@@ -44,7 +44,6 @@ struct SettingsAppearancePage: View {
                         .font(AppFont.footnote())
                         .foregroundStyle(.appSecondary)
                 }
-                .listRowSeparator(.hidden)
 
                 textSizeRow
 
@@ -55,7 +54,6 @@ struct SettingsAppearancePage: View {
 
             Section("Code") {
                 AppearanceCodePreview()
-                    .listRowSeparator(.hidden)
 
                 Toggle(isOn: usesCustomCodeSize) {
                     SettingsLabel(title: String(localized: "Custom Code Size"), systemImage: "chevron.left.forwardslash.chevron.right")

@@ -27,12 +27,10 @@ struct ProvidersView: View {
                     .frame(maxWidth: .infinity)
                     .containerRelativeFrame(.vertical)
                     .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
             } else {
                 if let errorMessage = viewModel.errorMessage {
                     refreshFailureBanner(detail: errorMessage)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-                        .listRowSeparator(.hidden)
                 }
 
                 ForEach(Array(viewModel.providers.enumerated()), id: \.offset) { index, provider in
@@ -46,14 +44,12 @@ struct ProvidersView: View {
                         )
                     )
                     .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 12))
-                    .listRowSeparator(.hidden)
                 }
 
                 Text("Provider keys are managed on the server. This screen is read-only.")
                     .font(AppFont.footnote())
                     .foregroundStyle(.appSecondary)
                     .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 24, trailing: 16))
-                    .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)

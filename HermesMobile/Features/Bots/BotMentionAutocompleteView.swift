@@ -14,9 +14,8 @@ struct BotMentionAutocompleteView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(completions.enumerated()), id: \.element.id) { index, item in
+                ForEach(completions, id: \.id) { item in
                     BotMentionRow(item: item, avatars: avatars, room: room, roster: roster, onSelect: onSelect)
-                    if index < completions.count - 1 { Divider().padding(.horizontal, 16) }
                 }
             }
         }

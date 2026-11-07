@@ -29,13 +29,8 @@ struct FilePathAutocompleteView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(search.matches.enumerated()), id: \.element.id) { index, match in
+                        ForEach(search.matches, id: \.id) { match in
                             FilePathRow(match: match, onSelect: onSelect)
-
-                            if index < search.matches.count - 1 {
-                                Divider()
-                                    .padding(.horizontal, 16)
-                            }
                         }
                     }
                 }
