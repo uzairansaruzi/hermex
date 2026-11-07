@@ -31,6 +31,7 @@ struct BotRoomComposerView: View {
                             selection = selection.moved(to: result.selection)
                             ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
                         }
+                        .layoutPriority(-1)
                     }
                 }
                 HStack(spacing: 4) {

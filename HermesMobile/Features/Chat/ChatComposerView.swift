@@ -701,6 +701,8 @@ struct MessageComposerView: View {
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
+                // The panel takes only the room the composer leaves (`composerPanelHeight`).
+                .layoutPriority(-1)
 
                 // Back when the keyboard goes and the viewport has room again.
                 if showsNewChatControls, showsConfigurationControls, !viewportIsShort {

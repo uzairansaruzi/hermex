@@ -7,7 +7,6 @@ struct FilePathAutocompleteView: View {
     // than the rows it actually draws.
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
     @ScaledMetric(relativeTo: .subheadline) private var emptyPanelHeight: CGFloat = 64
-    private let maxPanelHeight: CGFloat = 280
 
     /// The path typed after the `@`, without it.
     let query: String
@@ -43,7 +42,7 @@ struct FilePathAutocompleteView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: panelHeight)
+        .composerPanelHeight(panelHeight)
         .task(id: LoadKey(query: query, scope: search.scopeRevision)) {
             await load(query)
         }
@@ -68,7 +67,7 @@ struct FilePathAutocompleteView: View {
 
     private var panelHeight: CGFloat {
         guard !search.matches.isEmpty else { return emptyPanelHeight }
-        return min(maxPanelHeight, CGFloat(search.matches.count) * rowHeight)
+        return CGFloat(search.matches.count) * rowHeight
     }
 }
 

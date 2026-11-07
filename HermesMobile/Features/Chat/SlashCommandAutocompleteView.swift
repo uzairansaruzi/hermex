@@ -5,7 +5,6 @@ struct SlashCommandAutocompleteView: View {
     // than the rows it actually draws.
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
     @ScaledMetric(relativeTo: .subheadline) private var emptyPanelHeight: CGFloat = 64
-    private let maxPanelHeight: CGFloat = 280
 
     let query: String
     let selectedModelID: String?
@@ -60,7 +59,7 @@ struct SlashCommandAutocompleteView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: panelHeight(for: results, parsed: parsed))
+        .composerPanelHeight(panelHeight(for: results, parsed: parsed))
         .task(id: rankingInput) {
             let ranked = await rankingInput.rankedResults()
             // A background pass does not inherit this task's cancellation, so
@@ -132,7 +131,7 @@ struct SlashCommandAutocompleteView: View {
     private func panelHeight(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> CGFloat {
         let rowCount = visibleRowCount(for: results, parsed: parsed)
         guard rowCount > 0 else { return emptyPanelHeight }
-        return min(maxPanelHeight, CGFloat(rowCount) * rowHeight)
+        return CGFloat(rowCount) * rowHeight
     }
 
     private func visibleRowCount(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> Int {

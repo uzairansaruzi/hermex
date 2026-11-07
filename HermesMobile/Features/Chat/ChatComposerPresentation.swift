@@ -5,6 +5,19 @@ enum ChatComposerMetrics {
     static let cardCornerRadius: CGFloat = 26
     static let actionSize: CGFloat = 44
     static let pillInset: CGFloat = 5
+    /// The tallest a `/` or `@` suggestion panel grows on a roomy screen.
+    static let panelMaximumHeight: CGFloat = 280
+}
+
+extension View {
+    /// Sizes a `/` or `@` suggestion panel to its rows, but lets it shrink to
+    /// the room left above the composer, so a short viewport (iPhone Duo,
+    /// landscape, large text) keeps the text card and Send above the keyboard.
+    /// The panel scrolls, so a short one still reaches every row. The stack
+    /// that holds it gives it `.layoutPriority(-1)` so the composer sizes first.
+    func composerPanelHeight(_ height: CGFloat) -> some View {
+        frame(minHeight: 0, maxHeight: min(ChatComposerMetrics.panelMaximumHeight, height))
+    }
 }
 
 struct ChatComposerSurfaceStyle: ViewModifier {

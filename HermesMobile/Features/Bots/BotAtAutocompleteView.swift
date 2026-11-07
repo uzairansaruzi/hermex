@@ -37,7 +37,6 @@ struct BotAtAutocompleteView: View {
 
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
     @ScaledMetric(relativeTo: .caption) private var headerHeight: CGFloat = 28
-    private let maxPanelHeight: CGFloat = 280
 
     private var sections: [BotAtPanelSection] {
         BotAtPanelSection.sections(
@@ -57,7 +56,7 @@ struct BotAtAutocompleteView: View {
             case .files(let matches): height += CGFloat(max(1, matches.count)) * rowHeight
             }
         }
-        return min(maxPanelHeight, height)
+        return height
     }
 
     var body: some View {
@@ -71,7 +70,7 @@ struct BotAtAutocompleteView: View {
                 }
             }
         }
-        .frame(height: panelHeight)
+        .composerPanelHeight(panelHeight)
         // Clip the scrolling content before Liquid Glass composites the surface.
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .adaptiveGlass(.regular, fallbackMaterial: .ultraThinMaterial,
