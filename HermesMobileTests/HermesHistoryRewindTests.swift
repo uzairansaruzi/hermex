@@ -228,6 +228,25 @@ import Observation
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2])
     }
 
+    /// While an Edit is under way, a Regenerate or `/retry` sends nothing: on a canonical host each
+    /// is a rewind and a send of its own, so a second one could share the first one's rewind and
+    /// run the agent twice.
+    func testASecondHistoryActionWaitsForTheOneUnderWay() async throws {
+        let chat = await openChat(threeTurns, canonical: true)
+        let rewinding = expectation(description: "the edit's rewind is on the wire")
+        chat.host.expect(rewinding, onNext: "session.mutate")
+        chat.host.withhold("session.mutate")
+        let edit = Task { await chat.model.editMessage(try context(chat, at: 2), newText: "Second, edited") }
+        await fulfillment(of: [rewinding], timeout: 2)
+
+        let regenerated = await chat.model.regenerateAssistantResponse(try context(chat, at: 3))
+
+        XCTAssertFalse(regenerated)
+        XCTAssertEqual(chat.writes("session.mutate").count, 1)
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        edit.cancel()
+    }
+
     /// A canonical `/undo` rewinds the last saved prompt. One the host refuses because the session
     /// moved on (recorded `stale_generation`) changes nothing here, and the next try carries the
     /// fences the refusal named.

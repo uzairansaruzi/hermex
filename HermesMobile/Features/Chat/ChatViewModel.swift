@@ -316,6 +316,10 @@ final class ChatViewModel {
     @ObservationIgnored private var isCheckingHermesForkParent = false
     private(set) var isEditingMessage = false
     private(set) var isRegeneratingMessage = false
+    /// An Edit, Regenerate or `/retry` is under way. On a canonical host each is a rewind, then a
+    /// send of its own (#1603), so a second one now could share the first one's rewind and run the
+    /// agent twice: it waits for this one.
+    private var isChangingHermesHistory: Bool { isEditingMessage || isRegeneratingMessage }
     /// A Hermes `/undo` is out (#1049). Send waits, since each one removes an exchange for good.
     private(set) var isUndoingExchange = false
     private(set) var isCompressingSession = false
@@ -6322,6 +6326,7 @@ final class ChatViewModel {
             messageActionErrorMessage = String(localized: "The edited message cannot be empty.")
             return false
         }
+        guard !isChangingHermesHistory else { return false }
         guard let rowID = hermesRewindPrompt(for: context)?.rowID else {
             messageActionErrorMessage = String(localized: "This message can’t be changed any more.")
             return false
@@ -6335,6 +6340,7 @@ final class ChatViewModel {
     }
 
     private func regenerateHermesResponse(_ context: MessageActionContext, on hermes: HermesChatTurnCoordinator) async -> Bool {
+        guard !isChangingHermesHistory else { return false }
         guard let prompt = hermesRewindPrompt(for: context), let rowID = prompt.rowID else {
             messageActionErrorMessage = String(localized: "This message can’t be changed any more.")
             return false
@@ -6357,6 +6363,7 @@ final class ChatViewModel {
         guard Self.isHermesRewindable(prompt), let rowID = prompt.rowID else {
             return notDelivered(String(localized: "This message can’t be changed any more."))
         }
+        guard !isChangingHermesHistory else { return notDelivered(String(localized: "Wait for the current reply to finish.")) }
         isRegeneratingMessage = true
         stopListening()
         defer { isRegeneratingMessage = false }
