@@ -24,6 +24,7 @@
 		E1318000000000000000A007 /* APIKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A008 /* APIKeysView.swift */; };
 		E1318000000000000000A005 /* APIKeysModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A006 /* APIKeysModel.swift */; };
 		E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */; };
+		E1611000000000000000A007 /* ServeEveryProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A008 /* ServeEveryProfileTests.swift */; };
 		E1318000000000000000A001 /* HermesEnvironmentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A002 /* HermesEnvironmentClient.swift */; };
 		A1022B000000000000000001 /* ApprovalSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000002 /* ApprovalSummary.swift */; };
 		A1022B000000000000000003 /* ApprovalSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000004 /* ApprovalSummaryTests.swift */; };
@@ -355,6 +356,7 @@
 		125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000007 /* SettingsNotificationsPage.swift */; };
 		12520000000000000000000A /* SettingsServerPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000009 /* SettingsServerPage.swift */; };
 		E1611000000000000000A003 /* ProfileServingSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A004 /* ProfileServingSection.swift */; };
+		E1611000000000000000A005 /* ServeEveryProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A006 /* ServeEveryProfileView.swift */; };
 		12520000000000000000000C /* WebuiServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000B /* WebuiServerSettings.swift */; };
 		125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000F /* WebuiServerSettingsModel.swift */; };
 		12520000000000000000000E /* AddServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000D /* AddServerView.swift */; };
@@ -772,6 +774,7 @@
 		E1318000000000000000A008 /* APIKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysView.swift; sourceTree = "<group>"; };
 		E1318000000000000000A006 /* APIKeysModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysModel.swift; sourceTree = "<group>"; };
 		E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesEnvironmentClientTests.swift; sourceTree = "<group>"; };
+		E1611000000000000000A008 /* ServeEveryProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServeEveryProfileTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A002 /* HermesEnvironmentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesEnvironmentClient.swift"; sourceTree = "<group>"; };
 		A1022B000000000000000002 /* ApprovalSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummary.swift; sourceTree = "<group>"; };
 		A1022B000000000000000004 /* ApprovalSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummaryTests.swift; sourceTree = "<group>"; };
@@ -1091,6 +1094,7 @@
 		125200000000000000000007 /* SettingsNotificationsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000009 /* SettingsServerPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsServerPage.swift; sourceTree = "<group>"; };
 		E1611000000000000000A004 /* ProfileServingSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileServingSection.swift; sourceTree = "<group>"; };
+		E1611000000000000000A006 /* ServeEveryProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServeEveryProfileView.swift; sourceTree = "<group>"; };
 		12520000000000000000000B /* WebuiServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettings.swift; sourceTree = "<group>"; };
 		12520000000000000000000F /* WebuiServerSettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettingsModel.swift; sourceTree = "<group>"; };
 		12520000000000000000000D /* AddServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServerView.swift; sourceTree = "<group>"; };
@@ -1589,6 +1593,7 @@
 				E1043000000000000000A004 /* HermesKanbanClientTests.swift */,
 				E1069000000000000000A004 /* HermesSkillsClientTests.swift */,
 				E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */,
+				E1611000000000000000A008 /* ServeEveryProfileTests.swift */,
 				E1582000000000000000A008 /* PluginsModelTests.swift */,
 				E1112000000000000000A004 /* HermesWorkspaceFileClientTests.swift */,
 				E1075000000000000000A00A /* HermesUpdateClientTests.swift */,
@@ -2286,6 +2291,7 @@
 				125200000000000000000007 /* SettingsNotificationsPage.swift */,
 				125200000000000000000009 /* SettingsServerPage.swift */,
 				E1611000000000000000A004 /* ProfileServingSection.swift */,
+				E1611000000000000000A006 /* ServeEveryProfileView.swift */,
 				12520000000000000000000B /* WebuiServerSettings.swift */,
 				12520000000000000000000F /* WebuiServerSettingsModel.swift */,
 				12520000000000000000000D /* AddServerView.swift */,
@@ -2907,6 +2913,7 @@
 				125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */,
 				12520000000000000000000A /* SettingsServerPage.swift in Sources */,
 				E1611000000000000000A003 /* ProfileServingSection.swift in Sources */,
+				E1611000000000000000A005 /* ServeEveryProfileView.swift in Sources */,
 				12520000000000000000000C /* WebuiServerSettings.swift in Sources */,
 				125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */,
 				12520000000000000000000E /* AddServerView.swift in Sources */,
@@ -3153,6 +3160,7 @@
 				E1043000000000000000A003 /* HermesKanbanClientTests.swift in Sources */,
 				E1069000000000000000A003 /* HermesSkillsClientTests.swift in Sources */,
 				E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */,
+				E1611000000000000000A007 /* ServeEveryProfileTests.swift in Sources */,
 				E1582000000000000000A007 /* PluginsModelTests.swift in Sources */,
 				E1112000000000000000A003 /* HermesWorkspaceFileClientTests.swift in Sources */,
 				E1075000000000000000A009 /* HermesUpdateClientTests.swift in Sources */,

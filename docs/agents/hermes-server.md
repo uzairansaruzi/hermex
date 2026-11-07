@@ -433,7 +433,13 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
   signed-in `/api/status` gives the host's reason as prose in `multiplex_standalone_reason`
   (the signed-out one leaves it out). `HermesStandaloneReason` summarizes it when every blocker
   is a duplicate bot token and otherwise shows the host's words alone. The chat error and the
-  server's Settings page show both (#1611).
+  server's Settings page show both, and open Serve Every Profile (#1611): it reads
+  `GET /api/gateway/migrate/plan`, removes a duplicate bot's `.env` keys from the Profile the
+  user says shouldn't keep it (`DELETE /api/env`), then after one confirmation starts
+  `POST /api/gateway/migrate`, whose `ok` means only that it started. The gateway restarts, so
+  the screen waits on `HermesRestartWait` until the plan says `already_multiplexed`, then opens
+  the Profile's socket. Never gate on the plan's `eligible` (the `hermes update` bar), and
+  never write `gateway.multiplex_profiles: true` directly: an explicit `true` skips the preflight.
 - A password sign-in's cookies work there. A bearer token works only if this listener issued
   it to a native sign-in (`hermes_cli/webapp_sign_in.py`); a browser sign-in made elsewhere is
   refused at refresh as `.signInExpired`, which asks for one sign-in and never retries.

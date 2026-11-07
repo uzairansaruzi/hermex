@@ -650,7 +650,7 @@ import XCTest
             await chat.model.loadMessages(modelContext: context)
             XCTAssertEqual(chat.model.errorMessage, failure.localizedDescription, "\(failure)")
             XCTAssertEqual(chat.model.errorMayRetry, retries, "\(failure)")
-            XCTAssertEqual(chat.model.errorHostReason, retries ? nil : reason.hostText, "\(failure)")
+            XCTAssertEqual(chat.model.errorUnserved, retries ? nil : HermesUnservedProfile(profile: "dev", hostReason: reason.hostText), "\(failure)")
         }
     }
 
@@ -986,8 +986,8 @@ import XCTest
         wire.submitGate = reply
         chat.reconnect.open()
         await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
-        chat.model.hermesConnectionDidChange(failure: nil, hostReason: nil, mayRetry: true)
-        chat.model.hermesConnectionDidChange(failure: nil, hostReason: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
         reply.open()
         await waitUntil("the host took it") { chat.model.waitingSend == nil }
 
@@ -1039,7 +1039,7 @@ import XCTest
         XCTAssertEqual(kept?.text, "Ship it")
         XCTAssertEqual(kept?.botSubmissionUncertain, true)
         XCTAssertNil(kept?.waitingSend)
-        chat.model.hermesConnectionDidChange(failure: nil, hostReason: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
         XCTAssertEqual(wire.prompts, ["Ship it"])
     }
 

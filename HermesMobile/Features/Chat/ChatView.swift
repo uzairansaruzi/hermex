@@ -408,6 +408,8 @@ struct ChatView: View {
     @State private var pendingClearConfirmation: PendingClearConfirmation?
     @State private var goalDraft = ""
     @State private var showsGoalSheet = false
+    /// The Profile whose Serve Every Profile fix is open (#1611).
+    @State private var servingProfile: String?
     @State private var activeGitSheet: ActiveGitSheet?
     @State private var pendingBranchCheckout: GitCheckoutTarget?
     @State private var turnDiffPresentation: TurnDiffPresentation?
@@ -1407,6 +1409,7 @@ struct ChatView: View {
                         .presentationDragIndicator(.visible)
                 }
             }
+            .sheet(item: $servingProfile, content: serveEveryProfileSheet)
             .sheet(isPresented: $showsGoalSheet) {
                 GoalSubmissionSheet(
                     goalDraft: $goalDraft,
@@ -2327,6 +2330,23 @@ struct ChatView: View {
         )
     }
 
+    /// Serve Every Profile for `profile`, from the chat's error (#1611). The chat loads again once
+    /// the gateway serves it.
+    @ViewBuilder
+    private func serveEveryProfileSheet(_ profile: String) -> some View {
+        if let connection = try? BotConnectionStore().load(server: server) {
+            NavigationStack {
+                ServeEveryProfileView(connection: connection, server: server, profile: profile) {
+                    servingProfile = nil
+                    Task { await loadMessages() }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Done") { servingProfile = nil } }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var messageContent: some View {
         let structure = transcriptStructure
@@ -2334,7 +2354,8 @@ struct ChatView: View {
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
             errorMayRetry: viewModel.errorMayRetry,
-            errorHostReason: viewModel.errorHostReason,
+            errorHostReason: viewModel.errorUnserved?.hostReason,
+            onServeEveryProfile: viewModel.errorUnserved == nil ? nil : { servingProfile = viewModel.errorUnserved?.profile },
             messages: viewModel.messages,
             displayedTranscriptMessages: displayedTranscriptMessages,
             compressionReferenceCard: viewModel.compressionReferenceCard,

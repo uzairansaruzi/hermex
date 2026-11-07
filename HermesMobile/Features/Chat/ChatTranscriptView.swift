@@ -34,6 +34,8 @@ struct ChatTranscriptView: View {
     var errorMayRetry = true
     /// The host's own words for `errorMessage`, behind a disclosure under it (#1611).
     var errorHostReason: String?
+    /// Opens Serve Every Profile when the error is a Profile the Webapp doesn't serve (#1611).
+    var onServeEveryProfile: (() -> Void)?
     let messages: [ChatMessage]
     let displayedTranscriptMessages: [TranscriptMessage]
     let compressionReferenceCard: CompressionReferenceCard?
@@ -195,6 +197,10 @@ struct ChatTranscriptView: View {
                     Button("Try Again") {
                         Task { await onLoadMessages() }
                     }
+                }
+                if let onServeEveryProfile {
+                    Button("Fix on This Phone", action: onServeEveryProfile)
+                        .buttonStyle(.borderedProminent)
                 }
                 if let errorHostReason {
                     HostReasonDisclosure(text: errorHostReason)

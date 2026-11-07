@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The active Hermes server's Profiles section while its gateway's Webapp serves only one
-/// Profile (#1611): how many it serves, why in plain words, and the host's own words. Shows
+/// Profile (#1611): how many it serves, why in plain words, the host's own words, and the way to
+/// serve every Profile (`ServeEveryProfileView`). Shows
 /// nothing on a dashboard, which serves every Profile, or once the Webapp serves them all.
 struct ProfileServingSection: View {
     let connection: BotConnection
@@ -13,21 +14,27 @@ struct ProfileServingSection: View {
         Group {
             if let serving, let reason = serving.reason {
                 Section {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Profiles served: 1 of \(serving.profileCount)")
-                            Text(reason.summary ?? String(localized: "The host serves only one Profile right now."))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                    NavigationLink {
+                        ServeEveryProfileView(connection: connection, server: server, profile: nil) {
+                            self.serving = nil
                         }
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Profiles served: 1 of \(serving.profileCount)")
+                                Text(reason.summary ?? String(localized: "The host serves only one Profile right now."))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        }
                     }
                     HostReasonDisclosure(text: reason.hostText)
                 } header: {
                     Text("Profiles")
                 } footer: {
-                    Text("This Webapp opens chats only on the Profile it serves.")
+                    Text("This Webapp opens chats only on the Profile it serves. Tap to serve every Profile.")
                 }
             }
         }

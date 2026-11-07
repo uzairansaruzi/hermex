@@ -2,6 +2,13 @@ import Foundation
 import Observation
 import SwiftData
 
+/// A chat's Profile that the Webapp doesn't serve (#1611), with the host's own words for why
+/// when it gives them: the chat's error offers the fix (`ServeEveryProfileView`).
+struct HermesUnservedProfile: Equatable {
+    let profile: String
+    let hostReason: String?
+}
+
 /// What a `HermesChatTurnCoordinator` asks of the chat beyond the shared stream delegate:
 /// the parts of a Hermes turn a webui stream does not have. `ChatViewModel` conforms.
 @MainActor protocol HermesChatTurnDelegate: ChatStreamCoordinatorDelegate {
@@ -32,9 +39,8 @@ import SwiftData
     /// The model `session.info` reports: the Profile's default unless the host says otherwise.
     func hermesApplyModel(_ model: String)
     /// Why the session cannot attach, or nil once it has; `mayRetry` is false when retrying can't
-    /// help, such as a Webapp that doesn't serve the chat's Profile. `hostReason` is the host's
-    /// own words for that, when it gives them (#1611).
-    func hermesConnectionDidChange(failure: String?, hostReason: String?, mayRetry: Bool)
+    /// help, such as a Webapp that doesn't serve the chat's Profile, which `unserved` names (#1611).
+    func hermesConnectionDidChange(failure: String?, unserved: HermesUnservedProfile?, mayRetry: Bool)
     /// The host accepted a new session's first prompt: the draft under `from` moves to the
     /// session's key `to`.
     func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey)
@@ -2164,7 +2170,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         // The engine released the held frames just before this.
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
         needsSignIn = false
-        delegate?.hermesConnectionDidChange(failure: nil, hostReason: nil, mayRetry: true)
+        delegate?.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
         if let historyFailure {
             reportHistoryFailure(historyFailure)
         }
@@ -2214,9 +2220,11 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         drivenLiveActivity?.markStale()
         if failure == .rejected(401) { needsSignIn = true }
         guard !retrying else { return }
-        var served = true, hostReason: String?
-        if case .profileNotServed(_, let reason) = failure { served = false; hostReason = reason?.hostText }
+        var unserved: HermesUnservedProfile?
+        if case .profileNotServed(let profile, let reason) = failure {
+            unserved = HermesUnservedProfile(profile: profile, hostReason: reason?.hostText)
+        }
         delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address),
-                                            hostReason: hostReason, mayRetry: served)
+                                            unserved: unserved, mayRetry: unserved == nil)
     }
 }
