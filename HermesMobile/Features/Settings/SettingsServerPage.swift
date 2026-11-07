@@ -22,6 +22,8 @@ struct SettingsServerPage: View {
     /// The active Hermes server's saved connection, read on appear (#899): its username shows
     /// on the connection row, and Archived Sessions reads through it (#1048).
     @State private var hermesConnection: BotConnection?
+    /// What a Webapp says about the Profiles it serves (#1611), read on appear after the connection.
+    @State private var profileServing: HermesProfileServing?
     @State private var moveRequest: MoveToHermesRequest?
 
     init(
@@ -89,6 +91,14 @@ struct SettingsServerPage: View {
             }
             await updates.appear()
         }
+        // Its own task, so a slow host never holds up the update check, and a read that ends after
+        // the page leaves changes nothing.
+        .task(id: hermesConnection?.id) {
+            guard let server = activeHermesServer, let hermesConnection else { return }
+            let read = await ProfileServingSection.read(connection: hermesConnection, server: server)
+            guard !Task.isCancelled else { return }
+            profileServing = read
+        }
         .onDisappear {
             if let server = activeHermesServer { HermesUpdateModel.for(server: server).leaveSettings() }
         }
@@ -126,7 +136,7 @@ struct SettingsServerPage: View {
     }
 
     /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
-    /// and the host's update standing (#1075), then its archived sessions, the home's Main Page
+    /// and the host's update standing (#1075), a Webapp's unserved Profiles (#1611), then its archived sessions, the home's Main Page
     /// switches (#1585), API keys (#1318) and plugins (#1582).
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
@@ -161,6 +171,10 @@ struct SettingsServerPage: View {
         BotScreenToggleSection(server: server)
 
         if let hermesConnection {
+            ProfileServingSection(serving: profileServing, connection: hermesConnection, server: server) {
+                profileServing = nil
+            }
+
             Section(String(localized: "Sessions")) {
                 NavigationLink {
                     ArchivedSessionsView(server: server, hermes: .saved(hermesConnection, server: server, profile: nil))

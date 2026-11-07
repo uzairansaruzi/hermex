@@ -346,12 +346,17 @@ final class ChatViewModel {
     private(set) var latestRunOutcome: TranscriptTurnRunOutcome?
     var activeStreamRecoveryState: ActiveStreamRecoveryState { turn.recoveryState }
     var liveTokensPerSecond: Double? { turn.liveTokensPerSecond }
-    private(set) var errorMessage: String? { didSet { errorMayRetry = true } }
+    private(set) var errorMessage: String? { didSet { errorMayRetry = true; errorUnserved = nil } }
     /// Whether the chat's error offers Try Again; false for a failure retrying can't fix.
     private(set) var errorMayRetry = true
+    /// The Profile a Webapp doesn't serve when that is the chat's error, or the composer's in a
+    /// chat that shows messages (#1611): its fix shows with it, and the host's own words under
+    /// the chat's error. Another error clears it.
+    private(set) var errorUnserved: HermesUnservedProfile?
     private(set) var sendErrorMessage: String? {
         didSet {
             sendErrorIsFromStreamRecovery = false
+            errorUnserved = nil
             // Slash commands re-set the same text after a failed send; keep the kind then.
             if sendErrorMessage != oldValue, sendErrorRuntimeStale != nil { sendErrorRuntimeStale = nil }
         }
@@ -8693,7 +8698,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         currentModel = model
     }
 
-    func hermesConnectionDidChange(failure: String?, mayRetry: Bool) {
+    func hermesConnectionDidChange(failure: String?, unserved: HermesUnservedProfile?, mayRetry: Bool) {
         guard let failure else {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
@@ -8706,9 +8711,11 @@ extension ChatViewModel: HermesChatTurnDelegate {
         if messages.isEmpty {
             errorMessage = failure
             errorMayRetry = mayRetry
+            errorUnserved = unserved
         } else {
             sendErrorMessage = failure
             sendErrorIsFromStreamRecovery = true
+            errorUnserved = unserved
         }
     }
 

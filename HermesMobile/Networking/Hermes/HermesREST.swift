@@ -399,12 +399,21 @@ enum HermesREST: Equatable, Sendable {
     case updateReceipt
     /// Public process liveness with the running release, read while the dashboard restarts.
     case health
+    /// The preflight for serving every Profile from one gateway (#1611): `{blockers, notices,
+    /// profiles, already_multiplexed, …}`, blockers and notices as prose. Read at the pin and on
+    /// `scripts/local-hermes --gateway`'s Webapp.
+    case migrationPlan
+    /// Starts `hermes gateway migrate --multiplex --yes` detached: 200 `{ok, pid, name}` means it
+    /// started, not that it finished. It restarts the gateway, which re-checks the blockers itself.
+    case migrateGateway
 
     func request(base: URL) throws -> URLRequest {
         switch self {
         case .status: return Self.get(base.appendingPathComponent("api/status"))
         case .dashboardPage: return Self.get(base.appendingPathComponent(""))
         case .health: return Self.get(base.appendingPathComponent("api/health"))
+        case .migrationPlan: return Self.get(base.appendingPathComponent("api/gateway/migrate/plan"))
+        case .migrateGateway: return Self.bare("POST", base.appendingPathComponent("api/gateway/migrate"))
         case .updateCheck(let force):
             guard var parts = URLComponents(url: base.appendingPathComponent("api/hermes/update/check"),
                                             resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
