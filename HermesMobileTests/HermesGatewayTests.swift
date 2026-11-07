@@ -252,6 +252,21 @@ import XCTest
                 catch { XCTAssertEqual(error as? BotFailure, .profileNotServed("parked")) }
                 XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.profileNotServed("parked")))
                 parked.close()
+
+                // A proxy that refuses every socket refuses the shared one too: that keeps its advice.
+                var proxied = 0
+                let blocked = connection(canonical: true, refuses: { _ in true }) { request in
+                    if request.url?.path == "/api/webapp/socket-ticket" { return .json(200, .object(["ticket": .string("bound")])) }
+                    guard request.url?.path == "/api/status" else { return nil }
+                    proxied += 1
+                    let install: [String: BotJSON] = proxied == 1 ? [:] : ["install_id": .string("install")]
+                    return .json(200, .object(install.merging(["auth_required": .bool(true),
+                                                               "auth_providers": .array([.string("basic")])]) { $1 }))
+                }
+                let behindProxy = BotClient(http: blocked, profile: "work")
+                do { try await behindProxy.connect(); XCTFail("the proxy refused the socket") }
+                catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
+                behindProxy.close()
             }
             for client in [inbox, work, alsoWork, home] { client.close() }
         }

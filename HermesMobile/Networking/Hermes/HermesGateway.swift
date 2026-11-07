@@ -376,8 +376,11 @@ import OSLog
                     end(nil)
                 }
                 // The Webapp closes a Profile's socket before accepting it when its gateway doesn't
-                // serve that Profile, which the upgrade reads as a 403 (#1606).
-                if let profile, case BotFailure.upgradeRefused(403) = error { throw BotFailure.profileNotServed(profile) }
+                // serve that Profile, which the upgrade reads as a 403 (#1606). A proxy refusing
+                // sockets refuses the shared one too, so only a shared socket that opens says so.
+                if let profile, case BotFailure.upgradeRefused(403) = error, await http.opensSharedSocket() {
+                    throw BotFailure.profileNotServed(profile)
+                }
                 throw error
             }
         }

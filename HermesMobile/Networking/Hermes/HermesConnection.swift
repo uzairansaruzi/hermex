@@ -167,6 +167,14 @@ import OSLog
         return fresh
     }
 
+    /// Whether the shared gateway's socket opens, joining it for a moment: what tells a Profile
+    /// the Webapp doesn't serve from a proxy that refuses every socket (#1606).
+    func opensSharedSocket() async -> Bool {
+        let probe = BotClient(http: self)
+        defer { probe.close() }
+        return (try? await probe.connect()) != nil
+    }
+
     /// Every gateway a screen holds here.
     var liveGateways: [HermesGateway] {
         ([liveGateway] + profileGateways.values.map(\.gateway)).compactMap { $0 }
