@@ -85,14 +85,19 @@ struct SettingsServerPage: View {
             guard let server = activeHermesServer else { return }
             // A Hermes server has no webui to load from, so no webui 401 can sign it out (#899).
             hermesConnection = try? BotConnectionStore().load(server: server)
-            if let hermesConnection {
-                profileServing = await ProfileServingSection.read(connection: hermesConnection, server: server)
-            }
             let updates = HermesUpdateModel.for(server: server)
             updates.onUpdated = { version in
                 authManager.hermesServerUpdated(server: server, to: version)
             }
             await updates.appear()
+        }
+        // Its own task, so a slow host never holds up the update check, and a read that ends after
+        // the page leaves changes nothing.
+        .task(id: hermesConnection?.id) {
+            guard let server = activeHermesServer, let hermesConnection else { return }
+            let read = await ProfileServingSection.read(connection: hermesConnection, server: server)
+            guard !Task.isCancelled else { return }
+            profileServing = read
         }
         .onDisappear {
             if let server = activeHermesServer { HermesUpdateModel.for(server: server).leaveSettings() }

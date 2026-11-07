@@ -296,7 +296,7 @@ struct ServeEveryProfileView: View {
             } header: {
                 Text("What blocks it")
             } footer: {
-                Text("Hermex can’t fix this from the phone. The agent on \(ServeEveryProfileModel.servedProfile) can explain it and propose commands for you to run on the host; it won’t read secrets or restart the gateway. Then check again.")
+                Text("Hermex can’t fix this from the phone. The agent on \(ServeEveryProfileModel.servedProfile) can explain it and propose commands for you to run on the host. Hermex asks it not to read secrets or restart the gateway. Then check again.")
             }
         }
         if !plan.isBlocked {
