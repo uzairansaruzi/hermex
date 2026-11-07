@@ -15,7 +15,8 @@ import XCTest
     /// restarted gateway serves every Profile.
     func testADuplicateBotIsRemovedFromTheChosenProfileThenEveryProfileIsServed() async throws {
         var plans = 0, cleared = false
-        let model = Self.model { request in
+        // From Settings: no one Profile's socket to check once the gateway is back.
+        let model = Self.model(profile: nil) { request in
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/api/gateway/migrate/plan"?):
                 plans += 1
@@ -56,8 +57,10 @@ import XCTest
         XCTAssertEqual(served, 1)
     }
 
-    /// A blocker Hermex doesn't recognize offers no removal and no migration: the host's words stand.
-    func testAnUnrecognizedBlockerOffersNeitherRemovalNorMigration() async {
+    /// A blocker Hermex doesn't recognize offers no removal and no migration. Its recovery chat
+    /// opens on the Profile the gateway serves, never New Session's, carrying the unserved Profile
+    /// and the host's words for the agent.
+    func testAnUnrecognizedBlockerOffersARecoveryChatOnTheServedProfile() async throws {
         let blocker = "Profile 'ops' enables whatsapp, which binds its own port and has no /p/ops/ ingress on the default listener yet; "
             + "the multiplexer would skip the whole profile. Disable it there (platforms.whatsapp.enabled: false) or add a "
             + "/p/<profile>/ ingress for it first."
@@ -72,13 +75,24 @@ import XCTest
         XCTAssertEqual(plan.duplicateBots, [])
         XCTAssertEqual(plan.otherBlockers, [blocker])
         XCTAssertNil(model.migrate(), "a blocked plan never starts the migration")
+
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: inbox) }
+        let server = URL(string: "https://hermes.example")!
+        try model.openRecoveryChat(blockers: plan.otherBlockers, server: server, inbox: inbox)
+        let queued = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(queued.sharedImport.shortcut,
+                       SharedShortcutDestination(server: server, profile: "default", origin: .troubleshooting))
+        let text = try XCTUnwrap(queued.sharedImport.draft)
+        XCTAssertTrue(text.contains("dev") && text.contains(blocker), text)
     }
 
-    private static func model(_ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> ServeEveryProfileModel {
+    private static func model(profile: String? = "dev",
+                              _ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> ServeEveryProfileModel {
         let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                    username: "user", password: "secret")
         let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration(script))
-        return ServeEveryProfileModel(client: HermesGatewayMigrationClient(http: http), profile: nil,
+        return ServeEveryProfileModel(client: HermesGatewayMigrationClient(http: http), profile: profile,
                                       restartDelays: [.zero, .zero, .zero], sleep: { _ in })
     }
 }

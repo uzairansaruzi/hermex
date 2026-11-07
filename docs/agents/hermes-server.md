@@ -440,6 +440,11 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
   the screen waits on `HermesRestartWait` until the plan says `already_multiplexed`, then opens
   the Profile's socket. Never gate on the plan's `eligible` (the `hermes update` bar), and
   never write `gateway.multiplex_profiles: true` directly: an explicit `true` skips the preflight.
+  A blocker it doesn't recognize offers a recovery chat opened explicitly on `default`, the
+  Profile a standalone gateway serves (New Session's may be unserved). Its text names the
+  unserved Profile and the host's words, asks the agent to walk through
+  `hermes gateway migrate --multiplex --dry-run`, and keeps the triage playbook's guardrails:
+  propose commands, never read `.env`, never restart the gateway.
 - A password sign-in's cookies work there. A bearer token works only if this listener issued
   it to a native sign-in (`hermes_cli/webapp_sign_in.py`); a browser sign-in made elsewhere is
   refused at refresh as `.signInExpired`, which asks for one sign-in and never retries.

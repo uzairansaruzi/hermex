@@ -3,7 +3,8 @@ import SwiftUI
 /// The guided fix for a Webapp that serves only one Profile (#1611): reads the host's preflight,
 /// removes a duplicate bot credential from the Profile the user says shouldn't keep it, then
 /// starts the migration after one confirmation, waits for the restarted gateway, and checks that
-/// `profile`'s chats open. The host owns every step; this owns only the screen's state.
+/// `profile`'s chats open. A blocker it can't remove gets a recovery chat with the agent instead.
+/// The host owns every step; this owns only the screen's state.
 @MainActor @Observable final class ServeEveryProfileModel {
     enum Phase: Equatable {
         case loading
@@ -41,6 +42,32 @@ import SwiftUI
         self.profile = profile
         self.restartDelays = restartDelays
         self.sleep = sleep
+    }
+
+    /// The Profile a gateway serving only one serves, where the recovery chat opens: the host's
+    /// standalone gateway is the default root's, and records that it serves nobody else.
+    static let servedProfile = "default"
+
+    /// Opens a new chat on `server`'s served Profile, never New Session's, which may be one the
+    /// Webapp doesn't serve. Its text names the unserved Profile and `blockers` in the host's
+    /// words, and asks the agent to explain the migration's dry run and propose commands, under
+    /// the triage playbook's guardrails. Nothing is sent until the user does.
+    func openRecoveryChat(blockers: [String], server: URL, inbox: URL? = HermesShareDraft.containerURL()) throws {
+        let who = profile.map { "the \($0) Profile's chats" } ?? "chats on every Profile but \(Self.servedProfile)"
+        let prompt = """
+        Hermex, the iPhone app I use to reach you, can't open \(who) on this host's Webapp: its gateway \
+        serves only one Profile. The host says:
+
+        \(blockers.joined(separator: "\n\n"))
+
+        Explain what blocks it and how to make one gateway serve every Profile. You can run \
+        `hermes gateway migrate --multiplex --dry-run`, which changes nothing, and walk me through its \
+        output. Then propose each command or config change for me to run, and explain it. Don't read \
+        `.env` or other credential files, and don't restart the gateway or change config yourself: \
+        restarting it ends this chat.
+        """
+        try AppIntentRouter.shared.openNewChat(prefilling: prompt, server: server, profile: Self.servedProfile,
+                                               origin: .troubleshooting, inbox: inbox)
     }
 
     /// The Profile that keeps `bot`.
@@ -145,8 +172,13 @@ struct ServeEveryProfileView: View {
     @State private var model: ServeEveryProfileModel
     @State private var isConfirmingRemoval = false
     @State private var isConfirmingMigration = false
+    /// Why the recovery chat couldn't queue its text; nothing was queued.
+    @State private var recoveryFailure: NewChatWithContentError?
+    @Environment(\.dismiss) private var dismiss
+    private let server: URL
 
     init(connection: BotConnection, server: URL, profile: String?, onServed: (() -> Void)? = nil) {
+        self.server = server
         let http = HermesConnections.shared.connection(for: connection, server: server)
         let model = ServeEveryProfileModel(client: HermesGatewayMigrationClient(http: http), profile: profile)
         model.onServed = {
@@ -199,6 +231,17 @@ struct ServeEveryProfileView: View {
         } message: {
             Text("Running work on every Profile stops, and bots go quiet until the gateway is back. Hermex reconnects when it is.")
         }
+        .alert(String(localized: "Troubleshooting Can’t Open"), isPresented: Binding(
+            get: { recoveryFailure != nil }, set: { if !$0 { recoveryFailure = nil } }
+        )) {
+            Button(String(localized: "OK"), role: .cancel) {}
+        } message: {
+            if recoveryFailure == .tooManyWaiting {
+                Text("10 texts are already waiting to open. Open or discard them in Sessions, then try again.")
+            } else {
+                Text("Hermex couldn’t save the text. Try again.")
+            }
+        }
     }
 
     private var removalTitle: String { String(localized: "Remove Duplicate Tokens") }
@@ -235,10 +278,18 @@ struct ServeEveryProfileView: View {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }
                 }
+                Button("Ask the Agent on \(ServeEveryProfileModel.servedProfile)") {
+                    do {
+                        try model.openRecoveryChat(blockers: plan.otherBlockers, server: server)
+                        dismiss()
+                    } catch {
+                        recoveryFailure = error as? NewChatWithContentError ?? .storage
+                    }
+                }
             } header: {
                 Text("What blocks it")
             } footer: {
-                Text("Hermex can’t fix this from the phone. Fix it on the host, then check again.")
+                Text("Hermex can’t fix this from the phone. The agent on \(ServeEveryProfileModel.servedProfile) can explain it and propose commands for you to run on the host; it won’t read secrets or restart the gateway. Then check again.")
             }
         }
         if !plan.isBlocked {
