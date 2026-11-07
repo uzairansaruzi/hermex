@@ -23,7 +23,7 @@ struct BotMentionAutocompleteView: View {
                        in: RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: min(280, CGFloat(completions.count) * rowHeight))
+        .composerPanelHeight(CGFloat(completions.count) * rowHeight)
     }
 }
 
