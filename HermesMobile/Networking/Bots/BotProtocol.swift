@@ -72,8 +72,8 @@ enum BotFailure: Error, Equatable, LocalizedError {
     case gatewayListener
     /// A gateway's Webapp refused the socket for this Profile's chats (#1606): the gateway serves
     /// only some of the host's Profiles, as when two hold one bot token or a Profile runs its own
-    /// gateway, and says why in `hermes gateway status`. Permanent.
-    case profileNotServed(String)
+    /// gateway. Carries the host's reason when its signed-in status gives one (#1611). Permanent.
+    case profileNotServed(String, HermesStandaloneReason?)
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
@@ -100,8 +100,11 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .signInExpired: return String(localized: "Your Hermes sign-in expired. Sign in again.")
         case .signInChanged: return String(localized: "This server’s sign-in changed. Sign in again to continue.")
         case .gatewayListener: return String(localized: "This Hermes Webapp has no sign-in, and Hermex connects only to one that has. Turn its sign-in on, or connect to hermes dashboard (port 9119 by default) instead.")
-        case .profileNotServed(let profile):
+        case .profileNotServed(let profile, nil):
             return String(localized: "This Hermes Webapp doesn’t serve the \(profile) Profile, so its chats can’t open here. On the host, hermes gateway status says why. Or connect to hermes dashboard, which serves every Profile.")
+        case .profileNotServed(let profile, let reason?):
+            let why = reason.summary ?? String(localized: "The host serves only one Profile right now.")
+            return String(localized: "This Hermes Webapp doesn’t serve the \(profile) Profile, so its chats can’t open here. \(why)")
         case .browserSignInFailed: return String(localized: "The browser sign-in didn't finish. Try again.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         case .outdated(let version):

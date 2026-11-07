@@ -636,10 +636,12 @@ import XCTest
     }
 
     /// A chat on a Profile the Webapp doesn't serve says so, with no Try Again, since retrying
-    /// can't help (#1606); a refused upgrade elsewhere keeps its retry.
+    /// can't help (#1606), and offers the host's own words for why (#1611); a refused upgrade
+    /// elsewhere keeps its retry.
     func testAProfileTheWebappDoesntServeOffersNoTryAgain() async throws {
         let context = try makeContext()
-        for (failure, retries) in [(BotFailure.profileNotServed("dev"), false), (.upgradeRefused(403), true)] {
+        let reason = HermesStandaloneReason(hostText: "profile(s) 'dev' (pid 42) still run their own gateway")
+        for (failure, retries) in [(BotFailure.profileNotServed("dev", reason), false), (.upgradeRefused(403), true)] {
             let wire = HermesOfflineWire(rows: [])
             wire.connectFailure = failure
             let chat = makeChat(wire, target: .session(profile: "dev", key: "tip"))
@@ -648,6 +650,7 @@ import XCTest
             await chat.model.loadMessages(modelContext: context)
             XCTAssertEqual(chat.model.errorMessage, failure.localizedDescription, "\(failure)")
             XCTAssertEqual(chat.model.errorMayRetry, retries, "\(failure)")
+            XCTAssertEqual(chat.model.errorHostReason, retries ? nil : reason.hostText, "\(failure)")
         }
     }
 
@@ -983,8 +986,8 @@ import XCTest
         wire.submitGate = reply
         chat.reconnect.open()
         await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
-        chat.model.hermesConnectionDidChange(failure: nil, mayRetry: true)
-        chat.model.hermesConnectionDidChange(failure: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, hostReason: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, hostReason: nil, mayRetry: true)
         reply.open()
         await waitUntil("the host took it") { chat.model.waitingSend == nil }
 
@@ -1036,7 +1039,7 @@ import XCTest
         XCTAssertEqual(kept?.text, "Ship it")
         XCTAssertEqual(kept?.botSubmissionUncertain, true)
         XCTAssertNil(kept?.waitingSend)
-        chat.model.hermesConnectionDidChange(failure: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, hostReason: nil, mayRetry: true)
         XCTAssertEqual(wire.prompts, ["Ship it"])
     }
 

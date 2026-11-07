@@ -428,6 +428,12 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
 - Each Profile's chats get a socket of their own on a Webapp (`HermesConnection.gateway(profile:)`):
   session ids repeat across Profiles and a canonical session's events don't name theirs.
   Screens that aren't one session's (the inbox, rooms, Settings reads) keep the shared socket.
+- A Profile whose socket the Webapp refuses, while the shared one opens, is `.profileNotServed`:
+  the gateway serves only one Profile because its multiplex preflight found a blocker. The
+  signed-in `/api/status` gives the host's reason as prose in `multiplex_standalone_reason`
+  (the signed-out one leaves it out). `HermesStandaloneReason` summarizes it when every blocker
+  is a duplicate bot token and otherwise shows the host's words alone. The chat error and the
+  server's Settings page show both (#1611).
 - A password sign-in's cookies work there. A bearer token works only if this listener issued
   it to a native sign-in (`hermes_cli/webapp_sign_in.py`); a browser sign-in made elsewhere is
   refused at refresh as `.signInExpired`, which asks for one sign-in and never retries.

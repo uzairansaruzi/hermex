@@ -2334,6 +2334,7 @@ struct ChatView: View {
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
             errorMayRetry: viewModel.errorMayRetry,
+            errorHostReason: viewModel.errorHostReason,
             messages: viewModel.messages,
             displayedTranscriptMessages: displayedTranscriptMessages,
             compressionReferenceCard: viewModel.compressionReferenceCard,

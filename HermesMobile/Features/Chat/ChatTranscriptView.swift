@@ -32,6 +32,8 @@ struct ChatTranscriptView: View {
     let errorMessage: String?
     /// False hides the error's Try Again, for a failure retrying can't fix.
     var errorMayRetry = true
+    /// The host's own words for `errorMessage`, behind a disclosure under it (#1611).
+    var errorHostReason: String?
     let messages: [ChatMessage]
     let displayedTranscriptMessages: [TranscriptMessage]
     let compressionReferenceCard: CompressionReferenceCard?
@@ -193,6 +195,9 @@ struct ChatTranscriptView: View {
                     Button("Try Again") {
                         Task { await onLoadMessages() }
                     }
+                }
+                if let errorHostReason {
+                    HostReasonDisclosure(text: errorHostReason)
                 }
             }
         case .startPrompt?:

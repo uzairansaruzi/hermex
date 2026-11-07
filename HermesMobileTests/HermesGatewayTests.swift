@@ -215,8 +215,28 @@ import XCTest
     /// On a gateway's Webapp each Profile's chats get a socket of their own (#1341, decision 2),
     /// since a canonical session's events don't name their Profile and ids repeat across them,
     /// opened with a ticket the Webapp binds to that Profile, so a call naming none is answered
-    /// for it, and one it doesn't serve is named as such. Screens that aren't one session's keep
-    /// the shared one. A dashboard keeps one socket.
+    /// for it, and one it doesn't serve is named as such, with the reason the signed-in status
+    /// gives (#1611). Screens that aren't one session's keep the shared one. A dashboard keeps
+    /// one socket.
+    /// Upstream's `multiplex_standalone_reason` for `dev` holding `default`'s Telegram and Discord
+    /// bots, worded as `duplicate_credential_lines` words it at the pin.
+    static let duplicateBots = [("telegram", "TELEGRAM_BOT_TOKEN"), ("discord", "DISCORD_BOT_TOKEN")].map { platform, key in
+        "Profiles 'default' and 'dev' both hold the same \(platform) credential (\(key)): one platform token can serve only one "
+            + "gateway, so the bot answers from whichever profile claims it first and the other's adapter is parked. Give 'dev' "
+            + "its own bot token, or remove \(key) from the profile that should not own it (or keep it in default and route dev's "
+            + "chats with profile_routes — gateway.profile_routes in default's config.yaml), then run hermes gateway migrate --multiplex."
+    }.joined(separator: "; ")
+
+    /// The host's reason reads as one plain line when every blocker is a bot two Profiles share,
+    /// and not at all when any blocker is something else, whose words then stand alone (#1611).
+    func testAWebappsReasonIsSummarizedOnlyWhenEveryBlockerIsADuplicateBot() {
+        XCTAssertEqual(HermesStandaloneReason(hostText: Self.duplicateBots).summary, "dev and default use the same Telegram and Discord bots.")
+        let portBinder = "Profile 'ops' enables whatsapp, which binds its own port and has no /p/ops/ ingress on the default listener "
+            + "yet; the multiplexer would skip the whole profile. Disable it there (platforms.whatsapp.enabled: false) or add a "
+            + "/p/<profile>/ ingress for it first."
+        XCTAssertNil(HermesStandaloneReason(hostText: Self.duplicateBots + "; " + portBinder).summary)
+    }
+
     func testAWebappKeepsEachProfilesChatsOnTheirOwnSocket() async throws {
         for webapp in [true, false] {
             sockets = []
@@ -234,7 +254,8 @@ import XCTest
                 guard request.url?.path == "/api/status" else { return nil }
                 statuses += 1
                 // The Webapp names its install only once signed in.
-                let install: [String: BotJSON] = webapp && statuses == 1 ? [:] : ["install_id": .string("install")]
+                let install: [String: BotJSON] = webapp && statuses == 1 ? [:] : ["install_id": .string("install"),
+                                                                                  "multiplex_standalone_reason": .string(Self.duplicateBots)]
                 return .json(200, .object(install.merging(["auth_required": .bool(true),
                                                            "auth_providers": .array([.string("basic")])]) { $1 }))
             }
@@ -249,8 +270,8 @@ import XCTest
                 // It says that Profile isn't served there, never that a proxy blocks sockets.
                 let parked = BotClient(http: http, profile: "parked")
                 do { try await parked.connect(); XCTFail("the Webapp refused the parked Profile") }
-                catch { XCTAssertEqual(error as? BotFailure, .profileNotServed("parked")) }
-                XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.profileNotServed("parked")))
+                catch { XCTAssertEqual(error as? BotFailure, .profileNotServed("parked", HermesStandaloneReason(hostText: Self.duplicateBots))) }
+                XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.profileNotServed("parked", nil)))
                 parked.close()
 
                 // A proxy that refuses every socket refuses the shared one too: that keeps its advice.

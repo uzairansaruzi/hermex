@@ -346,9 +346,11 @@ final class ChatViewModel {
     private(set) var latestRunOutcome: TranscriptTurnRunOutcome?
     var activeStreamRecoveryState: ActiveStreamRecoveryState { turn.recoveryState }
     var liveTokensPerSecond: Double? { turn.liveTokensPerSecond }
-    private(set) var errorMessage: String? { didSet { errorMayRetry = true } }
+    private(set) var errorMessage: String? { didSet { errorMayRetry = true; errorHostReason = nil } }
     /// Whether the chat's error offers Try Again; false for a failure retrying can't fix.
     private(set) var errorMayRetry = true
+    /// The host's own words for the chat's error, shown behind a disclosure (#1611).
+    private(set) var errorHostReason: String?
     private(set) var sendErrorMessage: String? {
         didSet {
             sendErrorIsFromStreamRecovery = false
@@ -8693,7 +8695,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         currentModel = model
     }
 
-    func hermesConnectionDidChange(failure: String?, mayRetry: Bool) {
+    func hermesConnectionDidChange(failure: String?, hostReason: String?, mayRetry: Bool) {
         guard let failure else {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
@@ -8706,6 +8708,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         if messages.isEmpty {
             errorMessage = failure
             errorMayRetry = mayRetry
+            errorHostReason = hostReason
         } else {
             sendErrorMessage = failure
             sendErrorIsFromStreamRecovery = true

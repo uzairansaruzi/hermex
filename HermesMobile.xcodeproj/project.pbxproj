@@ -354,6 +354,7 @@
 		141100000000000000000002 /* SettingsAcknowledgementsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141100000000000000000001 /* SettingsAcknowledgementsPage.swift */; };
 		125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000007 /* SettingsNotificationsPage.swift */; };
 		12520000000000000000000A /* SettingsServerPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000009 /* SettingsServerPage.swift */; };
+		E1611000000000000000A003 /* ProfileServingSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A004 /* ProfileServingSection.swift */; };
 		12520000000000000000000C /* WebuiServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000B /* WebuiServerSettings.swift */; };
 		125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000F /* WebuiServerSettingsModel.swift */; };
 		12520000000000000000000E /* AddServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000D /* AddServerView.swift */; };
@@ -602,6 +603,7 @@
 		E1112000000000000000A001 /* HermesWorkspaceFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1112000000000000000A002 /* HermesWorkspaceFileClient.swift */; };
 		E1114000000000000000A001 /* HermesGitClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1114000000000000000A002 /* HermesGitClient.swift */; };
 		E1075000000000000000A001 /* HermesUpdateClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1075000000000000000A002 /* HermesUpdateClient.swift */; };
+		E1611000000000000000A001 /* HermesProfileServing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A002 /* HermesProfileServing.swift */; };
 		E1074000000000000000A001 /* HermesInsightsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1074000000000000000A002 /* HermesInsightsClient.swift */; };
 		E1046000000000000000A001 /* HermesSessionPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1046000000000000000A002 /* HermesSessionPage.swift */; };
 		E1048000000000000000A001 /* HermesSessionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1048000000000000000A002 /* HermesSessionActions.swift */; };
@@ -1088,6 +1090,7 @@
 		141100000000000000000001 /* SettingsAcknowledgementsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAcknowledgementsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000007 /* SettingsNotificationsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000009 /* SettingsServerPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsServerPage.swift; sourceTree = "<group>"; };
+		E1611000000000000000A004 /* ProfileServingSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileServingSection.swift; sourceTree = "<group>"; };
 		12520000000000000000000B /* WebuiServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettings.swift; sourceTree = "<group>"; };
 		12520000000000000000000F /* WebuiServerSettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettingsModel.swift; sourceTree = "<group>"; };
 		12520000000000000000000D /* AddServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServerView.swift; sourceTree = "<group>"; };
@@ -1345,6 +1348,7 @@
 		E1112000000000000000A002 /* HermesWorkspaceFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesWorkspaceFileClient.swift"; sourceTree = "<group>"; };
 		E1114000000000000000A002 /* HermesGitClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesGitClient.swift"; sourceTree = "<group>"; };
 		E1075000000000000000A002 /* HermesUpdateClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesUpdateClient.swift"; sourceTree = "<group>"; };
+		E1611000000000000000A002 /* HermesProfileServing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesProfileServing.swift"; sourceTree = "<group>"; };
 		E1074000000000000000A002 /* HermesInsightsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesInsightsClient.swift"; sourceTree = "<group>"; };
 		E1046000000000000000A002 /* HermesSessionPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesSessionPage.swift"; sourceTree = "<group>"; };
 		E1048000000000000000A002 /* HermesSessionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesSessionActions.swift"; sourceTree = "<group>"; };
@@ -1857,6 +1861,7 @@
 				E1112000000000000000A002 /* HermesWorkspaceFileClient.swift */,
 				E1114000000000000000A002 /* HermesGitClient.swift */,
 				E1075000000000000000A002 /* HermesUpdateClient.swift */,
+				E1611000000000000000A002 /* HermesProfileServing.swift */,
 				E1074000000000000000A002 /* HermesInsightsClient.swift */,
 				E1046000000000000000A002 /* HermesSessionPage.swift */,
 				E1048000000000000000A002 /* HermesSessionActions.swift */,
@@ -2280,6 +2285,7 @@
 				141100000000000000000001 /* SettingsAcknowledgementsPage.swift */,
 				125200000000000000000007 /* SettingsNotificationsPage.swift */,
 				125200000000000000000009 /* SettingsServerPage.swift */,
+				E1611000000000000000A004 /* ProfileServingSection.swift */,
 				12520000000000000000000B /* WebuiServerSettings.swift */,
 				12520000000000000000000F /* WebuiServerSettingsModel.swift */,
 				12520000000000000000000D /* AddServerView.swift */,
@@ -2731,6 +2737,7 @@
 				E1112000000000000000A001 /* HermesWorkspaceFileClient.swift in Sources */,
 				E1114000000000000000A001 /* HermesGitClient.swift in Sources */,
 				E1075000000000000000A001 /* HermesUpdateClient.swift in Sources */,
+				E1611000000000000000A001 /* HermesProfileServing.swift in Sources */,
 				E1074000000000000000A001 /* HermesInsightsClient.swift in Sources */,
 				E1046000000000000000A001 /* HermesSessionPage.swift in Sources */,
 				E1048000000000000000A001 /* HermesSessionActions.swift in Sources */,
@@ -2899,6 +2906,7 @@
 				141100000000000000000002 /* SettingsAcknowledgementsPage.swift in Sources */,
 				125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */,
 				12520000000000000000000A /* SettingsServerPage.swift in Sources */,
+				E1611000000000000000A003 /* ProfileServingSection.swift in Sources */,
 				12520000000000000000000C /* WebuiServerSettings.swift in Sources */,
 				125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */,
 				12520000000000000000000E /* AddServerView.swift in Sources */,

@@ -126,7 +126,7 @@ struct SettingsServerPage: View {
     }
 
     /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
-    /// and the host's update standing (#1075), then its archived sessions, the home's Main Page
+    /// and the host's update standing (#1075), a Webapp's unserved Profiles (#1611), then its archived sessions, the home's Main Page
     /// switches (#1585), API keys (#1318) and plugins (#1582).
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
@@ -161,6 +161,8 @@ struct SettingsServerPage: View {
         BotScreenToggleSection(server: server)
 
         if let hermesConnection {
+            ProfileServingSection(connection: hermesConnection, server: server)
+
             Section(String(localized: "Sessions")) {
                 NavigationLink {
                     ArchivedSessionsView(server: server, hermes: .saved(hermesConnection, server: server, profile: nil))
