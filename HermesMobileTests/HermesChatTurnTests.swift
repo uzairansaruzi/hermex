@@ -768,6 +768,16 @@ import SwiftUI
         XCTAssertEqual(chat.writes("session.compress"), [])
     }
 
+    /// A canonical compaction reply that is neither `noop`, a preview nor a receipt (no `revision`)
+    /// says nothing safe about the transcript, so it fails rather than reading as compacted.
+    func testACanonicalCompressReplyWithoutARevisionFails() async throws {
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.mutate", .init(result: .object(["session_id": .string("tip"), "operation": .string("compress"),
+                                                                  "status": .string("unexpected")])))
+        do { _ = try await chat.turn.compress(focus: nil); XCTFail("an unreadable compaction reply was refused") }
+        catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
+    }
+
     /// A refused password (#884, #942) is never sent again unasked: neither returning from the
     /// background, a network change nor a send signs the chat in again.
     func testARefusedSignInIsNeverSentAgainUnasked() async {
