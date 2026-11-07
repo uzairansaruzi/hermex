@@ -102,7 +102,10 @@ struct HermesMigrationPlan: Equatable, Sendable {
     let otherBlockers: [String]
     /// The host's notices about a platform whose address moves under `/p/<profile>/`.
     let movedListeners: [String]
-    let alreadyMultiplexed: Bool
+    /// One gateway serves every Profile: upstream's `already_multiplexed`, which turns true as soon
+    /// as the migration writes the flag, and the live gateway's `live_served` naming more than one
+    /// Profile, which only the restarted multiplexer records.
+    let servesEveryProfile: Bool
 
     private let plan: BotJSON
 
@@ -124,7 +127,7 @@ struct HermesMigrationPlan: Equatable, Sendable {
         otherBlockers = others
         // Upstream's `_check_secondary_port_binders` notice; the others are about `hermes update`.
         movedListeners = (plan["notices"].list ?? []).compactMap(\.text).filter { $0.contains("moves onto the default listener") }
-        alreadyMultiplexed = plan["already_multiplexed"].flag == true
+        servesEveryProfile = plan["already_multiplexed"].flag == true && (plan["live_served"].list?.count ?? 0) > 1
     }
 
     /// This plan with `ids` among the blockers the fix doesn't handle: duplicates a removal

@@ -121,9 +121,9 @@ import SwiftUI
             let client = self.client
             let last = await HermesRestartWait.lastAnswer(after: restartDelays, sleep: sleep) {
                 try? await client.plan()
-            } isFinal: { $0.alreadyMultiplexed }
+            } isFinal: { $0.servesEveryProfile }
             guard !Task.isCancelled else { return }
-            guard let last, last.alreadyMultiplexed else {
+            guard let last, last.servesEveryProfile else {
                 // A migration the host refused leaves its blockers in the plan.
                 phase = last.map { $0.isBlocked ? .ready($0) : .unconfirmed } ?? .unconfirmed
                 return
@@ -142,7 +142,7 @@ import SwiftUI
         do {
             let plan = try await client.plan().unhandling(unhandled)
             guard !Task.isCancelled else { return }
-            if plan.alreadyMultiplexed && !plan.isBlocked { await confirmServed() } else { phase = .ready(plan) }
+            if plan.servesEveryProfile && !plan.isBlocked { await confirmServed() } else { phase = .ready(plan) }
         } catch {
             guard !Task.isCancelled else { return }
             phase = .failed(error.localizedDescription)

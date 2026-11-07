@@ -20,9 +20,11 @@ import XCTest
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/api/gateway/migrate/plan"?):
                 plans += 1
-                // Blocked until the removal; after the migration starts, one read before the restart lands.
+                // Blocked until the removal. After the migration starts, the flag is on a read before
+                // the restarted gateway records serving both Profiles.
                 let blockers: [BotJSON] = cleared ? [] : [.string(HermesGatewayTests.duplicateBots.components(separatedBy: "; ")[0])]
-                return .json(200, .object(["blockers": .array(blockers), "already_multiplexed": .bool(plans >= 4),
+                return .json(200, .object(["blockers": .array(blockers), "already_multiplexed": .bool(plans >= 3),
+                                           "live_served": .array(plans >= 4 ? [.string("default"), .string("dev")] : []),
                                            "eligible": .bool(false)]))
             case ("DELETE", "/api/env"?):
                 cleared = true
@@ -56,15 +58,22 @@ import XCTest
     }
 
     /// A plan read that finds every Profile already served, as Check Again does after a slow
-    /// restart, ends the fix the way the migration does, so the chat behind it reloads.
+    /// restart, ends the fix the way the migration does, so the chat behind it reloads. The flag
+    /// alone, on before the gateway restarts, is not served yet.
     func testAPlanThatAlreadyServesEveryProfileEndsTheFix() async {
+        var restarted = false
         let model = Self.model(profile: nil) { request in
             request.url?.path == "/api/gateway/migrate/plan"
-                ? .json(200, .object(["blockers": .array([]), "already_multiplexed": .bool(true)])) : nil
+                ? .json(200, .object(["blockers": .array([]), "already_multiplexed": .bool(true),
+                                    "live_served": .array(restarted ? [.string("default"), .string("dev")] : [])])) : nil
         }
         var served = 0
         model.onServed = { served += 1 }
 
+        await model.reload()
+        XCTAssertEqual(served, 0, "the flag is on, but the gateway hasn't restarted onto it")
+
+        restarted = true
         await model.reload()
 
         XCTAssertEqual(model.phase, .served)

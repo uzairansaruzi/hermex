@@ -437,7 +437,8 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
   `GET /api/gateway/migrate/plan`, removes a duplicate bot's `.env` keys from the Profile the
   user says shouldn't keep it (`DELETE /api/env`), then after one confirmation starts
   `POST /api/gateway/migrate`, whose `ok` means only that it started. The gateway restarts, so
-  the screen waits on `HermesRestartWait` until the plan says `already_multiplexed`, then opens
+  the screen waits on `HermesRestartWait` until the plan says `already_multiplexed` and its `live_served` names more than one Profile
+  (the flag alone turns true before the restart), then opens
   the Profile's socket. Never gate on the plan's `eligible` (the `hermes update` bar), and
   never write `gateway.multiplex_profiles: true` directly: an explicit `true` skips the preflight.
   A blocker it doesn't recognize, or a duplicate whose removal didn't clear it (a token set in
