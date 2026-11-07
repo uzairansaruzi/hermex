@@ -552,6 +552,11 @@ import UserNotifications
         guard canRestart(loaded) else { phase = .idle; return }
         do { try await client.restartHermes() } catch BotFailure.transport, is URLError {
             // The host can go down before its answer arrives; that is the restart.
+        } catch BotFailure.stale where client.servesWebapp {
+            // A sign-in on the way found a Webapp, so nothing was sent: as above.
+            servesWebapp = true
+            phase = .idle
+            return
         } catch {
             phase = .failed(Failure(title: String(localized: "Couldn’t restart Hermes"), message: Self.message(for: error),
                                     remedy: .retryRestart))

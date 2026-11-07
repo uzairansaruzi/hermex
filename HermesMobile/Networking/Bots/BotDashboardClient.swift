@@ -65,9 +65,12 @@ import Foundation
 
     /// Asks hermex-push 0.4.0 or newer to restart the dashboard process it runs in (#934). It
     /// answers 202 and re-execs about a second later, stopping Bot turns running there, so
-    /// only a confirmed "Restart Hermes…" reaches it.
+    /// only a confirmed "Restart Hermes…" reaches it. Never sent to a gateway's Webapp, whose
+    /// drain it skips (#1606): checked at each dispatch, after any sign-in, which throws `.stale`.
     func restartHermes() async throws {
-        _ = try await send(.restartDashboard)
+        _ = try await send(.restartDashboard, validateDispatch: { [http] in
+            if http.servesWebapp { throw BotFailure.stale }
+        })
     }
 
     /// Whether the host answers its public status route, read without signing in.

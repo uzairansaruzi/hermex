@@ -1219,6 +1219,36 @@ import XCTest
     /// still be behind. Pinned here so these tests don't move with `newestVersion`.
     private let future = HermexPushPluginVersion("0.5.0")!
 
+    /// A restart whose 401 signs in again onto a host that is now a gateway's Webapp isn't resent:
+    /// that restart would skip the Webapp's drain (#1606). The card asks for one on the host.
+    func testARestartIsNeverResentToAHostThatTurnedOutToBeAWebapp() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        var restarts = 0, webappStatuses = 0
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/restart":
+                restarts += 1
+                return (401, .null)
+            // After the refusal the host answers as a Webapp, naming its install only once signed in.
+            case "/api/status" where restarts > 0:
+                webappStatuses += 1
+                return (200, .object(webappStatuses == 1 ? ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+                                     : ["auth_required": .bool(true), "install_id": .string("fixture-install")]))
+            case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: "0.4.0"))
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.5.0"))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar, newest: future)
+        await provisioner.checkPlugin()
+
+        await provisioner.restartHermes()
+
+        XCTAssertEqual(restarts, 1)
+        XCTAssertTrue(provisioner.servesWebapp)
+        XCTAssertEqual(provisioner.phase, .idle)
+    }
+
     /// Only a plugin with the restart route is offered one, and never on a gateway's Webapp, whose
     /// drain that restart skips (uzairansaruzi/hermex-push#33, #1606).
     func testOnlyAPluginWithTheRestartRouteIsOfferedARestart() async throws {
