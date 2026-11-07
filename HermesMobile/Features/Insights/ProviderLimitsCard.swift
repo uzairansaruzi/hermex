@@ -81,10 +81,8 @@ private struct ProviderLimitsPlaceholderCard: View {
 
                 row
 
-                Divider()
-                    .padding(.vertical, 14)
-
                 row
+                    .padding(.top, 28)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .redacted(reason: .placeholder)
@@ -134,12 +132,8 @@ struct ProviderLimitsCard: View {
                 header
 
                 ForEach(Array(card.rows.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 {
-                        Divider()
-                            .padding(.vertical, 14)
-                    }
-
                     ProviderLimitRowView(row: row, now: now)
+                        .padding(.top, index > 0 ? 28 : 0)
                 }
 
                 if let updated = providerLimitUpdatedText(card.updatedAt, now: now) {

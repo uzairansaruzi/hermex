@@ -110,7 +110,6 @@ import SwiftUI
                             .lineLimit(2...4)
                     }
                     .padding(16)
-                    Divider().padding(.leading, 16)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Instructions").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         TextEditor(text: Binding(get: { editor.draft.instructions }, set: { editor.setInstructions($0) }))
@@ -130,9 +129,7 @@ import SwiftUI
                 sectionLabel("Capabilities")
                 card {
                     capabilityRow(.skills, systemImage: "sparkles")
-                    Divider().padding(.leading, 52)
                     capabilityRow(.toolsets, systemImage: "wrench.and.screwdriver")
-                    Divider().padding(.leading, 52)
                     capabilityRow(.mcpServers, systemImage: "server.rack")
                 }
                 sectionLabel("Server")
@@ -225,10 +222,8 @@ import SwiftUI
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 10)
-            Divider().padding(.leading, 16)
             navigationRow(String(localized: "Describe It"), subtitle: nil, value: "", systemImage: "sparkles") { showsDescribe = true }
                 .disabled(!editor.holdsConnection)
-            Divider().padding(.leading, 16)
             navigationRow(String(localized: "Expression"), subtitle: nil,
                           value: BotAvatarExpression.resolve(editor.draft.appearance.expression).localizedName,
                           systemImage: "face.smiling") { showsExpressions = true }

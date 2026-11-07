@@ -35,13 +35,11 @@ struct DefaultProfilePickerView: View {
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
-                        .listRowSeparator(.hidden)
                 }
 
                 ForEach(filteredProfiles, id: \.self) { profile in
                     profileRow(profile)
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
-                        .listRowSeparator(.hidden)
                 }
 
                 // The server 403s profile creation in single-profile mode,
@@ -49,11 +47,9 @@ struct DefaultProfilePickerView: View {
                 if !isSingleProfileMode {
                     newProfileRow
                         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 12))
-                        .listRowSeparator(.hidden)
                 }
 
                 statusPlaceholder
-                    .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

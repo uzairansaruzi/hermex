@@ -63,8 +63,7 @@ struct BotAtAutocompleteView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
-                    if index > 0 { Divider().padding(.horizontal, 16) }
+                ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
                     switch section {
                     case .bots(let completions): botRows(completions)
                     case .files(let matches): fileRows(matches)
@@ -95,9 +94,8 @@ struct BotAtAutocompleteView: View {
     @ViewBuilder
     private func botRows(_ completions: [BotMentions.Completion]) -> some View {
         header("Bots")
-        ForEach(Array(completions.enumerated()), id: \.element.id) { index, item in
+        ForEach(completions, id: \.id) { item in
             BotMentionRow(item: item, avatars: avatars, onSelect: onSelectBot)
-            if index < completions.count - 1 { Divider().padding(.horizontal, 16) }
         }
     }
 
@@ -112,9 +110,8 @@ struct BotAtAutocompleteView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: rowHeight)
         } else {
-            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in
+            ForEach(matches, id: \.id) { match in
                 FilePathRow(match: match, onSelect: onSelectFile)
-                if index < matches.count - 1 { Divider().padding(.horizontal, 16) }
             }
         }
     }

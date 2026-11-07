@@ -58,7 +58,7 @@ struct SettingsView: View {
                     LabeledContent {
                         Text((AppTheme(rawValue: appThemeRawValue) ?? .system).title)
                     } label: {
-                        SettingsLabel(title: String(localized: "Appearance"), systemImage: "circle.lefthalf.filled")
+                        SettingsLabel(title: String(localized: "Appearance"), systemImage: "paintbrush.pointed")
                     }
                 }
 
@@ -71,7 +71,7 @@ struct SettingsView: View {
                 NavigationLink {
                     SettingsChatPage()
                 } label: {
-                    SettingsLabel(title: String(localized: "Chat"), systemImage: "text.bubble")
+                    SettingsLabel(title: String(localized: "Chat"), systemImage: "bubble.left.and.bubble.right")
                 }
 
                 NavigationLink {
@@ -80,7 +80,7 @@ struct SettingsView: View {
                     LabeledContent {
                         Text(isPushOn ? String(localized: "Push on") : String(localized: "Push off"))
                     } label: {
-                        SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell")
+                        SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell.badge")
                     }
                 }
 

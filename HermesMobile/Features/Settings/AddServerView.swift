@@ -91,7 +91,6 @@ struct AddServerView: View {
                         if let source = form.moveSource, !source.headers.isEmpty {
                             moveSourceHeaders(source)
                                 .disabled(form.isConnectionLocked)
-                            SettingsDivider()
                         }
                         connectionOptionsRow
                     }
@@ -206,8 +205,6 @@ struct AddServerView: View {
                 autocapitalization: .never,
                 submitLabel: .next
             )
-
-            SettingsDivider()
         }
 
         if form.showsPasswordField {
@@ -232,7 +229,6 @@ struct AddServerView: View {
             Label("Filled in from \(reused.serverName)’s Hermes connection.", systemImage: "checkmark.circle")
                 .font(AppFont.footnote())
                 .foregroundStyle(.appSecondary)
-            SettingsDivider()
         } else {
             ForEach(form.savedSignIns, id: \.connection.id) { saved in
                 Button {
@@ -259,8 +255,6 @@ struct AddServerView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Use the sign-in saved on \(saved.serverName)"))
                 .accessibilityHint(Text("Fills in the username, password and headers."))
-
-                SettingsDivider()
             }
         }
     }
@@ -417,8 +411,6 @@ private struct ConnectionOptionsPage: View {
                         autocapitalization: .never
                     )
 
-                    SettingsDivider()
-
                     SettingsTextFieldRow(
                         title: String(localized: "Client Secret"),
                         text: $form.accessClientSecret,
@@ -508,11 +500,7 @@ struct ServerIdentityEditor: View {
                 placeholder: fallbackName.isEmpty ? String(localized: "Server") : fallbackName
             )
 
-            SettingsDivider()
-
             SettingsTextFieldRow(title: String(localized: "Initials"), text: initialsBinding, placeholder: previewInitials)
-
-            SettingsDivider()
 
             HeaderLogoColorSettings(selectedHex: $colorHex, customColor: colorBinding)
         }
@@ -644,13 +632,5 @@ private struct SettingsButton: View {
 
     private var strokeOpacity: Double {
         colorSchemeContrast == .increased ? 0.24 : 0.12
-    }
-}
-
-private struct SettingsDivider: View {
-    var body: some View {
-        Divider()
-            .padding(.leading, 2)
-            .opacity(0.72)
     }
 }
