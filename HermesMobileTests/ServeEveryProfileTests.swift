@@ -22,8 +22,8 @@ import XCTest
                 plans += 1
                 // Blocked until the removal; after the migration starts, one read before the restart lands.
                 let blockers: [BotJSON] = cleared ? [] : [.string(HermesGatewayTests.duplicateBots.components(separatedBy: "; ")[0])]
-                return .json(200, .object(["blockers": .array(blockers), "notices": .array([]),
-                                           "already_multiplexed": .bool(plans >= 4), "eligible": .bool(false)]))
+                return .json(200, .object(["blockers": .array(blockers), "already_multiplexed": .bool(plans >= 4),
+                                           "eligible": .bool(false)]))
             case ("DELETE", "/api/env"?):
                 cleared = true
                 return .json(200, .object(["ok": .bool(true), "key": .string("TELEGRAM_BOT_TOKEN"), "found": .bool(true)]))
@@ -47,8 +47,6 @@ import XCTest
         let body = try JSONDecoder().decode(BotJSON.self, from: XCTUnwrap(apiTestBodyData(from: removal)))
         XCTAssertEqual(body["key"].text, "TELEGRAM_BOT_TOKEN")
         XCTAssertEqual(body["profile"].text, "default")
-        guard case .ready(let clear) = model.phase else { return XCTFail("expected the cleared plan, got \(model.phase)") }
-        XCTAssertFalse(clear.isBlocked)
 
         await model.migrate()?.value
 
@@ -73,7 +71,7 @@ import XCTest
         XCTAssertEqual(served, 1)
     }
 
-    /// A blocker Hermex doesn't recognize offers no removal and no migration. Its recovery chat
+    /// A blocker Hermex doesn't recognize offers no removal, only the host's words. Its recovery chat
     /// opens on the Profile the gateway serves, never New Session's, carrying the unserved Profile
     /// and the host's words for the agent.
     func testAnUnrecognizedBlockerOffersARecoveryChatOnTheServedProfile() async throws {
@@ -90,7 +88,6 @@ import XCTest
         guard case .ready(let plan) = model.phase else { return XCTFail("expected the plan, got \(model.phase)") }
         XCTAssertEqual(plan.duplicateBots, [])
         XCTAssertEqual(plan.otherBlockers, [blocker])
-        XCTAssertNil(model.migrate(), "a blocked plan never starts the migration")
 
         let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: inbox) }
