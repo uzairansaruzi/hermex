@@ -2333,6 +2333,7 @@ struct ChatView: View {
         ChatTranscriptView(
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
+            errorMayRetry: viewModel.errorMayRetry,
             messages: viewModel.messages,
             displayedTranscriptMessages: displayedTranscriptMessages,
             compressionReferenceCard: viewModel.compressionReferenceCard,

@@ -30,6 +30,8 @@ struct ChatTranscriptView: View {
 
     let isLoading: Bool
     let errorMessage: String?
+    /// False hides the error's Try Again, for a failure retrying can't fix.
+    var errorMayRetry = true
     let messages: [ChatMessage]
     let displayedTranscriptMessages: [TranscriptMessage]
     let compressionReferenceCard: CompressionReferenceCard?
@@ -187,8 +189,10 @@ struct ChatTranscriptView: View {
             } description: {
                 Text(errorMessage)
             } actions: {
-                Button("Try Again") {
-                    Task { await onLoadMessages() }
+                if errorMayRetry {
+                    Button("Try Again") {
+                        Task { await onLoadMessages() }
+                    }
                 }
             }
         case .startPrompt?:

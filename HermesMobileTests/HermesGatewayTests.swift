@@ -215,14 +215,22 @@ import XCTest
     /// On a gateway's Webapp each Profile's chats get a socket of their own (#1341, decision 2),
     /// since a canonical session's events don't name their Profile and ids repeat across them,
     /// opened with a ticket the Webapp binds to that Profile, so a call naming none is answered
-    /// for it. Screens that aren't one session's keep the shared one. A dashboard keeps one socket.
+    /// for it, and one it doesn't serve is named as such. Screens that aren't one session's keep
+    /// the shared one. A dashboard keeps one socket.
     func testAWebappKeepsEachProfilesChatsOnTheirOwnSocket() async throws {
         for webapp in [true, false] {
             sockets = []
             HermesHostFixture.reset()
             var statuses = 0
-            let http = connection(canonical: webapp) { request in
-                if request.url?.path == "/api/webapp/socket-ticket" { return .json(200, .object(["ticket": .string("bound")])) }
+            // The gateway serves no Profile named `parked`: the Webapp refuses its socket.
+            let http = connection(canonical: webapp, refuses: {
+                $0.value(forHTTPHeaderField: "Sec-WebSocket-Protocol")?.contains("bound-parked") == true
+            }) { request in
+                if request.url?.path == "/api/webapp/socket-ticket" {
+                    let profile = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
+                        .first { $0.name == "profile" }?.value ?? ""
+                    return .json(200, .object(["ticket": .string("bound-" + profile)]))
+                }
                 guard request.url?.path == "/api/status" else { return nil }
                 statuses += 1
                 // The Webapp names its install only once signed in.
@@ -237,6 +245,14 @@ import XCTest
             let bound = HermesHostFixture.requests.filter { $0.url?.path == "/api/webapp/socket-ticket" }
                 .compactMap { URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)?.queryItems }
             XCTAssertEqual(Set(bound.compactMap { $0.first { $0.name == "profile" }?.value }), webapp ? ["work", "home"] : [])
+            if webapp {
+                // It says that Profile isn't served there, never that a proxy blocks sockets.
+                let parked = BotClient(http: http, profile: "parked")
+                do { try await parked.connect(); XCTFail("the Webapp refused the parked Profile") }
+                catch { XCTAssertEqual(error as? BotFailure, .profileNotServed("parked")) }
+                XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.profileNotServed("parked")))
+                parked.close()
+            }
             for client in [inbox, work, alsoWork, home] { client.close() }
         }
     }
@@ -678,13 +694,16 @@ import XCTest
     }
 
     /// A saved connection whose gateway opens scripted sockets, kept in `sockets`. `canonical`
-    /// sockets open with `session_authority` in `gateway.ready` (#1341).
+    /// sockets open with `session_authority` in `gateway.ready` (#1341); an upgrade `refuses`
+    /// names is refused with a 403.
     private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30), canonical: Bool = false,
+                            refuses: @escaping (URLRequest) -> Bool = { _ in false },
                             _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
         let ready = canonical ? #"{"replay_epoch":"epoch","session_authority":true}"# : #"{"replay_epoch":"epoch"}"#
         return HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
-                                gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline, socketFactory: { [weak self] _ in
+                                gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline, socketFactory: { [weak self] upgrade in
                                     let socket = BotScriptedSocket(ready: ready)
+                                    if refuses(upgrade) { socket.receiveFailure = BotFailure.upgradeRefused(403) }
                                     self?.sockets.append(socket)
                                     return socket
                                 }))

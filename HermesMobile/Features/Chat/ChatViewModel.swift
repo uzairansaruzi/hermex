@@ -342,7 +342,9 @@ final class ChatViewModel {
     private(set) var latestRunOutcome: TranscriptTurnRunOutcome?
     var activeStreamRecoveryState: ActiveStreamRecoveryState { turn.recoveryState }
     var liveTokensPerSecond: Double? { turn.liveTokensPerSecond }
-    private(set) var errorMessage: String?
+    private(set) var errorMessage: String? { didSet { errorMayRetry = true } }
+    /// Whether the chat's error offers Try Again; false for a failure retrying can't fix.
+    private(set) var errorMayRetry = true
     private(set) var sendErrorMessage: String? {
         didSet {
             sendErrorIsFromStreamRecovery = false
@@ -8680,7 +8682,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         currentModel = model
     }
 
-    func hermesConnectionDidChange(failure: String?) {
+    func hermesConnectionDidChange(failure: String?, mayRetry: Bool) {
         guard let failure else {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
@@ -8692,6 +8694,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         // With nothing on screen yet it is the chat's error, with its retry; otherwise the composer's.
         if messages.isEmpty {
             errorMessage = failure
+            errorMayRetry = mayRetry
         } else {
             sendErrorMessage = failure
             sendErrorIsFromStreamRecovery = true

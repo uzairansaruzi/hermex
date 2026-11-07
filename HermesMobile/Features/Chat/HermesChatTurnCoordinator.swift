@@ -31,8 +31,9 @@ import SwiftData
     func hermesApplyUsage(_ usage: ContextWindowSnapshot)
     /// The model `session.info` reports: the Profile's default unless the host says otherwise.
     func hermesApplyModel(_ model: String)
-    /// Why the session cannot attach, or nil once it has.
-    func hermesConnectionDidChange(failure: String?)
+    /// Why the session cannot attach, or nil once it has; `mayRetry` is false when retrying can't
+    /// help, such as a Webapp that doesn't serve the chat's Profile.
+    func hermesConnectionDidChange(failure: String?, mayRetry: Bool)
     /// The host accepted a new session's first prompt: the draft under `from` moves to the
     /// session's key `to`.
     func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey)
@@ -2160,7 +2161,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         // The engine released the held frames just before this.
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
         needsSignIn = false
-        delegate?.hermesConnectionDidChange(failure: nil)
+        delegate?.hermesConnectionDidChange(failure: nil, mayRetry: true)
         if let historyFailure {
             reportHistoryFailure(historyFailure)
         }
@@ -2210,6 +2211,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         drivenLiveActivity?.markStale()
         if failure == .rejected(401) { needsSignIn = true }
         guard !retrying else { return }
-        delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address))
+        let served = if case .profileNotServed = failure { false } else { true }
+        delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address),
+                                            mayRetry: served)
     }
 }
