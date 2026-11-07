@@ -71,6 +71,30 @@ import XCTest
         XCTAssertEqual(served, 1)
     }
 
+    /// A duplicate the removal can't clear, as when the token lives in config.yaml and the `.env`
+    /// lacks the key (404), joins the blockers the fix doesn't handle, and Check Again never
+    /// offers the same removal again.
+    func testADuplicateTheRemovalCantClearBecomesABlockerTheFixDoesntHandle() async {
+        let blocker = HermesGatewayTests.duplicateBots.components(separatedBy: "; ")[0]
+        let model = Self.model { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/api/gateway/migrate/plan"?):
+                return .json(200, .object(["blockers": .array([.string(blocker)]), "already_multiplexed": .bool(false)]))
+            case ("DELETE", "/api/env"?):
+                return .json(404, .object(["detail": .string("TELEGRAM_BOT_TOKEN not found in .env")]))
+            default: return nil
+            }
+        }
+
+        await model.reload()
+        await model.removeDuplicates()?.value
+        await model.reload()
+
+        guard case .ready(let plan) = model.phase else { return XCTFail("expected the plan, got \(model.phase)") }
+        XCTAssertEqual(plan.duplicateBots, [])
+        XCTAssertEqual(plan.otherBlockers, [blocker])
+    }
+
     /// A blocker Hermex doesn't recognize offers no removal, only the host's words. Its recovery chat
     /// opens on the Profile the gateway serves, never New Session's, carrying the unserved Profile
     /// and the host's words for the agent.

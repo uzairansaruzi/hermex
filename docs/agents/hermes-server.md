@@ -440,7 +440,8 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
   the screen waits on `HermesRestartWait` until the plan says `already_multiplexed`, then opens
   the Profile's socket. Never gate on the plan's `eligible` (the `hermes update` bar), and
   never write `gateway.multiplex_profiles: true` directly: an explicit `true` skips the preflight.
-  A blocker it doesn't recognize offers a recovery chat opened explicitly on `default`, the
+  A blocker it doesn't recognize, or a duplicate whose removal didn't clear it (a token set in
+  `config.yaml`, not the `.env`), offers a recovery chat opened explicitly on `default`, the
   Profile a standalone gateway serves (New Session's may be unserved). Its text names the
   unserved Profile and the host's words, asks the agent to walk through
   `hermes gateway migrate --multiplex --dry-run`, and keeps the triage playbook's guardrails:

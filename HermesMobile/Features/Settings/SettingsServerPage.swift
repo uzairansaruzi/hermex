@@ -22,6 +22,8 @@ struct SettingsServerPage: View {
     /// The active Hermes server's saved connection, read on appear (#899): its username shows
     /// on the connection row, and Archived Sessions reads through it (#1048).
     @State private var hermesConnection: BotConnection?
+    /// What a Webapp says about the Profiles it serves (#1611), read on appear after the connection.
+    @State private var profileServing: HermesProfileServing?
     @State private var moveRequest: MoveToHermesRequest?
 
     init(
@@ -83,6 +85,9 @@ struct SettingsServerPage: View {
             guard let server = activeHermesServer else { return }
             // A Hermes server has no webui to load from, so no webui 401 can sign it out (#899).
             hermesConnection = try? BotConnectionStore().load(server: server)
+            if let hermesConnection {
+                profileServing = await ProfileServingSection.read(connection: hermesConnection, server: server)
+            }
             let updates = HermesUpdateModel.for(server: server)
             updates.onUpdated = { version in
                 authManager.hermesServerUpdated(server: server, to: version)
@@ -161,7 +166,9 @@ struct SettingsServerPage: View {
         BotScreenToggleSection(server: server)
 
         if let hermesConnection {
-            ProfileServingSection(connection: hermesConnection, server: server)
+            ProfileServingSection(serving: profileServing, connection: hermesConnection, server: server) {
+                profileServing = nil
+            }
 
             Section(String(localized: "Sessions")) {
                 NavigationLink {

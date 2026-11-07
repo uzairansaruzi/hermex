@@ -98,19 +98,23 @@ struct HermesProfileServing: Equatable, Sendable {
 struct HermesMigrationPlan: Equatable, Sendable {
     /// Duplicate bots Hermex can remove a credential for.
     let duplicateBots: [HermesDuplicateBot]
-    /// Every other blocker, in the host's words.
+    /// Every other blocker, in the host's words, a duplicate bot `unhandling` names included.
     let otherBlockers: [String]
     /// The host's notices about a platform whose address moves under `/p/<profile>/`.
     let movedListeners: [String]
     let alreadyMultiplexed: Bool
 
+    private let plan: BotJSON
+
     var isBlocked: Bool { !duplicateBots.isEmpty || !otherBlockers.isEmpty }
 
-    init(_ plan: BotJSON) {
+    init(_ plan: BotJSON, unhandled: Set<HermesDuplicateBot.ID> = []) {
+        self.plan = plan
         var bots: [HermesDuplicateBot] = [], others: [String] = []
         for blocker in (plan["blockers"].list ?? []).compactMap(\.text) {
             let (found, rest) = HermesDuplicateBot.parse(blocker)
-            if let bot = found.first, found.count == 1, !bot.keys.isEmpty, HermesDuplicateBot.isEmpty(rest) {
+            if let bot = found.first, found.count == 1, !bot.keys.isEmpty, HermesDuplicateBot.isEmpty(rest),
+               !unhandled.contains(bot.id) {
                 bots.append(bot)
             } else {
                 others.append(blocker)
@@ -122,6 +126,10 @@ struct HermesMigrationPlan: Equatable, Sendable {
         movedListeners = (plan["notices"].list ?? []).compactMap(\.text).filter { $0.contains("moves onto the default listener") }
         alreadyMultiplexed = plan["already_multiplexed"].flag == true
     }
+
+    /// This plan with `ids` among the blockers the fix doesn't handle: duplicates a removal
+    /// didn't clear, as when the token lives in config.yaml rather than the `.env`.
+    func unhandling(_ ids: Set<HermesDuplicateBot.ID>) -> HermesMigrationPlan { HermesMigrationPlan(plan, unhandled: ids) }
 }
 
 /// The guided fix that makes one gateway serve every Profile (#1611): read the preflight,

@@ -33,6 +33,9 @@ import SwiftUI
     private let restartDelays: [Duration]
     private let sleep: @Sendable (Duration) async throws -> Void
     private var work: Task<Void, Never>?
+    /// Duplicate bots a removal didn't clear; every later plan read shows them as blockers the
+    /// fix doesn't handle, so Check Again never offers the same removal again.
+    private var unhandled: Set<HermesDuplicateBot.ID> = []
 
     init(client: HermesGatewayMigrationClient, profile: String?,
          restartDelays: [Duration] = [.seconds(2), .seconds(2), .seconds(3), .seconds(3), .seconds(5), .seconds(5),
@@ -82,7 +85,8 @@ import SwiftUI
     }
 
     /// Removes each duplicate bot's credential from the Profile that doesn't keep it, then reads
-    /// the plan again. A duplicate the host still reports could not be removed from here. Returns
+    /// the plan again. A duplicate the host still reports could not be removed from here, so it
+    /// joins the blockers the recovery chat is for (`unhandled`). Returns
     /// the work, which `leave` cancels.
     @discardableResult func removeDuplicates() -> Task<Void, Never>? {
         guard case .ready(let plan) = phase else { return nil }
@@ -92,11 +96,8 @@ import SwiftUI
                 for bot in plan.duplicateBots { try await client.remove(bot, from: loser(of: bot)) }
                 let next = try await client.plan()
                 guard !Task.isCancelled else { return }
-                if next.duplicateBots.contains(where: { bot in plan.duplicateBots.contains { $0.id == bot.id } }) {
-                    phase = .failed(String(localized: "The host still reports a duplicate bot token, so it may be set somewhere Hermex can’t change. Remove it on the host, then try again."))
-                } else {
-                    phase = .ready(next)
-                }
+                unhandled.formUnion(Set(plan.duplicateBots.map(\.id)).intersection(next.duplicateBots.map(\.id)))
+                phase = .ready(next.unhandling(unhandled))
             } catch {
                 guard !Task.isCancelled else { return }
                 phase = .failed(error.localizedDescription)
@@ -139,7 +140,7 @@ import SwiftUI
 
     private func readPlan() async {
         do {
-            let plan = try await client.plan()
+            let plan = try await client.plan().unhandling(unhandled)
             guard !Task.isCancelled else { return }
             if plan.alreadyMultiplexed && !plan.isBlocked { await confirmServed() } else { phase = .ready(plan) }
         } catch {
