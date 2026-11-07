@@ -127,14 +127,7 @@ import SwiftUI
                 phase = last.map { $0.isBlocked ? .ready($0) : .unconfirmed } ?? .unconfirmed
                 return
             }
-            if let profile {
-                phase = .working(.checking)
-                let opens = await client.opens(profile: profile)
-                guard !Task.isCancelled else { return }
-                guard opens else { phase = .unconfirmed; return }
-            }
-            phase = .served
-            onServed?()
+            await confirmServed()
         }
     }
 
@@ -148,11 +141,24 @@ import SwiftUI
         do {
             let plan = try await client.plan()
             guard !Task.isCancelled else { return }
-            phase = plan.alreadyMultiplexed && !plan.isBlocked ? .served : .ready(plan)
+            if plan.alreadyMultiplexed && !plan.isBlocked { await confirmServed() } else { phase = .ready(plan) }
         } catch {
             guard !Task.isCancelled else { return }
             phase = .failed(error.localizedDescription)
         }
+    }
+
+    /// The gateway serves every Profile: `profile`'s socket opens, or it's `.unconfirmed`.
+    /// Migration and every plan read that finds it so (Check Again included) end here.
+    private func confirmServed() async {
+        if let profile {
+            phase = .working(.checking)
+            let opens = await client.opens(profile: profile)
+            guard !Task.isCancelled else { return }
+            guard opens else { phase = .unconfirmed; return }
+        }
+        phase = .served
+        onServed?()
     }
 
     private func run(_ body: @escaping @MainActor () async -> Void) -> Task<Void, Never>? {

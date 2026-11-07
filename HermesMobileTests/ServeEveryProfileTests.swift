@@ -57,6 +57,22 @@ import XCTest
         XCTAssertEqual(served, 1)
     }
 
+    /// A plan read that finds every Profile already served, as Check Again does after a slow
+    /// restart, ends the fix the way the migration does, so the chat behind it reloads.
+    func testAPlanThatAlreadyServesEveryProfileEndsTheFix() async {
+        let model = Self.model(profile: nil) { request in
+            request.url?.path == "/api/gateway/migrate/plan"
+                ? .json(200, .object(["blockers": .array([]), "already_multiplexed": .bool(true)])) : nil
+        }
+        var served = 0
+        model.onServed = { served += 1 }
+
+        await model.reload()
+
+        XCTAssertEqual(model.phase, .served)
+        XCTAssertEqual(served, 1)
+    }
+
     /// A blocker Hermex doesn't recognize offers no removal and no migration. Its recovery chat
     /// opens on the Profile the gateway serves, never New Session's, carrying the unserved Profile
     /// and the host's words for the agent.

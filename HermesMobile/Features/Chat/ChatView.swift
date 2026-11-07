@@ -619,6 +619,7 @@ struct ChatView: View {
                                        hasWaitingSend: viewModel.waitingSend != nil),
             errorMessage: viewModel.sendErrorMessage,
             errorFixPrompt: viewModel.sendErrorRuntimeStale?.fixPrompt,
+            onFixError: viewModel.errorUnserved == nil ? nil : { servingProfile = viewModel.errorUnserved?.profile },
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage
                 ?? viewModel.hermesSettings?.controls.errorMessage,
             contextWindowSnapshot: viewModel.contextWindowSnapshot,

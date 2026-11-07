@@ -17,6 +17,8 @@ private struct ComposerStatusView: View {
     let fixPrompt: String?
     /// Offers Cancel, which stops a Hermes send's uploads (#1012).
     let onCancel: (() -> Void)?
+    /// Offers Fix on This Phone, which opens Serve Every Profile (#1611).
+    let onFix: (() -> Void)?
     let onDismiss: () -> Void
     @State private var didCopyFixPrompt = false
 
@@ -43,6 +45,13 @@ private struct ComposerStatusView: View {
                 Button("Cancel", action: onCancel)
                     .font(AppFont.caption(weight: .semibold))
                     .buttonStyle(.borderless)
+            }
+
+            if let onFix {
+                Button("Fix on This Phone", action: onFix)
+                    .font(AppFont.caption(weight: .semibold))
+                    .buttonStyle(.borderless)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let fixPrompt {
@@ -173,6 +182,9 @@ struct MessageComposerView: View {
     let errorMessage: String?
     /// Offered as Copy fix prompt on the `errorMessage` banner (#955).
     let errorFixPrompt: String?
+    /// Offered as Fix on This Phone on the `errorMessage` banner, for a Profile the Webapp
+    /// doesn't serve (#1611).
+    let onFixError: (() -> Void)?
     let configurationErrorMessage: String?
     let contextWindowSnapshot: ContextWindowSnapshot?
     let gitViewModel: GitWorkspaceAvailabilityViewModel
@@ -625,6 +637,7 @@ struct MessageComposerView: View {
                         onRetry: composerStatus.onRetry,
                         fixPrompt: composerStatus.fixPrompt,
                         onCancel: composerStatus.onCancel,
+                        onFix: composerStatus.onFix,
                         onDismiss: onDismissUploadAttachmentError
                     )
                 }
@@ -1541,31 +1554,35 @@ struct MessageComposerView: View {
     }
 
     private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?, fixPrompt: String?,
-                                 onCancel: (() -> Void)?)? {
+                                 onCancel: (() -> Void)?, onFix: (() -> Void)?)? {
         if let readOnlyMessage = access.readOnlyMessage {
-            return (readOnlyMessage, false, false, nil, nil, nil)
+            return (readOnlyMessage, false, false, nil, nil, nil, nil)
+        } else if let errorMessage, let onFixError {
+            // A Profile the Webapp doesn't serve leaves the chat on its cached copy, so it would
+            // read as offline; say why, with the fix (#1611). Send stays held by `access`.
+            return (errorMessage, true, false, nil, nil, nil, onFixError)
         } else if access.isOffline {
-            return (ChatComposerSendBlock.offline.accessibilityValue, false, false, nil, nil, nil)
+            return (ChatComposerSendBlock.offline.accessibilityValue, false, false, nil, nil, nil, nil)
         } else if isWaitingForStream && isCancellingStream {
-            return (String(localized: "Stopping response..."), false, false, nil, nil, nil)
+            return (String(localized: "Stopping response..."), false, false, nil, nil, nil, nil)
         } else if isCompressingSession {
-            return (String(localized: "Compressing context..."), false, false, nil, nil, nil)
+            return (String(localized: "Compressing context..."), false, false, nil, nil, nil, nil)
         } else if let uploadAttachmentErrorMessage {
-            return (uploadAttachmentErrorMessage, true, true, nil, nil, nil)
+            return (uploadAttachmentErrorMessage, true, true, nil, nil, nil, nil)
         } else if isSendingVoiceNote {
-            return (String(localized: "Sending voice note..."), false, false, nil, nil, nil)
+            return (String(localized: "Sending voice note..."), false, false, nil, nil, nil, nil)
         } else if isUploadingAttachment {
-            return (String(localized: "Uploading attachment..."), false, false, nil, nil, onCancelAttachmentUpload)
+            return (String(localized: "Uploading attachment..."), false, false, nil, nil, onCancelAttachmentUpload, nil)
         } else if let steerFailure {
-            return (steerFailure.message, true, false, steerFailure.onRetry, nil, nil)
+            return (steerFailure.message, true, false, steerFailure.onRetry, nil, nil, nil)
         } else if let errorMessage {
-            return (errorMessage, true, false, nil, errorFixPrompt, nil)
+            return (errorMessage, true, false, nil, errorFixPrompt, nil, nil)
         } else if let configurationErrorMessage {
-            return (configurationErrorMessage, true, false, nil, nil, nil)
+            return (configurationErrorMessage, true, false, nil, nil, nil, nil)
         } else if let configurationNotice {
-            return (configurationNotice, false, false, nil, nil, nil)
+            return (configurationNotice, false, false, nil, nil, nil, nil)
         } else if isUpdatingConfiguration, !isModelSettingsPresented.wrappedValue {
-            return (String(localized: "Updating composer settings..."), false, false, nil, nil, nil)
+            return (String(localized: "Updating composer settings..."), false, false, nil, nil, nil, nil)
         }
 
         return nil
