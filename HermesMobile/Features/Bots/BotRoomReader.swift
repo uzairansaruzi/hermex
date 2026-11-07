@@ -261,7 +261,7 @@ import Observation
     /// Pending ownership outlives the temporary command lock on the room's buttons.
     private func isPendingAndAnswerable(_ action: BotRoomAction) -> Bool {
         action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
-            && allows(action.isRetry ? "groups.retry" : "groups.approve")
+            && allows(action.method)
     }
 
     var showsRename: Bool { !foreignAuthority && capabilities.methods.contains("groups.rename") }
@@ -368,8 +368,9 @@ import Observation
             guard self.status.actions.contains(action), !self.inactiveActions.contains(action.id) else { throw BotFailure.stale }
             self.inactiveActions.insert(action.id)
         }, accept: { result in
-            guard result[action.isRetry ? "retried" : "approved"].flag == true else { throw BotFailure.unsupported }
-            if !action.isRetry, let choice {
+            let acknowledged = action.isRetry ? "retried" : action.isDiscard ? "discarded" : "approved"
+            guard result[acknowledged].flag == true else { throw BotFailure.unsupported }
+            if action.approval != nil, let choice {
                 ApprovalSummaries.shared.remove(summaryKey)
                 self.feedback = BotFeedback(.approved(choice), after: self.feedback)
             }
@@ -441,7 +442,7 @@ import Observation
         if status != nextStatus { status = nextStatus }
         if !busy && nextStatus.stopping == 0 { awaitingStop = false }
         let pendingIDs = Set(nextStatus.actions.map(\.id))
-        inactiveActions = inactiveActions.filter { $0.kind != "retry" || pendingIDs.contains($0) }
+        inactiveActions = inactiveActions.filter { !["retry", "discard"].contains($0.kind) || pendingIDs.contains($0) }
         let foreign = updated.isForeign(to: capabilities.authority)
         if foreignAuthority != foreign { foreignAuthority = foreign }
         return updated.latestSeq

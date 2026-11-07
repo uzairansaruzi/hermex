@@ -4,18 +4,24 @@ import Foundation
 /// inbox, each chat, a room, the creator and the editor hold their own; a chat's controls
 /// and delegated work share the chat's. `connect()` attaches to the socket, opening it when
 /// no other screen has; `close()` ends only this screen's calls, uploads and downloads,
-/// never the socket another screen is using.
+/// never the socket another screen is using. On a gateway's Webapp a chat's client uses its
+/// Profile's own socket instead (`HermesConnection.gateway(profile:)`).
 @MainActor final class BotClient: BotTransport {
-    private let gateway: HermesGateway
+    /// The socket this client last attached to, picked again at each `connect()`.
+    private var gateway: HermesGateway
+    /// A chat's Profile, whose own socket it uses where the host keeps Profiles apart; nil for a
+    /// screen that isn't one session's.
+    private let profile: String?
     let consumerID: Int
     /// The connection this client signs in and downloads through, shared with its Bot screens.
-    var http: HermesConnection { gateway.http }
+    let http: HermesConnection
     /// Bumped by `close()`, `connect()` and a lost socket, so this screen's late HTTP
     /// results are dropped.
     private var attempt = 0
     private var imageUploads: [UUID: Task<String, Error>] = [:]
     private var artifactTasks: [UUID: Task<Data, Error>] = [:]
     var replayEpoch: String? { gateway.replayEpoch }
+    var speaksCanonicalProtocol: Bool { gateway.speaksCanonicalProtocol }
     /// `version` from the connection's last `/api/status` read, before the auth gate; nil when omitted.
     var serverVersion: String? { http.serverVersion }
     /// `install_id` from the same read; nil when omitted.
@@ -26,9 +32,9 @@ import Foundation
     var onDisconnect: ((Error) -> Void)?
 
     /// A screen's client on the sign-in and socket `server`'s saved connection shares with
-    /// its other Bot screens.
-    convenience init(saved connection: BotConnection, server: URL) {
-        self.init(http: HermesConnections.shared.connection(for: connection, server: server))
+    /// its other Bot screens; `profile` as in `init(http:profile:)`.
+    convenience init(saved connection: BotConnection, server: URL, profile: String? = nil) {
+        self.init(http: HermesConnections.shared.connection(for: connection, server: server), profile: profile)
     }
 
     /// A client with its own cookie jar, sign-in and socket, for credentials that are not
@@ -42,10 +48,12 @@ import Foundation
             rpcDeadline: rpcDeadline, heartbeatInterval: heartbeatInterval, socketFactory: socketFactory)))
     }
 
-    /// A client on `http`'s shared gateway.
-    init(http: HermesConnection) {
+    /// A client on `http`'s shared gateway, or, for a chat on `profile`, on that Profile's.
+    init(http: HermesConnection, profile: String? = nil) {
+        self.http = http
+        self.profile = profile
         gateway = http.gateway
-        consumerID = gateway.makeConsumerID()
+        consumerID = http.makeConsumerID()
     }
 
     /// Attaches to the gateway socket once its handshake is done, so no RPC can precede it.
@@ -54,7 +62,15 @@ import Foundation
     func connect() async throws {
         close()
         let attempt = self.attempt
-        do { try await gateway.join(self) }
+        do {
+            // Sign-in says whether the host keeps each Profile's sessions on a socket of its own.
+            if let profile {
+                try await http.signIn()
+                guard attempt == self.attempt else { throw BotFailure.stale }
+                gateway = http.gateway(profile: profile)
+            }
+            try await gateway.join(self)
+        }
         catch { throw attempt == self.attempt ? error : BotFailure.stale }
         guard attempt == self.attempt else { throw BotFailure.stale }
         guard !Task.isCancelled else { close(); throw BotFailure.stale }
@@ -64,6 +80,10 @@ import Foundation
     /// host must never receive; `validateDispatch` runs at the actual socket write.
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
         try await gateway.send(call, for: consumerID, validateDispatch: validateDispatch)
+    }
+
+    func respond(toRequest id: String, result: BotJSON, validateDispatch: (() throws -> Void)?) async throws {
+        try await gateway.respond(toRequest: id, result: result, for: consumerID, validateDispatch: validateDispatch)
     }
 
     func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data {
@@ -298,6 +318,7 @@ import Foundation
     }
 
     var attachedRuntimes: Set<String> { http.attachedRuntimes }
+    func release(profile: String, sessionID: String) { gateway.release(consumerID, from: .init(profile: profile, id: sessionID)) }
 
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
         guard context.connectionID == http.connection.id, gateway.isAttached(consumerID) else { throw BotFailure.stale }

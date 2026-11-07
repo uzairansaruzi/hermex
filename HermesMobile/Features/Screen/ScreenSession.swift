@@ -387,6 +387,8 @@ enum HermexScreenPlugin {
 
     @ObservationIgnored private let server: URL
     @ObservationIgnored private let client: BotClient
+    /// Whether the host is a gateway's Webapp, whose restart on the host is the gateway's (#1606).
+    var servesWebapp: Bool { client.http.servesWebapp }
     @ObservationIgnored private let options: Options
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var stream: Task<Void, Never>?
@@ -604,7 +606,9 @@ enum HermexScreenPlugin {
             throw ScreenStreamEnd.settled(.pluginNotInstalled)
         case .notMounted:
             let routes = try? await BotDashboardClient(http: client.http).companionRoutes()
-            throw ScreenStreamEnd.settled(.pluginNeedsRestart(canRestart: routes?.routes.contains("POST /restart") == true))
+            // hermex-push's restart skips the drain of a gateway that serves the Webapp (#1606).
+            throw ScreenStreamEnd.settled(.pluginNeedsRestart(
+                canRestart: routes?.routes.contains("POST /restart") == true && !client.http.servesWebapp))
         case .failedToLoad:
             throw ScreenStreamEnd.settled(.pluginFailed)
         }

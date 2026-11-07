@@ -6,7 +6,8 @@ A deterministic Hermes host for the simulator and for
 touches a real host. Every turn goes: "Let me run a quick check.", then a
 `terminal` call for `python3 -c "print(1)"` that waits for manual approval, then
 "The command returned: <first line of the result>." Approving really runs that
-command on this Mac.
+command on this Mac. A prompt that mentions "clarify" asks one `clarify` question
+instead.
 
 The first run clones the commit on line 1 of HERMES_AGENT_TESTED_SHA into
 ~/Library/Caches/hermex-local-hermes/<sha>/ and installs it with uv; later runs
@@ -14,7 +15,13 @@ reuse it. Each run gets a temporary HERMES_HOME, deleted on exit unless
 --keep-home, with a fixed install_id so a saved Hermes connection survives
 restarts. The server binds loopback only, so only the simulator can reach it.
 
-Usage: scripts/local-hermes [--port 9199] [--keep-home]
+--gateway runs `hermes gateway run` with the Webapp on (`webapp.enabled`) instead of
+`hermes serve`: the gateway's own listener, whose sockets speak the canonical session
+protocol (#1341). It listens on 9121 unless --port says otherwise, and signs in with the
+same credentials. Its signed-out /api/status leaves out install_id, so readiness checks
+only the sign-in gate there.
+
+Usage: scripts/local-hermes [--gateway] [--port 9199] [--keep-home]
 Stop it with Ctrl-C. It stops only the process group it started, never a
 process found by name (so never `hermes dashboard --stop`).
 """
@@ -57,12 +64,12 @@ READY_TIMEOUT = 120
 LOOPBACK = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
-def completion(text, tool_call_id=None):
-    """One non-streaming chat completion; a tool_call_id adds the terminal call."""
+def completion(text, tool_call_id=None, tool=("terminal", {"command": COMMAND})):
+    """One non-streaming chat completion; a tool_call_id adds the `tool` call, (name, arguments)."""
     message = {"role": "assistant", "content": text}
     if tool_call_id:
         message["tool_calls"] = [{"id": tool_call_id, "type": "function", "function": {
-            "name": "terminal", "arguments": json.dumps({"command": COMMAND})}}]
+            "name": tool[0], "arguments": json.dumps(tool[1])}}]
     return {
         "id": "chatcmpl-" + MODEL, "object": "chat.completion", "created": 0, "model": MODEL,
         "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if tool_call_id else "stop"}],
@@ -101,7 +108,12 @@ def stub_reply(body):
         return 200, completion("OK.")
     if last.get("role") == "user":
         # Unique per request within a conversation, and still a pure function of it.
-        return 200, completion("Let me run a quick check.", tool_call_id="call_%d" % len(messages))
+        call_id = "call_%d" % len(messages)
+        prompt = str(last.get("content") or "").lower()
+        if "clarify" in prompt:
+            questions = [{"question": "Which check should I run?", "choices": ["Unit tests", "Lint"]}]
+            return 200, completion("Let me ask first.", tool_call_id=call_id, tool=("clarify", {"questions": questions}))
+        return 200, completion("Let me run a quick check.", tool_call_id=call_id)
     if last.get("role") == "tool":
         return 200, completion("The command returned: %s." % tool_summary(last.get("content")).rstrip("."))
     return 200, completion("OK.")
@@ -137,9 +149,10 @@ class StubHandler(BaseHTTPRequestHandler):
         pass
 
 
-def make_home(stub_port):
+def make_home(stub_port, webapp_port=None):
     """A fresh temporary HERMES_HOME wired to the stub. config.yaml is written as
-    JSON, which is valid YAML, so no YAML library is needed."""
+    JSON, which is valid YAML, so no YAML library is needed. `webapp_port` turns the
+    gateway's Webapp on at that loopback port; its public URL engages sign-in there."""
     # Resolved, because macOS's temp path runs through a /var symlink, and at this pin the host
     # compares a resolved plugin folder with the unresolved plugins folder: a mismatch reads a
     # catalog install as a plain one, and its update is then refused as pinned.
@@ -155,6 +168,8 @@ def make_home(stub_port):
         # leaves a background updater. The approval comes from Hermes's own detector.
         "security": {"tirith_enabled": False},
     }
+    if webapp_port is not None:
+        config["webapp"] = {"enabled": True, "host": "127.0.0.1", "port": webapp_port, "public_url": PUBLIC_URL}
     (home / "config.yaml").write_text(json.dumps(config, indent=2) + "\n")
     (home / "install_id").write_text(INSTALL_ID + "\n")
     return home
@@ -275,26 +290,38 @@ def require_free(port):
             sys.exit("Port %d is in use. Stop whatever holds it, or pass --port." % port)
 
 
-def wait_until_ready(process, port):
-    """Polls /api/status until it answers, then checks the gate Hermex requires."""
+def wait_until_ready(process, port, gateway=False):
+    """Polls /api/status until it answers, then checks the gate Hermex requires. The
+    gateway's signed-out status names no install_id, so only `hermes serve`'s is checked."""
     deadline = time.monotonic() + READY_TIMEOUT
     while True:
         if process.poll() is not None:
-            sys.exit("hermes serve exited with status %d before it was ready." % process.returncode)
+            sys.exit("%s exited with status %d before it was ready." % (server_name(gateway), process.returncode))
         try:
             with LOOPBACK.open("http://127.0.0.1:%d/api/status" % port, timeout=2) as response:
                 status = json.load(response)
             break
         except (OSError, ValueError):
             if time.monotonic() > deadline:
-                sys.exit("hermes serve did not answer /api/status within %d s." % READY_TIMEOUT)
+                sys.exit("%s did not answer /api/status within %d s." % (server_name(gateway), READY_TIMEOUT))
             time.sleep(0.5)
     if status.get("auth_required") is not True or "basic" not in (status.get("auth_providers") or []):
         sys.exit("The server has no basic auth gate, so Hermex would refuse it: %r" % {
             key: status.get(key) for key in ("auth_required", "auth_providers")})
-    if status.get("install_id") != INSTALL_ID:
+    if not gateway and status.get("install_id") != INSTALL_ID:
         sys.exit("The server on port %d is not this one: install_id %r." % (port, status.get("install_id")))
     return status
+
+
+def server_name(gateway):
+    return "hermes gateway run" if gateway else "hermes serve"
+
+
+def server_command(hermes, port, gateway):
+    """The server process: the gateway, whose Webapp port is in its config, or `hermes serve`."""
+    if gateway:
+        return [str(hermes), "gateway", "run"]
+    return [str(hermes), "serve", "--host", "127.0.0.1", "--port", str(port)]
 
 
 def interrupt(signum, frame):
@@ -303,9 +330,12 @@ def interrupt(signum, frame):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--port", type=int, default=9199, help="loopback port for Hermes (default 9199)")
+    parser.add_argument("--gateway", action="store_true", help="run the gateway with its Webapp on instead of hermes serve")
+    parser.add_argument("--port", type=int, help="loopback port for Hermes (default 9199, or 9121 with --gateway)")
     parser.add_argument("--keep-home", action="store_true", help="keep the temporary HERMES_HOME on exit")
     args = parser.parse_args(argv)
+    if args.port is None:
+        args.port = 9121 if args.gateway else 9199
 
     sha = pinned_commit()
     hermes = ensure_install(sha)
@@ -318,15 +348,15 @@ def main(argv=None):
 
     stub = ThreadingHTTPServer(("127.0.0.1", 0), StubHandler)
     threading.Thread(target=stub.serve_forever, daemon=True).start()
-    home = make_home(stub.server_address[1])
+    home = make_home(stub.server_address[1], webapp_port=args.port if args.gateway else None)
     process = None
     try:
         process = subprocess.Popen(
-            [str(hermes), "serve", "--host", "127.0.0.1", "--port", str(args.port)],
+            server_command(hermes, args.port, args.gateway),
             cwd=home / "workspace", env=server_env(home, os.environ),
             stdin=subprocess.DEVNULL, start_new_session=True,
         )
-        status = wait_until_ready(process, args.port)
+        status = wait_until_ready(process, args.port, gateway=args.gateway)
         print("\nHermes %s (%s) is running with the scripted model; process group %d." % (
             status.get("version"), sha[:8], process.pid))
         print("  Address:  http://127.0.0.1:%d\n  Username: %s\n  Password: %s" % (args.port, USERNAME, PASSWORD))

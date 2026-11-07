@@ -31,8 +31,9 @@ import SwiftData
     func hermesApplyUsage(_ usage: ContextWindowSnapshot)
     /// The model `session.info` reports: the Profile's default unless the host says otherwise.
     func hermesApplyModel(_ model: String)
-    /// Why the session cannot attach, or nil once it has.
-    func hermesConnectionDidChange(failure: String?)
+    /// Why the session cannot attach, or nil once it has; `mayRetry` is false when retrying can't
+    /// help, such as a Webapp that doesn't serve the chat's Profile.
+    func hermesConnectionDidChange(failure: String?, mayRetry: Bool)
     /// The host accepted a new session's first prompt: the draft under `from` moves to the
     /// session's key `to`.
     func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey)
@@ -129,6 +130,23 @@ struct HermesChatTranscript: Equatable {
     }
 }
 
+/// One prompt the host holds for a later turn, as the transcript's pending bubble shows it. A
+/// canonical host's admission keeps its `admission_id` (#1602); the dashboard's one merged slot
+/// is `dashboardSlot`.
+struct HermesQueuedPrompt: Equatable, Identifiable {
+    static let dashboardSlot = "queued"
+    let id: String
+    let text: String
+}
+
+/// A turn a canonical host lost across its restart (`pending` status `unknown`, #1602): its prompt
+/// and the generation `prompt.resolve_unknown` acknowledges it with.
+struct HermesLostTurn: Equatable {
+    let admissionID: String
+    let generation: Int
+    let text: String
+}
+
 /// Runs a Hermes session's turns in the main chat (#1010). It owns the session's
 /// `HermesConversation`, which attaches, replays and reconnects, and reduces the engine's
 /// ordered frames onto the chat's `ChatStreamCoordinatorDelegate`, so message building,
@@ -169,9 +187,20 @@ struct HermesChatTranscript: Equatable {
     private(set) var activeRunStartedAt: Date?
     private(set) var latestRunEnding: ChatRunEnding?
     private(set) var successfulResponseCompletion: ChatStreamCoordinator.SuccessfulResponseCompletion?
-    /// The prompt the host holds for its next turn: one slot, merged as the host merges
-    /// text-only prompts. Restored from the snapshot's `queued`; a Stop discards it.
-    private(set) var queuedPrompt: String?
+    /// The prompts the host holds for later turns, in the order it runs them. The dashboard keeps
+    /// one slot, merged as it merges text-only prompts, restored from the snapshot's `queued`. A
+    /// canonical host keeps each send as its own admission (#1602), which its `pending` lists. A
+    /// Stop discards them.
+    private(set) var queuedPrompts: [HermesQueuedPrompt] = []
+    /// A turn a canonical host lost across its restart, which holds its queue until Discard
+    /// (`discardLostTurn`, #1602). From `pending`.
+    private(set) var lostTurn: HermesLostTurn?
+    /// The admission a canonical host's running turn started (its `message.start`), so a receipt
+    /// for it that lands after its frames is no follow-up.
+    @ObservationIgnored private var runningAdmission: String?
+    /// The prompt a Send or a canonical edit is sending, as `pending` would list it, while its reply
+    /// is out: a canonical turn starting with that text is its own, whose row the chat shows.
+    @ObservationIgnored private var submittingText: String?
     /// Host requests open on this runtime (#1011, #1141): an approval, a question, a credential
     /// prompt, a Desktop task, a connection operation.
     let requests: HermesChatRequests
@@ -339,12 +368,13 @@ struct HermesChatTranscript: Equatable {
         activity.delegatedWork.onWorkersChanged = { [weak self] in self?.syncBotWorkSummary() }
     }
 
-    /// The chat `chat` opens over the connection's shared gateway socket, driving the app's
-    /// Live Activity.
+    /// The chat `chat` opens over the connection's shared gateway socket, or its Profile's own on
+    /// a gateway's Webapp, driving the app's Live Activity.
     convenience init(_ chat: HermesSessionChat) {
         self.init(engine: HermesConversation(server: chat.server, connection: chat.connection, target: chat.target,
                                              linkedRoot: chat.linkedRoot,
-                                             wire: BotClient(saved: chat.connection, server: chat.server)),
+                                             wire: BotClient(saved: chat.connection, server: chat.server,
+                                                             profile: chat.target.profile)),
                   botChatRoot: chat.botChatRoot, lineageRoot: chat.lineageRoot, liveActivities: AgentLiveActivityManager.shared,
                   writeBotAvatar: BotLiveActivity.writeAvatar)
     }
@@ -388,7 +418,10 @@ struct HermesChatTranscript: Equatable {
 
     /// Stop asks first only when it would lose something: the host's queued prompt, or a
     /// request (an approval the stop denies). Desktop's own task loses nothing.
-    var stopNeedsConfirmation: Bool { queuedPrompt != nil || requests.stopWithdrawsAnswers }
+    var stopNeedsConfirmation: Bool { !queuedPrompts.isEmpty || requests.stopWithdrawsAnswers }
+
+    /// Whether the session runs on a canonical host (#1341).
+    private var isCanonical: Bool { engine.wire.speaksCanonicalProtocol }
 
     /// Attaches the session, creating a new one on the first attach, or joins the attach
     /// already running so a new session is never created twice.
@@ -522,6 +555,7 @@ struct HermesChatTranscript: Equatable {
         let startsBefore = turnsStarted
         if mode == .send {
             isSubmittingSend = true
+            submittingText = BotMentions.displayText(prompt + mentionNote)
             // Only a send still alone on an idle chat in the same folder can tell its turn apart.
             if let head, isOnlySubmission, workspace == head.workspace { pendingBase = head }
         }
@@ -532,7 +566,7 @@ struct HermesChatTranscript: Equatable {
         var startedTurn = false
         defer {
             if mode == .send {
-                isSubmittingSend = false; pendingBase = nil
+                isSubmittingSend = false; pendingBase = nil; submittingText = nil
                 if !startedTurn, let turnBase, turnBase.turn > startsBefore { self.turnBase = nil }
             }
             if mode == .redirect { requests.isStoppingHere = false }
@@ -540,14 +574,18 @@ struct HermesChatTranscript: Equatable {
         var dispatched = false
         let reply: BotJSON
         do {
-            reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote), attempt: attempt,
-                                           runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
+            reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote, fence: engine.fence),
+                                           attempt: attempt, runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
         } catch {
+            if let stale = error as? HermesFenceRefusal { engine.adoptGeneration(stale.generation) }
             // A reaped runtime (4001): reattach to the stored key, which reads only.
             if case BotFailure.rejected(4001) = error { reattach() }
             throw dispatched ? error : NotSent(underlying: error)
         }
-        let outcome = mode.outcome(reply)
+        // A lost turn holds the canonical queue, so a send then waits behind it like a follow-up.
+        let ownTurnStarted = reply["admission_id"].text.map { $0 == runningAdmission } ?? false
+        let behind = (activeStreamID != nil && !ownTurnStarted) || lostTurn != nil
+        let outcome = mode.outcome(reply, turnRunning: behind, canonical: isCanonical)
         switch outcome {
         case .started:
             startedTurn = true
@@ -557,7 +595,15 @@ struct HermesChatTranscript: Equatable {
                 awaitingStart = true
             }
         case .followUpQueued, .redirectQueued:
-            queuedPrompt = queuedPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt
+            if let admission = reply["admission_id"].text, !admission.isEmpty {
+                // The `pending` the host reports next may already list it.
+                if !queuedPrompts.contains(where: { $0.id == admission }) {
+                    queuedPrompts.append(HermesQueuedPrompt(id: admission, text: prompt))
+                }
+            } else {
+                let merged = queuedPrompts.first.map { "\($0.text)\n\n\(prompt)" } ?? prompt
+                queuedPrompts = [HermesQueuedPrompt(id: HermesQueuedPrompt.dashboardSlot, text: merged)]
+            }
         case .guidanceQueued, .redirected, .voiceStopped:
             // None of these withdraws a request: a redirect while a tool waits on one only
             // steers, and a stop phrase ends voice mode. The host's `request.cancel` says
@@ -779,13 +825,17 @@ struct HermesChatTranscript: Equatable {
     /// move does. Throws the host's refusal as `BotSettingFailure` (a folder it
     /// lacks is 4017), `.stale` once the attach or runtime it was picked under is gone, and
     /// `ReplyRunning` when a turn started before it went out: the host would move a live turn.
+    /// A canonical host moves it with a fenced `workspace` edit (#1603).
     func moveFolder(to folder: String) async throws {
         guard engine.connectionState == .connected, let runtime = engine.runtime, let key = engine.storedKey
         else { throw BotFailure.stale }
-        let reply = try await engine.write(.sessionWorkspaceMove(profile: engine.target.profile, storedKey: key, cwd: folder),
-                                           attempt: engine.generation, runtime: runtime) { [weak self] in
+        let idle = { [weak self] in
             guard let self, self.isIdle, !self.hostRunning else { throw ReplyRunning() }
         }
+        let reply = isCanonical
+            ? try await engine.mutate(.workspace(cwd: folder), attempt: engine.generation, runtime: runtime, stillCurrent: idle)
+            : try await engine.write(.sessionWorkspaceMove(profile: engine.target.profile, storedKey: key, cwd: folder),
+                                     attempt: engine.generation, runtime: runtime, stillCurrent: idle)
         noteWorkspace(folder: Self.words(reply["cwd"]), backend: nil)
     }
 
@@ -824,20 +874,35 @@ struct HermesChatTranscript: Equatable {
 
     /// Stops the running turn (`session.interrupt`); false when there is none or a stop is
     /// already in. The host also discards its queued prompt, withdraws open requests and
-    /// denies pending approvals. Idle still waits for the turn's own ending frames.
+    /// denies pending approvals. Idle still waits for the turn's own ending frames. A canonical
+    /// host keeps its queue through an interrupt, so the known queued admissions are withdrawn
+    /// first (`prompt.cancel`), then the running generation is interrupted (#1341, decision 3).
+    /// One a newer turn refuses throws `HermesFenceRefusal` and sends nothing more.
     func interrupt() async throws -> Bool {
         guard activeStreamID != nil, !stopRequested else { return false }
         guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.transport }
         stopRequested = true
         requests.isStoppingHere = true
         defer { requests.isStoppingHere = false }
+        let attempt = engine.generation
+        // The generation this Stop is for: a turn starting while the queue is withdrawn is not it.
+        let fence = engine.fence
         do {
-            _ = try await engine.write(.sessionInterrupt(sessionID: runtime), attempt: engine.generation, runtime: runtime)
+            if isCanonical {
+                for queued in queuedPrompts {
+                    _ = try await engine.write(.promptCancel(profile: engine.target.profile, sessionID: runtime, admissionID: queued.id),
+                                               attempt: attempt, runtime: runtime)
+                    queuedPrompts.removeAll { $0.id == queued.id }
+                }
+            }
+            _ = try await engine.write(.sessionInterrupt(sessionID: runtime, fence: fence), attempt: attempt, runtime: runtime)
         } catch {
+            if let stale = error as? HermesFenceRefusal { engine.adoptGeneration(stale.generation) }
             stopRequested = false
             throw error
         }
-        queuedPrompt = nil
+        // A canonical queue lost only what was withdrawn above; its `pending` reports the rest.
+        if !isCanonical { queuedPrompts = [] }
         requests.withdrawAll()
         return true
     }
@@ -854,6 +919,10 @@ struct HermesChatTranscript: Equatable {
     /// `discardsLaterPrompts` says the user agreed to lose prompts after `rowID`: a host that
     /// refuses such a cut until it is confirmed (4033, #1300) gets the cut again, confirmed. A
     /// 4033 without that consent means the host holds prompts this chat doesn't show.
+    ///
+    /// A canonical host takes it in two steps (#1341, decision 5): a fenced `rewind` edit of that
+    /// row, then `text` as a fresh send. When the cut went through and the send was refused or never
+    /// went out, it throws `RewoundButNotSent`, so the chat says so and keeps the text.
     func rewind(before rowID: Int, text: String, discardsLaterPrompts: Bool) async throws {
         submitsInFlight += 1
         defer { submitsInFlight -= 1 }
@@ -861,6 +930,35 @@ struct HermesChatTranscript: Equatable {
         let startsBefore = turnsStarted
         isSubmittingSend = true
         defer { isSubmittingSend = false }
+        if isCanonical {
+            _ = try await mutateOnce(.rewind(targetMessageID: rowID), runtime: runtime)
+            history.cut(before: rowID)
+            submittingText = BotMentions.displayText(text)
+            defer { submittingText = nil }
+            var dispatched = false
+            let reply: BotJSON
+            do {
+                reply = try await engine.write(.promptSubmit(sessionID: runtime, text: text, fence: engine.fence),
+                                               attempt: engine.generation, runtime: runtime) { dispatched = true }
+            } catch {
+                // Refused, or never sent: the cut stands without it. A lost answer may have been taken.
+                if case BotFailure.rejected = error { throw RewoundButNotSent(underlying: error) }
+                if !dispatched || error is HermesFenceRefusal { throw RewoundButNotSent(underlying: error) }
+                throw error
+            }
+            switch BotPromptMode.send.outcome(reply, turnRunning: lostTurn != nil, canonical: true) {
+            case .started: break
+            case .followUpQueued: requests.promptAccepted(); return
+            // An unreadable receipt may still have been admitted: the next snapshot says.
+            default: throw BotFailure.unsupported
+            }
+            if turnsStarted == startsBefore, activeStreamID == nil {
+                beginTurn(startedAt: nil, prompt: nil)
+                awaitingStart = true
+            }
+            requests.promptAccepted()
+            return
+        }
         let reply: BotJSON
         do {
             reply = try await writeOnce(.promptRewind(sessionID: runtime, text: text, beforeRowID: rowID, deep: false), runtime: runtime)
@@ -881,12 +979,28 @@ struct HermesChatTranscript: Equatable {
     /// `/undo` (#1049): `session.undo` removes the session's last exchange, then the newest
     /// rows are read again and replace the transcript. A host with nothing to undo removes
     /// nothing, and nothing is read. Throws as `rewind` does, and throws the read's failure
-    /// when the host removed the exchange but the chat still shows it.
+    /// when the host removed the exchange but the chat still shows it. A canonical host has no
+    /// `session.undo`: it rewinds the last saved prompt the history holds (#1603).
     func undo() async throws {
         let runtime = try await attachForWrite()
         let attempt = engine.generation
-        let reply = try await writeOnce(.sessionUndo(runtime: runtime), runtime: runtime)
-        guard reply["removed"].integer != 0 else { return }
+        if isCanonical {
+            // An undo whose answer was lost is sent again as it was: the history read since may
+            // already lack its exchange, and a target derived from it would undo another.
+            let operation: HermesCall.SessionMutation.Operation
+            if case .rewind? = engine.unansweredOperation, let unanswered = engine.unansweredOperation {
+                operation = unanswered
+            } else {
+                guard let prompt = history.rows.last(where: { $0["role"].text == "user" }).flatMap(HermesTranscriptHistory.id)
+                else { return }
+                operation = .rewind(targetMessageID: prompt)
+            }
+            let reply = try await mutateOnce(operation, runtime: runtime)
+            guard reply["rewound_count"].integer != 0 else { return }
+        } else {
+            let reply = try await writeOnce(.sessionUndo(runtime: runtime), runtime: runtime)
+            guard reply["removed"].integer != 0 else { return }
+        }
         activity.newestTurnWasUndone()
         turnBase = nil
         await readNewestRows(attempt: attempt)
@@ -919,11 +1033,32 @@ struct HermesChatTranscript: Equatable {
         let attempt = engine.generation
         let reply: BotJSON
         do {
-            reply = try await writeOnce(.sessionCompress(runtime: runtime, focus: focus, profile: engine.target.profile),
-                                        runtime: runtime)
+            reply = isCanonical
+                ? try await mutateOnce(.compress(focus: focus), runtime: runtime)
+                : try await writeOnce(.sessionCompress(runtime: runtime, focus: focus, profile: engine.target.profile),
+                                      runtime: runtime)
         } catch {
-            if !(error is NotSent || error is BotSettingFailure) { forgetHistoryUntilRebuild() }
+            if !(error is NotSent || error is BotSettingFailure || error is HermesFenceRefusal) { forgetHistoryUntilRebuild() }
             throw error
+        }
+        if isCanonical {
+            // A canonical compaction's receipt is the edit itself; `noop` removed nothing (#1603).
+            let summary = reply["summary"]
+            switch reply["status"].text {
+            case "noop": return .unchanged([summary["headline"], summary["note"]].lazy.compactMap(Self.words).first)
+            // `--preview` reports what a compaction would remove and changes nothing.
+            case "preview": return .unchanged(Self.words(.string((reply["lines"].list ?? []).compactMap(\.text).joined(separator: "\n"))))
+            // A committed compaction is a receipt with a revision; anything else says nothing safe.
+            default:
+                guard reply["revision"].integer != nil else { forgetHistoryUntilRebuild(); throw BotFailure.unsupported }
+            }
+            let compacted = Compression.compacted(headline: Self.words(summary["headline"]), tokenLine: Self.words(summary["token_line"]))
+            guard attempt == engine.generation else { return compacted }
+            compactionPending = false
+            historyRefresh?.cancel()
+            history = HermesTranscriptHistory()
+            await showCompactedHistory(attempt: attempt)
+            return compacted
         }
         engine.adoptStoredKey(reply["info"]["stored_session_id"].text)
         syncLiveActivityPushKey()
@@ -1000,8 +1135,16 @@ struct HermesChatTranscript: Equatable {
     /// `name` when given. This chat's history is unchanged. Throws `NotSent` when it never went
     /// out, `BranchRowGone` for a row the history no longer holds,
     /// `BranchContinuesEarlierSession`, and the host's refusal as `BotSettingFailure`.
+    ///
+    /// A canonical host branches with a fenced `branch` edit that keeps the rows through `rowID`,
+    /// the saved row's own id, so nothing is counted (#1603); it answers the branch's key.
     func branch(through rowID: Int?, name: String?) async throws -> String {
         let runtime = try await attachForWrite()
+        if isCanonical {
+            let reply = try await mutateOnce(.branch(title: name, throughMessageID: rowID), runtime: runtime)
+            guard let key = reply["branched_session_id"].text, !key.isEmpty else { throw BotFailure.unsupported }
+            return key
+        }
         var count: Int?
         if let rowID {
             let own: BotJSON?
@@ -1028,6 +1171,21 @@ struct HermesChatTranscript: Equatable {
         guard let key = reply["stored_session_id"].text, !key.isEmpty else { throw BotFailure.unsupported }
         return key
     }
+
+    /// One canonical edit of this session on `runtime` (#1603), sent once. Throws `NotSent` when it
+    /// never went out.
+    private func mutateOnce(_ operation: HermesCall.SessionMutation.Operation, runtime: String) async throws -> BotJSON {
+        var dispatched = false
+        do {
+            return try await engine.mutate(operation, attempt: engine.generation, runtime: runtime) { dispatched = true }
+        } catch {
+            throw dispatched ? error : NotSent(underlying: error)
+        }
+    }
+
+    /// A canonical edit-and-resend cut the transcript, and then its send was refused or never went
+    /// out (#1341, decision 5): the later rows are gone, and the text is still the user's.
+    struct RewoundButNotSent: Error { let underlying: Error }
 
     /// One history write on `runtime`, sent once. Throws `NotSent` when it never went out; a
     /// reaped runtime (4001) also reattaches.
@@ -1135,7 +1293,17 @@ struct HermesChatTranscript: Equatable {
                 finish(pendingEnding ?? .completed)
             }
             var prompt: String?
-            if !isSubmittingSend { prompt = queuedPrompt; queuedPrompt = nil }
+            runningAdmission = frame["admission_id"].text
+            if let admission = frame["admission_id"].text, !admission.isEmpty {
+                // A canonical turn starts one admission: the queued one it names, if any. A send's
+                // own admission can be listed as queued just before it starts; its row is shown.
+                if let index = queuedPrompts.firstIndex(where: { $0.id == admission }) {
+                    let queued = queuedPrompts.remove(at: index).text
+                    if !isSubmittingSend || queued != submittingText { prompt = queued }
+                }
+            } else if !isSubmittingSend {
+                prompt = queuedPrompts.first?.text; queuedPrompts = []
+            }
             beginTurn(startedAt: hostTurnStartedAt, prompt: prompt)
         case "message.delta":
             if let seq = frame["seq"].integer, deltasInRebuild.remove(seq) != nil { return }
@@ -1175,8 +1343,22 @@ struct HermesChatTranscript: Equatable {
             if let usage = Self.contextWindow(payload["usage"]) { delegate?.hermesApplyUsage(usage) }
         case "session.info":
             applyInfo(payload)
+        case "session.updated":
+            // A canonical host asking to confirm the model pick it deferred to this turn's end (#1604).
+            settings.controls.receiveDeferredConfirmation(payload)
         case "message.complete":
+            // A queued admission a canonical host withdrew before it ran settles without a
+            // generation: no turn ran, so the running one goes on.
+            if frame["admission_id"].text != nil, frame["execution_generation"] == .null { return }
             complete(payload)
+        case "approval.request", "clarify.request":
+            if let envelope = HermesCanonicalPrompts.envelope(payload, sessionID: frame["session_id"].text ?? "") {
+                requests.receive(envelope)
+            }
+        case "approval.settled", "clarify.settled":
+            // Answered here, elsewhere, or withdrawn with its turn: the host's word that it went.
+            guard let id = payload["prompt_id"].text, let kind = frame["type"].text?.split(separator: ".").first else { return }
+            requests.cancel(.object(["id": .string(id), "method": .string(String(kind)), "reason": .string("resolved")]))
         case "error":
             if let message = payload["message"].text, !message.isEmpty {
                 delegate?.streamCoordinatorDidReceiveErrorMessage(message)
@@ -1212,8 +1394,39 @@ struct HermesChatTranscript: Equatable {
         }
     }
 
+    /// A canonical host's `pending` admissions (#1602), from a snapshot or `session.info`: the
+    /// queued ones in order, not yet handed to the running turn, and a turn lost across a restart.
+    private func applyPending(_ rows: BotJSON) {
+        let rows = rows.list ?? []
+        queuedPrompts = rows.compactMap { row in
+            guard row["status"].text == "queued", row["steering"].flag != true,
+                  let id = row["admission_id"].text, !id.isEmpty else { return nil }
+            return HermesQueuedPrompt(id: id, text: BotMentions.displayText(row["text"].text ?? ""))
+        }
+        lostTurn = rows.lazy.compactMap { row -> HermesLostTurn? in
+            guard row["status"].text == "unknown", let id = row["admission_id"].text, !id.isEmpty,
+                  let generation = row["execution_generation"].integer else { return nil }
+            return HermesLostTurn(admissionID: id, generation: generation, text: BotMentions.displayText(row["text"].text ?? ""))
+        }.first
+    }
+
+    /// Discard on a lost turn's row (#1341, decision 4): acknowledges it with its own generation, so
+    /// the admissions behind it run. Sent once, from the tap; the host's next `pending` retires the
+    /// row. Never resends the lost prompt.
+    func discardLostTurn() async throws {
+        guard let lost = lostTurn else { return }
+        guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.transport }
+        let fence = HermesCall.Fence(profile: engine.target.profile, generation: lost.generation)
+        _ = try await engine.write(.promptResolveUnknown(sessionID: runtime, admissionID: lost.admissionID, fence: fence),
+                                   attempt: engine.generation, runtime: runtime) { [weak self] in
+            guard self?.lostTurn == lost else { throw BotFailure.stale }
+        }
+        if lostTurn == lost { lostTurn = nil }
+    }
+
     private func applyInfo(_ info: BotJSON) {
         if let model = info["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
+        if info["pending"].list != nil { applyPending(info["pending"]) }
         // A legacy compaction, `/compress` or mid-turn, moves the session to a new key (#1050).
         engine.adoptStoredKey(info["stored_session_id"].text)
         syncLiveActivityPushKey()
@@ -1271,9 +1484,10 @@ struct HermesChatTranscript: Equatable {
             savedTurn = SavedTurn(promptRowID: receipt["user_row_id"].integer, replyRowID: reply)
         }
         if ending == .cancelled {
-            // A stop from any client discards the host's queued prompt and withdraws its
-            // requests, so a receipt for this chat's queued prompt would never send.
-            queuedPrompt = nil
+            // A stop from any client discards the dashboard's queued prompt and withdraws its
+            // requests, so a receipt for this chat's queued prompt would never send. A canonical
+            // host keeps its queue, which its `pending` reports.
+            if !isCanonical { queuedPrompts = [] }
             requests.withdrawAll()
         }
         pendingEnding = ending
@@ -1302,13 +1516,19 @@ struct HermesChatTranscript: Equatable {
 
     /// Settles the turn against an attach's snapshot, then rebuilds the transcript from the
     /// history and it when frames were lost. Without a rebuild the replay already continued
-    /// the turn.
+    /// the turn. A canonical snapshot (#1341) lists the session's admissions in `pending`, the
+    /// first still queued being the queued prompt, and carries no turn start time.
     private func reconcile(with snapshot: BotJSON) {
         let running = snapshot["running"].flag ?? snapshot["info"]["running"].flag ?? false
         let startedAt = snapshot["turn_started_at"].number ?? snapshot["inflight"]["started_at"].number
         hostRunning = running
-        queuedPrompt = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : BotMentions.displayText($0) }
-        requests.didReadSnapshot(snapshot)
+        if snapshot["pending"].list != nil {
+            applyPending(snapshot["pending"])
+        } else {
+            let queued = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : BotMentions.displayText($0) }
+            queuedPrompts = queued.map { [HermesQueuedPrompt(id: HermesQueuedPrompt.dashboardSlot, text: $0)] } ?? []
+        }
+        requests.didReadSnapshot(HermesCanonicalPrompts.projecting(snapshot, sessionID: engine.runtime ?? ""))
         if let model = snapshot["info"]["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         noteInfo(snapshot["info"])
         // The chips' effort and Fast mode, restored when the controls reconnect (#1142).
@@ -1881,7 +2101,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     /// history and snapshot and rebuilds.
     func conversationDidFollowReplacedChat() {
         followedReplacements += 1
-        savedTurn = nil; completedFailed = false; queuedPrompt = nil; turnBase = nil
+        savedTurn = nil; completedFailed = false; queuedPrompts = []; lostTurn = nil; runningAdmission = nil; turnBase = nil
         finish(.cancelled)
         sideTasks.forgetChat()
         forgetHistoryUntilRebuild()
@@ -1943,7 +2163,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         // The engine released the held frames just before this.
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
         needsSignIn = false
-        delegate?.hermesConnectionDidChange(failure: nil)
+        delegate?.hermesConnectionDidChange(failure: nil, mayRetry: true)
         if let historyFailure {
             reportHistoryFailure(historyFailure)
         }
@@ -1993,6 +2213,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         drivenLiveActivity?.markStale()
         if failure == .rejected(401) { needsSignIn = true }
         guard !retrying else { return }
-        delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address))
+        let served = if case .profileNotServed = failure { false } else { true }
+        delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address),
+                                            mayRetry: served)
     }
 }

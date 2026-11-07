@@ -2749,7 +2749,11 @@ final class SessionListViewModel {
         actionErrorMessage = nil
         defer { isMovingSession = false }
         do {
-            _ = try await wire.call(.sessionWorkspaceMove(profile: profile, storedKey: key, cwd: folder))
+            if wire.speaksCanonicalProtocol {
+                _ = try await wire.mutateStoredSession(profile: profile, key: key, .workspace(cwd: folder))
+            } else {
+                _ = try await wire.call(.sessionWorkspaceMove(profile: profile, storedKey: key, cwd: folder))
+            }
             requestHermesReload()
             return left.flatMap { $0.isEmpty || $0 == folder ? nil : $0 }
         } catch BotSettingFailure.rejected(4017, _) {

@@ -88,7 +88,7 @@ final class HermesRequestTests: XCTestCase {
             (.sessionResume(profile: "triage", sessionID: "tip", omitMessages: true), "session.resume",
              ["profile": .string("triage"), "session_id": .string("tip"), "close_on_disconnect": .bool(false),
               "omit_messages": .bool(true), "source": .string("gui")]),
-            (.sessionEventsSince(sessionID: "runtime", lastSeen: 7), "session.events.since",
+            (.sessionEventsSince(profile: "triage", sessionID: "runtime", lastSeen: 7, replayEpoch: "e1"), "session.events.since",
              ["session_id": .string("runtime"), "last_seen": .number(7)]),
             (.sessionActiveList, "session.active_list", [:]),
             (.promptSubmit(sessionID: "runtime", text: "hi"), "prompt.submit",

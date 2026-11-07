@@ -420,6 +420,58 @@ import XCTest
         XCTAssertFalse(kept.contains("hunter2"), kept)
     }
 
+    // MARK: Canonical hosts (#1602)
+
+    /// A canonical host restores an open approval in its snapshot's `prompts`, recorded here. Its
+    /// card answers with that prompt's own `prompt_id` and generation, the exact keys the host
+    /// accepts, and the host's `resolved` receipt retires it.
+    func testARestoredCanonicalApprovalAnswersWithItsOwnPromptAndGeneration() async throws {
+        let prompt = try XCTUnwrap(try canonical("canonical-resume-running")["prompts"].list?.first)
+        let chat = await openChat(canonical: [prompt])
+        chat.host.always("approval.respond", .init(result: .object(["status": .string("resolved"), "prompt_id": prompt["prompt_id"]])))
+        guard case .approval? = chat.requests.onScreen else { return XCTFail("Expected the restored approval on screen") }
+        let taken = await chat.requests.respond(try action(chat), choice: .once)
+        XCTAssertTrue(taken)
+        XCTAssertEqual(chat.writes("approval.respond"), [[
+            "profile": .string("default"), "session_id": .string("tip"), "execution_generation": prompt["execution_generation"],
+            "prompt_id": prompt["prompt_id"], "choice": .string("once")
+        ]], "the host refuses any other key")
+        XCTAssertNil(chat.requests.onScreen)
+    }
+
+    /// A canonical clarify question arrives live as its recorded `clarify.request` event, answers
+    /// with `clarify.respond` under its prompt's generation, and leaves on the host's `resolved`.
+    func testALiveCanonicalQuestionAnswersByItsPromptAndGeneration() async throws {
+        let lifecycle = try XCTUnwrap(try canonical("canonical-clarify-lifecycle").list)
+        var asked = try XCTUnwrap(lifecycle[0].fields)
+        asked["session_id"] = .string("tip"); asked["seq"] = .number(1)
+        let chat = await openChat(canonical: [])
+        chat.host.always("clarify.respond", .init(result: lifecycle[1]))
+        chat.receive(.object(asked))
+        guard case .question(let question)? = chat.requests.onScreen else { return XCTFail("Expected the question on screen") }
+        XCTAssertEqual(question.questions.first?.prompt, "Which check should I run?")
+        let answered = await chat.requests.answerQuestion(try action(chat), [BotQuestionAnswer(questionID: nil, text: "Lint")])
+        XCTAssertTrue(answered)
+        XCTAssertEqual(chat.writes("clarify.respond"), [[
+            "profile": .string("default"), "session_id": .string("tip"), "execution_generation": asked["payload"]?["execution_generation"] ?? .null,
+            "prompt_id": asked["payload"]?["prompt_id"] ?? .null, "answer": .string("Lint")
+        ]], "the host refuses any other key")
+        XCTAssertNil(chat.requests.onScreen)
+    }
+
+    /// A canonical host takes a sudo value only as the response frame to its request. Its
+    /// `request.answer` proxy says "expired" while the request still waits, so it is never sent.
+    func testACanonicalSudoValueGoesAsTheResponseFrame() async throws {
+        let chat = await openChat(canonical: [])
+        chat.receive(request("sudo", id: "srq-s1", runtime: "tip"))
+        let answered = await chat.requests.answerCredential(try action(chat), value: "hunter2")
+        XCTAssertTrue(answered)
+        let response = try XCTUnwrap(chat.host.requests.first { $0["id"].text == "srq-s1" })
+        XCTAssertEqual(response["result"], .object(["value": .string("hunter2")]))
+        XCTAssertEqual(response["method"], .null)
+        XCTAssertEqual(chat.writes("request.answer"), [])
+    }
+
     /// An answer tapped for one prompt never answers the one that replaced it.
     func testAnActionForAReplacedPromptIsNeverDispatched() async throws {
         let chat = await openChat()
@@ -1040,14 +1092,24 @@ import XCTest
         }
     }
 
+    /// `canonical` attaches over a canonical socket (#1602) to session `tip`, whose id is its
+    /// runtime, restoring `prompts` from its snapshot.
     private func openChat(runtime: String = "runtime", openRequests: [BotJSON] = [], info: [String: BotJSON] = [:],
-                          pendingConnection: BotJSON? = nil, rpcDeadline: Duration = .seconds(30)) async -> Chat {
+                          pendingConnection: BotJSON? = nil, rpcDeadline: Duration = .seconds(30),
+                          canonical prompts: [BotJSON]? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        host.always("session.resume", .init(result: resume(runtime: runtime, openRequests: openRequests, info: info,
-                                                           pendingConnection: pendingConnection)))
+        let runtime = prompts == nil ? runtime : "tip"
+        var snapshot = resume(runtime: runtime, openRequests: openRequests, info: info, pendingConnection: pendingConnection)
+        if let prompts, var fields = snapshot.fields {
+            fields["session_key"] = nil
+            fields["stored_session_id"] = .string("tip"); fields["replay_epoch"] = .string("epoch")
+            fields["execution_generation"] = .number(1); fields["prompts"] = .array(prompts)
+            snapshot = .object(fields)
+        }
+        host.always("session.resume", .init(result: snapshot))
         host.always("session.events.since", .init(result: replay(runtime: runtime, openRequests: openRequests)))
-        let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline))
+        let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline, canonical: prompts != nil))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "default", key: "tip"), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
@@ -1065,6 +1127,14 @@ import XCTest
     /// The answer the card on screen would capture on a tap.
     private func action(_ chat: Chat, file: StaticString = #filePath, line: UInt = #line) throws -> HermesAnswerAction {
         try XCTUnwrap(chat.requests.prepareAnswer(), "Nothing on screen to answer", file: file, line: line)
+    }
+
+    /// A canonical gateway fixture's reply (`scripts/capture-hermes-fixtures --local --gateway`).
+    private func canonical(_ name: String) throws -> BotJSON {
+        guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
+            throw XCTSkip("The source tree is not present (physical device or remote runner).")
+        }
+        return try JSONDecoder().decode(BotJSON.self, from: data)["reply"]
     }
 
     private func recorded(_ name: String) throws -> [BotJSON] {

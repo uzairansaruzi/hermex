@@ -52,6 +52,39 @@ import Observation
         XCTAssertFalse(connection.attachedRuntimes.contains("runtime"), "a closed runtime is no longer this phone's")
     }
 
+    /// On a canonical host (#1603) a delete is one fenced `delete` edit, under the revision and
+    /// generation an identity resume reads; no runtime is closed. One the host refuses while a reply
+    /// runs (recorded `session_busy`) keeps the row, and the next succeeds.
+    func testACanonicalDeleteIsOneFencedEditAndClosesNoRuntime() async throws {
+        let recorded = try canonicalMutations()
+        let host = BotSocketHost()
+        let connection = host.connection(record, canonical: true)
+        serveList([HermesSessionRow(id: "tip", title: "Plan", profile: "default")], until: "session.mutate", on: host)
+        host.always("session.resume", .init(result: .object([
+            "session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
+            "subscription_id": .string("sub-1"), "revision": .number(6), "execution_generation": .number(4), "running": .bool(false)
+        ])))
+        let busy = recorded["busy_delete"]["error"]
+        host.next("session.mutate", .init(error: busy["code"].integer, message: busy["message"].text ?? "", data: busy["data"]))
+        host.next("session.mutate", .init(result: recorded["delete"]["result"]))
+        let list = makeList(connection)
+        await list.openHermes()
+
+        let refused = await list.delete(try XCTUnwrap(list.sessions.first))
+        XCTAssertFalse(refused)
+        XCTAssertEqual(list.actionErrorMessage, "This session is still replying here. Stop the reply first, then delete it.")
+        let deleted = await list.delete(try XCTUnwrap(list.sessions.first))
+        XCTAssertTrue(deleted)
+
+        let edit = try XCTUnwrap(writes(host, ["session.mutate"]).last)
+        XCTAssertEqual(edit["operation"], .string("delete"))
+        XCTAssertEqual(edit["session_id"], .string("tip"))
+        XCTAssertEqual(edit["expected_revision"], .number(6))
+        XCTAssertEqual(edit["expected_generation"], .number(4))
+        XCTAssertEqual(writes(host, ["session.close", "session.delete"]), [])
+        XCTAssertFalse(list.sessions.contains { $0.sessionId == "tip" })
+    }
+
     /// A reply still running on this phone's runtime refuses the delete before anything is sent.
     func testABusyRuntimeOnThisPhoneRefusesTheDelete() async throws {
         let host = BotSocketHost()
@@ -469,6 +502,13 @@ import Observation
     }
 
     // MARK: Fixtures
+
+    /// The recorded canonical edits (`scripts/capture-hermes-fixtures --local --gateway`).
+    private func canonicalMutations() throws -> BotJSON {
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/HermesAgent/canonical-mutations.json")
+        guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
+        return try JSONDecoder().decode(BotJSON.self, from: data)["reply"]
+    }
 
     private func makeList(_ connection: HermesConnection) -> SessionListViewModel {
         SessionListViewModel(server: server, unreadStore: SessionUnreadStore(defaults: defaults), hermes: HermesSessionListSource(

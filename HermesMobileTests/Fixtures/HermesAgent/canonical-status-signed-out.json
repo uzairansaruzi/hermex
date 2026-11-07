@@ -1,0 +1,40 @@
+{
+  "captured_at" : "2026-11-07T02:11:48Z",
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "reply" : {
+    "auth_flows" : [
+      "fixture-redacted",
+      "fixture-redacted"
+    ],
+    "auth_providers" : [
+      "basic"
+    ],
+    "auth_required" : true,
+    "components" : {
+      "dashboard" : {
+        "last_error_at" : null,
+        "recent_unhandled_errors" : 0,
+        "selftest" : "fixture-redacted",
+        "status" : "ok"
+      },
+      "gateway" : {
+        "state" : "fixture-redacted",
+        "status" : "ok"
+      },
+      "platforms" : {
+        "configured" : 0,
+        "connected" : 0,
+        "status" : "ok"
+      },
+      "storage" : {
+        "status" : "ok"
+      }
+    },
+    "gateway_running" : true,
+    "gateway_state" : "fixture-redacted",
+    "overall" : "fixture-redacted",
+    "release_date" : "fixture-redacted",
+    "version" : "0.23.0"
+  },
+  "version" : "0.23.0"
+}

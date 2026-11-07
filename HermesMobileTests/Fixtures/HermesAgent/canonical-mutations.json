@@ -1,0 +1,280 @@
+{
+  "captured_at" : "2026-11-06T21:32:33Z",
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "reply" : {
+    "branch" : {
+      "id" : 37,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "branched_session_id" : "local-9f88494314e1f1607af8ea90d1eac0afe6ebeffefb396cda29bf103400085f90",
+        "copied_messages" : 3,
+        "execution_generation" : 2,
+        "operation" : "branch",
+        "revision" : 4,
+        "session_id" : "local-481ff1e1ab21847a4c6024fbb9a0a54eaf4fb02e6d78ef797e29dc5ecb8327a9"
+      }
+    },
+    "busy_delete" : {
+      "error" : {
+        "code" : 4001,
+        "data" : {
+          "reason" : "session_busy"
+        },
+        "message" : "session_busy"
+      },
+      "id" : 44,
+      "jsonrpc" : "2.0"
+    },
+    "compress" : {
+      "id" : 41,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "operation" : "compress",
+        "session_id" : "local-481ff1e1ab21847a4c6024fbb9a0a54eaf4fb02e6d78ef797e29dc5ecb8327a9",
+        "status" : "noop",
+        "summary" : {
+          "aborted" : false,
+          "fallback_used" : false,
+          "headline" : "No changes from compression: 4 messages",
+          "noop" : true,
+          "note" : null,
+          "refused_would_grow" : false,
+          "token_line" : "fixture-redacted"
+        }
+      }
+    },
+    "delete" : {
+      "id" : 47,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "deleted_ids" : [
+          "local-481ff1e1ab21847a4c6024fbb9a0a54eaf4fb02e6d78ef797e29dc5ecb8327a9"
+        ],
+        "execution_generation" : 4,
+        "operation" : "delete",
+        "revision" : 7,
+        "session_id" : "local-481ff1e1ab21847a4c6024fbb9a0a54eaf4fb02e6d78ef797e29dc5ecb8327a9"
+      }
+    },
+    "rename" : {
+      "id" : 33,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "execution_generation" : 2,
+        "operation" : "rename",
+        "revision" : 3,
+        "session_id" : "local-481ff1e1ab21847a4c6024fbb9a0a54eaf4fb02e6d78ef797e29dc5ecb8327a9",
+        "title" : "fixture-redacted"
+      }
+    },
+    "revision_conflict" : {
+      "error" : {
+        "code" : 4001,
+        "data" : {
+          "execution_generation" : 2,
+          "reason" : "revision_conflict",
+          "revision" : 3
+        },
+        "message" : "revision_conflict"
+      },
+      "id" : 34,
+      "jsonrpc" : "2.0"
+    },
+    "rewind" : {
+      "id" : 39,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "execution_generation" : 3,
+        "new_head_id" : 110,
+        "operation" : "rewind",
+        "replacement_message_id" : null,
+        "revision" : 5,
+        "rewound_count" : 4,
+        "session_id" : "local-481ff1e1ab21847a4c6024fbb9a0a54eaf4fb02e6d78ef797e29dc5ecb8327a9",
+        "target_message" : {
+          "absorbed_message_uids" : null,
+          "active" : 1,
+          "api_content" : null,
+          "codex_message_items" : null,
+          "codex_reasoning_items" : null,
+          "compacted" : 0,
+          "content" : "fixture-redacted",
+          "display_kind" : null,
+          "display_metadata" : {
+            "gateway_input_owner" : "fixture-redacted",
+            "submission_id" : "0B5066C9-3864-42F8-9463-F4A6C752CF74"
+          },
+          "effect_disposition" : null,
+          "finish_reason" : null,
+          "id" : 111,
+          "message_uid" : "fixture-redacted",
+          "observed" : 0,
+          "platform_message_id" : "fixture-redacted",
+          "reasoning" : null,
+          "reasoning_content" : null,
+          "reasoning_details" : null,
+          "role" : "user",
+          "session_id" : "local-481ff1e1ab21847a4c6024fbb9a0a54eaf4fb02e6d78ef797e29dc5ecb8327a9",
+          "timestamp" : 1794000751.563185,
+          "token_count" : null,
+          "tool_call_id" : null,
+          "tool_call_uid" : null,
+          "tool_call_uids" : null,
+          "tool_calls" : null,
+          "tool_name" : null
+        }
+      }
+    },
+    "rows" : [
+      {
+        "id" : 107,
+        "role" : "user"
+      },
+      {
+        "id" : 108,
+        "role" : "assistant"
+      },
+      {
+        "id" : 109,
+        "role" : "tool"
+      },
+      {
+        "id" : 110,
+        "role" : "assistant"
+      },
+      {
+        "id" : 111,
+        "role" : "user"
+      },
+      {
+        "id" : 112,
+        "role" : "assistant"
+      },
+      {
+        "id" : 113,
+        "role" : "tool"
+      },
+      {
+        "id" : 114,
+        "role" : "assistant"
+      }
+    ],
+    "stale_generation" : {
+      "error" : {
+        "code" : 4001,
+        "data" : {
+          "execution_generation" : 2,
+          "reason" : "stale_generation",
+          "revision" : 3
+        },
+        "message" : "stale_generation"
+      },
+      "id" : 36,
+      "jsonrpc" : "2.0"
+    },
+    "titled_create" : {
+      "authority_epoch" : 1,
+      "execution_generation" : 0,
+      "info" : {
+        "api_mode" : null,
+        "branch" : "fixture-redacted",
+        "credential_hint" : null,
+        "cwd" : "/fixture/cwd",
+        "desktop_protocol" : "fixture-redacted",
+        "enabled_toolsets" : [
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted",
+          "fixture-redacted"
+        ],
+        "fast" : false,
+        "last_active_at" : 1794000174.435104,
+        "launch_request" : {
+          "follow_profile_config" : true,
+          "source" : "fixture-redacted"
+        },
+        "lazy" : true,
+        "mcp_servers" : [],
+        "model" : "fixture-redacted",
+        "profile_id" : "fixture-redacted",
+        "profile_name" : "default",
+        "project" : null,
+        "provider" : "fixture-redacted",
+        "reasoning_effort" : "fixture-redacted",
+        "reasoning_effort_wire" : "fixture-redacted",
+        "release_date" : "fixture-redacted",
+        "service_tier" : "fixture-redacted",
+        "skills" : {},
+        "source" : "fixture-redacted",
+        "started_at" : 1794000174.435104,
+        "title" : "fixture-redacted",
+        "tool_availability" : {
+          "disabled_tools" : [],
+          "lazy_tools" : [
+            "fixture-redacted",
+            "fixture-redacted"
+          ],
+          "unavailable_toolsets" : [
+            {
+              "env_vars" : [],
+              "name" : "fixture-redacted",
+              "tools" : []
+            },
+            {
+              "env_vars" : [],
+              "name" : "fixture-redacted",
+              "tools" : []
+            }
+          ]
+        },
+        "tool_count" : 21,
+        "tools" : {},
+        "update_behind" : null,
+        "update_command" : "fixture-redacted",
+        "usage" : {
+          "calls" : 0,
+          "completion" : 0,
+          "input" : 0,
+          "model" : "fixture-redacted",
+          "output" : 0,
+          "prompt" : 0,
+          "reasoning" : 0,
+          "total" : 0
+        },
+        "version" : "0.23.0",
+        "yolo" : false
+      },
+      "last_sequence" : 0,
+      "message_count" : 0,
+      "messages" : [],
+      "open_requests" : [],
+      "pending" : [],
+      "pending_connection" : null,
+      "prompts" : [],
+      "replay_epoch" : "825b9e4426ad440aafc24b0bef60b509",
+      "revision" : 0,
+      "running" : false,
+      "session_id" : "local-e04177fd26e9d4f12f339e97a6835afe1cc7a1681e41b243e26d5a7a2c5d078e",
+      "stored_session_id" : "local-e04177fd26e9d4f12f339e97a6835afe1cc7a1681e41b243e26d5a7a2c5d078e",
+      "subscription_id" : "3c75ab2f97094ec9a21f4a3eb0a61e21",
+      "todo_state" : null
+    }
+  },
+  "version" : "0.23.0"
+}

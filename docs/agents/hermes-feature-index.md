@@ -54,7 +54,7 @@ At the pin (0.23.0, `2bd378ed`) the gateway contract has 261 methods and `Hermes
 | Shell and CLI | `cli.exec`, `shell.exec` | n-a | A generic host shell; never sent. |
 | Bot relay | `bot_relay.*` | n-a | Gateway-to-gateway traffic. |
 | Room peers | `groups.promote`, `groups.demote`, `groups.replicate`, `groups.replica_state`, `groups.peer.*` | n-a | No peer administration (`bots.md` § Group rooms). |
-| Room extras | `groups.attachment.upload`, `groups.attachment.download`, `groups.context`, `groups.continue`, `groups.discard` | untriaged | Room attachments, a room's purpose and notes, one more budget for a discussion paused at its cap, and discarding an indeterminate task (#1341). |
+| Room extras | `groups.attachment.upload`, `groups.attachment.download`, `groups.context`, `groups.continue` | untriaged | Room attachments, a room's purpose and notes, and one more budget for a discussion paused at its cap. |
 | Billing | `billing.*`, `subscription.*`, `free_tier.*`, `usage.bars` | n-a | Nous account billing. |
 | Diagnostics | `diagnostics.share_nous`, `session.events.stats` | n-a | Uploads a debug bundle; replay-buffer telemetry. |
 | Reloads | `reload.env`, `reload.mcp` | n-a | Host administration that resets live sessions. |

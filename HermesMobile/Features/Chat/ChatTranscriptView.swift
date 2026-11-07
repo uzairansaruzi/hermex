@@ -30,6 +30,8 @@ struct ChatTranscriptView: View {
 
     let isLoading: Bool
     let errorMessage: String?
+    /// False hides the error's Try Again, for a failure retrying can't fix.
+    var errorMayRetry = true
     let messages: [ChatMessage]
     let displayedTranscriptMessages: [TranscriptMessage]
     let compressionReferenceCard: CompressionReferenceCard?
@@ -128,9 +130,13 @@ struct ChatTranscriptView: View {
     var settledPlanAfterRenderID: String? = nil
     /// How a Hermes chat's last turn ended (#1139), under that turn.
     var turnOutcome: HermesTurnOutcomeRow? = nil
-    /// A Hermes chat's queued prompt (`ChatViewModel.queuedPromptMessage`, #1379), drawn last
-    /// as a pending bubble whose only action is `onCopyQueuedPrompt`.
-    var queuedPrompt: ChatMessage? = nil
+    /// A Hermes chat's queued prompts (`ChatViewModel.queuedPromptMessages`, #1379, #1602), drawn
+    /// last in the host's order as pending bubbles whose only action is `onCopyQueuedPrompt`.
+    var queuedPrompts: [ChatMessage] = []
+    /// A turn a canonical host lost across its restart (`ChatViewModel.lostTurn`, #1602), drawn
+    /// ahead of the queued prompts it holds, with `onDiscardLostTurn`.
+    var lostTurn: ChatLostTurn? = nil
+    var onDiscardLostTurn: () -> Void = {}
     /// A Hermes scheduled task's run (#1413), whose prompt rows show as `CronRunPromptCard`s.
     var isCronRun = false
     var onCopyQueuedPrompt: (String) -> Void = { _ in }
@@ -172,7 +178,7 @@ struct ChatTranscriptView: View {
     var body: some View {
         switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
                            showsTurnOutcome: turnOutcome != nil,
-                           showsQueuedPrompt: queuedPrompt != nil || waitingSend != nil,
+                           showsQueuedPrompt: !queuedPrompts.isEmpty || lostTurn != nil || waitingSend != nil,
                            showsDelegatedWork: (delegatedWork?.activeCount ?? 0) > 0) {
         case .loading?:
             ChatTranscriptLoadingSkeletonView()
@@ -183,8 +189,10 @@ struct ChatTranscriptView: View {
             } description: {
                 Text(errorMessage)
             } actions: {
-                Button("Try Again") {
-                    Task { await onLoadMessages() }
+                if errorMayRetry {
+                    Button("Try Again") {
+                        Task { await onLoadMessages() }
+                    }
                 }
             }
         case .startPrompt?:
@@ -314,7 +322,7 @@ struct ChatTranscriptView: View {
                     }
                     releasingHold { onScrollToLatestContent(proxy, false) }
                 }
-                .onChange(of: [queuedPrompt?.content, waitingSend?.content]) {
+                .onChange(of: queuedPrompts.map(\.content) + [lostTurn.map { _ in "lost" }, waitingSend?.content]) {
                     // A pending bubble came, grew with a merged prompt, or went.
                     followLiveEndChange(proxy: proxy)
                 }
@@ -501,7 +509,12 @@ struct ChatTranscriptView: View {
             }
             turnChangesCard
             inlineCommitButton
-            if let queuedPrompt {
+            if let lostTurn {
+                ChatLostTurnRow(turn: lostTurn, onDiscard: onDiscardLostTurn)
+                    .reportsReflowFrame(ChatLostTurn.rowID, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
+                    .id(ChatLostTurn.rowID)
+            }
+            ForEach(queuedPrompts) { queuedPrompt in
                 ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyQueuedPrompt)
                     .reportsReflowFrame(queuedPrompt.id, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
                     .id(queuedPrompt.id)
@@ -1008,6 +1021,44 @@ private struct ChatQueuedPromptRow: View {
                 .accessibilityValue(Text("Queued"))
             ChatMessageMetaRow(isUserMessage: true, timeText: String(localized: "Queued"),
                                onCopy: { onCopy(message.content ?? "") })
+        }
+    }
+}
+
+/// A turn a canonical host lost across its restart (#1602), for `ChatLostTurnRow`. `prompt` is its
+/// bubble, nil when the transcript already ends on that prompt.
+struct ChatLostTurn: Equatable {
+    static let rowID = "hermes-lost-turn"
+    let prompt: ChatMessage?
+}
+
+/// The lost turn's row: its prompt when the transcript lacks it, then "Lost during restart" and
+/// Discard, built like `ChatWaitingSendRow`, and why the queue waits. Static: nothing animates.
+private struct ChatLostTurnRow: View {
+    let turn: ChatLostTurn
+    let onDiscard: () -> Void
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            if let prompt = turn.prompt {
+                MessageBubbleView(message: prompt, transcriptMediaCacheNamespace: "")
+                    .accessibilityElement(children: .combine)
+            }
+            HStack(spacing: 10) {
+                Text("Lost during restart")
+                    .font(AppFont.caption(weight: .medium))
+                    .foregroundStyle(.orange)
+                Button("Discard", action: onDiscard)
+                    .font(AppFont.caption(weight: .semibold))
+                    .chatMinimumHitTarget(horizontalPadding: 12, verticalPadding: 14, in: Rectangle())
+                    .accessibilityLabel(Text("Discard lost reply"))
+            }
+            .padding(.horizontal, 2)
+            Text("Hermes restarted before this reply finished. Messages queued after it wait until you discard it.")
+                .font(AppFont.caption())
+                .foregroundStyle(.appSecondary)
+                .multilineTextAlignment(.trailing)
+                .padding(.horizontal, 2)
         }
     }
 }

@@ -126,6 +126,178 @@ import XCTest
         XCTAssertEqual(inboxHeard, [changed, request])
     }
 
+    /// On a canonical socket every screen attached to a session shares the socket's one
+    /// subscription (#1601), and holds it from the moment its resume is sent: an older screen
+    /// leaving while a newer one's resume is in flight detaches nothing, which would end the
+    /// subscription that resume is joining. The last holder's leaving detaches it, once, by the
+    /// subscription the host named, while the inbox keeps the socket.
+    func testACanonicalSessionIsDetachedOnlyWhenItsLastScreenLeaves() async throws {
+        let http = connection(canonical: true)
+        let older = BotClient(http: http), newer = BotClient(http: http), inbox = BotClient(http: http)
+        for client in [older, newer, inbox] { try await client.connect() }
+        defer { older.close(); newer.close(); inbox.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.reply = Self.canonicalReply
+        _ = try await older.call(.sessionResume(profile: "default", sessionID: "tip", omitMessages: true))
+        let sent = expectation(description: "the newer resume is on the wire")
+        let detached = expectation(description: "the session is detached")
+        socket.withholdReply = { request in
+            if request["method"].text == "session.detach" { detached.fulfill() }
+            guard request["method"].text == "session.resume" else { return false }
+            sent.fulfill()
+            return true
+        }
+        let attaching = Task { try await newer.call(.sessionResume(profile: "default", sessionID: "tip", omitMessages: true)) }
+        await fulfillment(of: [sent], timeout: 2)
+
+        older.close()
+        // A read through the inbox goes out after anything the leaving screen sent.
+        _ = try await inbox.call(.sessionActiveList)
+        XCTAssertFalse(socket.sentRequests.contains { $0["method"].text == "session.detach" })
+        newer.close()
+        await fulfillment(of: [detached], timeout: 2)
+        let detaches = socket.sentRequests.filter { $0["method"].text == "session.detach" }.map { $0["params"] }
+        XCTAssertEqual(detaches, [.object(["profile": .string("default"), "session_id": .string("tip"), "subscription_id": .string("sub-1")])])
+        _ = try? await attaching.value
+    }
+
+    /// A chat that leaves before its resume is answered, as one backed out of while it opens,
+    /// still has the subscription the late reply names detached while the inbox keeps the socket.
+    func testACanonicalAttachAnsweredAfterItsScreenLeftIsDetached() async throws {
+        let http = connection(canonical: true)
+        let chat = BotClient(http: http), inbox = BotClient(http: http)
+        for client in [chat, inbox] { try await client.connect() }
+        defer { chat.close(); inbox.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        let sent = expectation(description: "the resume is on the wire")
+        let detached = expectation(description: "the late subscription is detached")
+        socket.withholdReply = { request in
+            if request["method"].text == "session.detach" { detached.fulfill() }
+            guard request["method"].text == "session.resume" else { return false }
+            sent.fulfill()
+            return true
+        }
+        let attaching = Task { try await chat.call(.sessionResume(profile: "default", sessionID: "tip", omitMessages: true)) }
+        await fulfillment(of: [sent], timeout: 2)
+        chat.close()
+        let resume = try XCTUnwrap(socket.sentRequests.first { $0["method"].text == "session.resume" })
+        socket.enqueue(frame(Self.canonicalReply(resume).fields ?? [:]))
+        await fulfillment(of: [detached], timeout: 2)
+        let detach = socket.sentRequests.first { $0["method"].text == "session.detach" }?["params"]
+        XCTAssertEqual(detach?["subscription_id"].text, "sub-1")
+        _ = try? await attaching.value
+    }
+
+    /// An edit from the Sessions list attaches only to read the session's fences, so the list
+    /// doesn't stay subscribed to it afterwards (#1603).
+    func testAStoredSessionEditReleasesItsReadAfterwards() async throws {
+        let list = BotClient(http: connection(canonical: true))
+        try await list.connect()
+        defer { list.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        let detached = expectation(description: "the session is detached")
+        socket.withholdReply = { request in
+            if request["method"].text == "session.detach" { detached.fulfill() }
+            return false
+        }
+        socket.reply = { request in
+            guard request["method"].text == "session.resume" else { return .object(["id": request["id"], "result": .object([:])]) }
+            var snapshot = Self.canonicalReply(request)["result"].fields ?? [:]
+            snapshot["revision"] = .number(1); snapshot["execution_generation"] = .number(1)
+            return .object(["id": request["id"], "result": .object(snapshot)])
+        }
+        _ = try await list.mutateStoredSession(profile: "default", key: "tip", .workspace(cwd: "/work"))
+        await fulfillment(of: [detached], timeout: 2)
+        let detach = socket.sentRequests.first { $0["method"].text == "session.detach" }?["params"]
+        XCTAssertEqual(detach?["subscription_id"].text, "sub-1")
+    }
+
+    /// On a gateway's Webapp each Profile's chats get a socket of their own (#1341, decision 2),
+    /// since a canonical session's events don't name their Profile and ids repeat across them,
+    /// opened with a ticket the Webapp binds to that Profile, so a call naming none is answered
+    /// for it, and one it doesn't serve is named as such. Screens that aren't one session's keep
+    /// the shared one. A dashboard keeps one socket.
+    func testAWebappKeepsEachProfilesChatsOnTheirOwnSocket() async throws {
+        for webapp in [true, false] {
+            sockets = []
+            HermesHostFixture.reset()
+            var statuses = 0
+            // The gateway serves no Profile named `parked`: the Webapp refuses its socket.
+            let http = connection(canonical: webapp, refuses: {
+                $0.value(forHTTPHeaderField: "Sec-WebSocket-Protocol")?.contains("bound-parked") == true
+            }) { request in
+                if request.url?.path == "/api/webapp/socket-ticket" {
+                    let profile = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
+                        .first { $0.name == "profile" }?.value ?? ""
+                    return .json(200, .object(["ticket": .string("bound-" + profile)]))
+                }
+                guard request.url?.path == "/api/status" else { return nil }
+                statuses += 1
+                // The Webapp names its install only once signed in.
+                let install: [String: BotJSON] = webapp && statuses == 1 ? [:] : ["install_id": .string("install")]
+                return .json(200, .object(install.merging(["auth_required": .bool(true),
+                                                           "auth_providers": .array([.string("basic")])]) { $1 }))
+            }
+            let inbox = BotClient(http: http), work = BotClient(http: http, profile: "work")
+            let alsoWork = BotClient(http: http, profile: "work"), home = BotClient(http: http, profile: "home")
+            for client in [inbox, work, alsoWork, home] { try await client.connect() }
+            XCTAssertEqual(sockets.count, webapp ? 3 : 1, webapp ? "Webapp" : "dashboard")
+            let bound = HermesHostFixture.requests.filter { $0.url?.path == "/api/webapp/socket-ticket" }
+                .compactMap { URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)?.queryItems }
+            XCTAssertEqual(Set(bound.compactMap { $0.first { $0.name == "profile" }?.value }), webapp ? ["work", "home"] : [])
+            if webapp {
+                // It says that Profile isn't served there, never that a proxy blocks sockets.
+                let parked = BotClient(http: http, profile: "parked")
+                do { try await parked.connect(); XCTFail("the Webapp refused the parked Profile") }
+                catch { XCTAssertEqual(error as? BotFailure, .profileNotServed("parked")) }
+                XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.profileNotServed("parked")))
+                parked.close()
+
+                // A proxy that refuses every socket refuses the shared one too: that keeps its advice.
+                var proxied = 0
+                let blocked = connection(canonical: true, refuses: { _ in true }) { request in
+                    if request.url?.path == "/api/webapp/socket-ticket" { return .json(200, .object(["ticket": .string("bound")])) }
+                    guard request.url?.path == "/api/status" else { return nil }
+                    proxied += 1
+                    let install: [String: BotJSON] = proxied == 1 ? [:] : ["install_id": .string("install")]
+                    return .json(200, .object(install.merging(["auth_required": .bool(true),
+                                                               "auth_providers": .array([.string("basic")])]) { $1 }))
+                }
+                let behindProxy = BotClient(http: blocked, profile: "work")
+                do { try await behindProxy.connect(); XCTFail("the proxy refused the socket") }
+                catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
+                behindProxy.close()
+            }
+            for client in [inbox, work, alsoWork, home] { client.close() }
+        }
+    }
+
+    /// A canonical host's reply: a snapshot of `tip` under `sub-1` for a resume, else empty.
+    private nonisolated static func canonicalReply(_ request: BotJSON) -> BotJSON {
+        let snapshot = BotJSON.object(["session_id": .string("tip"), "stored_session_id": .string("tip"),
+                                       "subscription_id": .string("sub-1"), "replay_epoch": .string("session-epoch")])
+        return .object(["id": request["id"], "result": request["method"].text == "session.resume" ? snapshot : .object([:])])
+    }
+
+    /// A canonical host fences a room retry by member and generation, which the dashboard's
+    /// shape leaves out (#1605), and a stale one stays a room failure that says to reopen.
+    func testACanonicalRoomRetryCarriesItsFenceAndAStaleOneSaysToReopen() async throws {
+        let client = BotClient(http: connection(canonical: true))
+        try await client.connect()
+        defer { client.close() }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.reply = { request in .object(["id": request["id"], "error": .object(["code": .number(4001),
+            "message": .string("stale_generation"), "data": .object(["reason": .string("stale_generation")])])]) }
+        let retry = HermesCall.groupsRetry(roomID: "room", taskID: "task", attempt: .init(memberID: "dev", executionGeneration: 3))
+        do { _ = try await client.call(retry); XCTFail("The stale retry was refused") } catch {
+            XCTAssertEqual((error as? BotRoomFailure)?.reason, "stale_generation")
+            XCTAssertTrue(error.localizedDescription.contains("Reopen it"))
+        }
+        let sent = try XCTUnwrap(socket.sentRequests.first { $0["method"].text == "groups.retry" })
+        XCTAssertEqual(sent["params"]["member_id"].text, "dev")
+        XCTAssertEqual(sent["params"]["execution_generation"].integer, 3)
+    }
+
     func testASocketFaultTellsEachConsumerOnceAndTheirReconnectsShareOneReplacement() async throws {
         let http = connection()
         let chat = BotClient(http: http), inbox = BotClient(http: http)
@@ -536,15 +708,20 @@ import XCTest
                        [.passed, .failed(.http(401)), .notChecked, .notChecked, .notChecked])
     }
 
-    /// A saved connection whose gateway opens scripted sockets, kept in `sockets`.
-    private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30),
+    /// A saved connection whose gateway opens scripted sockets, kept in `sockets`. `canonical`
+    /// sockets open with `session_authority` in `gateway.ready` (#1341); an upgrade `refuses`
+    /// names is refused with a 403.
+    private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30), canonical: Bool = false,
+                            refuses: @escaping (URLRequest) -> Bool = { _ in false },
                             _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
-        HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
-                         gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline) { [weak self] _ in
-                             let socket = BotScriptedSocket()
-                             self?.sockets.append(socket)
-                             return socket
-                         })
+        let ready = canonical ? #"{"replay_epoch":"epoch","session_authority":true}"# : #"{"replay_epoch":"epoch"}"#
+        return HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
+                                gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline, socketFactory: { [weak self] upgrade in
+                                    let socket = BotScriptedSocket(ready: ready)
+                                    if refuses(upgrade) { socket.receiveFailure = BotFailure.upgradeRefused(403) }
+                                    self?.sockets.append(socket)
+                                    return socket
+                                }))
     }
 
     /// Answers the first sent request for `method`.

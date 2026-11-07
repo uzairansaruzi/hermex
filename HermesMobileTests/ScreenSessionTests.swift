@@ -603,23 +603,31 @@ import XCTest
         session.leave()
     }
 
-    /// A hot-mount can be in flight, so one read isn't enough to offer a restart.
+    /// A hot-mount can be in flight, so one read isn't enough to offer a restart; and never on a
+    /// gateway's Webapp, whose drain hermex-push's restart skips (#1606).
     func testARestartIsOfferedOnlyIfASecondReadStillSaysSoAndOnlyWithARoute() async {
-        var reads = 0
-        let session = makeHostSession { [plugin] request in
-            switch request.url?.path {
-            case "\(plugin)/capabilities"?:
-                reads += 1
-                return .json(404, .object(["detail": .string("No such API endpoint: /x")]))
-            case "/api/plugins/hermex-push/capabilities"?:
-                return .json(200, .object(["routes": .array([.string("POST /restart")])]))
-            default: return nil
+        for webapp in [false, true] {
+            var reads = 0, statuses = 0
+            let session = makeHostSession { [plugin] request in
+                switch request.url?.path {
+                case "\(plugin)/capabilities"?:
+                    reads += 1
+                    return .json(404, .object(["detail": .string("No such API endpoint: /x")]))
+                case "/api/plugins/hermex-push/capabilities"?:
+                    return .json(200, .object(["routes": .array([.string("POST /restart")])]))
+                // The Webapp names its install only once signed in.
+                case "/api/status"? where webapp:
+                    statuses += 1
+                    return .json(200, .object(statuses == 1 ? ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+                                              : ["auth_required": .bool(true), "install_id": .string("fixture-install")]))
+                default: return nil
+                }
             }
+            session.open()
+            await reach(.pluginNeedsRestart(canRestart: !webapp), on: session)
+            XCTAssertEqual(reads, 2)
+            session.leave()
         }
-        session.open()
-        await reach(.pluginNeedsRestart(canRestart: true), on: session)
-        XCTAssertEqual(reads, 2)
-        session.leave()
     }
 
     func testAHostThatCantServeSaysWhyInsteadOfStreaming() async {

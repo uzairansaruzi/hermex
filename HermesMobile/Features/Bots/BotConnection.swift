@@ -36,10 +36,12 @@ struct BotConnection: Codable, Equatable, Identifiable {
         return value
     }
 
-    /// Called with the live `install_id` before any password is sent. Throws
-    /// `.differentHost` only when both ids are known and differ; a record without one,
-    /// or a host that omits it this time, connects as before (trust on first use). The
-    /// id is public, so this catches an address that now reaches another host, not an impostor.
+    /// Called with the live `install_id` before any password is sent, or, on a gateway's Webapp,
+    /// which names it only once signed in, right after sign-in and before anything loads (#1606).
+    /// Throws `.differentHost` only when both ids are known and differ; a record without one,
+    /// or a host that omits it this time, connects as before (trust on first use). The id is
+    /// public on a dashboard, so this catches an address that now reaches another host, not an
+    /// impostor.
     func requireSameInstall(_ live: String?) throws {
         if let installID, let live, installID != live { throw BotFailure.differentHost }
     }
