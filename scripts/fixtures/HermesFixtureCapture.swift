@@ -386,8 +386,9 @@ final class Capture {
         return try JSONDecoder().decode(JSON.self, from: data)
     }
 
-    /// One POST to `path` whatever its status, for a refusal the fixture keeps: `{status, body}`.
-    func refusal(_ path: String, body: JSON) async throws -> JSON {
+    /// One POST to `path` that must be refused with `expected`, for a refusal the fixture keeps:
+    /// `{status, body}`.
+    func refusal(_ path: String, body: JSON, expected: Int) async throws -> JSON {
         var request = URLRequest(url: secrets.address.appendingPathComponent(path))
         request.timeoutInterval = 20
         request.httpMethod = "POST"
@@ -395,7 +396,7 @@ final class Capture {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status != 200 else { throw Failure("\(path) accepted what it should refuse") }
+        guard status == expected else { throw Failure("\(path) answered HTTP \(status), not the \(expected) it refuses with") }
         return .object(["status": .number(Double(status)), "body": (try? JSONDecoder().decode(JSON.self, from: data)) ?? .null])
     }
 
@@ -674,7 +675,7 @@ struct CanonicalCapture {
         }
         let refused = try await capture.refusal("auth/native/refresh", body: .object([
             "refresh_token": .string(UUID().uuidString), "provider": .string("basic")
-        ]))
+        ]), expected: 401)
         let profile = JSON.string(mode.profile)
 
         // As `HermesCall.sessionNew` and `.sessionResume` reach the canonical wire.

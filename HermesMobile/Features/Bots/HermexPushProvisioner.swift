@@ -547,6 +547,9 @@ import UserNotifications
         phase = .restartingHermes
         let client = dashboard(connection)
         do { try await signIn(client) } catch { return failSignIn(error, remedy: .retryRestart) }
+        // This sign-in can be the one that finds a Webapp, whose drain the restart skips: the card
+        // then asks for the restart on the host instead.
+        guard canRestart(loaded) else { phase = .idle; return }
         do { try await client.restartHermes() } catch BotFailure.transport, is URLError {
             // The host can go down before its answer arrives; that is the restart.
         } catch {

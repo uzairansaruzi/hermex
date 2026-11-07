@@ -23,6 +23,8 @@ which every Bot surface and push provisioning goes through, so they all refuse
 without sending the password. A gateway's Webapp names its install only to a caller signed
 in (`hermes_cli/web_routers/status.py`), so when the public read had no id, sign-in reads
 `/api/status` again signed in and runs the same check there, before anything loads (#1606).
+There the password has already gone to the address: the check stops a changed host from
+loading anything, not from receiving the password.
 That second read is also how Hermex knows it reached a Webapp (`servesWebapp`). A missing stored or live id skips the check, and an
 omitted id never clears a stored one. In the connection form, a new address or
 username keeps the UUID when the host reports the stored `install_id`; otherwise a
@@ -272,7 +274,8 @@ its own sign-in inside the browser sheet.
 ## The gateway socket
 
 Each `HermesConnection` also owns the one gateway WebSocket its Bot screens share,
-`HermesGateway`. Every screen holds its own `BotClient` handle on it: the inbox, each
+`HermesGateway`; on a gateway's Webapp each Profile's chats use a socket of their own
+instead (`HermesConnection.gateway(profile:)`, § The canonical session protocol). Every screen holds its own `BotClient` handle on it: the inbox, each
 open chat (its controls and delegated work use the chat's), a room, the creator and
 the editor. The socket opens when the first screen connects and closes when the last
 one leaves, so it lives while any Bot screen is connected. Each screen leaves on
@@ -416,8 +419,9 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
 
 - A session is attached with `session.resume` and replays under its own snapshot's
   `replay_epoch`. Screens on one socket share its subscription; the last to leave detaches it.
-- Sends carry a `submission_id`; controls and answers carry the session's
-  `execution_generation`. A stale fence is `HermesFenceRefusal` and nothing is resent.
+- Sends carry a `submission_id`; controls and approval and clarify answers carry the session's
+  `execution_generation`. A stale fence is `HermesFenceRefusal` and nothing is resent. A sudo or
+  secret answer is a bare JSON-RPC response frame (`id` and `result`) with no generation.
 - Session edits are one fenced `session.mutate`, the model included (#1603, #1604).
 - Rooms fence Retry and Discard by member and generation, and seat only
   `seatable_profiles` (#1605).

@@ -643,12 +643,16 @@ final class ChatViewModel {
 
     /// Discard on the lost turn's row: the host runs the prompts queued behind it.
     func discardLostTurn() async {
-        guard let hermesTurn else { return }
+        // A second tap while the first is on its way sends nothing.
+        guard let hermesTurn, !isDiscardingLostTurn else { return }
+        isDiscardingLostTurn = true
+        defer { isDiscardingLostTurn = false }
         do { try await hermesTurn.discardLostTurn() } catch {
             if error as? BotFailure == .stale { return }
             sendErrorMessage = String(localized: "Couldn’t discard the lost reply. Try again.")
         }
     }
+    private var isDiscardingLostTurn = false
     private(set) var steeringConfirmationNotice: String?
     /// "Couldn't steer", plus the system's reason for a network or HTTP
     /// failure, after the latest steer didn't reach the run. The composer shows

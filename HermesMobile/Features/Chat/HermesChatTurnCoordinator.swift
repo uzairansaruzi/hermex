@@ -1048,7 +1048,9 @@ struct HermesLostTurn: Equatable {
             case "noop": return .unchanged([summary["headline"], summary["note"]].lazy.compactMap(Self.words).first)
             // `--preview` reports what a compaction would remove and changes nothing.
             case "preview": return .unchanged(Self.words(.string((reply["lines"].list ?? []).compactMap(\.text).joined(separator: "\n"))))
-            default: break
+            // A committed compaction is a receipt with a revision; anything else says nothing safe.
+            default:
+                guard reply["revision"].integer != nil else { forgetHistoryUntilRebuild(); throw BotFailure.unsupported }
             }
             let compacted = Compression.compacted(headline: Self.words(summary["headline"]), tokenLine: Self.words(summary["token_line"]))
             guard attempt == engine.generation else { return compacted }
