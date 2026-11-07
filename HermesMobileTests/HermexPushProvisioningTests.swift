@@ -225,6 +225,30 @@ import XCTest
         }
     }
 
+    /// Setup that ends waiting for a restart on a gateway's Webapp knows it's one, so the card asks
+    /// for the gateway's restart rather than `hermes dashboard`'s (#1606).
+    func testSetupOnAWebappThatNeedsARestartKnowsItIsAWebapp() async throws {
+        var statuses = 0
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            // The Webapp names its install only once signed in.
+            case "/api/status":
+                statuses += 1
+                return (200, .object(statuses == 1 ? ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+                                     : ["auth_required": .bool(true), "install_id": .string("fixture-install")]))
+            case "/api/plugins/hermex-push/pairing": return PushHTTPFixture.notMounted
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.4.0"))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
+
+        await provisioner.enable()
+
+        XCTAssertEqual(provisioner.pluginCard, .status(.setupNeedsRestart))
+        XCTAssertTrue(provisioner.servesWebapp)
+    }
+
     /// Listed in `plugins.enabled` but missing on disk: the route is unmounted for want of
     /// the plugin itself, so the full sequence installs it before asking for the restart.
     func testAnUnmountedRouteWithNoPluginOnDiskInstallsIt() async throws {
@@ -1195,13 +1219,23 @@ import XCTest
     /// still be behind. Pinned here so these tests don't move with `newestVersion`.
     private let future = HermexPushPluginVersion("0.5.0")!
 
+    /// Only a plugin with the restart route is offered one, and never on a gateway's Webapp, whose
+    /// drain that restart skips (uzairansaruzi/hermex-push#33, #1606).
     func testOnlyAPluginWithTheRestartRouteIsOfferedARestart() async throws {
         let registrar = try await pairedRegistrar(serverA)
-        let rows: [(loaded: String?, offered: Bool)] = [(nil, false), ("0.3.0", false), ("0.4.0", true), ("0.4.2", true)]
-        for (loaded, offered) in rows {
+        let rows: [(loaded: String?, webapp: Bool, offered: Bool)] = [
+            (nil, false, false), ("0.3.0", false, false), ("0.4.0", false, true), ("0.4.2", false, true), ("0.4.2", true, false)
+        ]
+        for (loaded, webapp, offered) in rows {
             PushHTTPFixture.reset()
+            var statuses = 0
             PushHTTPFixture.handler = { request in
                 switch request.url?.path {
+                // The Webapp names its install only once signed in.
+                case "/api/status" where webapp:
+                    statuses += 1
+                    return (200, .object(statuses == 1 ? ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+                                         : ["auth_required": .bool(true), "install_id": .string("fixture-install")]))
                 case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: loaded))
                 case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.5.0"))
                 default: return nil
@@ -1211,7 +1245,7 @@ import XCTest
             await provisioner.checkPlugin()
             let version = loaded.flatMap(HermexPushPluginVersion.init)
             XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: version)))
-            XCTAssertEqual(HermexPushPlugin.canRestart(version), offered, loaded ?? "no version")
+            XCTAssertEqual(provisioner.canRestart(version), offered, loaded ?? "no version")
 
             PushHTTPFixture.clearCalls()
             await provisioner.restartHermes()
@@ -1664,7 +1698,7 @@ private final class PushHTTPFixture: URLProtocol {
         switch url.path {
         case "/api/status":
             return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
-                                  "version": .string("0.21.3")]))
+                                  "version": .string("0.21.3"), "install_id": .string("fixture-install")]))
         case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
         case "/api/plugins/hermex-push/pairing":
             guard isSetUp else { return pluginNotFound }

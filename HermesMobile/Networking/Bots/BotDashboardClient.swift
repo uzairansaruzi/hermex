@@ -16,6 +16,9 @@ import Foundation
 
     init(http: HermesConnection) { self.http = http }
 
+    /// Whether the last sign-in reached a gateway's own Webapp (`HermesConnection.servesWebapp`).
+    var servesWebapp: Bool { http.servesWebapp }
+
     /// Signs in through the host's password gate unless the connection already is, with
     /// the provisioning deadline. The install identity is checked before the password
     /// goes out, so a swapped host is refused before anything on it changes.

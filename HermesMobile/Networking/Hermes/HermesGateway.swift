@@ -44,12 +44,10 @@ import OSLog
         var probeDeadline: Duration = .seconds(8)
         /// Gets the finished gateway upgrade; nil opens a native socket on the connection's session.
         var socketFactory: ((URLRequest) -> any BotSocket)?
-        /// Whether a socket that speaks the canonical session protocol opens. Until Hermex speaks
-        /// all of it (#1606) production refuses one with `.gatewayListener`; tests turn it on.
-        var opensCanonicalSockets = false
     }
 
     let http: HermesConnection
+    private let profile: String?
     /// `replay_epoch` from the last socket's `gateway.ready`.
     private(set) var replayEpoch: String?
     /// Whether the last socket's `gateway.ready` said `session_authority`: a gateway's own
@@ -73,7 +71,6 @@ import OSLog
     private var generation = 0
     private var isRetired = false
     private var consumers: [Consumer] = []
-    private var consumerCount = 0
     private var nextID = 0
     /// Numbers the detaches' string ids.
     private var detachCount = 0
@@ -96,16 +93,14 @@ import OSLog
         let rejection: HermesCall.Rejection
     }
 
-    init(http: HermesConnection, options: Options = Options()) {
+    /// `profile` names a Webapp gateway's own Profile (`HermesConnection.gateway(profile:)`),
+    /// whose sockets present tickets bound to it; nil for the shared gateway.
+    init(http: HermesConnection, options: Options = Options(), profile: String? = nil) {
         self.http = http
         self.options = options
+        self.profile = profile
     }
 
-    /// A new identity for one screen's `BotClient`.
-    func makeConsumerID() -> Int {
-        consumerCount += 1
-        return consumerCount
-    }
 
     func isAttached(_ consumer: Int) -> Bool {
         consumers.contains { $0.id == consumer && $0.attached }
@@ -365,7 +360,7 @@ import OSLog
         let owner = generation
         let attempt = Task {
             do {
-                let upgrade = try await http.gatewayUpgrade()
+                let upgrade = try await http.gatewayUpgrade(profile: profile)
                 if owner == generation { handshakeAttempt = http.attemptCount }
                 try await handshake(upgrade, generation: owner)
                 opening = nil
@@ -409,10 +404,8 @@ import OSLog
         guard ready["method"].text == "event", ready["params"]["type"].text == "gateway.ready",
               let epoch = ready["params"]["payload"]["replay_epoch"].text, !epoch.isEmpty
         else { throw BotFailure.unsupported }
-        // A gateway's own listener (0.22.1+) owns its sessions under a protocol Hermex doesn't speak
-        // all of yet (#1341): signed in, every chat would fail.
+        // A gateway's own listener (0.22.1+) owns its sessions under the canonical protocol (#1341).
         let canonical = ready["params"]["payload"]["session_authority"].flag == true
-        if canonical, !options.opensCanonicalSockets { throw BotFailure.gatewayListener }
         replayEpoch = epoch
         speaksCanonicalProtocol = canonical
         startReader(socket, generation: owner)

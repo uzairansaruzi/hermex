@@ -75,7 +75,7 @@ final class BotSocketHost: @unchecked Sendable {
                                  return true
                              }
                              return socket
-                         }, opensCanonicalSockets: canonical))
+                         }))
     }
 
     /// Without a script, `session.resume` answers with the running turn, honouring

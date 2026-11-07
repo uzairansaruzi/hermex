@@ -212,6 +212,35 @@ import XCTest
         XCTAssertEqual(detach?["subscription_id"].text, "sub-1")
     }
 
+    /// On a gateway's Webapp each Profile's chats get a socket of their own (#1341, decision 2),
+    /// since a canonical session's events don't name their Profile and ids repeat across them,
+    /// opened with a ticket the Webapp binds to that Profile, so a call naming none is answered
+    /// for it. Screens that aren't one session's keep the shared one. A dashboard keeps one socket.
+    func testAWebappKeepsEachProfilesChatsOnTheirOwnSocket() async throws {
+        for webapp in [true, false] {
+            sockets = []
+            HermesHostFixture.reset()
+            var statuses = 0
+            let http = connection(canonical: webapp) { request in
+                if request.url?.path == "/api/webapp/socket-ticket" { return .json(200, .object(["ticket": .string("bound")])) }
+                guard request.url?.path == "/api/status" else { return nil }
+                statuses += 1
+                // The Webapp names its install only once signed in.
+                let install: [String: BotJSON] = webapp && statuses == 1 ? [:] : ["install_id": .string("install")]
+                return .json(200, .object(install.merging(["auth_required": .bool(true),
+                                                           "auth_providers": .array([.string("basic")])]) { $1 }))
+            }
+            let inbox = BotClient(http: http), work = BotClient(http: http, profile: "work")
+            let alsoWork = BotClient(http: http, profile: "work"), home = BotClient(http: http, profile: "home")
+            for client in [inbox, work, alsoWork, home] { try await client.connect() }
+            XCTAssertEqual(sockets.count, webapp ? 3 : 1, webapp ? "Webapp" : "dashboard")
+            let bound = HermesHostFixture.requests.filter { $0.url?.path == "/api/webapp/socket-ticket" }
+                .compactMap { URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)?.queryItems }
+            XCTAssertEqual(Set(bound.compactMap { $0.first { $0.name == "profile" }?.value }), webapp ? ["work", "home"] : [])
+            for client in [inbox, work, alsoWork, home] { client.close() }
+        }
+    }
+
     /// A canonical host's reply: a snapshot of `tip` under `sub-1` for a resume, else empty.
     private nonisolated static func canonicalReply(_ request: BotJSON) -> BotJSON {
         let snapshot = BotJSON.object(["session_id": .string("tip"), "stored_session_id": .string("tip"),
@@ -658,7 +687,7 @@ import XCTest
                                     let socket = BotScriptedSocket(ready: ready)
                                     self?.sockets.append(socket)
                                     return socket
-                                }, opensCanonicalSockets: canonical))
+                                }))
     }
 
     /// Answers the first sent request for `method`.

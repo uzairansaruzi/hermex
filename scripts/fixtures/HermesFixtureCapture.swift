@@ -386,6 +386,19 @@ final class Capture {
         return try JSONDecoder().decode(JSON.self, from: data)
     }
 
+    /// One POST to `path` whatever its status, for a refusal the fixture keeps: `{status, body}`.
+    func refusal(_ path: String, body: JSON) async throws -> JSON {
+        var request = URLRequest(url: secrets.address.appendingPathComponent(path))
+        request.timeoutInterval = 20
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status != 200 else { throw Failure("\(path) accepted what it should refuse") }
+        return .object(["status": .number(Double(status)), "body": (try? JSONDecoder().decode(JSON.self, from: data)) ?? .null])
+    }
+
     func call(_ method: String, _ params: [String: JSON]) async throws -> JSON {
         let reply = try await reply(method, params)
         if let code = reply["error"]["code"].integer { throw RPCFailure(method: method, code: code) }
@@ -629,6 +642,10 @@ struct CanonicalCapture {
 
     /// Each fixture file and the raw capture's key it holds.
     static let files: [(name: String, key: String)] = [
+        // Sign-in on the Webapp (#1606): its status before and after a password sign-in, and a
+        // refresh token it didn't issue to a native sign-in.
+        ("canonical-status-signed-out.json", "status"), ("canonical-status-signed-in.json", "status_signed_in"),
+        ("canonical-refresh-refused.json", "refresh_refused"),
         ("canonical-ready.json", "ready"), ("canonical-create.json", "create"),
         ("canonical-resume-idle.json", "resume_idle"), ("canonical-resume-repeat.json", "resume_repeat"),
         ("canonical-resume-running.json", "resume_running"),
@@ -651,6 +668,13 @@ struct CanonicalCapture {
         }
         ready["skin"] = nil
         let socketEpoch = ready["replay_epoch"] ?? .null
+        let signedIn = try await capture.http("api/status")
+        guard signedIn["install_id"].text?.isEmpty == false, status["install_id"] == .null else {
+            throw Failure("the Webapp should name its install only once signed in")
+        }
+        let refused = try await capture.refusal("auth/native/refresh", body: .object([
+            "refresh_token": .string(UUID().uuidString), "provider": .string("basic")
+        ]))
         let profile = JSON.string(mode.profile)
 
         // As `HermesCall.sessionNew` and `.sessionResume` reach the canonical wire.
@@ -702,7 +726,8 @@ struct CanonicalCapture {
         let settings = try await captureSettings()
 
         return .object([
-            "status": status, "ready": .object(ready), "create": create, "resume_idle": idle, "resume_repeat": repeated,
+            "status": status, "status_signed_in": signedIn, "refresh_refused": refused,
+            "ready": .object(ready), "create": create, "resume_idle": idle, "resume_repeat": repeated,
             "resume_running": running, "replay": replayed, "replay_epoch_mismatch": mismatch,
             "replay_gap": gap, "detach": .array([detached, stale]), "profile_create": sibling,
             "captured_at": .string(ISO8601DateFormatter().string(from: Date()))

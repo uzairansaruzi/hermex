@@ -2232,7 +2232,12 @@ no stopping tasks. Queued/running counts govern whether Stop can be tapped.
 
 Approvals use the existing request card with only `once` and `deny`. Dispatch
 revalidates the room, socket owner, authority epoch and exact member/task/generation/
-request tuple. Retry targets the pending task. Codes 5119 and 5118 re-read state;
+request tuple. Retry targets the pending task; on a canonical host (#1605) it also names the
+task's `member_id` and `execution_generation` as the action gave them, which for a stalled
+preparation is every member it couldn't wake (`"chief, coder"`). A canonical task whose outcome
+is unknown after a host restart comes as a `discard` action instead: its card offers Discard,
+never Retry, behind an action sheet, and sends `groups.discard` with the same four fields. A
+stale retry or discard (4001 `stale_generation`) says to reopen. Codes 5119 and 5118 re-read state;
 an addressed approval tuple stays inert, including across reconnect after an
 unknown outcome. Commands are never automatically resent. A retry becomes
 available for a later stalled attempt only after the previous pending action
@@ -2250,13 +2255,18 @@ scalars (the server's character count). Members are frozen after creation.
 `groups.create` sends a device UUID `room_id`, `name`, and `members` containing
 `member_id`, `profile`, `handle`, and optional roster `display_name`; it never
 sends `target`. At the compatibility pin, `profiles.list` has no separate handle,
-so all three identifiers use the Profile name, including `default`.
+so all three identifiers use the Profile name, including `default`. A canonical host names
+the Profiles it can seat (`groups.capabilities.seatable_profiles`, #1605): the creator lists,
+selects and sends only those, says when it left some out, and rechecks at Create, where a
+bot the host stopped seating drops from the selection.
 
 The first dispatched attempt freezes its ID and payload. Try Again explicitly
 reuses both, even after a lost reply; it cannot create a second room. Error 4110
 re-reads the active list; a room with the attempted ID, same authority and frozen
 member identities completes creation even if another client renamed it after a
-lost reply. Other conflicts stay errors. Code 4123 asks for a gateway restart on the Mac.
+lost reply. The canonical host refuses an unseatable member before it looks for the room, so
+a Try Again with one reads the active list instead of resending: the room it made opens, or
+the choice unlocks. Other conflicts stay errors. Code 4123 asks for a gateway restart on the Mac.
 Closing or backgrounding the sheet invalidates late replies. Success opens the
 acknowledged room under the same configured server and connection identity.
 

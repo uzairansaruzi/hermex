@@ -106,6 +106,9 @@ import UserNotifications
     /// whenever the section checks; cleared once the user allows notifications again.
     private(set) var notificationsOff = false
     private(set) var pluginUpdate: PluginUpdate?
+    /// Whether the last plugin read reached a gateway's own Webapp, which hermex-push's restart
+    /// re-execs without the gateway's drain (uzairansaruzi/hermex-push#33, #1606).
+    private(set) var servesWebapp = false
     /// Deliberate plugin actions supersede passive reads, even after the action finishes.
     private var pluginCheckGeneration = 0
 
@@ -315,7 +318,7 @@ import UserNotifications
         var step = Step.relayURL
         phase = .enabling(step)
         let client = dashboard(connection)
-        do { try await client.signIn() } catch { return failSignIn(error) }
+        do { try await signIn(client) } catch { return failSignIn(error) }
         do {
             let state: HostState
             do { state = try await hostState(client) } catch HermexPushRouteMissing.notMounted {
@@ -401,7 +404,7 @@ import UserNotifications
         do {
             if let connection, try registrar?.sharesRegistration(for: server) != true {
                 let client = dashboard(connection)
-                do { try await client.signIn() } catch { return failSignIn(error) }
+                do { try await signIn(client) } catch { return failSignIn(error) }
                 // Another entry can start registering its device or finish pairing during
                 // a sign-in; it then owns the plugin too, so the disable doesn't go out.
                 do {
@@ -479,7 +482,7 @@ import UserNotifications
         var step = PluginUpdateStep.reinstall
         phase = .updatingPlugin(step)
         let client = dashboard(connection)
-        do { try await client.signIn() } catch { return failSignIn(error, remedy: .retryUpdate) }
+        do { try await signIn(client) } catch { return failSignIn(error, remedy: .retryUpdate) }
         do {
             var turnedOff = false
             do {
@@ -514,6 +517,18 @@ import UserNotifications
         }
     }
 
+    /// Signs `client` in and notes whether that reached a gateway's Webapp.
+    private func signIn(_ client: BotDashboardClient) async throws {
+        try await client.signIn()
+        servesWebapp = client.servesWebapp
+    }
+
+    /// Whether "Restart Hermes…" is offered for the plugin `loaded`: one with the restart route,
+    /// on a host that isn't a gateway's Webapp.
+    func canRestart(_ loaded: HermexPushPluginVersion?) -> Bool {
+        HermexPushPlugin.canRestart(loaded) && !servesWebapp
+    }
+
     /// "Restart Hermes…" (#934), from a confirmed tap on a host whose loaded plugin has the
     /// restart route: hermex-push answers 202 and re-execs the dashboard about a second later.
     /// A connection dropped on that request counts as the restart. Then the public `/api/status`
@@ -525,13 +540,13 @@ import UserNotifications
     /// whose read fails, a failed read; or silence, "Hermes didn't come back". Like the update, the run outlives Settings.
     func restartHermes() async {
         guard !isWorking, let connection, case .restartNeeded(let loaded)? = pluginUpdate,
-              HermexPushPlugin.canRestart(loaded) else { return }
+              canRestart(loaded) else { return }
         pluginCheckGeneration &+= 1
         setupRanLast = false
         completed = []
         phase = .restartingHermes
         let client = dashboard(connection)
-        do { try await client.signIn() } catch { return failSignIn(error, remedy: .retryRestart) }
+        do { try await signIn(client) } catch { return failSignIn(error, remedy: .retryRestart) }
         do { try await client.restartHermes() } catch BotFailure.transport, is URLError {
             // The host can go down before its answer arrives; that is the restart.
         } catch {
@@ -575,6 +590,7 @@ import UserNotifications
     private func pluginStanding(_ client: BotDashboardClient) async throws -> PluginUpdate {
         let loaded: HermexPushPluginVersion?
         do { loaded = try await client.loadedPluginVersion() } catch HermexPushRouteMissing.notMounted { loaded = nil }
+        servesWebapp = client.servesWebapp
         if let loaded, loaded >= newestPlugin { return .upToDate(loaded) }
         if let installed = try? await client.installedPluginVersion(), installed >= newestPlugin {
             return .restartNeeded(loaded: loaded)

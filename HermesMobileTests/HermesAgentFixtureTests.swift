@@ -113,6 +113,55 @@ import XCTest
 
     // MARK: Canonical gateway (#1601), from `scripts/capture-hermes-fixtures --local --gateway`
 
+    /// The recorded Webapp names its install only once signed in (#1606), so sign-in reads its
+    /// status again and checks the saved install before anything loads: another install is
+    /// refused, and a first sign-in keeps the one it found. A browser sign-in's refresh token the
+    /// Webapp didn't issue is refused as expired, which asks for one sign-in.
+    func testAWebappsInstallIsCheckedOnceSignedInAndAForeignRefreshTokenExpires() async throws {
+        let signedOut = try fixture("canonical-status-signed-out")["reply"]
+        let signedIn = try fixture("canonical-status-signed-in")["reply"]
+        let refused = try fixture("canonical-refresh-refused")["reply"]
+        let live = try XCTUnwrap(signedIn["install_id"].text)
+        let record = BotConnection(id: UUID(), name: "Webapp", address: URL(string: "https://webapp.example")!,
+                                   username: "user", password: "secret")
+        defer { HermesHostFixture.reset() }
+        for saved in [String?.none, live, "another-install"] {
+            HermesHostFixture.reset()
+            var statuses = 0
+            let configuration = HermesHostFixture.configuration { request in
+                guard request.url?.path == "/api/status" else { return nil }
+                statuses += 1
+                return .json(200, statuses == 1 ? signedOut : signedIn)
+            }
+            var expected = record
+            expected.installID = saved
+            let http = HermesConnection(connection: expected, configuration: configuration)
+            if saved == "another-install" {
+                do { try await http.signIn(); XCTFail("another install was refused") }
+                catch { XCTAssertEqual(error as? BotFailure, .differentHost) }
+                XCTAssertEqual(HermesHostFixture.requests.map(\.url?.path).last, "/api/status", "nothing loads after")
+            } else {
+                try await http.signIn()
+                XCTAssertEqual(http.connection.installID, live, saved ?? "first sign-in")
+                XCTAssertTrue(http.servesWebapp)
+            }
+        }
+
+        HermesHostFixture.reset()
+        var browser = record
+        browser.oauth = HermesOAuth(provider: "basic", userID: "user", refreshToken: "issued-elsewhere")
+        let http = HermesConnection(connection: browser, configuration: HermesHostFixture.configuration { request in
+            switch request.url?.path {
+            case "/api/status": return .json(200, signedOut)
+            case "/auth/native/refresh": return .json(refused["status"].integer ?? 0, refused["body"])
+            default: return nil
+            }
+        })
+        do { try await http.signIn(); XCTFail("the foreign refresh token was refused") }
+        catch { XCTAssertEqual(error as? BotFailure, .signInExpired) }
+        XCTAssertEqual(HermesHostFixture.count("/auth/native/refresh"), 1, "refused once, never retried")
+    }
+
     /// The recorded canonical snapshot and replay attach a session over a canonical socket: the
     /// snapshot is this attach's though it has no `session_key`, and the replay goes under the
     /// session's own epoch, not `gateway.ready`'s. A reattach the host answers with its recorded

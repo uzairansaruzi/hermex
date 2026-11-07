@@ -66,10 +66,9 @@ enum BotFailure: Error, Equatable, LocalizedError {
     /// credentials met a sign-in, by password or browser, or one saved with them met a dashboard
     /// with none. The user has to sign in again, so the saved record says what the host asks. Permanent.
     case signInChanged
-    /// The address reaches a Hermes gateway's own listener (`hermes gateway run`, 0.22.1+; 0.23.0
-    /// serves the Webapp from it, on port 9120 by default), whose
-    /// sessions follow a protocol Hermex doesn't speak yet (#1341): its `gateway.ready` sets
-    /// `session_authority`, or its page withholds the session token from an open sign-in. Permanent.
+    /// The address reaches a gateway's Webapp (`hermes gateway run`, 0.22.1+) with no sign-in: its
+    /// page withholds the session token, and it hands out credentials only through one-use launch
+    /// links (#1606). A Webapp behind sign-in connects. Permanent.
     case gatewayListener
     var errorDescription: String? {
         switch self {
@@ -96,7 +95,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
         case .signInExpired: return String(localized: "Your Hermes sign-in expired. Sign in again.")
         case .signInChanged: return String(localized: "This server’s sign-in changed. Sign in again to continue.")
-        case .gatewayListener: return String(localized: "This address is a Hermes gateway’s own listener, such as the Webapp, which Hermex doesn’t support yet. On the host, run hermes dashboard (port 9119 by default) and connect to that address.")
+        case .gatewayListener: return String(localized: "This Hermes Webapp has no sign-in, and Hermex connects only to one that has. Turn its sign-in on, or connect to hermes dashboard (port 9119 by default) instead.")
         case .browserSignInFailed: return String(localized: "The browser sign-in didn't finish. Try again.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         case .outdated(let version):

@@ -367,12 +367,13 @@ struct HermesLostTurn: Equatable {
         activity.delegatedWork.onWorkersChanged = { [weak self] in self?.syncBotWorkSummary() }
     }
 
-    /// The chat `chat` opens over the connection's shared gateway socket, driving the app's
-    /// Live Activity.
+    /// The chat `chat` opens over the connection's shared gateway socket, or its Profile's own on
+    /// a gateway's Webapp, driving the app's Live Activity.
     convenience init(_ chat: HermesSessionChat) {
         self.init(engine: HermesConversation(server: chat.server, connection: chat.connection, target: chat.target,
                                              linkedRoot: chat.linkedRoot,
-                                             wire: BotClient(saved: chat.connection, server: chat.server)),
+                                             wire: BotClient(saved: chat.connection, server: chat.server,
+                                                             profile: chat.target.profile)),
                   botChatRoot: chat.botChatRoot, lineageRoot: chat.lineageRoot, liveActivities: AgentLiveActivityManager.shared,
                   writeBotAvatar: BotLiveActivity.writeAvatar)
     }

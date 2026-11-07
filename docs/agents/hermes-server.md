@@ -20,7 +20,10 @@ record stores it the first time the host reports one (trust on first use; the in
 backfills older records). A sign-in whose live id differs from the stored one
 fails with `.differentHost` before the login POST, in `HermesConnection.signIn()`,
 which every Bot surface and push provisioning goes through, so they all refuse
-without sending the password. A missing stored or live id skips the check, and an
+without sending the password. A gateway's Webapp names its install only to a caller signed
+in (`hermes_cli/web_routers/status.py`), so when the public read had no id, sign-in reads
+`/api/status` again signed in and runs the same check there, before anything loads (#1606).
+That second read is also how Hermex knows it reached a Webapp (`servesWebapp`). A missing stored or live id skips the check, and an
 omitted id never clears a stored one. In the connection form, a new address or
 username keeps the UUID when the host reports the stored `install_id`; otherwise a
 different endpoint or username gets a new UUID. Password/name edits retain the
@@ -140,8 +143,9 @@ browser sign-in (`BotConnection.hasNoCredentials`). Its sign-in reads the dashbo
 (`/api/profiles/active`): at the 0.21.5 pin `/api/auth/me` refuses this mode, since only
 the password gate sets a session. The token is held in memory only and sent as
 `X-Hermes-Session-Token`, never `Authorization: Bearer`, which a proxy's basic auth may
-hold, and a cross-origin redirect drops it. A gateway's own listener (`hermes gateway
-run`, 0.22.1+) serves the same page without the token; its
+hold, and a cross-origin redirect drops it. A gateway's open Webapp (`hermes gateway
+run`, 0.22.1+) serves the same page without the token, since it hands out credentials only
+through one-use launch links (`gateway/run_api.py`), so Hermex doesn't support it; its
 `__HERMES_AUTH_REQUIRED__=false` bootstrap tells it apart from a page that isn't a
 dashboard's (`.gatewayListener`). `POST /api/auth/ws-ticket` is refused here, so both
 socket upgrades present the token as `?token=` with no subprotocol
@@ -174,12 +178,11 @@ A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable ho
 a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
 status, an access proxy's own sign-in (`.blocked`: a redirect to another host or a
 non-JSON 401 on `/api/status`), a host with no sign-in Hermex can use (`.browserSignIn`),
-a refused gateway upgrade (`.upgradeRefused`), and a gateway's own listener, whose
-`gateway.ready` sets `session_authority` (`.gatewayListener`; its protocol is #1341). The
-inbox and chat use the same copy for the messages they show, and none of these retries on
-its own. Adding a server opens the gateway socket once after the sign-in, so a listener
-(0.23.0 serves the Webapp from it, port 9120) or a refused upgrade stops the form and
-nothing is saved. For a listener the inbox and the Sessions list offer Add Server (a Bot
+a refused gateway upgrade (`.upgradeRefused`), and an open gateway Webapp
+(`.gatewayListener`). The inbox and chat use the same copy for the messages they show, and
+none of these retries on its own. Adding a server opens the gateway socket once after the
+sign-in, so a refused upgrade or a handshake Hermex can't read stops the form and nothing is
+saved. For an open Webapp the inbox and the Sessions list offer Add Server (a Bot
 connection on a webui server, its connection form) in place of Reconnect or Retry, since
 its address can't change.
 A rejected password (`.rejected(401)`) offers "Update sign-in" in place of
@@ -402,6 +405,30 @@ the current connection's open socket once (`HermesGateway.probe()`, #1372): one 
 ping stuck in its send, drops the socket for every screen, which reconnect onto one
 replacement. One deadline for every route; record slow-tunnel false positives before
 adding per-route policy. The probe never opens a socket.
+
+## The canonical session protocol
+
+A gateway's own listener, such as the Webapp 0.23.0 serves behind its sign-in (port 9120),
+says `session_authority` in `gateway.ready` (#1341). Its sockets speak the canonical session
+protocol, which upstream Desktop adapts in `apps/desktop/src/api/canonical-protocol.ts`;
+Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` turns a
+`HermesCall` into a frame. The parent issue's decisions are the rules:
+
+- A session is attached with `session.resume` and replays under its own snapshot's
+  `replay_epoch`. Screens on one socket share its subscription; the last to leave detaches it.
+- Sends carry a `submission_id`; controls and answers carry the session's
+  `execution_generation`. A stale fence is `HermesFenceRefusal` and nothing is resent.
+- Session edits are one fenced `session.mutate`, the model included (#1603, #1604).
+- Rooms fence Retry and Discard by member and generation, and seat only
+  `seatable_profiles` (#1605).
+- Each Profile's chats get a socket of their own on a Webapp (`HermesConnection.gateway(profile:)`):
+  session ids repeat across Profiles and a canonical session's events don't name theirs.
+  Screens that aren't one session's (the inbox, rooms, Settings reads) keep the shared socket.
+- A password sign-in's cookies work there. A bearer token works only if this listener issued
+  it to a native sign-in (`hermes_cli/webapp_sign_in.py`); a browser sign-in made elsewhere is
+  refused at refresh as `.signInExpired`, which asks for one sign-in and never retries.
+- hermex-push's restart re-execs the gateway without its drain there
+  (uzairansaruzi/hermex-push#33), so it isn't offered on a Webapp.
 
 ## Pin and minimum release
 
@@ -641,7 +668,8 @@ So a new or changed route on a mounted plugin appears only after `hermes dashboa
 `POST /api/gateway/restart` restarts only the messaging gateway and doesn't help. The host's
 `restart_required` is about the gateway too, so the Plugins screen's "updated and live now"
 doesn't cover a plugin's own HTTP routes. hermex-push 0.4.0 and newer mounts its own restart
-route (#934); anything older costs the user one restart on the host.
+route (#934); anything older costs the user one restart on the host, and so does a gateway's
+Webapp, whose drain that route skips (#1606).
 
 A plugin adds REST routes, hooks, tools and its own sockets, but no RPC method and no `/api/ws`
 event, so a gap the companion plugin fills is always a REST route, and each new route on an
