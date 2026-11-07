@@ -1109,8 +1109,6 @@ struct ChatView: View {
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
 
-                BottomComposerMaterialFade(composerHeight: composerHeight)
-
                 composerAccessoryStack
 
                 clarificationInset(maximumExpandedHeight: clarificationMaximumHeight)

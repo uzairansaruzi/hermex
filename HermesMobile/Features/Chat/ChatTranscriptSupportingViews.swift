@@ -1187,44 +1187,6 @@ struct ChatWorkingRowView: View {
     }
 }
 
-struct BottomComposerMaterialFade: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    let composerHeight: CGFloat
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            ZStack {
-                Rectangle()
-                    .fill(.appMaterial(.bar))
-
-                if colorScheme == .dark {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.58))
-                }
-            }
-            .frame(height: max(96, composerHeight + 34))
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black.opacity(0.18), location: 0.18),
-                        .init(color: .black.opacity(0.72), location: 0.46),
-                        .init(color: .black, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-        }
-        .ignoresSafeArea(edges: .bottom)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
 /// Transcript chip shown while the active stream is being checked,
 /// reconnected, or waiting for the network. It spins while work is under way,
 /// or shows a static dot under Reduce Motion. Waiting for the network always
