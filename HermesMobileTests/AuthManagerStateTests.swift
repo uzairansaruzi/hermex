@@ -928,15 +928,15 @@ final class AuthManagerStateTests: XCTestCase {
         }
     }
 
-    /// A gateway's own listener (the 0.23.0 Webapp) signs in over HTTP, then its `gateway.ready`
-    /// claims `session_authority` (#1598): the form names it and saves nothing.
-    func testAddServerRefusesAGatewayListenerAndSavesNothing() async throws {
+    /// A host that signs in over HTTP but fails the live check, here with a `gateway.ready` that
+    /// names no replay epoch, is named on the form, and nothing is saved (#1598, #1606).
+    func testAddServerSavesNothingAfterAFailedLiveCheck() async throws {
         defer { HermesHostFixture.reset() }
         HermesHostFixture.reset()
         let keychain = InMemoryKeychainStore()
         let manager = makeFormManager(keychain: keychain)
         await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
-        let form = makeForm(entry: .addServer, socket: { BotScriptedSocket(ready: #"{"replay_epoch":"epoch","session_authority":true}"#) })
+        let form = makeForm(entry: .addServer, socket: { BotScriptedSocket(ready: #"{"session_authority":true}"#) })
         form.serverURLString = "hermes.example"
         _ = await form.connect(authManager: manager)
         form.username = "me"
@@ -945,7 +945,7 @@ final class AuthManagerStateTests: XCTestCase {
         let added = await form.connect(authManager: manager)
 
         XCTAssertNil(added)
-        XCTAssertEqual(form.errorMessage, BotConnectionAdvice.message(for: BotFailure.gatewayListener, address: hermesServer))
+        XCTAssertEqual(form.errorMessage, BotConnectionAdvice.message(for: BotFailure.unsupported, address: hermesServer))
         XCTAssertFalse(manager.servers.contains { $0.id == hermesServer.absoluteString }, "No server is saved")
         XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: hermesServer))
     }

@@ -1,0 +1,17 @@
+{
+  "captured_at" : "2026-11-06T19:12:09Z",
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "reply" : [
+    {
+      "detached" : true,
+      "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+      "subscription_id" : "a0dbff502a294fe693f385d6cd778134"
+    },
+    {
+      "detached" : false,
+      "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+      "subscription_id" : "a0dbff502a294fe693f385d6cd778134"
+    }
+  ],
+  "version" : "0.23.0"
+}

@@ -139,6 +139,9 @@ enum HermesREST: Equatable, Sendable {
     case profilesActive
     /// Mints the single-use ticket one gateway socket presents.
     case ticket
+    /// A gateway's Webapp's single-use ticket for one gateway socket bound to `profile` (#1606):
+    /// that socket answers a call naming no Profile for `profile`, never the launch Profile.
+    case profileTicket(profile: String)
     /// `DELETE /api/profiles/{name}`, the only Profile removal the host exposes; the
     /// gateway has no `profiles.delete` RPC. `name` is a validated Profile slug.
     case deleteProfile(name: String)
@@ -432,6 +435,12 @@ enum HermesREST: Equatable, Sendable {
         case .identity: return Self.get(base.appendingPathComponent("api/auth/me"))
         case .profilesActive: return Self.get(base.appendingPathComponent("api/profiles/active"))
         case .ticket: return try Self.send("POST", base.appendingPathComponent("api/auth/ws-ticket"), [:])
+        case .profileTicket(let profile):
+            guard var parts = URLComponents(url: base.appendingPathComponent("api/webapp/socket-ticket"),
+                                            resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
+            parts.queryItems = [URLQueryItem(name: "socket", value: "gateway"), URLQueryItem(name: "profile", value: profile)]
+            guard let url = parts.url else { throw BotFailure.invalidAddress }
+            return try Self.send("POST", url, [:])
         case .deleteProfile(let name):
             var request = URLRequest(url: base.appendingPathComponent("api/profiles").appendingPathComponent(name))
             request.httpMethod = "DELETE"

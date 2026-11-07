@@ -2317,7 +2317,13 @@ struct ChatView: View {
         return HermesTurnOutcomeRow(
             failure: activity.failure, notice: activity.notice,
             offersRetry: activity.retryTarget != nil, mayRetry: viewModel.mayRetryHermesTurn,
-            onRetry: { Task { await viewModel.retryHermesFailedTurn() } }
+            onRetry: {
+                Task {
+                    await viewModel.retryHermesFailedTurn()
+                    // A canonical cut that went through without its send leaves the prompt to send again.
+                    if let unsent = viewModel.takeUnsentHermesEdit() { restoreUnsentEdit(unsent) }
+                }
+            }
         )
     }
 
@@ -2327,6 +2333,7 @@ struct ChatView: View {
         ChatTranscriptView(
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
+            errorMayRetry: viewModel.errorMayRetry,
             messages: viewModel.messages,
             displayedTranscriptMessages: displayedTranscriptMessages,
             compressionReferenceCard: viewModel.compressionReferenceCard,
@@ -2439,7 +2446,9 @@ struct ChatView: View {
             settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
             settledPlanAfterRenderID: settledPlanAfterRenderID,
             turnOutcome: hermesTurnOutcome,
-            queuedPrompt: viewModel.queuedPromptMessage,
+            queuedPrompts: viewModel.queuedPromptMessages,
+            lostTurn: viewModel.lostTurn,
+            onDiscardLostTurn: { Task { await viewModel.discardLostTurn() } },
             isCronRun: isCronRun,
             onCopyQueuedPrompt: { text in
                 UIPasteboard.general.string = text
@@ -2988,6 +2997,16 @@ struct ChatView: View {
                 submittedDraft: submittedDraft,
                 submittedDraftRevision: submittedDraftRevision
             )
+            // A canonical `/retry` whose cut went through without its send: the prompt takes the
+            // command's place, or joins what was typed since.
+            if let unsent = viewModel.takeUnsentHermesEdit() {
+                if draftRevision == submittedDraftRevision {
+                    draftMessage = unsent
+                    persistDraftEdit(unsent)
+                } else {
+                    restoreUnsentEdit(unsent)
+                }
+            }
             if let lastError = viewModel.lastError {
                 onAPIError(lastError)
             }
@@ -4180,7 +4199,7 @@ struct ChatView: View {
     ) {
         // An empty chat still draws the transcript for a queued prompt (#1379), a waiting send (#1407)
         // or live workers.
-        guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil
+        guard !viewModel.messages.isEmpty || !viewModel.queuedPromptMessages.isEmpty || viewModel.lostTurn != nil
             || viewModel.waitingSendMessage != nil || (delegatedWork?.activeCount ?? 0) > 0 else { return }
 
         scheduleFollowScroll(
@@ -4403,6 +4422,7 @@ struct ChatView: View {
         showRegenerateDiscardConfirmation = false
 
         _ = await viewModel.regenerateAssistantResponse(context, modelContext: modelContext)
+        if let unsent = viewModel.takeUnsentHermesEdit() { restoreUnsentEdit(unsent) }
 
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
@@ -4715,7 +4735,7 @@ struct HermesModelConfirmationModifier: ViewModifier {
                 // Dismissing clears `confirmation`, so the pending pick is captured first.
                 Button("Change model") {
                     controls.cancelConfirmation()
-                    Task { await controls.apply(confirmation.action, confirmed: true) }
+                    Task { await controls.confirm(confirmation) }
                 }
                 .disabled(!controls.mayChangeModel)
             }

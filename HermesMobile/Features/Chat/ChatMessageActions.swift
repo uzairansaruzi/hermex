@@ -100,7 +100,7 @@ struct ChatMessageActionMenu: View {
                 kind: .regenerate,
                 title: String(localized: "Regenerate Response"),
                 systemImage: "arrow.clockwise",
-                isEnabled: !(isViewingCachedData || hasActiveStream || isRegeneratingMessage),
+                isEnabled: !(isViewingCachedData || hasActiveStream || isRegeneratingMessage || isEditingMessage),
                 perform: { onRegenerate(context) }
             ))
         }
@@ -110,7 +110,7 @@ struct ChatMessageActionMenu: View {
                 kind: .edit,
                 title: String(localized: "Edit Message"),
                 systemImage: "pencil",
-                isEnabled: !(isViewingCachedData || hasActiveStream || isEditingMessage),
+                isEnabled: !(isViewingCachedData || hasActiveStream || isRegeneratingMessage || isEditingMessage),
                 perform: { onEdit(context) }
             ))
         }

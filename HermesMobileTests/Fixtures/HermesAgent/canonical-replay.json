@@ -1,0 +1,467 @@
+{
+  "captured_at" : "2026-11-06T19:12:09Z",
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "reply" : {
+    "count" : 20,
+    "epoch" : "eb1fd1954119468cbd245a505c340d9e",
+    "events" : [
+      {
+        "payload" : {
+          "authority_epoch" : 1,
+          "desktop_protocol" : "fixture-redacted",
+          "execution_generation" : 0,
+          "pending" : [
+            {
+              "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+              "authority_epoch" : 1,
+              "controls" : [
+                "fixture-redacted",
+                "fixture-redacted"
+              ],
+              "execution_generation" : null,
+              "input_id" : "5800C19F-053E-4A02-A3E9-5380FBEEB690",
+              "outcome" : null,
+              "ref" : {
+                "profile_id" : "fixture-redacted",
+                "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4"
+              },
+              "sequence" : 5,
+              "status" : "queued",
+              "steering" : false,
+              "text" : "Run the quick check."
+            }
+          ],
+          "revision" : 0,
+          "running" : false,
+          "stored_session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4"
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 1,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "session.info"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {},
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 2,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "message.start"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "authority_epoch" : 1,
+          "desktop_protocol" : "fixture-redacted",
+          "execution_generation" : 1,
+          "pending" : [
+            {
+              "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+              "authority_epoch" : 1,
+              "controls" : [],
+              "execution_generation" : 1,
+              "input_id" : "5800C19F-053E-4A02-A3E9-5380FBEEB690",
+              "outcome" : null,
+              "ref" : {
+                "profile_id" : "fixture-redacted",
+                "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4"
+              },
+              "sequence" : 5,
+              "status" : "started",
+              "steering" : false,
+              "text" : "Run the quick check."
+            }
+          ],
+          "revision" : 0,
+          "running" : true,
+          "stored_session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4"
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 3,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "session.info"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "iteration" : 1
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 4,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "agent.step"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "text" : "(°ロ°) cogitating..."
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 5,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "thinking.delta"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "text" : ""
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 6,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "thinking.delta"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "already_streamed" : false,
+          "segment" : 0,
+          "text" : "Let me run a quick check.",
+          "turn_id" : "fixture-redacted"
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 7,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "message.interim"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "text" : null
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 8,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "message.delta"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "args" : {
+            "command" : "python3 -c \"print(1)\""
+          },
+          "context" : "fixture-redacted",
+          "name" : "fixture-redacted",
+          "tool_call_id" : "fixture-redacted",
+          "tool_id" : "fixture-redacted",
+          "tool_name" : "fixture-redacted"
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 9,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "tool.start"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "choices" : [
+            "once",
+            "deny",
+            "session",
+            "always"
+          ],
+          "command" : "python3 -c \"print(1)\"",
+          "description" : "fixture-redacted",
+          "execution_generation" : 1,
+          "kind" : "approval",
+          "prompt_id" : "7c1f391996034d88809ec5c41b59ee8e",
+          "timeout_s" : 300
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 10,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "approval.request"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "execution_generation" : 1,
+          "prompt_id" : "7c1f391996034d88809ec5c41b59ee8e"
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 11,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "approval.settled"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "args" : {
+            "command" : "python3 -c \"print(1)\""
+          },
+          "context" : "fixture-redacted",
+          "duration_s" : 0.4650009580000187,
+          "image_path" : null,
+          "inline_diff" : null,
+          "is_error" : false,
+          "name" : "fixture-redacted",
+          "result" : "fixture-redacted",
+          "tool_call_id" : "fixture-redacted",
+          "tool_id" : "fixture-redacted",
+          "tool_name" : "fixture-redacted"
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 12,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "tool.complete"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "iteration" : 2
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 13,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "agent.step"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "active_subagents" : 0,
+          "api_calls" : 1,
+          "avg_latency_s" : 0.01,
+          "cache_read_tokens" : 0,
+          "cache_write_tokens" : 0,
+          "completion_tokens" : 0,
+          "compression_count" : 0,
+          "config_context_length" : 256000,
+          "context_length" : 256000,
+          "context_source" : "fixture-redacted",
+          "context_tokens" : 0,
+          "fallback_model" : null,
+          "input_tokens" : 0,
+          "last_prompt_tokens" : 0,
+          "last_turn_tokens" : 0,
+          "model" : "fixture-redacted",
+          "output_tokens" : 0,
+          "prompt_tokens" : 0,
+          "provider" : "fixture-redacted",
+          "rate_limit" : null,
+          "reasoning_tokens" : 0,
+          "tokens_per_s" : null,
+          "total_tokens" : 0,
+          "usage" : {
+            "active_subagents" : 0,
+            "avg_latency_s" : 0,
+            "calls" : 1,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          }
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 14,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "session.usage"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "text" : "ಠ_ಠ ruminating..."
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 15,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "thinking.delta"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "text" : ""
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 16,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "thinking.delta"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "active_subagents" : 0,
+          "api_calls" : 2,
+          "avg_latency_s" : 0.01,
+          "cache_read_tokens" : 0,
+          "cache_write_tokens" : 0,
+          "completion_tokens" : 0,
+          "compression_count" : 0,
+          "config_context_length" : 256000,
+          "context_length" : 256000,
+          "context_source" : "fixture-redacted",
+          "context_tokens" : 0,
+          "fallback_model" : null,
+          "input_tokens" : 0,
+          "last_prompt_tokens" : 0,
+          "last_turn_tokens" : 0,
+          "model" : "fixture-redacted",
+          "output_tokens" : 0,
+          "prompt_tokens" : 0,
+          "provider" : "fixture-redacted",
+          "rate_limit" : null,
+          "reasoning_tokens" : 0,
+          "tokens_per_s" : null,
+          "total_tokens" : 0,
+          "usage" : {
+            "active_subagents" : 0,
+            "avg_latency_s" : 0,
+            "calls" : 2,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          }
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 17,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "session.usage"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "api_mode" : "fixture-redacted",
+          "context_length" : 256000,
+          "credential_hint" : "fixture-redacted",
+          "cwd" : "/fixture/cwd",
+          "desktop_protocol" : "fixture-redacted",
+          "fast" : false,
+          "last_active_at" : 1793992329.075391,
+          "launch_request" : {
+            "source" : "fixture-redacted"
+          },
+          "lazy" : false,
+          "model" : "fixture-redacted",
+          "profile_id" : "fixture-redacted",
+          "profile_name" : "default",
+          "provider" : "fixture-redacted",
+          "reasoning_effort" : "fixture-redacted",
+          "reasoning_effort_wire" : "fixture-redacted",
+          "service_tier" : "fixture-redacted",
+          "source" : "fixture-redacted",
+          "started_at" : 1793992328.881604,
+          "system_prompt" : "fixture-redacted",
+          "title" : null,
+          "tool_count" : 21,
+          "tools" : {},
+          "yolo" : false
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 18,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "session.info"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+          "content" : "fixture-redacted",
+          "outcome" : "fixture-redacted",
+          "persisted_turn" : {
+            "complete" : true,
+            "final_assistant_row_id" : 20,
+            "row_ids" : [
+              17,
+              18,
+              19,
+              20
+            ],
+            "submission_id" : "5800C19F-053E-4A02-A3E9-5380FBEEB690",
+            "user_row_id" : 17,
+            "user_row_ids" : [
+              17
+            ]
+          },
+          "status" : "complete",
+          "text" : "The command returned: 1.",
+          "usage" : {
+            "active_subagents" : 0,
+            "avg_latency_s" : 0,
+            "calls" : 2,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          }
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 19,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "message.complete"
+      },
+      {
+        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "authority_epoch" : 1,
+        "execution_generation" : 1,
+        "payload" : {
+          "authority_epoch" : 1,
+          "desktop_protocol" : "fixture-redacted",
+          "execution_generation" : 1,
+          "pending" : [],
+          "revision" : 1,
+          "running" : false,
+          "stored_session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4"
+        },
+        "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+        "seq" : 20,
+        "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
+        "type" : "session.info"
+      }
+    ],
+    "last_sequence" : 20,
+    "latest_seq" : 20,
+    "open_requests" : [],
+    "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+    "snapshot_required" : false,
+    "truncated" : false
+  },
+  "version" : "0.23.0"
+}

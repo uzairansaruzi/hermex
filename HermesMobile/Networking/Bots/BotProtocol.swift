@@ -66,11 +66,14 @@ enum BotFailure: Error, Equatable, LocalizedError {
     /// credentials met a sign-in, by password or browser, or one saved with them met a dashboard
     /// with none. The user has to sign in again, so the saved record says what the host asks. Permanent.
     case signInChanged
-    /// The address reaches a Hermes gateway's own listener (`hermes gateway run`, 0.22.1+; 0.23.0
-    /// serves the Webapp from it, on port 9120 by default), whose
-    /// sessions follow a protocol Hermex doesn't speak yet (#1341): its `gateway.ready` sets
-    /// `session_authority`, or its page withholds the session token from an open sign-in. Permanent.
+    /// The address reaches a gateway's Webapp (`hermes gateway run`, 0.22.1+) with no sign-in: its
+    /// page withholds the session token, and it hands out credentials only through one-use launch
+    /// links (#1606). A Webapp behind sign-in connects. Permanent.
     case gatewayListener
+    /// A gateway's Webapp refused the socket for this Profile's chats (#1606): the gateway serves
+    /// only some of the host's Profiles, as when two hold one bot token or a Profile runs its own
+    /// gateway, and says why in `hermes gateway status`. Permanent.
+    case profileNotServed(String)
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
@@ -96,7 +99,9 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
         case .signInExpired: return String(localized: "Your Hermes sign-in expired. Sign in again.")
         case .signInChanged: return String(localized: "This server’s sign-in changed. Sign in again to continue.")
-        case .gatewayListener: return String(localized: "This address is a Hermes gateway’s own listener, such as the Webapp, which Hermex doesn’t support yet. On the host, run hermes dashboard (port 9119 by default) and connect to that address.")
+        case .gatewayListener: return String(localized: "This Hermes Webapp has no sign-in, and Hermex connects only to one that has. Turn its sign-in on, or connect to hermes dashboard (port 9119 by default) instead.")
+        case .profileNotServed(let profile):
+            return String(localized: "This Hermes Webapp doesn’t serve the \(profile) Profile, so its chats can’t open here. On the host, hermes gateway status says why. Or connect to hermes dashboard, which serves every Profile.")
         case .browserSignInFailed: return String(localized: "The browser sign-in didn't finish. Try again.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         case .outdated(let version):
@@ -123,7 +128,7 @@ enum BotConnectionAdvice {
         switch error as? BotFailure {
         case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard,
              .blocked, .browserSignIn, .signInExpired, .signInChanged, .upgradeRefused, .outdated,
-             .gatewayListener: return false
+             .gatewayListener, .profileNotServed: return false
         case .rejected(-32601), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)
@@ -296,6 +301,9 @@ extension HermesAttemptRecord.Outcome {
 /// the socket every screen of the saved connection shares.
 @MainActor protocol BotTransport: AnyObject {
     var replayEpoch: String? { get }
+    /// Whether the socket speaks the canonical session protocol (#1341): each session then
+    /// replays under its own snapshot's `replay_epoch`, not the socket's `replayEpoch`.
+    var speaksCanonicalProtocol: Bool { get }
     var serverVersion: String? { get }
     /// `install_id` from `/api/status` at the last connect; nil when the host omits it.
     var serverInstallID: String? { get }
@@ -314,6 +322,9 @@ extension HermesAttemptRecord.Outcome {
     /// Sends one typed request. `validateDispatch` runs immediately before the
     /// socket write, so an action that went stale while queued is never sent.
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON
+    /// Answers the host's server request `id` with a JSON-RPC response frame carrying `result`, as a
+    /// canonical host takes a sudo or secret value (#1602). No reply comes back.
+    func respond(toRequest id: String, result: BotJSON, validateDispatch: (() throws -> Void)?) async throws
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String
     /// One file the host serves by `path` under `context`'s Profile and session. `limit` caps a
     /// preview's bytes; nil reads the whole file, as a MEDIA file's export does (#1112).
@@ -367,11 +378,19 @@ extension HermesAttemptRecord.Outcome {
     /// (`session.branch`, #1051) and have not closed, so a delete can tell its own from another
     /// app's (#1048).
     var attachedRuntimes: Set<String> { get }
+    /// Gives up this screen's hold on one canonical session it attached only to read, detaching
+    /// it when no other screen holds it (`HermesCanonicalSubscriptions`).
+    func release(profile: String, sessionID: String)
     /// Ends this screen's calls, uploads and downloads; the shared socket stays for others.
     func close()
 }
 
 extension BotTransport {
+    var speaksCanonicalProtocol: Bool { false }
+
+    func respond(toRequest id: String, result: BotJSON, validateDispatch: (() throws -> Void)?) async throws {
+        throw BotFailure.unsupported
+    }
     var serverVersion: String? { nil }
     var serverInstallID: String? { nil }
     var unavailableMethods: Set<String> { [] }
@@ -455,6 +474,7 @@ extension BotTransport {
     }
 
     var attachedRuntimes: Set<String> { [] }
+    func release(profile: String, sessionID: String) {}
 
     func call(_ call: HermesCall) async throws -> BotJSON {
         try await self.call(call, validateDispatch: nil)

@@ -635,6 +635,22 @@ import XCTest
         XCTAssertFalse(chat.model.isCachedCopyProvisional)
     }
 
+    /// A chat on a Profile the Webapp doesn't serve says so, with no Try Again, since retrying
+    /// can't help (#1606); a refused upgrade elsewhere keeps its retry.
+    func testAProfileTheWebappDoesntServeOffersNoTryAgain() async throws {
+        let context = try makeContext()
+        for (failure, retries) in [(BotFailure.profileNotServed("dev"), false), (.upgradeRefused(403), true)] {
+            let wire = HermesOfflineWire(rows: [])
+            wire.connectFailure = failure
+            let chat = makeChat(wire, target: .session(profile: "dev", key: "tip"))
+            await chat.model.reconnectStreamIfNeeded(modelContext: context)
+            chat.model.prepareInitialMessageLoad(modelContext: context)
+            await chat.model.loadMessages(modelContext: context)
+            XCTAssertEqual(chat.model.errorMessage, failure.localizedDescription, "\(failure)")
+            XCTAssertEqual(chat.model.errorMayRetry, retries, "\(failure)")
+        }
+    }
+
     /// A Bot Chat whose attach connected before the cache could show, but whose history read
     /// failed, keeps its cached copy as the offline state rather than an empty screen (#1144).
     func testABotChatAttachedBeforeItsCacheShowsKeepsItWhenHistoryFails() async throws {
@@ -967,8 +983,8 @@ import XCTest
         wire.submitGate = reply
         chat.reconnect.open()
         await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
-        chat.model.hermesConnectionDidChange(failure: nil)
-        chat.model.hermesConnectionDidChange(failure: nil)
+        chat.model.hermesConnectionDidChange(failure: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, mayRetry: true)
         reply.open()
         await waitUntil("the host took it") { chat.model.waitingSend == nil }
 
@@ -1020,7 +1036,7 @@ import XCTest
         XCTAssertEqual(kept?.text, "Ship it")
         XCTAssertEqual(kept?.botSubmissionUncertain, true)
         XCTAssertNil(kept?.waitingSend)
-        chat.model.hermesConnectionDidChange(failure: nil)
+        chat.model.hermesConnectionDidChange(failure: nil, mayRetry: true)
         XCTAssertEqual(wire.prompts, ["Ship it"])
     }
 

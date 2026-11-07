@@ -159,6 +159,7 @@ struct ScreenView: View {
         case .pluginNeedsRestart(let canRestart):
             ScreenNotice(title: "Restart Hermes to finish",
                          message: canRestart ? "The plugin is installed. Restarting stops any running work on this host."
+                             : session.servesWebapp ? "The plugin is installed. Restart the Hermes gateway on the host, then check again."
                              : "The plugin is installed. Restart the dashboard on the host, then check again.") {
                 if canRestart {
                     Button("Restart Hermes") { isConfirmingRestart = true }

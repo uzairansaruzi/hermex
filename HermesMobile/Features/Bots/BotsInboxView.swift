@@ -301,6 +301,7 @@ import SwiftUI
             Button("New Group Chat", systemImage: "person.2") {
                 guard let connection = inbox.connection else { return }
                 roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
+                    seatable: inbox.roomCapabilities.seatableProfiles,
                     onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
             }
             .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))

@@ -155,7 +155,8 @@ import Observation
     /// answered now.
     func prepareAnswer() -> HermesAnswerAction? {
         guard mayAnswer, let runtime = engine.runtime, let id = onScreen?.requestID else { return nil }
-        return HermesAnswerAction(generation: engine.generation, runtime: runtime, requestID: id)
+        let prompt = open.first { $0.pending?.requestID == id }?.promptGeneration
+        return HermesAnswerAction(generation: engine.generation, runtime: runtime, requestID: id, promptGeneration: prompt)
     }
 
     private var summaryScope: ApprovalSummaries.Scope? {

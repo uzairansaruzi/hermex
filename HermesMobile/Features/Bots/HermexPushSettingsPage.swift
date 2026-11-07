@@ -232,14 +232,16 @@ import SwiftUI
                     action: String(localized: "Update plugin…")) { isConfirmingUpdate = true }
         case .updating(let step):
             callout("circle.dashed", tint: Color(.appTextSecondary), title: Text("Updating the plugin…"), message: Text(step.progress))
-        case .status(.restartNeeded(let loaded)) where HermexPushPlugin.canRestart(loaded):
+        case .status(.restartNeeded(let loaded)) where provisioner.canRestart(loaded):
             // The loaded plugin has the restart route, so restarting is the card's one action.
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
                     message: Text("Hermes loads the new plugin when it restarts."),
                     action: String(localized: "Restart Hermes…")) { isConfirmingRestart = true }
         case .status(.restartNeeded), .status(.setupNeedsRestart):
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
-                    message: Text("Restart `hermes dashboard` on your host, then check again."),
+                    // A gateway's Webapp is the gateway itself, not `hermes dashboard` (#1606).
+                    message: provisioner.servesWebapp ? Text("Restart the Hermes gateway on your host, then check again.")
+                        : Text("Restart `hermes dashboard` on your host, then check again."),
                     action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
                 Task { await provisioner.checkPluginAgain() }
             }

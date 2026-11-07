@@ -296,6 +296,8 @@ enum BotProfileName {
         let created = try await client.call(.sessionCreate(profile: name), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard let runtime = created["session_id"].text, !runtime.isEmpty else { throw BotFailure.unsupported }
+        // A canonical create already titled and hid it (#1603), and has no `session.title`.
+        if client.speaksCanonicalProtocol { outcomes[.chat] = .done; return }
         do {
             // The created row is lazy; the title write persists it so the roster and
             // the phone's exact-title lookup find it before any prompt.

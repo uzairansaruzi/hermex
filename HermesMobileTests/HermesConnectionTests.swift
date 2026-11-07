@@ -306,7 +306,8 @@ import XCTest
         ]
         for release in releases {
             let label = release.version ?? "missing"
-            var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+            var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                             "install_id": .string("fixture-install")]
             status["version"] = release.version.map(BotJSON.string)
             HermesHostFixture.reset()
             let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
@@ -860,6 +861,19 @@ import XCTest
         }
     }
 
+    /// The public status read carries no cookies, so a sign-in cookie left from an earlier attempt
+    /// can't make a gateway's Webapp answer it as signed in and pass for a dashboard (#1606); the
+    /// signed-in read that follows does carry them.
+    func testOnlyTheSignedInStatusReadCarriesCookies() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.path == "/api/status"
+                ? .json(200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])])) : nil
+        })
+        try await http.signIn()
+        let statuses = HermesHostFixture.requests.filter { $0.url?.path == "/api/status" }
+        XCTAssertEqual(statuses.map(\.httpShouldHandleCookies), [false, true])
+    }
+
     /// A host restart replaces the token, so the 401 that follows reads the page again and the
     /// refused request is resent with the new one.
     func testAnOpenDashboardsReplacedTokenIsReadAgainAndTheRequestResent() async throws {
@@ -1107,7 +1121,7 @@ final class HermesHostFixture: URLProtocol {
         switch request.url?.path {
         case "/api/status":
             return .json(200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
-                                       "version": .string("0.21.5")]))
+                                       "version": .string("0.21.5"), "install_id": .string("fixture-install")]))
         case "/api/auth/me": return .json(200, .object(["provider": .string("basic")]))
         case "/api/auth/ws-ticket": return .json(200, .object(["ticket": .string("ticket")]))
         case let path? where path.hasPrefix("/api/sessions/") && path.hasSuffix("/mutation-snapshot"):
