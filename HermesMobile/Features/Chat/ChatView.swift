@@ -294,7 +294,6 @@ struct ChatView: View {
     private let composerMaximumWidth = ChatReadingWidth.maximumWidth(horizontalPadding: 16)
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -1134,7 +1133,7 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         // A bot's pill names the chat; its title stays only for Back on screens pushed over it.
         .toolbar(removing: viewModel.hermesBotChat == nil ? nil : .title)
-        .modifier(ChatNavigationBackground(reduceTransparency: reduceTransparency))
+        .modifier(ChatNavigationBackground())
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .pushPresence(viewModel.pushPresence)
     }
@@ -4721,24 +4720,19 @@ private struct ChatDraftSyncModifier: ViewModifier {
     }
 }
 
-/// Owns the Sessions navigation background independently of the nested transcript's
-/// scroll-edge detection. UIKit extends this native background through the status bar.
+/// Covers the transcript behind the Chat title before iOS 26. iOS 26+ leaves the bar
+/// transparent and relies on the transcript's native scroll-edge effect, which runs to
+/// the screen's top edge; a forced bar background stops at the bar and leaves a gap
+/// wherever no status bar sits above it, such as the folded iPhone Duo.
 struct ChatNavigationBackground: ViewModifier {
-    let reduceTransparency: Bool
-    @Environment(\.isAppThemed) private var isThemed
-
     func body(content: Content) -> some View {
-        content
-            .toolbarBackground(backgroundStyle, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-    }
-
-    private var backgroundStyle: AnyShapeStyle {
-        // iOS's material grays a theme's canvas out, so a theme draws its own.
-        if #available(iOS 26, *), !reduceTransparency, !isThemed {
-            return AnyShapeStyle(.regularMaterial)
+        if #available(iOS 26, *) {
+            content
+        } else {
+            content
+                .toolbarBackground(Color(uiColor: .appCanvas), for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
         }
-        return AnyShapeStyle(Color(uiColor: .appCanvas))
     }
 }
 
