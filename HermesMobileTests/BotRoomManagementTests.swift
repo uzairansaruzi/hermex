@@ -2,6 +2,101 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotRoomManagementTests: XCTestCase {
+    func testUnifiedGroupPickerDispatchesLocalMixedAndPeerOnlySelections() async throws {
+        let peer = try XCTUnwrap(BotPeer(.object(["route_id": .string("opaque"), "kind": .string("peer"),
+            "alias": .string("remote"), "profile": .string("dev"), "reachability": .string("reachable"),
+            "display_name": .string("Same name"), "installation_id": .string("other")])))
+        let peer2 = try XCTUnwrap(BotPeer(.object(["route_id": .string("opaque-2"), "kind": .string("peer"),
+            "alias": .string("second"), "profile": .string("dev"), "reachability": .string("reachable")])))
+        let local = profile("dev", display: "Same name")
+        for (selection, expected) in [([local, profile("default")], "groups.create"),
+                                      ([local, BotProfile(peer: peer)], "groups.create_mixed"),
+                                      ([BotProfile(peer: peer), BotProfile(peer: peer2)], "groups.create_mixed")] {
+            let wire = UnifiedRosterGroupWire(peers: [peer.json, peer2.json])
+            let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+            try store.save(connection, server: server)
+            let creator = BotRoomCreator(server: server, connection: connection, roster: selection,
+                seatable: ["dev", "default"], store: store, makeWire: { _ in wire })
+            selection.forEach(creator.select)
+            XCTAssertEqual(creator.selected.count, 2)
+            await creator.create()
+            XCTAssertEqual(wire.writes.map(\.method), [expected])
+            XCTAssertNotNil(creator.created)
+            let payload = try XCTUnwrap(wire.writes.first).params()
+            let rows = try XCTUnwrap(payload["members"]?.list)
+            if expected == "groups.create_mixed" {
+                XCTAssertEqual(rows.filter { $0["kind"].text == "peer" }.count, selection.filter { $0.peer != nil }.count)
+                XCTAssertEqual(rows.last?["route_id"].text, selection.last?.peer?.id)
+                XCTAssertEqual(rows.last?["profile"], .null)
+            } else { XCTAssertTrue(rows.allSatisfy { $0["kind"] == .null }) }
+        }
+    }
+
+    func testMixedCreateRefreshesOpaqueRoutesBeforeDispatch() async throws {
+        func peer(_ route: String) throws -> BotPeer {
+            try XCTUnwrap(BotPeer(.object(["kind": .string("peer"), "route_id": .string(route),
+                "alias": .string("office"), "profile": .string("dev"),
+                "reachability": .string("reachable"), "installation_id": .string("install:office")])))
+        }
+        let old = try peer("before-restart"), fresh = try peer("after-restart")
+        let wire = UnifiedRosterGroupWire(peers: [fresh.json])
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let roster = [profile("dev"), BotProfile(peer: old)]
+        let creator = BotRoomCreator(server: server, connection: connection, roster: roster,
+            store: store, makeWire: { _ in wire })
+        roster.forEach(creator.select)
+        await creator.create()
+        let call = try XCTUnwrap(wire.writes.first)
+        XCTAssertEqual(try call.params()["members"]?.list?.last?["route_id"].text, "after-restart")
+        XCTAssertEqual(creator.created?.members.last?.peerID, "after-restart")
+    }
+
+    func testMixedReplyWithAnotherPeerTargetDoesNotReportSuccess() async throws {
+        let peer = try XCTUnwrap(BotPeer(.object(["kind": .string("peer"), "route_id": .string("selected"),
+            "alias": .string("office"), "profile": .string("dev"), "reachability": .string("reachable")])))
+        let wire = UnifiedRosterGroupWire(peers: [peer.json])
+        wire.returnedPeerID = "another-peer"
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let roster = [profile("dev"), BotProfile(peer: peer)]
+        let creator = BotRoomCreator(server: server, connection: connection, roster: roster,
+            store: store, makeWire: { _ in wire })
+        roster.forEach(creator.select)
+        await creator.create()
+        XCTAssertEqual(wire.writes.count, 1)
+        XCTAssertNil(creator.created)
+        XCTAssertTrue(creator.locked)
+    }
+
+    func testPeerGoingOfflineAfterSelectionPreventsMixedCreate() async throws {
+        let peer = try XCTUnwrap(BotPeer(.object(["route_id": .string("opaque"), "kind": .string("peer"),
+            "alias": .string("remote"), "profile": .string("dev"), "reachability": .string("reachable")])))
+        let wire = UnifiedRosterGroupWire(peers: [peer.unavailable.json])
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let roster = [profile("dev"), BotProfile(peer: peer)]
+        let creator = BotRoomCreator(server: server, connection: connection, roster: roster,
+            store: store, makeWire: { _ in wire })
+        roster.forEach(creator.select)
+        await creator.create()
+        XCTAssertTrue(wire.writes.isEmpty)
+        XCTAssertNil(creator.created)
+        XCTAssertNotNil(creator.message)
+    }
+
+    func testUnavailablePeerIsVisibleButCannotBeSelectedOrDispatched() throws {
+        let peer = try XCTUnwrap(BotPeer(.object(["route_id": .string("offline"), "kind": .string("peer"),
+            "alias": .string("remote"), "profile": .string("dev"), "reachability": .string("unreachable"),
+            "unavailable_reason": .string("Unreachable")])))
+        let creator = BotRoomCreator(server: server, connection: connection,
+            roster: [profile("dev"), BotProfile(peer: peer)], seatable: ["dev"])
+        XCTAssertEqual(creator.remaining.count, 2)
+        creator.remaining.forEach(creator.select)
+        XCTAssertEqual(creator.selected.count, 1)
+        XCTAssertFalse(creator.mayCreate)
+    }
+
     private let server = URL(string: "https://webui.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!, username: "u", password: "p")
     private func profile(_ id: String, hidden: Bool = false, display: String? = nil) -> BotProfile {
@@ -238,5 +333,39 @@ import XCTest
         XCTAssertFalse(BotRoomRPC.validName(String(repeating: "👩‍💻", count: 100)))
         XCTAssertThrowsError(try HermesCall.groupsRename(roomID: "room", eventID: "", name: "x").params())
         XCTAssertThrowsError(try HermesCall.groupsDisband(roomID: "../room").params())
+    }
+}
+
+@MainActor private final class UnifiedRosterGroupWire: BotTransport {
+    var replayEpoch: String? { nil }
+    var onEvent: ((BotJSON) -> Void)?
+    var onDisconnect: ((Error) -> Void)?
+    let peers: [BotJSON]
+    var writes: [HermesCall] = []
+    var returnedPeerID: String?
+    init(peers: [BotJSON]) { self.peers = peers }
+    func connect() async throws {}
+    func close() {}
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        try validateDispatch?()
+        switch call {
+        case .peersRoster: return .object(["bots": .array(peers)])
+        case .groupsCapabilities:
+            return .object(["driver": .bool(true), "authority_gateway_id": .string("install"),
+                "methods": .array(["groups.list", "groups.state", "groups.log", "groups.create"].map(BotJSON.string))])
+        case .groupsCreate(let room), .groupsCreateMixed(let room):
+            _ = try call.params(); writes.append(call)
+            return .object(["room": .object(["room_id": .string(room.roomID), "name": .string(room.name),
+                "authority_gateway_id": .string("install"), "members": .array(room.members.map { member in
+                    var fields = member.json.fields ?? [:]
+                    if let peer = member.peer {
+                        fields["target"] = .object(["kind": .string("peer"), "peer_id": .string(returnedPeerID ?? peer.id),
+                            "installation_id": peer.installationID.map(BotJSON.string) ?? .null,
+                            "profile": .string(peer.profile)])
+                    }
+                    return .object(fields)
+                })])])
+        default: throw BotFailure.unsupported
+        }
     }
 }

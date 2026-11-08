@@ -199,6 +199,10 @@ enum BotAddressError: LocalizedError, Equatable {
 /// `groups` are executable group rooms, not sections.
 struct BotProfile: Identifiable, Hashable {
     let id: String
+    /// Present only for a remote bot. Local Profile IDs remain unchanged for existing routes.
+    let peer: BotPeer?
+    var rosterID: String { peer.map { "peer:" + $0.identity } ?? "local:" + id }
+    var reachable: Bool { peer?.reachable ?? true }
     let name: String
     let title: String?
     let displayName: String?
@@ -230,6 +234,7 @@ struct BotProfile: Identifiable, Hashable {
     var isPhoto: Bool { look["imageKind"]?.text == "photo" }
 
     init?(_ row: BotJSON) {
+        peer = nil
         guard let profile = row["name"].text, !profile.isEmpty else { return nil }
         id = profile
         let look = row["ui_meta"]["hermes-bots"]
@@ -248,6 +253,14 @@ struct BotProfile: Identifiable, Hashable {
         self.look = look.fields ?? [:]
         hasAvatar = row["has_avatar"].flag == true
         lookRevision = row["ui_meta_revisions"]["hermes-bots"].integer
+    }
+
+    init(peer: BotPeer) {
+        self.peer = peer; id = peer.identity; name = peer.displayName ?? peer.profile
+        title = nil; displayName = peer.displayName; description = nil; preview = nil
+        lastActive = nil; canonicalID = nil; canonicalTipID = nil
+        pinned = false; hidden = false; sectionID = nil; sectionName = nil
+        look = [:]; hasAvatar = false; lookRevision = nil
     }
 
     private static func firstText(_ candidates: BotJSON...) -> String? {
@@ -297,5 +310,99 @@ enum BotLiveStatus: Int, Comparable {
             result[profile] = max(result[profile] ?? status, status)
         }
         return result
+    }
+}
+
+/// Opaque route IDs are refreshed before dispatch; alias and profile key picks and drafts.
+/// Optional additions are decoded independently; unknown host fields are ignored.
+struct BotPeer: Codable, Hashable, Sendable {
+    let id: String
+    let kind: String
+    let peerAlias: String
+    let profile: String
+    let displayName: String?
+    var reachability: String
+    var reachable: Bool { reachability == "reachable" }
+    var unavailableReason: String? { reachable ? nil : reachability.capitalized }
+    var rosterDetail: String {
+        let origin = peerAlias + " / " + profile
+        return unavailableReason.map { origin + " ? " + $0 } ?? origin
+    }
+    let installationID: String?
+    let roomLink: RoomLink?
+    var unavailable: Self {
+        var copy = self; copy.reachability = "unreachable"
+        return copy
+    }
+
+    struct RoomLink: Codable, Hashable, Sendable {
+        var installationID: String?
+        var protocolVersions: [Int]?
+        var linkModes: [String]?
+        var persistentProcess: Bool?
+        var text: Bool?
+        var attachments: Bool?
+        var executionPolicy: BotJSON?
+        var catalogDigest: String?
+        enum CodingKeys: String, CodingKey {
+            case installationID = "installation_id", protocolVersions = "protocol_versions"
+            case linkModes = "link_modes", persistentProcess = "persistent_process"
+            case text, attachments, executionPolicy = "execution_policy", catalogDigest = "catalog_digest"
+        }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            installationID = try? c.decode(String.self, forKey: .installationID)
+            protocolVersions = try? c.decode([Int].self, forKey: .protocolVersions)
+            linkModes = try? c.decode([String].self, forKey: .linkModes)
+            persistentProcess = try? c.decode(Bool.self, forKey: .persistentProcess)
+            text = try? c.decode(Bool.self, forKey: .text)
+            attachments = try? c.decode(Bool.self, forKey: .attachments)
+            executionPolicy = try? c.decode(BotJSON.self, forKey: .executionPolicy)
+            catalogDigest = try? c.decode(String.self, forKey: .catalogDigest)
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id = "route_id", kind, profile, reachability
+        case roomLink = "room_link"
+        case peerAlias = "alias", displayName = "display_name"
+        case installationID = "installation_id"
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        kind = (try? c.decode(String.self, forKey: .kind)) ?? "peer"
+        peerAlias = try c.decode(String.self, forKey: .peerAlias)
+        profile = try c.decode(String.self, forKey: .profile)
+        displayName = try? c.decode(String.self, forKey: .displayName)
+        reachability = (try? c.decode(String.self, forKey: .reachability)) ?? "unsupported"
+        installationID = try? c.decode(String.self, forKey: .installationID)
+        roomLink = try? c.decode(RoomLink.self, forKey: .roomLink)
+    }
+    /// Stable when probes omit installation identity or a gateway restart rotates route IDs.
+    /// Length prefixes avoid delimiter collisions, including aliases containing punctuation.
+    var identity: String {
+        [kind, peerAlias, profile].map { "\($0.utf8.count):\($0)" }.joined()
+    }
+    init?(_ json: BotJSON) {
+        guard let data = try? JSONEncoder().encode(json),
+              let peer = try? JSONDecoder().decode(Self.self, from: data),
+              peer.kind == "peer", !peer.id.isEmpty, !peer.peerAlias.isEmpty, !peer.profile.isEmpty else { return nil }
+        self = peer
+    }
+    var json: BotJSON {
+        guard let data = try? JSONEncoder().encode(self), let value = try? JSONDecoder().decode(BotJSON.self, from: data) else { return .null }
+        return value
+    }
+}
+
+/// An acknowledgement must belong to the selected route and name the canonical session.
+struct BotPeerDelivery {
+    let status: String
+    init?(_ result: BotJSON, routeID: String) {
+        guard result["route_id"].text == routeID,
+              let session = result["session_id"].text, !session.isEmpty,
+              let status = result["status"].text, ["completed", "queued"].contains(status) else { return nil }
+        self.status = status
     }
 }

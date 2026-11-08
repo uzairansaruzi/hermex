@@ -44,6 +44,16 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 | Hidden Bot Chats in a merged recency list | n-a | The home keeps Bots and Sessions as two sides (#709). |
 | Live Activity outcome after a mid-turn compression while suspended | accepted | The relay's stale date covers it. |
 
+## Custom unified peer roster
+
+The `feature/unified-peer-roster` client adds `peers.roster`, `peers.dm` and
+`groups.create_mixed` for the sibling server's opaque-route contract. Locals still
+use `profiles.list` and local-only groups still use `groups.create`.
+[bots.md](bots.md) records the request shapes, flat picker, peer draft isolation
+and RoomLink ownership. This custom contract does not advance the upstream pin;
+the generated OpenRPC and Python handlers have been inspected locally. Live
+integration validation remains outstanding.
+
 ## Upstream RPC methods Hermex never calls
 
 At the pin (0.23.0, `2bd378ed`) the gateway contract has 261 methods and `HermesCall` sends

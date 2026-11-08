@@ -35,7 +35,6 @@ import SwiftUI
     /// The bot the "New Section" alert files, and the name being typed for it.
     @State private var filing: BotProfile?
     @State private var newSectionName = ""
-    @State private var showingSectionOrder = false
     @State private var searchedRoom: BotRoomKey?
     @State private var searchedSequence: Int?
     @State private var roomSequence: Int?
@@ -203,45 +202,31 @@ import SwiftUI
                             .accessibilityLabel(Text("Loading bots"))
                             .accessibilityHidden(index > 0)
                     }
-                } else if inbox.profiles.isEmpty && inbox.link == .live {
+                } else if inbox.flatRoster.isEmpty && inbox.link == .live {
                     home == nil ? Text("No bots yet. Tap + to create one.") : Text("No bots yet. Tap New Chat to create one.")
                 }
                 if let notice = inbox.notice {
                     Text(notice).font(AppFont.callout()).foregroundStyle(.appSecondary).listRowSeparator(.hidden)
                 }
-                let pinned = inbox.pinned
-                if !pinned.isEmpty {
-                    // Pinned chats sit above the list as large tiles: as many columns as
-                    // there are pinned chats, up to three, so one or two sit centered and
-                    // four or more wrap instead of being clipped away.
-                    // Top-aligned, so a tile with a status line under its name keeps its avatar
-                    // level with its neighbours'.
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: min(pinned.count, 3)), spacing: 24) {
-                        ForEach(pinned) { chat in
-                            // The grid is one list row, and a row merges every
-                            // `.contextMenu` inside it into one, so holding any tile
-                            // lifted the whole grid with the first bot's menu. A Menu
-                            // with a primary action is its own control: tap opens
-                            // the chat, a hold shows this chat's menu.
-                            switch chat {
-                            case .bot(let profile):
-                                Menu { organizeMenu(profile) } label: {
-                                    BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                                                status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
-                                } primaryAction: { inbox.selection.profile = profile }
-                                .buttonStyle(.plain)
-                            case .room(let room):
-                                Menu { roomOrganizeMenu(room) } label: {
-                                    BotRoomHeroTile(room: room, roster: inbox.profiles, avatars: inbox.avatars)
-                                } primaryAction: { openRoom(room) }
-                                .buttonStyle(.plain)
+                ForEach(inbox.flatRoster, id: \.rosterID) { bot in
+                    if bot.peer == nil { row(bot, dimmed: bot.hidden) }
+                    else {
+                        Button { inbox.selection.profile = bot } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "network").frame(width: 44)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(verbatim: bot.name).foregroundStyle(.appPrimary)
+                                    Text(verbatim: bot.peer?.rosterDetail ?? "Peer unavailable")
+                                        .font(AppFont.caption()).foregroundStyle(.appSecondary)
+                                }
                             }
                         }
+                        .disabled(!bot.reachable || inbox.link != .live)
                     }
-                    .padding(.vertical, 20)
-                    .listRowSeparator(.hidden)
                 }
-                chatSections(inbox.sections)
+                chatRows((inbox.pinned + inbox.sections.flatMap(\.chats)).filter {
+                    if case .room = $0 { return true }; return false
+                })
                 // The home's filter holds this instead.
                 if home == nil && inbox.hiddenCount > 0 {
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
@@ -300,28 +285,22 @@ import SwiftUI
             Button("New Bot", systemImage: "plus.bubble") { creation = .new }
             Button("New Group Chat", systemImage: "person.2") {
                 guard let connection = inbox.connection else { return }
-                roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
+                roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles + inbox.peers,
                     seatable: inbox.roomCapabilities.seatableProfiles,
                     onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
             }
-            .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
-            if home == nil && inbox.reorderableSectionNames.count >= 2 {
-                Divider()
-                Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
-            }
+            .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create") && !inbox.roomCapabilities.methods.contains("groups.create_mixed"))
         } label: { Label("New chat", systemImage: home == nil ? "plus" : "square.and.pencil") }
         .disabled(inbox.link != .live)
     }
 
-    /// The home's filter: hidden bots and groups, and the order of Desktop's sections.
+    /// The home's filter reveals hidden local bots and groups.
     private var filterMenu: some View {
         Menu {
             Toggle(isOn: $inbox.showsHidden) {
                 Label("Show hidden (\(inbox.hiddenCount))", systemImage: "eye")
             }
             .disabled(inbox.hiddenCount == 0 && !inbox.showsHidden)
-            Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
-                .disabled(inbox.reorderableSectionNames.count < 2)
         } label: {
             Label("Filter", systemImage: "line.3.horizontal.decrease")
         }
@@ -354,30 +333,7 @@ import SwiftUI
         if let key = searchedRoom, key.connectionID == inbox.connection?.id,
            inbox.rooms.contains(where: { $0.id == key.roomID }) { roomSequence = searchedSequence; inbox.selection.room = key; return }
         guard let searched = searchedProfile, inbox.connection?.id == searched.connectionID else { return }
-        inbox.selection.profile = inbox.profiles.first { $0.id == searched.profileID }
-    }
-
-    /// The list under the tiles. Headers appear only when a named section is on
-    /// screen; without one the unfiled block reads as the flat list it always was.
-    @ViewBuilder private func chatSections(_ sections: [BotInbox.ChatSection]) -> some View {
-        let headed = sections.contains { $0.name != nil }
-        ForEach(sections) { section in
-            if headed {
-                Section {
-                    chatRows(section.chats)
-                } header: {
-                    // A Desktop name is the user's own text, never a catalog key.
-                    Group {
-                        if let name = section.name { Text(verbatim: name) } else { Text("Other chats") }
-                    }
-                    .font(AppFont.subheadline(weight: .semibold)).foregroundStyle(.appSecondary)
-                    .lineLimit(1).truncationMode(.tail).textCase(nil)
-                    .accessibilityAddTraits(.isHeader)
-                }
-            } else {
-                chatRows(section.chats)
-            }
-        }
+        inbox.selection.profile = (inbox.profiles + inbox.peers).first { $0.rosterID == searched.profileID && $0.reachable }
     }
 
     private func chatRows(_ chats: [BotInbox.ChatRow]) -> some View {
@@ -442,7 +398,14 @@ import SwiftUI
     /// The selected bot's canonical Bot Chat in the regular chat (#1146), where every bot route
     /// lands. A refused password comes back here to the inbox's sign-in form.
     @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
-        if let chat = inbox.selection.chat(server: server, connection: connection) {
+        if let peer = profile.peer {
+            BotPeerMessageView(peer: peer, server: server, connection: connection,
+                currentPeer: {
+                    let peer = inbox.peers.first { $0.rosterID == profile.rosterID }?.peer
+                    return inbox.link == .live ? peer : peer?.unavailable
+                })
+                .id([server.absoluteString, connection.id.uuidString, peer.identity])
+        } else if let chat = inbox.selection.chat(server: server, connection: connection) {
             ChatView(hermesSession: chat, continuity: inbox.selection.chatContinuity)
             .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); inbox.selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
@@ -528,7 +491,7 @@ import SwiftUI
                 }
             },
             openScreen: inbox.selection.profile.flatMap { profile in
-                canOpenScreen ? { openScreen(profile) } : nil
+                canOpenScreen && profile.peer == nil ? { openScreen(profile) } : nil
             }
         )
     }
@@ -562,7 +525,7 @@ import SwiftUI
     }
 
     private func openScreen(_ profile: BotProfile) {
-        guard canOpenScreen, let connection = inbox.connection else { return }
+        guard canOpenScreen, profile.peer == nil, let connection = inbox.connection else { return }
         screenTarget = BotScreenTarget(profile: profile, connection: connection)
     }
 
@@ -570,7 +533,7 @@ import SwiftUI
     /// connection. Read only on a key press, never in `body`.
     private var keyboardShortcutChats: [BotInbox.ChatRow] {
         guard inbox.connection != nil else { return [] }
-        return inbox.pinned + inbox.sections.flatMap(\.chats)
+        return inbox.flatRoster.filter(\.reachable).map(BotInbox.ChatRow.bot) + (inbox.pinned + inbox.sections.flatMap(\.chats)).filter { if case .room = $0 { return true }; return false }
     }
 
     /// The open bot's or room's `ChatRow.id`, where Next and Previous Chat step from.
@@ -747,7 +710,7 @@ extension BotsInboxView {
                     searchedRoom = inbox.roomKey(room); searchedSequence = sequence
                 }) { profile in
                     guard let connection = inbox.connection else { return }
-                    searchedProfile = (connection.id, profile.id)
+                    searchedProfile = (connection.id, profile.rosterID)
                 }
             }
             .onChange(of: inbox.connection?.id) {
@@ -760,10 +723,6 @@ extension BotsInboxView {
                 roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
                 deleting = nil
                 renamingRoom = nil; disbanding = nil; filing = nil
-                showingSectionOrder = false
-            }
-            .sheet(isPresented: $showingSectionOrder) {
-                BotSectionOrderView(inbox: inbox)
             }
             .sheet(isPresented: $showingSetup, onDismiss: { updatingSignIn = false; revision = UUID() }) {
                 NavigationStack {
@@ -847,43 +806,6 @@ private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
                         Button("Bot connection", systemImage: "gearshape", action: openSetup)
                     }
                 }
-        }
-    }
-}
-
-/// Places Desktop's named sections for this phone's inbox. Every drag saves the
-/// whole list at once; Reset to A–Z forgets the placement. The unfiled block is
-/// not listed because it always stays last, nor is a section the list never heads.
-private struct BotSectionOrderView: View {
-    @Environment(\.dismiss) private var dismiss
-    let inbox: BotInbox
-
-    var body: some View {
-        let sections = inbox.reorderableSectionNames
-        NavigationStack {
-            AppList {
-                Section {
-                    ForEach(sections) { section in
-                        Text(verbatim: section.name).lineLimit(1)
-                    }
-                    .onMove { from, to in
-                        var ids = sections.map(\.id)
-                        ids.move(fromOffsets: from, toOffset: to)
-                        inbox.placeReorderableSections(ids)
-                    }
-                }
-                Section {
-                    Button("Reset to A–Z") { inbox.resetSectionOrder() }
-                        .disabled(inbox.sectionOrder.isEmpty)
-                }
-            }
-            .environment(\.editMode, .constant(.active))
-            .themedPageBackground()
-            .navigationTitle("Reorder Sections")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
         }
     }
 }
@@ -1079,5 +1001,101 @@ enum BotInboxDateLabel {
             return date.formatted(style.weekday(.wide))
         }
         return date.formatted(style.month(.abbreviated).day())
+    }
+}
+
+/// A direct peer delivery never enters the local session engine. Drafts use their own
+/// typed context, scoped to the configured server, connection and full peer identity.
+@MainActor private struct BotPeerMessageView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    let peer: BotPeer
+    let server: URL
+    let connection: BotConnection
+    let currentPeer: () -> BotPeer?
+    @State private var text = ""
+    @State private var loaded = false
+    @State private var busy = false
+    @State private var notice: String?
+    @State private var wire: (any BotTransport)?
+    @State private var owner = UUID()
+    @State private var requestID = UUID().uuidString
+    @State private var attemptedText: String?
+    @State private var reply: String?
+    private var key: ChatDraftKey { .peer(server: server, connectionID: connection.id, peer: peer) }
+    private var available: Bool { currentPeer()?.reachable == true }
+
+    var body: some View {
+        Form {
+            Section {
+                Text(verbatim: peer.peerAlias + " / " + peer.profile).foregroundStyle(.secondary)
+                if !available {
+                    Text(verbatim: currentPeer()?.unavailableReason ?? "Peer unavailable")
+                }
+                TextField("Message", text: $text, axis: .vertical).disabled(busy || !loaded)
+                Button("Send") { Task { await send() } }
+                    .disabled(!loaded || busy || !available || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if let notice { Text(verbatim: notice) }
+                if let reply { Text(verbatim: reply).textSelection(.enabled) }
+            }
+        }
+        .navigationTitle(peer.displayName ?? peer.profile)
+        .task {
+            let draft = await ChatDraftStore.shared.draft(for: key)
+            guard !Task.isCancelled else { return }
+            text = draft?.text ?? ""
+            if let id = draft?.peerRequestID { requestID = id; attemptedText = draft?.peerRequestText }
+            loaded = true
+        }
+        .onChange(of: text) {
+            guard loaded else { return }
+            ChatDraftStore.shared.setDraft(text, for: key)
+        }
+        .onDisappear { suspend() }
+        .onChange(of: scenePhase) { if scenePhase == .background { suspend() } }
+    }
+
+    private func suspend() {
+        owner = UUID(); wire?.close(); wire = nil; busy = false
+    }
+
+    private func send() async {
+        guard available, !busy, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let token = UUID(); owner = token
+        let client = BotClient(saved: connection, server: server)
+        wire = client; busy = true; notice = nil
+        let message = text
+        if attemptedText != message { requestID = UUID().uuidString; attemptedText = message }
+        defer { client.close(); if owner == token { wire = nil; busy = false } }
+        func check() throws {
+            guard owner == token, !Task.isCancelled, available,
+                  try BotConnectionStore().load(server: server)?.id == connection.id else { throw BotFailure.stale }
+        }
+        do {
+            ChatDraftStore.shared.setPeerRequest(id: requestID, text: message, for: key)
+            try await ChatDraftStore.shared.flush()
+            try check(); try await client.connect(); try check()
+            let roster = try await client.call(.peersRoster)
+            try check()
+            guard let rows = roster["bots"].list,
+                  let fresh = BotInbox.peerRoster(rows).first(where: { $0.peer?.identity == peer.identity && $0.reachable })?.peer,
+                  peer.installationID == nil || peer.installationID == fresh.installationID else {
+                notice = "This peer is unavailable. Your draft is kept."
+                return
+            }
+            let result = try await client.call(.peersDM(routeID: fresh.id,
+                                              message: message, requestID: requestID), validateDispatch: { try check() })
+            try check()
+            guard BotPeerDelivery(result, routeID: fresh.id) != nil else {
+                notice = "Delivery outcome unknown. Your draft is kept; an explicit retry uses the same request."
+                return
+            }
+            reply = result["reply"].text
+            text = ""; attemptedText = nil
+            ChatDraftStore.shared.clearDraft(for: key)
+            notice = result["status"].text == "queued" ? "Message queued" : "Message delivered"
+        } catch {
+            guard owner == token else { return }
+            notice = error.localizedDescription
+        }
     }
 }

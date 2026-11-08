@@ -781,10 +781,10 @@ Unknown values read as neutral.
 
 `BotInbox` owns the roster for one configured server and one live subscription
 that lasts while the inbox is on screen. `open()` connects, reads
-`profiles.list`, then keeps its client on the shared socket; the gateway advertises `change_events`
+`profiles.list` for locals and `peers.roster` for peers, then keeps its client on the shared socket; the gateway advertises `change_events`
 in `gateway.ready` and broadcasts `sessions.changed` whenever any served
 Profile's `state.db` moves (floored at two seconds, `change_watcher.py`). Each
-event coalesces into one `profiles.list` reload with at most one more queued,
+event coalesces into one local-and-peer roster reload with at most one more queued,
 spaced by one second, applied only when the reply is the newest request and the
 wire still owns the inbox. Every roster read starts a live-status read
 (below) without waiting for it. Event reloads skip the avatar pass: a look change
@@ -793,48 +793,46 @@ backgrounding, pull-to-refresh and Reconnect all go through `close()` then
 `open()`; a dropped socket keeps the roster on screen, says live updates
 stopped, and makes pin and hide inert until the next `open()`.
 
-Roster organization is Desktop's. `pinned`, `hidden`, `sectionId` and
-`sectionName` in `ui_meta["hermes-bots"]` are honored: pinned bots sit above the
-list as large avatar tiles with the name beneath and nowhere else, the rest are
-grouped under Desktop's named sections, newest first within each, and hidden
-bots stay out unless revealed for the session (dimmed, in their own section) or
-named by a search. Pin, Unpin, Hide, Unhide and "Move to Section" are the row's
-long-press menu and the pinned tile's menu.
+Bots is one flat list of local Profiles followed by peer bots, without machine,
+server or Desktop section headings. Hidden local bots remain hidden until revealed
+or found by search. Local pin and section metadata are still preserved and editable
+for Desktop, but do not divide or duplicate the phone's picker. Group rooms follow
+the bot rows, including rooms pinned on this phone.
 
-Desktop stamps the section's name beside its id on every filed bot and backfills
-it for older members (0.21.4 and later); section order and empty sections stay
-in each Desktop's plugin storage (`bot-sections-v1`) and never reach the phone.
-The phone groups by `sectionId`, heads each section with the name most members
-carry (ties go to the first member in `profiles.list` order), and treats a bot
-with no name, or a null `sectionId` after a delete, as unfiled. Sections sort
-A–Z (`localizedStandardCompare`, ties by id); unfiled bots and every group room
-follow as one final block, headed "Other chats" only when a named section is on
-screen. With no named sections the list has no headers.
-Rooms are never sectioned: Desktop keeps a room's section on the machine that
-filed it. Section changes arrive with the next roster read (open, pull to
-refresh, or a `sessions.changed` reload), as pin and hide changes do.
+A row uses source-qualified identity, never its display name. A peer carries its
+opaque route ID alongside kind, alias, Profile and installation ID. Picks and
+drafts use kind/alias/Profile within the configured server and connection; route
+IDs rotate on gateway restart, and offline probes omit installation IDs. Fresh
+probes supply dispatch selectors; known installation changes block dispatch. Duplicate visible names remain distinct. Peer rows show
+origin and availability; an offline peer remains visible and disabled with its
+reason. Cached peers are also disabled until a fresh roster confirms reachability.
+Name search includes peers; host transcript search and Shortcuts' Profile catalog
+remain local-only. Keyboard next/previous navigation uses the same flat roster.
 
-"Move to Section" files one bot per action, like Desktop's row menu. It offers
-every named section on the roster, pinned and hidden members included (the
-bot's own section inert), "New Section…" and, while the bot is filed, "Remove
-from Section". Filing writes `sectionId` and `sectionName` together. A new
-section gets Desktop's id format (`sec-<epoch ms base 36>-<5 base-36 chars>`)
-and a trimmed, non-blank name; a name that exactly matches a roster section
-joins it instead. Desktop adopts an unknown id at the end of its own list, and
-the phone places it in the A–Z tail of its order. Remove writes explicit
-`null` for both fields, never drops them: Desktop merges host meta over its
-local copy, so a missing key would keep the stale section alive there. An
-empty section disappears from the phone but stays in Desktop's list until
-deleted there.
+Local row taps retain the canonical Bot Chat flow. A peer opens a direct-message
+composer, which calls `peers.dm` with `route_id`, `message` and
+`request_id`; it never creates or resumes a local session. Drafts have a separate
+peer context, keyed by configured server, connection UUID and full peer identity.
+The request ID and submitted text are flushed before delivery and restored for an
+explicit retry after reopening. Completed/queued receipts clear the draft; unknown
+outcomes retain it. Replies returned by the host are shown in the composer. Leaving
+or backgrounding invalidates late replies and closes only that screen's client.
 
-"Reorder Sections…" in the + menu, or the home's filter (shown with two or more named sections the
-list can head; a section of only pinned bots lives in the tiles and is left out,
-keeping any placed slot through a drag)
-places sections for this phone only: `BotSectionOrderStore` keeps the placed ids in
-`UserDefaults`, keyed by configured server and connection UUID, never sent to
-Desktop. Placed sections keep their position, the rest follow A–Z after them,
-and ids the roster no longer has are ignored. "Reset to A–Z" forgets the
-placement; removing the connection deletes it.
+The sibling server's generated OpenRPC contract and Python `canonical_peers`,
+`session_peers` and `session_peers_mixed` handlers define these wire shapes:
+`peers.roster` answers `{bots: [...]}` with `route_id`, `kind: peer`, `alias`,
+`profile`, `reachability` (`reachable`, `unreachable`, `unauthenticated`, or
+`unsupported`), nullable `installation_id` and `room_link`. Display names are
+optional future metadata; routing never uses them. Required selectors must be
+usable; unknown fields and missing optional catalog fields are tolerated.
+DM results carry `route_id`, `session_id`, `status`, `reply` and idempotency flags.
+Only a completed/queued receipt for the dispatched route and a nonempty session
+clears the draft. Unknown outcomes keep the request ID and payload for deliberate
+retry; delivery deduplication depends on the peer's advertised support.
+A missing RPC leaves local bots working, while a transient peer read failure keeps
+known peers visible and unavailable. This alignment does not advance the upstream
+compatibility pin and still needs live integration validation.
+
 `groups` are executable group rooms, not Desktop organization sections. Their read-only viewer is described below. A
 description of 24 characters or fewer reads as a role chip beside the name when
 the chat has a preview; the activity label is the time today, the weekday within
@@ -1844,14 +1842,15 @@ Contract checked against the compatibility pin's Desktop `hermes-bots/data.ts`
 (`mentionNameForms`, `botMentionTag`, `resolveRosterMentions`) and `plugin.tsx`
 mention middleware. No live prompt or relay mutation was used for validation.
 
-Cross-connection messaging remains an upstream gap. The phone never calls
+Peer discovery and direct delivery on this custom branch use `peers.roster` and
+`peers.dm` from Bots (above). Remote mentions in the local chat composer remain
+outside this feature. The phone never calls
 `bot_relay.roster.sync`, `outbox.drain`, `deliver` or `reply`: taking over Desktop's
 roster or draining its envelopes from a suspendable phone could strand work.
 A manually typed `@name@connection` can be interpreted by `message_agent` when
 Desktop has synced the peer roster within ten minutes, and delivery requires
-that Desktop to remain running. The phone cannot autocomplete remote bots
-because there is no read-only remote-roster RPC. Real phone support needs that
-RPC and a relay owner independent of a Desktop renderer.
+that Desktop to remain running. The local chat composer does not mix peer delivery into `message_agent` or take
+ownership of Desktop relay traffic.
 
 ## File references
 
@@ -2252,6 +2251,18 @@ extension, Live Activities and App Intents do not participate in rooms.
 New Group Chat selects two to six bots from the current connection, including
 hidden bots when the filter names them, then asks for a name of up to 200 Unicode
 scalars (the server's character count). Members are frozen after creation.
+Local-only selections use `groups.create`. Any selection containing a peer,
+including peer-only groups, uses `groups.create_mixed` with the same room UUID,
+name and two-to-six frozen member selections. Each mixed member includes `kind`
+(`local` or `peer`), `member_id`, `handle` and optional `display_name`;
+local selections include `profile`, peer selections include only `route_id`.
+The current server advertises local create in `groups.capabilities`, not mixed
+create; mixed dispatch uses the peer RPC and handles a method refusal. The server owns RoomLink setup. Peer
+member IDs and handles are unique within the room even when names or Profiles
+repeat. Peer availability is rechecked before creation, and an uncertain mixed
+attempt reads the room list before any retry. A room's peer target never resolves
+to a local Profile editor or avatar merely because its Profile name matches.
+
 `groups.create` sends a device UUID `room_id`, `name`, and `members` containing
 `member_id`, `profile`, `handle`, and optional roster `display_name`; it never
 sends `target`. At the compatibility pin, `profiles.list` has no separate handle,

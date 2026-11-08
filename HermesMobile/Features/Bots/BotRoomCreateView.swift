@@ -53,7 +53,7 @@ import SwiftUI
                         ViewThatFits(in: .horizontal) {
                             chips
                             VStack(alignment: .leading, spacing: 8) {
-                                ForEach(creator.selected) { bot in chip(bot) }
+                                ForEach(creator.selected, id: \.rosterID) { bot in chip(bot) }
                             }
                         }
                     }
@@ -75,15 +75,21 @@ import SwiftUI
                     Text("Fewer than two bots can join group chats on this Hermes.")
                         .font(AppFont.callout()).foregroundStyle(.appSecondary)
                 }
-                ForEach(creator.remaining) { bot in
+                ForEach(creator.remaining, id: \.rosterID) { bot in
                     Button { creator.select(bot) } label: {
                         HStack(spacing: 14) {
-                            BotAvatarView(profile: bot, avatar: avatars[bot.id], size: 36, motion: .still)
-                            Text(bot.name).foregroundStyle(.appPrimary)
+                            BotAvatarView(profile: bot, avatar: bot.peer == nil ? avatars[bot.id] : nil, size: 36, motion: .still)
+                            VStack(alignment: .leading) {
+                                Text(bot.name).foregroundStyle(.appPrimary)
+                                if let peer = bot.peer {
+                                    Text(verbatim: peer.rosterDetail)
+                                        .font(AppFont.caption()).foregroundStyle(.appSecondary)
+                                }
+                            }
                         }
                         .padding(.vertical, 6)
                     }
-                    .disabled(creator.selected.count >= 6)
+                    .disabled(creator.selected.count >= 6 || !bot.reachable)
                     .accessibilityLabel("Add \(bot.name)")
                 }
             }
@@ -91,13 +97,13 @@ import SwiftUI
         .listStyle(.insetGrouped)
     }
     private var chips: some View {
-        HStack(spacing: 8) { ForEach(creator.selected) { bot in chip(bot) } }
+        HStack(spacing: 8) { ForEach(creator.selected, id: \.rosterID) { bot in chip(bot) } }
             .fixedSize(horizontal: true, vertical: false)
     }
     private func chip(_ bot: BotProfile) -> some View {
         Button { creator.remove(bot) } label: {
             HStack(spacing: 6) {
-                BotAvatarView(profile: bot, avatar: avatars[bot.id], size: 24, motion: .still)
+                BotAvatarView(profile: bot, avatar: bot.peer == nil ? avatars[bot.id] : nil, size: 24, motion: .still)
                 Text(bot.name)
                 Image(systemName: "xmark").font(AppFont.caption())
             }

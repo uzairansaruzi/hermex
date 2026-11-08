@@ -59,14 +59,18 @@ import SwiftUI
 
     private var matches: [BotProfile] {
         let rows = inbox.rows(matching: query.trimmingCharacters(in: .whitespacesAndNewlines))
-        return rows.pinned + rows.others + rows.hidden
+        let query = self.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let peers = inbox.peers.filter { bot in
+            query.isEmpty || [bot.name, bot.peer?.peerAlias ?? "", bot.peer?.profile ?? ""].contains { $0.localizedStandardContains(query) }
+        }
+        return rows.pinned + rows.others + rows.hidden + peers
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 if scope != .messages {
-                    ForEach(matches) { profile in
+                    ForEach(matches, id: \.rosterID) { profile in
                         Button {
                             searchFocused = false
                             onSelect(profile)
@@ -75,6 +79,7 @@ import SwiftUI
                             result(profile)
                         }
                         .buttonStyle(.plain)
+                        .disabled(!profile.reachable)
                     }
                     ForEach(inbox.rooms(matching: request.query), id: \.id) { room in
                         Button {
@@ -212,7 +217,7 @@ import SwiftUI
     /// A bot's chat the host matched (#1146): who wrote the message, and the host's snippet.
     private func botChatResult(_ hit: BotInbox.BotChatHit, isFromUser: Bool, profile: BotProfile) -> some View {
         HStack(spacing: 14) {
-            BotAvatarView(profile: profile, avatar: inbox.avatars[profile.id], size: 44)
+            BotAvatarView(profile: profile, avatar: profile.peer == nil ? inbox.avatars[profile.id] : nil, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(isFromUser
@@ -280,13 +285,17 @@ import SwiftUI
 
     private func result(_ profile: BotProfile) -> some View {
         HStack(spacing: 14) {
-            BotAvatarView(profile: profile, avatar: inbox.avatars[profile.id], size: 44)
+            BotAvatarView(profile: profile, avatar: profile.peer == nil ? inbox.avatars[profile.id] : nil, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(profile.name).font(AppFont.body())
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     Spacer(minLength: 8)
                     Text("Bot").font(AppFont.subheadline()).foregroundStyle(.appTertiary)
+                }
+                if let peer = profile.peer {
+                    Text(verbatim: peer.rosterDetail)
+                        .font(AppFont.caption()).foregroundStyle(.appSecondary)
                 }
                 if let description = profile.description {
                     Text(description).font(AppFont.body()).foregroundStyle(.appSecondary)

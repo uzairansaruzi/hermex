@@ -32,6 +32,8 @@ enum HermesCall: Equatable, Sendable {
     static let source = "gui"
 
     // Profiles
+    case peersRoster
+    case peersDM(routeID: String, message: String, requestID: String)
     case profilesList(includeSessions: Bool)
     case profilesDescribe(name: String)
     /// The Profile's avatar, the only asset Hermex reads.
@@ -278,6 +280,7 @@ enum HermesCall: Equatable, Sendable {
     /// user confirmed; the group carries on and it isn't retried. Answers `{discarded, task}`.
     case groupsDiscard(roomID: String, taskID: String, attempt: RoomAttempt)
     case groupsCreate(RoomCreation)
+    case groupsCreateMixed(RoomCreation)
     case groupsRename(roomID: String, eventID: String, name: String)
     case groupsDisband(roomID: String)
 
@@ -470,7 +473,17 @@ enum HermesCall: Equatable, Sendable {
         var profile: String
         var handle: String
         var displayName: String?
+        var peer: BotPeer? = nil
 
+        var selectionJSON: BotJSON {
+            var fields = json.fields ?? [:]
+            fields["kind"] = .string(peer == nil ? "local" : "peer")
+            if let peer {
+                fields.removeValue(forKey: "profile")
+                fields["route_id"] = .string(peer.id)
+            }
+            return .object(fields)
+        }
         var json: BotJSON {
             var fields: [String: BotJSON] = ["member_id": .string(memberID), "profile": .string(profile), "handle": .string(handle)]
             if let displayName { fields["display_name"] = .string(displayName) }
@@ -480,6 +493,8 @@ enum HermesCall: Equatable, Sendable {
 
     var method: String {
         switch self {
+        case .peersRoster: return "peers.roster"
+        case .peersDM: return "peers.dm"
         case .profilesList: return "profiles.list"
         case .profilesDescribe: return "profiles.describe"
         case .profilesGetAsset: return "profiles.get_asset"
@@ -552,6 +567,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsRetry: return "groups.retry"
         case .groupsDiscard: return "groups.discard"
         case .groupsCreate: return "groups.create"
+        case .groupsCreateMixed: return "groups.create_mixed"
         case .groupsRename: return "groups.rename"
         case .groupsDisband: return "groups.disband"
         case .clientCapabilities: return "client.capabilities"
@@ -564,6 +580,9 @@ enum HermesCall: Equatable, Sendable {
     func params(hostVersion: String? = nil) throws -> [String: BotJSON] {
         try admit()
         switch self {
+        case .peersRoster: return [:]
+        case .peersDM(let routeID, let message, let requestID):
+            return ["route_id": .string(routeID), "message": .string(message), "request_id": .string(requestID)]
         case .profilesList(let includeSessions): return ["include_sessions": .bool(includeSessions)]
         case .profilesDescribe(let name): return ["name": .string(name)]
         case .pluginsList(let profile): return ["action": .string("list"), "profile": .string(profile)]
@@ -777,6 +796,8 @@ enum HermesCall: Equatable, Sendable {
         case .groupsRetry(let roomID, let taskID, _): return ["room_id": .string(roomID), "task_id": .string(taskID)]
         case .groupsDiscard(let roomID, let taskID, let attempt):
             return ["room_id": .string(roomID), "task_id": .string(taskID)].merging(attempt.params) { $1 }
+        case .groupsCreateMixed(let room):
+            return ["room_id": .string(room.roomID), "name": .string(room.name), "members": .array(room.members.map(\.selectionJSON))]
         case .groupsCreate(let room):
             return ["room_id": .string(room.roomID), "name": .string(room.name), "members": .array(room.members.map(\.json))]
         case .groupsRename(let roomID, let eventID, let name):
@@ -805,6 +826,9 @@ enum HermesCall: Equatable, Sendable {
     private func admit() throws {
         let valid: Bool
         switch self {
+        case .peersRoster: valid = true
+        case .peersDM(let routeID, let message, let requestID):
+            valid = !routeID.isEmpty && !Self.isBlank(message) && message.unicodeScalars.count <= 262144 && !requestID.isEmpty && requestID.unicodeScalars.count <= 256
         case .profilesDescribe(let name): valid = !name.isEmpty
         case .pluginsList(let profile): valid = !profile.isEmpty
         case .pluginsToggle(let profile, let key, _), .pluginsRemove(let profile, let key), .pluginsUpdate(let profile, let key, _, _):
@@ -907,7 +931,18 @@ enum HermesCall: Equatable, Sendable {
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID) && attempt?.isAdmissible != false
         case .groupsDiscard(let roomID, let taskID, let attempt):
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID) && attempt.isAdmissible
-        case .groupsCreate(let room): valid = room.isAdmissible
+        case .groupsCreateMixed(let room):
+            valid = BotRoomRPC.validID(room.roomID) && BotRoomRPC.validName(room.name)
+                && (2...6).contains(room.members.count) && room.members.contains { $0.peer != nil }
+                && Set(room.members.map { $0.memberID.lowercased() }).count == room.members.count
+                && Set(room.members.map { $0.peer.map { "peer:" + $0.identity } ?? "local:" + $0.profile }).count == room.members.count
+                && Set(room.members.map { $0.handle.lowercased() }).count == room.members.count
+                && room.members.allSatisfy {
+                    BotRoomRPC.validID($0.memberID) && BotRoomRPC.validID($0.handle)
+                        && !["all", "everyone"].contains($0.handle.lowercased())
+                        && !$0.profile.isEmpty && ($0.peer?.reachable ?? true)
+                }
+        case .groupsCreate(let room): valid = room.isAdmissible && room.members.allSatisfy { $0.peer == nil }
         case .groupsRename(let roomID, let eventID, let name):
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(eventID) && BotRoomRPC.validName(name)
         case .profilesList, .profilesGetAsset, .sessionList, .sessionResume, .sessionEventsSince, .sessionActiveList,

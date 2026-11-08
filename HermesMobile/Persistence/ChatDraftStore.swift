@@ -77,6 +77,8 @@ struct ChatDraft: Equatable, Sendable {
     // Written durably before a Bot Chat or Hermes session submission; acknowledgement
     // loss must survive relaunch (#508).
     var botSubmissionUncertain = false
+    var peerRequestID: String?
+    var peerRequestText: String?
     var lastUsedAt: Date?
     /// The shares (`SharedImportReservation.occurrenceID`s) already moved into this draft,
     /// so a retried or replayed share isn't added twice (#1181, #1197). Rides along with the content; never
@@ -97,7 +99,7 @@ struct ChatDraft: Equatable, Sendable {
 
     var isEmpty: Bool {
         text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true) && !botSubmissionUncertain
-            && waitingSend == nil
+            && waitingSend == nil && peerRequestID == nil
     }
 }
 
@@ -180,6 +182,7 @@ enum ChatDraftQueueParking {
 struct ChatDraftKey: Hashable, Sendable {
     enum Context: Hashable, Sendable {
         case session(String)
+        case peer(connectionID: UUID, identity: String)
         case bot(connectionID: UUID, profile: String)
         /// A Hermes session on a Hermes connection, by its stored key; nil for a new
         /// session not created yet (`ConversationTarget`).
@@ -192,6 +195,10 @@ struct ChatDraftKey: Hashable, Sendable {
 
     static func session(server: URL, sessionID: String) -> Self {
         Self(serverID: server.absoluteString, context: .session(sessionID))
+    }
+
+    static func peer(server: URL, connectionID: UUID, peer: BotPeer) -> Self {
+        Self(serverID: server.absoluteString, context: .peer(connectionID: connectionID, identity: peer.identity))
     }
 
     static func bot(server: URL, connectionID: UUID, profile: String) -> Self {
@@ -414,6 +421,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         var connectionID: UUID?
         var profile: String?
         var botSubmissionUncertain: Bool?
+        var peerRequestID: String?
+        var peerRequestText: String?
         var sharedImportIDs: [String]?
         /// Written before #1476, which records `textOrigin` instead; true reads as a Shortcut's.
         var fromShortcut: Bool?
@@ -431,6 +440,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case quotes
             case attachments
             case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut, textOrigin
+            case peerRequestID, peerRequestText
             case waitingSendText, waitingSendCreatedAt
         }
 
@@ -440,6 +450,11 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case .session(let sessionID):
                 context = "session"
                 self.sessionID = sessionID
+            case .peer(let connectionID, let identity):
+                context = "peer"
+                sessionID = nil
+                self.connectionID = connectionID
+                self.profile = identity
             case .bot(let connectionID, let profile):
                 context = "bot"
                 sessionID = nil
@@ -455,6 +470,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 sessionID = nil
             }
             lastUsedAt = draft.lastUsedAt
+            peerRequestID = draft.peerRequestID; peerRequestText = draft.peerRequestText
             botSubmissionUncertain = draft.botSubmissionUncertain
             text = draft.text
             quotes = draft.quotes.map { FailableQuote(value: QuoteRecord($0)) }
@@ -479,6 +495,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             // A malformed uncertainty field fails closed for Bot and Hermes session records.
             botSubmissionUncertain = (try? container.decodeIfPresent(Bool.self, forKey: .botSubmissionUncertain))
                 ?? (["bot", "hermesSession"].contains(context) && container.contains(.botSubmissionUncertain))
+            peerRequestID = try? container.decodeIfPresent(String.self, forKey: .peerRequestID)
+            peerRequestText = try? container.decodeIfPresent(String.self, forKey: .peerRequestText)
             text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? nil
             quotes = (try? container.decodeIfPresent([FailableQuote].self, forKey: .quotes)) ?? nil
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
@@ -509,6 +527,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                     return nil
                 }
                 key = ChatDraftKey(serverID: serverID, context: .session(sessionID))
+            case "peer":
+                guard let connectionID, let profile, !profile.isEmpty else { return nil }
+                key = ChatDraftKey(serverID: serverID, context: .peer(connectionID: connectionID, identity: profile))
             case "bot":
                 guard let connectionID, let profile, !profile.isEmpty else { return nil }
                 key = ChatDraftKey(serverID: serverID, context: .bot(connectionID: connectionID, profile: profile))
@@ -529,6 +550,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 attachments: (attachments ?? []).compactMap(\.value?.attachment),
                 settings: settings?.settings,
                 botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
+                peerRequestID: peerRequestID, peerRequestText: peerRequestText,
                 lastUsedAt: lastUsedAt,
                 sharedImportIDs: Set(sharedImportIDs ?? []),
                 textOrigin: textOrigin.flatMap(ImportedTextOrigin.init(rawValue:)) ?? (fromShortcut == true ? .shortcut : nil),
@@ -674,11 +696,19 @@ final class ChatDraftStore {
         updateDraft(for: key) { $0.text = text }
     }
 
+    /// Persist the delivery identity before dispatch so an explicit retry after relaunch
+    /// uses the same request ID and payload. Only a peer context can hold it.
+    func setPeerRequest(id: String, text: String, for key: ChatDraftKey) {
+        guard case .peer = key.context else { return }
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { $0.peerRequestID = id; $0.peerRequestText = text }
+    }
+
     /// Marks a Bot Chat or Hermes session prompt sent with its outcome unknown (#508).
     func setBotSubmissionUncertain(_ uncertain: Bool, for key: ChatDraftKey) {
         switch key.context {
         case .bot, .hermesSession: break
-        case .session, .newChat: return
+        case .peer, .session, .newChat: return
         }
         markChangedBeforeLoad(key)
         updateDraft(for: key) { $0.botSubmissionUncertain = uncertain }
@@ -721,7 +751,7 @@ final class ChatDraftStore {
             guard key.serverID == server.absoluteString else { return false }
             let id: UUID, name: String
             switch key.context {
-            case .bot(let keyConnection, let keyProfile), .hermesSession(let keyConnection, let keyProfile, _):
+            case .peer(let keyConnection, let keyProfile), .bot(let keyConnection, let keyProfile), .hermesSession(let keyConnection, let keyProfile, _):
                 (id, name) = (keyConnection, keyProfile)
             case .session, .newChat: return false
             }

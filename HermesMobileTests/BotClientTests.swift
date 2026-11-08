@@ -12,6 +12,52 @@ import XCTest
         super.tearDown()
     }
 
+    func testPeerDeliveryUsesOnlyPeerRPCAndPreservesRoutingIdentity() async throws {
+        BotHTTPFixture.handler = Self.signIn
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        socket.reply = { request in .object(["id": request["id"], "result": .object(["ok": .bool(true)])]) }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
+        defer { client.close() }
+        try await client.connect()
+        _ = try await client.call(.peersDM(routeID: "opaque-office", message: "Hello", requestID: "one-send"))
+        XCTAssertEqual(socket.sentRequests.map { $0["method"].text }, ["peers.dm"])
+        let params = try XCTUnwrap(socket.sentRequests.first)["params"]
+        XCTAssertEqual(params["route_id"].text, "opaque-office")
+        XCTAssertEqual(params["peer_alias"], .null)
+        XCTAssertEqual(params["profile"], .null)
+        XCTAssertEqual(params["message"].text, "Hello")
+        XCTAssertEqual(params["request_id"].text, "one-send")
+    }
+
+    func testUnifiedGroupDispatchUsesTypedMixedMembersOverTheGateway() async throws {
+        BotHTTPFixture.handler = Self.signIn
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket()
+        socket.reply = { request in .object(["id": request["id"], "result": .object([:])]) }
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
+        defer { client.close() }
+        try await client.connect()
+        let local = try XCTUnwrap(BotProfile(.object(["name": .string("dev"), "display_name": .string("Same name")])))
+        let second = try XCTUnwrap(BotProfile(.object(["name": .string("default")])))
+        let peer = try XCTUnwrap(BotPeer(.object(["route_id": .string("opaque"), "kind": .string("peer"),
+            "alias": .string("remote"), "profile": .string("dev"), "reachability": .string("reachable"),
+            "display_name": .string("Same name")])))
+        let localRoom = HermesCall.RoomCreation(roomID: "local-room", name: "Local", members: BotRoomCreator.members([local, second]))
+        let mixedRoom = HermesCall.RoomCreation(roomID: "mixed-room", name: "Mixed", members: BotRoomCreator.members([local, BotProfile(peer: peer)]))
+        _ = try await client.call(BotRoomCreator.creationCall(localRoom))
+        _ = try await client.call(BotRoomCreator.creationCall(mixedRoom))
+        XCTAssertEqual(socket.sentRequests.map { $0["method"].text }, ["groups.create", "groups.create_mixed"])
+        let members = try XCTUnwrap(socket.sentRequests.last?["params"]["members"].list)
+        XCTAssertEqual(members.map { $0["kind"].text }, ["local", "peer"])
+        XCTAssertEqual(members[1]["route_id"].text, "opaque")
+        XCTAssertEqual(members[1]["peer_alias"], .null)
+        XCTAssertEqual(members[1]["profile"], .null)
+        XCTAssertNotEqual(members[0]["member_id"], members[1]["member_id"])
+    }
+
     func testPasswordGateIdentityAndFreshTicketsUseTextRPCOnEverySocket() async throws {
         var tickets = 0
         var paths: [String] = []

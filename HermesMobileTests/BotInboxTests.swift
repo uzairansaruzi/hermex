@@ -22,6 +22,117 @@ import SwiftUI
         super.tearDown()
     }
 
+    func testLiveRosterAndCachedPeerIdentityStayWithinTheirServer() async throws {
+        let peer = try XCTUnwrap(try peerRow(alias: "remote", reachable: true).peer)
+        let cache = makeRosterCache()
+        let store = try connectedStore()
+        let saved = try XCTUnwrap(store.load(server: server))
+        let first = BotInboxFixtureWire(roster: [row("local")]); first.peerRows = [peer.json]
+        let inbox = try makeInbox(wires: [first], store: store, rosterCache: cache)
+        await inbox.open()
+        XCTAssertEqual(inbox.flatRoster.count, 2)
+        XCTAssertEqual(inbox.peers.first?.peer?.identity, peer.identity)
+        let savedRows = await cache.load(.init(server: server, connectionID: saved.id))
+        let cached = try XCTUnwrap(savedRows)
+        let restored = BotInbox.peerRoster(cached, stale: true)
+        XCTAssertEqual(restored.first?.peer?.identity, peer.identity)
+        XCTAssertFalse(try XCTUnwrap(restored.first).reachable)
+        let other = URL(string: "https://two.example")!
+        let otherCache = await cache.load(.init(server: other, connectionID: saved.id))
+        XCTAssertNil(otherCache)
+        inbox.close()
+    }
+
+    func testPeerDraftRoundTripRetainsFullIdentityAndRetryRequest() async throws {
+        let peer = try XCTUnwrap(try peerRow(alias: "remote", reachable: true).peer)
+        let connectionID = UUID()
+        let key = ChatDraftKey.peer(server: server, connectionID: connectionID, peer: peer)
+        let persistence = ChatDraftFilePersistence(directoryURL: rosterRoot)
+        let store = ChatDraftStore(persistence: persistence)
+        store.setDraft("Unsent", for: key)
+        store.setPeerRequest(id: "same-request", text: "Unsent", for: key)
+        try await store.flush()
+        let restored = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: rosterRoot))
+        let draft = await restored.draft(for: key)
+        XCTAssertEqual(draft?.text, "Unsent")
+        XCTAssertEqual(draft?.peerRequestID, "same-request")
+        XCTAssertEqual(draft?.peerRequestText, "Unsent")
+        let wrongServer = ChatDraftKey.peer(server: URL(string: "https://two.example")!, connectionID: connectionID, peer: peer)
+        let absent = await restored.draft(for: wrongServer)
+        XCTAssertNil(absent)
+    }
+
+    func testUnifiedRosterKeepsDuplicateNamesAndOpaqueSourceIdentities() throws {
+        let local = try XCTUnwrap(BotProfile(.object(["name": .string("assistant"), "display_name": .string("Cindy")])))
+        let peer = try peerRow(alias: "other", reachable: true)
+        let other = try peerRow(alias: "second", reachable: true)
+        let rows = BotInbox.flatRoster(locals: [local], peers: [peer, other, peer])
+        XCTAssertEqual(rows.map(\.name), ["Cindy", "Cindy", "Cindy"])
+        XCTAssertEqual(Set(rows.map(\.rosterID)).count, 3)
+        XCTAssertEqual(rows.count, 3)
+    }
+
+    func testOfflinePeerStaysInPickerWithReasonAndCannotOpenLocalSession() throws {
+        let bot = try peerRow(alias: "other", reachable: false)
+        let rows = BotInbox.flatRoster(locals: [], peers: [bot])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertFalse(rows[0].reachable)
+        XCTAssertEqual(rows[0].peer?.unavailableReason, "Unreachable")
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
+                                       username: "fixture", password: "fixture-only")
+        var selection = BotInboxSelection()
+        selection.profile = bot
+        XCTAssertNil(selection.chat(server: server, connection: connection))
+    }
+
+    func testPeerDraftIdentitySeparatesServersConnectionsAndSources() throws {
+        let peer = try XCTUnwrap(try peerRow(alias: "other", reachable: true).peer)
+        let id = UUID()
+        let first = ChatDraftKey.peer(server: server, connectionID: id, peer: peer)
+        XCTAssertNotEqual(first, .peer(server: URL(string: "https://two.example")!, connectionID: id, peer: peer))
+        XCTAssertNotEqual(first, .peer(server: server, connectionID: UUID(), peer: peer))
+        XCTAssertNotEqual(first, .bot(server: server, connectionID: id, profile: peer.identity))
+        let renamed = try XCTUnwrap(BotPeer(.object(["route_id": .string("opaque"), "kind": .string("peer"),
+            "alias": .string("other"), "profile": .string("assistant"), "installation_id": .string("install"),
+            "display_name": .string("Renamed"), "reachability": .string("unreachable")])))
+        XCTAssertEqual(first, .peer(server: server, connectionID: id, peer: renamed))
+    }
+
+    func testOfflineProbeAndRotatedRouteKeepTheSameDraftAndRosterRow() throws {
+        let live = try XCTUnwrap(BotPeer(.object(["kind": .string("peer"), "route_id": .string("old"),
+            "alias": .string("office"), "profile": .string("default"), "reachability": .string("reachable"),
+            "installation_id": .string("install:known")])))
+        let offline = try XCTUnwrap(BotPeer(.object(["kind": .string("peer"), "route_id": .string("new"),
+            "alias": .string("office"), "profile": .string("default"), "reachability": .string("unauthenticated"),
+            "installation_id": .null, "room_link": .null])))
+        XCTAssertEqual(live.identity, offline.identity)
+        let id = UUID()
+        XCTAssertEqual(ChatDraftKey.peer(server: server, connectionID: id, peer: live),
+                       ChatDraftKey.peer(server: server, connectionID: id, peer: offline))
+        XCTAssertFalse(offline.reachable)
+    }
+
+    func testDeliveryReceiptMustConfirmTheDispatchedRouteAndSession() {
+        func receipt(_ route: String, _ status: String, _ session: String = "canonical") -> BotJSON {
+            .object(["route_id": .string(route), "session_id": .string(session), "status": .string(status),
+                     "reply": .string("Reply"), "idempotency_supported": .bool(true)])
+        }
+        XCTAssertNotNil(BotPeerDelivery(receipt("opaque", "completed"), routeID: "opaque"))
+        XCTAssertNotNil(BotPeerDelivery(receipt("opaque", "queued"), routeID: "opaque"))
+        XCTAssertNil(BotPeerDelivery(receipt("another", "completed"), routeID: "opaque"))
+        XCTAssertNil(BotPeerDelivery(receipt("opaque", "unknown"), routeID: "opaque"))
+        XCTAssertNil(BotPeerDelivery(receipt("opaque", "completed", ""), routeID: "opaque"))
+        XCTAssertNil(BotPeerDelivery(.object(["ok": .bool(true)]), routeID: "opaque"))
+    }
+
+    private func peerRow(alias: String, reachable: Bool) throws -> BotProfile {
+        let peer = try XCTUnwrap(BotPeer(.object(["route_id": .string("opaque"), "kind": .string("peer"),
+            "alias": .string(alias), "profile": .string("assistant"), "installation_id": .string("install"),
+            "display_name": .string("Cindy"), "reachability": .string(reachable ? "reachable" : "unreachable"),
+            "unavailable_reason": .string("Unreachable"), "future": .bool(true)])))
+        return BotProfile(peer: peer)
+    }
+
     func testPickingAnotherBotDropsTheLinkedConversation() throws {
         let first = try XCTUnwrap(BotProfile(.object(["name": .string("first")])))
         let second = try XCTUnwrap(BotProfile(.object(["name": .string("second")])))
@@ -1543,6 +1654,7 @@ import SwiftUI
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var roster: [BotJSON]
+    var peerRows: [BotJSON] = []
     var rooms: [BotJSON]?
     var roomMethods = ["groups.list", "groups.state", "groups.log"]
     var roomAuthority: String?
@@ -1612,6 +1724,7 @@ import SwiftUI
             return try roomCommand(method, params)
         case "groups.list":
             return .object(["rooms": .array(rooms ?? [])])
+        case "peers.roster": return .object(["bots": .array(peerRows)])
         case "profiles.list":
             if holdsList { await withCheckedContinuation { held.append($0) } }
             return .object(["profiles": .array(roster), "bot_mode_protocol": .bool(true)])

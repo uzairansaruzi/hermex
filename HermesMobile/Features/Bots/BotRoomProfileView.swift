@@ -38,7 +38,7 @@ import SwiftUI
             }
             Section {
                 ForEach(reader.room.members) { member in
-                    if let profile = roster.first(where: { $0.id == member.profile }) {
+                    if let profile = roster.first(where: { !member.isPeer && $0.peer == nil && $0.id == member.profile }) {
                         NavigationLink {
                             BotProfileEditorView(server: reader.key.server, connection: reader.connection,
                                                  profile: profile, avatar: avatars[profile.id])

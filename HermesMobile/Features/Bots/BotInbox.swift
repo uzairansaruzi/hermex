@@ -25,7 +25,7 @@ import UIKit
 
         var id: String {
             switch self {
-            case .bot(let profile): return "bot:" + profile.id
+            case .bot(let profile): return (profile.peer == nil ? "bot:" : "peer:") + profile.id
             case .room(let room): return "room:" + room.id
             }
         }
@@ -157,6 +157,13 @@ import UIKit
     let server: URL
     private(set) var connection: BotConnection?
     private(set) var profiles: [BotProfile] = []
+    private(set) var peers: [BotProfile] = []
+    /// One picker, without machine or Desktop section headings. Names never key rows.
+    var flatRoster: [BotProfile] { Self.flatRoster(locals: profiles, peers: peers, showsHidden: showsHidden) }
+    static func flatRoster(locals: [BotProfile], peers: [BotProfile], showsHidden: Bool = false) -> [BotProfile] {
+        var seen = Set<String>()
+        return (locals + peers).filter { (showsHidden || !$0.hidden) && seen.insert($0.rosterID).inserted }
+    }
     private(set) var rooms: [BotGroupRoom] = []
     private var hasRoomList = false
     private(set) var roomCapabilities = BotRoomCapabilities(.null)
@@ -360,7 +367,7 @@ import UIKit
             let saved = try store.load(server: server)
             if connection?.id != saved?.id {
                 selection = BotInboxSelection()
-                profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
+                profiles = []; peers = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
                 roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []; setLiveStatuses([:])
                 setReconnecting(false)
             }
@@ -394,6 +401,7 @@ import UIKit
                 saved = fresh; connection = fresh
                 if let cached, profiles.isEmpty {
                     profiles = Self.roster(cached)
+                    peers = Self.peerRoster(cached, stale: true)
                     avatars = avatarStore.images(connectionID: saved.id)
                 }
             }
@@ -522,7 +530,7 @@ import UIKit
         connection != nil && profiles.isEmpty && errorMessage == nil && routeAdvice == nil && link != .live
     }
 
-    func mayEdit(_ profile: BotProfile) -> Bool { link == .live && !editing.contains(profile.id) }
+    func mayEdit(_ profile: BotProfile) -> Bool { profile.peer == nil && link == .live && !editing.contains(profile.id) }
 
     /// The built-in Profile is the host itself; Hermes refuses to delete it.
     func mayDelete(_ profile: BotProfile) -> Bool { profile.id != "default" && mayEdit(profile) }
@@ -655,7 +663,20 @@ import UIKit
             let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
+            // Older hosts may not implement peers. Only a method-not-found is an empty
+            // peer roster; transient failures keep known peers visible but unavailable.
+            var peerRows: [BotJSON]
+            do {
+                let result = try await client.call(.peersRoster)
+                guard let bots = result["bots"].list else { throw BotFailure.unsupported }
+                peerRows = bots
+            } catch {
+                peerRows = peers.compactMap { $0.peer?.unavailable.json }
+                if client.unavailableMethods.contains("peers.roster") || (error as? BotFailure) == .rejected(-32601) { peerRows = [] }
+            }
+            guard wire === client, serial == reloadSerial, !Task.isCancelled else { return false }
             profiles = Self.roster(rows)
+            peers = Self.peerRoster(peerRows)
             setReconnecting(false)
             if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
@@ -676,7 +697,7 @@ import UIKit
                 guard wire === client, serial == reloadSerial else { return false }
             }
             if let scope {
-                await rosterCache.save(rows, scope: scope, readAt: readAt)
+                await rosterCache.save(rows + peerRows, scope: scope, readAt: readAt)
                 guard wire === client, serial == reloadSerial else { return false }
             }
             startLiveStatusRead(client)
@@ -735,9 +756,15 @@ import UIKit
     }
 
     /// `profiles.list` rows as the inbox lists them: unnamed rows dropped, the first of each Profile kept.
+    static func peerRoster(_ rows: [BotJSON], stale: Bool = false) -> [BotProfile] {
+        var ids = Set<String>()
+        return rows.compactMap(BotPeer.init).map { stale ? $0.unavailable : $0 }
+            .filter { ids.insert($0.identity).inserted }.map { BotProfile(peer: $0) }
+    }
+
     private static func roster(_ rows: [BotJSON]) -> [BotProfile] {
         var ids = Set<String>()
-        return rows.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
+        return rows.filter { $0["kind"].text != "peer" }.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
     }
 
     /// Writes only a real change, so an unchanged re-read never invalidates the list.
@@ -949,6 +976,7 @@ import UIKit
         statusPollTask?.cancel(); statusPollTask = nil
         client.close(); wire = nil
         link = .disconnected
+        peers = peers.compactMap { $0.peer }.map { BotProfile(peer: $0.unavailable) }
         let address = connection?.address
         guard BotConnectionAdvice.isRetryable(error) else {
             setLiveStatuses([:]); setReconnecting(false)

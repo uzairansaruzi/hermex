@@ -29,13 +29,19 @@ struct BotRoomCapabilities: Equatable {
 struct BotGroupRoom: Hashable {
     struct Member: Hashable, Identifiable {
         let id: String
+        let isPeer: Bool
+        let peerID: String?
+        let installationID: String?
         let profile: String?
         let displayName: String?
         let handle: String?
         var name: String { displayName ?? handle ?? profile ?? id }
         init?(_ value: BotJSON) {
             guard let id = value["member_id"].text else { return nil }
-            self.id = id; profile = value["profile"].text
+            self.id = id; isPeer = value["target"]["kind"].text == "peer"
+            peerID = value["target"]["peer_id"].text
+            installationID = value["target"]["installation_id"].text
+            profile = value["profile"].text
             displayName = value["display_name"].text; handle = value["handle"].text
         }
     }

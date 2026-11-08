@@ -193,8 +193,9 @@ struct BotInboxSelection {
     /// seeded, so a chat the host has since replaced opens the current one with its notice
     /// (#1339). Nil with no bot selected.
     func chat(server: URL, connection: BotConnection) -> HermesSessionChat? {
-        profile.map {
-            HermesSessionChat(server: server, connection: connection, target: .canonicalChat(profile: $0.id),
+        profile.flatMap {
+            guard $0.peer == nil else { return nil }
+            return HermesSessionChat(server: server, connection: connection, target: .canonicalChat(profile: $0.id),
                               linkedRoot: conversation)
         }
     }

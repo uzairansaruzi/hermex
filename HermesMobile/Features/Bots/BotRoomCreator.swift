@@ -34,36 +34,62 @@ import Observation
         self.onReconciled = onReconciled
     }
     var locked: Bool { attempt != nil }
-    var mayContinue: Bool { (2...6).contains(selected.count) }
+    var mayContinue: Bool { (2...6).contains(selected.count) && selected.allSatisfy(\.reachable) }
+    static func creationCall(_ creation: HermesCall.RoomCreation) -> HermesCall {
+        creation.members.contains { $0.peer != nil } ? .groupsCreateMixed(creation) : .groupsCreate(creation)
+    }
     var mayCreate: Bool { !busy && created == nil && mayContinue && BotRoomRPC.validName(name) }
     /// Whether the host can seat `bot`.
-    func seats(_ bot: BotProfile) -> Bool { seatable?.contains(bot.id) ?? true }
+    func seats(_ bot: BotProfile) -> Bool { bot.reachable && (bot.peer != nil || (seatable?.contains(bot.id) ?? true)) }
     /// The host can't seat some bot the list would otherwise show, so the list says it left some out.
-    var leavesOutBots: Bool { roster.contains { !$0.hidden && !seats($0) } }
+    var leavesOutBots: Bool { roster.contains { !$0.hidden && $0.peer == nil && !seats($0) } }
     /// Fewer than two bots can join, so no group can be made.
     var tooFewToSeat: Bool { seatable != nil && roster.filter(seats).count < 2 }
     var remaining: [BotProfile] {
         let filter = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return roster.filter { bot in
-            seats(bot) && !selected.contains(where: { $0.id == bot.id }) &&
+            (bot.peer != nil || seats(bot)) && !selected.contains(where: { $0.rosterID == bot.rosterID }) &&
             (filter.isEmpty ? !bot.hidden : bot.name.localizedStandardContains(filter) || bot.id.localizedStandardContains(filter))
         }
     }
     func select(_ bot: BotProfile) {
-        guard !locked, selected.count < 6, roster.contains(bot), seats(bot), !selected.contains(where: { $0.id == bot.id }) else { return }
+        guard !locked, selected.count < 6, roster.contains(bot), seats(bot), !selected.contains(where: { $0.rosterID == bot.rosterID }) else { return }
         selected.append(bot); query = ""
     }
     func remove(_ bot: BotProfile) {
         guard !locked else { return }
-        selected.removeAll { $0.id == bot.id }
+        selected.removeAll { $0.rosterID == bot.rosterID }
     }
     static func member(_ bot: BotProfile) -> HermesCall.RoomMember {
+        if let peer = bot.peer {
+            return HermesCall.RoomMember(memberID: peer.id, profile: peer.profile,
+                                         handle: peer.peerAlias, displayName: peer.displayName, peer: peer)
+        }
         // profiles.list at the compatibility pin exposes no separate handle.
-        HermesCall.RoomMember(memberID: bot.id, profile: bot.id, handle: bot.id, displayName: bot.displayName)
+        return HermesCall.RoomMember(memberID: bot.id, profile: bot.id, handle: bot.id, displayName: bot.displayName)
     }
+    static func members(_ bots: [BotProfile]) -> [HermesCall.RoomMember] {
+        var ids = Set(bots.filter { $0.peer == nil }.map { $0.id.lowercased() })
+        var handles = ids.union(["all", "everyone"])
+        return bots.enumerated().map { index, bot in
+            guard bot.peer != nil else { return member(bot) }
+            var value = member(bot)
+            var suffix = index + 1
+            var key = "peer_\(suffix)"
+            while ids.contains(key) || handles.contains(key) { suffix += 1; key = "peer_\(suffix)" }
+            ids.insert(key); handles.insert(key)
+            value.memberID = key; value.handle = key
+            return value
+        }
+    }
+
     var preview: BotGroupRoom {
         BotGroupRoom(.object(["room_id": .string("preview"), "name": .string(name),
-                              "members": .array(selected.map { Self.member($0).json })]))!
+                              "members": .array(Self.members(selected).map { member in
+                                  var fields = member.json.fields ?? [:]
+                                  if member.peer != nil { fields["target"] = .object(["kind": .string("peer")]) }
+                                  return .object(fields)
+                              })]))!
     }
 
     func create() async {
@@ -83,10 +109,36 @@ import Observation
             try check(owner, client)
             guard caps.enabled, caps.methods.contains("groups.create"), caps.authority != nil else { throw BotFailure.unsupported }
             authority = caps.authority
+            // A mixed create may have completed before its reply was lost. Reconcile
+            // the frozen typed members before re-probing peers or attempting any write.
+            if let attempt, attempt.members.contains(where: { $0.peer != nil }) {
+                let rooms = try await BotRoomList.read(client) { try self.check(owner, client) }
+                try check(owner, client); onReconciled(rooms)
+                if let room = Self.room(made: attempt, in: rooms, authority: authority) { created = room; return }
+            }
+            if selected.contains(where: { $0.peer != nil }) {
+                let reply = try await client.call(.peersRoster)
+                try check(owner, client)
+                guard let rows = reply["bots"].list else { throw BotFailure.unsupported }
+                let fresh = BotInbox.peerRoster(rows)
+                let available = Set(fresh.filter(\.reachable).map(\.rosterID))
+                if !selected.allSatisfy({ bot in
+                    guard let peer = bot.peer else { return true }
+                    return available.contains(bot.rosterID) && (peer.installationID == nil ||
+                        fresh.first { $0.rosterID == bot.rosterID }?.peer?.installationID == peer.installationID) }) {
+                    message = "A selected peer is unavailable. Close this sheet and choose again."
+                    return
+                }
+                // Route IDs rotate on gateway restart. Dispatch the freshly probed selector.
+                selected = selected.map { bot in
+                    guard bot.peer != nil else { return bot }
+                    return fresh.first { $0.rosterID == bot.rosterID } ?? bot
+                }
+            }
             // Rechecked at create: a bot the host stopped seating since the sheet opened is never sent.
             // The host refuses such a member before it looks for the room, so a Try Again reads the
             // rooms instead: the room it made, or an unlocked choice when it made none.
-            if let fresh = caps.seatableProfiles, !selected.allSatisfy({ fresh.contains($0.id) }) {
+            if let fresh = caps.seatableProfiles, !selected.allSatisfy({ $0.peer != nil || fresh.contains($0.id) }) {
                 if let attempt {
                     let rooms = try await BotRoomList.read(client) { try self.check(owner, client) }
                     try check(owner, client); onReconciled(rooms)
@@ -94,20 +146,20 @@ import Observation
                     self.attempt = nil
                 }
                 seatable = fresh
-                selected.removeAll { !fresh.contains($0.id) }
+                selected.removeAll { $0.peer == nil && !fresh.contains($0.id) }
                 message = String(localized: "A bot you chose can’t join group chats on this Hermes any more. Go back and choose again.")
                 return
             }
             let creation = attempt ?? HermesCall.RoomCreation(roomID: UUID().uuidString, name: name,
-                                                              members: selected.map(Self.member))
-            let result = try await client.call(.groupsCreate(creation), validateDispatch: { [weak self] in
+                                                              members: Self.members(selected))
+            let result = try await client.call(Self.creationCall(creation), validateDispatch: { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner, client)
                 self.attempt = creation; dispatched = true
             })
             try check(owner, client)
-            guard let room = BotGroupRoom(result["room"]), room.id == creation.roomID,
-                  !room.disbanded, room.authority == caps.authority else { throw BotFailure.unsupported }
+            guard let room = Self.room(made: creation, in: [BotGroupRoom(result["room"])].compactMap { $0 }, authority: caps.authority),
+                  !room.disbanded else { throw BotFailure.unsupported }
             created = room
         } catch {
             guard generation == owner, !Task.isCancelled else { return }
@@ -138,6 +190,9 @@ import Observation
               room.members.count == attempt.members.count,
               zip(room.members, attempt.members).allSatisfy({ actual, expected in
                   actual.id == expected.memberID && actual.profile == expected.profile && actual.handle == expected.handle
+                      && actual.isPeer == (expected.peer != nil)
+                      && (expected.peer == nil || (actual.peerID == expected.peer?.id
+                          && actual.installationID == expected.peer?.installationID))
               }) else { return nil }
         return room
     }

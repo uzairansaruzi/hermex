@@ -488,7 +488,7 @@ struct BotRoomMemberAvatar: View {
     let avatars: [String: UIImage]
     let size: CGFloat
     var body: some View {
-        let profile = roster.first { $0.id == member?.profile }
+        let profile = roster.first { member?.isPeer == false && $0.peer == nil && $0.id == member?.profile }
         if let profile {
             BotAvatarView(profile: profile, avatar: avatars[profile.id], size: size, motion: .still)
         } else if let placeholder = BotProfile(.object(["name": .string("unknown")])) {
