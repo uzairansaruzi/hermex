@@ -1074,7 +1074,7 @@ enum BotInboxDateLabel {
         if attemptedText != message {
             requestID = UUID().uuidString
             attemptedText = message
-            attemptedInstallation = peer.installationID
+            attemptedInstallation = currentPeer()?.installationID ?? peer.installationID
         }
         defer { client.close(); if owner == token { wire = nil; busy = false } }
         func check() throws {

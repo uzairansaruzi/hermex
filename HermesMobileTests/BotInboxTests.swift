@@ -67,7 +67,8 @@ import SwiftUI
         let wire = BotInboxFixtureWire(roster: [row("local")])
         wire.holdsPeers = true
         wire.peerRows = [try XCTUnwrap(try peerRow(alias: "remote", reachable: true).peer).json]
-        let inbox = try makeInbox(wires: [wire])
+        let cache = makeRosterCache()
+        let inbox = try makeInbox(wires: [wire], rosterCache: cache)
         let held = expectation(description: "peer roster held")
         wire.onCall = { if $0 == "peers.roster" { held.fulfill() } }
         let opened = Task { await inbox.open() }
@@ -83,6 +84,36 @@ import SwiftUI
         wire.holdsPeers = false
         wire.release()
         await opened.value
+        XCTAssertEqual(inbox.peers.map(\.peer?.peerAlias), ["remote"])
+        let scope = BotRosterCache.Scope(server: server, connectionID: try XCTUnwrap(inbox.connection).id)
+        let cached = await cache.load(scope)
+        XCTAssertEqual(BotInbox.peerRoster(cached ?? []).map(\.peer?.peerAlias), ["remote"])
+    }
+
+    func testALocalRefreshQueuesTheNextPeerReadInsteadOfCancellingIt() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("local")])
+        wire.holdsPeers = true
+        wire.peerRows = [try XCTUnwrap(try peerRow(alias: "remote", reachable: true).peer).json]
+        let inbox = try makeInbox(wires: [wire])
+        let held = expectation(description: "first peer read held")
+        wire.onCall = { if $0 == "peers.roster" { held.fulfill() } }
+        let opened = Task { await inbox.open() }
+        await fulfillment(of: [held], timeout: 5)
+        wire.emit("sessions.changed")
+        wire.emit("sessions.changed")
+        let deadline = Date().addingTimeInterval(1)
+        while wire.calls.filter({ $0.0 == "profiles.list" }).count < 2, Date() < deadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(wire.calls.filter { $0.0 == "peers.roster" }.count, 1, "A local refresh must not restart the peer read")
+        wire.holdsPeers = false
+        wire.release()
+        await opened.value
+        let followUp = Date().addingTimeInterval(2)
+        while wire.calls.filter({ $0.0 == "peers.roster" }).count < 2, Date() < followUp {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(wire.calls.filter { $0.0 == "peers.roster" }.count, 2)
         XCTAssertEqual(inbox.peers.map(\.peer?.peerAlias), ["remote"])
     }
 

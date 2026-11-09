@@ -233,6 +233,8 @@ import UIKit
     private var reloadTask: Task<Void, Never>?
     /// Peer roster reads must not hold the local roster or New Chat behind a slow host.
     private var peerReloadTask: Task<Void, Never>?
+    /// The newest peer read requested while one is already in flight. It runs when that one finishes.
+    private var peerReloadQueued: PeerReload?
     private var reloadWanted = false
     private var reloadSerial = 0
     /// False once the host answered `session.active_list` with "method not found";
@@ -518,7 +520,7 @@ import UIKit
         openSerial += 1
         reconnect.cancel()
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
-        peerReloadTask?.cancel(); peerReloadTask = nil
+        peerReloadTask?.cancel(); peerReloadTask = nil; peerReloadQueued = nil
         statusPollTask?.cancel(); statusPollTask = nil
         wire?.close(); wire = nil
         link = .idle
@@ -692,10 +694,6 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
-            if let scope {
-                await rosterCache.save(rows, scope: scope, readAt: readAt)
-                guard wire === client, serial == reloadSerial else { return false }
-            }
             startLiveStatusRead(client)
             startPeerReload(client, serial: serial, localRows: rows, scope: scope, readAt: readAt)
             return true
@@ -706,28 +704,53 @@ import UIKit
         }
     }
 
-    /// Reads peers after the local roster is already visible. A missing method is an
-    /// empty peer list; a stall or transient failure leaves known peers unavailable.
+    private struct PeerReload {
+        let client: any BotTransport
+        let serial: Int
+        let localRows: [BotJSON]
+        let scope: BotRosterCache.Scope?
+        let readAt: ContinuousClock.Instant
+    }
+
+    /// Reads peers after the local roster is already visible. A local refresh queues one
+    /// follow-up instead of cancelling the read in flight. The cache is written once,
+    /// with the local rows and the peer rows together, so a same-timestamp local save
+    /// cannot reject the peers.
     private func startPeerReload(_ client: any BotTransport, serial: Int, localRows: [BotJSON],
                                  scope: BotRosterCache.Scope?, readAt: ContinuousClock.Instant) {
-        peerReloadTask?.cancel()
+        let next = PeerReload(client: client, serial: serial, localRows: localRows, scope: scope, readAt: readAt)
+        guard peerReloadTask == nil else { peerReloadQueued = next; return }
+        beginPeerReload(next)
+    }
+
+    private func beginPeerReload(_ pending: PeerReload) {
         peerReloadTask = Task { [weak self] in
             guard let self else { return }
-            var peerRows: [BotJSON]
+            var peerRows: [BotJSON] = []
             do {
-                let result = try await client.call(.peersRoster)
+                let result = try await pending.client.call(.peersRoster)
                 guard !Task.isCancelled, let bots = result["bots"].list else { throw BotFailure.unsupported }
                 peerRows = bots
             } catch {
-                guard !Task.isCancelled else { return }
-                peerRows = self.peers.compactMap { $0.peer?.unavailable.json }
-                if client.unavailableMethods.contains("peers.roster") || (error as? BotFailure) == .rejected(-32601) { peerRows = [] }
+                if !Task.isCancelled {
+                    peerRows = self.peers.compactMap { $0.peer?.unavailable.json }
+                    if pending.client.unavailableMethods.contains("peers.roster") || (error as? BotFailure) == .rejected(-32601) { peerRows = [] }
+                }
             }
-            guard !Task.isCancelled, self.wire === client, self.reloadSerial == serial else { return }
-            self.peers = Self.peerRoster(peerRows)
-            if let scope {
-                await self.rosterCache.save(localRows + peerRows, scope: scope, readAt: readAt)
+            let current = !Task.isCancelled && self.wire === pending.client && self.reloadSerial == pending.serial
+            if current {
+                self.peers = Self.peerRoster(peerRows)
+                if let scope = pending.scope {
+                    await self.rosterCache.save(pending.localRows + peerRows, scope: scope, readAt: pending.readAt)
+                }
             }
+            self.peerReloadTask = nil
+            guard let queued = self.peerReloadQueued, self.wire === queued.client else {
+                self.peerReloadQueued = nil
+                return
+            }
+            self.peerReloadQueued = nil
+            self.beginPeerReload(queued)
         }
     }
 
@@ -995,7 +1018,7 @@ import UIKit
     /// `routeAdvice` if the host stays unreachable.
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
-        peerReloadTask?.cancel(); peerReloadTask = nil
+        peerReloadTask?.cancel(); peerReloadTask = nil; peerReloadQueued = nil
         statusPollTask?.cancel(); statusPollTask = nil
         client.close(); wire = nil
         link = .disconnected
