@@ -59,7 +59,10 @@ struct HermesPlugin: Identifiable, Equatable, Sendable {
         // does, so they never offer an Update here.
         hasUpdate = row["update_available"].flag == true && key != "hermex-push" && key != "hermex-screen"
         updateVersion = row["catalog_version"].text
+        // A repeated key keeps its first entry: the settings form holds one draft per key.
+        var keys = Set<String>()
         settings = (row["settings_schema"].list ?? []).compactMap(HermesPluginSetting.init)
+            .filter { keys.insert($0.key).inserted }
     }
 }
 

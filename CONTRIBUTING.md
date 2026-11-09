@@ -23,8 +23,9 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Running tests
 
-Run the tests your change affects before opening a PR; CI runs the full XCTest suite
-on every push and is the green bar ([`AGENTS.md`](AGENTS.md) § Verifying):
+Run the tests your change affects before opening a PR. PR CI runs the full XCTest suite
+on every push to a pull request that changes the app, and is the green bar; a PR limited
+to docs or `scripts/` skips it ([`AGENTS.md`](AGENTS.md) § Verifying):
 
 ```zsh
 scripts/test-sim <simulator-udid> --only HermesMobileTests/<TestClass>

@@ -67,7 +67,8 @@ Hermes server sends no webui request: Settings skips its webui loads and hides t
 rows, a webui 401 never signs it out, and webui's serverless session links (`session?id=`) and
 bare-Profile New Chat in Profile links switch to the first webui server, or open nothing without
 one. New chats (#1180) and shares (#1181) stay on it. Removing it or signing it out
-forgets its push pairing at the relay (`push.md`). Its connection form is reached through Settings
+drops its push pairing and asks the relay to delete this device's registration, unless
+another configured server shares it; the relay call is best-effort (`push.md`). Its connection form is reached through Settings
 → Servers → the server → Hermes connection, and saving it signs the server back in. The
 active Hermes server's page has both Sign Out of This Server, which keeps the server and
 shows its sign-in form, and Remove Server. Moving a webui server's connection into a Hermes
