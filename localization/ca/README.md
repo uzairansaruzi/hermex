@@ -54,15 +54,28 @@ carries `ca`:
 
 ```zsh
 git worktree add /tmp/hermex-src b15b4eb4e7f49001e1c627fc24b4f48384511858
+
+# Auxiliary.xcstrings and ShareExtension.xcstrings are added by this branch, so
+# the pinned revision does not contain them; their recorded checksums describe
+# the branch's copies. Put those copies in place before importing.
+git show HEAD:HermesMobile/Resources/Auxiliary.xcstrings \
+  > /tmp/hermex-src/HermesMobile/Resources/Auxiliary.xcstrings
+mkdir -p /tmp/hermex-src/HermesShareExtension/Resources
+git show HEAD:HermesShareExtension/Resources/ShareExtension.xcstrings \
+  > /tmp/hermex-src/HermesShareExtension/Resources/ShareExtension.xcstrings
+
+# run this branch's importer against that checkout
 python3 scripts/catalan_localization.py import --package localization/ca --repo /tmp/hermex-src
 ```
 
-`Auxiliary.xcstrings` and `ShareExtension.xcstrings` are delivered by this
-branch, so for those two files the importer reads the branch's own copies (their
-`ca` blocks stripped) instead of the pinned revision's; everywhere else the
-pinned revision's structure is used. Running `import --package localization/ca
---repo .` on the feature branch reports `Stale package: expected …, found …` by
-design, and is not the supported way to reproduce the catalogue.
+The importer reads every catalogue in the checkout it is pointed at, `--repo`,
+and rewrites all five of them (`Localizable`, `AppShortcuts`, `Auxiliary`,
+`ShareExtension` and `ca.lproj/InfoPlist.strings`); copy those five files back
+onto the branch. Skipping the two branch-owned catalogues makes the run stop
+with `FileNotFoundError` on `Auxiliary.xcstrings`, because the pinned revision
+does not have them. Running `import --package localization/ca --repo .` on the
+feature branch reports `Stale package: expected …, found …` by design, and is
+not the supported way to reproduce the catalogue.
 
 The importer validates the whole package before writing anything, then adds only
 the `ca` localization blocks. Existing language data and untouched catalog bytes
