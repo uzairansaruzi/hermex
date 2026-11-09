@@ -52,6 +52,30 @@ import XCTest
         XCTAssertEqual(creator.created?.members.last?.peerID, "after-restart")
     }
 
+    func testMixedRetryUsesTheFreshRouteAfterALostCreate() async throws {
+        func peer(_ route: String) throws -> BotPeer {
+            try XCTUnwrap(BotPeer(.object(["kind": .string("peer"), "route_id": .string(route),
+                "alias": .string("office"), "profile": .string("dev"),
+                "reachability": .string("reachable"), "installation_id": .string("install:office")])))
+        }
+        let old = try peer("before-restart"), fresh = try peer("after-restart")
+        let wire = UnifiedRosterGroupWire(peers: [old.json])
+        wire.createError = BotFailure.transport
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let roster = [profile("dev"), BotProfile(peer: old)]
+        let creator = BotRoomCreator(server: server, connection: connection, roster: roster,
+            store: store, makeWire: { _ in wire })
+        roster.forEach(creator.select)
+        await creator.create()
+        XCTAssertNil(creator.created)
+        wire.peers = [fresh.json]
+        await creator.create()
+        let retry = try XCTUnwrap(wire.writes.last)
+        XCTAssertEqual(try retry.params()["members"]?.list?.last?["route_id"].text, "after-restart")
+        XCTAssertEqual(try retry.params()["room_id"].text, try wire.writes.first?.params()["room_id"].text)
+    }
+
     func testMixedReplyWithAnotherPeerTargetDoesNotReportSuccess() async throws {
         let peer = try XCTUnwrap(BotPeer(.object(["kind": .string("peer"), "route_id": .string("selected"),
             "alias": .string("office"), "profile": .string("dev"), "reachability": .string("reachable")])))
@@ -340,9 +364,10 @@ import XCTest
     var replayEpoch: String? { nil }
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
-    let peers: [BotJSON]
+    var peers: [BotJSON]
     var writes: [HermesCall] = []
     var returnedPeerID: String?
+    var createError: Error?
     init(peers: [BotJSON]) { self.peers = peers }
     func connect() async throws {}
     func close() {}
@@ -350,11 +375,13 @@ import XCTest
         try validateDispatch?()
         switch call {
         case .peersRoster: return .object(["bots": .array(peers)])
+        case .groupsList: return .object(["rooms": .array([]), "next_offset": .null])
         case .groupsCapabilities:
             return .object(["driver": .bool(true), "authority_gateway_id": .string("install"),
                 "methods": .array(["groups.list", "groups.state", "groups.log", "groups.create"].map(BotJSON.string))])
         case .groupsCreate(let room), .groupsCreateMixed(let room):
             _ = try call.params(); writes.append(call)
+            if let createError { self.createError = nil; throw createError }
             return .object(["room": .object(["room_id": .string(room.roomID), "name": .string(room.name),
                 "authority_gateway_id": .string("install"), "members": .array(room.members.map { member in
                     var fields = member.json.fields ?? [:]

@@ -936,7 +936,14 @@ final class ChatDraftStore {
     /// Clears the draft's user-authored content. Attachments and settings are
     /// managed separately (attachments sync from the composer observationally).
     func clearDraft(for key: ChatDraftKey) {
-        setContent(.empty, for: key)
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.text = ""
+            draft.quotes = []
+            // A confirmed peer delivery must not remain a retry of that same request.
+            draft.peerRequestID = nil
+            draft.peerRequestText = nil
+        }
     }
 
     /// Retains a rejected send's captured files even if its view already left.

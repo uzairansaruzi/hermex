@@ -401,8 +401,9 @@ import SwiftUI
         if let peer = profile.peer {
             BotPeerMessageView(peer: peer, server: server, connection: connection,
                 currentPeer: {
-                    let peer = inbox.peers.first { $0.rosterID == profile.rosterID }?.peer
-                    return inbox.link == .live ? peer : peer?.unavailable
+                    // A compact push closes the inbox socket. That is not a peer outage;
+                    // Send rechecks the fresh roster before dispatch.
+                    inbox.peers.first { $0.rosterID == profile.rosterID }?.peer
                 })
                 .id([server.absoluteString, connection.id.uuidString, peer.identity])
         } else if let chat = inbox.selection.chat(server: server, connection: connection) {
@@ -1090,7 +1091,7 @@ enum BotInboxDateLabel {
                 return
             }
             reply = result["reply"].text
-            text = ""; attemptedText = nil
+            text = ""; attemptedText = nil; requestID = UUID().uuidString
             ChatDraftStore.shared.clearDraft(for: key)
             notice = result["status"].text == "queued" ? "Message queued" : "Message delivered"
         } catch {

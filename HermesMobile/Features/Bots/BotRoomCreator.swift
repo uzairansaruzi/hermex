@@ -83,6 +83,29 @@ import Observation
         }
     }
 
+    /// Keeps the room id from an uncertain attempt, but replaces peer route selectors with the
+    /// roster just probed. A gateway restart rotates those selectors; resending the old one cannot succeed.
+    private func creationPayload(replacing existing: HermesCall.RoomCreation?) -> HermesCall.RoomCreation {
+        let fresh = Self.members(selected)
+        guard let existing, existing.members.contains(where: { $0.peer != nil }) else {
+            return existing ?? HermesCall.RoomCreation(roomID: UUID().uuidString, name: name, members: fresh)
+        }
+        let probed = Dictionary(uniqueKeysWithValues: selected.compactMap { bot -> (String, BotPeer)? in
+            guard let peer = bot.peer else { return nil }
+            return (peer.identity, peer)
+        })
+        var copy = existing
+        copy.members = existing.members.map { member in
+            guard let peer = member.peer, let freshPeer = probed[peer.identity] else { return member }
+            var updated = member
+            updated.peer = freshPeer
+            updated.profile = freshPeer.profile
+            updated.displayName = freshPeer.displayName
+            return updated
+        }
+        return copy
+    }
+
     var preview: BotGroupRoom {
         BotGroupRoom(.object(["room_id": .string("preview"), "name": .string(name),
                               "members": .array(Self.members(selected).map { member in
@@ -150,8 +173,7 @@ import Observation
                 message = String(localized: "A bot you chose can’t join group chats on this Hermes any more. Go back and choose again.")
                 return
             }
-            let creation = attempt ?? HermesCall.RoomCreation(roomID: UUID().uuidString, name: name,
-                                                              members: Self.members(selected))
+            let creation = creationPayload(replacing: attempt)
             let result = try await client.call(Self.creationCall(creation), validateDispatch: { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner, client)

@@ -62,6 +62,19 @@ import SwiftUI
         XCTAssertNil(absent)
     }
 
+    func testConfirmedPeerDeliveryRetiresItsRetryIdentity() async throws {
+        let peer = try XCTUnwrap(try peerRow(alias: "remote", reachable: true).peer)
+        let key = ChatDraftKey.peer(server: server, connectionID: UUID(), peer: peer)
+        let store = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: rosterRoot))
+        store.setDraft("Sent", for: key)
+        store.setPeerRequest(id: "completed-request", text: "Sent", for: key)
+        store.clearDraft(for: key)
+        let draft = await store.draft(for: key)
+        XCTAssertNil(draft?.peerRequestID)
+        XCTAssertNil(draft?.peerRequestText)
+        XCTAssertNil(draft)
+    }
+
     func testUnifiedRosterKeepsDuplicateNamesAndOpaqueSourceIdentities() throws {
         let local = try XCTUnwrap(BotProfile(.object(["name": .string("assistant"), "display_name": .string("Cindy")])))
         let peer = try peerRow(alias: "other", reachable: true)
