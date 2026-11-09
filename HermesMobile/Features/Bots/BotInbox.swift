@@ -694,6 +694,10 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
+            if let scope {
+                await rosterCache.save(rows, scope: scope, readAt: readAt)
+                guard wire === client, serial == reloadSerial else { return false }
+            }
             startLiveStatusRead(client)
             startPeerReload(client, serial: serial, localRows: rows, scope: scope, readAt: readAt)
             return true
@@ -712,10 +716,9 @@ import UIKit
         let readAt: ContinuousClock.Instant
     }
 
-    /// Reads peers after the local roster is already visible. A local refresh queues one
-    /// follow-up instead of cancelling the read in flight. The cache is written once,
-    /// with the local rows and the peer rows together, so a same-timestamp local save
-    /// cannot reject the peers.
+    /// Reads peers after the local roster is already visible and already cached. A local
+    /// refresh queues one follow-up instead of cancelling the read in flight. The combined
+    /// save uses a later timestamp so it can replace that local cache.
     private func startPeerReload(_ client: any BotTransport, serial: Int, localRows: [BotJSON],
                                  scope: BotRosterCache.Scope?, readAt: ContinuousClock.Instant) {
         let next = PeerReload(client: client, serial: serial, localRows: localRows, scope: scope, readAt: readAt)
@@ -741,7 +744,7 @@ import UIKit
             if current {
                 self.peers = Self.peerRoster(peerRows)
                 if let scope = pending.scope {
-                    await self.rosterCache.save(pending.localRows + peerRows, scope: scope, readAt: pending.readAt)
+                    await self.rosterCache.save(pending.localRows + peerRows, scope: scope, readAt: pending.readAt.advanced(by: .nanoseconds(1)))
                 }
             }
             self.peerReloadTask = nil

@@ -90,6 +90,22 @@ import SwiftUI
         XCTAssertEqual(BotInbox.peerRoster(cached ?? []).map(\.peer?.peerAlias), ["remote"])
     }
 
+    func testClosingDuringAPeerReadStillCachesTheLocalRoster() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("local")])
+        wire.holdsPeers = true
+        let cache = makeRosterCache()
+        let inbox = try makeInbox(wires: [wire], rosterCache: cache)
+        let held = expectation(description: "peer read held before close")
+        wire.onCall = { if $0 == "peers.roster" { held.fulfill() } }
+        let opened = Task { await inbox.open() }
+        await fulfillment(of: [held], timeout: 5)
+        inbox.close()
+        await opened.value
+        let scope = BotRosterCache.Scope(server: server, connectionID: try XCTUnwrap(inbox.connection).id)
+        let cached = await cache.load(scope)
+        XCTAssertEqual(cached?.compactMap { $0["name"].text }, ["local"])
+    }
+
     func testALocalRefreshQueuesTheNextPeerReadInsteadOfCancellingIt() async throws {
         let wire = BotInboxFixtureWire(roster: [row("local")])
         wire.holdsPeers = true
