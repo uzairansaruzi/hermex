@@ -140,6 +140,18 @@ enum BotProfileName {
     func setSkipsBundledSkills(_ value: Bool) { draft.skipsBundledSkills = value }
     func setShape(_ shape: BotAvatarShape) {
         draft.appearance.shape = shape.rawValue; draft.appearance.custom = true; draft.appearance.imageKind = "shape"
+        draft.appearance.generated = nil
+    }
+    func setGenerated(_ generated: BotGeneratedAvatar) {
+        if draft.appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) == nil { draft.appearance.shape = BotAvatarShape.circle.rawValue }
+        draft.appearance.generated = generated; draft.appearance.custom = true; draft.appearance.imageKind = "shape"
+    }
+    var holdsConnection: Bool { wire != nil }
+
+    /// "Describe It" under the default Profile: the new bot does not exist yet.
+    func sendAvatarPrompt(_ prompt: String) async throws -> String {
+        guard let client = wire else { throw BotFailure.stale }
+        return try await BotAvatarGeneration.ask(prompt, profile: "default", transport: client, validateDispatch: validate(generation))
     }
     func setColor(_ hex: String) {
         if draft.appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) == nil { draft.appearance.shape = BotAvatarShape.circle.rawValue }
@@ -284,6 +296,8 @@ enum BotProfileName {
         let created = try await client.call(.sessionCreate(profile: name), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard let runtime = created["session_id"].text, !runtime.isEmpty else { throw BotFailure.unsupported }
+        // A canonical create already titled and hid it (#1603), and has no `session.title`.
+        if client.speaksCanonicalProtocol { outcomes[.chat] = .done; return }
         do {
             // The created row is lazy; the title write persists it so the roster and
             // the phone's exact-title lookup find it before any prompt.

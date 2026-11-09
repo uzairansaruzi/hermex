@@ -9,7 +9,7 @@ private struct ChatTimelineAccessorySurfaceModifier<SurfaceShape: Shape>: ViewMo
     func body(content: Content) -> some View {
         content
             .background(
-                Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.28 : 0.48),
+                Color(.appSurface).opacity(colorScheme == .dark ? 0.28 : 0.48),
                 in: shape
             )
             .adaptiveGlass(
@@ -21,7 +21,7 @@ private struct ChatTimelineAccessorySurfaceModifier<SurfaceShape: Shape>: ViewMo
             .clipShape(shape)
             .overlay {
                 shape
-                    .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
+                    .stroke(Color(.appSeparator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
                     .allowsHitTesting(false)
             }
     }
@@ -33,10 +33,10 @@ private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
 
     private var backgroundColor: Color {
         if reduceTransparency {
-            return Color(.secondarySystemGroupedBackground)
+            return Color(.appGroupedSurface)
         }
 
-        return Color(.secondarySystemFill).opacity(0.72)
+        return Color(.appFillSecondary).opacity(0.72)
     }
 
     func body(content: Content) -> some View {
@@ -47,7 +47,7 @@ private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.36 : 0.22), lineWidth: 0.5)
+                    .stroke(Color(.appSeparator).opacity(colorScheme == .dark ? 0.36 : 0.22), lineWidth: 0.5)
                     .allowsHitTesting(false)
             }
     }

@@ -44,6 +44,13 @@ final class ChatPendingActionCoordinator {
     private(set) var isRespondingToApproval = false
     private(set) var approvalErrorMessage: String?
     private(set) var isSessionApprovalBypassEnabled = false
+    /// A write from Model settings' YOLO switch in flight.
+    private(set) var isChangingApprovalBypass = false
+    /// Why that switch's last write failed. Cleared by the next one.
+    private(set) var approvalBypassErrorMessage: String?
+    /// Bumped as each bypass write starts and as it answers, so a read sent before the answer
+    /// can't overwrite it.
+    private var approvalBypassWrites = 0
 
     private(set) var clarificationPrompt: ClarificationPromptState?
     private(set) var isRespondingToClarification = false
@@ -89,10 +96,12 @@ final class ChatPendingActionCoordinator {
 
     func refreshApprovalBypassState() async {
         guard let sessionID = delegate?.pendingActionSessionID else { return }
+        let writesBefore = approvalBypassWrites
 
         do {
             let response = try await client.sessionYolo(sessionID: sessionID)
-            guard !Task.isCancelled, delegate?.pendingActionSessionID == sessionID else { return }
+            guard !Task.isCancelled, delegate?.pendingActionSessionID == sessionID,
+                  approvalBypassWrites == writesBefore else { return }
             isSessionApprovalBypassEnabled = response.yoloEnabled == true
             if isSessionApprovalBypassEnabled {
                 approvalStateGeneration &+= 1
@@ -179,7 +188,9 @@ final class ChatPendingActionCoordinator {
         defer { isRespondingToApproval = false }
 
         do {
+            approvalBypassWrites &+= 1
             let response = try await client.setSessionYolo(sessionID: prompt.sessionID, enabled: true)
+            approvalBypassWrites &+= 1
             isSessionApprovalBypassEnabled = response.yoloEnabled ?? true
             approvalStateGeneration &+= 1
             approvalPendingBySession[prompt.sessionID] = nil
@@ -189,6 +200,36 @@ final class ChatPendingActionCoordinator {
             approvalErrorMessage = error.localizedDescription
             delegate?.pendingActionCoordinatorDidFailAction(error)
             return false
+        }
+    }
+
+    /// Model settings' YOLO switch. Turning it on releases a waiting approval on the server.
+    /// Turning it off asks again for any approval the server holds and resumes watching, since
+    /// the empty update that released one also ended the monitoring.
+    func setApprovalBypass(_ enabled: Bool) async {
+        guard let sessionID = delegate?.pendingActionSessionID, !isChangingApprovalBypass,
+              enabled != isSessionApprovalBypassEnabled else { return }
+        isChangingApprovalBypass = true
+        approvalBypassWrites &+= 1
+        approvalBypassErrorMessage = nil
+        defer { isChangingApprovalBypass = false }
+
+        do {
+            let response = try await client.setSessionYolo(sessionID: sessionID, enabled: enabled)
+            approvalBypassWrites &+= 1
+            guard !Task.isCancelled, delegate?.pendingActionSessionID == sessionID else { return }
+            isSessionApprovalBypassEnabled = response.yoloEnabled ?? enabled
+            if isSessionApprovalBypassEnabled {
+                approvalStateGeneration &+= 1
+                approvalPendingBySession[sessionID] = nil
+                approvalPrompt = nil
+            } else {
+                await refreshApprovalPending(sessionID: sessionID)
+                startApprovalMonitoring()
+            }
+        } catch {
+            guard !Task.isCancelled, delegate?.pendingActionSessionID == sessionID else { return }
+            approvalBypassErrorMessage = error.localizedDescription
         }
     }
 

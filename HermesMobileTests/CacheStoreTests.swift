@@ -1053,6 +1053,53 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.cachedSessions(serverURL: URL(string: "https://example.test")!, in: context).map(\.title), ["Before"])
     }
 
+    /// The cache names its servers' URLs, so it stays out of the app group (#1509).
+    func testTheCacheIsNotStoredInTheAppGroup() throws {
+        guard let group = HermesShareDraft.containerURL() else {
+            throw XCTSkip("An unsigned build, as on CI, has no app group.")
+        }
+        XCTAssertFalse(CacheContainer.configuration.url.path.hasPrefix(group.path))
+    }
+
+    /// An install's existing cache moves with its rows, and nothing stays behind.
+    func testMovingTheStoreKeepsItsRowsAndLeavesNothingBehind() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("group/default.store")
+        let destination = directory.appendingPathComponent("app/default.store")
+        let server = URL(string: "https://example.test")!
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        do {
+            let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                          configurations: ModelConfiguration(url: source)))
+            let sessions = try decodeSessions(#"{"sessions": [{"session_id": "s1", "title": "Kept", "archived": false}]}"#)
+            try CacheStore.cacheSessions(try XCTUnwrap(sessions.sessions), serverURL: server, in: context)
+        }
+
+        CacheContainer.moveStore(from: source, to: destination)
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: source.deletingLastPathComponent().path), [])
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(url: destination)))
+        XCTAssertEqual(try CacheStore.cachedSessions(serverURL: server, in: context).map(\.title), ["Kept"])
+    }
+
+    /// A store that won't open leaves the app a working cache that isn't written to disk.
+    func testAStoreThatWontOpenFallsBackToMemory() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: file) }
+        try Data().write(to: file)
+        let server = URL(string: "https://example.test")!
+
+        // A regular file as the store's parent directory can't hold a store.
+        let context = ModelContext(CacheContainer.container(for: ModelConfiguration(url: file.appendingPathComponent("default.store"))))
+        let sessions = try decodeSessions(#"{"sessions": [{"session_id": "s1", "title": "Kept", "archived": false}]}"#)
+        try CacheStore.cacheSessions(try XCTUnwrap(sessions.sessions), serverURL: server, in: context)
+
+        XCTAssertEqual(try CacheStore.cachedSessions(serverURL: server, in: context).map(\.title), ["Kept"])
+        XCTAssertEqual(try Data(contentsOf: file), Data())
+    }
+
     private let hermesServer = URL(string: "https://hermes.example")!
 
     /// Caches the held rows `ids` of session `tip` in `default`, after a newest read that covered `newest`.

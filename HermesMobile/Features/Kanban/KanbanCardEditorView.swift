@@ -17,7 +17,7 @@ struct KanbanCardEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 primaryFields
                 assignmentFields
                 if state.isEditing {
@@ -28,6 +28,7 @@ struct KanbanCardEditorView: View {
                 submissionSection
             }
             .disabled(state.submission.isInFlight)
+            .themedPageBackground()
             .navigationTitle(state.isEditing ? String(localized: "Edit Card") : String(localized: "New Card"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { editorToolbar }
@@ -88,7 +89,7 @@ struct KanbanCardEditorView: View {
             }
         } header: {
             Text("Card")
-        } footer: {
+        } appFooter: {
             if state.isEditing, let originalStatus = state.originalStatus,
                !state.createStatuses.contains(originalStatus) {
                 Text("Current Status: \(KanbanStatusPresentation(originalStatus).title). Choose a permitted Status only if you want to move the Card.")
@@ -121,7 +122,7 @@ struct KanbanCardEditorView: View {
             }
         } header: {
             Text("Assignment")
-        } footer: {
+        } appFooter: {
             if !state.canEditTenant {
                 Text("Tenant is set when the Card is created and cannot be edited here.")
             }
@@ -177,7 +178,7 @@ struct KanbanCardEditorView: View {
             }
         } header: {
             Text("Execution")
-        } footer: {
+        } appFooter: {
             if state.isEditing {
                 Text("Workspace, Skills, Maximum Runtime, and Prerequisite are set when the Card is created and cannot be edited here.")
             }
@@ -204,7 +205,7 @@ struct KanbanCardEditorView: View {
                     .foregroundStyle(.red)
                 if let message = state.failureMessage {
                     Text(verbatim: message)
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .textSelection(.enabled)
                 }
                 Button("Try Again") { beginSubmit() }

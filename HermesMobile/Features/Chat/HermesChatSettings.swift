@@ -70,7 +70,9 @@ enum HermesProfilePreference {
 /// `--session`, so the next chat in the Profile still starts on its default. The host may
 /// ask to confirm an expensive model (`confirmation`) or apply the pick after the running
 /// response (`pendingModel`). A new chat's session exists from the moment it opens, so a pick
-/// there is sent at once, like any other.
+/// there is sent at once, like any other. On a canonical host (#1604) the pick is the session's
+/// fenced `model` edit, whose confirmation resends the host's own token, and Fast goes without a
+/// scope.
 ///
 /// Effort is session-scoped like the model: one `config.set` reasoning for this chat, never a
 /// display word. The host may send a lower level than the one picked when the model's route
@@ -136,8 +138,12 @@ enum HermesProfilePreference {
     /// attach that is no longer current, and a failed Profile read keeps the last list.
     func connect(runtime: String, attempt: Int) async {
         guard engine.generation == attempt, engine.connectionState == .connected else { return }
+        // A canonical host takes the model as the session's fenced edit (#1604).
+        let mutate: BotChatControls.Mutate? = engine.wire.speaksCanonicalProtocol ? { [engine] operation, check in
+            try await engine.mutate(operation, attempt: attempt, runtime: runtime, stillCurrent: check)
+        } : nil
         await controls.connect(.init(connectionID: engine.connection.id, profile: profile, runtime: runtime,
-                                     generation: attempt), wire: engine.wire)
+                                     generation: attempt), wire: engine.wire, mutate: mutate)
         guard engine.generation == attempt else { return }
         if let latestInfo { controls.snapshot(latestInfo) }
         await readProfiles(attempt: attempt)

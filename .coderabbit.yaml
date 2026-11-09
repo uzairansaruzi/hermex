@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit settings for Hermex. Anything unset here comes from the
+# organization settings in the CodeRabbit dashboard.
+inheritance: true
+reviews:
+  auto_review:
+    # Stacked PRs target their parent branch, not master.
+    base_branches: [".*"]
+    # The merge gate waits for CodeRabbit on every push, so never pause.
+    auto_pause_after_reviewed_commits: 0
+  pre_merge_checks:
+    # Comments document how code is used, not every function (AGENTS.md § Taste).
+    docstrings:
+      mode: "off"

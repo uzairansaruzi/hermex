@@ -115,10 +115,11 @@ struct GoalSubmissionSheet: View {
     var body: some View {
         NavigationStack {
             TextEditor(text: $goalDraft)
-                .font(.body)
+                .font(AppFont.body())
                 .padding()
                 .scrollContentBackground(.hidden)
-                .background(Color(.systemGroupedBackground))
+                .background(Color(.appGroupedCanvas))
+                .themedPageBackground()
                 .navigationTitle("Set Goal")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -137,6 +138,7 @@ struct GoalSubmissionSheet: View {
                     }
                 }
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .adaptiveFormPresentation()
     }

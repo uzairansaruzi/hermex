@@ -37,6 +37,7 @@ struct ToolActivityGroupView: View {
 
     @ViewBuilder
     var body: some View {
+        let _ = RenderProbe.hit(.toolActivityGroup)
         let entries = ToolCallSummaryFormatter.entries(for: group.toolCalls, isLive: isLive)
 
         if let lastEntry = entries.last {
@@ -99,7 +100,7 @@ struct ToolActivityGroupView: View {
             HStack(alignment: wrapsTitle ? .top : .center, spacing: 6) {
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(width: 20, height: 18)
 
                 Text(title)

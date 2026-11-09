@@ -24,8 +24,8 @@ struct TaskRunOutputSheet: View {
                         VStack(alignment: .leading, spacing: 12) {
                             if run.isScriptOutputCut {
                                 Text("The server shows only the start of this run's output.")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                                    .font(AppFont.footnote())
+                                    .foregroundStyle(.appSecondary)
                             }
                             Text(text)
                                 .font(.system(.footnote, design: .monospaced))
@@ -53,6 +53,7 @@ struct TaskRunOutputSheet: View {
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

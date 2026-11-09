@@ -20,7 +20,7 @@ struct GitTurnChangesCard: View {
     let onOpenFile: (GitFile) -> Void
 
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
-    private var dividerColor: Color { Color(.separator).opacity(colorScheme == .dark ? 0.8 : 1.0) }
+    private var dividerColor: Color { Color(.appSeparator).opacity(colorScheme == .dark ? 0.8 : 1.0) }
     private var showsTotals: Bool { summary.totalAdditions > 0 || summary.totalDeletions > 0 }
 
     var body: some View {
@@ -42,7 +42,7 @@ struct GitTurnChangesCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: shape)
+        .background(Color(.appSurface), in: shape)
         .overlay { shape.stroke(dividerColor, lineWidth: 0.5) }
         .clipShape(shape)
     }
@@ -51,11 +51,11 @@ struct GitTurnChangesCard: View {
         HStack(spacing: 8) {
             Image(systemName: "square.and.pencil")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Text("File changes")
                 .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             if showsTotals {
                 DiffCountsLabel(additions: summary.totalAdditions, deletions: summary.totalDeletions)
@@ -91,7 +91,7 @@ struct GitTurnChangesCard: View {
         return HStack(spacing: 5) {
             Text(isTurnRange ? String(localized: "Since turn start") : String(localized: "Uncommitted changes"))
                 .font(AppFont.caption())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Button {
                 showsRangeInfo = true
@@ -132,7 +132,7 @@ struct GitTurnChangesCard: View {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
                 .rotationEffect(.degrees(rotation))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
@@ -149,7 +149,7 @@ struct GitTurnChangesCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(change.gitFile?.displayPath ?? change.path)
                     .font(AppFont.subheadline())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 

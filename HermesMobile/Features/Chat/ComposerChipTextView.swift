@@ -37,6 +37,14 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         pendingTransitionFocus = nil
     }
 
+    /// Gives up the keyboard for dictation, sent down the responder chain from the
+    /// mic. A live composition is committed first, or dictation's first write would
+    /// replace the document under it and split its characters (#312).
+    @objc func resignForDictation() {
+        if markedTextRange != nil { unmarkText() }
+        _ = resignFirstResponder()
+    }
+
     override func resignFirstResponder() -> Bool {
         cancelDeferredFocus()
         return super.resignFirstResponder()
@@ -133,9 +141,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// of appearance or text size has to redraw it even when the draft has not
     /// moved at all.
     private struct ChipRenderStyle: Equatable {
+        let fontName: String
         let fontPointSize: CGFloat
         let userInterfaceStyle: UIUserInterfaceStyle
+        let appearance: AppAppearance
         let accessibilityContrast: UIAccessibilityContrast
+        let displayScale: CGFloat
         let isRightToLeft: Bool
         let quoteMaximumWidth: CGFloat
     }
@@ -146,7 +157,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         addGestureRecognizer(chipTapRecognizer)
 
         registerForTraitChanges(
-            [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self]
+            [UITraitUserInterfaceStyle.self, AppAppearanceTrait.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]
         ) { (view: ComposerChipTextView, _) in
             // Deferred: `adjustsFontForContentSizeCategory` updates `font` from
             // the same trait change, and the chips have to be sized against the
@@ -195,7 +206,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             textAlignment = alignment
         }
 
-        let color: UIColor = isDisabled ? .secondaryLabel : .label
+        let color: UIColor = isDisabled ? .appTextSecondary : .appText
         if textColor != color {
             textColor = color
         }
@@ -344,12 +355,19 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var currentStyle: ChipRenderStyle {
         ChipRenderStyle(
-            fontPointSize: (font ?? .preferredFont(forTextStyle: .body)).pointSize,
+            fontName: (font ?? fallbackFont).fontName,
+            fontPointSize: (font ?? fallbackFont).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
+            appearance: traitCollection[AppAppearanceTrait.self],
             accessibilityContrast: traitCollection.accessibilityContrast,
+            displayScale: traitCollection.displayScale,
             isRightToLeft: isRightToLeft,
             quoteMaximumWidth: max(120, min(260, bounds.width * 0.72))
         )
+    }
+
+    private var fallbackFont: UIFont {
+        .app(forTextStyle: .body, compatibleWith: traitCollection)
     }
 
     private var isRightToLeft: Bool {
@@ -358,7 +376,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var baseAttributes: [NSAttributedString.Key: Any] {
         [
-            .font: font ?? .preferredFont(forTextStyle: .body),
+            .font: font ?? fallbackFont,
             .foregroundColor: textColor ?? .label
         ]
     }
@@ -369,7 +387,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         quotes: [ComposerQuote],
         sourceSelection: NSRange
     ) {
-        let font = self.font ?? .preferredFont(forTextStyle: .body)
+        let font = self.font ?? fallbackFont
         let textColor = self.textColor ?? .label
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
         let metrics = ComposerChipMetrics(editorFont: font)
@@ -461,7 +479,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             traits: traitCollection,
             isRightToLeft: isRightToLeft
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerChipAttachment(
             token: token,
             image: image,
@@ -487,7 +505,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             maximumWidth: currentStyle.quoteMaximumWidth,
             usesAccentIcon: true
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerQuoteAttachment(
             quote: quote,
             image: image,

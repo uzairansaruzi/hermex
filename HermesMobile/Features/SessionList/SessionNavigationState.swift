@@ -14,7 +14,11 @@ enum SessionNavigationDestination: Hashable, Identifiable {
 }
 
 struct SessionNavigationState: Equatable {
-    private(set) var destination: SessionNavigationDestination?
+    private(set) var destination: SessionNavigationDestination? {
+        didSet { chatContinuity = ChatContinuity() }
+    }
+    /// The open chat's, for the `ChatView` of whichever width is showing it (#1528).
+    private(set) var chatContinuity = ChatContinuity()
     private(set) var lastSelectedSessionID: String?
     private(set) var rootRevision = 0
     private var newChatSessionID: String?

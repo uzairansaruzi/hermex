@@ -127,7 +127,7 @@ struct ImageLightboxView<Actions: View>: View {
                 ProgressView()
                     .tint(.white)
                 Text(message)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.white.opacity(0.6))
             }
 
@@ -156,7 +156,7 @@ struct ImageLightboxView<Actions: View>: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.white.opacity(0.6))
                 Text(message)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.85))
                 Button("Try Again", action: onRetry)
@@ -186,14 +186,14 @@ struct ImageLightboxView<Actions: View>: View {
         ZStack {
             VStack(spacing: 1) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(.white)
 
                 if let positionText {
                     Text(positionText)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .monospacedDigit()
                         .foregroundStyle(.white.opacity(0.6))
                         .fixedSize()
@@ -222,7 +222,7 @@ struct ImageLightboxView<Actions: View>: View {
     private func caption(path: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(path)
-                .font(.caption2)
+                .font(AppFont.caption2())
                 .fontDesign(.monospaced)
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(2)
@@ -230,7 +230,7 @@ struct ImageLightboxView<Actions: View>: View {
 
             if case let .image(_, detail) = content, let detail {
                 Text(detail)
-                    .font(.caption2)
+                    .font(AppFont.caption2())
                     .foregroundStyle(.white.opacity(0.5))
             }
         }
@@ -315,7 +315,7 @@ struct ImageLightboxActionButton: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
-                .background(.ultraThinMaterial, in: Circle())
+                .background(.appMaterial(.ultraThinMaterial), in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)

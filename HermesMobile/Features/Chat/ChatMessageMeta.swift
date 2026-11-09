@@ -80,7 +80,7 @@ struct ChatMessageMetaRow<Accessory: View>: View {
                             .frame(width: 28, height: 28)
                             .chatMinimumHitTarget(in: Rectangle())
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .accessibilityLabel("More")
                 }
                 accessory
@@ -96,7 +96,7 @@ struct ChatMessageMetaRow<Accessory: View>: View {
         if let timeText {
             Text(timeText)
                 .font(AppFont.caption(weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 
@@ -104,7 +104,7 @@ struct ChatMessageMetaRow<Accessory: View>: View {
     private var copyButton: some View {
         if let onCopy {
             ChatCopyButton(action: onCopy)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }

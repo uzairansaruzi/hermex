@@ -112,11 +112,13 @@ import XCTest
     /// approval queue's `request_id`, not the envelope id.
     func testARecordedApprovalOffersTheHostsChoicesAndAnswersByItsRequestID() async throws {
         let approval = try XCTUnwrap(try recorded("turn-tool-approval-frames").first { $0["method"].text == "approval" })
-        let chat = await openChat(runtime: "7dd4dff2")
+        let runtime = try XCTUnwrap(approval["params"]["session_id"].text)
+        let requestID = try XCTUnwrap(approval["params"]["request_id"].text)
+        let chat = await openChat(runtime: runtime)
         chat.host.always("approval.respond", .init(result: .object(["resolved": .number(1)])))
         chat.receive(approval)
         guard case .approval(let shown)? = chat.requests.onScreen else { return XCTFail("Expected the approval on screen") }
-        let content = shown.overlayContent(pendingCount: chat.requests.approvalCount)
+        let content = shown.requestContent(pendingCount: chat.requests.approvalCount)
         XCTAssertEqual(content.choices, [.once, .session, .always, .deny])
         XCTAssertEqual(content.pendingCount, 1)
         XCTAssertEqual(content.command, "python3 -c \"print(1)\"")
@@ -125,7 +127,7 @@ import XCTest
         let taken = await chat.requests.respond(try action(chat), choice: .session)
         XCTAssertTrue(taken)
         XCTAssertEqual(chat.writes("approval.respond"), [[
-            "session_id": .string("7dd4dff2"), "request_id": .string("850a0a9d32c448c2b4b9bc34503f5812"),
+            "session_id": .string(runtime), "request_id": .string(requestID),
             "choice": .string("session")
         ]])
         XCTAssertNil(chat.requests.onScreen, "an answered card leaves at once")
@@ -138,7 +140,7 @@ import XCTest
         let chat = await openChat()
         chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1", choices: ["once", "deny"]))
         guard case .approval(let shown)? = chat.requests.onScreen else { return XCTFail("Expected the approval on screen") }
-        XCTAssertEqual(shown.overlayContent(pendingCount: 1).choices, [.once, .deny])
+        XCTAssertEqual(shown.requestContent(pendingCount: 1).choices, [.once, .deny])
 
         let taken = await chat.requests.respond(try action(chat), choice: .always)
         XCTAssertFalse(taken)
@@ -214,8 +216,8 @@ import XCTest
     // MARK: Approval bypass
 
     /// Skip all turns the session's bypass on, then releases the card with `once`, each sent
-    /// once and in that order; the pill turns it off again.
-    func testSkipAllTurnsTheBypassOnAndReleasesTheCardAndThePillTurnsItOff() async throws {
+    /// once and in that order; the switch turns it off again.
+    func testSkipAllTurnsTheBypassOnAndReleasesTheCardAndTheSwitchTurnsItOff() async throws {
         let chat = await openChat()
         chat.host.next("config.set", .init(result: .object(["key": .string("yolo"), "value": .string("1"), "scope": .string("session")])))
         chat.host.next("config.set", .init(result: .object(["key": .string("yolo"), "value": .string("0"), "scope": .string("session")])))
@@ -236,7 +238,7 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen)
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
 
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set").last?["value"], .string("off"))
         XCTAssertFalse(chat.model.isSessionApprovalBypassEnabled)
     }
@@ -259,29 +261,84 @@ import XCTest
     }
 
     /// Turn off clears only the session's flag. A bypass the host sets itself (a `--yolo`
-    /// launch) stays on in the `session.info` written ahead of the reply, so the pill keeps
+    /// launch) stays on in the `session.info` written ahead of the reply, so the row keeps
     /// reporting it and offers no second Turn off.
     func testTurnOffNeverClaimsApprovalsAreBackWhileTheHostStillBypassesThem() async {
         let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("manual")])
         chat.host.next("config.set", .init(result: yoloReply("0"), before: [
             event(1, "session.info", ["yolo": .bool(true), "approval_mode": .string("manual")])
         ]))
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set").map { $0["value"] }, [.string("off")])
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled, "the host still bypasses approvals")
 
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set").count, 1, "a session flag already off cannot clear the host's bypass")
     }
 
     /// A host that approves everything itself (`approvals.mode: off`) shows the bypass, and the
-    /// pill never sends a session-scoped off that cannot clear it.
+    /// switch never sends a session-scoped off that cannot clear it.
     func testAHostWideBypassIsReportedButNotTurnedOff() async {
         let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("off")])
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
-        await chat.requests.turnOffApprovalBypass()
+        await chat.requests.setApprovalBypass(false)
         XCTAssertEqual(chat.writes("config.set"), [])
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
+    }
+
+    /// A mode goes to the Profile's config with no session scope. Off holds the bypass for
+    /// this chat, so it can't be turned off here, and leaving Off releases it.
+    func testAnApprovalModeWritesTheProfilesConfigAndOffLocksTheBypass() async {
+        let chat = await openChat(info: ["yolo": .bool(false), "approval_mode": .string("manual")])
+        chat.host.next("config.set", .init(result: modeReply("off"), before: [
+            event(1, "session.info", ["yolo": .bool(true), "approval_mode": .string("off")])
+        ]))
+        chat.host.next("config.set", .init(result: modeReply("smart")))
+
+        let changed = await chat.requests.setApprovalMode(.off)
+        XCTAssertTrue(changed)
+        XCTAssertEqual(chat.writes("config.set"), [[
+            "session_id": .string("runtime"), "profile": .string("default"),
+            "key": .string("approvals.mode"), "value": .string("off")
+        ]])
+        XCTAssertEqual(chat.model.composerApprovals.value, "Off")
+        XCTAssertTrue(chat.model.composerApprovals.isYoloLocked)
+
+        // No `session.info` this time, as from a session with no agent yet. This chat's own
+        // flag may still hold the bypass, so the row never claims approvals are back.
+        await chat.requests.setApprovalMode(.smart)
+        XCTAssertEqual(chat.model.composerApprovals.value, "YOLO")
+        XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
+        XCTAssertFalse(chat.model.composerApprovals.isYoloLocked)
+
+        chat.requests.applyBypass(.object(["yolo": .bool(false), "approval_mode": .string("smart")]))
+        XCTAssertEqual(chat.model.composerApprovals.value, "Smart")
+    }
+
+    /// The switch sends the value asked for, so a report that lands first never turns it into
+    /// the opposite write, and a bypass this chat can't clear sends nothing.
+    func testTheYoloSwitchSendsTheValueAskedFor() async {
+        let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("manual")])
+        chat.requests.applyBypass(.object(["yolo": .bool(false), "approval_mode": .string("manual")]))
+        await chat.model.setSessionApprovalBypass(false)
+        XCTAssertEqual(chat.writes("config.set"), [], "already off, so nothing goes out")
+
+        chat.requests.applyBypass(.object(["yolo": .bool(true), "approval_mode": .string("off")]))
+        await chat.model.setSessionApprovalBypass(false)
+        XCTAssertEqual(chat.writes("config.set"), [], "the mode holds this bypass")
+    }
+
+    /// A refused mode leaves the row on the one in effect, with the host's reason.
+    func testARefusedApprovalModeKeepsTheModeInEffect() async {
+        let chat = await openChat(info: ["yolo": .bool(false), "approval_mode": .string("manual")])
+        chat.host.next("config.set", .init(error: 4002))
+
+        let changed = await chat.requests.setApprovalMode(.smart)
+
+        XCTAssertFalse(changed)
+        XCTAssertEqual(chat.model.composerApprovals.value, "Manual")
+        XCTAssertNotNil(chat.model.composerApprovals.errorMessage)
+        XCTAssertFalse(chat.model.composerApprovals.isChanging)
     }
 
     // MARK: Questions
@@ -361,6 +418,58 @@ import XCTest
         var kept = ""
         dump(chat.requests, to: &kept, maxDepth: 4)
         XCTAssertFalse(kept.contains("hunter2"), kept)
+    }
+
+    // MARK: Canonical hosts (#1602)
+
+    /// A canonical host restores an open approval in its snapshot's `prompts`, recorded here. Its
+    /// card answers with that prompt's own `prompt_id` and generation, the exact keys the host
+    /// accepts, and the host's `resolved` receipt retires it.
+    func testARestoredCanonicalApprovalAnswersWithItsOwnPromptAndGeneration() async throws {
+        let prompt = try XCTUnwrap(try canonical("canonical-resume-running")["prompts"].list?.first)
+        let chat = await openChat(canonical: [prompt])
+        chat.host.always("approval.respond", .init(result: .object(["status": .string("resolved"), "prompt_id": prompt["prompt_id"]])))
+        guard case .approval? = chat.requests.onScreen else { return XCTFail("Expected the restored approval on screen") }
+        let taken = await chat.requests.respond(try action(chat), choice: .once)
+        XCTAssertTrue(taken)
+        XCTAssertEqual(chat.writes("approval.respond"), [[
+            "profile": .string("default"), "session_id": .string("tip"), "execution_generation": prompt["execution_generation"],
+            "prompt_id": prompt["prompt_id"], "choice": .string("once")
+        ]], "the host refuses any other key")
+        XCTAssertNil(chat.requests.onScreen)
+    }
+
+    /// A canonical clarify question arrives live as its recorded `clarify.request` event, answers
+    /// with `clarify.respond` under its prompt's generation, and leaves on the host's `resolved`.
+    func testALiveCanonicalQuestionAnswersByItsPromptAndGeneration() async throws {
+        let lifecycle = try XCTUnwrap(try canonical("canonical-clarify-lifecycle").list)
+        var asked = try XCTUnwrap(lifecycle[0].fields)
+        asked["session_id"] = .string("tip"); asked["seq"] = .number(1)
+        let chat = await openChat(canonical: [])
+        chat.host.always("clarify.respond", .init(result: lifecycle[1]))
+        chat.receive(.object(asked))
+        guard case .question(let question)? = chat.requests.onScreen else { return XCTFail("Expected the question on screen") }
+        XCTAssertEqual(question.questions.first?.prompt, "Which check should I run?")
+        let answered = await chat.requests.answerQuestion(try action(chat), [BotQuestionAnswer(questionID: nil, text: "Lint")])
+        XCTAssertTrue(answered)
+        XCTAssertEqual(chat.writes("clarify.respond"), [[
+            "profile": .string("default"), "session_id": .string("tip"), "execution_generation": asked["payload"]?["execution_generation"] ?? .null,
+            "prompt_id": asked["payload"]?["prompt_id"] ?? .null, "answer": .string("Lint")
+        ]], "the host refuses any other key")
+        XCTAssertNil(chat.requests.onScreen)
+    }
+
+    /// A canonical host takes a sudo value only as the response frame to its request. Its
+    /// `request.answer` proxy says "expired" while the request still waits, so it is never sent.
+    func testACanonicalSudoValueGoesAsTheResponseFrame() async throws {
+        let chat = await openChat(canonical: [])
+        chat.receive(request("sudo", id: "srq-s1", runtime: "tip"))
+        let answered = await chat.requests.answerCredential(try action(chat), value: "hunter2")
+        XCTAssertTrue(answered)
+        let response = try XCTUnwrap(chat.host.requests.first { $0["id"].text == "srq-s1" })
+        XCTAssertEqual(response["result"], .object(["value": .string("hunter2")]))
+        XCTAssertEqual(response["method"], .null)
+        XCTAssertEqual(chat.writes("request.answer"), [])
     }
 
     /// An answer tapped for one prompt never answers the one that replaced it.
@@ -983,14 +1092,24 @@ import XCTest
         }
     }
 
+    /// `canonical` attaches over a canonical socket (#1602) to session `tip`, whose id is its
+    /// runtime, restoring `prompts` from its snapshot.
     private func openChat(runtime: String = "runtime", openRequests: [BotJSON] = [], info: [String: BotJSON] = [:],
-                          pendingConnection: BotJSON? = nil, rpcDeadline: Duration = .seconds(30)) async -> Chat {
+                          pendingConnection: BotJSON? = nil, rpcDeadline: Duration = .seconds(30),
+                          canonical prompts: [BotJSON]? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        host.always("session.resume", .init(result: resume(runtime: runtime, openRequests: openRequests, info: info,
-                                                           pendingConnection: pendingConnection)))
+        let runtime = prompts == nil ? runtime : "tip"
+        var snapshot = resume(runtime: runtime, openRequests: openRequests, info: info, pendingConnection: pendingConnection)
+        if let prompts, var fields = snapshot.fields {
+            fields["session_key"] = nil
+            fields["stored_session_id"] = .string("tip"); fields["replay_epoch"] = .string("epoch")
+            fields["execution_generation"] = .number(1); fields["prompts"] = .array(prompts)
+            snapshot = .object(fields)
+        }
+        host.always("session.resume", .init(result: snapshot))
         host.always("session.events.since", .init(result: replay(runtime: runtime, openRequests: openRequests)))
-        let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline))
+        let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline, canonical: prompts != nil))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "default", key: "tip"), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
@@ -1010,6 +1129,14 @@ import XCTest
         try XCTUnwrap(chat.requests.prepareAnswer(), "Nothing on screen to answer", file: file, line: line)
     }
 
+    /// A canonical gateway fixture's reply (`scripts/capture-hermes-fixtures --local --gateway`).
+    private func canonical(_ name: String) throws -> BotJSON {
+        guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
+            throw XCTSkip("The source tree is not present (physical device or remote runner).")
+        }
+        return try JSONDecoder().decode(BotJSON.self, from: data)["reply"]
+    }
+
     private func recorded(_ name: String) throws -> [BotJSON] {
         guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
             throw XCTSkip("The source tree is not present (physical device or remote runner).")
@@ -1024,6 +1151,10 @@ import XCTest
     }
 
     /// The host's `config.set yolo` reply for the session scope.
+    private func modeReply(_ value: String) -> BotJSON {
+        .object(["key": .string("approvals.mode"), "value": .string(value)])
+    }
+
     private func yoloReply(_ value: String) -> BotJSON {
         .object(["key": .string("yolo"), "value": .string(value), "scope": .string("session")])
     }

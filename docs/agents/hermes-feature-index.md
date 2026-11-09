@@ -33,6 +33,7 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 | Workspace registry (add, remove, rename, reorder) | dropped | No registry: a chat's workspace is its session's `cwd`. |
 | Session project tags, Move to Project | shipped | Projects are host folders; Move to Project changes the working folder (#1052, `CONTEXT.md` Project). |
 | Kanban tenant edit | accepted | Tenant is set on create and read-only after (`kanban.md`). |
+| Approval mode | shipped | `config.set` key `approvals.mode` in Model settings, which `session.info`'s `approval_mode` reports. It writes that Profile's `config.yaml`, verified at `ca678285` with two Profiles (#1550). |
 | Provider quota | shipped | hermex-push `GET /provider-quota` (#1237) in Usage. The Limits widget (#1409) shows what Usage last loaded: opening or refreshing Usage is its only refresh, with no polling, foreground or background read, and no read from the widget. |
 | Skill tags and related skills | dropped | The host sends no tags. |
 | Reasoning levels per model | accepted | A fixed ladder plus the model's capability flags; the host clamps. |
@@ -45,27 +46,30 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 
 ## Upstream RPC methods Hermex never calls
 
-At the pin (0.21.5, `ca678285`) the gateway contract has 237 methods and `HermesCall` sends
-61 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
+At the pin (0.23.0, `2bd378ed`) the gateway contract has 261 methods and `HermesCall` sends
+68 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
 
 | Family | Methods | Status | Note |
 | :--- | :--- | :---: | :--- |
 | Shell and CLI | `cli.exec`, `shell.exec` | n-a | A generic host shell; never sent. |
 | Bot relay | `bot_relay.*` | n-a | Gateway-to-gateway traffic. |
 | Room peers | `groups.promote`, `groups.demote`, `groups.replicate`, `groups.replica_state`, `groups.peer.*` | n-a | No peer administration (`bots.md` § Group rooms). |
+| Room extras | `groups.attachment.upload`, `groups.attachment.download`, `groups.context`, `groups.continue` | untriaged | Room attachments, a room's purpose and notes, and one more budget for a discussion paused at its cap. |
 | Billing | `billing.*`, `subscription.*`, `free_tier.*`, `usage.bars` | n-a | Nous account billing. |
 | Diagnostics | `diagnostics.share_nous`, `session.events.stats` | n-a | Uploads a debug bundle; replay-buffer telemetry. |
 | Reloads | `reload.env`, `reload.mcp` | n-a | Host administration that resets live sessions. |
-| Desktop and terminal | `browser.*`, `display.*`, `clipboard.paste`, `paste.collapse`, `input.detect_drop`, `terminal.resize`, `system.battery`, `preview.restart`, `pet.*`, `wake.*`, `voice.record`, `voice.toggle` | n-a | Host screen, microphone, terminal or desktop UI. |
-| Host setup | `onboarding.*`, `setup.*`, `profiles.remember_onboarding` | n-a | First-run setup on the host. |
+| Bot Screen | `display.status`, `display.observe`, `display.lease.acquire`, `display.lease.release`, `display.start`, `display.stop` | covered | `docs/agents/screen.md` (#1567). Behind the per-server Bot Screen switch. `display.install` and `display.thumbnail` stay unused. |
+| Desktop and terminal | `browser.*`, `image.render`, `clipboard.paste`, `paste.collapse`, `input.detect_drop`, `terminal.resize`, `system.battery`, `preview.restart`, `pet.*`, `wake.*`, `voice.record`, `voice.toggle` | n-a | Host screen, microphone, terminal or desktop UI. |
+| Host setup | `onboarding.*`, `setup.*` | n-a | First-run setup on the host. |
+| Desktop telemetry and locale | `shared_metrics.*`, `i18n.*`, `machine.facts` | n-a | Desktop's usage metrics, its string catalog and the host's hardware facts. |
 | Foreign sessions | `session.foreign.*` | n-a | Claude Code and Codex sessions on the host. |
 | Reactions | `message.react` | dropped | Removed from Hermex. |
-| Covered elsewhere | `approval.pending`, `session.history`, `command.resolve`, `cron.manage`, `config.get`, `config.show`, `plugins.list`, `plugins.manage`, `image.attach`, `image.attach_bytes`, `image.detach`, `pdf.attach`, `voice.tts`, `session.branch_whole`, `session.branch_stored`, `session.activate`, `ping` | covered | Resume's `open_requests`, REST messages, `commands.catalog`, `/api/cron/jobs`, `/api/config`, the plugins hub, `/api/chat/image-upload` and `file.attach`, `/api/audio/speak`, `session.branch`, `session.resume`, `gateway.ping`. |
+| Covered elsewhere | `approval.pending`, `session.history`, `command.resolve`, `cron.manage`, `config.get`, `config.show`, `plugins.list`, `plugins.catalog.lookup`, `image.attach`, `image.attach_bytes`, `image.detach`, `pdf.attach`, `voice.tts`, `session.branch_whole`, `session.branch_stored`, `session.activate`, `ping` | covered | Resume's `open_requests`, REST messages, `commands.catalog`, `/api/cron/jobs`, `/api/config`, the plugins hub, `/api/chat/image-upload` and `file.attach`, `/api/audio/speak`, `session.branch`, `session.resume`, `gateway.ping`. |
 | Approval timing | `approval.received` | untriaged | Starts an approval's timeout when the card shows. |
 | Host capabilities | `gateway.capabilities` | untriaged | What the build enforces; could replace some probes in `hermes-server.md`. |
-| Session extras | `session.usage`, `session.context_breakdown`, `session.status`, `session.set_hidden`, `session.save` | untriaged | Per-chat cost and context, `/status` text, hide/unhide, export to the host. |
+| Session extras | `session.usage`, `session.context_breakdown`, `session.status`, `session.set_hidden`, `session.save`, `session.archive` | untriaged | Per-chat cost and context, `/status` text, hide/unhide, export to the host. |
 | Projects | `projects.list`, `projects.get`, `projects.archive`, `projects.add_folder`, `projects.remove_folder`, `projects.set_primary`, `projects.set_active`, `projects.for_cwd`, `projects.project_sessions`, `projects.discover_repos`, `projects.record_repos`, `project.facts` | untriaged | Hermex reads `projects.tree` and creates, renames and deletes. |
-| Subagents and processes | `subagent.steer`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.*` | untriaged | Hermex lists, tails and interrupts subagents. |
+| Subagents and processes | `subagent.steer`, `subagent.roster`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.*` | untriaged | Hermex previews up to three live workers in chat; View all opens the session's list, tail and interrupt controls. Completed delegations keep their transcript result cards. |
 | Checkpoints | `rollback.*` | untriaged | Restore a working tree to a checkpoint. |
 | Tools and MCP | `tools.*`, `toolsets.list`, `mcp.*` | untriaged | Toolset switches and MCP server setup, including OAuth. |
 | Connectors | `connectors.*` | untriaged | Hermex answers `connection.*` requests only. |

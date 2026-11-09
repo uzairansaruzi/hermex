@@ -193,7 +193,8 @@ Assigned Profile/Unassigned, comment/dependency counts, age, and the verified We
 staleness thresholds: Running at 10 minutes/1 hour, Ready at 1 hour, and Blocked at
 1 hour/24 hours. Age comes from the `{created_age_seconds, started_age_seconds}` dict
 both servers send (webui as `age_seconds`, Hermes as `age`): a Running Card reads its
-started age, every other Card its created age, and a plain number from an older bridge
+started age, counted from `current_run_started_at` when the host sends it, since
+`started_at` stays a retried Card's first start, every other Card its created age, and a plain number from an older bridge
 stands for both. Running is visible but is never offered as a direct destination.
 
 Card detail preserves Markdown description, metadata, comments, events,

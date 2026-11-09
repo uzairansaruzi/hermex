@@ -27,19 +27,20 @@ struct SessionRenameSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     TextField("Session title", text: $sessionTitle)
                         .textInputAutocapitalization(.sentences)
                         .focused($titleIsFocused)
                         .disabled(isSaving)
-                } footer: {
+                } appFooter: {
                     if let errorMessage {
                         Text(verbatim: errorMessage)
                             .foregroundStyle(.red)
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Rename Session")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

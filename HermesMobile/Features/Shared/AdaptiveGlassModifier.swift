@@ -48,11 +48,11 @@ extension View {
     }
 
     func adaptiveFormPresentation() -> some View {
-        presentationSizing(.form)
+        themedPageBackground().presentationSizing(.form)
     }
 
     func adaptivePagePresentation() -> some View {
-        presentationSizing(.page)
+        themedPageBackground().presentationSizing(.page)
     }
 
     func adaptiveSecondaryNavigationTitle() -> some View {
@@ -213,7 +213,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 
     private func opaqueContent(_ content: Content) -> some View {
         content
-            .background(Color(.secondarySystemBackground), in: shape)
+            .background(Color(.appSurface), in: shape)
             .adaptiveGlassAccessibilityStroke(
                 shape: shape,
                 isVisible: true,
@@ -274,7 +274,7 @@ private extension View {
         if isVisible {
             overlay(
                 shape
-                    .stroke(Color.primary.opacity(opacity), lineWidth: 1)
+                    .stroke(Color(.appText).opacity(opacity), lineWidth: 1)
                     .allowsHitTesting(false)
             )
         } else {

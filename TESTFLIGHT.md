@@ -398,6 +398,14 @@ Review notes and App Privacy answers must match the submitted build:
   voice input. Check permission descriptions against the app's current Info.plist.
 - Shared content is staged in the App Group and selected attachments are uploaded
   to the configured server. The user still taps Send to send the message.
+- Bot Screen is a generic mirror of the user's own host (guideline 4.2.7): it shows and
+  controls that host's desktop, over the user's own connection, with no Hermex service
+  in between. It's off until the user turns it on per server. Keep a demo server ready
+  in case Apple asks.
+- The Plugins screen manages plugins on the user's own server: they install and run there,
+  and no plugin code is downloaded to or runs on the device. The catalog comes from that
+  server, its images load directly from GitHub, and Hermex doesn't sell or host plugins.
+  It appears only for a Hermes server. Keep a demo server ready in case Apple asks.
 
 The share extension's automatic app-opening workaround is an accepted review
 risk. It attempts to open `hermes-agent://share` through dynamic URL-opening

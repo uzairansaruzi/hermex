@@ -1,0 +1,760 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::Hermes restarted while this bot was replying, so its reply is lost.",
+      "catalog": "Localizable",
+      "key": "Hermes restarted while this bot was replying, so its reply is lost.",
+      "units": [
+        {
+          "source": "Hermes restarted while this bot was replying, so its reply is lost."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Discard this reply?",
+      "catalog": "Localizable",
+      "key": "Discard this reply?",
+      "units": [
+        {
+          "source": "Discard this reply?"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::The bot won’t finish it, and it isn’t retried. The group carries on.",
+      "catalog": "Localizable",
+      "key": "The bot won’t finish it, and it isn’t retried. The group carries on.",
+      "units": [
+        {
+          "source": "The bot won’t finish it, and it isn’t retried. The group carries on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::This Hermes Webapp has no sign-in, and Hermex connects only to one that has. Turn its sign-in on, or connect to hermes dashboard (port 9119 by default) instead.",
+      "catalog": "Localizable",
+      "key": "This Hermes Webapp has no sign-in, and Hermex connects only to one that has. Turn its sign-in on, or connect to hermes dashboard (port 9119 by default) instead.",
+      "units": [
+        {
+          "source": "This Hermes Webapp has no sign-in, and Hermex connects only to one that has. Turn its sign-in on, or connect to hermes dashboard (port 9119 by default) instead."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Restart the Hermes gateway on your host, then check again.",
+      "catalog": "Localizable",
+      "key": "Restart the Hermes gateway on your host, then check again.",
+      "units": [
+        {
+          "source": "Restart the Hermes gateway on your host, then check again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::The plugin is installed. Restart the Hermes gateway on the host, then check again.",
+      "catalog": "Localizable",
+      "key": "The plugin is installed. Restart the Hermes gateway on the host, then check again.",
+      "units": [
+        {
+          "source": "The plugin is installed. Restart the Hermes gateway on the host, then check again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::This Hermes Webapp doesn’t serve the %@ Profile, so its chats can’t open here. On the host, hermes gateway status says why. Or connect to hermes dashboard, which serves every Profile.",
+      "catalog": "Localizable",
+      "key": "This Hermes Webapp doesn’t serve the %@ Profile, so its chats can’t open here. On the host, hermes gateway status says why. Or connect to hermes dashboard, which serves every Profile.",
+      "units": [
+        {
+          "source": "This Hermes Webapp doesn’t serve the %@ Profile, so its chats can’t open here. On the host, hermes gateway status says why. Or connect to hermes dashboard, which serves every Profile."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%@ and %@ use the same %@ bot.",
+      "catalog": "Localizable",
+      "key": "%@ and %@ use the same %@ bot.",
+      "units": [
+        {
+          "source": "%@ and %@ use the same %@ bot."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%@ and %@ use the same %@ bots.",
+      "catalog": "Localizable",
+      "key": "%@ and %@ use the same %@ bots.",
+      "units": [
+        {
+          "source": "%@ and %@ use the same %@ bots."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Profiles served: 1 of %lld",
+      "catalog": "Localizable",
+      "key": "Profiles served: 1 of %lld",
+      "units": [
+        {
+          "source": "Profiles served: 1 of %lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::The host serves only one Profile right now.",
+      "catalog": "Localizable",
+      "key": "The host serves only one Profile right now.",
+      "units": [
+        {
+          "source": "The host serves only one Profile right now."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::This Hermes Webapp doesn’t serve the %@ Profile, so its chats can’t open here. %@",
+      "catalog": "Localizable",
+      "key": "This Hermes Webapp doesn’t serve the %@ Profile, so its chats can’t open here. %@",
+      "units": [
+        {
+          "source": "This Hermes Webapp doesn’t serve the %@ Profile, so its chats can’t open here. %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::What the host says",
+      "catalog": "Localizable",
+      "key": "What the host says",
+      "units": [
+        {
+          "source": "What the host says"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%@ answers on %@ today. Hermex removes %@ from %@.",
+      "catalog": "Localizable",
+      "key": "%@ answers on %@ today. Hermex removes %@ from %@.",
+      "units": [
+        {
+          "source": "%@ answers on %@ today. Hermex removes %@ from %@."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@",
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%@ bot",
+      "catalog": "Localizable",
+      "key": "%@ bot",
+      "units": [
+        {
+          "source": "%@ bot"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%@ opens on this Webapp.",
+      "catalog": "Localizable",
+      "key": "%@ opens on this Webapp.",
+      "units": [
+        {
+          "source": "%@ opens on this Webapp."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%@ still doesn’t open here. The gateway may still be restarting.",
+      "catalog": "Localizable",
+      "key": "%@ still doesn’t open here. The gateway may still be restarting.",
+      "units": [
+        {
+          "source": "%@ still doesn’t open here. The gateway may still be restarting."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Before you start",
+      "catalog": "Localizable",
+      "key": "Before you start",
+      "units": [
+        {
+          "source": "Before you start"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Bots reconnect once it’s back.",
+      "catalog": "Localizable",
+      "key": "Bots reconnect once it’s back.",
+      "units": [
+        {
+          "source": "Bots reconnect once it’s back."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Checking %@…",
+      "catalog": "Localizable",
+      "key": "Checking %@…",
+      "units": [
+        {
+          "source": "Checking %@…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Fix on This Phone",
+      "catalog": "Localizable",
+      "key": "Fix on This Phone",
+      "units": [
+        {
+          "source": "Fix on This Phone"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Keeps the bot",
+      "catalog": "Localizable",
+      "key": "Keeps the bot",
+      "units": [
+        {
+          "source": "Keeps the bot"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Nothing blocks it",
+      "catalog": "Localizable",
+      "key": "Nothing blocks it",
+      "units": [
+        {
+          "source": "Nothing blocks it"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Reading the host’s plan…",
+      "catalog": "Localizable",
+      "key": "Reading the host’s plan…",
+      "units": [
+        {
+          "source": "Reading the host’s plan…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Remove Duplicate Tokens",
+      "catalog": "Localizable",
+      "key": "Remove Duplicate Tokens",
+      "units": [
+        {
+          "source": "Remove Duplicate Tokens"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Removing duplicate tokens…",
+      "catalog": "Localizable",
+      "key": "Removing duplicate tokens…",
+      "units": [
+        {
+          "source": "Removing duplicate tokens…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Restart and Serve Every Profile",
+      "catalog": "Localizable",
+      "key": "Restart and Serve Every Profile",
+      "units": [
+        {
+          "source": "Restart and Serve Every Profile"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Restarting the gateway…",
+      "catalog": "Localizable",
+      "key": "Restarting the gateway…",
+      "units": [
+        {
+          "source": "Restarting the gateway…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Running work on every Profile stops, and bots go quiet until the gateway is back. Hermex reconnects when it is.",
+      "catalog": "Localizable",
+      "key": "Running work on every Profile stops, and bots go quiet until the gateway is back. Hermex reconnects when it is.",
+      "units": [
+        {
+          "source": "Running work on every Profile stops, and bots go quiet until the gateway is back. Hermex reconnects when it is."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Serve Every Profile",
+      "catalog": "Localizable",
+      "key": "Serve Every Profile",
+      "units": [
+        {
+          "source": "Serve Every Profile"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Serve Every Profile…",
+      "catalog": "Localizable",
+      "key": "Serve Every Profile…",
+      "units": [
+        {
+          "source": "Serve Every Profile…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::The gateway doesn’t serve every Profile yet. It may still be restarting.",
+      "catalog": "Localizable",
+      "key": "The gateway doesn’t serve every Profile yet. It may still be restarting.",
+      "units": [
+        {
+          "source": "The gateway doesn’t serve every Profile yet. It may still be restarting."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::The gateway restarts. Running work on every Profile stops.",
+      "catalog": "Localizable",
+      "key": "The gateway restarts. Running work on every Profile stops.",
+      "units": [
+        {
+          "source": "The gateway restarts. Running work on every Profile stops."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::The tokens stay on the host in the Profiles that keep them. Hermex never reads their values.",
+      "catalog": "Localizable",
+      "key": "The tokens stay on the host in the Profiles that keep them. Hermex never reads their values.",
+      "units": [
+        {
+          "source": "The tokens stay on the host in the Profiles that keep them. Hermex never reads their values."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::This Webapp opens chats only on the Profile it serves. Tap to serve every Profile.",
+      "catalog": "Localizable",
+      "key": "This Webapp opens chats only on the Profile it serves. Tap to serve every Profile.",
+      "units": [
+        {
+          "source": "This Webapp opens chats only on the Profile it serves. Tap to serve every Profile."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::This Webapp serves every Profile.",
+      "catalog": "Localizable",
+      "key": "This Webapp serves every Profile.",
+      "units": [
+        {
+          "source": "This Webapp serves every Profile."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::To keep both bots, give the other Profile its own token later in API Keys.",
+      "catalog": "Localizable",
+      "key": "To keep both bots, give the other Profile its own token later in API Keys.",
+      "units": [
+        {
+          "source": "To keep both bots, give the other Profile its own token later in API Keys."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::What blocks it",
+      "catalog": "Localizable",
+      "key": "What blocks it",
+      "units": [
+        {
+          "source": "What blocks it"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Ask the Agent on %@",
+      "catalog": "Localizable",
+      "key": "Ask the Agent on %@",
+      "units": [
+        {
+          "source": "Ask the Agent on %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::Hermex can’t fix this from the phone. The agent on %@ can explain it and propose commands for you to run on the host. Hermex asks it not to read secrets or restart the gateway. Then check again.",
+      "catalog": "Localizable",
+      "key": "Hermex can’t fix this from the phone. The agent on %@ can explain it and propose commands for you to run on the host. Hermex asks it not to read secrets or restart the gateway. Then check again.",
+      "units": [
+        {
+          "source": "Hermex can’t fix this from the phone. The agent on %@ can explain it and propose commands for you to run on the host. Hermex asks it not to read secrets or restart the gateway. Then check again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": null
+    }
+  ]
+}

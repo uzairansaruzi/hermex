@@ -242,12 +242,12 @@ struct TranscriptTurnFoldRowView: View {
             HStack(spacing: 8) {
                 Text(fold.label.title)
                     .font(AppFont.subheadline(weight: .medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
 
                 Spacer(minLength: 0)
             }
@@ -256,7 +256,7 @@ struct TranscriptTurnFoldRowView: View {
             .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(Color(.separator).opacity(0.5))
+                    .fill(Color(.appSeparator).opacity(0.5))
                     .frame(height: 0.5)
             }
         }
@@ -268,5 +268,38 @@ struct TranscriptTurnFoldRowView: View {
                 ? String(localized: "Double tap to hide this turn's work.")
                 : String(localized: "Double tap to show this turn's work.")
         )
+    }
+}
+
+/// Keeps a chat's turn folds and end-of-turn rows between body passes (#1417). Both walk the
+/// whole loaded history, and a text-only reveal tick re-renders the chat without changing
+/// either, so they are derived again only when `Inputs` change.
+@MainActor
+final class TranscriptStructureMemo {
+    /// Everything the folds and end-of-turn rows depend on. `structureRevision`
+    /// (`ChatViewModel.transcriptStructureRevision`) stands in for the transcript rows,
+    /// messages, page offset and reasoning cards.
+    struct Inputs: Equatable {
+        let structureRevision: Int
+        let activityAnchorIDs: Set<String>
+        let foldsSettledTurns: Bool
+        let isStreamActive: Bool
+        let streamingAssistantMessageID: String?
+        let latestRunOutcome: TranscriptTurnRunOutcome?
+    }
+
+    struct Structure {
+        let folds: TranscriptTurnFolds
+        let terminalReplyRenderIDs: Set<String>
+    }
+
+    private var last: (inputs: Inputs, structure: Structure)?
+
+    func structure(for inputs: Inputs, derive: () -> Structure) -> Structure {
+        if let last, last.inputs == inputs { return last.structure }
+
+        let structure = derive()
+        last = (inputs, structure)
+        return structure
     }
 }

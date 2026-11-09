@@ -2,36 +2,6 @@ import SwiftUI
 
 // The Hermex pages on the Settings index (#1252). Each applies on this iPhone to every server.
 
-/// Theme, app icon, and the primary-button tint. The header color is per server, on the
-/// server's page.
-struct SettingsAppearancePage: View {
-    @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
-    @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
-
-    var body: some View {
-        List {
-            Section {
-                Picker(selection: $appThemeRawValue) {
-                    ForEach(AppTheme.allCases) { theme in
-                        Text(theme.title).tag(theme.rawValue)
-                    }
-                } label: {
-                    SettingsLabel(title: String(localized: "Theme"), systemImage: "circle.lefthalf.filled")
-                }
-
-                Toggle(isOn: $tintsPrimaryActions) {
-                    SettingsLabel(title: String(localized: "Tint New Chat & Send"), systemImage: "paintbrush.pointed")
-                }
-            }
-
-            Section {
-                AppIconSettingsSection()
-            }
-        }
-        .settingsPage(String(localized: "Appearance"))
-    }
-}
-
 /// How the composer sends, dictates, and which buttons it shows.
 struct SettingsComposerPage: View {
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
@@ -41,7 +11,7 @@ struct SettingsComposerPage: View {
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Picker(selection: $streamingSendBehaviorRawValue) {
                     ForEach(StreamingSendBehavior.allCases) { behavior in
@@ -88,19 +58,18 @@ struct SettingsComposerPage: View {
     }
 }
 
-/// How a chat's transcript shows turns, details, and long lines.
+/// How a chat's transcript shows turns and details.
 struct SettingsChatPage: View {
     @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
     @AppStorage(SessionChatPreferences.completionPositionKey) private var completionPositionRawValue = SessionChatPreferences.CompletionPosition.latest.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
-    @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Picker(selection: $thinkingAndToolCards) {
                     ForEach(ThinkingAndToolCards.allCases) { mode in
@@ -146,14 +115,6 @@ struct SettingsChatPage: View {
             }
 
             Section {
-                Toggle(isOn: $wrapsCodeBlockLines) {
-                    SettingsLabel(
-                        title: String(localized: "Wrap Code Block Lines"),
-                        systemImage: "arrow.turn.down.left",
-                        note: String(localized: "Or tap wrap in any code block.")
-                    )
-                }
-
                 Toggle(isOn: $rtlChatLayoutEnabled) {
                     SettingsLabel(
                         title: String(localized: "Right-to-Left Chat Layout"),
@@ -175,7 +136,7 @@ struct SettingsGeneralPage: View {
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Toggle(isOn: $isHapticsEnabled) {
                     SettingsLabel(title: String(localized: "Haptic Feedback"), systemImage: "iphone.radiowaves.left.and.right")
@@ -220,7 +181,7 @@ private struct AppLockSection: View {
             }
         } header: {
             Text("Privacy")
-        } footer: {
+        } appFooter: {
             Text(capability.hasPasscode
                 ? String(localized: "Notifications, Live Activities and sharing still show content.")
                 : String(localized: "Set a passcode in iOS Settings to use this."))

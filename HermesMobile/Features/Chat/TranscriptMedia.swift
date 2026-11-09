@@ -278,7 +278,19 @@ enum TranscriptMediaParser {
                 continue
             }
 
+            if line[cursor] == "`",
+               let span = inlineCodeRanges.first(where: { $0.lowerBound == cursor }),
+               let rawReference = codeWrappedMediaReference(in: line[span]) {
+                segments.appendText(line[textStart..<cursor])
+                segments.appendMedia(TranscriptMediaReference(rawReference: rawReference))
+
+                cursor = span.upperBound
+                textStart = cursor
+                continue
+            }
+
             if line[cursor...].hasPrefix("MEDIA:"),
+               !inlineCodeRanges.contains(where: { $0.contains(cursor) }),
                let referenceRange = referenceRange(
                    in: line,
                    markerStart: cursor,
@@ -634,6 +646,25 @@ enum TranscriptMediaParser {
         }
 
         return ranges
+    }
+
+    /// The reference in a single-backtick code span holding nothing but a `MEDIA:` tag.
+    /// Models format files they mean to send this way, and the gateway and webui deliver it.
+    /// The gateway can also check that the file exists; this client can't, so only a value
+    /// shaped like a path or URL counts. `MEDIA:` and `MEDIA:<path>` stay code.
+    private static func codeWrappedMediaReference(in span: Substring) -> String? {
+        let content = span.dropFirst().dropLast()
+        guard content.hasPrefix("MEDIA:") else { return nil }
+
+        let reference = content.dropFirst("MEDIA:".count)
+        guard !reference.contains(where: \.isWhitespace) else { return nil }
+
+        let isWindowsPath = reference.first?.isLetter == true
+            && (reference.dropFirst().hasPrefix(":/") || reference.dropFirst().hasPrefix(":\\"))
+        guard isWindowsPath || ["/", "~/", "http://", "https://"].contains(where: reference.hasPrefix)
+        else { return nil }
+
+        return String(reference)
     }
 
     private static func backtickRunEnd(in line: String, from start: String.Index) -> String.Index {

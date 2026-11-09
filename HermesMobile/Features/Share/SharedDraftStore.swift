@@ -10,7 +10,10 @@ struct SharedDraftPayload: Codable, Equatable {
     /// Where the record came from: nil for a share, else the `ImportedTextOrigin` of a queued
     /// chat text (#1402, #1476). A value this build doesn't know never opens anywhere.
     let source: String?
-    /// A Shortcut's bound destination: the Hermes server's URL and, optionally, its Profile.
+    /// A Shortcut's bound destination: its `SharedShortcutDestination.serverKey` and, optionally,
+    /// its Profile.
+    let serverKey: String?
+    /// The server's URL as records written before #1509 stored it. Only read, for those records.
     let server: String?
     let profile: String?
     /// What the share left out (#1401); absent in payloads written before it.
@@ -32,7 +35,8 @@ struct SharedDraftPayload: Codable, Equatable {
         self.createdAt = createdAt
         self.attachments = attachments.isEmpty ? nil : attachments
         source = shortcut?.origin.rawValue
-        server = shortcut?.server.absoluteString
+        serverKey = shortcut?.serverKey
+        server = nil
         profile = shortcut?.profile
         skippedItems = skipped.items.isEmpty ? nil : skipped.items
         additionalSkippedCount = skipped.additionalCount == 0 ? nil : skipped.additionalCount
@@ -54,10 +58,28 @@ enum ImportedTextOrigin: String, Codable {
 /// The server, and optionally the Profile, a queued chat text opens on (#1402). Fixed when the
 /// text is queued, so no later server switch can send it anywhere else.
 struct SharedShortcutDestination: Equatable {
-    let server: URL
+    /// A digest of the server's URL, so the queued record holds no server URL (#1509). The app
+    /// matches it against the servers it has configured, so a removed server can't be named.
+    let serverKey: String
     /// Nil opens in the Profile the server's New Session uses.
     let profile: String?
     var origin: ImportedTextOrigin = .shortcut
+
+    init(server: URL, profile: String?, origin: ImportedTextOrigin = .shortcut) {
+        self.init(serverKey: Self.key(server), profile: profile, origin: origin)
+    }
+
+    fileprivate init(serverKey: String, profile: String?, origin: ImportedTextOrigin) {
+        self.serverKey = serverKey
+        self.profile = profile
+        self.origin = origin
+    }
+
+    func opens(on server: URL) -> Bool { serverKey == Self.key(server) }
+
+    fileprivate static func key(_ server: URL) -> String {
+        SHA256.hash(data: Data(server.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
 }
 
 /// Which waiting records a reservation may take: shares, Shortcut texts (#1402), or both.
@@ -772,7 +794,7 @@ enum HermesShareDraft {
     }
 
     /// A share's text is trimmed; a Shortcut's keeps every character. A record from an unknown
-    /// source, or a Shortcut's without a usable server, throws, so it opens nowhere.
+    /// source, or a Shortcut's without a server, throws, so it opens nowhere.
     private static func loadImport(from itemURL: URL) throws -> LoadedSharedImport {
         let payload = try JSONDecoder().decode(
             SharedDraftPayload.self,
@@ -790,9 +812,8 @@ enum HermesShareDraft {
         case let source?:
             guard
                 let origin = ImportedTextOrigin(rawValue: source),
-                let server = payload.server.flatMap(URL.init(string:)),
-                ["http", "https"].contains(server.scheme?.lowercased() ?? ""),
-                server.host?.isEmpty == false
+                let serverKey = payload.serverKey
+                    ?? payload.server.flatMap(URL.init(string:)).map(SharedShortcutDestination.key)
             else {
                 throw CocoaError(.fileReadCorruptFile)
             }
@@ -802,7 +823,7 @@ enum HermesShareDraft {
                 sharedImport: SharedImport(
                     draft: payload.draft ?? "",
                     attachments: [],
-                    shortcut: SharedShortcutDestination(server: server, profile: profile, origin: origin)
+                    shortcut: SharedShortcutDestination(serverKey: serverKey, profile: profile, origin: origin)
                 )
             )
         }

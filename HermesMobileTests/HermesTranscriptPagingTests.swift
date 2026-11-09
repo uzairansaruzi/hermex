@@ -396,6 +396,93 @@ import Observation
         XCTAssertFalse(chat.model.hasOlderMessages)
     }
 
+    /// A hole while a turn runs a tool (#1531): the rows it saved end in its reasoning and tool
+    /// rows, with no reply text yet. Their cards anchor to the running reply's row, not after
+    /// every row, and the turn's later tool and text frames join that same row.
+    func testAGapMidToolAnchorsTheSavedCardsToTheRunningReply() async throws {
+        let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
+        await rebuildMidTool(chat)
+        let reply = try XCTUnwrap(chat.model.streamingAssistantMessageID)
+        XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), [reply])
+        XCTAssertEqual(chat.model.completedReasoningGroups.map(\.anchorMessageID), [reply])
+        XCTAssertTrue(chat.model.displayedTranscriptMessages.contains { $0.message.messageId == reply },
+                      "the empty reply row shows, holding the cards")
+
+        chat.receive(event(7, "tool.start", ["tool_id": .string("tool-2"), "name": .string("terminal")]))
+        chat.receive(event(8, "message.delta", ["text": .string("Done.")]))
+        chat.model.flushPendingStreamingContent()
+        XCTAssertEqual(chat.model.toolCallAnchorMessageID, reply)
+        XCTAssertEqual(chat.model.messages.last?.messageId, reply)
+        XCTAssertEqual(chat.model.messages.last?.content, "Done.")
+    }
+
+    /// A steered turn rebuilt mid-turn never gets a full receipt (the host's has one user row
+    /// per turn), so its end re-reads the newest rows anyway (#1531): its rows take their saved
+    /// ids and its cards sit above the steer, as a fresh open lays them out.
+    func testARebuiltTurnWithoutAFullReceiptReReadsItsRowsAtItsEnd() async {
+        let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
+        await rebuildMidTool(chat)
+        let settled = midToolRows + [
+            row(6, "user", "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\nUse tabs\n[/OUT-OF-BAND USER MESSAGE]",
+                ["display_kind": .string("steer")]),
+            row(7, "assistant", "Done.")
+        ]
+        chat.pages.set(0, settled)
+        chat.receive(event(7, "message.complete", ["status": .string("complete"), "text": .string("Done."),
+                                                   "persisted_turn": .object([
+                                                       "row_ids": .array((3...7).map { .number(Double($0)) }),
+                                                       "complete": .bool(false), "user_row_id": .number(3),
+                                                       "final_assistant_row_id": .number(7)
+                                                   ])]))
+        chat.receive(event(8, "session.info", ["running": .bool(false)]))
+        await waitUntil("saved rows") { chat.model.messages.last?.rowID == 7 }
+        XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 6, 7])
+        XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), ["tip/row-6"], "above the steer")
+        XCTAssertEqual(chat.model.completedReasoningGroups.map(\.anchorMessageID), ["tip/row-6"])
+    }
+
+    /// A rebuilt turn stopped mid-tool saves no row after its tool, so its re-read would leave the
+    /// cards with nothing to anchor to and is not taken (#1531). The next turn's end re-reads
+    /// again, without a full receipt either, and the stopped turn's cards settle above its prompt.
+    func testARebuiltTurnStoppedMidToolSettlesAtTheNextTurnsEnd() async {
+        let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
+        await rebuildMidTool(chat)
+        chat.receive(event(7, "message.complete", ["status": .string("interrupted")]))
+        chat.receive(event(8, "session.info", ["running": .bool(false)]))
+
+        chat.receive(event(9, "session.info", ["running": .bool(true), "turn_started_at": .number(1_790_000_006)]))
+        chat.receive(event(10, "message.start"))
+        chat.pages.set(0, midToolRows + [row(6, "user", "Again"), row(7, "assistant", "Done.")])
+        chat.receive(event(11, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(12, "session.info", ["running": .bool(false)]))
+        await waitUntil("saved rows") { chat.model.messages.last?.rowID == 7 }
+        XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), ["tip/row-6"])
+    }
+
+    /// The running turn's saved rows when a hole reattaches it mid-tool: its prompt, an
+    /// assistant row with reasoning and a call but no text, and the call's tool row.
+    private var midToolRows: [BotJSON] {
+        [row(1, "user", "Hi"), row(2, "assistant", "Hello."), row(3, "user", "Next"),
+         row(4, "assistant", "", ["reasoning": .string("Look first."),
+                                  "tool_calls": .array([call("call_4", "terminal", "{\"command\": \"sleep 180\"}")])]),
+         row(5, "tool", "{\"output\": \"\"}", ["tool_call_id": .string("call_4"), "tool_name": .string("terminal")])]
+    }
+
+    /// Starts a turn, then loses a frame while it runs a tool: the reattach rebuilds from
+    /// `midToolRows` and a snapshot whose reply has no text yet.
+    private func rebuildMidTool(_ chat: Chat) async {
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "tool.start", ["tool_id": .string("call_4"), "name": .string("terminal")]))
+        chat.pages.set(0, midToolRows)
+        // Dated at its prompt's row, after the rows before it.
+        let snapshot = resume(running: true, inflight: ["user": .string("Next")], startedAt: 1_790_000_003)
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 6)))
+        chat.host.next("session.resume", .init(result: snapshot))
+        chat.host.next("session.resume", .init(result: snapshot))
+        chat.receive(event(5, "tool.complete", ["tool_id": .string("call_4"), "name": .string("terminal")]))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
+    }
+
     /// A page that fails keeps what the chat shows and says why; the chat's retry reads it again.
     func testAFailedReadShowsTheLoadErrorAndTheRetryReadsAgain() async {
         let chat = await openChat(pages: [:])
@@ -511,14 +598,15 @@ import Observation
                  "payload": .object(payload)])
     }
 
-    private func resume(running: Bool, inflight: [String: BotJSON]? = nil) -> BotJSON {
+    /// The host's snapshot; a running turn began at `startedAt`.
+    private func resume(running: Bool, inflight: [String: BotJSON]? = nil, startedAt: Double = 1_790_000_000) -> BotJSON {
         var reply: [String: BotJSON] = [
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(running),
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ]
-        if running { reply["turn_started_at"] = .number(1_790_000_000) }
+        if running { reply["turn_started_at"] = .number(startedAt) }
         if var inflight {
-            inflight["started_at"] = .number(1_790_000_000)
+            inflight["started_at"] = .number(startedAt)
             reply["inflight"] = .object(inflight)
         }
         return .object(reply)

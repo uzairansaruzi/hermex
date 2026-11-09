@@ -181,11 +181,17 @@ import UIKit
         let marked = await chat.drafts.draft(for: key)
         XCTAssertEqual(marked?.botSubmissionUncertain, true)
         XCTAssertEqual(marked?.text, "Read this")
+        // The files may be on the host already, so an edit waits too (#1456).
+        let staged = try XCTUnwrap(chat.model.pendingAttachments.first)
+        let refusedEdit = await chat.model.saveStagedPaste(staged, text: "edited")
+        XCTAssertEqual(refusedEdit, StagedPasteText.sendingNotice)
 
         // Joins the reattach the lost answer started.
         await chat.turn.activate()
         await chat.model.submissionMarkRelease?.value
         XCTAssertFalse(chat.model.isHermesSubmissionUncertain)
+        let allowedEdit = await chat.model.saveStagedPaste(staged, text: "edited")
+        XCTAssertNil(allowedEdit)
         let released = await chat.drafts.draft(for: key)
         XCTAssertEqual(released?.botSubmissionUncertain, false)
         XCTAssertEqual(released?.text, "Read this")
@@ -338,6 +344,181 @@ import UIKit
         XCTAssertFalse(coordinator.isUploadingAttachment)
         let copiesLeft = await copies.count
         XCTAssertEqual(copiesLeft, 0)
+    }
+
+    // MARK: Editing a staged paste (#1456)
+
+    /// Saving an edit: the tile keeps its name and place with a new size, the old copy goes,
+    /// a reopened draft finds the edit, and Send carries the edited bytes.
+    func testASavedEditReplacesThePasteAndSurvivesAReopen() async throws {
+        let copies = BotAttachmentCopies()
+        let saved = BotMemoryDrafts()
+        let key = ChatDraftKey.newChat(server: URL(string: "https://hermes.example")!)
+        let drafts = ChatDraftStore(persistence: saved, attachmentStore: copies, debounceDuration: .seconds(60))
+        let coordinator = pasteCoordinator(copies: copies, drafts: drafts)
+        coordinator.protectDraft(key)
+        await coordinator.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+        _ = await coordinator.stagePastedText(String(repeating: "a", count: 3_001)).value
+        let staged = coordinator.pendingAttachments
+        drafts.setAttachments(staged.map(ChatDraftAttachment.init(pending:)), for: key)
+        let paste = staged[1]
+
+        let failure = await coordinator.replaceStagedPaste(paste, with: "trimmed")
+
+        XCTAssertNil(failure)
+        let edited = coordinator.pendingAttachments[1]
+        XCTAssertEqual(coordinator.pendingAttachments.map(\.name), ["notes.txt", "pasted-text.txt"])
+        XCTAssertEqual(edited.id, paste.id)
+        XCTAssertEqual(edited.size, 7)
+        XCTAssertFalse(coordinator.isUploadingAttachment)
+        let copiesLeft = await copies.count
+        XCTAssertEqual(copiesLeft, 2, "The old copy goes")
+        let outgoing = try await coordinator.outgoingAttachments([edited])[0].data()
+        XCTAssertEqual(outgoing, Data("trimmed".utf8))
+
+        let reopened = ChatDraftStore(persistence: saved, attachmentStore: copies, debounceDuration: .seconds(60))
+        let records = await reopened.draft(for: key)?.attachments
+        XCTAssertEqual(records?.map(\.file), coordinator.pendingAttachments.map(\.draftFileName))
+    }
+
+    /// A draft that can't be saved rolls the edit back: the tile and its bytes stay the
+    /// original, and the same edit saves once the disk answers again.
+    func testAnEditThatCantBeSavedKeepsTheOriginal() async throws {
+        let copies = BotAttachmentCopies()
+        let saved = FailingDrafts()
+        let key = ChatDraftKey.newChat(server: URL(string: "https://hermes.example")!)
+        let drafts = ChatDraftStore(persistence: saved, attachmentStore: copies, debounceDuration: .seconds(60))
+        let coordinator = pasteCoordinator(copies: copies, drafts: drafts)
+        coordinator.protectDraft(key)
+        let original = String(repeating: "a", count: 3_001)
+        let stage = await coordinator.stagePastedText(original).value
+        let paste = try XCTUnwrap(stage)
+        drafts.setAttachments([ChatDraftAttachment(pending: paste)], for: key)
+        try await drafts.flush()
+
+        await saved.setFails(true)
+        let failure = await coordinator.replaceStagedPaste(paste, with: "trimmed")
+
+        XCTAssertEqual(failure, "Your original text is unchanged. Try again shortly.")
+        XCTAssertEqual(coordinator.pendingAttachments, [paste])
+        let bytes = try await copies.data(named: try XCTUnwrap(paste.draftFileName))
+        XCTAssertEqual(bytes, Data(original.utf8))
+        let record = await drafts.draft(for: key)?.attachments.first?.file
+        XCTAssertEqual(record, paste.draftFileName)
+
+        await saved.setFails(false)
+        let retry = await coordinator.replaceStagedPaste(paste, with: "trimmed")
+        XCTAssertNil(retry)
+        XCTAssertEqual(coordinator.pendingAttachments.first?.size, 7)
+    }
+
+    /// A tile removed while its edit saves stays gone, and the new copy goes with it.
+    func testATileRemovedWhileItsEditSavesStaysGone() async throws {
+        let copies = PausingCopies()
+        await copies.resume()
+        let coordinator = pasteCoordinator(
+            copies: copies,
+            drafts: ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60))
+        )
+        let stage = await coordinator.stagePastedText(String(repeating: "a", count: 3_001)).value
+        let paste = try XCTUnwrap(stage)
+        await copies.pause()
+        let saving = expectation(description: "The edit's copy is being written")
+        await copies.onSave { saving.fulfill() }
+
+        let save = Task { await coordinator.replaceStagedPaste(paste, with: "trimmed") }
+        await fulfillment(of: [saving], timeout: 5)
+        // As the composer's remove button does: the delete waits for the save's storage lock.
+        let old = try XCTUnwrap(paste.draftFileName)
+        coordinator.removePendingAttachment(id: paste.id)
+        let delete = Task { await coordinator.deleteDraftCopy(named: old, attachmentID: paste.id) }
+        await copies.resume()
+        let failure = await save.value
+        await delete.value
+
+        XCTAssertEqual(failure, "This attachment is no longer in the message.")
+        XCTAssertEqual(coordinator.pendingAttachments, [])
+        let copiesLeft = await copies.count
+        XCTAssertEqual(copiesLeft, 0)
+    }
+
+    /// While a send may be reading the files, an edit is refused and the file stays as it was,
+    /// even if the sheet opened before the send began.
+    func testASendInFlightRefusesAnEdit() async throws {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        let stage = await chat.model.stagePastedText(String(repeating: "a", count: 3_001)).value
+        let paste = try XCTUnwrap(stage)
+        var refusal: String?
+        let refused = expectation(description: "The edit was refused")
+        HermesHostFixture.onPark = {
+            Task { @MainActor in
+                refusal = await chat.model.saveStagedPaste(paste, text: "trimmed")
+                refused.fulfill()
+                chat.model.cancelAttachmentUpload()
+            }
+        }
+
+        _ = await chat.model.sendMessage("Look")
+        await fulfillment(of: [refused], timeout: 5)
+
+        XCTAssertEqual(refusal, StagedPasteText.sendingNotice)
+        XCTAssertEqual(chat.model.pendingAttachments.last, paste)
+        let bytes = try await chat.copies.data(named: try XCTUnwrap(paste.draftFileName))
+        XCTAssertEqual(bytes.count, 3_001)
+    }
+
+    /// An edit's size replaces the text it edits in the 50 MB total: 10 MB grows to 11 next to
+    /// 39 MB of other files, and can't grow to 12. A refused edit changes nothing.
+    func testTheTotalLimitCountsAnEditInPlaceOfTheTextItReplaces() async throws {
+        let chat = await openChat()
+        let megabyte = 1024 * 1024
+        let stage = await chat.model.stagePastedText(String(repeating: "a", count: 10 * megabyte)).value
+        let paste = try XCTUnwrap(stage)
+        await chat.model.uploadAttachment(data: Data(repeating: 0x61, count: 25 * megabyte), filename: "a.txt")
+        await chat.model.uploadAttachment(data: Data(repeating: 0x61, count: 14 * megabyte), filename: "b.txt")
+
+        let tooLong = await chat.model.saveStagedPaste(paste, text: String(repeating: "a", count: 12 * megabyte))
+        XCTAssertEqual(tooLong, "Use up to 8 attachments, 25 MB each and 50 MB total.")
+        XCTAssertEqual(chat.model.pendingAttachments.first, paste)
+
+        let fits = await chat.model.saveStagedPaste(paste, text: String(repeating: "a", count: 11 * megabyte))
+        XCTAssertNil(fits)
+        XCTAssertEqual(chat.model.pendingAttachments.first?.size, 11 * megabyte)
+    }
+
+    /// A long paste shows its start without splitting a character and offers no edit; bytes
+    /// that aren't UTF-8 show as unreadable, so a save can't damage them.
+    func testAStagedPasteReadsAsWholeTextOrItsStartOrNothing() throws {
+        let short = try XCTUnwrap(StagedPasteText(data: Data("héllo\r\n".utf8)))
+        XCTAssertEqual(short.text, "héllo\r\n")
+        XCTAssertTrue(short.isWhole)
+
+        let padding = String(repeating: "a", count: StagedPasteText.editableBytes - 1)
+        let long = try XCTUnwrap(StagedPasteText(data: Data((padding + "é" + "tail").utf8)))
+        XCTAssertEqual(long.text, padding)
+        XCTAssertFalse(long.isWhole)
+        XCTAssertEqual(long.totalBytes, StagedPasteText.editableBytes + 5)
+
+        XCTAssertNil(StagedPasteText(data: Data([0x61, 0xFF, 0x62])))
+    }
+
+    /// Only a local paste opens the editor: a file already on the server keeps its preview.
+    func testOnlyALocalPasteOpensTheEditor() {
+        func attachment(name: String = "pasted-text-2.txt", path: String = "") -> PendingAttachment {
+            PendingAttachment(name: name, path: path, mime: "text/plain", isImage: false, draftFileName: "copy")
+        }
+        XCTAssertTrue(ComposerLargePaste.isStagedPaste(attachment()))
+        XCTAssertFalse(ComposerLargePaste.isStagedPaste(attachment(path: "/uploads/pasted-text-2.txt")))
+        XCTAssertFalse(ComposerLargePaste.isStagedPaste(attachment(name: "notes.txt")))
+    }
+
+    private func pasteCoordinator(copies: any ChatDraftAttachmentStoring, drafts: ChatDraftStore) -> ChatAttachmentCoordinator {
+        ChatAttachmentCoordinator(
+            client: APIClient(baseURL: URL(string: "https://hermes.example")!), draftAttachmentStore: copies,
+            draftStore: drafts, uploadsOnSend: true
+        )
     }
 
     // MARK: Transcript
@@ -760,5 +941,17 @@ import UIKit
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, drafts: drafts, copies: copies, client: client)
+    }
+}
+
+/// Saves until told to fail, as a full disk or a data-protection error would.
+private actor FailingDrafts: ChatDraftPersisting {
+    private var values: [ChatDraftKey: ChatDraft] = [:]
+    private var fails = false
+    func setFails(_ fails: Bool) { self.fails = fails }
+    func load() -> [ChatDraftKey: ChatDraft] { values }
+    func write(_ drafts: [ChatDraftKey: ChatDraft]) throws {
+        if fails { throw CocoaError(.fileWriteOutOfSpace) }
+        values = drafts
     }
 }

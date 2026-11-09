@@ -6,10 +6,11 @@
   "entries": [
     {
       "id": "Localizable::Completed in %@s",
+      "catalog": "Auxiliary",
       "key": "Completed in %@s",
       "units": [
         {
-          "source": "Completed in \\(duration.formatted(.number.precision(.fractionLength(1))))s"
+          "source": "Completed in %@s"
         }
       ],
       "sourceStructure": null,
@@ -18,6 +19,7 @@
       ],
       "protectedTerms": [],
       "comment": "Visible tool-call completion status and its accessibility label; %@ is a one-decimal duration.",
+      "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
@@ -25,14 +27,15 @@
           "line": 113
         }
       ],
-      "target": null
+      "target": "Completat en %@s"
     },
     {
       "id": "Localizable::Lines %lld-%lld",
+      "catalog": "Auxiliary",
       "key": "Lines %lld-%lld",
       "units": [
         {
-          "source": "Lines \\(start)-\\(start + count - 1)"
+          "source": "Lines %lld-%lld"
         }
       ],
       "sourceStructure": null,
@@ -42,6 +45,7 @@
       ],
       "protectedTerms": [],
       "comment": "Git diff hunk range with inclusive first and last line numbers.",
+      "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
@@ -49,14 +53,15 @@
           "line": 436
         }
       ],
-      "target": null
+      "target": "Línies %lld-%lld"
     },
     {
       "id": "Localizable::Patch %lld of %lld",
+      "catalog": "Auxiliary",
       "key": "Patch %lld of %lld",
       "units": [
         {
-          "source": "Patch \\(patchNumber) of \\(patchCount)"
+          "source": "Patch %lld of %lld"
         }
       ],
       "sourceStructure": null,
@@ -66,6 +71,7 @@
       ],
       "protectedTerms": [],
       "comment": "Synthetic git diff hunk label: one-based patch number and total patch count.",
+      "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
@@ -73,7 +79,7 @@
           "line": 432
         }
       ],
-      "target": null
+      "target": "Pedaç %lld de %lld"
     },
     {
       "id": "Localizable::Response is ready to review.",
@@ -94,7 +100,7 @@
           "line": 211
         }
       ],
-      "target": null
+      "target": "La resposta ja es pot revisar."
     },
     {
       "id": "Localizable::Waiting for the next agent update.",
@@ -115,7 +121,7 @@
           "line": 214
         }
       ],
-      "target": null
+      "target": "S'està esperant la següent actualització de l'agent."
     }
   ]
 }

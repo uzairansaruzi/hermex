@@ -21,7 +21,7 @@ struct ProviderLimitsSection: View {
             Text("Limits")
                 .textCase(.uppercase)
                 .font(AppFont.caption(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 4)
 
             if refreshFailed, !cards.isEmpty {
@@ -51,7 +51,7 @@ struct ProviderLimitsSection: View {
 
             Text("Couldn't refresh limits. Showing the last values loaded.")
                 .font(AppFont.footnote(weight: .medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .multilineTextAlignment(.leading)
         }
         .padding(12)
@@ -76,15 +76,13 @@ private struct ProviderLimitsPlaceholderCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: "Provider")
                     .font(AppFont.headline())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .padding(.bottom, 14)
 
                 row
 
-                Divider()
-                    .padding(.vertical, 14)
-
                 row
+                    .padding(.top, 28)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .redacted(reason: .placeholder)
@@ -134,12 +132,8 @@ struct ProviderLimitsCard: View {
                 header
 
                 ForEach(Array(card.rows.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 {
-                        Divider()
-                            .padding(.vertical, 14)
-                    }
-
                     ProviderLimitRowView(row: row, now: now)
+                        .padding(.top, index > 0 ? 28 : 0)
                 }
 
                 if let updated = providerLimitUpdatedText(card.updatedAt, now: now) {
@@ -148,7 +142,7 @@ struct ProviderLimitsCard: View {
 
                     Text(updated)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
         }
@@ -158,7 +152,7 @@ struct ProviderLimitsCard: View {
     private var header: some View {
         let title = Text(card.title)
             .font(AppFont.headline())
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
 
         Group {
             if dynamicTypeSize.isAccessibilitySize {
@@ -184,12 +178,12 @@ struct ProviderLimitsCard: View {
         if let plan = card.plan {
             Text(plan)
                 .font(AppFont.caption(weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .overlay {
                     Capsule()
-                        .stroke(Color.primary.opacity(0.18), lineWidth: 0.8)
+                        .stroke(Color(.appText).opacity(0.18), lineWidth: 0.8)
                 }
         }
     }
@@ -217,16 +211,16 @@ private struct ProviderLimitRowView: View {
                 Label {
                     Text(secondary)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 } icon: {
                     Image(systemName: "arrow.clockwise")
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             } else if let note = row.note {
                 Text(note)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -238,7 +232,7 @@ private struct ProviderLimitRowView: View {
     private var amountRow: some View {
         let label = Text(row.label)
             .font(AppFont.body())
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
 
         let amount = Group {
             if let amount = row.amount {
@@ -300,7 +294,7 @@ private struct ProviderLimitBar: View {
 
     var body: some View {
         Capsule()
-            .fill(Color.primary.opacity(0.14))
+            .fill(Color(.appText).opacity(0.14))
             .frame(height: 8)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in

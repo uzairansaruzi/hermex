@@ -36,6 +36,7 @@ private extension ActionToast {
 private enum ActiveGitSheet: Identifiable {
     case changes
     case commit
+    case branches
 
     var id: Self { self }
 }
@@ -184,7 +185,7 @@ private struct ListenPlaybackBar: View {
 
             Divider()
         }
-        .background(.regularMaterial)
+        .background(.appMaterial(.regularMaterial))
         .accessibilityElement(children: .contain)
     }
 
@@ -239,7 +240,7 @@ private struct ListenPlaybackBar: View {
             Spacer(minLength: 0)
         }
         .font(AppFont.caption2().monospacedDigit())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.appSecondary)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "\(AudioDurationFormatter.string(from: boundedDisplayTime)) of \(AudioDurationFormatter.string(from: duration))"))
     }
@@ -264,7 +265,7 @@ private struct ListenPlaybackBar: View {
                 .monospacedDigit()
                 .frame(minWidth: 36, minHeight: 30)
                 .padding(.horizontal, 6)
-                .background(Color(.secondarySystemBackground), in: Capsule())
+                .background(Color(.appSurface), in: Capsule())
         }
         .disabled(!isReady)
         .accessibilityLabel(String(localized: "Playback speed"))
@@ -275,7 +276,7 @@ private struct ListenPlaybackBar: View {
         Button(action: onStop) {
             Image(systemName: "xmark")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 30, height: 30)
                 .contentShape(Circle())
         }
@@ -288,13 +289,11 @@ struct ChatView: View {
     private let bottomAnchorID = "chat-bottom-anchor"
     private let transcriptSpacing: CGFloat = 8
     private let composerAccessoryVerticalSpacing: CGFloat = 8
-    private let approvalBypassStatusSpacerHeight: CGFloat = 38
     /// The composer and its status stack keep 16 pt side insets of their own;
     /// this cap lines those insets up with the transcript's reading column.
     private let composerMaximumWidth = ChatReadingWidth.maximumWidth(horizontalPadding: 16)
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
@@ -362,7 +361,6 @@ struct ChatView: View {
     @State private var completedResponseRenderID: String?
     @State private var hydratedCompletionStreamID: String?
     @State private var composerFocusRevision = 0
-    @State private var followLatch = ChatScrollPolicy.FollowLatch()
     @State private var followScrollGeneration = 0
     /// While true the transcript's bottom size-change anchor and follow-driven
     /// scrolls are suspended so a disclosure toggle grows or shrinks in place.
@@ -370,7 +368,7 @@ struct ChatView: View {
     @State private var disclosureSettleGeneration = 0
     /// Settled turns the user has opened, plus failed or stopped turns, which
     /// start open. Keyed by turn so paging older messages in does not shift them.
-    @State private var expandedTurnKeys: Set<String> = []
+    @State private var transcriptStructureMemo = TranscriptStructureMemo()
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
@@ -391,6 +389,7 @@ struct ChatView: View {
     @State private var regenerateContext: MessageActionContext?
     @State private var showRegenerateDiscardConfirmation = false
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
+    @State private var stagedPasteItem: StagedPasteItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     /// A reply's images in the lightbox, opened at the tapped one.
     @State private var transcriptImageGallery: ImageLightboxGallery<TranscriptMediaPreviewItem>?
@@ -408,11 +407,18 @@ struct ChatView: View {
     @State private var pendingClearConfirmation: PendingClearConfirmation?
     @State private var goalDraft = ""
     @State private var showsGoalSheet = false
+    /// The Profile whose Serve Every Profile fix is open (#1611).
+    @State private var servingProfile: String?
     @State private var activeGitSheet: ActiveGitSheet?
+    @State private var pendingBranchCheckout: GitCheckoutTarget?
     @State private var turnDiffPresentation: TurnDiffPresentation?
     /// Folds and viewed marks the Changes sheet and turn diffs share for as long as this chat is open.
     @State private var reviewProgress = ReviewProgressStore()
     @State private var viewModel: ChatViewModel
+    /// What outlives this view when a size-class change rebuilds the screen (#1528).
+    @State private var continuity: ChatContinuity
+    /// This view among those on screen for `continuity`.
+    @State private var viewID = UUID()
     @State private var gitAvailabilityViewModel: GitWorkspaceAvailabilityViewModel
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
@@ -443,6 +449,8 @@ struct ChatView: View {
     @State private var showsDelegatedWork = false
     /// A bot's chat's pill opened the bot's profile (#1145).
     @State private var showsBotProfileEditor = false
+    @State private var showsChatSettings = false
+    @State private var showsModelSettings = false
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -506,7 +514,8 @@ struct ChatView: View {
         onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil,
         onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil,
         onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil,
-        waitingShortcut: WaitingShortcutText? = nil
+        waitingShortcut: WaitingShortcutText? = nil,
+        continuity: ChatContinuity? = nil
     ) {
         self.session = session
         self.server = server
@@ -530,7 +539,9 @@ struct ChatView: View {
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
         self.shareNotice = shareNotice
-        let model = ChatViewModel(
+        let continuity = continuity ?? ChatContinuity()
+        _continuity = State(initialValue: continuity)
+        let model = continuity.model ?? ChatViewModel(
             session: session,
             server: server,
             showsLiveActivityResponseExcerpts: UserDefaults.standard.bool(
@@ -544,6 +555,9 @@ struct ChatView: View {
         model.hermesLineageRoot = hermesSession?.lineageRoot
         model.onHermesDraftKeyChange = onHermesDraftKeyChange
         _viewModel = State(initialValue: model)
+        // Until its first report, a reader who wasn't following reads as away from the live edge,
+        // so the bottom a rebuilt transcript opens at doesn't re-arm follow.
+        _isScrolledNearBottom = State(initialValue: model.followLatch.isFollowing)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
@@ -557,7 +571,8 @@ struct ChatView: View {
     /// `HermesUpdateSignInAction`. New Chat with Voice's chat (#1180) starts dictation.
     init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil,
          onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil,
-         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil) {
+         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil,
+         continuity: ChatContinuity? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
@@ -568,7 +583,8 @@ struct ChatView: View {
             onReplaceHermesSession: onReplace,
             onOpenHermesSessions: onOpenSessions,
             onHermesDraftKeyChange: onDraftKeyChange,
-            waitingShortcut: waitingShortcut
+            waitingShortcut: waitingShortcut,
+            continuity: continuity
         )
     }
 
@@ -602,6 +618,7 @@ struct ChatView: View {
                                        hasWaitingSend: viewModel.waitingSend != nil),
             errorMessage: viewModel.sendErrorMessage,
             errorFixPrompt: viewModel.sendErrorRuntimeStale?.fixPrompt,
+            onFixError: viewModel.errorUnserved == nil ? nil : { servingProfile = viewModel.errorUnserved?.profile },
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage
                 ?? viewModel.hermesSettings?.controls.errorMessage,
             contextWindowSnapshot: viewModel.contextWindowSnapshot,
@@ -640,6 +657,7 @@ struct ChatView: View {
             autoStartsVoiceInput: autoStartsVoiceInput,
             apiClient: viewModel.client,
             sessionID: session.sessionId,
+            server: server,
             searchFilePaths: viewModel.offersFilePathSearch ? { await viewModel.searchFilePaths($0) } : nil,
             chipFilePaths: viewModel.fileChipPaths,
             botMentions: viewModel.hermesBotChat?.mentions,
@@ -673,12 +691,7 @@ struct ChatView: View {
                 await viewModel.refreshModelCatalogForPickerOpen()
             },
             onSelectReasoningEffort: { effort in
-                Task {
-                    let didSelect = await viewModel.selectReasoningEffort(effort)
-                    if didSelect {
-                        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
-                    }
-                }
+                await viewModel.selectReasoningEffort(effort)
             },
             onLoadWorkspaceSuggestions: { prefix in
                 await viewModel.loadWorkspaceSuggestions(prefix: prefix)
@@ -733,6 +746,14 @@ struct ChatView: View {
                 }
             },
             onPreviewAttachment: { attachment in
+                if ComposerLargePaste.isStagedPaste(attachment) {
+                    return presentPreviewRestoringComposerFocusIfNeeded {
+                        stagedPasteItem = StagedPasteItem(
+                            attachment: attachment,
+                            isSending: viewModel.stagedFilesAreSending || isRestoringDraftAttachments
+                        )
+                    }
+                }
                 let pending = viewModel.pendingAttachments
                 guard let index = pending.firstIndex(where: { $0.id == attachment.id }) else {
                     return presentAttachmentPreview([ChatAttachmentPreviewItem(pending: attachment)], at: 0)
@@ -783,6 +804,17 @@ struct ChatView: View {
                     }
                 }
             },
+            isChatSettingsPresented: $showsChatSettings,
+            isModelSettingsPresented: $showsModelSettings,
+            modelConfirmationControls: viewModel.hermesSettings?.controls,
+            approvals: viewModel.composerApprovals,
+            onSetYolo: { enabled in
+                Task { await viewModel.setSessionApprovalBypass(enabled) }
+            },
+            onSelectApprovalMode: { mode in
+                Task { await viewModel.selectApprovalMode(mode) }
+            },
+            showsNewChatControls: showsNewChatControls,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber
@@ -965,47 +997,60 @@ struct ChatView: View {
             ?? "\(server.absoluteString)|\(transcriptMediaSessionID ?? "local:\(session.id)")"
     }
 
-    /// Extracted from `body` so the view's single chained expression stays
-    /// inside the compiler's type-checking budget.
-    @ViewBuilder
-    private var approvalOverlay: some View {
-        if let requests = viewModel.hermesRequests {
-            if case .approval(let approval)? = requests.onScreen {
-                hermesApprovalOverlay(approval, requests: requests)
-            }
-        } else if let approvalPrompt = viewModel.approvalPrompt {
-            ApprovalRequestOverlay(
-                prompt: approvalPrompt,
-                isResponding: viewModel.isRespondingToApproval,
-                errorMessage: viewModel.approvalErrorMessage,
-                onChoice: { choice in
-                    Task {
-                        let didRespond = await viewModel.respondToApproval(choice)
-                        if didRespond {
-                            ChatHaptics.approvalSubmitted(choice, isEnabled: isHapticsEnabled)
-                        }
-                    }
-                },
-                onSkipAll: {
-                    Task {
-                        let didSkip = await viewModel.skipApprovalsForCurrentSession()
-                        if didSkip {
-                            ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
-                        }
+    /// A webui server's pending approval, in the clarification's slot (#1584).
+    private func webuiApprovalInset(_ prompt: ApprovalPromptState, maximumExpandedHeight: CGFloat) -> some View {
+        ApprovalRequestInset(
+            content: prompt.requestContent,
+            maximumExpandedHeight: maximumExpandedHeight,
+            isResponding: viewModel.isRespondingToApproval,
+            isStopping: viewModel.isCancellingStream,
+            errorMessage: viewModel.approvalErrorMessage,
+            isHapticsEnabled: isHapticsEnabled,
+            onChoice: { choice in
+                Task {
+                    let didRespond = await viewModel.respondToApproval(choice)
+                    if didRespond {
+                        ChatHaptics.approvalSubmitted(choice, isEnabled: isHapticsEnabled)
                     }
                 }
-            )
-            .zIndex(10)
-        }
+            },
+            onSkipAll: {
+                Task {
+                    let didSkip = await viewModel.skipApprovalsForCurrentSession()
+                    if didSkip {
+                        ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
+                    }
+                }
+            },
+            onStop: {
+                Task { await cancelStream() }
+            },
+            onDismissKeyboard: dismissKeyboard,
+            onFootprintChange: { height in
+                clarificationBarHeight = height
+            }
+        )
+        .id(prompt.id)
+        .padding(.horizontal, 16)
+        .padding(.bottom, composerHeight + 8)
+        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
-    /// A Hermes session's approval (#1011): only the host's choices, each answered once, and
-    /// Skip all, which turns the session's bypass on and releases this approval.
-    private func hermesApprovalOverlay(_ approval: BotApprovalRequest, requests: HermesChatRequests) -> some View {
-        ApprovalRequestOverlay(
-            content: approval.overlayContent(pendingCount: requests.approvalCount),
+    /// A Hermes session's approval (#1011, #1584): only the host's choices, each answered once,
+    /// and Skip all, which turns the session's bypass on and releases this approval.
+    private func hermesApprovalInset(
+        _ approval: BotApprovalRequest,
+        requests: HermesChatRequests,
+        maximumExpandedHeight: CGFloat
+    ) -> some View {
+        ApprovalRequestInset(
+            content: approval.requestContent(pendingCount: requests.approvalCount),
+            maximumExpandedHeight: maximumExpandedHeight,
             isResponding: !requests.mayAnswer,
+            isStopping: viewModel.isCancellingStream,
             errorMessage: requests.errorMessage,
+            summary: requests.summaryPresentation(for: approval, workingDirectory: viewModel.hermesWorkspace?.cwd),
+            isHapticsEnabled: isHapticsEnabled,
             onChoice: { choice in
                 guard let action = requests.prepareAnswer(),
                       let answer = BotApprovalRequest.Choice(rawValue: choice.rawValue) else { return }
@@ -1023,9 +1068,18 @@ struct ChatView: View {
                     }
                 }
             },
-            summary: requests.summaryPresentation(for: approval, workingDirectory: viewModel.hermesWorkspace?.cwd)
+            onStop: {
+                Task { await cancelStream() }
+            },
+            onDismissKeyboard: dismissKeyboard,
+            onFootprintChange: { height in
+                clarificationBarHeight = height
+            }
         )
-        .zIndex(10)
+        .id(approval.requestID)
+        .padding(.horizontal, 16)
+        .padding(.bottom, composerHeight + 8)
+        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
     /// The chat scaffold: layout, title, and push presence. `body` is built in
@@ -1054,22 +1108,19 @@ struct ChatView: View {
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
 
-                BottomComposerMaterialFade(composerHeight: composerHeight)
-
                 composerAccessoryStack
 
                 clarificationInset(maximumExpandedHeight: clarificationMaximumHeight)
 
                 messageComposer
                     .frame(maxWidth: composerMaximumWidth)
+                    .environment(\.composerViewportIsShort, viewport.size.height < ComposerTextInputHeight.shortViewportHeight)
 
                 ActionToastView(state: toastState)
                     .frame(maxWidth: 420)
                     .padding(.horizontal, 24)
                     .padding(.bottom, composerHeight + 8)
                     .zIndex(9)
-
-                approvalOverlay
             }
         }
         .overlay(alignment: .top) {
@@ -1077,11 +1128,12 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
         }
+        .themedPageBackground()
         .navigationTitle(viewModel.hermesBotChat?.botProfile?.name ?? displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         // A bot's pill names the chat; its title stays only for Back on screens pushed over it.
         .toolbar(removing: viewModel.hermesBotChat == nil ? nil : .title)
-        .modifier(ChatNavigationBackground(reduceTransparency: reduceTransparency))
+        .modifier(ChatNavigationBackground())
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .pushPresence(viewModel.pushPresence)
     }
@@ -1103,6 +1155,12 @@ struct ChatView: View {
                 handleNetworkPathChange()
             }
             .onChange(of: viewModel.activeStreamID) {
+                // A new turn starting folds the previous one, even one that opened
+                // itself after failing or being stopped. Here, not in the handler, which a
+                // rebuilt view also runs as it appears, with the same turn still going.
+                if viewModel.activeStreamID != nil, let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
+                    viewModel.expandedTurnKeys.remove(previousTurnKey)
+                }
                 handleActiveStreamChange()
             }
             .onChange(of: viewModel.transcriptRelayoutScrollToken) {
@@ -1137,31 +1195,37 @@ struct ChatView: View {
                 composerFocusRevision += 1
                 completionScrollPolicy.readerDidInteract()
                 hydratedCompletionStreamID = nil
-                parkQueuedMessages()
-                // A waiting send never sends from a chat that left; its text goes back to the draft (#1407).
-                viewModel.leaveWaitingSend()
+                // Another view on screen, from a size-class change, still runs the model (#1528).
+                let chatLeft = continuity.viewDisappeared(viewID)
+                if chatLeft {
+                    parkQueuedMessages()
+                    // A waiting send never sends from a chat that left; its text goes back to the draft (#1407).
+                    viewModel.leaveWaitingSend()
+                }
                 flushDraftsBestEffort()
                 appearanceTask?.cancel()
                 appearanceTask = nil
                 activeStreamStatusRefreshTask?.cancel()
                 activeStreamStatusRefreshTask = nil
-                viewModel.cancelPastedTextStaging()
-                viewModel.stopListening()
-                viewModel.suspendStreamForNavigation()
-                viewModel.cleanupPollingTasks()
+                if chatLeft {
+                    viewModel.cancelPastedTextStaging()
+                    viewModel.stopListening()
+                    viewModel.suspendStreamForNavigation()
+                    viewModel.cleanupPollingTasks()
+                }
                 gitAvailabilityViewModel.suspendPullRequestReads()
             }
             .onAppear {
-                viewModel.protectDraftAttachments(for: draftKey)
-                isOnScreen = true
                 // Holds only the composer's text and the toast, never this view (#1407).
-                viewModel.onWaitingSendReturned = { [composerText = $draftMessage, toast = toastState] text, reason in
+                continuity.viewAppeared(viewID, model: viewModel) { [composerText = $draftMessage, toast = toastState] text, reason in
                     composerText.wrappedValue = text
                     if reason == .expired {
                         let notice = String(localized: "Not sent after 10 minutes offline. Your message is back in the composer.")
                         toast.show(ActionToast(message: notice, systemImage: "clock", accessibilityLabel: notice))
                     }
                 }
+                viewModel.protectDraftAttachments(for: draftKey)
+                isOnScreen = true
                 gitAvailabilityViewModel.resumePullRequestReads()
                 appearanceTask?.cancel()
                 appearanceTask = Task {
@@ -1195,7 +1259,7 @@ struct ChatView: View {
     /// Toolbar, navigation, and presentations over `chatLifecycle`.
     private var chatContent: some View {
         chatLifecycle
-            .toolbar {
+            .verticalBarToolbar { hasVerticalBar in
                 // A bot's chat swaps the title for the bot's pill (#1145).
                 if let botChat = viewModel.hermesBotChat {
                     ToolbarItem(placement: .topBarLeading) {
@@ -1203,47 +1267,28 @@ struct ChatView: View {
                     }
                 } else {
                     ToolbarItem(placement: .principal) {
-                        ChatToolbarTitleLabel(
-                            title: displayTitle,
-                            subtitle: headerSubtitle
-                        )
+                        Button { showsChatSettings = true } label: {
+                            ChatToolbarTitleLabel(title: displayTitle, subtitle: headerSubtitle)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(Text("Chat settings"))
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    ChatToolbarActionCluster {
-                        if viewModel.showsGoalControls {
-                            ChatToolbarActionSlot {
-                                goalControlMenu
-                            }
-                        }
-
-                        if showsFilesButton, !isHermesSession || browsableHermesWorkspace != nil {
-                            ChatToolbarActionSlot {
-                                NavigationLink {
-                                    FileBrowserView(
-                                        files: workspaceFiles,
-                                        search: viewModel.workspaceFileSearch,
-                                        onAPIError: onAPIError,
-                                        onAddToPrompt: reviewCommentHook
-                                    )
-                                } label: {
-                                    Label("Files", systemImage: "folder")
-                                }
-                                .disabled(viewModel.isViewingCachedData)
-                                .accessibilityLabel("Files")
-                            }
-                        }
-
-                        if showsGitControls, gitAvailabilityViewModel.hasRepository {
-                            ChatToolbarActionSlot {
-                                gitActionsMenu
-                            }
+                if #available(iOS 27.1, *), hasVerticalBar {
+                    chatActionRailItems
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ChatToolbarActionCluster {
+                            if showsBotChatSettingsButton { ChatToolbarActionSlot { botChatSettingsButton } }
+                            if viewModel.showsGoalControls { ChatToolbarActionSlot { goalControlMenu } }
+                            if showsFilesLink { ChatToolbarActionSlot { filesLink } }
+                            if showsGitMenu { ChatToolbarActionSlot { gitActionsMenu } }
                         }
                     }
+                    delegatedWorkToolbarItem
                 }
-
-                delegatedWorkToolbarItem
             }
             .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
@@ -1268,6 +1313,18 @@ struct ChatView: View {
                 )
             }
             .onChange(of: attachmentPreviewItem == nil) { _, isDismissed in
+                if isDismissed {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
+            .sheet(item: $stagedPasteItem) { item in
+                StagedPasteSheet(
+                    item: item,
+                    load: { await viewModel.stagedPasteText(item.attachment) },
+                    save: { await viewModel.saveStagedPaste(item.attachment, text: $0) }
+                )
+            }
+            .onChange(of: stagedPasteItem == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
@@ -1316,6 +1373,7 @@ struct ChatView: View {
             // running there, and its toast or alert, belong to the old repository (#1115).
             .onChange(of: viewModel.hermesWorkspace) {
                 openedFileReference = nil
+                pendingBranchCheckout = nil
                 activeGitSheet = nil
                 turnDiffPresentation = nil
                 gitAvailabilityViewModel.retire()
@@ -1323,7 +1381,7 @@ struct ChatView: View {
                 gitAlert = nil
                 Task { await loadInitialGitAvailability() }
             }
-            .sheet(item: $activeGitSheet, content: gitSheet)
+            .sheet(item: $activeGitSheet, onDismiss: runPendingBranchCheckout, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
             // These sheets come from the chat, not the composer, so the composer reads their
             // transition as a navigation one and keeps its focus intent. A focused composer
@@ -1344,10 +1402,12 @@ struct ChatView: View {
             .sheet(isPresented: $showsDelegatedWork) {
                 if let work = viewModel.hermesActivity?.delegatedWork {
                     HermesDelegatedWorkView(work: work)
+                        .themedPageBackground()
                         .presentationDetents([.medium, .large])
                         .presentationDragIndicator(.visible)
                 }
             }
+            .sheet(item: $servingProfile, content: serveEveryProfileSheet)
             .sheet(isPresented: $showsGoalSheet) {
                 GoalSubmissionSheet(
                     goalDraft: $goalDraft,
@@ -1430,7 +1490,10 @@ struct ChatView: View {
                 )
             )
             .notificationOfferAlert($pendingNotificationOffer)
-            .modifier(HermesModelConfirmationModifier(controls: viewModel.hermesSettings?.controls))
+            // Model settings asks over itself while it is up.
+            .modifier(HermesModelConfirmationModifier(
+                controls: showsModelSettings ? nil : viewModel.hermesSettings?.controls
+            ))
             .modifier(HermesPersonalityConfirmationModifier(
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
@@ -1531,7 +1594,33 @@ struct ChatView: View {
                     Task { await gitAvailabilityViewModel.refreshAfterExternalMutation() }
                 }
             )
+        case .branches:
+            GitBranchPickerSheet(
+                branches: gitAvailabilityViewModel.branches,
+                currentBranch: gitAvailabilityViewModel.currentBranchName,
+                isLoading: gitAvailabilityViewModel.isLoadingBranches,
+                isSwitching: gitAvailabilityViewModel.isSwitchingBranch,
+                allowsCreate: gitAvailabilityViewModel.supportsSync,
+                onSelect: closeBranchPicker(checkingOut:),
+                onCreate: closeBranchPicker(checkingOut:),
+                onRefresh: { Task { await gitAvailabilityViewModel.loadBranches() } }
+            )
+            .themedPageBackground()
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
+    }
+
+    /// The checkout waits for the sheet to close, since a dirty tree raises an alert from here.
+    private func closeBranchPicker(checkingOut target: GitCheckoutTarget) {
+        pendingBranchCheckout = target
+        activeGitSheet = nil
+    }
+
+    private func runPendingBranchCheckout() {
+        guard let target = pendingBranchCheckout else { return }
+        pendingBranchCheckout = nil
+        Task { await performGitCheckout(target) }
     }
 
     @ViewBuilder
@@ -1588,6 +1677,10 @@ struct ChatView: View {
             hidesSync: gitWriteAvailability.hidesSync,
             pullRequest: gitAvailabilityViewModel.pullRequest,
             isRunningAction: gitAvailabilityViewModel.isRunningGitAction,
+            branchesDisabled: session.isSessionReadOnly || viewModel.activeStreamID != nil
+                || gitAvailabilityViewModel.isWriteLocked
+                || gitAvailabilityViewModel.isLoadingBranches || gitAvailabilityViewModel.isSwitchingBranch,
+            onBranches: gitAvailabilityViewModel.supportsBranches ? { activeGitSheet = .branches } : nil,
             onTap: {
                 HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
                 gitAvailabilityViewModel.refreshPullRequest()
@@ -1830,14 +1923,17 @@ struct ChatView: View {
         }
     }
 
-    /// The pending clarification, pinned above the composer. Sits in the same
-    /// bottom stack as the composer so it rides the keyboard with it.
+    /// The pending clarification or approval, pinned above the composer. Sits in the
+    /// same bottom stack as the composer so it rides the keyboard with it. One request
+    /// at a time: a question before an approval, as `HermesChatRequests.onScreen` orders.
     private func clarificationInset(maximumExpandedHeight: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
             if let requests = viewModel.hermesRequests {
                 // Below the request inset, whose expanded card rises over it.
                 btwInset(maximumExpandedHeight: maximumExpandedHeight)
-                if let request = hermesInsetRequest {
+                if case .approval(let approval)? = hermesInsetRequest {
+                    hermesApprovalInset(approval, requests: requests, maximumExpandedHeight: maximumExpandedHeight)
+                } else if let request = hermesInsetRequest {
                     hermesRequestInset(request, requests: requests, maximumExpandedHeight: maximumExpandedHeight)
                 }
             } else if let clarificationPrompt = viewModel.clarificationPrompt {
@@ -1868,6 +1964,8 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, composerHeight + 8)
                 .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            } else if let approvalPrompt = viewModel.approvalPrompt {
+                webuiApprovalInset(approvalPrompt, maximumExpandedHeight: maximumExpandedHeight)
             }
         }
         .zIndex(9)
@@ -1988,17 +2086,16 @@ struct ChatView: View {
         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
-    /// The Hermes request the clarification slot shows: a question, a sudo or secret prompt, a
-    /// Desktop task or a connection operation. An approval takes the overlay instead.
+    /// The Hermes request the clarification slot shows: a question, an approval, a sudo or
+    /// secret prompt, a Desktop task or a connection operation.
     private var hermesInsetRequest: BotPendingRequest? {
-        guard let request = viewModel.hermesRequests?.onScreen else { return nil }
-        if case .approval = request { return nil }
-        return request
+        viewModel.hermesRequests?.onScreen
     }
 
-    /// The request in the clarification slot: a webui clarification, or a Hermes inset request.
+    /// The request in the clarification slot: a webui clarification or approval, or a Hermes
+    /// inset request.
     private var requestInsetID: String? {
-        hermesInsetRequest?.requestID ?? viewModel.clarificationPrompt?.id
+        hermesInsetRequest?.requestID ?? viewModel.clarificationPrompt?.id ?? viewModel.approvalPrompt?.id
     }
 
     @ViewBuilder
@@ -2024,11 +2121,6 @@ struct ChatView: View {
                         } action: { height in
                             activeRunStatusHeight = height
                         }
-                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-                }
-
-                if showsApprovalBypassStatus {
-                    approvalBypassStatusPill
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
 
@@ -2070,7 +2162,6 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerAccessoryVisibleItemCount)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
-            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
         }
@@ -2129,19 +2220,84 @@ struct ChatView: View {
         }
     }
 
+    /// A Hermes chat's delegated workers (#1140). Nil on the offline cache's copy, which lists none.
+    private var delegatedWork: HermesDelegatedWork? {
+        viewModel.isViewingCachedData ? nil : viewModel.hermesActivity?.delegatedWork
+    }
+
+    /// A bot's chat has no subtitle to tap, since the pill opens its bot.
+    private var showsBotChatSettingsButton: Bool { viewModel.hermesBotChat != nil }
+
+    private var showsFilesLink: Bool { showsFilesButton && (!isHermesSession || browsableHermesWorkspace != nil) }
+
+    private var showsGitMenu: Bool { showsGitControls && gitAvailabilityViewModel.hasRepository }
+
+    private var botChatSettingsButton: some View {
+        Button { showsChatSettings = true } label: {
+            Label("Chat settings", systemImage: "slider.horizontal.3")
+        }
+        .accessibilityLabel("Chat settings")
+    }
+
+    private var filesLink: some View {
+        NavigationLink {
+            FileBrowserView(
+                files: workspaceFiles,
+                search: viewModel.workspaceFileSearch,
+                onAPIError: onAPIError,
+                onAddToPrompt: reviewCommentHook
+            )
+        } label: {
+            Label("Files", systemImage: "folder")
+        }
+        .disabled(viewModel.isViewingCachedData)
+        .accessibilityLabel("Files")
+    }
+
+    /// The trailing actions where the system draws a vertical bar (iPhone Duo): one item each,
+    /// since the bar can't hold the cluster's custom view. Custom labels prefer the vertical bar
+    /// explicitly, or they fall back to a horizontal one.
+    @available(iOS 27.1, *)
+    @ToolbarContentBuilder
+    private var chatActionRailItems: some ToolbarContent {
+        if showsBotChatSettingsButton {
+            ToolbarItem(placement: .topBarTrailing) { botChatSettingsButton }
+        }
+        if viewModel.showsGoalControls {
+            ToolbarItem(placement: .topBarTrailing) { goalControlMenu }
+                .axisBehavior(.verticalPreferred)
+        }
+        if showsFilesLink {
+            ToolbarItem(placement: .topBarTrailing) { filesLink }
+        }
+        if showsGitMenu {
+            ToolbarItem(placement: .topBarTrailing) { gitActionsMenu }
+                .axisBehavior(.verticalPreferred)
+        }
+        if let work = delegatedWork, work.activeCount > 0 {
+            ToolbarItem(placement: .topBarTrailing) {
+                HermesDelegatedWorkButton(count: work.activeCount, action: openDelegatedWork)
+            }
+            .axisBehavior(.verticalPreferred)
+        }
+    }
+
     /// A Hermes chat's workers button (#1140), its own glass beside the cluster while any
-    /// worker is active. Hidden on the offline cache's copy, which lists no workers.
+    /// worker is active.
     @ToolbarContentBuilder
     private var delegatedWorkToolbarItem: some ToolbarContent {
-        if !viewModel.isViewingCachedData, let work = viewModel.hermesActivity?.delegatedWork, work.activeCount > 0 {
+        if let work = delegatedWork, work.activeCount > 0 {
             if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {
-                HermesDelegatedWorkButton(count: work.activeCount) {
-                    showsDelegatedWork = true
-                    Task { await work.refresh() }
-                }
+                HermesDelegatedWorkButton(count: work.activeCount, action: openDelegatedWork)
             }
         }
+    }
+
+    private func openDelegatedWork() {
+        guard let work = delegatedWork else { return }
+        showsDelegatedWork = true
+        Task { await work.refresh() }
     }
 
     /// A Hermes chat's running plan, pinned above the composer while it has an open step
@@ -2162,30 +2318,42 @@ struct ChatView: View {
         return HermesTurnOutcomeRow(
             failure: activity.failure, notice: activity.notice,
             offersRetry: activity.retryTarget != nil, mayRetry: viewModel.mayRetryHermesTurn,
-            onRetry: { Task { await viewModel.retryHermesFailedTurn() } }
+            onRetry: {
+                Task {
+                    await viewModel.retryHermesFailedTurn()
+                    // A canonical cut that went through without its send leaves the prompt to send again.
+                    if let unsent = viewModel.takeUnsentHermesEdit() { restoreUnsentEdit(unsent) }
+                }
+            }
         )
     }
 
-    /// Reports the bypass; on a Hermes session it also turns off the session's own flag
-    /// (#1011). A bypass the host sets itself only reports.
+    /// Serve Every Profile for `profile`, from the chat's error (#1611). The chat loads again once
+    /// the gateway serves it.
     @ViewBuilder
-    private var approvalBypassStatusPill: some View {
-        if let requests = viewModel.hermesRequests, requests.mayTurnOffApprovalBypass {
-            ApprovalBypassStatusPill(onTurnOff: {
-                Task { await requests.turnOffApprovalBypass() }
-            })
-            .disabled(requests.isChangingApprovalBypass)
-        } else {
-            ApprovalBypassStatusPill()
-                .allowsHitTesting(false)
+    private func serveEveryProfileSheet(_ profile: String) -> some View {
+        if let connection = try? BotConnectionStore().load(server: server) {
+            NavigationStack {
+                ServeEveryProfileView(connection: connection, server: server, profile: profile) {
+                    servingProfile = nil
+                    Task { await loadMessages() }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Done") { servingProfile = nil } }
+                }
+            }
         }
     }
 
     @ViewBuilder
     private var messageContent: some View {
+        let structure = transcriptStructure
         ChatTranscriptView(
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
+            errorMayRetry: viewModel.errorMayRetry,
+            errorHostReason: viewModel.errorUnserved?.hostReason,
+            onServeEveryProfile: viewModel.errorUnserved == nil ? nil : { servingProfile = viewModel.errorUnserved?.profile },
             messages: viewModel.messages,
             displayedTranscriptMessages: displayedTranscriptMessages,
             compressionReferenceCard: viewModel.compressionReferenceCard,
@@ -2255,9 +2423,9 @@ struct ChatView: View {
             onUpdateScrollMetrics: updateScrollMetrics,
             onFollowEvent: handleFollowEvent,
             onDisclosureToggle: handleDisclosureToggle,
-            turnFolds: turnFolds(reasoningGroups: viewModel.displayedReasoningGroups),
-            terminalReplyRenderIDs: terminalReplyRenderIDs,
-            expandedTurnKeys: expandedTurnKeys,
+            turnFolds: structure.folds,
+            terminalReplyRenderIDs: structure.terminalReplyRenderIDs,
+            expandedTurnKeys: viewModel.expandedTurnKeys,
             onToggleTurnFold: toggleTurnFold,
             onDismissKeyboard: dismissKeyboard,
             onScrollToBottom: scrollToBottom,
@@ -2298,14 +2466,19 @@ struct ChatView: View {
             settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
             settledPlanAfterRenderID: settledPlanAfterRenderID,
             turnOutcome: hermesTurnOutcome,
-            queuedPrompt: viewModel.queuedPromptMessage,
+            queuedPrompts: viewModel.queuedPromptMessages,
+            lostTurn: viewModel.lostTurn,
+            onDiscardLostTurn: { Task { await viewModel.discardLostTurn() } },
             isCronRun: isCronRun,
             onCopyQueuedPrompt: { text in
                 UIPasteboard.general.string = text
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)
             },
             waitingSend: viewModel.waitingSendMessage,
-            onCancelWaitingSend: viewModel.cancelWaitingSend
+            onCancelWaitingSend: viewModel.cancelWaitingSend,
+            continuity: continuity,
+            delegatedWork: delegatedWork,
+            onOpenDelegatedWork: openDelegatedWork
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
@@ -2397,7 +2570,7 @@ struct ChatView: View {
     }
 
     private var shouldFollowLatestMessage: Bool {
-        followLatch.isFollowing
+        viewModel.followLatch.isFollowing
     }
 
     /// Automatic follows run only while the latch is on and no disclosure
@@ -2417,7 +2590,8 @@ struct ChatView: View {
         ChatWorkingRowPolicy.startedAt(
             activeRunStartedAt: viewModel.activeRunStartedAt,
             isCancellingStream: viewModel.isCancellingStream,
-            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil || viewModel.isWaitingForUser
+            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil || viewModel.approvalPrompt != nil
+                || viewModel.isWaitingForUser
         )
     }
 
@@ -2465,21 +2639,12 @@ struct ChatView: View {
         )
     }
 
-    private var showsApprovalBypassStatus: Bool {
-        guard viewModel.isSessionApprovalBypassEnabled, viewModel.approvalPrompt == nil else { return false }
-        if case .approval? = viewModel.hermesRequests?.onScreen { return false }
-        return true
-    }
-
     private var composerAccessorySpacerHeight: CGFloat {
         var height = pinnedNoticeSpacerHeight
         if activeRunStatusPresentation != nil {
             // The measured pill plus one accessory gap: 36 pt at the default
             // size, and a full wrapped pill at accessibility sizes.
             height += activeRunStatusHeight + composerAccessoryVerticalSpacing
-        }
-        if showsApprovalBypassStatus {
-            height += approvalBypassStatusSpacerHeight
         }
         if pinnedPlan != nil {
             height += planStripHeight
@@ -2506,9 +2671,6 @@ struct ChatView: View {
         if activeRunStatusPresentation != nil {
             count += 1
         }
-        if showsApprovalBypassStatus {
-            count += 1
-        }
         if pinnedPlan != nil {
             count += 1
         }
@@ -2532,6 +2694,14 @@ struct ChatView: View {
         )
     }
 
+    private var showsNewChatControls: Bool {
+        ChatComposerNewChatPolicy.showsControls(
+            hasMessages: !viewModel.messages.isEmpty,
+            serverMessageCount: session.messageCount,
+            isStreaming: viewModel.activeStreamID != nil
+        )
+    }
+
     private func shouldRenderMessageRow(_ message: ChatMessage) -> Bool {
         if message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
             return true
@@ -2548,46 +2718,52 @@ struct ChatView: View {
         transcriptMessages
     }
 
-    /// Settled-turn folds for the current transcript. Activity anchors count
-    /// only while thinking and tool cards are shown, so a turn with nothing
-    /// visible to hide gets no row.
-    private func turnFolds(reasoningGroups: [ReasoningGroup]) -> TranscriptTurnFolds {
-        guard foldsSettledTurns else { return .none }
-
+    /// Settled-turn folds and the replies that close settled turns, derived again only when
+    /// the transcript's structure or an input below changes, so a text-only reveal tick reuses
+    /// them (#1417). Activity anchors count only while thinking and tool cards are shown, so
+    /// a turn with nothing visible to hide gets no fold.
+    private var transcriptStructure: TranscriptStructureMemo.Structure {
         let activityAnchorIDs: Set<String> = thinkingAndToolCards.showsCards
-            ? Set(reasoningGroups.compactMap(\.anchorMessageID))
+            ? Set(viewModel.displayedReasoningGroups.compactMap(\.anchorMessageID))
                 .union(viewModel.completedToolCallGroups.compactMap(\.anchorMessageID))
             : []
-
-        return TranscriptTurnFolds.derive(
-            transcriptMessages: transcriptMessages,
-            messages: viewModel.messages,
-            messageOffset: viewModel.messagesOffset,
+        let inputs = TranscriptStructureMemo.Inputs(
+            structureRevision: viewModel.transcriptStructureRevision,
             activityAnchorIDs: activityAnchorIDs,
-            rendersBubble: shouldRenderMessageRow,
+            foldsSettledTurns: foldsSettledTurns,
             isStreamActive: viewModel.activeStreamID != nil,
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
             latestRunOutcome: viewModel.latestRunOutcome
         )
-    }
-
-    /// Rows that get the time + copy row as the reply closing a settled turn.
-    private var terminalReplyRenderIDs: Set<String> {
-        TranscriptMessageMetaPolicy.terminalReplyRenderIDs(
-            transcriptMessages: transcriptMessages,
-            messages: viewModel.messages,
-            messageOffset: viewModel.messagesOffset,
-            rendersBubble: shouldRenderMessageRow,
-            isStreamActive: viewModel.activeStreamID != nil,
-            streamingAssistantMessageID: viewModel.streamingAssistantMessageID
-        )
+        return transcriptStructureMemo.structure(for: inputs) {
+            TranscriptStructureMemo.Structure(
+                folds: foldsSettledTurns ? TranscriptTurnFolds.derive(
+                    transcriptMessages: transcriptMessages,
+                    messages: viewModel.messages,
+                    messageOffset: viewModel.messagesOffset,
+                    activityAnchorIDs: activityAnchorIDs,
+                    rendersBubble: shouldRenderMessageRow,
+                    isStreamActive: inputs.isStreamActive,
+                    streamingAssistantMessageID: inputs.streamingAssistantMessageID,
+                    latestRunOutcome: inputs.latestRunOutcome
+                ) : .none,
+                terminalReplyRenderIDs: TranscriptMessageMetaPolicy.terminalReplyRenderIDs(
+                    transcriptMessages: transcriptMessages,
+                    messages: viewModel.messages,
+                    messageOffset: viewModel.messagesOffset,
+                    rendersBubble: shouldRenderMessageRow,
+                    isStreamActive: inputs.isStreamActive,
+                    streamingAssistantMessageID: inputs.streamingAssistantMessageID
+                )
+            )
+        }
     }
 
     private func toggleTurnFold(_ turnKey: String) {
         handleDisclosureToggle()
         withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-            if !expandedTurnKeys.insert(turnKey).inserted {
-                expandedTurnKeys.remove(turnKey)
+            if !viewModel.expandedTurnKeys.insert(turnKey).inserted {
+                viewModel.expandedTurnKeys.remove(turnKey)
             }
         }
     }
@@ -2595,7 +2771,7 @@ struct ChatView: View {
     /// Failed or stopped turns start open so the work that went wrong is in view.
     private func handleLatestRunOutcomeChange(_ outcome: TranscriptTurnRunOutcome?) {
         guard let outcome, outcome.ending != .completed else { return }
-        expandedTurnKeys.insert(outcome.turnKey)
+        viewModel.expandedTurnKeys.insert(outcome.turnKey)
     }
 
     private var latestTranscriptMessageID: String? {
@@ -2606,9 +2782,14 @@ struct ChatView: View {
         transcriptMessages.last?.message.role
     }
 
+    /// A view a size-class change rebuilt keeps its predecessor's transcript, older pages included.
+    private var needsInitialMessages: Bool {
+        loadsInitialMessages && !continuity.didLoadMessages
+    }
+
     private func prepareInitialAppearance() {
         viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
-        if loadsInitialMessages {
+        if needsInitialMessages {
             viewModel.prepareInitialMessageLoad(modelContext: modelContext)
         }
     }
@@ -2633,9 +2814,10 @@ struct ChatView: View {
         guard !Task.isCancelled else { return }
         let draftSettingsInteractionGeneration = viewModel.composerConfigurationInteractionGeneration
 
-        if loadsInitialMessages {
+        if needsInitialMessages {
             await loadMessages(appliesInitialFocus: false, usesInitialPrefetch: true)
             guard !Task.isCancelled else { return }
+            continuity.didLoadMessages = viewModel.errorMessage == nil
             if viewModel.messages.isEmpty { endSessionOpenSignpost() }
         }
         if initialAttachments.isEmpty {
@@ -2734,7 +2916,7 @@ struct ChatView: View {
     }
 
     private func loadOlderMessages() async -> Bool {
-        followLatch.isFollowing = false
+        viewModel.followLatch.isFollowing = false
 
         let signpost = performanceSignposter.beginInterval("Load Earlier")
         let didLoad = await viewModel.loadOlderMessages(modelContext: modelContext)
@@ -2835,6 +3017,16 @@ struct ChatView: View {
                 submittedDraft: submittedDraft,
                 submittedDraftRevision: submittedDraftRevision
             )
+            // A canonical `/retry` whose cut went through without its send: the prompt takes the
+            // command's place, or joins what was typed since.
+            if let unsent = viewModel.takeUnsentHermesEdit() {
+                if draftRevision == submittedDraftRevision {
+                    draftMessage = unsent
+                    persistDraftEdit(unsent)
+                } else {
+                    restoreUnsentEdit(unsent)
+                }
+            }
             if let lastError = viewModel.lastError {
                 onAPIError(lastError)
             }
@@ -3261,6 +3453,8 @@ struct ChatView: View {
                 pendingRetry.append(contentsOf: records[offset...])
                 break
             }
+            // A model a size-class change kept still holds it (#1528).
+            if viewModel.pendingAttachments.contains(where: { $0.id == record.id }) { continue }
             guard let fileName = record.file else {
                 // Tolerate an older or partially corrupt record that predates
                 // the durable-staging invariant.
@@ -3871,11 +4065,6 @@ struct ChatView: View {
             return
         }
 
-        // A new turn starting folds the previous one, even one that opened
-        // itself after failing or being stopped.
-        if let previousTurnKey = viewModel.latestRunOutcome?.turnKey {
-            expandedTurnKeys.remove(previousTurnKey)
-        }
 
         completionScrollPolicy.begin(streamID: activeStreamID, isFollowing: shouldFollowLatestMessage)
         hydratedCompletionStreamID = nil
@@ -3960,7 +4149,7 @@ struct ChatView: View {
               let streamID = hydratedCompletionStreamID,
               viewModel.successfulResponseCompletion?.streamID == streamID,
               let finalRenderID = ChatCompletionScrollPolicy.finalResponseRenderID(
-                  in: displayedTranscriptMessages, terminalReplyRenderIDs: terminalReplyRenderIDs
+                  in: displayedTranscriptMessages, terminalReplyRenderIDs: transcriptStructure.terminalReplyRenderIDs
               ),
               completionScrollPolicy.consumeCompletion(
                   streamID: streamID,
@@ -3968,7 +4157,7 @@ struct ChatView: View {
                   sceneIsActive: scenePhase == .active
               ) else { return }
         hydratedCompletionStreamID = nil
-        followLatch.isFollowing = false
+        viewModel.followLatch.isFollowing = false
         completedResponseRenderID = finalRenderID
     }
 
@@ -4028,9 +4217,10 @@ struct ChatView: View {
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
-        // An empty chat still draws the transcript for a queued prompt (#1379) or a waiting send (#1407).
-        guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil
-            || viewModel.waitingSendMessage != nil else { return }
+        // An empty chat still draws the transcript for a queued prompt (#1379), a waiting send (#1407)
+        // or live workers.
+        guard !viewModel.messages.isEmpty || !viewModel.queuedPromptMessages.isEmpty || viewModel.lostTurn != nil
+            || viewModel.waitingSendMessage != nil || (delegatedWork?.activeCount ?? 0) > 0 else { return }
 
         scheduleFollowScroll(
             proxy,
@@ -4153,9 +4343,9 @@ struct ChatView: View {
         default:
             break
         }
-        let resolved = ChatScrollPolicy.resolveFollow(current: followLatch, event: event)
-        if resolved != followLatch {
-            followLatch = resolved
+        let resolved = ChatScrollPolicy.resolveFollow(current: viewModel.followLatch, event: event)
+        if resolved != viewModel.followLatch {
+            viewModel.followLatch = resolved
         }
     }
 
@@ -4252,6 +4442,7 @@ struct ChatView: View {
         showRegenerateDiscardConfirmation = false
 
         _ = await viewModel.regenerateAssistantResponse(context, modelContext: modelContext)
+        if let unsent = viewModel.takeUnsentHermesEdit() { restoreUnsentEdit(unsent) }
 
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
@@ -4306,15 +4497,15 @@ struct ChatToolbarTitleLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(AppFont.subheadline(weight: .semibold))
+                .foregroundStyle(.appPrimary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             if showsSubtitle, let subtitle {
                 Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption2())
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -4368,7 +4559,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
             content
                 .padding(.horizontal, 4)
                 .background(
-                    Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.24 : 0.42),
+                    Color(.appSurface).opacity(colorScheme == .dark ? 0.24 : 0.42),
                     in: Capsule()
                 )
                 .adaptiveGlass(
@@ -4380,7 +4571,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
                 .clipShape(Capsule())
                 .overlay {
                     Capsule()
-                        .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.38 : 0.24), lineWidth: 0.5)
+                        .stroke(Color(.appSeparator).opacity(colorScheme == .dark ? 0.38 : 0.24), lineWidth: 0.5)
                         .allowsHitTesting(false)
                 }
         }
@@ -4397,23 +4588,19 @@ struct ChatToolbarActionSlot<Content: View>: View {
     var body: some View {
         content
             .labelStyle(.iconOnly)
-            .font(.body)
+            .font(AppFont.body())
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
     }
 }
 
 enum ChatToolbarSubtitleResolver {
+    /// `hermes · Default`: the workspace and the Profile, whichever of them there is.
     static func subtitle(workspacePath: String?, profileTitle: String?) -> String? {
-        if let workspace = nonEmpty(workspacePath) {
-            return workspace.lastPathComponentFallback
-        }
-
-        guard let profile = nonEmpty(profileTitle), profile != "Profile" else {
-            return nil
-        }
-
-        return profile
+        let workspace = nonEmpty(workspacePath)?.lastPathComponentFallback
+        let profile = nonEmpty(profileTitle).flatMap { $0 == "Profile" ? nil : $0 }
+        let parts = [workspace, profile].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private static func nonEmpty(_ value: String?) -> String? {
@@ -4533,28 +4720,25 @@ private struct ChatDraftSyncModifier: ViewModifier {
     }
 }
 
-/// Owns the Sessions navigation background independently of the nested transcript's
-/// scroll-edge detection. UIKit extends this native background through the status bar.
+/// Covers the transcript behind the Chat title before iOS 26. iOS 26+ leaves the bar
+/// transparent and relies on the transcript's native scroll-edge effect, which runs to
+/// the screen's top edge; a forced bar background stops at the bar and leaves a gap
+/// wherever no status bar sits above it, such as the folded iPhone Duo.
 struct ChatNavigationBackground: ViewModifier {
-    let reduceTransparency: Bool
-
     func body(content: Content) -> some View {
-        content
-            .toolbarBackground(backgroundStyle, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-    }
-
-    private var backgroundStyle: AnyShapeStyle {
-        if #available(iOS 26, *), !reduceTransparency {
-            return AnyShapeStyle(.regularMaterial)
+        if #available(iOS 26, *) {
+            content
+        } else {
+            content
+                .toolbarBackground(Color(uiColor: .appCanvas), for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
         }
-        return AnyShapeStyle(Color(uiColor: .systemBackground))
     }
 }
 
 /// The host's expensive-model question for a Hermes session's model pick (#1015), as Bot
 /// Chat asks it: Change model resends the pick confirmed, Cancel sends nothing.
-private struct HermesModelConfirmationModifier: ViewModifier {
+struct HermesModelConfirmationModifier: ViewModifier {
     let controls: BotChatControls?
 
     func body(content: Content) -> some View {
@@ -4566,7 +4750,7 @@ private struct HermesModelConfirmationModifier: ViewModifier {
                 // Dismissing clears `confirmation`, so the pending pick is captured first.
                 Button("Change model") {
                     controls.cancelConfirmation()
-                    Task { await controls.apply(confirmation.action, confirmed: true) }
+                    Task { await controls.confirm(confirmation) }
                 }
                 .disabled(!controls.mayChangeModel)
             }

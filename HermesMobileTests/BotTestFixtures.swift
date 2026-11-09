@@ -14,6 +14,8 @@ final class BotSocketHost: @unchecked Sendable {
         var error: Int?
         /// The error's message.
         var message = "refused"
+        /// The error's `data`, such as a canonical host's refusal `reason`.
+        var data: BotJSON = .null
         /// Event frames written ahead of the reply.
         var before: [BotJSON] = []
     }
@@ -39,6 +41,8 @@ final class BotSocketHost: @unchecked Sendable {
     /// Leaves every later `method` call unanswered, as a reply the socket lost; it is still
     /// logged.
     func withhold(_ method: String) { lock.withLock { _ = withheld.insert(method) } }
+    /// Answers `method` again after `withhold`.
+    func allow(_ method: String) { lock.withLock { _ = withheld.remove(method) } }
     /// Opens the next socket without `gateway.ready`, as a host stalled mid-handshake, and
     /// fulfills `opened` as it opens.
     func stallReady(_ opened: XCTestExpectation) { lock.withLock { stalledOpen = opened } }
@@ -54,13 +58,16 @@ final class BotSocketHost: @unchecked Sendable {
     }
 
     /// A connection to this host: an ordinary sign-in, then a scripted socket per open.
-    /// `rpcDeadline` shortens how long an unanswered call waits.
-    @MainActor func connection(_ record: BotConnection, rpcDeadline: Duration = .seconds(30)) -> HermesConnection {
-        HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+    /// `rpcDeadline` shortens how long an unanswered call waits. `canonical` opens sockets
+    /// whose `gateway.ready` says `session_authority` (#1341), under an epoch no session replays under.
+    @MainActor func connection(_ record: BotConnection, rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
+                               rest: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
+        let ready = canonical ? #"{"replay_epoch":"socket-epoch","session_authority":true}"# : #"{"replay_epoch":"epoch"}"#
+        return HermesConnection(connection: record, configuration: HermesHostFixture.configuration(rest),
                          gateway: .init(rpcDeadline: rpcDeadline, socketFactory: { [self] _ in
                              let stalled = lock.withLock { defer { stalledOpen = nil }; return stalledOpen }
                              stalled?.fulfill()
-                             let socket = stalled == nil ? BotScriptedSocket() : BotScriptedSocket(ready: nil)
+                             let socket = BotScriptedSocket(ready: stalled == nil ? ready : nil)
                              socket.reply = { [weak socket, self] request in answer(request, on: socket) }
                              socket.withholdReply = { [self] request in
                                  guard lock.withLock({ withheld.contains(request["method"].text ?? "") }) else { return false }
@@ -91,7 +98,8 @@ final class BotSocketHost: @unchecked Sendable {
             socket?.enqueue(Self.message(["method": .string("event"), "params": frame]))
         }
         if let code = reply?.error {
-            return .object(["id": request["id"], "error": .object(["code": .number(Double(code)), "message": .string(reply?.message ?? "refused")])])
+            return .object(["id": request["id"], "error": .object(["code": .number(Double(code)), "message": .string(reply?.message ?? "refused"),
+                                                                    "data": reply?.data ?? .null])])
         }
         if let reply { return .object(["id": request["id"], "result": reply.result]) }
         guard method == "session.resume" else {

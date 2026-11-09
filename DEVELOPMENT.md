@@ -89,13 +89,13 @@ launchctl kickstart -k gui/$(id -u)/com.hermes.webui
 
 ## Xcode version
 
-Local work, PR CI, and release builds all use **Xcode 27.0 (27A266a)**, so a
+Local work, PR CI, and release builds all use **Xcode 27.1 (27A9275)**, so a
 change that compiles on this Mac compiles on CI. CI and release builds run on
 GitHub's `xcode-27` runner image with `DEVELOPER_DIR` pinned in
 `.github/workflows/pr-ci.yml` and `.github/workflows/release-candidate-testflight.yml`.
 Check yours with `xcodebuild -version`. With several Xcodes installed, select
-27.0 for one shell with `export DEVELOPER_DIR=<path to Xcode 27.0>.app/Contents/Developer`,
-or for the whole Mac with `sudo xcode-select -s <path to Xcode 27.0>.app`.
+27.1 for one shell with `export DEVELOPER_DIR=<path to Xcode 27.1>.app/Contents/Developer`,
+or for the whole Mac with `sudo xcode-select -s <path to Xcode 27.1>.app`.
 Move the local Xcode and both workflow pins together.
 
 ## Local XCTest
@@ -115,7 +115,10 @@ or fail, so a session's device doesn't keep holding gigabytes of memory after
 the session ends. A simulator that was already booted stays booted. Pass
 `--keep-booted` to leave a device the run booted running, for manual testing or
 a quick fix-and-rerun loop. After a timeout, a setup failure, or a test runner
-that hung twice, the device stays up for `scripts/sim-doctor`.
+that hung twice, the device stays up for `scripts/sim-doctor`. On a 16 GB Mac
+the run always shuts its simulator down unless `--keep-booted` is passed, even
+one that was already booted or that timed out: one leftover simulator pages the
+host enough to break every other runner's boots.
 
 The tests run inside the installed app, so a test can change its real Keychain,
 cookies and defaults. `HermesMobileTests/TestHostStateGuard.swift` snapshots
@@ -139,6 +142,12 @@ Choose local coverage using `AGENTS.md` § Verifying: slices run affected tests,
 and PR CI, which runs every retained test with one simulator worker, is the
 full-suite gate. `--only` limits execution, but still builds the app and test
 target.
+
+The build dominates a focused run: 191 affected tests execute in seconds inside a
+two-minute command. Order a slice's runs to need few builds: the new regression
+test alone on the old code (red), then the fix and one run of every affected
+class. Pass `--keep-booted` while more runs or a simulator proof follow, and shut
+the device down once the slice is done.
 
 The runner waits for simulator readiness, terminates any running Hermex app on
 that device (an app left attached by a build-and-run makes the test runner hang
@@ -171,15 +180,21 @@ startup and test counts/failures at completion; `command.json`, `test.log`,
 
 Wait on the runner using the longest supported tool wait; avoid separate log
 polls or status commands. It checks readiness with bounded commands (120 seconds
-for boot operations) and allows 30 minutes for build and tests.
+for boot operations) and allows 30 minutes for build and tests. Each test gets
+three minutes (`-default-test-execution-time-allowance`), so a deadlocked test
+fails on its own instead of spending the whole run.
 `--boot-timeout` and `--test-timeout` override those limits in seconds when a
 known workload requires it.
 
 It retries in one case only. Xcode sometimes fails with `The test runner hung
 before establishing connection` before any test runs: the app launches, but
 XCTest inside it never hears that the simulator's `testmanagerd` is ready, and
-xcodebuild gives up after 300 seconds. On that failure, and only when no test
-passed, the runner reboots that simulator (its own UDID only), stops the app,
+xcodebuild gives up after several minutes. The runner doesn't wait for that:
+once the build is done and the log has then been silent for 150 seconds before
+any suite started, it stops the attempt and treats it as the same hang. It
+tells the build is done from the `IDESchemeActionSDKRecord` line xcodebuild
+logs as the test action starts; without that line it waits for xcodebuild. On that failure, and only when no
+test passed, the runner reboots that simulator (its own UDID only), stops the app,
 and reruns once within the same test time limit, printing `RETRY:`. The retry
 writes `test-retry.log`, `summary-retry.json`, and `Tests-retry.xcresult` next
 to the first attempt's files. Every other failure is reported without a retry.
@@ -217,6 +232,33 @@ while things hang. Exit 0 means nothing needs clearing; 1 prints a `FIX:` line.
   `lldb -p <pid> --batch -o continue -k "thread backtrace all" -k kill`, and
   don't `simctl terminate` the app while lldb holds it.
 
+## iPhone Duo
+
+The iPhone Duo simulator (iOS 27.1) is the only full test of a fold. The app fills
+466x678 closed, compact, with the status bar and toolbar buttons in a vertical
+bar on the trailing edge, and 951x669 open, regular width, in the split.
+
+- `agent-device fold closed|open` changes the pose. Wait for the panel to settle
+  before a screenshot, and take a new snapshot: refs and coordinates don't carry
+  over. Simulated rotation did not change either pose when this was written.
+- A fold swaps the compact stack for the split, so screens rebuild. What must
+  survive one lives above them, as the open chat does in
+  `HermesSessionListNavigation`, or in a store, as drafts do. Dictation stops and
+  keeps what it heard.
+- The detail column spans the window behind the sidebar. Anything measured or
+  pinned to it uses its safe area, not its bounds.
+- Only bar items reach the vertical bar, and only ones that fit it. A segmented
+  picker floats in a horizontal bar of its own even with
+  `.axisBehavior(.verticalPreferred)`, and a custom-label `Menu` needs that
+  modifier. Content inside a list never moves. `HermesHomeChrome` reads
+  `toolbarVerticalEdge` and swaps the home's switch and header pill for bar
+  buttons, and the chat splits its trailing cluster into one item each.
+- Unfolded, the vertical bar is the split's detail column's, so the detail
+  root carries the home's items (`HermesHomeDetailBar`) and the sidebar shows
+  none. The sidebar's own `toolbarVerticalEdge` follows whether it shows a bar,
+  so `SessionSplitView` reads it in the detail. Removing the system sidebar
+  toggle must come before the sidebar's column width, or the sidebar narrows.
+
 ## PR CI
 
 `.github/workflows/pr-ci.yml` pins the hosted Xcode path, iOS runtime, and phone
@@ -246,6 +288,15 @@ The test step has a 30-minute timeout covering worker preparation and the full
 suite, so a stalled worker does not consume the 90-minute job budget and prevent
 failure diagnostics from running. This is a combined limit, not a separate
 five-minute boot deadline.
+
+`ChatViewModelSendTests/testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay`
+skips itself on CI, where it took from 2 s to over 6 minutes per run.
+Nothing else exercises real speech rendering, so after changing `OnDeviceSpeech`
+or `ListenAudioPlayer`, run it locally:
+
+```zsh
+scripts/test-sim <simulator-udid> --only HermesMobileTests/ChatViewModelSendTests/testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay
+```
 
 The Actions summary records phase timings, the failed phase, assertion messages,
 and slow tests. Failure artifacts include setup/build/test logs and any result
@@ -302,7 +353,7 @@ For tool and approval turns without a real model or the real host, run the pinne
 scripts/local-hermes
 ```
 
-The first run clones the commit in `HERMES_AGENT_TESTED_SHA` into `~/Library/Caches/hermex-local-hermes/` and installs it with `uv` (network needed); later runs start in seconds. It serves `http://127.0.0.1:9199` with the credentials it prints (`hermex` / `hermex-local`), backed by a scripted stub model: every turn says "Let me run a quick check.", asks to run `python3 -c "print(1)"` behind a manual approval, then replies "The command returned: …" with the result or the denial. **Approving really runs that command on this Mac.** Each run uses a temporary Hermes home, deleted on exit, with a fixed install id, so a saved connection keeps working across restarts. Ctrl-C stops only the process group the script started.
+The first run clones the commit in `HERMES_AGENT_TESTED_SHA` into `~/Library/Caches/hermex-local-hermes/` and installs it with `uv` (network needed); later runs start in seconds. It serves `http://127.0.0.1:9199` with the credentials it prints (`hermex` / `hermex-local`), backed by a scripted stub model: every turn says "Let me run a quick check.", asks to run `python3 -c "print(1)"` behind a manual approval, then replies "The command returned: …" with the result or the denial; a prompt that mentions "clarify" asks one `clarify` question instead. **Approving really runs that command on this Mac.** Each run uses a temporary Hermes home, deleted on exit, with a fixed install id, so a saved connection keeps working across restarts. Ctrl-C stops only the process group the script started.
 
 It listens on loopback, so only the simulator can reach it. To open it as a Hermes server, run:
 
@@ -312,6 +363,8 @@ HERMEX_BOT_ADDRESS=http://127.0.0.1:9199 HERMEX_BOT_USERNAME=hermex HERMEX_BOT_P
 ```
 
 That also saves it as your webui server's own Hermes connection if that server has none yet. To point an existing webui server's connection at it instead, open Settings → your server → **Hermes connection**, enter `http://127.0.0.1:9199` and the printed credentials, and save. This replaces that server's saved Hermes connection until you enter the real one again. `scripts/sim-login` never replaces an existing connection, so it won't switch back for you.
+
+`scripts/local-hermes --gateway` runs `hermes gateway run` with the Webapp on instead, at `http://127.0.0.1:9121` with the same credentials: the gateway's own listener, whose sockets speak the canonical session protocol (#1341). Hermex connects to it like any Webapp behind sign-in (#1606). `scripts/capture-hermes-fixtures --local --gateway` records its attach, replay and detach replies, its turns' receipts, queue, stop refusal and clarify answer, and its session edits, as `HermesMobileTests/Fixtures/HermesAgent/canonical-*.json`.
 
 ## Launch arguments and profiling
 
@@ -340,7 +393,7 @@ The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_P
 | `Load Earlier` | Load earlier (button or pull) to the layout of the prepended rows | `messages` |
 | `Transcript Apply` | Painting the cached transcript, or applying a reloaded one | `messages` |
 | `Markdown Parse` | Parsing one markdown block | `chars` |
-| `Stream Batch Apply` | Applying one batch of streamed tokens | `mutated` (0 or 1) |
+| `Stream Batch Apply` | Applying one batch of streamed tokens and reasoning: each reveal tick of a stream (`forced=0`), or a flush on completion, cancel, error, interim reply or snapshot (`forced=1`; completion can flush more than once) | `mutated` (0 or 1), `forced` (0 or 1) |
 | `Cache Read` | A SwiftData read of cached sessions or messages | `rows` |
 | `Cache Write` | A SwiftData write of cached sessions or messages | `rows` |
 
@@ -354,6 +407,10 @@ xcrun xctrace record --template 'Time Profiler' --instrument os_signpost \
 xcrun xctrace export --input /tmp/hermex.trace \
   --xpath '/trace-toc/run[@number="1"]/data/table[@schema="OSSignpostIntervals"][1]'
 ```
+
+### Counting transcript renders
+
+Debug builds count the body evaluations of the transcript's heavy views in memory (`HermesMobile/Config/RenderProbe.swift`): `ChatTranscriptMessageBlock` (also per row `renderID`), `MessageBubbleView`, `MarkdownRenderer`, `ToolActivityGroupView`, `ReasoningBlockView`, and `ResponseTextSelection`'s host updates. `ChatTranscriptMessageBlock.compared` counts every row equality check and `ChatTranscriptMessageBlock.unequal` the ones that failed, which tells a row whose inputs changed apart from an equal row SwiftUI re-ran anyway, and both apart from rows SwiftUI never compared. Release builds compile the probe to an empty function. `ChatTranscriptRenderBudgetTests` uses it to check that a stream's text-only ticks re-render no settled row. To read it by hand, pause a Debug build in lldb, run `expr RenderProbe.reset()`, continue through a stream, pause again and run `po RenderProbe.snapshot`. Only the named totals may leave the process; never log row identities.
 
 ### Watching the Bot connection log
 

@@ -123,11 +123,7 @@ final class ChatAttachmentCoordinator {
             reportsErrors: true
         ) else {
             attachmentLease?.filesByAttachmentID[stagingID] = nil
-            if let draftStore {
-                await draftStore.deleteAttachmentIfUnreferenced(draftFileName)
-            } else {
-                await draftAttachmentStore.delete(named: draftFileName)
-            }
+            await deleteUnreferencedCopy(draftFileName)
             return nil
         }
         pendingAttachments.append(attachment)
@@ -171,6 +167,77 @@ final class ChatAttachmentCoordinator {
     /// Stops every long paste still staging, so none lands after its chat is gone.
     func cancelPastedTextStaging() {
         pasteTasks.values.forEach { $0.cancel() }
+    }
+
+    /// The text of a staged paste, read from its local copy for `StagedPasteSheet` (#1456).
+    /// Nil when the copy is gone or isn't UTF-8.
+    func stagedPasteText(_ attachment: PendingAttachment) async -> StagedPasteText? {
+        guard let file = attachment.draftFileName,
+              let data = try? await draftAttachmentStore.data(named: file) else { return nil }
+        return await Task.detached { StagedPasteText(data: data) }.value
+    }
+
+    /// Puts edited text in place of a staged paste (#1456). The new copy is written first and
+    /// the draft saved before the old copy goes, so a failure at any step leaves the original
+    /// whole. The save counts as an upload, so Send waits for it. A tile removed or changed
+    /// meanwhile stays as it is. Returns why the edit did not save, or nil once it has.
+    func replaceStagedPaste(_ attachment: PendingAttachment, with text: String) async -> String? {
+        let isCurrent = { (staged: PendingAttachment, file: String?) in staged.id == attachment.id && staged.draftFileName == file }
+        let notSaved = String(localized: "Your original text is unchanged. Try again shortly.")
+        let gone = String(localized: "This attachment is no longer in the message.")
+        guard let old = attachment.draftFileName, pendingAttachments.contains(where: { isCurrent($0, old) }) else { return gone }
+
+        activeUploadCount += 1
+        defer {
+            activeUploadCount = max(activeUploadCount - 1, 0)
+            refreshAttachmentSlots()
+        }
+        let limit = BotAttachmentUpload.maximumFileBytes
+        let data = await Task.detached { text.utf8.count <= limit ? Data(text.utf8) : nil }.value
+        let others = pendingAttachments.reduce(stagingBytes) { $1.id == attachment.id ? $0 : $0 + ($1.size ?? limit) }
+        guard let data, others + data.count <= BotAttachmentUpload.maximumTotalBytes else {
+            return BotAttachmentFailure.limit.localizedDescription
+        }
+        stagingBytes += data.count
+        defer { stagingBytes -= data.count }
+
+        // A failure is reported in the sheet, so the composer's banner stays as it was.
+        let banner = uploadAttachmentErrorMessage
+        guard let file = await saveDraftCopy(data, filename: attachment.name, attachmentID: attachment.id,
+                                             maximumBytes: limit) else {
+            uploadAttachmentErrorMessage = banner
+            return notSaved
+        }
+        guard let index = pendingAttachments.firstIndex(where: { isCurrent($0, old) }) else {
+            attachmentLease?.filesByAttachmentID[attachment.id] = pendingAttachments.first { $0.id == attachment.id }?.draftFileName
+            await deleteUnreferencedCopy(file)
+            return gone
+        }
+
+        let original = pendingAttachments[index]
+        let edited = PendingAttachment(
+            id: original.id, name: original.name, path: original.path, mime: original.mime,
+            size: data.count, isImage: original.isImage, draftFileName: file
+        )
+        pendingAttachments[index] = edited
+        let key = attachmentLease?.key
+        if let key { draftStore?.replaceAttachmentRecord(ChatDraftAttachment(pending: edited), for: key) }
+        // Nothing else references the old copy now; an import freeing space must not take it
+        // before the save below decides whether the edit stands.
+        attachmentLease?.files.insert(old)
+        do {
+            try await draftStore?.flush()
+        } catch {
+            if let index = pendingAttachments.firstIndex(where: { isCurrent($0, file) }) { pendingAttachments[index] = original }
+            if let key { draftStore?.replaceAttachmentRecord(ChatDraftAttachment(pending: original), for: key) }
+            attachmentLease?.filesByAttachmentID[attachment.id] = old
+            attachmentLease?.files.remove(old)
+            await deleteUnreferencedCopy(file)
+            return notSaved
+        }
+        attachmentLease?.files.remove(old)
+        await deleteUnreferencedCopy(old)
+        return nil
     }
 
     /// Re-uploads a restored draft attachment from its durable local copy,
@@ -431,10 +498,15 @@ final class ChatAttachmentCoordinator {
 
     func deleteDraftCopy(named fileName: String, attachmentID: UUID) async {
         attachmentLease?.filesByAttachmentID[attachmentID] = nil
+        if let key = attachmentLease?.key {
+            draftStore?.removeAttachmentReference(id: attachmentID, for: key)
+        }
+        await deleteUnreferencedCopy(fileName)
+    }
+
+    /// Deletes a local copy unless a draft or a live owner still holds it.
+    private func deleteUnreferencedCopy(_ fileName: String) async {
         if let draftStore {
-            if let key = attachmentLease?.key {
-                draftStore.removeAttachmentReference(id: attachmentID, for: key)
-            }
             await draftStore.deleteAttachmentIfUnreferenced(fileName)
         } else {
             await draftAttachmentStore.delete(named: fileName)

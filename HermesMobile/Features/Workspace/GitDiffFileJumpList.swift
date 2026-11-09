@@ -17,12 +17,14 @@ struct GitDiffFileJumpList: View {
     var body: some View {
         NavigationStack {
             searchableList
+                .themedPageBackground()
                 .navigationTitle("Jump to File")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
                 }
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
     }
 
@@ -37,7 +39,7 @@ struct GitDiffFileJumpList: View {
 
     private var list: some View {
         let matches = Self.files(files, matching: query)
-        return List {
+        return AppList {
             Section {
                 ForEach(matches) { file in
                     Button { onSelect(file) } label: {
@@ -84,7 +86,7 @@ private struct GitDiffFileJumpRow: View {
                 if let parent = file.parentDirectory {
                     Text(parent)
                         .font(AppFont.mono(style: .caption2))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -102,7 +104,7 @@ private struct GitDiffFileJumpRow: View {
         }
         // A List button tints its label, and `.primary`/`.secondary` would resolve against
         // that tint; a concrete label colour keeps the name primary and the folder secondary.
-        .foregroundStyle(Color.primary)
+        .foregroundStyle(Color(.appText))
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
     }

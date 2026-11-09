@@ -10,13 +10,16 @@ struct BotDestination: Equatable, Hashable {
     let connectionID: UUID
     let profile: String
     var conversation: String?
+    /// Also opens the bot's Screen, when the server's Bot Screen switch is on (#1567).
+    var opensScreen = false
 }
 
 extension HermesDeepLink {
     private static let connectionQueryItem = "connection"
     private static let conversationQueryItem = "conversation"
+    private static let screenQueryItem = "screen"
 
-    /// `hermes-agent://bot?server=…&connection=…&profile=…[&conversation=…]`, the one
+    /// `hermes-agent://bot?server=…&connection=…&profile=…[&conversation=…][&screen=1]`, the one
     /// bot route (scheme follows the active build, e.g. `-branch`). Every part rides as
     /// a query item, like `newChatInProfileURL`, so a Profile name with spaces or
     /// non-ASCII is percent-encoded rather than mangled into the host.
@@ -35,6 +38,7 @@ extension HermesDeepLink {
         if let conversation = trimmed(destination.conversation) {
             items.append(URLQueryItem(name: conversationQueryItem, value: conversation))
         }
+        if destination.opensScreen { items.append(URLQueryItem(name: screenQueryItem, value: "1")) }
         components.queryItems = items
         return components.url
     }
@@ -64,7 +68,8 @@ extension HermesDeepLink {
             server: server,
             connectionID: connectionID,
             profile: profile,
-            conversation: value(conversationQueryItem)
+            conversation: value(conversationQueryItem),
+            opensScreen: value(screenQueryItem) == "1"
         )
     }
 
@@ -159,12 +164,17 @@ struct BotInboxSelection {
             if profile != nil { room = nil }
             conversation = nil
             pick = UUID()
+            chatContinuity = ChatContinuity()
         }
     }
     var room: BotRoomKey? {
         didSet { if room != nil { profile = nil; conversation = nil }; pick = UUID() }
     }
-    var conversation: String?
+    var conversation: String? {
+        didSet { chatContinuity = ChatContinuity() }
+    }
+    /// The open chat's, for the `ChatView` of whichever width is showing it (#1528).
+    private(set) var chatContinuity = ChatContinuity()
     /// New on every pick, the same bot or room again included, so a regular-width detail
     /// re-roots and pops what it pushed, as a Sessions row does.
     private(set) var pick = UUID()

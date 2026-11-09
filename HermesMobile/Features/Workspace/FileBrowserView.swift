@@ -40,6 +40,7 @@ struct FileBrowserView: View {
             content
                 .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
         }
+        .themedPageBackground()
         .navigationTitle("Files")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openedFile) { node in
@@ -99,12 +100,12 @@ struct FileBrowserView: View {
             } description: {
                 if !searchText.isEmpty {
                     Text("Try a different file name or path.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.appSecondary)
                 }
             }
         } else {
-            List {
+            AppList(rows: .plain) {
                 if let workspaceSearch, showsWorkspaceSection {
                     workspaceSection(workspaceSearch)
                     if !visibleNodes.isEmpty {
@@ -129,16 +130,16 @@ struct FileBrowserView: View {
                         ProgressView()
                         Text("Loading files...")
                     }
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color(.appSurface))
                 } else if let errorMessage = viewModel.errorMessage {
                     HStack(spacing: 12) {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .font(AppFont.footnote())
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(2)
 
                         Spacer(minLength: 0)
@@ -149,11 +150,11 @@ struct FileBrowserView: View {
                                 handleLastError()
                             }
                         }
-                        .font(.footnote.weight(.semibold))
+                        .font(AppFont.footnote(weight: .semibold))
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color(.appSurface))
                 }
             }
         }
@@ -183,21 +184,21 @@ struct FileBrowserView: View {
             switch state {
             case .searching:
                 Text("Searching…")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
                     .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     .listRowSeparator(.hidden)
             case .unavailable:
                 HStack(spacing: 12) {
                     Label("Workspace search unavailable", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.appSecondary)
 
                     Spacer(minLength: 0)
 
                     Button("Try Again") { searchAttempt += 1 }
-                        .font(.footnote.weight(.semibold))
+                        .font(AppFont.footnote(weight: .semibold))
                         .buttonStyle(.borderless)
                 }
                 .frame(minHeight: 42)
@@ -217,18 +218,18 @@ struct FileBrowserView: View {
 
     private func sectionHeader(_ title: LocalizedStringKey) -> some View {
         Text(title)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(AppFont.footnote(weight: .semibold))
+            .foregroundStyle(.appSecondary)
     }
 
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption())
+                .foregroundStyle(.appSecondary)
 
             TextField("Search files", text: $searchText)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
@@ -237,8 +238,8 @@ struct FileBrowserView: View {
                     searchText = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.caption())
+                        .foregroundStyle(.appSecondary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear file search")
@@ -246,10 +247,10 @@ struct FileBrowserView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 40)
-        .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color(.appFillTertiary).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
         .overlay(alignment: .bottom) {
             Divider()
         }
@@ -309,15 +310,15 @@ private struct WorkspaceSearchRowView: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(match.name)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.subheadline(weight: .medium))
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
 
                     if !match.parentPath.isEmpty {
                         Text(match.parentPath)
                             .font(.caption2.monospaced())
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.appTertiary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -357,7 +358,7 @@ private struct FileTreeRowView: View {
                 if node.isDirectory {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.forward")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.appTertiary)
                         .frame(width: 12)
                 } else {
                     Color.clear.frame(width: 12, height: 1)
@@ -367,8 +368,8 @@ private struct FileTreeRowView: View {
                     .frame(width: 22)
 
                 Text(node.name)
-                    .font(.subheadline.weight(isSelected ? .semibold : .medium))
-                    .foregroundStyle(isSelected || node.isDirectory ? .primary : .secondary)
+                    .font(AppFont.subheadline(weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected || node.isDirectory ? .appPrimary : .appSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
@@ -400,12 +401,12 @@ private struct FileTreeRowView: View {
                     .controlSize(.mini)
             } else if hasLoadFailure {
                 Image(systemName: "exclamationmark.triangle")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.orange)
             } else if let childCount {
                 Text(childCount, format: .number)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.tertiary)
+                    .font(AppFont.caption2(weight: .medium))
+                    .foregroundStyle(.appTertiary)
                     .monospacedDigit()
             }
         }
@@ -461,7 +462,7 @@ private struct FileTreeRowButtonStyle: ButtonStyle {
     }
 
     private func background(isPressed: Bool) -> Color {
-        if isPressed { return Color(.tertiarySystemFill) }
-        return isSelected ? Color(.secondarySystemFill) : .clear
+        if isPressed { return Color(.appFillTertiary) }
+        return isSelected ? Color(.appFillSecondary) : .clear
     }
 }

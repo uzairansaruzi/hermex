@@ -57,6 +57,43 @@ struct ChatComposerAccess: Equatable {
     var allowsHostControls: Bool { allowsEditing && !isOffline }
 }
 
+/// Whether a chat still counts as new, with its settings above the composer rather than in
+/// the header. The server's count keeps the row from flashing while an existing chat loads.
+enum ChatComposerNewChatPolicy {
+    static func showsControls(hasMessages: Bool, serverMessageCount: Int?, isStreaming: Bool) -> Bool {
+        !hasMessages && (serverMessageCount ?? 0) == 0 && !isStreaming
+    }
+}
+
+/// Which composer controls respond while work is in progress.
+struct ChatComposerControlGate {
+    let access: ChatComposerAccess
+    let isSending: Bool
+    let isCompressingSession: Bool
+    let isWaitingForStream: Bool
+    let isUpdatingConfiguration: Bool
+
+    /// `+` only opens the picker, and a pick waits in the draft like a paste, so no
+    /// work in progress holds it (#1436).
+    var allowsAttaching: Bool { access.allowsHostControls }
+
+    /// Model, workspace, and Profile changes wait for the chat to settle.
+    var allowsConfiguration: Bool {
+        allowsConfigurationIgnoringUpdates && !isUpdatingConfiguration
+    }
+
+    /// The same, for Model settings, whose rows hold off during a change without dimming.
+    var allowsConfigurationIgnoringUpdates: Bool {
+        access.allowsHostControls && !isSending && !isCompressingSession && !isWaitingForStream
+    }
+
+    /// Whether the model label opens Model settings. During a run it still opens to turn YOLO off,
+    /// with every other row held.
+    func allowsModelSettings(approvals: ComposerApprovals?) -> Bool {
+        allowsConfiguration || (access.allowsHostControls && approvals?.canTurnOffYolo == true)
+    }
+}
+
 /// Work in progress that holds Send even with a draft to send. VoiceOver reads it
 /// as a dimmed Send's value, so the user knows what they are waiting for.
 enum ChatComposerSendBlock: Equatable {

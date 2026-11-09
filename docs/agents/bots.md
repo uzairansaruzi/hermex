@@ -252,19 +252,20 @@ cache's copy) that opens `HermesDelegatedWorkView`. A history row with
 arrives with the newest rows the delivery's turn re-reads when it ends.
 
 Its host requests are `HermesChatRequests` (#1011, #1141), on the Bot request model below and
-the engine's `answer`. An approval takes the Sessions overlay with only the host's choices
-(`ApprovalScope.Host.hermes`); a question, a sudo or secret prompt, a Desktop task and a
-connection operation take the clarification's slot above the composer as the Bot request
-card, whose copy names Hermes, or the bot in a bot's chat (`HermesRequestSubject`; the
-Desktop-task and connection bodies live in `Features/Chat/HermesRequestCards.swift`). A
-Desktop task is shown, never answered: its card keeps the chat's Stop, which asks first only
-when something else would be lost. A connection operation follows the rules below, answered
+the engine's `answer`. Each takes the clarification's slot above the composer, collapsible
+to its bar while the transcript stays readable. An approval shows as `ApprovalRequestInset`
+with only the host's choices (`ApprovalScope.Host.hermes`, #1584); a question, a sudo or secret
+prompt, a Desktop task and a connection operation show as the Bot request card, whose copy
+names Hermes, or the bot in a bot's chat (`HermesRequestSubject`; the Desktop-task and
+connection bodies live in `Features/Chat/HermesRequestCards.swift`). A Desktop task is shown,
+never answered: its card keeps the chat's Stop, which asks first only when something else
+would be lost. A connection operation follows the rules below, answered
 with `connection.respond` from the card; 4004 leaves the card inert and reattaches, and a lost
 reply warns on the card and reconnects. Account operations' global `connection.update` never
 reaches a session. Password-vault prompts and unknown methods get no card and are never answered (#1148). A batch question never
 gets a bare answer: Skip locks each outstanding `qid` empty. Skip all is `config.set {key:
 "yolo", value: "on", scope: "session"}`, then `approval.respond once` for the card on
-screen. The bypass pill reads `session.info`'s `yolo`, which the host also sets for its own
+screen. Model settings' Approvals row reads `session.info`'s `yolo`, which the host also sets for its own
 bypass (`approval_mode: off` or a `--yolo` launch), and the `session.info` written ahead of
 the `config.set` reply moves it, not the reply. Turn off sends `value: "off"` only for the
 session's own flag: a host-wide bypass only reports. `request.cancel` leaves the
@@ -508,7 +509,7 @@ from the server-request envelope id. `resolved: 0` means already resolved.
 
 It also reads `pattern_keys` (else `[pattern_key]`) and `tool_name`, all
 optional, for the one scope line under the command. `ApprovalScope` (in
-`Models/Approval.swift`, shared with the Sessions overlay) turns the keys into a
+`Models/Approval.swift`, shared with the Sessions approval card) turns the keys into a
 sentence saying what Allow session covers in this chat and what Always allow
 covers for this Profile; a raw key never reaches the screen. A shell key is the
 host's danger description, quoted as sent. A `plugin_rule:` key names its tool,
@@ -612,6 +613,12 @@ composition keeps UIKit's paste, and ⌘⇧V or the edit menu's Paste as Text pu
 inline. This keeps the editor small, not the prompt: the host may expand the file inline,
 warn, or leave a stub that agent tools read, as for any document below. Webui sessions
 and rooms always paste inline.
+
+Tapping an unsent paste's tile opens its text from the local copy, with Edit (#1456). Save
+writes a new copy, points the tile and draft record at it, saves the draft, then deletes
+the old copy, so a failure leaves the original. The sheet is read-only while a send may be
+reading the file or its outcome is unknown, and past `StagedPasteText.editableBytes` it
+shows only the start, read-only.
 
 Send and Queue upload the selected files and put only acknowledged references in
 that prompt. Steer/Redirect remain text-only. Images use the authenticated
@@ -744,7 +751,11 @@ answer for the revision, as Desktop does (`isBackfilledFacePng`), so the face st
 drawn and animated. Hermex marks uploaded photos with `imageKind: photo`, so this rule
 keeps them visible. An unreadable asset is not remembered and is fetched again next load.
 Hermex renders Desktop's compatible classic shape and color metadata; blobatars,
-pets and other Desktop renderers remain Desktop-owned. Drawn faces blink on a
+pets and other Desktop renderers remain Desktop-owned. `BotAvatarShape` also has 21
+ready-made avatars (`BotAvatarLibrary.swift`, flat paths and upright eyes from Open Bot
+Avatar, MIT), stored in `shape` like any other. Name-seeded faces only use
+`BotAvatarShape.classic`, so a new avatar never changes a bot nobody customized. Desktop's
+source draws a circle for a shape it doesn't know, in the bot's color. Drawn faces blink on a
 sparse `BotBlinkSchedule` (shut and open entries every 3 to 5 s, phase seeded by
 Profile name) so nothing repaints between blinks; only the open bot's face in the
 chat title takes Desktop's 15 fps working pose, and only while its turn is live.
@@ -847,6 +858,21 @@ sections and interprets `applied` per section, so successes advance their own
 baseline while failed or model-confirmation sections remain visibly unsaved. A
 guarded model is resent by itself with `confirm_expensive_model` only after a
 second user confirmation. A disconnect never causes an automatic retry.
+
+**Describe It.** `BotAvatarGeneration` opens a hidden draft (`session.create`) and sends a short
+flat design prompt through `prompt.btw`, whose tools are denied at dispatch, reads
+`btw.complete`, then closes the draft and deletes its empty row. The edited bot's model answers;
+the create sheet uses the `default` Profile. `BotGeneratedAvatar` checks the answer (a small path
+grammar, and both eyes on the body), a bad avatar gets one repair try, and the result is a draft
+stored under the Hermex-owned `hermexAvatar` look key until Save. `prompt.btw` reports a failed model
+call as ordinary text, such as a provider rejecting the Profile's key (Profiles keep their own
+`.env`), so an answer with no JSON is shown as the host's own words with no repair try. A stored value is written back
+untouched until the user picks a face. Never use `prompt.submit` here: on a live host (0.22.5) it
+ran `terminal` and `write_file` with no approval, survived `close_on_disconnect`, auto-continued
+on `session.resume`, and the agent's background review then created a skill. `llm.oneshot` has no
+tools, but its 60 s host timeout failed with a long prompt. On a slow model `prompt.btw` took 12 s
+and 40 s with this prompt against 198 s with upstream's 15 KB one. It can't be stopped, so closing
+the sheet only ignores the answer.
 
 Appearance writes merge the received `ui_meta["hermes-bots"]` object, changing
 only title and compatible static avatar keys while retaining Desktop-owned keys.
@@ -1351,12 +1377,13 @@ panel (#1113) and Git (#1114) read the same context.
 The Memory screen runs on a Hermes host through `HermesMemoryClient` (#1073), the
 `MemoryDataClient` beside webui's `APIClient`, for the Profile the home's Sessions side
 lists (#709). My Notes and User Profile are `<path>/memories/MEMORY.md` and `USER.md`, where
-`path` is the Profile's `profiles.list` row, read on every load and save: `/api/fs/*` accepts
-any absolute path, so no other path is ever built, and the path is never shown, logged or
-kept. They are read with `GET /api/fs/read-text?path=` (404 is empty; `truncated` or
-`binary` shows the section read-only) and written with `POST /api/fs/write-text`, which
-creates no folders: its 400 "Parent directory does not exist" gets one `POST
-/api/files/mkdir` and a retry. Agent Soul is `GET`/`PUT /api/profiles/{name}/soul`.
+`path` is the Profile's `profiles.list` row, read on every load and save: the file routes
+accept any absolute path, so no other path is ever built, and the path is never shown, logged
+or kept. They are read with `GET /api/files/read?path=` (404 is empty; a file over 512 KiB or
+not UTF-8 shows the section read-only) and written with `POST /api/files/upload`, which
+creates a missing folder. Not `/api/fs/*`, which since 0.22 follows the dashboard's Profile to
+its SSH terminal machine, where these host paths don't exist (#1566). Agent Soul is
+`GET`/`PUT /api/profiles/{name}/soul`.
 `GET /api/config?profile=` is the whole unredacted config; only `memory` is decoded: a
 section whose flag is off is hidden, and `memory_char_limit` and `user_char_limit` (default
 2200 and 1375) are counted in Unicode scalars, Python's `len`, with Save off over them.
@@ -2205,7 +2232,12 @@ no stopping tasks. Queued/running counts govern whether Stop can be tapped.
 
 Approvals use the existing request card with only `once` and `deny`. Dispatch
 revalidates the room, socket owner, authority epoch and exact member/task/generation/
-request tuple. Retry targets the pending task. Codes 5119 and 5118 re-read state;
+request tuple. Retry targets the pending task; on a canonical host (#1605) it also names the
+task's `member_id` and `execution_generation` as the action gave them, which for a stalled
+preparation is every member it couldn't wake (`"chief, coder"`). A canonical task whose outcome
+is unknown after a host restart comes as a `discard` action instead: its card offers Discard,
+never Retry, behind an action sheet, and sends `groups.discard` with the same four fields. A
+stale retry or discard (4001 `stale_generation`) says to reopen. Codes 5119 and 5118 re-read state;
 an addressed approval tuple stays inert, including across reconnect after an
 unknown outcome. Commands are never automatically resent. A retry becomes
 available for a later stalled attempt only after the previous pending action
@@ -2223,13 +2255,18 @@ scalars (the server's character count). Members are frozen after creation.
 `groups.create` sends a device UUID `room_id`, `name`, and `members` containing
 `member_id`, `profile`, `handle`, and optional roster `display_name`; it never
 sends `target`. At the compatibility pin, `profiles.list` has no separate handle,
-so all three identifiers use the Profile name, including `default`.
+so all three identifiers use the Profile name, including `default`. A canonical host names
+the Profiles it can seat (`groups.capabilities.seatable_profiles`, #1605): the creator lists,
+selects and sends only those, says when it left some out, and rechecks at Create, where a
+bot the host stopped seating drops from the selection.
 
 The first dispatched attempt freezes its ID and payload. Try Again explicitly
 reuses both, even after a lost reply; it cannot create a second room. Error 4110
 re-reads the active list; a room with the attempted ID, same authority and frozen
 member identities completes creation even if another client renamed it after a
-lost reply. Other conflicts stay errors. Code 4123 asks for a gateway restart on the Mac.
+lost reply. The canonical host refuses an unseatable member before it looks for the room, so
+a Try Again with one reads the active list instead of resending: the room it made opens, or
+the choice unlocks. Other conflicts stay errors. Code 4123 asks for a gateway restart on the Mac.
 Closing or backgrounding the sheet invalidates late replies. Success opens the
 acknowledged room under the same configured server and connection identity.
 

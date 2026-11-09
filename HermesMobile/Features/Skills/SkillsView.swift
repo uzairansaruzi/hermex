@@ -112,7 +112,7 @@ struct SkillsView: View {
             .refreshable {
                 await loadSkills()
             }
-            .background(Color(.systemBackground))
+            .background(Color(.appCanvas))
         }
     }
 
@@ -143,12 +143,12 @@ private struct SkillCategorySection: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(category)
                 .textCase(.uppercase)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
-                ForEach(Array(skills.enumerated()), id: \.offset) { index, skill in
+                ForEach(Array(skills.enumerated()), id: \.offset) { _, skill in
                     NavigationLink {
                         SkillDetailView(
                             skill: skill,
@@ -177,10 +177,6 @@ private struct SkillCategorySection: View {
                             .disabled(isToggling(skill))
                         }
                     }
-
-                    if index < skills.count - 1 {
-                        Divider()
-                    }
                 }
             }
         }
@@ -207,14 +203,14 @@ private struct SkillRow: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayName)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.body(weight: .semibold))
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(2)
 
                 if let description {
                     Text(description)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.subheadline())
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(3)
                 }
 
@@ -222,20 +218,20 @@ private struct SkillRow: View {
                     HStack(spacing: 6) {
                         if skill.disabled == true {
                             Text("Disabled")
-                                .font(.caption2.weight(.semibold))
+                                .font(AppFont.caption2(weight: .semibold))
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
-                                .foregroundStyle(.secondary)
-                                .background(Color(.tertiarySystemFill), in: Capsule())
+                                .foregroundStyle(.appSecondary)
+                                .background(Color(.appFillTertiary), in: Capsule())
                         }
 
                         ForEach(tags, id: \.self) { tag in
                             Text(tag)
-                                .font(.caption2.weight(.medium))
+                                .font(AppFont.caption2(weight: .medium))
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
-                                .foregroundStyle(.secondary)
-                                .background(Color(.secondarySystemFill).opacity(0.8), in: Capsule())
+                                .foregroundStyle(.appSecondary)
+                                .background(Color(.appFillSecondary).opacity(0.8), in: Capsule())
                         }
                     }
                 }
@@ -256,8 +252,8 @@ private struct SkillRow: View {
             }
 
             Image(systemName: "chevron.forward")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(.appTertiary)
                 .padding(.top, 12)
         }
         .padding(.vertical, 10)
@@ -308,6 +304,7 @@ struct SkillDetailView: View {
 
     var body: some View {
         content
+            .themedPageBackground()
             .navigationTitle(skill.name ?? String(localized: "Skill"))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -421,12 +418,12 @@ private struct SkillsTitle: ViewModifier {
     func body(content: Content) -> some View {
         if let profile {
             if #available(iOS 26, *) {
-                content.navigationTitle("Skills").navigationSubtitle(profile)
+                content.themedPageBackground().navigationTitle("Skills").navigationSubtitle(profile)
             } else {
-                content.navigationTitle(Text("Skills · \(profile)"))
+                content.themedPageBackground().navigationTitle(Text("Skills · \(profile)"))
             }
         } else {
-            content.navigationTitle("Skills")
+            content.themedPageBackground().navigationTitle("Skills")
         }
     }
 }
@@ -438,42 +435,37 @@ private struct SkillLinkedFilesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Linked Files")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 20)
 
             VStack(spacing: 0) {
-                ForEach(Array(fileNames.enumerated()), id: \.element) { index, fileName in
+                ForEach(fileNames, id: \.self) { fileName in
                     Button {
                         onSelect(fileName)
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "doc.text")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
+                                .font(AppFont.subheadline(weight: .medium))
+                                .foregroundStyle(.appPrimary)
                                 .frame(width: 34, height: 34)
-                                .background(Color(.tertiarySystemFill).opacity(0.7), in: Circle())
+                                .background(Color(.appFillTertiary).opacity(0.7), in: Circle())
 
                             Text(fileName)
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
+                                .font(AppFont.subheadline())
+                                .foregroundStyle(.appPrimary)
                                 .lineLimit(1)
 
                             Spacer(minLength: 8)
 
                             Image(systemName: "chevron.forward")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
+                                .font(AppFont.caption(weight: .semibold))
+                                .foregroundStyle(.appTertiary)
                         }
                         .padding(.vertical, 9)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-
-                    if index < fileNames.count - 1 {
-                        Divider()
-                            .padding(.leading, 54)
-                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -507,8 +499,8 @@ struct SkillLinkedFileView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if isTruncated {
                             Label("Preview truncated", systemImage: "scissors")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.caption())
+                                .foregroundStyle(.appSecondary)
                         }
                         MarkdownRenderer(content: content)
                     }
@@ -522,6 +514,7 @@ struct SkillLinkedFileView: View {
                 }
             }
         }
+        .themedPageBackground()
         .navigationTitle(fileName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

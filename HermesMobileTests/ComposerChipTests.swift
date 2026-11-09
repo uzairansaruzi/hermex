@@ -509,6 +509,23 @@ final class ComposerChipGestureTests: XCTestCase {
 
 @MainActor
 final class ComposerChipPresentationTests: XCTestCase {
+    func testChipRenderingTracksDisplayScaleWithoutChangingPointSize() {
+        let metrics = ComposerChipMetrics(editorFont: .systemFont(ofSize: 17))
+        func render(scale: CGFloat) -> UIImage {
+            ComposerChipRenderer.image(
+                label: "Workspace", icon: .symbol("folder"),
+                metrics: metrics,
+                traits: UITraitCollection { $0.displayScale = scale },
+                isRightToLeft: false
+            )
+        }
+        let first = render(scale: 2)
+        let second = render(scale: 3)
+        XCTAssertEqual(first.scale, 2)
+        XCTAssertEqual(second.scale, 3)
+        XCTAssertEqual(first.size, second.size)
+    }
+
     func testHostedRedundantUpdateKeepsFocusedManualScrollOffset() async throws {
         let state = ComposerPresentationHarnessState()
         let host = UIHostingController(
@@ -550,6 +567,77 @@ final class ComposerChipPresentationTests: XCTestCase {
         XCTAssertTrue(updatedEditor.isFirstResponder)
         XCTAssertEqual(editObserver.processedEditCount, 0)
         XCTAssertEqual(updatedEditor.contentOffset.y, manualOffset.y, accuracy: 0.001)
+    }
+
+    /// The mic tap resigns the editor before dictation reads its baseline. That has to
+    /// commit a live composition, so dictation's first write cannot break it.
+    func testHostedResigningForDictationCommitsAComposition() throws {
+        let state = ComposerPresentationHarnessState()
+        state.text = "draft "
+        state.selection = ComposerSelection(range: NSRange(location: 6, length: 0))
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.layoutIfNeeded()
+        let editor = try XCTUnwrap(descendants(of: host.view).compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertTrue(editor.becomeFirstResponder())
+        editor.setMarkedText("にほん", selectedRange: NSRange(location: 3, length: 0))
+        XCTAssertNotNil(editor.markedTextRange)
+
+        UIApplication.shared.sendAction(#selector(ComposerChipTextView.resignForDictation), to: nil, from: nil, for: nil)
+        XCTAssertNil(editor.markedTextRange)
+        XCTAssertEqual(state.text, "draft にほん")
+    }
+
+    /// Dictated words reach the resigned editor at the caret and never read as a
+    /// user edit, or dictation would stop after its first word. A real edit does.
+    func testHostedDictationWritesAreNotUserEditsButTypingIs() async throws {
+        let state = ComposerPresentationHarnessState()
+        state.text = "one two"
+        state.selection = ComposerSelection(range: NSRange(location: 3, length: 0))
+        state.isFocused = false
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.layoutIfNeeded()
+        let editor = try XCTUnwrap(descendants(of: host.view).compactMap { $0 as? ComposerChipTextView }.first)
+        func draft() -> ComposerVoiceDraftState {
+            ComposerVoiceDraftState(text: state.text, selection: state.selection)
+        }
+
+        var session = ComposerVoiceDraftUpdateSession()
+        session.begin(draft())
+        for (revision, transcript) in ["and", "and then"].enumerated() {
+            let update = try XCTUnwrap(session.update(for: transcript, current: draft()))
+            state.text = update.text
+            state.selection = state.selection.moved(to: update.caret)
+            host.rootView = ComposerPresentationHarness(state: state, updateRevision: revision + 1)
+            host.view.layoutIfNeeded()
+            await Task.yield()
+            XCTAssertEqual(editor.sourceText, update.text)
+            XCTAssertEqual(editor.sourceSelection, update.caret)
+        }
+        XCTAssertEqual(state.text, "one and then two")
+
+        XCTAssertTrue(editor.becomeFirstResponder())
+        editor.insertText("x")
+        XCTAssertNil(session.update(for: "late", current: draft()))
     }
 
     private func descendants(of view: UIView) -> [UIView] {
@@ -979,7 +1067,10 @@ final class ComposerLargePasteTests: XCTestCase {
         let (textView, pasteboard) = makeEditor()
         window.addSubview(textView)
         window.makeKeyAndVisible()
-        defer { window.isHidden = true }
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+        }
         XCTAssertNil(pasteAsTextCommand(in: textView), "Rooms and webui keep plain paste only")
         textView.onPasteLargeText = { _ in XCTFail("Paste as Text never stages a file") }
         XCTAssertTrue(textView.becomeFirstResponder())

@@ -144,6 +144,46 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertTrue(text.contains("file:///tmp/fenced.png"))
     }
 
+    /// A `MEDIA:` mention inside code is prose, not a file reference: a bare or
+    /// placeholder token, a tag inside a longer span, a double-backtick span, and a
+    /// fenced block all stay text.
+    func testMediaMentionInsideCodeStaysLiteral() {
+        let markdown = """
+        Before `MEDIA:` and `MEDIA:<path>` then `echo MEDIA:/tmp/inline.png` \
+        and `MEDIA:/tmp/leading.png extra` and ``MEDIA:/tmp/double.png`` bare MEDIA:/tmp/outside.png
+        ```text
+        MEDIA:/tmp/fenced.png
+        ```
+        """
+
+        let segments = TranscriptMediaParser.segments(in: markdown)
+
+        XCTAssertEqual(mediaReferences(in: segments).map(\.rawReference), ["/tmp/outside.png"])
+        XCTAssertEqual(
+            textSegments(in: segments).joined(),
+            markdown.replacingOccurrences(of: "MEDIA:/tmp/outside.png", with: "")
+        )
+    }
+
+    /// Models format a file they mean to send as code, so a span holding only the
+    /// tag delivers it, and the wrapping backticks don't stay behind as text.
+    func testCodeWrappedMediaTagDeliversFile() {
+        let segments = TranscriptMediaParser.segments(
+            in: "Report: `MEDIA:/tmp/report.pdf`, chart: `MEDIA:https://cdn.example/chart.png`."
+        )
+
+        XCTAssertEqual(
+            segments,
+            [
+                .text("Report: "),
+                .media(.init(rawReference: "/tmp/report.pdf")),
+                .text(", chart: "),
+                .media(.init(rawReference: "https://cdn.example/chart.png")),
+                .text(".")
+            ]
+        )
+    }
+
     func testUnsupportedSVGIsNotRasterImageCandidate() {
         let segments = TranscriptMediaParser.segments(in: "MEDIA:/tmp/vector.svg")
         let media = mediaReferences(in: segments).first

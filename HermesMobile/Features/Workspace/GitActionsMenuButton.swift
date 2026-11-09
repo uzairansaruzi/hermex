@@ -11,6 +11,9 @@ struct GitActionsMenuButton: View {
     /// The branch's pull request (#1391), shown first with Copy Link; nil leaves the section out.
     let pullRequest: GitPullRequest?
     let isRunningAction: Bool
+    var branchesDisabled = false
+    /// Opens the branch picker; nil where the host can't list branches.
+    var onBranches: (() -> Void)?
     let onTap: () -> Void
     let onOpenPullRequest: (URL) -> Void
     let onCopyPullRequestLink: (URL) -> Void
@@ -44,9 +47,16 @@ struct GitActionsMenuButton: View {
                 }
             }
 
-            if hidesSync, let branch = presentation.branchSummary {
-                Section {
-                    Label(branch, systemImage: "arrow.triangle.branch")
+            if let branch = presentation.branchSummary {
+                Section("Branches") {
+                    if let onBranches {
+                        Button(action: onBranches) {
+                            Label(branch, systemImage: "arrow.triangle.branch")
+                        }
+                        .disabled(branchesDisabled)
+                    } else if hidesSync {
+                        Label(branch, systemImage: "arrow.triangle.branch")
+                    }
                 }
             }
 
@@ -116,7 +126,7 @@ struct GitActionsMenuButton: View {
             Label {
                 Text("+\(status.totalAdditions)").foregroundStyle(.green)
                 + Text("  −\(status.totalDeletions)").foregroundStyle(.red)
-                + Text("  \(status.changedCount)").foregroundStyle(.secondary)
+                + Text("  \(status.changedCount)").foregroundStyle(.appSecondary)
             } icon: {
                 Image(systemName: "doc.text.magnifyingglass")
             }

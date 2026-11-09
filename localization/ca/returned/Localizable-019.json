@@ -5,84 +5,66 @@
   "catalog": "Localizable",
   "entries": [
     {
-      "id": "Localizable::Empty Output",
+      "id": "Localizable::Cloudflare Access: paste your service token’s Client ID and Client Secret as the values. Leave both empty if Access is off.",
       "catalog": "Localizable",
-      "key": "Empty Output",
+      "key": "Cloudflare Access: paste your service token’s Client ID and Client Secret as the values. Leave both empty if Access is off.",
       "units": [
         {
-          "source": "Empty Output"
+          "source": "Cloudflare Access: paste your service token’s Client ID and Client Secret as the values. Leave both empty if Access is off."
         }
       ],
       "sourceStructure": null,
       "placeholders": [],
-      "protectedTerms": [],
+      "protectedTerms": [
+        "Cloudflare"
+      ],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Tasks/TaskRunOutputSheet.swift",
-          "line": 50
+          "file": "HermesMobile/Features/Onboarding/OnboardingConnectPage.swift",
+          "line": 127
+        },
+        {
+          "file": "HermesMobile/Features/Settings/AddServerView.swift",
+          "line": 59
         }
       ],
-      "target": "Sortida buida"
+      "target": "Cloudflare Access: enganxa com a valors l'ID de client i el secret de client del teu testimoni de servei. Deixa'ls buits si Access està desactivat."
     },
     {
-      "id": "Localizable::Empty output",
+      "id": "Localizable::Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host.",
       "catalog": "Localizable",
-      "key": "Empty output",
+      "key": "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host.",
       "units": [
         {
-          "source": "Empty output"
+          "source": "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host."
         }
       ],
       "sourceStructure": null,
       "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
-      "sourceReferences": [],
-      "target": "Sortida buida"
-    },
-    {
-      "id": "Localizable::Enable",
-      "catalog": "Localizable",
-      "key": "Enable",
-      "units": [
-        {
-          "source": "Enable"
-        }
+      "protectedTerms": [
+        "Cloudflare"
       ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Skills/SkillsView.swift",
-          "line": 169
-        },
-        {
-          "file": "HermesMobile/Features/Skills/SkillsView.swift",
-          "line": 241
-        },
-        {
-          "file": "HermesMobile/Features/Skills/SkillsView.swift",
-          "line": 262
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 88
         }
       ],
-      "target": "Activa"
+      "target": "Cloudflare no pot arribar al teu túnel. Comprova que cloudflared i el tauler s'estiguin executant a l'amfitrió."
     },
     {
-      "id": "Localizable::Enable code line wrapping",
+      "id": "Localizable::Code",
       "catalog": "Localizable",
-      "key": "Enable code line wrapping",
+      "key": "Code",
       "units": [
         {
-          "source": "Enable code line wrapping"
+          "source": "Code"
         }
       ],
       "sourceStructure": null,
@@ -94,769 +76,18 @@
       "sourceReferences": [
         {
           "file": "HermesMobile/Features/Chat/MarkdownRenderer.swift",
-          "line": 281
+          "line": 446
         }
       ],
-      "target": "Activa l'ajustament de línies de codi"
+      "target": "Codi"
     },
     {
-      "id": "Localizable::Enter a Hermes HTTP or HTTPS address without a path, credentials or query.",
+      "id": "Localizable::Collapse active profile picker",
       "catalog": "Localizable",
-      "key": "Enter a Hermes HTTP or HTTPS address without a path, credentials or query.",
+      "key": "Collapse active profile picker",
       "units": [
         {
-          "source": "Enter a Hermes HTTP or HTTPS address without a path, credentials or query."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [
-        "Hermes",
-        "HTTPS"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
-          "line": 92
-        }
-      ],
-      "target": "Introdueix una adreça HTTP o HTTPS de Hermes sense ruta, credencials ni consulta."
-    },
-    {
-      "id": "Localizable::Enter a commit message first.",
-      "catalog": "Localizable",
-      "key": "Enter a commit message first.",
-      "units": [
-        {
-          "source": "Enter a commit message first."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Workspace/GitWorkspaceViewModel.swift",
-          "line": 940
-        }
-      ],
-      "target": "Primer introdueix un missatge de comissió."
-    },
-    {
-      "id": "Localizable::Enter a name of up to 200 characters.",
-      "catalog": "Localizable",
-      "key": "Enter a name of up to 200 characters.",
-      "units": [
-        {
-          "source": "Enter a name of up to 200 characters."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotRoomCreateView.swift",
-          "line": 113
-        },
-        {
-          "file": "HermesMobile/Features/Bots/BotRoomProfileView.swift",
-          "line": 33
-        },
-        {
-          "file": "HermesMobile/Features/Bots/BotsInboxView.swift",
-          "line": 628
-        }
-      ],
-      "target": "Introdueix un nom de fins a 200 caràcters."
-    },
-    {
-      "id": "Localizable::Enter a project name.",
-      "catalog": "Localizable",
-      "key": "Enter a project name.",
-      "units": [
-        {
-          "source": "Enter a project name."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
-          "line": 1395
-        },
-        {
-          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
-          "line": 1446
-        },
-        {
-          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
-          "line": 1514
-        }
-      ],
-      "target": "Introdueix un nom de projecte."
-    },
-    {
-      "id": "Localizable::Enter a response before submitting.",
-      "catalog": "Localizable",
-      "key": "Enter a response before submitting.",
-      "units": [
-        {
-          "source": "Enter a response before submitting."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatPendingActionCoordinator.swift",
-          "line": 250
-        }
-      ],
-      "target": "Introdueix una resposta abans d'enviar."
-    },
-    {
-      "id": "Localizable::Enter a session title.",
-      "catalog": "Localizable",
-      "key": "Enter a session title.",
-      "units": [
-        {
-          "source": "Enter a session title."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/SessionList/SessionListViewModel.swift",
-          "line": 1211
-        }
-      ],
-      "target": "Introdueix un títol de sessió."
-    },
-    {
-      "id": "Localizable::Enter a valid server URL, for example https://hermes.yourdomain.com or http://<server-tailscale-ip>:8787.",
-      "catalog": "Localizable",
-      "key": "Enter a valid server URL, for example https://hermes.yourdomain.com or http://<server-tailscale-ip>:8787.",
-      "units": [
-        {
-          "source": "Enter a valid server URL, for example https://hermes.yourdomain.com or http://<server-tailscale-ip>:8787."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [
-        "URL"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Networking/APIError.swift",
-          "line": 13
-        }
-      ],
-      "target": "Introdueix un URL de servidor vàlid, per exemple https://hermes.yourdomain.com o http://<server-tailscale-ip>:8787."
-    },
-    {
-      "id": "Localizable::Enter the dashboard's HTTP or HTTPS address, like https://example.com:9119, without a username or password.",
-      "catalog": "Localizable",
-      "key": "Enter the dashboard's HTTP or HTTPS address, like https://example.com:9119, without a username or password.",
-      "units": [
-        {
-          "source": "Enter the dashboard's HTTP or HTTPS address, like https://example.com:9119, without a username or password."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [
-        "HTTPS"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotConnection.swift",
-          "line": 150
-        }
-      ],
-      "target": "Introdueix l'adreça HTTP o HTTPS del tauler, com https://example.com:9119, sense nom d'usuari ni contrasenya."
-    },
-    {
-      "id": "Localizable::Enter the host’s local address and port. This iPhone must be on the same Wi-Fi as the host.",
-      "catalog": "Localizable",
-      "key": "Enter the host’s local address and port. This iPhone must be on the same Wi-Fi as the host.",
-      "units": [
-        {
-          "source": "Enter the host’s local address and port. This iPhone must be on the same Wi-Fi as the host."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Onboarding/OnboardingViewModel.swift",
-          "line": 52
-        }
-      ],
-      "target": "Introdueix l'adreça local i el port de l'amfitrió. Aquest iPhone ha d'estar connectat a la mateixa xarxa Wi-Fi que l'amfitrió."
-    },
-    {
-      "id": "Localizable::Enter the host’s name or IP on Tailscale, NetBird or another private network. Keep that app connected on this iPhone.",
-      "catalog": "Localizable",
-      "key": "Enter the host’s name or IP on Tailscale, NetBird or another private network. Keep that app connected on this iPhone.",
-      "units": [
-        {
-          "source": "Enter the host’s name or IP on Tailscale, NetBird or another private network. Keep that app connected on this iPhone."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [
-        "Tailscale",
-        "NetBird"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Onboarding/OnboardingViewModel.swift",
-          "line": 54
-        }
-      ],
-      "target": "Introdueix el nom o la IP de l'amfitrió a Tailscale, NetBird o una altra xarxa privada. Mantén aquella app connectada en aquest iPhone."
-    },
-    {
-      "id": "Localizable::Enter the server password.",
-      "catalog": "Localizable",
-      "key": "Enter the server password.",
-      "units": [
-        {
-          "source": "Enter the server password."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Auth/AuthManager.swift",
-          "line": 232
-        },
-        {
-          "file": "HermesMobile/Features/Onboarding/OnboardingViewModel.swift",
-          "line": 70
-        }
-      ],
-      "target": "Introdueix la contrasenya del servidor."
-    },
-    {
-      "id": "Localizable::Enter your tunnel’s HTTPS address. If Cloudflare Access protects it, add your service token below.",
-      "catalog": "Localizable",
-      "key": "Enter your tunnel’s HTTPS address. If Cloudflare Access protects it, add your service token below.",
-      "units": [
-        {
-          "source": "Enter your tunnel’s HTTPS address. If Cloudflare Access protects it, add your service token below."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [
-        "Cloudflare",
-        "HTTPS"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Onboarding/OnboardingViewModel.swift",
-          "line": 56
-        }
-      ],
-      "target": "Introdueix l'adreça HTTPS del teu túnel. Si el protegeix Cloudflare Access, afegeix el teu testimoni de servei a sota."
-    },
-    {
-      "id": "Localizable::Error",
-      "catalog": "Localizable",
-      "key": "Error",
-      "units": [
-        {
-          "source": "Error"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
-          "line": 57
-        },
-        {
-          "file": "HermesMobile/Models/Cron.swift",
-          "line": 423
-        }
-      ],
-      "target": "Error"
-    },
-    {
-      "id": "Localizable::Error: %@",
-      "catalog": "Localizable",
-      "key": "Error: %@",
-      "units": [
-        {
-          "source": "Error: %@"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 6513
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 6517
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ToolCallDisplayFormatter.swift",
-          "line": 131
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ToolCallDisplayFormatter.swift",
-          "line": 169
-        }
-      ],
-      "target": "Error: %@"
-    },
-    {
-      "id": "Localizable::Errors %lld",
-      "catalog": "Localizable",
-      "key": "Errors %lld",
-      "units": [
-        {
-          "source": "Errors %lld"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%lld"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Tasks/TaskAgenda.swift",
-          "line": 24
-        }
-      ],
-      "target": "%lld errors"
-    },
-    {
-      "id": "Localizable::Estimated Cost",
-      "catalog": "Localizable",
-      "key": "Estimated Cost",
-      "units": [
-        {
-          "source": "Estimated Cost"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
-      "sourceReferences": [],
-      "target": "Cost estimat"
-    },
-    {
-      "id": "Localizable::Estimated by the server from session metadata.",
-      "catalog": "Localizable",
-      "key": "Estimated by the server from session metadata.",
-      "units": [
-        {
-          "source": "Estimated by the server from session metadata."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": "manual",
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Insights/InsightsViewModel.swift",
-          "line": 499
-        }
-      ],
-      "target": "Estimat pel servidor a partir de les metadades de la sessió."
-    },
-    {
-      "id": "Localizable::Estimated cost",
-      "catalog": "Localizable",
-      "key": "Estimated cost",
-      "units": [
-        {
-          "source": "Estimated cost"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": "manual",
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Insights/InsightsViewModel.swift",
-          "line": 497
-        }
-      ],
-      "target": "Cost estimat"
-    },
-    {
-      "id": "Localizable::Estimated cost per day, %@",
-      "catalog": "Localizable",
-      "key": "Estimated cost per day, %@",
-      "units": [
-        {
-          "source": "Estimated cost per day, %@"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": "manual",
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Insights/InsightsViewModel.swift",
-          "line": 520
-        }
-      ],
-      "target": "Cost estimat per dia, %@"
-    },
-    {
-      "id": "Localizable::Events",
-      "catalog": "Localizable",
-      "key": "Events",
-      "units": [
-        {
-          "source": "Events"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
-          "line": 503
-        }
-      ],
-      "target": "Esdeveniments"
-    },
-    {
-      "id": "Localizable::Every %@",
-      "catalog": "Localizable",
-      "key": "Every %@",
-      "units": [
-        {
-          "source": "Every %@"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Tasks/CronScheduleHumanizer.swift",
-          "line": 106
-        }
-      ],
-      "target": "Cada %@"
-    },
-    {
-      "id": "Localizable::Every chat from %@ is in %@.",
-      "catalog": "Localizable",
-      "key": "Every chat from %@ is in %@.",
-      "units": [
-        {
-          "source": "Every chat from %@ is in %@."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
-          "line": 795
-        }
-      ],
-      "target": "Tots els xats de %@ són a %@."
-    },
-    {
-      "id": "Localizable::Every minute",
-      "catalog": "Localizable",
-      "key": "Every minute",
-      "units": [
-        {
-          "source": "Every minute"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Tasks/CronScheduleHumanizer.swift",
-          "line": 82
-        },
-        {
-          "file": "HermesMobile/Features/Tasks/CronScheduleHumanizer.swift",
-          "line": 84
-        }
-      ],
-      "target": "Cada minut"
-    },
-    {
-      "id": "Localizable::Everyone",
-      "catalog": "Localizable",
-      "key": "Everyone",
-      "units": [
-        {
-          "source": "Everyone"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotRoomComposerView.swift",
-          "line": 97
-        }
-      ],
-      "target": "Tothom"
-    },
-    {
-      "id": "Localizable::Exact model ID",
-      "catalog": "Localizable",
-      "key": "Exact model ID",
-      "units": [
-        {
-          "source": "Exact model ID"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Shared/ModelPickerSheet.swift",
-          "line": 204
-        }
-      ],
-      "target": "ID exacte del model"
-    },
-    {
-      "id": "Localizable::Excited",
-      "catalog": "Localizable",
-      "key": "Excited",
-      "units": [
-        {
-          "source": "Excited"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
-          "line": 138
-        }
-      ],
-      "target": "Entusiasmat"
-    },
-    {
-      "id": "Localizable::Execution",
-      "catalog": "Localizable",
-      "key": "Execution",
-      "units": [
-        {
-          "source": "Execution"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Kanban/KanbanCardEditorView.swift",
-          "line": 179
-        }
-      ],
-      "target": "Execució"
-    },
-    {
-      "id": "Localizable::Exit code: %lld",
-      "catalog": "Localizable",
-      "key": "Exit code: %lld",
-      "units": [
-        {
-          "source": "Exit code: %lld"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%lld"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ToolCallDisplayFormatter.swift",
-          "line": 136
-        }
-      ],
-      "target": "Codi de sortida: %lld"
-    },
-    {
-      "id": "Localizable::Expand Thinking by Default",
-      "catalog": "Localizable",
-      "key": "Expand Thinking by Default",
-      "units": [
-        {
-          "source": "Expand Thinking by Default"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ReasoningBlockView.swift",
-          "line": 9
-        }
-      ],
-      "target": "Desplega el raonament per defecte"
-    },
-    {
-      "id": "Localizable::Expand Tools by Default",
-      "catalog": "Localizable",
-      "key": "Expand Tools by Default",
-      "units": [
-        {
-          "source": "Expand Tools by Default"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ToolActivityGroupView.swift",
-          "line": 29
-        }
-      ],
-      "target": "Desplega les eines per defecte"
-    },
-    {
-      "id": "Localizable::Expand active profile picker",
-      "catalog": "Localizable",
-      "key": "Expand active profile picker",
-      "units": [
-        {
-          "source": "Expand active profile picker"
+          "source": "Collapse active profile picker"
         }
       ],
       "sourceStructure": null,
@@ -871,15 +102,15 @@
           "line": 574
         }
       ],
-      "target": "Desplega el selector de perfil actiu"
+      "target": "Replega el selector de perfil actiu"
     },
     {
-      "id": "Localizable::Expand clarification",
+      "id": "Localizable::Collapse clarification",
       "catalog": "Localizable",
-      "key": "Expand clarification",
+      "key": "Collapse clarification",
       "units": [
         {
-          "source": "Expand clarification"
+          "source": "Collapse clarification"
         }
       ],
       "sourceStructure": null,
@@ -891,18 +122,22 @@
       "sourceReferences": [
         {
           "file": "HermesMobile/Features/Chat/ClarificationRequestCard.swift",
-          "line": 141
+          "line": 248
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ClarificationRequestCard.swift",
+          "line": 590
         }
       ],
-      "target": "Desplega l'aclariment"
+      "target": "Replega l'aclariment"
     },
     {
-      "id": "Localizable::Expand file changes",
+      "id": "Localizable::Collapse file changes",
       "catalog": "Localizable",
-      "key": "Expand file changes",
+      "key": "Collapse file changes",
       "units": [
         {
-          "source": "Expand file changes"
+          "source": "Collapse file changes"
         }
       ],
       "sourceStructure": null,
@@ -914,18 +149,18 @@
       "sourceReferences": [
         {
           "file": "HermesMobile/Features/Workspace/GitTurnChangesCard.swift",
-          "line": 77
+          "line": 76
         }
       ],
-      "target": "Desplega els canvis de fitxers"
+      "target": "Replega els canvis de fitxers"
     },
     {
-      "id": "Localizable::Expand projects",
+      "id": "Localizable::Collapse projects",
       "catalog": "Localizable",
-      "key": "Expand projects",
+      "key": "Collapse projects",
       "units": [
         {
-          "source": "Expand projects"
+          "source": "Collapse projects"
         }
       ],
       "sourceStructure": null,
@@ -940,15 +175,15 @@
           "line": 625
         }
       ],
-      "target": "Desplega els projectes"
+      "target": "Replega els projectes"
     },
     {
-      "id": "Localizable::Expand scheduled sessions",
+      "id": "Localizable::Collapse scheduled sessions",
       "catalog": "Localizable",
-      "key": "Expand scheduled sessions",
+      "key": "Collapse scheduled sessions",
       "units": [
         {
-          "source": "Expand scheduled sessions"
+          "source": "Collapse scheduled sessions"
         }
       ],
       "sourceStructure": null,
@@ -960,18 +195,18 @@
       "sourceReferences": [
         {
           "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
-          "line": 1103
+          "line": 1102
         }
       ],
-      "target": "Desplega les sessions programades"
+      "target": "Replega les sessions programades"
     },
     {
-      "id": "Localizable::Expand section",
+      "id": "Localizable::Collapse section",
       "catalog": "Localizable",
-      "key": "Expand section",
+      "key": "Collapse section",
       "units": [
         {
-          "source": "Expand section"
+          "source": "Collapse section"
         }
       ],
       "sourceStructure": null,
@@ -981,15 +216,15 @@
       "extractionState": null,
       "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "Desplega la secció"
+      "target": "Replega la secció"
     },
     {
-      "id": "Localizable::Expand side question",
+      "id": "Localizable::Collapse side question",
       "catalog": "Localizable",
-      "key": "Expand side question",
+      "key": "Collapse side question",
       "units": [
         {
-          "source": "Expand side question"
+          "source": "Collapse side question"
         }
       ],
       "sourceStructure": null,
@@ -1001,22 +236,18 @@
       "sourceReferences": [
         {
           "file": "HermesMobile/Features/Chat/HermesBtwPanel.swift",
-          "line": 78
-        },
-        {
-          "file": "HermesMobile/Features/Chat/HermesBtwPanel.swift",
-          "line": 173
+          "line": 141
         }
       ],
-      "target": "Desplega la pregunta paral·lela"
+      "target": "Replega la pregunta paral·lela"
     },
     {
-      "id": "Localizable::Expanded",
+      "id": "Localizable::Collapsed",
       "catalog": "Localizable",
-      "key": "Expanded",
+      "key": "Collapsed",
       "units": [
         {
-          "source": "Expanded"
+          "source": "Collapsed"
         }
       ],
       "sourceStructure": null,
@@ -1028,7 +259,7 @@
       "sourceReferences": [
         {
           "file": "HermesMobile/Config/AppTheme.swift",
-          "line": 219
+          "line": 218
         },
         {
           "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
@@ -1044,18 +275,18 @@
         },
         {
           "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewDiffCanvasView+Accessibility.swift",
-          "line": 54
+          "line": 53
         }
       ],
-      "target": "Desplegat"
+      "target": "Replegat"
     },
     {
-      "id": "Localizable::Expired",
+      "id": "Localizable::Collapses a finished turn behind one row.",
       "catalog": "Localizable",
-      "key": "Expired",
+      "key": "Collapses a finished turn behind one row.",
       "units": [
         {
-          "source": "Expired"
+          "source": "Collapses a finished turn behind one row."
         }
       ],
       "sourceStructure": null,
@@ -1066,23 +297,64 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Chat/ClarificationRequestCard.swift",
-          "line": 458
+          "file": "HermesMobile/Features/Settings/SettingsAppPages.swift",
+          "line": 117
+        }
+      ],
+      "target": "Replega un torn acabat en una sola fila."
+    },
+    {
+      "id": "Localizable::Collapses a finished turn's thinking, tool calls, and interim replies behind one row that shows how long it took. Tap the row to expand it.",
+      "catalog": "Localizable",
+      "key": "Collapses a finished turn's thinking, tool calls, and interim replies behind one row that shows how long it took. Tap the row to expand it.",
+      "units": [
+        {
+          "source": "Collapses a finished turn's thinking, tool calls, and interim replies behind one row that shows how long it took. Tap the row to expand it."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Replega el raonament, les crides d'eina i les respostes intermèdies d'un torn acabat en una sola fila que mostra quant ha trigat. Toca la fila per desplegar-lo."
+    },
+    {
+      "id": "Localizable::Color",
+      "catalog": "Localizable",
+      "key": "Color",
+      "units": [
+        {
+          "source": "Color"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1887
         },
         {
-          "file": "HermesMobile/Features/Chat/HermesRequestCards.swift",
-          "line": 173
+          "file": "HermesMobile/Features/SessionList/ProjectCreationSheet.swift",
+          "line": 168
         }
       ],
-      "target": "Caducat"
+      "target": "Color"
     },
     {
-      "id": "Localizable::Export",
+      "id": "Localizable::Comment",
       "catalog": "Localizable",
-      "key": "Export",
+      "key": "Comment",
       "units": [
         {
-          "source": "Export"
+          "source": "Comment"
         }
       ],
       "sourceStructure": null,
@@ -1093,46 +365,31 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
-          "line": 1393
-        }
-      ],
-      "target": "Exporta"
-    },
-    {
-      "id": "Localizable::Export Failed",
-      "catalog": "Localizable",
-      "key": "Export Failed",
-      "units": [
-        {
-          "source": "Export Failed"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotArtifactPreview.swift",
-          "line": 121
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 208
         },
         {
-          "file": "HermesMobile/Features/Workspace/FilePreviewView.swift",
-          "line": 140
+          "file": "HermesMobile/Features/Kanban/KanbanFeatureState.swift",
+          "line": 35
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewCommentSheet.swift",
+          "line": 32
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewCommentSheet.swift",
+          "line": 55
         }
       ],
-      "target": "Ha fallat l'exportació"
+      "target": "Comentari"
     },
     {
-      "id": "Localizable::Export as HTML",
+      "id": "Localizable::Comment cannot be blank.",
       "catalog": "Localizable",
-      "key": "Export as HTML",
+      "key": "Comment cannot be blank.",
       "units": [
         {
-          "source": "Export as HTML"
+          "source": "Comment cannot be blank."
         }
       ],
       "sourceStructure": null,
@@ -1143,19 +400,19 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
-          "line": 1369
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 248
         }
       ],
-      "target": "Exporta com a HTML"
+      "target": "El comentari no pot estar en blanc."
     },
     {
-      "id": "Localizable::Export as JSON",
+      "id": "Localizable::Comments cannot be edited or deleted after sending.",
       "catalog": "Localizable",
-      "key": "Export as JSON",
+      "key": "Comments cannot be edited or deleted after sending.",
       "units": [
         {
-          "source": "Export as JSON"
+          "source": "Comments cannot be edited or deleted after sending."
         }
       ],
       "sourceStructure": null,
@@ -1166,19 +423,46 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
-          "line": 1375
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 212
         }
       ],
-      "target": "Exporta com a JSON"
+      "target": "Els comentaris no es poden editar ni suprimir un cop enviats."
     },
     {
-      "id": "Localizable::Export audio %@",
+      "id": "Localizable::Commit",
       "catalog": "Localizable",
-      "key": "Export audio %@",
+      "key": "Commit",
       "units": [
         {
-          "source": "Export audio %@"
+          "source": "Commit"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitActionsMenuButton.swift",
+          "line": 81
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 244
+        }
+      ],
+      "target": "Comet"
+    },
+    {
+      "id": "Localizable::Commit %@",
+      "catalog": "Localizable",
+      "key": "Commit %@",
+      "units": [
+        {
+          "source": "Commit %@"
         }
       ],
       "sourceStructure": null,
@@ -1191,61 +475,854 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Chat/TranscriptMediaView.swift",
-          "line": 365
-        }
-      ],
-      "target": "Exporta l'àudio %@"
-    },
-    {
-      "id": "Localizable::Export file",
-      "catalog": "Localizable",
-      "key": "Export file",
-      "units": [
-        {
-          "source": "Export file"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Workspace/FilePreviewView.swift",
-          "line": 116
-        }
-      ],
-      "target": "Exporta el fitxer"
-    },
-    {
-      "id": "Localizable::Export media",
-      "catalog": "Localizable",
-      "key": "Export media",
-      "units": [
-        {
-          "source": "Export media"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/TranscriptMediaImageLightbox.swift",
-          "line": 60
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1634
         },
         {
-          "file": "HermesMobile/Features/Chat/TranscriptMediaView.swift",
-          "line": 763
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 100
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 193
         }
       ],
-      "target": "Exporta el contingut multimèdia"
+      "target": "Comet %@"
+    },
+    {
+      "id": "Localizable::Commit & Push",
+      "catalog": "Localizable",
+      "key": "Commit & Push",
+      "units": [
+        {
+          "source": "Commit & Push"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatTranscriptView.swift",
+          "line": 113
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1556
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitActionsMenuButton.swift",
+          "line": 86
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 244
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitInlineCommitButton.swift",
+          "line": 3
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitInlineCommitButton.swift",
+          "line": 11
+        }
+      ],
+      "target": "Comet i fes push"
+    },
+    {
+      "id": "Localizable::Commit & push complete",
+      "catalog": "Localizable",
+      "key": "Commit & push complete",
+      "units": [
+        {
+          "source": "Commit & push complete"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1644
+        }
+      ],
+      "target": "S'ha comès i s'ha fet push."
+    },
+    {
+      "id": "Localizable::Commit Changes",
+      "catalog": "Localizable",
+      "key": "Commit Changes",
+      "units": [
+        {
+          "source": "Commit Changes"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 37
+        }
+      ],
+      "target": "Comet els canvis"
+    },
+    {
+      "id": "Localizable::Commit Selected",
+      "catalog": "Localizable",
+      "key": "Commit Selected",
+      "units": [
+        {
+          "source": "Commit Selected"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 235
+        }
+      ],
+      "target": "Comet els seleccionats"
+    },
+    {
+      "id": "Localizable::Commit and push",
+      "catalog": "Localizable",
+      "key": "Commit and push",
+      "units": [
+        {
+          "source": "Commit and push"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitInlineCommitButton.swift",
+          "line": 60
+        }
+      ],
+      "target": "Comet i fes push"
+    },
+    {
+      "id": "Localizable::Commit complete",
+      "catalog": "Localizable",
+      "key": "Commit complete",
+      "units": [
+        {
+          "source": "Commit complete"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1644
+        }
+      ],
+      "target": "S'ha completat la comissió."
+    },
+    {
+      "id": "Localizable::Commit message",
+      "catalog": "Localizable",
+      "key": "Commit message",
+      "units": [
+        {
+          "source": "Commit message"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitCommitView.swift",
+          "line": 199
+        }
+      ],
+      "target": "Missatge de comissió"
+    },
+    {
+      "id": "Localizable::Commit or discard first.",
+      "catalog": "Localizable",
+      "key": "Commit or discard first.",
+      "units": [
+        {
+          "source": "Commit or discard first."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1676
+        },
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesGitClient.swift",
+          "line": 697
+        }
+      ],
+      "target": "Primer comet-ho o descarta-ho."
+    },
+    {
+      "id": "Localizable::Committed — push failed",
+      "catalog": "Localizable",
+      "key": "Committed — push failed",
+      "units": [
+        {
+          "source": "Committed — push failed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1643
+        }
+      ],
+      "target": "Comès — el push ha fallat"
+    },
+    {
+      "id": "Localizable::Committed, but some files couldn’t be staged again.",
+      "catalog": "Localizable",
+      "key": "Committed, but some files couldn’t be staged again.",
+      "units": [
+        {
+          "source": "Committed, but some files couldn’t be staged again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceViewModel.swift",
+          "line": 956
+        }
+      ],
+      "target": "S'ha comès, però alguns fitxers no s'han pogut tornar a preparar."
+    },
+    {
+      "id": "Localizable::Committed, but the push failed.",
+      "catalog": "Localizable",
+      "key": "Committed, but the push failed.",
+      "units": [
+        {
+          "source": "Committed, but the push failed."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceViewModel.swift",
+          "line": 968
+        }
+      ],
+      "target": "S'ha comès, però el push ha fallat."
+    },
+    {
+      "id": "Localizable::Committing...",
+      "catalog": "Localizable",
+      "key": "Committing...",
+      "units": [
+        {
+          "source": "Committing..."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceViewModel.swift",
+          "line": 697
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceViewModel.swift",
+          "line": 705
+        }
+      ],
+      "target": "S'està cometent..."
+    },
+    {
+      "id": "Localizable::Compared with branch base",
+      "catalog": "Localizable",
+      "key": "Compared with branch base",
+      "units": [
+        {
+          "source": "Compared with branch base"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
+          "line": 188
+        }
+      ],
+      "target": "Comparat amb la base de la branca"
+    },
+    {
+      "id": "Localizable::Complete",
+      "catalog": "Localizable",
+      "key": "Complete",
+      "units": [
+        {
+          "source": "Complete"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 416
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 646
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 658
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1250
+        },
+        {
+          "file": "HermesMobile/LiveActivities/AgentRunActivityAttributes.swift",
+          "line": 293
+        }
+      ],
+      "target": "Completa"
+    },
+    {
+      "id": "Localizable::Completed",
+      "catalog": "Localizable",
+      "key": "Completed",
+      "units": [
+        {
+          "source": "Completed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ToolCallLogRowView.swift",
+          "line": 115
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ToolCallSummaryFormatter.swift",
+          "line": 39
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/TaskRecentRunRowView.swift",
+          "line": 41
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/TaskRunHistorySection.swift",
+          "line": 210
+        }
+      ],
+      "target": "Completat"
+    },
+    {
+      "id": "Localizable::Composer",
+      "catalog": "Localizable",
+      "key": "Composer",
+      "units": [
+        {
+          "source": "Composer"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsAppPages.swift",
+          "line": 87
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsView.swift",
+          "line": 68
+        }
+      ],
+      "target": "Camp de redacció"
+    },
+    {
+      "id": "Localizable::Composer Option",
+      "catalog": "Localizable",
+      "key": "Composer Option",
+      "units": [
+        {
+          "source": "Composer Option"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerView.swift",
+          "line": 901
+        }
+      ],
+      "target": "Opció del camp de redacció"
+    },
+    {
+      "id": "Localizable::Composer options",
+      "catalog": "Localizable",
+      "key": "Composer options",
+      "units": [
+        {
+          "source": "Composer options"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerView.swift",
+          "line": 1241
+        }
+      ],
+      "target": "Opcions del camp de redacció"
+    },
+    {
+      "id": "Localizable::Compress session context",
+      "catalog": "Localizable",
+      "key": "Compress session context",
+      "units": [
+        {
+          "source": "Compress session context"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/SlashCommandCatalog.swift",
+          "line": 100
+        }
+      ],
+      "target": "Comprimeix el context de la sessió"
+    },
+    {
+      "id": "Localizable::Compressing context...",
+      "catalog": "Localizable",
+      "key": "Compressing context...",
+      "units": [
+        {
+          "source": "Compressing context..."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerSendGate.swift",
+          "line": 79
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerView.swift",
+          "line": 1367
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 5913
+        }
+      ],
+      "target": "S'està comprimint el context..."
+    },
+    {
+      "id": "Localizable::Configuration",
+      "catalog": "Localizable",
+      "key": "Configuration",
+      "units": [
+        {
+          "source": "Configuration"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobEditorSheet.swift",
+          "line": 144
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/TaskDetailView.swift",
+          "line": 194
+        }
+      ],
+      "target": "Configuració"
+    },
+    {
+      "id": "Localizable::Confirm this model change?",
+      "catalog": "Localizable",
+      "key": "Confirm this model change?",
+      "units": [
+        {
+          "source": "Confirm this model change?"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotChatControls.swift",
+          "line": 188
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileEditor.swift",
+          "line": 384
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileEditorView.swift",
+          "line": 75
+        }
+      ],
+      "target": "Vols confirmar aquest canvi de model?"
+    },
+    {
+      "id": "Localizable::Conflict",
+      "catalog": "Localizable",
+      "key": "Conflict",
+      "units": [
+        {
+          "source": "Conflict"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardEditorView.swift",
+          "line": 221
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
+          "line": 400
+        }
+      ],
+      "target": "Conflicte"
+    },
+    {
+      "id": "Localizable::Conflicted files cannot be staged from this panel",
+      "catalog": "Localizable",
+      "key": "Conflicted files cannot be staged from this panel",
+      "units": [
+        {
+          "source": "Conflicted files cannot be staged from this panel"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesGitClient.swift",
+          "line": 683
+        }
+      ],
+      "target": "Els fitxers en conflicte no es poden preparar des d'aquest panell"
+    },
+    {
+      "id": "Localizable::Conflicted files cannot be discarded from this panel",
+      "catalog": "Localizable",
+      "key": "Conflicted files cannot be discarded from this panel",
+      "units": [
+        {
+          "source": "Conflicted files cannot be discarded from this panel"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesGitClient.swift",
+          "line": 684
+        }
+      ],
+      "target": "Els fitxers en conflicte no es poden descartar des d'aquest panell"
+    },
+    {
+      "id": "Localizable::Confused",
+      "catalog": "Localizable",
+      "key": "Confused",
+      "units": [
+        {
+          "source": "Confused"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
+          "line": 145
+        }
+      ],
+      "target": "Confús"
+    },
+    {
+      "id": "Localizable::Connect",
+      "catalog": "Localizable",
+      "key": "Connect",
+      "units": [
+        {
+          "source": "Connect"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 176
+        },
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 664
+        },
+        {
+          "file": "HermesMobile/Features/Chat/HermesRequestCards.swift",
+          "line": 234
+        },
+        {
+          "file": "HermesMobile/Features/Onboarding/OnboardingConnectPage.swift",
+          "line": 32
+        },
+        {
+          "file": "HermesMobile/Features/Onboarding/OnboardingFlowPolicy.swift",
+          "line": 81
+        },
+        {
+          "file": "HermesMobile/Features/Onboarding/OnboardingView.swift",
+          "line": 200
+        }
+      ],
+      "target": "Connecta"
+    },
+    {
+      "id": "Localizable::Connect %@",
+      "catalog": "Localizable",
+      "key": "Connect %@",
+      "units": [
+        {
+          "source": "Connect %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesRequestCards.swift",
+          "line": 238
+        }
+      ],
+      "target": "Connecta %@"
+    },
+    {
+      "id": "Localizable::Connect Hermes…",
+      "catalog": "Localizable",
+      "key": "Connect Hermes…",
+      "units": [
+        {
+          "source": "Connect Hermes…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
+          "line": 130
+        }
+      ],
+      "target": "Connecta Hermes…"
+    },
+    {
+      "id": "Localizable::Connect apps",
+      "catalog": "Localizable",
+      "key": "Connect apps",
+      "units": [
+        {
+          "source": "Connect apps"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotPendingRequestCard.swift",
+          "line": 102
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ClarificationRequestCard.swift",
+          "line": 600
+        },
+        {
+          "file": "HermesMobile/Features/Chat/HermesRequestCards.swift",
+          "line": 56
+        }
+      ],
+      "target": "Connecta apps"
+    },
+    {
+      "id": "Localizable::Connect to this Hermes host first.",
+      "catalog": "Localizable",
+      "key": "Connect to this Hermes host first.",
+      "units": [
+        {
+          "source": "Connect to this Hermes host first."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushPairing.swift",
+          "line": 112
+        },
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateMachine.swift",
+          "line": 336
+        }
+      ],
+      "target": "Primer connecta't a aquest amfitrió de Hermes."
     }
   ]
 }

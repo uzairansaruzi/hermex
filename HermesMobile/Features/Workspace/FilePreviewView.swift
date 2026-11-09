@@ -34,7 +34,7 @@ struct FilePreviewView: View {
     @State private var saveConfirmationMessage: String?
     @State private var isSavingToPhotos = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
-    @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
 
     /// `initialLine` is one-based; the source surface scrolls to it and highlights it,
     /// so a Markdown file opened at a line starts in Source.
@@ -88,6 +88,7 @@ struct FilePreviewView: View {
             }
         }
         .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
+        .themedPageBackground()
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -256,9 +257,9 @@ struct FilePreviewView: View {
             VStack(spacing: 8) {
                 Text(message)
                 Text(displayPath)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .fontDesign(.monospaced)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
     }
@@ -281,7 +282,7 @@ struct FilePreviewView: View {
                 onReturnToChat: onReturnToChat
             )
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     /// Small files render as one document. Large ones render the chunks the view
@@ -326,7 +327,7 @@ struct FilePreviewView: View {
                 Label("Copy Contents", systemImage: "doc.on.doc")
             }
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private var isMarkdownFile: Bool {
@@ -349,7 +350,7 @@ struct FilePreviewView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .background(Color(.appCanvas))
         } else {
             ContentUnavailableView {
                 Label("Could Not Preview Image", systemImage: "photo")
@@ -362,21 +363,21 @@ struct FilePreviewView: View {
     private var fileHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(displayPath)
-                .font(.caption)
+                .font(AppFont.caption())
                 .fontDesign(.monospaced)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .textSelection(.enabled)
 
             if let metadataText {
                 Text(metadataText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
             }
 
             if case let .text(file) = viewModel.preview, file.isTruncated {
                 Label("Preview truncated", systemImage: "scissors")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(.appSecondary)
             }
         }
     }

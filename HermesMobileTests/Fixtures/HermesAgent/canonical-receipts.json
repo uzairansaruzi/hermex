@@ -1,0 +1,43 @@
+{
+  "captured_at" : "2026-11-06T20:43:34Z",
+  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "reply" : {
+    "behind_running" : {
+      "admission_id" : "d8fb83a67d5a44d2b7cf3f6cada4399a",
+      "authority_epoch" : 1,
+      "execution_generation" : null,
+      "outcome" : null,
+      "ref" : {
+        "profile_id" : "fixture-redacted",
+        "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+      },
+      "sequence" : 10,
+      "status" : "queued"
+    },
+    "cancelled" : {
+      "admission_id" : "8b2f2da1fb1e4760b8a09249ebff4f22",
+      "authority_epoch" : 1,
+      "execution_generation" : null,
+      "outcome" : "cancelled",
+      "ref" : {
+        "profile_id" : "fixture-redacted",
+        "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+      },
+      "sequence" : 11,
+      "status" : "terminal"
+    },
+    "idle" : {
+      "admission_id" : "db8d2aeb9b774a4bbdcaf9e49f807c05",
+      "authority_epoch" : 1,
+      "execution_generation" : null,
+      "outcome" : null,
+      "ref" : {
+        "profile_id" : "fixture-redacted",
+        "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+      },
+      "sequence" : 9,
+      "status" : "queued"
+    }
+  },
+  "version" : "0.23.0"
+}

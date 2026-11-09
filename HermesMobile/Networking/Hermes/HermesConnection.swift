@@ -41,8 +41,12 @@ import OSLog
     private(set) var connection: BotConnection
     /// `version` from the last sign-in's `/api/status`, read before the auth gate; nil when omitted.
     private(set) var serverVersion: String?
-    /// `install_id` from the same read; nil when omitted.
+    /// `install_id` from the same read, or, when that left it out, from a status read signed in;
+    /// nil when both omit it.
     private(set) var serverInstallID: String?
+    /// Whether the last sign-in reached a gateway's own Webapp (#1606), which names its install
+    /// only to a caller signed in. Its sockets speak the canonical session protocol.
+    private(set) var servesWebapp = false
     /// Gateway methods the host answered -32601 (method not found) on this connection, so
     /// a control one chat found missing stays off in every chat on it. Recorded by
     /// `gateway`; a new connection starts empty.
@@ -73,6 +77,13 @@ import OSLog
     private let gatewayOptions: HermesGateway.Options
     /// The gateway while some screen's `BotClient` holds it; nil while none does.
     private(set) weak var liveGateway: HermesGateway?
+    /// On a gateway's Webapp, each Profile's chats' own gateway while one holds it (#1341,
+    /// decision 2): session ids repeat across Profiles, and a canonical session's events don't
+    /// name theirs, so one socket carries one Profile's sessions.
+    private var profileGateways: [String: WeakGateway] = [:]
+    private struct WeakGateway { weak var gateway: HermesGateway? }
+    /// Numbers the screens' `BotClient`s across every gateway here.
+    private var consumerCount = 0
     private var isSignedIn = false
     /// What every signed-in request carries besides the cookie jar.
     private enum Credential {
@@ -145,6 +156,36 @@ import OSLog
         return fresh
     }
 
+    /// The gateway a chat on `profile` uses: on a gateway's Webapp (`servesWebapp`, known once
+    /// signed in) that Profile's own, made on first use and kept while a chat holds it, whose
+    /// socket the Webapp binds to `profile`; otherwise the shared `gateway`.
+    func gateway(profile: String) -> HermesGateway {
+        guard servesWebapp else { return gateway }
+        if let live = profileGateways[profile]?.gateway { return live }
+        let fresh = HermesGateway(http: self, options: gatewayOptions, profile: profile)
+        profileGateways[profile] = WeakGateway(gateway: fresh)
+        return fresh
+    }
+
+    /// Whether the shared gateway's socket opens, joining it for a moment: what tells a Profile
+    /// the Webapp doesn't serve from a proxy that refuses every socket (#1606).
+    func opensSharedSocket() async -> Bool {
+        let probe = BotClient(http: self)
+        defer { probe.close() }
+        return (try? await probe.connect()) != nil
+    }
+
+    /// Every gateway a screen holds here.
+    var liveGateways: [HermesGateway] {
+        ([liveGateway] + profileGateways.values.map(\.gateway)).compactMap { $0 }
+    }
+
+    /// A new identity for one screen's `BotClient`.
+    func makeConsumerID() -> Int {
+        consumerCount += 1
+        return consumerCount
+    }
+
     /// The gateway's report that the host answered `method` with -32601.
     func noteUnavailable(_ method: String) {
         unavailableMethods.insert(method)
@@ -211,13 +252,14 @@ import OSLog
                 try checkCurrent()
                 serverVersion = status["version"].text
                 serverInstallID = BotConnection.installID(in: status)
+                servesWebapp = false
                 update(record) { $0.reportedRelease = self.serverVersion }
                 if let version = serverVersion, !HermesCompatibility.isSupported(version) { throw BotFailure.outdated(version) }
                 try connection.requireSameInstall(serverInstallID)
-                guard let method = HermesSignInMethod(status) else { throw BotFailure.unsupported }
+                guard let methods = HermesSignInMethod.offered(by: status) else { throw BotFailure.unsupported }
                 update(record) { $0[.status] = .passed }
                 stage = .signIn
-                if method == .open {
+                if methods == [.open] {
                     guard connection.hasNoCredentials else { throw BotFailure.signInChanged }
                     step = "page"
                     let page = try await Self.send(prepared(try HermesREST.dashboardPage.request(base: connection.address)),
@@ -258,6 +300,15 @@ import OSLog
                     let identity = try await decoded(.identity, on: session)
                     try checkCurrent()
                     guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
+                }
+                // A gateway's Webapp names its install only once signed in (#1606), so it is read
+                // again here and checked before anything loads.
+                if serverInstallID == nil {
+                    step = "install"
+                    serverInstallID = BotConnection.installID(in: try await decoded(.status, on: session))
+                    try checkCurrent()
+                    servesWebapp = serverInstallID != nil
+                    try connection.requireSameInstall(serverInstallID)
                 }
                 if stage == .identity { update(record) { $0[.identity] = .passed } }
                 // Trust on first use, in memory only: a later sign-in here must reach the same install.
@@ -467,10 +518,12 @@ import OSLog
     }
 
     /// Returns the gateway upgrade, presenting a single-use ticket minted for it or an open
-    /// dashboard's page token.
+    /// dashboard's page token; for `profile`'s own socket on a Webapp, a ticket bound to it.
     /// The attempt record's live authorization passes once the pass is in hand.
-    func gatewayUpgrade() async throws -> URLRequest {
-        try await upgrade(recordsLiveStages: true) { try HermesREST.gatewayUpgrade(base: connection.address, pass: $0) }
+    func gatewayUpgrade(profile: String? = nil) async throws -> URLRequest {
+        try await upgrade(recordsLiveStages: true, ticket: profile.map { .profileTicket(profile: $0) } ?? .ticket) {
+            try HermesREST.gatewayUpgrade(base: connection.address, pass: $0)
+        }
     }
 
     /// Returns `board`'s Kanban event socket upgrade, with this connection's headers (#1045),
@@ -481,12 +534,26 @@ import OSLog
         }
     }
 
+    /// Returns a bot screen's stream upgrade (#1567) with this connection's headers. `ticket` came
+    /// from `display.observe` on the gateway, so this needs no pass of its own.
+    func screenUpgrade(ticket: String) throws -> URLRequest {
+        prepared(try HermesREST.screenUpgrade(base: connection.address, ticket: ticket))
+    }
+
+    /// Returns hermex-screen's stream upgrade (#1567) with this connection's headers, on a fresh
+    /// pass for the dashboard's gate.
+    func screenPluginUpgrade(streamTicket: String) async throws -> URLRequest {
+        try await upgrade(recordsLiveStages: false) {
+            try HermesREST.screenPluginUpgrade(base: connection.address, streamTicket: streamTicket, pass: $0)
+        }
+    }
+
     /// Returns the upgrade `build` makes for a fresh pass, with this connection's headers. Either
     /// pass is preceded by a signed-in read, so a 401 signs in again first: minting the ticket,
     /// or for a page token a gated read, since a refused upgrade can't tell a token a host
     /// restart replaced from any other refusal. `recordsLiveStages` starts the attempt record's
     /// live stages afresh and records the pass: the gateway's, never a Kanban socket's.
-    private func upgrade(recordsLiveStages: Bool,
+    private func upgrade(recordsLiveStages: Bool, ticket route: HermesREST = .ticket,
                          _ build: (HermesREST.UpgradePass) throws -> URLRequest) async throws -> URLRequest {
         do {
             try await signIn()
@@ -496,7 +563,7 @@ import OSLog
                     _ = try await data(.profilesActive)
                     if case .pageToken(let token)? = credential { return .pageToken(token) }
                 }
-                let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(.ticket))
+                let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(route))
                 guard let token = ticket["ticket"].text, !token.isEmpty else { throw BotFailure.unsupported }
                 return .ticket(token)
             }
@@ -564,7 +631,7 @@ import OSLog
         lastAttempt = nil
         signInTask?.cancel()
         signInTask = nil
-        liveGateway?.retire()
+        liveGateways.forEach { $0.retire() }
     }
 
     /// The login, identity and token reads, which run before there is a session.
@@ -579,7 +646,10 @@ import OSLog
     /// the address is something else, such as the webui. Any other 401 comes from something
     /// in front of Hermes, such as Cloudflare Access. `onlyHostRefusalIs400` is `status()`'s.
     private func publicStatus(on session: URLSession, onlyHostRefusalIs400: Bool = false) async throws -> BotJSON {
-        let request = prepared(try HermesREST.status.request(base: connection.address))
+        var request = prepared(try HermesREST.status.request(base: connection.address))
+        // Signed out for real: a Webapp answers a caller its cookies sign in with its install id,
+        // which would hide that it names it only once signed in (#1606).
+        request.httpShouldHandleCookies = false
         let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
         let body = try? JSONDecoder().decode(BotJSON.self, from: data)
         switch response.statusCode {
@@ -708,7 +778,7 @@ import OSLog
     /// the background (#902). `ContentView` calls it on `.background` only, so Control
     /// Center and banners (`.inactive`) keep the socket.
     func closeForBackground() {
-        current?.liveGateway?.closeForBackground()
+        current?.liveGateways.forEach { $0.closeForBackground() }
     }
 
     /// Checks the current connection's gateway socket, if one is open, after the network path
@@ -716,8 +786,7 @@ import OSLog
     /// app is not in the background and the path is satisfied; an unsatisfied path alone never
     /// closes a healthy socket. It never opens a connection or a socket.
     func networkPathDidChange() {
-        guard let gateway = current?.liveGateway else { return }
-        Task { await gateway.probe() }
+        for gateway in current?.liveGateways ?? [] { Task { await gateway.probe() } }
     }
 
     /// Ends `server`'s gateway socket as lost because its dashboard restarted on an update
@@ -725,7 +794,7 @@ import OSLog
     /// rather than on its backoff or its next `.active`. Nothing happens for another server.
     func reconnectGateway(server: URL) {
         guard self.server == server.absoluteString else { return }
-        current?.liveGateway?.dropSocket()
+        current?.liveGateways.forEach { $0.dropSocket() }
     }
 
     /// The latest attempt record (#1395) of `server`'s current connection, for About's support

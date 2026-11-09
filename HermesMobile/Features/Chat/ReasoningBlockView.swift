@@ -27,6 +27,7 @@ struct ReasoningBlockView: View {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit(.reasoningBlock)
         if let displayText = ReasoningBlockContent.displayText(from: text) {
             let isLive = liveStreamID != nil
             let detail = isLive
@@ -46,7 +47,7 @@ struct ReasoningBlockView: View {
                 Image("LucideBrain")
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(width: 14, height: 14)
             } status: {
                 EmptyView()
@@ -64,7 +65,7 @@ struct ReasoningBlockView: View {
         } else {
             Text(displayText)
                 .font(AppFont.caption())
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -230,8 +231,8 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        let font = UIFont.preferredFont(forTextStyle: .caption1)
-        let textColor = UIColor.label
+        let font = UIFont.app(forTextStyle: .caption1, at: context.environment.dynamicTypeSize)
+        let textColor = UIColor.appText
         let layoutDirection = context.environment.layoutDirection
 
         context.coordinator.update(

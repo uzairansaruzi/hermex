@@ -180,6 +180,50 @@ enum ChatScrollPolicy {
     static func isNearBottom(distanceFromBottom: CGFloat, isStreaming: Bool) -> Bool {
         distanceFromBottom <= bottomThreshold(isStreaming: isStreaming)
     }
+
+    /// The reader's place in a row, kept through a rewrap (rotation, a narrower
+    /// window, a text-size change) that moves every row under the reader (#1414).
+    /// Approximate: the same share of the row's height, not the same glyph.
+    struct ReflowAnchor: Equatable {
+        /// The row's `renderID`, or the key of a block between rows.
+        let id: String
+        /// Share of the row's height above the reading line, 0...1.
+        let fractionWithinRow: CGFloat
+    }
+
+    /// Where a reflow or a rebuilt transcript keeps the reader (#1528). The top
+    /// is a place of its own: its offset changes with the bars' insets.
+    enum ReadingPlace: Equatable {
+        case top
+        case row(ReflowAnchor)
+
+        /// Whether `id`'s new frame can move this place: the row's own, or any at the top,
+        /// where a frame moving means the bars' insets may have too.
+        func dependsOnFrame(of id: String) -> Bool {
+            switch self {
+            case .top: true
+            case .row(let anchor): anchor.id == id
+            }
+        }
+    }
+
+    /// The row under `readingLineY`, all in the transcript content's coordinates.
+    /// A line in the gap after a row, or below the last one, keeps the end of the
+    /// row above it. Nil at the top and above the first row, which keep the top.
+    static func reflowAnchor(readingLineY: CGFloat, isAtTop: Bool, rowFrames: [String: CGRect]) -> ReflowAnchor? {
+        guard !isAtTop else { return nil }
+        let row = rowFrames
+            .filter { $0.value.height > 0 && $0.value.minY <= readingLineY }
+            .max { $0.value.minY < $1.value.minY }
+        guard let row else { return nil }
+        let fraction = (readingLineY - row.value.minY) / row.value.height
+        return ReflowAnchor(id: row.key, fractionWithinRow: min(max(fraction, 0), 1))
+    }
+
+    /// Where the reading line belongs once the anchor's row has its new frame.
+    static func reflowReadingLineY(anchor: ReflowAnchor, newFrame: CGRect) -> CGFloat {
+        newFrame.minY + anchor.fractionWithinRow * newFrame.height
+    }
 }
 
 /// Transcript disclosure controls (reasoning blocks, tool cards, tool groups,

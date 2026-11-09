@@ -635,6 +635,33 @@ import XCTest
         XCTAssertFalse(chat.model.isCachedCopyProvisional)
     }
 
+    /// A chat on a Profile the Webapp doesn't serve says so, with no Try Again, since retrying
+    /// can't help (#1606), and offers its fix and the host's own words for why (#1611); a refused
+    /// upgrade elsewhere keeps its retry. A chat already showing messages offers the fix on its
+    /// composer's error instead.
+    func testAProfileTheWebappDoesntServeOffersNoTryAgain() async throws {
+        let context = try makeContext()
+        let reason = HermesStandaloneReason(hostText: "profile(s) 'dev' (pid 42) still run their own gateway")
+        for (failure, retries) in [(BotFailure.profileNotServed("dev", reason), false), (.upgradeRefused(403), true)] {
+            let wire = HermesOfflineWire(rows: [])
+            wire.connectFailure = failure
+            let chat = makeChat(wire, target: .session(profile: "dev", key: "tip"))
+            await chat.model.reconnectStreamIfNeeded(modelContext: context)
+            chat.model.prepareInitialMessageLoad(modelContext: context)
+            await chat.model.loadMessages(modelContext: context)
+            XCTAssertEqual(chat.model.errorMessage, failure.localizedDescription, "\(failure)")
+            XCTAssertEqual(chat.model.errorMayRetry, retries, "\(failure)")
+            XCTAssertEqual(chat.model.errorUnserved, retries ? nil : HermesUnservedProfile(profile: "dev", hostReason: reason.hostText), "\(failure)")
+        }
+
+        let shown = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .session(profile: "dev", key: "tip"))
+        await shown.model.loadMessages(modelContext: context)
+        let unserved = HermesUnservedProfile(profile: "dev", hostReason: reason.hostText)
+        shown.model.hermesConnectionDidChange(failure: "not served", unserved: unserved, mayRetry: false)
+        XCTAssertEqual(shown.model.sendErrorMessage, "not served")
+        XCTAssertEqual(shown.model.errorUnserved, unserved)
+    }
+
     /// A Bot Chat whose attach connected before the cache could show, but whose history read
     /// failed, keeps its cached copy as the offline state rather than an empty screen (#1144).
     func testABotChatAttachedBeforeItsCacheShowsKeepsItWhenHistoryFails() async throws {
@@ -967,8 +994,8 @@ import XCTest
         wire.submitGate = reply
         chat.reconnect.open()
         await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
-        chat.model.hermesConnectionDidChange(failure: nil)
-        chat.model.hermesConnectionDidChange(failure: nil)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
         reply.open()
         await waitUntil("the host took it") { chat.model.waitingSend == nil }
 
@@ -1020,7 +1047,7 @@ import XCTest
         XCTAssertEqual(kept?.text, "Ship it")
         XCTAssertEqual(kept?.botSubmissionUncertain, true)
         XCTAssertNil(kept?.waitingSend)
-        chat.model.hermesConnectionDidChange(failure: nil)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
         XCTAssertEqual(wire.prompts, ["Ship it"])
     }
 

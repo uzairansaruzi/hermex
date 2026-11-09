@@ -5,7 +5,6 @@ struct SlashCommandAutocompleteView: View {
     // than the rows it actually draws.
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
     @ScaledMetric(relativeTo: .subheadline) private var emptyPanelHeight: CGFloat = 64
-    private let maxPanelHeight: CGFloat = 280
 
     let query: String
     let selectedModelID: String?
@@ -60,7 +59,7 @@ struct SlashCommandAutocompleteView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: panelHeight(for: results, parsed: parsed))
+        .composerPanelHeight(panelHeight(for: results, parsed: parsed))
         .task(id: rankingInput) {
             let ranked = await rankingInput.rankedResults()
             // A background pass does not inherit this task's cancellation, so
@@ -132,7 +131,7 @@ struct SlashCommandAutocompleteView: View {
     private func panelHeight(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> CGFloat {
         let rowCount = visibleRowCount(for: results, parsed: parsed)
         guard rowCount > 0 else { return emptyPanelHeight }
-        return min(maxPanelHeight, CGFloat(rowCount) * rowHeight)
+        return CGFloat(rowCount) * rowHeight
     }
 
     private func visibleRowCount(for results: SlashAutocompleteResults, parsed: ParsedSlashQuery) -> Int {
@@ -156,8 +155,8 @@ struct SlashCommandAutocompleteView: View {
             // panel when no skill matches, so an empty pass here only means a
             // stale frame before the newer rows land.
             Text("No commands or skills match \"\(parsed.commandName)\"")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(AppFont.subheadline())
+                .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
         } else {
@@ -167,28 +166,16 @@ struct SlashCommandAutocompleteView: View {
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(commands.enumerated()), id: \.element.id) { index, command in
+                    ForEach(commands, id: \.id) { command in
                         commandRow(command)
-
-                        if index < commands.count - 1 || !skills.isEmpty || !agentCommands.isEmpty {
-                            rowDivider
-                        }
                     }
 
-                    ForEach(Array(skills.enumerated()), id: \.element.id) { index, skill in
+                    ForEach(skills, id: \.id) { skill in
                         skillRow(skill)
-
-                        if index < skills.count - 1 || !agentCommands.isEmpty {
-                            rowDivider
-                        }
                     }
 
-                    ForEach(Array(agentCommands.enumerated()), id: \.element.id) { index, command in
+                    ForEach(agentCommands, id: \.id) { command in
                         agentCommandRow(command)
-
-                        if index < agentCommands.count - 1 {
-                            rowDivider
-                        }
                     }
                 }
             }
@@ -264,7 +251,7 @@ struct SlashCommandAutocompleteView: View {
             case .command, .skill:
                 return .system(.subheadline, design: .monospaced).weight(.semibold)
             case .skillName:
-                return Font.subheadline.weight(.semibold)
+                return AppFont.subheadline(weight: .semibold)
             }
         }
 
@@ -273,7 +260,7 @@ struct SlashCommandAutocompleteView: View {
             case .command:
                 return .system(.footnote, design: .monospaced)
             case .skill, .skillName:
-                return .footnote
+                return AppFont.footnote()
             }
         }
     }
@@ -290,21 +277,21 @@ struct SlashCommandAutocompleteView: View {
         HStack(spacing: 12) {
             if let icon {
                 Image(systemName: icon)
-                    .font(.caption2.weight(.semibold))
+                    .font(AppFont.caption2(weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .accessibilityHidden(true)
             }
 
             Text(name)
                 .font(style.nameFont)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .lineLimit(1)
                 .layoutPriority(2)
 
             if let hint {
                 Text(hint)
                     .font(style.hintFont)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .layoutPriority(1)
             }
@@ -312,8 +299,8 @@ struct SlashCommandAutocompleteView: View {
             Spacer(minLength: 8)
 
             Text(detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption())
+                .foregroundStyle(.appSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
@@ -322,10 +309,6 @@ struct SlashCommandAutocompleteView: View {
         .contentShape(Rectangle())
     }
 
-    private var rowDivider: some View {
-        Divider()
-            .padding(.horizontal, 16)
-    }
 
     @ViewBuilder
     private func subArgList(for command: SlashCommand, results: SlashAutocompleteResults) -> some View {
@@ -340,19 +323,15 @@ struct SlashCommandAutocompleteView: View {
     private func skillSubArgList(_ filtered: [SkillSlashSuggestion]) -> some View {
         if filtered.isEmpty {
             skillSubArgEmptyText
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(AppFont.subheadline())
+                .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
         } else {
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, skill in
+                    ForEach(filtered, id: \.id) { skill in
                         skillSubArgRow(skill)
-
-                        if index < filtered.count - 1 {
-                            rowDivider
-                        }
                     }
                 }
             }
@@ -376,21 +355,21 @@ struct SlashCommandAutocompleteView: View {
 
         if filtered.isEmpty {
             Text("No matches for \"\(parsed.argQuery)\"")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(AppFont.subheadline())
+                .foregroundStyle(.appSecondary)
                 .padding(.vertical, 20)
                 .frame(maxWidth: .infinity)
         } else {
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(filtered.enumerated()), id: \.offset) { index, item in
+                    ForEach(Array(filtered.enumerated()), id: \.offset) { _, item in
                         Button {
                             onSelectSubArg(item)
                         } label: {
                             HStack(spacing: 12) {
                                 Text(subArgDisplayText(item, for: command))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
+                                    .font(AppFont.subheadline())
+                                    .foregroundStyle(.appPrimary)
                                     .lineLimit(1)
 
                                 Spacer(minLength: 0)
@@ -398,14 +377,14 @@ struct SlashCommandAutocompleteView: View {
                                 if command.subArgs == .models,
                                    item == selectedModelID {
                                     Image(systemName: "checkmark")
-                                        .font(.caption)
+                                        .font(AppFont.caption())
                                         .foregroundStyle(Color.accentColor)
                                 }
 
                                 if command.subArgs == .reasoningLevels,
                                    item == selectedReasoningEffort {
                                     Image(systemName: "checkmark")
-                                        .font(.caption)
+                                        .font(AppFont.caption())
                                         .foregroundStyle(Color.accentColor)
                                 }
                             }
@@ -414,11 +393,6 @@ struct SlashCommandAutocompleteView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-
-                        if index < filtered.count - 1 {
-                            Divider()
-                                .padding(.horizontal, 16)
-                        }
                     }
                 }
             }
@@ -454,17 +428,13 @@ struct SlashCommandAutocompleteView: View {
     private func hostArgumentList(_ items: [HermesSlashCompletion.Item]) -> some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     Button {
                         onSelectHostArgument(item)
                     } label: {
                         rowContent(name: item.display, hint: nil, detail: item.meta, style: .command)
                     }
                     .buttonStyle(.plain)
-
-                    if index < items.count - 1 {
-                        rowDivider
-                    }
                 }
             }
         }

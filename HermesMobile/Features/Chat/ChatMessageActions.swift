@@ -100,7 +100,7 @@ struct ChatMessageActionMenu: View {
                 kind: .regenerate,
                 title: String(localized: "Regenerate Response"),
                 systemImage: "arrow.clockwise",
-                isEnabled: !(isViewingCachedData || hasActiveStream || isRegeneratingMessage),
+                isEnabled: !(isViewingCachedData || hasActiveStream || isRegeneratingMessage || isEditingMessage),
                 perform: { onRegenerate(context) }
             ))
         }
@@ -110,7 +110,7 @@ struct ChatMessageActionMenu: View {
                 kind: .edit,
                 title: String(localized: "Edit Message"),
                 systemImage: "pencil",
-                isEnabled: !(isViewingCachedData || hasActiveStream || isEditingMessage),
+                isEnabled: !(isViewingCachedData || hasActiveStream || isRegeneratingMessage || isEditingMessage),
                 perform: { onEdit(context) }
             ))
         }
@@ -156,7 +156,8 @@ struct SelectableTextPresentationView: View {
         NavigationStack {
             SelectableTextView(text: selection.text)
                 .accessibilityIdentifier("selectable-response-text")
-                .background(Color(.systemBackground))
+                .background(Color(.appCanvas))
+                .themedPageBackground()
                 .navigationTitle("Select Text")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -177,8 +178,8 @@ struct SelectableTextView: UIViewRepresentable {
         let textView = UITextView()
         textView.isEditable = false
         textView.isSelectable = true
-        textView.backgroundColor = .systemBackground
-        textView.font = .preferredFont(forTextStyle: .body)
+        textView.backgroundColor = .appCanvas
+        textView.font = .app(forTextStyle: .body, at: context.environment.dynamicTypeSize)
         textView.adjustsFontForContentSizeCategory = true
         // A wrapped UITextView does not inherit SwiftUI's layoutDirection; `.natural`
         // lets each paragraph align by its own writing direction so RTL message text
@@ -208,11 +209,12 @@ struct EditMessageSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 TextEditor(text: $editDraft)
-                    .font(.body)
+                    .font(AppFont.body())
                     .padding()
                     .scrollContentBackground(.hidden)
-                    .background(Color(.systemGroupedBackground))
+                    .background(Color(.appGroupedCanvas))
             }
+            .themedPageBackground()
             .navigationTitle("Edit Message")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -230,6 +232,7 @@ struct EditMessageSheet: View {
                 }
             }
         }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .adaptiveFormPresentation()
     }

@@ -271,6 +271,29 @@ import SwiftUI
         XCTAssertNil(editor.draft.appearance.expression)
     }
 
+    func testABareRowFromABotChatReadsTheRealLookAndRevisionBeforeSaving() async throws {
+        let bare = profile()
+        let (editor, wire, _) = try makeEditor(profile: bare, details: details())
+        wire.roster = .object(["profiles": .array([.object([
+            "name": .string("same"),
+            "ui_meta": .object(["hermes-bots": .object(["title": .string("Chief"), "sectionId": .string("desktop-section")])]),
+            "ui_meta_revisions": .object(["hermes-bots": .number(3)])
+        ])])])
+        await editor.load()
+        XCTAssertEqual(editor.draft.appearance.title, "Chief")
+
+        editor.setShape(.hexagon)
+        var sent: [String: BotJSON] = [:]
+        wire.configure = { params in
+            sent = params
+            return .object(["ok": .bool(true), "applied": .object(["ui_meta": .bool(true)])])
+        }
+        await editor.save()
+
+        XCTAssertEqual(sent["ui_meta_expected_revisions"]?["hermes-bots"], .number(3))
+        XCTAssertEqual(sent["ui_meta"]?["hermes-bots"]["sectionId"], .string("desktop-section"), "Desktop's keys survive")
+    }
+
     func testExpressionKeepsAnUploadedPhoto() async throws {
         let connection = connection(name: "Mac")
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())

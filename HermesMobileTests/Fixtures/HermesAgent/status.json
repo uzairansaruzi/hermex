@@ -30,12 +30,12 @@
       "status" : "ok"
     }
   },
-  "config_version" : 46,
+  "config_version" : 52,
   "disk" : {
-    "free_mb" : 53113,
+    "free_mb" : 29024,
     "pressure" : "fixture-redacted",
     "total_mb" : 471482,
-    "used_percent" : 88.7
+    "used_percent" : 93.8
   },
   "gateway_busy" : false,
   "gateway_drainable" : true,
@@ -44,11 +44,13 @@
   "gateway_mode" : "fixture-redacted",
   "gateway_platforms" : {},
   "gateway_running" : true,
-  "gateway_shared_with" : null,
+  "gateway_shared_with" : [
+    "hermex-fixtures"
+  ],
   "gateway_state" : "fixture-redacted",
   "gateway_updated_at" : "fixture-redacted",
   "install_id" : "fixture-install",
-  "latest_config_version" : 46,
+  "latest_config_version" : 52,
   "memory" : {
     "boot_id" : "fixture-redacted",
     "gateway_rss_mb" : null,
@@ -65,9 +67,10 @@
   "overall" : "fixture-redacted",
   "parked_profiles" : [],
   "profiles" : [
-    "inbox-triage"
+    "hermex-fixtures"
   ],
   "release_date" : "fixture-redacted",
   "restart_drain_timeout" : 60,
-  "version" : "0.21.5"
+  "shared_profile_warning" : false,
+  "version" : "0.23.0"
 }

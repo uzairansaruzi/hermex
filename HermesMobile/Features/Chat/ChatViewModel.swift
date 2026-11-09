@@ -155,7 +155,7 @@ struct ApprovalPromptState: Equatable, Identifiable {
     }
 
     /// What Allow session and Always allow cover on this webui server. The
-    /// overlay always offers both.
+    /// card always offers both.
     var scopeLine: AttributedString? {
         ApprovalScope.line(
             keys: patternKeys, description: pending.description, command: pending.command, toolName: nil, host: .webui
@@ -279,6 +279,8 @@ final class ChatViewModel {
 
     private(set) var messages: [ChatMessage] = [] {
         didSet {
+            // A text-only reveal tick patches its one transcript row instead (`replaceStreamingReply`).
+            guard !patchesStreamingReplyInPlace else { return }
             recomputeDisplayedTranscriptMessages()
             if hermesTurn != nil, !Self.onlyRepliesChanged(from: oldValue, to: messages) { updateHermesRewindableMessageIDs() }
         }
@@ -293,6 +295,12 @@ final class ChatViewModel {
     /// `messagesOffset` changes. Views read this single cached value instead of
     /// re-running the full classification pass on every body evaluation.
     private(set) var displayedTranscriptMessages: [TranscriptMessage] = []
+    /// Bumped by every full transcript derivation and never by a text-only reveal tick, so a
+    /// view can reuse its own history-wide derivations (turn folds, end-of-turn rows) until
+    /// the transcript's structure changes (#1417).
+    private(set) var transcriptStructureRevision = 0
+    /// True only inside `replaceStreamingReply`, while `messages` changes without a re-derivation.
+    @ObservationIgnored private var patchesStreamingReplyInPlace = false
     private(set) var isLoading = false
     private(set) var isLoadingOlderMessages = false
     private(set) var isStartingChat = false
@@ -308,6 +316,10 @@ final class ChatViewModel {
     @ObservationIgnored private var isCheckingHermesForkParent = false
     private(set) var isEditingMessage = false
     private(set) var isRegeneratingMessage = false
+    /// An Edit, Regenerate or `/retry` is under way. On a canonical host each is a rewind, then a
+    /// send of its own (#1603), so a second one now could share the first one's rewind and run the
+    /// agent twice: it waits for this one.
+    private var isChangingHermesHistory: Bool { isEditingMessage || isRegeneratingMessage }
     /// A Hermes `/undo` is out (#1049). Send waits, since each one removes an exchange for good.
     private(set) var isUndoingExchange = false
     private(set) var isCompressingSession = false
@@ -334,10 +346,17 @@ final class ChatViewModel {
     private(set) var latestRunOutcome: TranscriptTurnRunOutcome?
     var activeStreamRecoveryState: ActiveStreamRecoveryState { turn.recoveryState }
     var liveTokensPerSecond: Double? { turn.liveTokensPerSecond }
-    private(set) var errorMessage: String?
+    private(set) var errorMessage: String? { didSet { errorMayRetry = true; errorUnserved = nil } }
+    /// Whether the chat's error offers Try Again; false for a failure retrying can't fix.
+    private(set) var errorMayRetry = true
+    /// The Profile a Webapp doesn't serve when that is the chat's error, or the composer's in a
+    /// chat that shows messages (#1611): its fix shows with it, and the host's own words under
+    /// the chat's error. Another error clears it.
+    private(set) var errorUnserved: HermesUnservedProfile?
     private(set) var sendErrorMessage: String? {
         didSet {
             sendErrorIsFromStreamRecovery = false
+            errorUnserved = nil
             // Slash commands re-set the same text after a failed send; keep the kind then.
             if sendErrorMessage != oldValue, sendErrorRuntimeStale != nil { sendErrorRuntimeStale = nil }
         }
@@ -416,6 +435,7 @@ final class ChatViewModel {
     }
 
     private func recomputeDisplayedTranscriptMessages() {
+        transcriptStructureRevision &+= 1
         let reasoningGroups = Self.reasoningDisplayGroups(
             messages: messages,
             messageOffset: messagesOffset,
@@ -456,6 +476,12 @@ final class ChatViewModel {
     /// An archived Bot Chat, opened by its key, keeps its cached copy under this lineage root,
     /// and reads its bot's Bot Chat's copy of that root while it has none (#1144). Nil for any
     /// other chat.
+    /// Whether the transcript follows the live edge. Here rather than in `ChatView`, so a
+    /// size-class change's new view knows whether the reader was up in history (#1528).
+    var followLatch = ChatScrollPolicy.FollowLatch()
+    /// The turns the reader opened, here for the same reason: the row they are reading can sit
+    /// inside one.
+    var expandedTurnKeys: Set<String> = []
     @ObservationIgnored var hermesBotChatRoot: String?
     /// A session's lineage root as its row or link named it (`HermesSessionChat.lineageRoot`);
     /// nil asks the cache.
@@ -595,21 +621,47 @@ final class ChatViewModel {
     /// The one composer line shown while this chat's own messages wait behind
     /// the run. It is derived from the queue, so it goes away when the queue
     /// drains or is handed over, and it never enters a stream snapshot. A Hermes
-    /// session's queued prompt shows as `queuedPromptMessage` instead.
+    /// session's queued prompts show as `queuedPromptMessages` instead.
     var queuedMessagesReceipt: String? {
         guard !queuedSlashMessages.isEmpty else { return nil }
         return String(localized: "Queued, sends when this run finishes")
     }
-    /// The prompt a Hermes host holds for its next turn, as the transcript's pending bubble
-    /// shows it (#1379): outside `messages`, and gone once that turn's start shows the real
-    /// row or a Stop discards it. Its reference lines are chips, as on a sent row.
-    var queuedPromptMessage: ChatMessage? {
-        hermesTurn?.queuedPrompt.map {
+    /// The prompts a Hermes host holds for later turns, as the transcript's pending bubbles show
+    /// them (#1379): outside `messages`, in the order the host runs them, one per canonical
+    /// admission (#1602), and each gone once its turn's start shows the real row or a Stop
+    /// discards it. Their reference lines are chips, as on a sent row.
+    var queuedPromptMessages: [ChatMessage] {
+        (hermesTurn?.queuedPrompts ?? []).map {
             HermesChatTurnCoordinator.displayed(ChatMessage(
-                role: "user", content: $0, timestamp: nil, messageId: "hermes-queued-prompt"
+                role: "user", content: $0.text, timestamp: nil, messageId: "hermes-queued-prompt-\($0.id)"
             ))
         }
     }
+
+    /// A turn a canonical host lost across its restart (#1602), as its row shows it: with its
+    /// prompt's bubble only when the transcript doesn't already end on that prompt.
+    var lostTurn: ChatLostTurn? {
+        guard let lost = hermesTurn?.lostTurn else { return nil }
+        let last = messages.last
+        let shown = last?.role == "user" && last?.content?.trimmingCharacters(in: .whitespacesAndNewlines)
+            == lost.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ChatLostTurn(prompt: shown ? nil : HermesChatTurnCoordinator.displayed(ChatMessage(
+            role: "user", content: lost.text, timestamp: nil, messageId: "hermes-lost-turn-\(lost.admissionID)"
+        )))
+    }
+
+    /// Discard on the lost turn's row: the host runs the prompts queued behind it.
+    func discardLostTurn() async {
+        // A second tap while the first is on its way sends nothing.
+        guard let hermesTurn, !isDiscardingLostTurn else { return }
+        isDiscardingLostTurn = true
+        defer { isDiscardingLostTurn = false }
+        do { try await hermesTurn.discardLostTurn() } catch {
+            if error as? BotFailure == .stale { return }
+            sendErrorMessage = String(localized: "Couldn’t discard the lost reply. Try again.")
+        }
+    }
+    private var isDiscardingLostTurn = false
     private(set) var steeringConfirmationNotice: String?
     /// "Couldn't steer", plus the system's reason for a network or HTTP
     /// failure, after the latest steer didn't reach the run. The composer shows
@@ -622,6 +674,37 @@ final class ChatViewModel {
     var isSessionApprovalBypassEnabled: Bool {
         hermesRequests?.approvalBypass ?? pendingActionCoordinator.isSessionApprovalBypassEnabled
     }
+    /// Model settings' Approvals row. A webui session has only its yolo route, and no mode.
+    var composerApprovals: ComposerApprovals {
+        if let requests = hermesRequests {
+            return ComposerApprovals(
+                isYoloOn: requests.approvalBypass, offersModes: true, mode: requests.approvalMode,
+                mayTurnOffYolo: requests.mayTurnOffApprovalBypass,
+                isChanging: requests.isChangingApprovalBypass, errorMessage: requests.errorMessage
+            )
+        }
+        return ComposerApprovals(
+            isYoloOn: pendingActionCoordinator.isSessionApprovalBypassEnabled, offersModes: false, mode: nil,
+            mayTurnOffYolo: true,
+            isChanging: pendingActionCoordinator.isChangingApprovalBypass,
+            errorMessage: pendingActionCoordinator.approvalBypassErrorMessage
+        )
+    }
+
+    /// Sets this chat's approval bypass from Model settings.
+    func setSessionApprovalBypass(_ enabled: Bool) async {
+        if let requests = hermesRequests {
+            await requests.setApprovalBypass(enabled)
+        } else {
+            await pendingActionCoordinator.setApprovalBypass(enabled)
+        }
+    }
+
+    /// Sets the Profile's approval mode. Only a Hermes session has one.
+    func selectApprovalMode(_ mode: HermesApprovalMode) async {
+        await hermesRequests?.setApprovalMode(mode)
+    }
+
     var clarificationPrompt: ClarificationPromptState? { pendingActionCoordinator.clarificationPrompt }
     var isRespondingToClarification: Bool { pendingActionCoordinator.isRespondingToClarification }
     var clarificationErrorMessage: String? { pendingActionCoordinator.clarificationErrorMessage }
@@ -964,7 +1047,7 @@ final class ChatViewModel {
     /// The level a Hermes host sends when the model takes less than the one picked (#1016).
     var composerSentReasoningEffort: String? { hermesSettings?.sentEffort }
 
-    /// A Hermes session's Fast mode (#1142); nil hides the chip, as on a webui session.
+    /// A Hermes session's Fast mode (#1142); nil hides its row, as on a webui session.
     var composerFastMode: Bool? { hermesSettings?.fast }
 
     /// Whether that Fast mode can change now (#1142).
@@ -1054,8 +1137,10 @@ final class ChatViewModel {
     /// One reveal tick: shows buffered assistant text through `StreamingRevealGate`
     /// and all buffered reasoning, then reschedules only while a fragment is held.
     /// Completion paths (done/cancel/error/interim/snapshot) skip the gate via
-    /// `flushPendingStreamingContent()`, which cancels any scheduled tick.
+    /// `flushPendingStreamingContent()`, which cancels any scheduled tick. Each tick is a
+    /// `Stream Batch Apply` interval with `forced=0`; a forced flush reports `forced=1`.
     private func revealStreamingContentTick() {
+        let signpost = performanceSignposter.beginInterval("Stream Batch Apply")
         var didMutate = false
         if flushAssistantTokens(throughRevealGate: true) {
             didMutate = true
@@ -1071,6 +1156,10 @@ final class ChatViewModel {
         if heldStreamingFragmentLastTick {
             scheduleStreamingContentFlush()
         }
+        performanceSignposter.endInterval(
+            "Stream Batch Apply", signpost,
+            "mutated=\(didMutate ? 1 : 0, privacy: .public) forced=0"
+        )
     }
 
     private func cancelPendingStreamingContentFlush() {
@@ -1106,7 +1195,10 @@ final class ChatViewModel {
         if didMutate {
             scheduleStreamingScrollTrigger()
         }
-        performanceSignposter.endInterval("Stream Batch Apply", signpost, "mutated=\(didMutate ? 1 : 0, privacy: .public)")
+        performanceSignposter.endInterval(
+            "Stream Batch Apply", signpost,
+            "mutated=\(didMutate ? 1 : 0, privacy: .public) forced=1"
+        )
     }
 
     private var requestProfileName: String? {
@@ -1794,6 +1886,21 @@ final class ChatViewModel {
     /// Stops long pastes still staging; `ChatView` calls it as it disappears.
     func cancelPastedTextStaging() {
         attachmentCoordinator.cancelPastedTextStaging()
+    }
+
+    /// Whether a send may be reading the staged files, or its outcome is unknown (#508), so a
+    /// staged paste stays read-only (#1456). A send reads each file only when it gets to it.
+    var stagedFilesAreSending: Bool { isSubmittingHermesPrompt || isHermesSubmissionUncertain }
+
+    func stagedPasteText(_ attachment: PendingAttachment) async -> StagedPasteText? {
+        await attachmentCoordinator.stagedPasteText(attachment)
+    }
+
+    /// Saves an edited staged paste, unless a send took it after the sheet opened. Returns
+    /// why it did not save, or nil once it has.
+    func saveStagedPaste(_ attachment: PendingAttachment, text: String) async -> String? {
+        guard !stagedFilesAreSending else { return StagedPasteText.sendingNotice }
+        return await attachmentCoordinator.replaceStagedPaste(attachment, with: text)
     }
 
     /// Re-uploads a restored draft attachment from its durable local copy,
@@ -3216,7 +3323,7 @@ final class ChatViewModel {
 
     /// Sends one prompt to the Hermes session in `mode`, once (#1010). A Send shows the
     /// prompt at once and a Stop & send once it takes over; a steer shows its echo once
-    /// accepted; a queued prompt shows as `queuedPromptMessage` until the host runs it.
+    /// accepted; a queued prompt shows in `queuedPromptMessages` until the host runs it.
     /// `.kept` keeps the draft: the host refused it, did not confirm it, or it was not sent.
     /// `shown` is the prompt's row when it differs from what is sent, as for a goal's message;
     /// such a prompt leaves the staged files where they are. A plain-text Send passes
@@ -3302,6 +3409,9 @@ final class ChatViewModel {
                 } else {
                     sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
                 }
+            } else if error is HermesFenceRefusal {
+                drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey)
+                sendErrorMessage = String(localized: "The reply moved on before your message reached it. Send it again.")
             } else if mode.definitelyRejected(error) {
                 drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey)
                 sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
@@ -4521,7 +4631,7 @@ final class ChatViewModel {
     }
 
     /// `/yolo` in a Hermes chat (#1036): this session's approval bypass, through the same
-    /// `config.set yolo` as the approval card's Skip all and the bypass pill.
+    /// `config.set yolo` as the approval card's Skip all and Model settings' switch.
     private func toggleHermesApprovalBypassFromSlashCommand() async -> SlashCommandExecutionResult {
         guard let requests = hermesRequests else {
             return .unsupported(friendlyMessage: SlashCommandExecutor.unsupportedMessage(for: "yolo"))
@@ -6221,6 +6331,7 @@ final class ChatViewModel {
             messageActionErrorMessage = String(localized: "The edited message cannot be empty.")
             return false
         }
+        guard !isChangingHermesHistory else { return false }
         guard let rowID = hermesRewindPrompt(for: context)?.rowID else {
             messageActionErrorMessage = String(localized: "This message can’t be changed any more.")
             return false
@@ -6234,6 +6345,7 @@ final class ChatViewModel {
     }
 
     private func regenerateHermesResponse(_ context: MessageActionContext, on hermes: HermesChatTurnCoordinator) async -> Bool {
+        guard !isChangingHermesHistory else { return false }
         guard let prompt = hermesRewindPrompt(for: context), let rowID = prompt.rowID else {
             messageActionErrorMessage = String(localized: "This message can’t be changed any more.")
             return false
@@ -6256,6 +6368,7 @@ final class ChatViewModel {
         guard Self.isHermesRewindable(prompt), let rowID = prompt.rowID else {
             return notDelivered(String(localized: "This message can’t be changed any more."))
         }
+        guard !isChangingHermesHistory else { return notDelivered(String(localized: "Wait for the current reply to finish.")) }
         isRegeneratingMessage = true
         stopListening()
         defer { isRegeneratingMessage = false }
@@ -6307,7 +6420,9 @@ final class ChatViewModel {
     /// cards it replaced go, and the turn streams after it; the turn's end re-reads the newest
     /// rows. `retrying` is Retry on the last turn, which failed: when the chat showed that turn's
     /// prompt and it is still unsaved as the last one, it is cut as its row, and a 4018 hides
-    /// Retry. Returns why it failed, with nothing cut, or nil.
+    /// Retry. Returns why it failed, with nothing cut, or nil. On a canonical host the cut can go
+    /// through while the send doesn't (#1341, decision 5): the rows go, the text waits in
+    /// `unsentHermesEdit` for the composer, and the reason says so.
     private func rewindHermesTranscript(before rowID: Int, sending text: String, on hermes: HermesChatTurnCoordinator,
                                         reconnect: String, retrying: HermesChatActivity.RetryTarget? = nil) async -> String? {
         guard !isHermesSubmissionUncertain else { return reconnect }
@@ -6325,22 +6440,31 @@ final class ChatViewModel {
         defer { isStartingChat = false }
         do {
             try await hermes.rewind(before: rowID, text: text, discardsLaterPrompts: discardsLaterPrompts)
+        } catch is HermesChatTurnCoordinator.RewoundButNotSent {
+            removeCutRows(cut, insertingPrompt: nil)
+            unsentHermesEdit = text
+            return String(localized: "The later messages were removed, but your edited message wasn’t sent. It’s in the message box: send it again.")
         } catch {
             if retrying != nil, case BotSettingFailure.rejected(4018, _) = error { hermes.retryWasRefused(at: rowID) }
             return hermesHistoryFailure(error, on: hermes, reconnect: reconnect)
         }
-        // Rows the turn's first frames added stay after the prompt.
+        removeCutRows(cut, insertingPrompt: HermesChatTurnCoordinator.displayed(ChatMessage(
+            role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: "local-\(UUID().uuidString)"
+        )))
+        return nil
+    }
+
+    /// Drops the rows a rewind cut, with the cards anchored to them, and puts `prompt`, when
+    /// there is one, where the cut began. Rows the turn's first frames added stay after it.
+    private func removeCutRows(_ cut: Set<String>, insertingPrompt prompt: ChatMessage?) {
         let start = messages.firstIndex { cut.contains($0.id) } ?? messages.endIndex
         var next = messages.filter { !cut.contains($0.id) }
-        next.insert(HermesChatTurnCoordinator.displayed(ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970,
-                                                                    messageId: "local-\(UUID().uuidString)")),
-                    at: min(start, next.endIndex))
+        if let prompt { next.insert(prompt, at: min(start, next.endIndex)) }
         messages = next
         transcriptRevision &+= 1
         // A card without an anchor follows the last row, which the cut always takes.
         setCompletedToolCallGroups(completedToolCallGroups.filter { $0.anchorMessageID.map { !cut.contains($0) } ?? false })
         completedReasoningGroups = completedReasoningGroups.filter { $0.anchorMessageID.map { !cut.contains($0) } ?? false }
-        return nil
     }
 
     /// Why a Hermes rewind or `/undo` failed. A refusal is the host's own message, except busy
@@ -6352,6 +6476,14 @@ final class ChatViewModel {
         switch error {
         case let notSent as HermesChatTurnCoordinator.NotSent where notSent.followedReplacedChat:
             return Self.notSentToReplacedChat
+        // A canonical host (#1603) names its refusal: a reply still running, a row it can't cut,
+        // or a fence that moved on, whose newer fences are kept for the next try.
+        case BotSettingFailure.rejected(4001, "session_busy"):
+            return String(localized: "Wait for the current reply to finish.")
+        case BotSettingFailure.rejected(4001, "invalid_params"):
+            return String(localized: "This message can’t be changed any more.")
+        case is HermesFenceRefusal:
+            return String(localized: "This chat changed on the server. Reopen it and try again.")
         case is HermesChatTurnCoordinator.NotSent, BotSettingFailure.rejected(4001, _):
             return reconnect
         case BotSettingFailure.rejected(4009, _):
@@ -6431,6 +6563,9 @@ final class ChatViewModel {
             // Accepted is not idle: the turn's own ending frames settle it.
             do {
                 return try await hermesTurn.interrupt()
+            } catch is HermesFenceRefusal {
+                sendErrorMessage = String(localized: "The reply moved on before Stop reached it. Tap Stop again.")
+                return false
             } catch {
                 sendErrorMessage = String(localized: "The server could not stop the current response.")
                 return false
@@ -7368,7 +7503,7 @@ final class ChatViewModel {
 
         if let index = messages.firstIndex(where: { $0.messageId == messageID }) {
             let existing = messages[index]
-            messages[index] = ChatMessage(
+            replaceStreamingReply(at: index, with: ChatMessage(
                 role: existing.role,
                 content: (existing.content ?? "") + appendedContent,
                 timestamp: existing.timestamp,
@@ -7381,7 +7516,7 @@ final class ChatViewModel {
                 reasoning: existing.reasoning,
                 attachments: existing.attachments,
                 turnTps: existing.turnTps
-            )
+            ))
             return true
         }
 
@@ -7394,6 +7529,46 @@ final class ChatViewModel {
             )
         )
         return true
+    }
+
+    /// Puts the streaming reply at `index`, its text grown by a flush, back into `messages`.
+    /// When the extra text can't change the transcript's structure, only that reply's row is
+    /// patched; any other change re-derives the whole transcript through the `messages`
+    /// observer (#1417).
+    private func replaceStreamingReply(at index: Int, with reply: ChatMessage) {
+        guard let row = textOnlyTranscriptRow(replacing: messages[index], at: index, with: reply) else {
+            messages[index] = reply
+            return
+        }
+
+        patchesStreamingReplyInPlace = true
+        defer { patchesStreamingReplyInPlace = false }
+        messages[index] = reply
+        let patched = displayedTranscriptMessages[row]
+        displayedTranscriptMessages[row] = TranscriptMessage(
+            loadedIndex: patched.loadedIndex,
+            renderID: patched.renderID,
+            anchorID: patched.anchorID,
+            message: reply
+        )
+        // The compaction card's placement matches anchors by message text.
+        recomputeCompressionReferenceCard()
+    }
+
+    /// The transcript row a grown reply can be patched into, or nil when its new text could
+    /// change structure. A shown assistant row with text keeps its turn, row and bubble; only
+    /// reasoning reads reply text (in-text `<think>` blocks, and echo removal for the cards
+    /// anchored to it), so a reply with any reasoning takes the full path.
+    private func textOnlyTranscriptRow(replacing old: ChatMessage, at index: Int, with new: ChatMessage) -> Int? {
+        guard old.role == "assistant", new.role == "assistant", old.messageId == new.messageId,
+              Self.hasTranscriptMessageRowContent(old),
+              Self.reasoningTexts(from: new).isEmpty,
+              let row = displayedTranscriptMessages.lastIndex(where: { $0.loadedIndex == index })
+        else { return nil }
+
+        let anchorID = displayedTranscriptMessages[row].anchorID
+        guard !completedReasoningGroups.contains(where: { $0.anchorMessageID == anchorID }) else { return nil }
+        return row
     }
 
     private func deduplicatedReplayToken(_ token: String, existingContent: String) -> String {
@@ -8523,7 +8698,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         currentModel = model
     }
 
-    func hermesConnectionDidChange(failure: String?) {
+    func hermesConnectionDidChange(failure: String?, unserved: HermesUnservedProfile?, mayRetry: Bool) {
         guard let failure else {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
@@ -8535,9 +8710,12 @@ extension ChatViewModel: HermesChatTurnDelegate {
         // With nothing on screen yet it is the chat's error, with its retry; otherwise the composer's.
         if messages.isEmpty {
             errorMessage = failure
+            errorMayRetry = mayRetry
+            errorUnserved = unserved
         } else {
             sendErrorMessage = failure
             sendErrorIsFromStreamRecovery = true
+            errorUnserved = unserved
         }
     }
 

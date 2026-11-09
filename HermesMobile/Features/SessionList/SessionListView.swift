@@ -114,6 +114,7 @@ struct SessionListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var viewModel: SessionListViewModel
@@ -165,6 +166,7 @@ struct SessionListView: View {
     @AppStorage private var showsClaudeCodeSessions: Bool
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(AppAppearanceSettings.accentHexKey) private var accentHex: String?
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
     @AppStorage(SessionIdentitySettings.initialsKey) private var identityInitials = ""
@@ -259,6 +261,7 @@ struct SessionListView: View {
             }
             .sheet(item: $sessionExportShareItem) { item in
                 SessionExportShareSheet(fileURL: item.fileURL)
+                    .themedPageBackground()
                     .presentationDetents([.medium, .large])
                     .adaptiveFormPresentation()
                     .ignoresSafeArea()
@@ -288,6 +291,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .themedPageBackground()
                 .presentationDetents([.height(180), .medium])
             }
             .sheet(item: $sessionPendingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) { session in
@@ -312,6 +316,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .themedPageBackground()
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $isPresentingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) {
@@ -335,6 +340,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .themedPageBackground()
                 .presentationDetents([.medium])
             }
             .sheet(item: $projectPendingRename, onDismiss: { viewModel.clearProjectSheetError() }) { project in
@@ -354,6 +360,7 @@ struct SessionListView: View {
                         }
                     }
                 }
+                .themedPageBackground()
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $isPresentingAddServer) {
@@ -506,25 +513,25 @@ struct SessionListView: View {
     private var waitingSharedImportBanner: some View {
         HStack(spacing: 12) {
             Image(systemName: "square.and.arrow.down")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Another shared item is waiting")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                 Text("Open it when you are done with this draft.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(.appSecondary)
             }
 
             Spacer(minLength: 0)
 
             Button("Open Next", action: openNextSharedImport)
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline(weight: .semibold))
                 .buttonStyle(.bordered)
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground))
+        .background(Color(.appSurface))
         .overlay(alignment: .bottom) {
             Divider()
         }
@@ -549,7 +556,7 @@ struct SessionListView: View {
     /// to the list first, and the list opens Notifications once it is back on screen.
     /// Regular width pops the detail column on every root selection already.
     private func showNotificationSettings() {
-        guard horizontalSizeClass != .regular, navigationState.destination != nil else {
+        guard !usesSplit, navigationState.destination != nil else {
             selectDestination(.notificationSettings)
             return
         }
@@ -569,12 +576,15 @@ struct SessionListView: View {
         selectDestination(.bots)
     }
 
+    private var usesSplit: Bool {
+        HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass, verticalSizeClass: verticalSizeClass)
+    }
+
     @ViewBuilder
     private var navigationContainer: some View {
-        if horizontalSizeClass == .regular {
+        if usesSplit {
             SessionSplitView(rootRevision: navigationState.rootRevision) {
                 sessionListSurface
-                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
             } detail: {
                 regularWidthDetail
             }
@@ -596,7 +606,7 @@ struct SessionListView: View {
 
     private var sessionListSurface: some View {
         ZStack(alignment: .bottomTrailing) {
-            Color(.systemBackground)
+            Color(.appCanvas)
                 .ignoresSafeArea()
 
             content
@@ -633,7 +643,7 @@ struct SessionListView: View {
                 Text("Choose a session from the sidebar or start a new chat.")
             } actions: {
                 Button("New Chat", action: openNewChat)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
             }
         }
     }
@@ -646,7 +656,8 @@ struct SessionListView: View {
                 session: session,
                 server: server,
                 onAPIError: authManager.handleAPIError,
-                draftStore: draftStore
+                draftStore: draftStore,
+                continuity: navigationState.chatContinuity
             )
                 .id(session.id)
         case .newChat(let route):
@@ -701,7 +712,7 @@ struct SessionListView: View {
                     showsCronSessions: showsCronSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
-                    selectedSessionID: horizontalSizeClass == .regular
+                    selectedSessionID: usesSplit
                         ? navigationState.selectedSessionID
                         : nil,
                     actions: sessionRowActions(toastHost: .scheduled),
@@ -730,7 +741,7 @@ struct SessionListView: View {
     private var content: some View {
         // Computed once per body: grouping filters and sorts every session.
         let groups = scheduledSessionGroups
-        return List {
+        return AppList(rows: .plain) {
             header
                 .sessionsTopChromeListRow()
 
@@ -777,7 +788,7 @@ struct SessionListView: View {
                     isSearchActive: isSearchingSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
-                    selectedSessionID: horizontalSizeClass == .regular
+                    selectedSessionID: usesSplit
                         ? navigationState.selectedSessionID
                         : nil,
                     userIsExpanded: $scheduledSessionsAreExpanded,
@@ -795,7 +806,7 @@ struct SessionListView: View {
                 isSearchActive: isSearchingSessions,
                 showsMessageCount: showsSessionMessageCount,
                 showsWorkspace: showsSessionWorkspace,
-                selectedSessionID: horizontalSizeClass == .regular
+                selectedSessionID: usesSplit
                     ? navigationState.selectedSessionID
                     : nil,
                 actions: sessionRowActions(),
@@ -825,7 +836,7 @@ struct SessionListView: View {
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .scrollPosition(id: $sidebarScrollPosition)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
         .scrollDismissesKeyboard(.interactively)
         // Disclosure subrows are real List rows; drive their fold from the List
         // so insert/remove animates. Value-based so it works with @AppStorage.
@@ -863,10 +874,10 @@ struct SessionListView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "square.and.pencil")
-                    .font(.title3.weight(.semibold))
+                    .font(AppFont.title3(weight: .semibold))
 
                 Text("Chat")
-                    .font(.headline.weight(.semibold))
+                    .font(AppFont.headline(weight: .semibold))
             }
             .foregroundStyle(newSessionButtonForegroundColor)
             .padding(.horizontal, 22)
@@ -938,30 +949,30 @@ struct SessionListView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "archivebox")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.body())
+                    .foregroundStyle(.appSecondary)
                     .frame(width: 24)
                     .accessibilityHidden(true)
 
                 Text("Archived Sessions")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.subheadline(weight: .medium))
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
 
                 if let archivedCount = viewModel.archivedCount {
                     Text("\(archivedCount)")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.footnote(weight: .semibold))
+                        .foregroundStyle(.appSecondary)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 2)
-                        .background(.thinMaterial, in: Capsule())
+                        .background(.appMaterial(.thinMaterial), in: Capsule())
                 }
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.forward")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(.appSecondary)
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 24)
@@ -1015,6 +1026,10 @@ struct SessionListView: View {
         HeaderLogoColor.color(for: headerLogoColorHex)
     }
 
+    private var newSessionButtonTint: (fill: Color, label: Color) {
+        PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: headerLogoColorHex)
+    }
+
     private var newSessionButtonUsesThemeColor: Bool {
         PrimaryActionTintSettings.usesThemeColor(
             isEnabled: tintsPrimaryActions,
@@ -1040,12 +1055,12 @@ struct SessionListView: View {
             return nil
         }
 
-        return selectedHeaderLogoColor
+        return newSessionButtonTint.fill
     }
 
     private var newSessionButtonGlassTint: Color {
         if newSessionButtonUsesThemeColor {
-            return selectedHeaderLogoColor
+            return newSessionButtonTint.fill
         }
 
         return colorScheme == .dark ? .white : .black
@@ -1053,7 +1068,7 @@ struct SessionListView: View {
 
     private var newSessionButtonForegroundColor: Color {
         if newSessionButtonUsesThemeColor {
-            return HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+            return newSessionButtonTint.label
         }
 
         return colorScheme == .dark ? .black : .white
@@ -1085,7 +1100,7 @@ struct SessionListView: View {
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
             hasActiveRows: !activeSessions.isEmpty,
             isViewingCachedData: viewModel.isViewingCachedData,
-            isRegularWidth: horizontalSizeClass == .regular,
+            isRegularWidth: usesSplit,
             destination: navigationState.destination
         )
     }
@@ -1202,7 +1217,7 @@ struct SessionListView: View {
     private func openSearchFromKeyboard() {
         searchFieldIsFocused = false
 
-        if horizontalSizeClass != .regular {
+        if !usesSplit {
             navigationState.clearDestination()
         }
 
@@ -1334,7 +1349,7 @@ struct SessionListView: View {
                 archiveNumber,
                 swipedOn: toastHost,
                 destination: navigationState.destination,
-                isRegularWidth: horizontalSizeClass == .regular
+                isRegularWidth: usesSplit
             )
             if shownOn != nil {
                 showArchiveUndoToast(for: session)
@@ -1961,7 +1976,7 @@ private struct PendingNewChatView: View {
 
     private var pendingContent: some View {
         ZStack(alignment: .bottom) {
-            Color(.systemBackground)
+            Color(.appCanvas)
                 .ignoresSafeArea()
 
             ContentUnavailableView {
@@ -1984,6 +1999,7 @@ private struct PendingNewChatView: View {
             .padding(.horizontal)
             .padding(.bottom, 12)
         }
+        .themedPageBackground()
         .navigationTitle("New Chat")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -1996,19 +2012,19 @@ private struct PendingNewChatView: View {
                 .focused($composerIsFocused)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 13)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(.appMaterial(.ultraThinMaterial), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(Color(.separator).opacity(0.18), lineWidth: 0.5)
+                        .strokeBorder(Color(.appSeparator).opacity(0.18), lineWidth: 0.5)
                 }
                 .submitLabel(.send)
 
             Button {} label: {
                 Image(systemName: "arrow.up")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .font(AppFont.headline(weight: .bold))
+                    .foregroundStyle(Color(.appTextSecondary))
                     .frame(width: 44, height: 44)
-                    .background(Color(.tertiarySystemFill), in: Circle())
+                    .background(Color(.appFillTertiary), in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(true)
@@ -2022,8 +2038,8 @@ private struct PendingNewChatView: View {
                 .foregroundStyle(.orange)
 
             Text(message)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .font(AppFont.footnote())
+                .foregroundStyle(.appSecondary)
                 .lineLimit(2)
 
             Spacer(minLength: 0)
@@ -2031,12 +2047,12 @@ private struct PendingNewChatView: View {
             Button("Retry") {
                 Task { await retryCreateSession() }
             }
-            .font(.footnote.weight(.semibold))
+            .font(AppFont.footnote(weight: .semibold))
             .disabled(viewModel.isCreatingSession)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.appMaterial(.ultraThinMaterial), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func createSessionIfNeeded() async {

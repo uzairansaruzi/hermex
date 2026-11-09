@@ -80,6 +80,8 @@ struct ChatAttachmentPreviewView: View {
     private let item: ChatAttachmentPreviewItem
     @State private var viewModel: ChatAttachmentPreviewViewModel
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsCodeLines = false
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     init(
         session: SessionSummary,
@@ -114,6 +116,7 @@ struct ChatAttachmentPreviewView: View {
                     unavailableContent(String(localized: "Preview is not available for this attachment."))
                 }
             }
+            .themedPageBackground()
             .navigationTitle(item.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -161,22 +164,22 @@ struct ChatAttachmentPreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private func textContent(_ file: FileResponse) -> some View {
-        ScrollView([.vertical, .horizontal]) {
+        ScrollView(wrapsCodeLines ? .vertical : [.vertical, .horizontal]) {
             VStack(alignment: .leading, spacing: 12) {
                 fileHeader
 
                 Text(file.content ?? "")
-                    .font(.system(.body, design: .monospaced))
+                    .font(AppFont.code(style: .body, customSize: customCodeSize))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     @ViewBuilder
@@ -194,7 +197,7 @@ struct ChatAttachmentPreviewView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .background(Color(.appCanvas))
         } else {
             unavailableContent(String(localized: "Could not preview this image."))
         }
@@ -207,9 +210,9 @@ struct ChatAttachmentPreviewView: View {
             VStack(spacing: 8) {
                 Text(message)
                 Text(item.displayPath)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .fontDesign(.monospaced)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .textSelection(.enabled)
             }
         }
@@ -218,15 +221,15 @@ struct ChatAttachmentPreviewView: View {
     private var fileHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(item.displayPath)
-                .font(.caption)
+                .font(AppFont.caption())
                 .fontDesign(.monospaced)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .textSelection(.enabled)
 
             if let metadataText {
                 Text(metadataText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
             }
         }
     }
@@ -268,6 +271,265 @@ struct ChatAttachmentPreviewView: View {
             onAPIError(lastError)
         }
     }
+}
+
+/// What a staged paste's sheet shows: its text, or the start of a paste too long to edit.
+struct StagedPasteText: Equatable, Sendable {
+    /// Past this the sheet shows only the start, read-only. The largest size whose sheet
+    /// stayed responsive on a loaded iOS 27 simulator; at 512 KB, Done stopped responding.
+    static let editableBytes = 256_000
+    static let sendingNotice = String(localized: "This text is being sent, so it can't be edited right now.")
+
+    let text: String
+    let totalBytes: Int
+    /// False when `text` is only the start of the file.
+    let isWhole: Bool
+
+    /// Nil for bytes that aren't UTF-8, which would come back damaged if edited and saved.
+    init?(data: Data) {
+        var end = min(data.count, Self.editableBytes)
+        // A cut inside a character backs up to its first byte.
+        while end > 0, end < data.count, data[data.startIndex + end] & 0xC0 == 0x80 { end -= 1 }
+        guard let text = String(bytes: data.prefix(end), encoding: .utf8) else { return nil }
+        self.text = text
+        totalBytes = data.count
+        isWhole = end == data.count
+    }
+}
+
+/// Opens one staged paste. `isSending` is read as it opens: the sheet covers Send, and a
+/// save checks again.
+struct StagedPasteItem: Identifiable {
+    let attachment: PendingAttachment
+    let isSending: Bool
+    var id: UUID { attachment.id }
+}
+
+/// Shows a staged paste and, unless a send holds it or it is too long, edits it (#1456).
+/// Cancel and Save both close the sheet. The chat's `load` and `save` keep it free of the
+/// attachment stores.
+struct StagedPasteSheet: View {
+    private enum Content {
+        case loading, unreadable
+        case loaded(StagedPasteText)
+    }
+
+    let item: StagedPasteItem
+    let load: () async -> StagedPasteText?
+    /// Returns why the edit did not save, or nil once it has.
+    let save: (String) async -> String?
+
+    @State private var content = Content.loading
+    @State private var buffer = StagedPasteBuffer()
+    @State private var isSaving = false
+    @State private var isConfirmingDiscard = false
+    @State private var saveFailure: String?
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch content {
+                case .loading:
+                    Color.clear
+                case .unreadable:
+                    ContentUnavailableView {
+                        Label("Could Not Read This Text", systemImage: "doc.questionmark")
+                    } description: {
+                        Text("It may not be plain text, or its local copy is gone. It can't be edited. You can remove it from the message and paste again.")
+                    }
+                case let .loaded(paste):
+                    VStack(spacing: 0) {
+                        if let notice = notice(for: paste) {
+                            Text(notice)
+                                .font(AppFont.footnote())
+                                .foregroundStyle(.appSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(Color(.appSurface), in: .rect(cornerRadius: 10))
+                                .padding(.horizontal)
+                                .padding(.top, 8)
+                        }
+                        StagedPasteTextView(text: paste.text, name: item.attachment.name, buffer: buffer)
+                    }
+                }
+            }
+            .themedPageBackground()
+            .navigationTitle(item.attachment.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbar }
+            .alert("Couldn't Save", isPresented: Binding(get: { saveFailure != nil }, set: { if !$0 { saveFailure = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(saveFailure ?? "")
+            }
+        }
+        .task {
+            content = await load().map(Content.loaded) ?? .unreadable
+        }
+        .interactiveDismissDisabled(buffer.hasChanges || isSaving)
+        .adaptivePagePresentation()
+    }
+
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 0) {
+                Text(item.attachment.name)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !dynamicTypeSize.isAccessibilitySize, let subtitle {
+                    Text(subtitle)
+                        .font(AppFont.caption2())
+                        .foregroundStyle(.appSecondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+        if buffer.isEditing {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    if buffer.hasChanges { isConfirmingDiscard = true } else { dismiss() }
+                }
+                .keyboardShortcut(.cancelAction)
+                .disabled(isSaving)
+                .confirmationDialog("Discard Changes", isPresented: $isConfirmingDiscard, titleVisibility: .hidden) {
+                    Button("Discard Changes", role: .destructive) { dismiss() }
+                    Button("Keep Editing", role: .cancel) {}
+                }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save", action: saveEdit)
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(!buffer.hasChanges || buffer.isEmpty || isSaving)
+            }
+        } else {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            if case let .loaded(paste) = content, paste.isWhole, !item.isSending {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Edit") { buffer.beginEditing() }
+                }
+            }
+        }
+    }
+
+    private var subtitle: String? {
+        if buffer.isEditing { return String(localized: "Editing") }
+        return item.attachment.size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) }
+    }
+
+    private func notice(for paste: StagedPasteText) -> String? {
+        if !paste.isWhole {
+            let shown = ByteCountFormatter.string(fromByteCount: Int64(StagedPasteText.editableBytes), countStyle: .file)
+            let total = ByteCountFormatter.string(fromByteCount: Int64(paste.totalBytes), countStyle: .file)
+            return String(localized: "Showing the first \(shown) of \(total). This text is too long to edit here. The whole file is sent.")
+        }
+        return item.isSending ? StagedPasteText.sendingNotice : nil
+    }
+
+    private func saveEdit() {
+        guard let text = buffer.text else { return }
+        if case let .loaded(paste) = content, paste.text == text { return dismiss() }
+        isSaving = true
+        buffer.setEditable(false)
+        Task {
+            let failure = await save(text)
+            isSaving = false
+            if let failure {
+                buffer.setEditable(true)
+                saveFailure = failure
+            } else {
+                dismiss()
+            }
+        }
+    }
+}
+
+/// Owns the sheet's text view, whose text stays there until Save. Only the flags below reach
+/// SwiftUI, and only when they flip, so typing in a long paste redraws nothing and copies nothing.
+@MainActor
+@Observable
+final class StagedPasteBuffer: NSObject, UITextViewDelegate {
+    private(set) var isEditing = false
+    private(set) var hasChanges = false
+    private(set) var isEmpty = false
+    @ObservationIgnored fileprivate weak var textView: UITextView?
+
+    var text: String? { textView?.text }
+
+    /// Starts editing where the user is reading: a selection stays, otherwise the caret goes
+    /// to the top of what's on screen, so the keyboard doesn't jump back to the first line.
+    func beginEditing() {
+        guard let textView else { return }
+        isEditing = true
+        textView.isEditable = true
+        if textView.selectedRange.length == 0 {
+            let top = CGPoint(
+                x: textView.textContainerInset.left,
+                y: textView.contentOffset.y + textView.adjustedContentInset.top + textView.textContainerInset.top
+            )
+            if let caret = textView.closestPosition(to: top) {
+                textView.selectedTextRange = textView.textRange(from: caret, to: caret)
+            }
+        }
+        textView.becomeFirstResponder()
+    }
+
+    /// Off while a save runs, so nothing typed after Save is lost when the sheet closes.
+    func setEditable(_ isEditable: Bool) {
+        textView?.isEditable = isEditable
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        if !hasChanges { hasChanges = true }
+        let isEmpty = textView.textStorage.length == 0
+        if self.isEmpty != isEmpty { self.isEmpty = isEmpty }
+    }
+}
+
+/// The paste in a wrapping, selectable text view. Text-changing keyboard helpers stay off so
+/// a log isn't altered as it's edited.
+private struct StagedPasteTextView: UIViewRepresentable {
+    let text: String
+    let name: String
+    let buffer: StagedPasteBuffer
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.backgroundColor = .clear
+        textView.textColor = .appText
+        textView.font = UIFontMetrics(forTextStyle: .body).scaledFont(
+            for: .monospacedSystemFont(ofSize: 15, weight: .regular),
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(context.environment.dynamicTypeSize))
+        )
+        textView.adjustsFontForContentSizeCategory = true
+        textView.textAlignment = .natural
+        textView.textContainerInset = UIEdgeInsets(top: 12, left: 16, bottom: 32, right: 16)
+        textView.textContainer.lineFragmentPadding = 0
+        textView.alwaysBounceVertical = true
+        textView.keyboardDismissMode = .interactive
+        textView.autocorrectionType = .no
+        textView.autocapitalizationType = .none
+        textView.spellCheckingType = .no
+        textView.smartQuotesType = .no
+        textView.smartDashesType = .no
+        textView.smartInsertDeleteType = .no
+        textView.accessibilityLabel = name
+        textView.text = text
+        textView.delegate = buffer
+        buffer.textView = textView
+        return textView
+    }
+
+    /// The text view keeps the text from here on (`StagedPasteBuffer`).
+    func updateUIView(_ textView: UITextView, context: Context) {}
 }
 
 /// An attachment that is already known to be an image opens in the full-bleed lightbox.

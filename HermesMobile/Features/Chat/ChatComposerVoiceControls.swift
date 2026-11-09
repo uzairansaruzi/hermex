@@ -9,11 +9,145 @@ struct ComposerVoiceStatus: Equatable {
 
 struct ComposerVoiceStatusView: View {
     let status: ComposerVoiceStatus
+    var onDismiss: (() -> Void)?
 
     var body: some View {
-        Label(status.text, systemImage: status.systemImage)
-            .font(.caption)
-            .foregroundStyle(status.isError ? Color.red : Color.secondary)
+        HStack(spacing: 6) {
+            Label(status.text, systemImage: status.systemImage)
+                .font(AppFont.caption())
+                .foregroundStyle(status.isError ? Color.red : Color(.appTextSecondary))
+
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(AppFont.caption2(weight: .semibold))
+                        .foregroundStyle(.appSecondary)
+                        .frame(width: 44, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Dismiss"))
+            }
+        }
+    }
+}
+
+/// The composer's bottom row while dictation runs, in place of the toolbar:
+/// cancel, then the waveform and timer, then finish. The row has no Send: the
+/// draft is locked until the words land, and Send comes back with the toolbar.
+struct ComposerDictationRow: View {
+    let voiceInput: ComposerVoiceInputController
+    let circleSize: CGFloat
+    let finishBackground: Color
+    let finishForeground: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(action: voiceInput.cancel) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.appSecondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Cancel"))
+
+            if let capture {
+                HStack(spacing: 8) {
+                    ComposerDictationWaveform(meter: voiceInput.levelMeter)
+                    if let startedAt = voiceInput.captureStartedAt {
+                        TimelineView(.periodic(from: startedAt, by: 1)) { context in
+                            Text(AudioDurationFormatter.string(from: context.date.timeIntervalSince(startedAt)))
+                                .font(AppFont.caption().monospacedDigit())
+                                .foregroundStyle(.appSecondary)
+                        }
+                        .accessibilityHidden(true)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(capture)
+
+                Button(action: voiceInput.stopKeepingTranscript) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(width: circleSize, height: circleSize)
+                        .background(finishBackground)
+                        .foregroundStyle(finishForeground)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.chatTactile(.icon))
+                .accessibilityLabel(Text("Stop voice input"))
+            } else {
+                Text(waitingLabel)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.appTertiary)
+                    .frame(width: circleSize, height: circleSize)
+                    .background(Color(.appFillTertiary))
+                    .clipShape(Circle())
+                    .accessibilityHidden(true)
+            }
+
+        }
+    }
+
+    /// What the capture is called to VoiceOver, or nil while nothing is recording.
+    private var capture: String? {
+        switch voiceInput.state {
+        case .listening: String(localized: "Listening...")
+        case .serverListening: String(localized: "Recording...")
+        case .idle, .requestingPermission, .transcribing: nil
+        }
+    }
+
+    private var waitingLabel: String {
+        voiceInput.state == .transcribing
+            ? String(localized: "Transcribing...")
+            : String(localized: "Requesting voice permissions...")
+    }
+}
+
+/// Recent mic levels as bars, newest on the trailing edge. This view is the only
+/// reader of `levels`, so each sample redraws these bars and nothing else. With
+/// Reduce Motion the bars stay flat and it reads nothing at all.
+struct ComposerDictationWaveform: View {
+    let meter: ComposerVoiceLevelMeter
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let barSpacing: CGFloat = 5
+    private static let barWidth: CGFloat = 2
+    private static let minimumBarHeight: CGFloat = 2
+    private static let restingLevel: Float = 0.2
+
+    var body: some View {
+        let levels = reduceMotion ? nil : meter.levels
+        Canvas { context, size in
+            let capacity = Int(size.width / Self.barSpacing)
+            let count = levels.map { min($0.count, capacity) } ?? capacity
+            for index in 0..<count {
+                let level = levels.map { CGFloat($0[$0.count - count + index]) } ?? CGFloat(Self.restingLevel)
+                let height = Self.minimumBarHeight + level * (size.height - Self.minimumBarHeight)
+                let bar = CGRect(
+                    x: size.width - CGFloat(count - index) * Self.barSpacing,
+                    y: (size.height - height) / 2,
+                    width: Self.barWidth,
+                    height: height
+                )
+                context.opacity = 0.25 + 0.75 * level
+                context.fill(Path(roundedRect: bar, cornerRadius: Self.barWidth / 2), with: .foreground)
+            }
+        }
+        .frame(height: 24)
+        .foregroundStyle(.appPrimary)
+        .accessibilityHidden(true)
     }
 }
 
@@ -25,7 +159,6 @@ struct ComposerVoiceStatusView: View {
 /// counts as a tap → dictation. See `pressGesture` for why timing beats composing
 /// `LongPressGesture`/`TapGesture`.
 struct ComposerVoiceControlButton: View {
-    let isListening: Bool
     let isDisabled: Bool
     let color: Color
     let isRecordingVoiceNote: Bool
@@ -70,7 +203,8 @@ struct ComposerVoiceControlButton: View {
         Image(systemName: symbolName)
             .font(.system(size: 18, weight: .regular))
             .frame(width: 44, height: 44)
-            .foregroundStyle(isListening || isRecordingVoiceNote ? Color.red : color)
+            .background(Circle().fill(Color(.appFillTertiary)).frame(width: 34, height: 34))
+            .foregroundStyle(isRecordingVoiceNote ? Color.red : color)
             .scaleEffect(reduceMotion ? 1 : (isRecordingVoiceNote ? 1.3 : 1))
             .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: isRecordingVoiceNote)
             .contentShape(Circle())
@@ -79,15 +213,11 @@ struct ComposerVoiceControlButton: View {
     }
 
     private var symbolName: String {
-        if isRecordingVoiceNote { return "mic.fill" }
-        return isListening ? "stop.circle.fill" : "mic"
+        isRecordingVoiceNote ? "mic.fill" : "mic"
     }
 
     private var accessibilityLabel: Text {
-        Text(ComposerVoiceControlAccessibility.label(
-            isListening: isListening,
-            isRecordingVoiceNote: isRecordingVoiceNote
-        ))
+        Text(isRecordingVoiceNote ? String(localized: "Recording voice note") : String(localized: "Voice input"))
     }
 
     /// One `DragGesture(minimumDistance: 0)` distinguishes tap from hold by timing,
@@ -140,20 +270,16 @@ struct ComposerVoiceControlButton: View {
     }
 }
 
-enum ComposerVoiceControlAccessibility {
-    static func label(isListening: Bool, isRecordingVoiceNote: Bool) -> String {
-        if isRecordingVoiceNote { return String(localized: "Recording voice note") }
-        return isListening ? String(localized: "Stop voice input") : String(localized: "Voice input")
-    }
-}
-
 /// Telegram-style indicator shown above the composer while a voice note records:
 /// a pulsing red dot, an `m:ss` timer, and a slide-to-cancel hint that turns red
-/// once the cancel threshold is armed. Exposes explicit VoiceOver actions because
-/// the hold-to-talk gesture isn't reachable with VoiceOver on.
+/// once the cancel threshold is armed, or Cancel and Send buttons when no finger is
+/// holding the mic. Exposes explicit VoiceOver actions because the hold-to-talk
+/// gesture isn't reachable with VoiceOver on.
 struct ComposerVoiceRecordingBar: View {
     let elapsed: TimeInterval
     let isCancelArmed: Bool
+    /// False when nothing is holding the mic, so a release can't end the recording.
+    var isHeld = true
     let onStop: () -> Void
     let onCancel: () -> Void
 
@@ -165,25 +291,39 @@ struct ComposerVoiceRecordingBar: View {
                 .opacity(isCancelArmed ? 0.4 : 1)
 
             Text(AudioDurationFormatter.string(from: elapsed))
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.primary)
+                .font(AppFont.callout().monospacedDigit())
+                .foregroundStyle(.appPrimary)
 
             Spacer(minLength: 8)
 
-            Label(
-                isCancelArmed
-                    ? String(localized: "Release to cancel")
-                    : String(localized: "Slide up to cancel"),
-                systemImage: isCancelArmed ? "xmark.circle.fill" : "chevron.up"
-            )
-            .font(.caption)
-            .foregroundStyle(isCancelArmed ? Color.red : Color.secondary)
+            if isHeld {
+                Label(
+                    isCancelArmed
+                        ? String(localized: "Release to cancel")
+                        : String(localized: "Slide up to cancel"),
+                    systemImage: isCancelArmed ? "xmark.circle.fill" : "chevron.up"
+                )
+                .font(AppFont.caption())
+                .foregroundStyle(isCancelArmed ? Color.red : Color(.appTextSecondary))
+            } else {
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                Button(action: onStop) {
+                    Image(systemName: "arrow.up")
+                        .fontWeight(.semibold)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(Color(.appSurface))
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Recording voice note, \(AudioDurationFormatter.string(from: elapsed))"))

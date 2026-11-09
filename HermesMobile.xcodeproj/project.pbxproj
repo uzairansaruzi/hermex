@@ -12,10 +12,19 @@
 		D14090000000000000000012 /* ProviderLimitsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000001 /* ProviderLimitsSnapshot.swift */; };
 		D14090000000000000000013 /* ProviderLimitsPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000002 /* ProviderLimitsPublisher.swift */; };
 		D14090000000000000000015 /* ProviderLimitsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000004 /* ProviderLimitsSnapshotTests.swift */; };
+		E1582000000000000000A009 /* HermesPluginCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A010 /* HermesPluginCatalog.swift */; };
+		E1582000000000000000A011 /* PluginInstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A012 /* PluginInstallSheet.swift */; };
+		E1582000000000000000A013 /* PluginDiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A014 /* PluginDiscoverView.swift */; };
+		E1582000000000000000A015 /* PluginDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A016 /* PluginDetailView.swift */; };
+		E1582000000000000000A001 /* HermesPluginsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A002 /* HermesPluginsClient.swift */; };
+		E1582000000000000000A003 /* PluginsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A004 /* PluginsModel.swift */; };
+		E1582000000000000000A005 /* PluginsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A006 /* PluginsView.swift */; };
+		E1582000000000000000A007 /* PluginsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A008 /* PluginsModelTests.swift */; };
 		E1318000000000000000A009 /* APIKeyEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A010 /* APIKeyEditor.swift */; };
 		E1318000000000000000A007 /* APIKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A008 /* APIKeysView.swift */; };
 		E1318000000000000000A005 /* APIKeysModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A006 /* APIKeysModel.swift */; };
 		E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */; };
+		E1611000000000000000A007 /* ServeEveryProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A008 /* ServeEveryProfileTests.swift */; };
 		E1318000000000000000A001 /* HermesEnvironmentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A002 /* HermesEnvironmentClient.swift */; };
 		A1022B000000000000000001 /* ApprovalSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000002 /* ApprovalSummary.swift */; };
 		A1022B000000000000000003 /* ApprovalSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000004 /* ApprovalSummaryTests.swift */; };
@@ -135,10 +144,8 @@
 		C0DED00000000000000DE001 /* ChatViewModelMergeDedupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DED00000000000000DE000 /* ChatViewModelMergeDedupTests.swift */; };
 		C15210000000000000000001 /* OnboardingFlowPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000001 /* OnboardingFlowPolicy.swift */; };
 		C15210000000000000000002 /* OnboardingWelcomePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000002 /* OnboardingWelcomePage.swift */; };
-		C15210000000000000000003 /* OnboardingFeaturesPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000003 /* OnboardingFeaturesPage.swift */; };
 		C15210000000000000000004 /* OnboardingAgentPromptPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000004 /* OnboardingAgentPromptPage.swift */; };
 		C15210000000000000000005 /* OnboardingTailscalePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000005 /* OnboardingTailscalePage.swift */; };
-		C15210000000000000000006 /* OnboardingConnectPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000006 /* OnboardingConnectPage.swift */; };
 		C15210000000000000000007 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000007 /* OnboardingFlowTests.swift */; };
 		C0391000000000000000000F /* SessionListMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0390000000000000000000F /* SessionListMutationTests.swift */; };
 		C08650000000000000000004 /* ActionToastStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08650000000000000000003 /* ActionToastStateTests.swift */; };
@@ -168,10 +175,13 @@
 		C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000002 /* ChatComposerSelectorControls.swift */; };
 		C040F000000000000000001 /* ProviderGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000002 /* ProviderGlyph.swift */; };
 		C040F000000000000000003 /* ProviderLogos.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000004 /* ProviderLogos.bundle */; };
-		C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */; };
 		C08730000000000000000B05 /* ForkOrigin.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F05 /* ForkOrigin.swift */; };
 		C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */; };
 		C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000004 /* ChatComposerSelectorSheets.swift */; };
+		C15500000000000000000001 /* ThinkingControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000002 /* ThinkingControl.swift */; };
+		C15500000000000000000003 /* ThinkingSliderLooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000004 /* ThinkingSliderLooks.swift */; };
+		C15500000000000000000005 /* ThinkingSliderLooksGeometric.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000006 /* ThinkingSliderLooksGeometric.swift */; };
+		C15500000000000000000007 /* ThinkingSliderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15500000000000000000008 /* ThinkingSliderPickerView.swift */; };
 		C04900000000000000000001 /* ChatComposerTextInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04900000000000000000002 /* ChatComposerTextInputView.swift */; };
 		C04900000000000000000003 /* ChatComposerVoiceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04900000000000000000004 /* ChatComposerVoiceControls.swift */; };
 		C04700000000000000000001 /* ChatPendingActionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04700000000000000000002 /* ChatPendingActionCoordinator.swift */; };
@@ -196,7 +206,7 @@
 		A040C0DE0000000000000001 /* ProjectCreationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A040C0DE0000000000000002 /* ProjectCreationSheet.swift */; };
 		A048C0DE0000000000000001 /* SessionRenameSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A048C0DE0000000000000002 /* SessionRenameSheet.swift */; };
 		A04200000000000000000001 /* Approval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04200000000000000000002 /* Approval.swift */; };
-		A04200000000000000000003 /* ApprovalRequestOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04200000000000000000004 /* ApprovalRequestOverlay.swift */; };
+		A04200000000000000000003 /* ApprovalRequestInset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A04200000000000000000004 /* ApprovalRequestInset.swift */; };
 		C1A042000000000000000001 /* Clarification.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000002 /* Clarification.swift */; };
 		C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A042000000000000000004 /* ClarificationRequestCard.swift */; };
 		C1A0420000000000000000A3 /* PendingRequestSurfaces.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */; };
@@ -260,6 +270,7 @@
 		C8660A000000000000000001 /* InAppBrowserPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000002 /* InAppBrowserPolicy.swift */; };
 		C8660A000000000000000005 /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000006 /* SafariView.swift */; };
 		C0DE25000000000000000003 /* ChatScrollPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */; };
+		B14050000000000000000003 /* ChatTranscriptRenderBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14050000000000000000004 /* ChatTranscriptRenderBudgetTests.swift */; };
 		C8660A000000000000000003 /* InAppBrowserPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */; };
 		C87100000000000000000003 /* UserBubbleFoldPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */; };
 		C27800000000000000000001 /* ChatGitControlsVisibilityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */; };
@@ -341,6 +352,7 @@
 		1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */; };
 		125200000000000000000002 /* SettingsRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000001 /* SettingsRows.swift */; };
 		125200000000000000000004 /* SettingsAppPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000003 /* SettingsAppPages.swift */; };
+		158300000000000000000001 /* SettingsAppearancePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158300000000000000000002 /* SettingsAppearancePage.swift */; };
 		139600000000000000000001 /* SupportReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139600000000000000000002 /* SupportReport.swift */; };
 		139700000000000000000001 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000002 /* DiagnosticsLog.swift */; };
 		139700000000000000000003 /* SettingsDiagnosticsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000004 /* SettingsDiagnosticsPage.swift */; };
@@ -348,6 +360,8 @@
 		141100000000000000000002 /* SettingsAcknowledgementsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141100000000000000000001 /* SettingsAcknowledgementsPage.swift */; };
 		125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000007 /* SettingsNotificationsPage.swift */; };
 		12520000000000000000000A /* SettingsServerPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000009 /* SettingsServerPage.swift */; };
+		E1611000000000000000A003 /* ProfileServingSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A004 /* ProfileServingSection.swift */; };
+		E1611000000000000000A005 /* ServeEveryProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A006 /* ServeEveryProfileView.swift */; };
 		12520000000000000000000C /* WebuiServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000B /* WebuiServerSettings.swift */; };
 		125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000F /* WebuiServerSettingsModel.swift */; };
 		12520000000000000000000E /* AddServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000D /* AddServerView.swift */; };
@@ -359,7 +373,9 @@
 		531000000000000000000001 /* TipJarPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000002 /* TipJarPromptState.swift */; };
 		870000000000000000000001 /* PerformanceSignposts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000002 /* PerformanceSignposts.swift */; };
 		870000000000000000000003 /* HitchMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000004 /* HitchMeter.swift */; };
+		B14050000000000000000001 /* RenderProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14050000000000000000002 /* RenderProbe.swift */; };
 		C09200000000000000000001 /* AppFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000002 /* AppFont.swift */; };
+		C09200000000000000000011 /* AppColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000012 /* AppColor.swift */; };
 		1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000101 /* AppTheme.swift */; };
 		863000000000000000000001 /* NotificationOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000002 /* NotificationOffer.swift */; };
 		C012400000000000000002 /* AppIconChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000001 /* AppIconChoice.swift */; };
@@ -434,6 +450,8 @@
 		C03120000000000000B007 /* GitWorkspaceViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */; };
 		C012400000000000000004 /* AppIconSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000003 /* AppIconSettingsSection.swift */; };
 		1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */; };
+		C23400000000000000000015 /* AppColorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000016 /* AppColorTests.swift */; };
+		C23400000000000000000017 /* AppFontTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000018 /* AppFontTests.swift */; };
 		863000000000000000000003 /* NotificationOfferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000004 /* NotificationOfferTests.swift */; };
 		C012400000000000000006 /* AppIconChoiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C012400000000000000005 /* AppIconChoiceTests.swift */; };
 		1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */; };
@@ -455,6 +473,7 @@
 		1A2B3C4D5E6F70000000212 /* SkillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000213 /* SkillsView.swift */; };
 		1A2B3C4D5E6F70000000214 /* SkillsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000215 /* SkillsViewModel.swift */; };
 		1A2B3C4D5E6F70000000300 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000301 /* PrivacyInfo.xcprivacy */; };
+		C09200000000000000000021 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000022 /* Fonts */; };
 		9E2A653D968A4ACDA19A8142 /* ThirdPartyNotices in Resources */ = {isa = PBXBuildFile; fileRef = 488791F556304AD2AC59BC5D /* ThirdPartyNotices */; };
 		B5A100000000000000000001 /* SharedDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000010 /* SharedDraftStore.swift */; };
 		B5A100000000000000000002 /* SharedDraftStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000010 /* SharedDraftStore.swift */; };
@@ -472,6 +491,7 @@
 		C21200000000000000000003 /* StreamingRevealGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000004 /* StreamingRevealGateTests.swift */; };
 		C21200000000000000000005 /* ChatViewModelStreamingPaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */; };
 		C23400000000000000000011 /* ProviderGlyphGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000012 /* ProviderGlyphGalleryView.swift */; };
+		C23400000000000000000013 /* ThemeGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000014 /* ThemeGalleryView.swift */; };
 		C14900000000000000000001 /* Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000002 /* Kanban.swift */; };
 		C14900000000000000000003 /* APIClient+Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000004 /* APIClient+Kanban.swift */; };
 		C14900000000000000000005 /* KanbanFeatureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000006 /* KanbanFeatureState.swift */; };
@@ -590,6 +610,7 @@
 		E1112000000000000000A001 /* HermesWorkspaceFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1112000000000000000A002 /* HermesWorkspaceFileClient.swift */; };
 		E1114000000000000000A001 /* HermesGitClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1114000000000000000A002 /* HermesGitClient.swift */; };
 		E1075000000000000000A001 /* HermesUpdateClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1075000000000000000A002 /* HermesUpdateClient.swift */; };
+		E1611000000000000000A001 /* HermesProfileServing.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A002 /* HermesProfileServing.swift */; };
 		E1074000000000000000A001 /* HermesInsightsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1074000000000000000A002 /* HermesInsightsClient.swift */; };
 		E1046000000000000000A001 /* HermesSessionPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1046000000000000000A002 /* HermesSessionPage.swift */; };
 		E1048000000000000000A001 /* HermesSessionActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1048000000000000000A002 /* HermesSessionActions.swift */; };
@@ -609,6 +630,7 @@
 		C87080000000000000000001 /* HermesBrowserSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87080000000000000000002 /* HermesBrowserSignIn.swift */; };
 		E1071000000000000000A001 /* HermesTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1071000000000000000A002 /* HermesTranscription.swift */; };
 		C8250A000000000000000001 /* HermesGateway.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8250A000000000000000002 /* HermesGateway.swift */; };
+		C1601CA00000000000000001 /* HermesCanonicalProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */; };
 		C8970A000000000000000001 /* HermesCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8970A000000000000000002 /* HermesCompatibility.swift */; };
 		A990ABE1D2654992AD262B77 /* BotProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5619C4EB852849D396C45F95 /* BotProtocol.swift */; };
 		9510188AE84E41D9BAE025F1 /* BotTestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B077A87C9D846D7A9D27D76 /* BotTestFixtures.swift */; };
@@ -678,6 +700,19 @@
 		559000000000000000000006 /* PushPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559000000000000000000016 /* PushPreviewTests.swift */; };
 		C0DE88500000000000000003 /* AppLockTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE88500000000000000004 /* AppLockTests.swift */; };
 		559000000000000000000007 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
+		D99CEF90BA3948E3D90239C6 /* BotAvatarLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C65390EF87632CA0D99CEF90 /* BotAvatarLibrary.swift */; };
+		131D47952016B290FA56B00F /* BotGeneratedAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */; };
+		FD3E09513D0737A13DCBCDB2 /* BotAvatarGeneration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */; };
+		DC0447FD714D103048C79835 /* BotAvatarLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */; };
+		DAB1829DA684D7E566D41872 /* RFBDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21D8EAD32474C507B988C931 /* RFBDecoder.swift */; };
+		FC264D031B2CAEDB4AF53C1D /* RFBClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90089E89E3BEF3B1D16FFB12 /* RFBClient.swift */; };
+		284C1405D843B63B8A2360CA /* ScreenSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 344CB343107883F5E3398866 /* ScreenSession.swift */; };
+		CFA1B013C7784C249E72A5DE /* ScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AB42AA714B106DA5BF543C /* ScreenView.swift */; };
+		3C47C99D373EDF30CDEAAED1 /* RFBDecoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */; };
+		FD6887A5B7CABFF85B74F360 /* ScreenSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */; };
+		D54C4191484B7E0927A7C9BD /* ScreenControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28ED07BACC5D9828A7439134 /* ScreenControl.swift */; };
+		D5D7BC7A9A48E1E101C20E93 /* ScreenInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E2900E77AEE7D9DEBC0288D /* ScreenInput.swift */; };
+		79EEC8486030DA04A092D557 /* ScreenCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE62D4ED7F12CB894C054390 /* ScreenCanvas.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -733,9 +768,18 @@
 		D14090000000000000000002 /* ProviderLimitsPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitsPublisher.swift; sourceTree = "<group>"; };
 		D14090000000000000000004 /* ProviderLimitsSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitsSnapshotTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A010 /* APIKeyEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyEditor.swift; sourceTree = "<group>"; };
+		E1582000000000000000A010 /* HermesPluginCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesPluginCatalog.swift"; sourceTree = "<group>"; };
+		E1582000000000000000A012 /* PluginInstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginInstallSheet.swift; sourceTree = "<group>"; };
+		E1582000000000000000A014 /* PluginDiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginDiscoverView.swift; sourceTree = "<group>"; };
+		E1582000000000000000A016 /* PluginDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginDetailView.swift; sourceTree = "<group>"; };
+		E1582000000000000000A002 /* HermesPluginsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesPluginsClient.swift"; sourceTree = "<group>"; };
+		E1582000000000000000A004 /* PluginsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsModel.swift; sourceTree = "<group>"; };
+		E1582000000000000000A006 /* PluginsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsView.swift; sourceTree = "<group>"; };
+		E1582000000000000000A008 /* PluginsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsModelTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A008 /* APIKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysView.swift; sourceTree = "<group>"; };
 		E1318000000000000000A006 /* APIKeysModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysModel.swift; sourceTree = "<group>"; };
 		E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesEnvironmentClientTests.swift; sourceTree = "<group>"; };
+		E1611000000000000000A008 /* ServeEveryProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServeEveryProfileTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A002 /* HermesEnvironmentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesEnvironmentClient.swift"; sourceTree = "<group>"; };
 		A1022B000000000000000002 /* ApprovalSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummary.swift; sourceTree = "<group>"; };
 		A1022B000000000000000004 /* ApprovalSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummaryTests.swift; sourceTree = "<group>"; };
@@ -841,10 +885,8 @@
 		C0DED00000000000000DE000 /* ChatViewModelMergeDedupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelMergeDedupTests.swift; sourceTree = "<group>"; };
 		C15200000000000000000001 /* OnboardingFlowPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowPolicy.swift; sourceTree = "<group>"; };
 		C15200000000000000000002 /* OnboardingWelcomePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWelcomePage.swift; sourceTree = "<group>"; };
-		C15200000000000000000003 /* OnboardingFeaturesPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFeaturesPage.swift; sourceTree = "<group>"; };
 		C15200000000000000000004 /* OnboardingAgentPromptPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingAgentPromptPage.swift; sourceTree = "<group>"; };
 		C15200000000000000000005 /* OnboardingTailscalePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTailscalePage.swift; sourceTree = "<group>"; };
-		C15200000000000000000006 /* OnboardingConnectPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingConnectPage.swift; sourceTree = "<group>"; };
 		C15200000000000000000007 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
 		C0390000000000000000000F /* SessionListMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListMutationTests.swift; sourceTree = "<group>"; };
 		C08650000000000000000003 /* ActionToastStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionToastStateTests.swift; sourceTree = "<group>"; };
@@ -874,10 +916,13 @@
 		C042A000000000000000002 /* ChatComposerSelectorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorControls.swift; sourceTree = "<group>"; };
 		C040F000000000000000002 /* ProviderGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyph.swift; sourceTree = "<group>"; };
 		C040F000000000000000004 /* ProviderLogos.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = ProviderLogos.bundle; sourceTree = "<group>"; };
-		C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerToolbarScroller.swift; sourceTree = "<group>"; };
 		C08730000000000000000F05 /* ForkOrigin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForkOrigin.swift; sourceTree = "<group>"; };
 		C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HorizontalOverflowEdgeFades.swift; sourceTree = "<group>"; };
 		C042A000000000000000004 /* ChatComposerSelectorSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorSheets.swift; sourceTree = "<group>"; };
+		C15500000000000000000002 /* ThinkingControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingControl.swift; sourceTree = "<group>"; };
+		C15500000000000000000004 /* ThinkingSliderLooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingSliderLooks.swift; sourceTree = "<group>"; };
+		C15500000000000000000006 /* ThinkingSliderLooksGeometric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingSliderLooksGeometric.swift; sourceTree = "<group>"; };
+		C15500000000000000000008 /* ThinkingSliderPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingSliderPickerView.swift; sourceTree = "<group>"; };
 		C04900000000000000000002 /* ChatComposerTextInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerTextInputView.swift; sourceTree = "<group>"; };
 		C04900000000000000000004 /* ChatComposerVoiceControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerVoiceControls.swift; sourceTree = "<group>"; };
 		C04700000000000000000002 /* ChatPendingActionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPendingActionCoordinator.swift; sourceTree = "<group>"; };
@@ -902,7 +947,7 @@
 		A040C0DE0000000000000002 /* ProjectCreationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectCreationSheet.swift; sourceTree = "<group>"; };
 		A048C0DE0000000000000002 /* SessionRenameSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRenameSheet.swift; sourceTree = "<group>"; };
 		A04200000000000000000002 /* Approval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Approval.swift; sourceTree = "<group>"; };
-		A04200000000000000000004 /* ApprovalRequestOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalRequestOverlay.swift; sourceTree = "<group>"; };
+		A04200000000000000000004 /* ApprovalRequestInset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalRequestInset.swift; sourceTree = "<group>"; };
 		C1A042000000000000000002 /* Clarification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Clarification.swift; sourceTree = "<group>"; };
 		C1A042000000000000000004 /* ClarificationRequestCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarificationRequestCard.swift; sourceTree = "<group>"; };
 		C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRequestSurfaces.swift; sourceTree = "<group>"; };
@@ -966,6 +1011,7 @@
 		C8660A000000000000000002 /* InAppBrowserPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserPolicy.swift; sourceTree = "<group>"; };
 		C8660A000000000000000006 /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
 		C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollPolicyTests.swift; sourceTree = "<group>"; };
+		B14050000000000000000004 /* ChatTranscriptRenderBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptRenderBudgetTests.swift; sourceTree = "<group>"; };
 		C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserPolicyTests.swift; sourceTree = "<group>"; };
 		C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserBubbleFoldPolicyTests.swift; sourceTree = "<group>"; };
 		C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicy.swift; sourceTree = "<group>"; };
@@ -1047,6 +1093,7 @@
 		1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		125200000000000000000001 /* SettingsRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRows.swift; sourceTree = "<group>"; };
 		125200000000000000000003 /* SettingsAppPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAppPages.swift; sourceTree = "<group>"; };
+		158300000000000000000002 /* SettingsAppearancePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAppearancePage.swift; sourceTree = "<group>"; };
 		139600000000000000000002 /* SupportReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportReport.swift; sourceTree = "<group>"; };
 		139700000000000000000002 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
 		139700000000000000000004 /* SettingsDiagnosticsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDiagnosticsPage.swift; sourceTree = "<group>"; };
@@ -1054,6 +1101,8 @@
 		141100000000000000000001 /* SettingsAcknowledgementsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAcknowledgementsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000007 /* SettingsNotificationsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000009 /* SettingsServerPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsServerPage.swift; sourceTree = "<group>"; };
+		E1611000000000000000A004 /* ProfileServingSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileServingSection.swift; sourceTree = "<group>"; };
+		E1611000000000000000A006 /* ServeEveryProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServeEveryProfileView.swift; sourceTree = "<group>"; };
 		12520000000000000000000B /* WebuiServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettings.swift; sourceTree = "<group>"; };
 		12520000000000000000000F /* WebuiServerSettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettingsModel.swift; sourceTree = "<group>"; };
 		12520000000000000000000D /* AddServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServerView.swift; sourceTree = "<group>"; };
@@ -1065,7 +1114,9 @@
 		531000000000000000000002 /* TipJarPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptState.swift; sourceTree = "<group>"; };
 		870000000000000000000002 /* PerformanceSignposts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceSignposts.swift; sourceTree = "<group>"; };
 		870000000000000000000004 /* HitchMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeter.swift; sourceTree = "<group>"; };
+		B14050000000000000000002 /* RenderProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderProbe.swift; sourceTree = "<group>"; };
 		C09200000000000000000002 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
+		C09200000000000000000012 /* AppColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColor.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000101 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		863000000000000000000002 /* NotificationOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOffer.swift; sourceTree = "<group>"; };
 		C012400000000000000001 /* AppIconChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoice.swift; sourceTree = "<group>"; };
@@ -1140,6 +1191,8 @@
 		C03120000000000000F007 /* GitWorkspaceViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorkspaceViewModelTests.swift; sourceTree = "<group>"; };
 		C012400000000000000003 /* AppIconSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSettingsSection.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppThemeTests.swift; sourceTree = "<group>"; };
+		C23400000000000000000016 /* AppColorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppColorTests.swift; sourceTree = "<group>"; };
+		C23400000000000000000018 /* AppFontTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFontTests.swift; sourceTree = "<group>"; };
 		863000000000000000000004 /* NotificationOfferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOfferTests.swift; sourceTree = "<group>"; };
 		C012400000000000000005 /* AppIconChoiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconChoiceTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchivedSessionsView.swift; sourceTree = "<group>"; };
@@ -1212,6 +1265,7 @@
 		B5A100000000000000000013 /* HermesShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesShareExtension.entitlements; sourceTree = "<group>"; };
 		B5A100000000000000000014 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B5A100000000000000000015 /* HermesMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HermesMobile.entitlements; sourceTree = "<group>"; };
+		C09200000000000000000022 /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Fonts; sourceTree = "<group>"; };
 		488791F556304AD2AC59BC5D /* ThirdPartyNotices */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ThirdPartyNotices; sourceTree = "<group>"; };
 		B5A100000000000000000016 /* SharedDraftStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDraftStoreTests.swift; sourceTree = "<group>"; };
 		B5A100000000000000000019 /* ShareInputReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareInputReaderTests.swift; sourceTree = "<group>"; };
@@ -1225,6 +1279,7 @@
 		C21200000000000000000004 /* StreamingRevealGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingRevealGateTests.swift; sourceTree = "<group>"; };
 		C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelStreamingPaceTests.swift; sourceTree = "<group>"; };
 		C23400000000000000000012 /* ProviderGlyphGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyphGalleryView.swift; sourceTree = "<group>"; };
+		C23400000000000000000014 /* ThemeGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeGalleryView.swift; sourceTree = "<group>"; };
 		C14900000000000000000002 /* Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kanban.swift; sourceTree = "<group>"; };
 		C14900000000000000000004 /* APIClient+Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Kanban.swift"; sourceTree = "<group>"; };
 		C14900000000000000000006 /* KanbanFeatureState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanFeatureState.swift; sourceTree = "<group>"; };
@@ -1305,6 +1360,7 @@
 		E1112000000000000000A002 /* HermesWorkspaceFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesWorkspaceFileClient.swift"; sourceTree = "<group>"; };
 		E1114000000000000000A002 /* HermesGitClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesGitClient.swift"; sourceTree = "<group>"; };
 		E1075000000000000000A002 /* HermesUpdateClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesUpdateClient.swift"; sourceTree = "<group>"; };
+		E1611000000000000000A002 /* HermesProfileServing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesProfileServing.swift"; sourceTree = "<group>"; };
 		E1074000000000000000A002 /* HermesInsightsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesInsightsClient.swift"; sourceTree = "<group>"; };
 		E1046000000000000000A002 /* HermesSessionPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesSessionPage.swift"; sourceTree = "<group>"; };
 		E1048000000000000000A002 /* HermesSessionActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesSessionActions.swift"; sourceTree = "<group>"; };
@@ -1324,6 +1380,7 @@
 		C87080000000000000000002 /* HermesBrowserSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesBrowserSignIn.swift"; sourceTree = "<group>"; };
 		E1071000000000000000A002 /* HermesTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesTranscription.swift"; sourceTree = "<group>"; };
 		C8250A000000000000000002 /* HermesGateway.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesGateway.swift"; sourceTree = "<group>"; };
+		C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesCanonicalProtocol.swift"; sourceTree = "<group>"; };
 		C8970A000000000000000002 /* HermesCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesCompatibility.swift"; sourceTree = "<group>"; };
 		5619C4EB852849D396C45F95 /* BotProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotProtocol.swift"; sourceTree = "<group>"; };
 		0B077A87C9D846D7A9D27D76 /* BotTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotTestFixtures.swift"; sourceTree = "<group>"; };
@@ -1393,6 +1450,19 @@
 		559000000000000000000015 /* PushNotificationRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationRouter.swift; sourceTree = "<group>"; };
 		559000000000000000000016 /* PushPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPreviewTests.swift; sourceTree = "<group>"; };
 		C0DE88500000000000000004 /* AppLockTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockTests.swift; sourceTree = "<group>"; };
+		C65390EF87632CA0D99CEF90 /* BotAvatarLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarLibrary.swift; sourceTree = "<group>"; };
+		DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotGeneratedAvatar.swift; sourceTree = "<group>"; };
+		D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotAvatarGeneration.swift; sourceTree = "<group>"; };
+		B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotAvatarLibraryTests.swift; sourceTree = "<group>"; };
+		21D8EAD32474C507B988C931 /* RFBDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/RFBDecoder.swift"; sourceTree = "<group>"; };
+		90089E89E3BEF3B1D16FFB12 /* RFBClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/RFBClient.swift"; sourceTree = "<group>"; };
+		344CB343107883F5E3398866 /* ScreenSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenSession.swift"; sourceTree = "<group>"; };
+		43AB42AA714B106DA5BF543C /* ScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenView.swift"; sourceTree = "<group>"; };
+		642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFBDecoderTests.swift; sourceTree = "<group>"; };
+		4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenSessionTests.swift; sourceTree = "<group>"; };
+		28ED07BACC5D9828A7439134 /* ScreenControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenControl.swift"; sourceTree = "<group>"; };
+		3E2900E77AEE7D9DEBC0288D /* ScreenInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenInput.swift"; sourceTree = "<group>"; };
+		CE62D4ED7F12CB894C054390 /* ScreenCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Screen/ScreenCanvas.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1507,6 +1577,7 @@
 				1A2B3C4D5E6F700000000013 /* Info.plist */,
 				B5A100000000000000000015 /* HermesMobile.entitlements */,
 				1A2B3C4D5E6F70000000301 /* PrivacyInfo.xcprivacy */,
+				C09200000000000000000022 /* Fonts */,
 				488791F556304AD2AC59BC5D /* ThirdPartyNotices */,
 			);
 			path = Resources;
@@ -1515,6 +1586,9 @@
 		1A2B3C4D5E6F700000000034 /* HermesMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				4A6ABCD131F0EF3A6368B7C8 /* ScreenSessionTests.swift */,
+				642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */,
+				B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */,
 				B48200000000000000000007 /* BotProfileEditorTests.swift */,
 				B48200000000000000000035 /* BotLifecycleTests.swift */,
 				B48200000000000000000023 /* BotFaceMotionTests.swift */,
@@ -1529,6 +1603,8 @@
 				E1043000000000000000A004 /* HermesKanbanClientTests.swift */,
 				E1069000000000000000A004 /* HermesSkillsClientTests.swift */,
 				E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */,
+				E1611000000000000000A008 /* ServeEveryProfileTests.swift */,
+				E1582000000000000000A008 /* PluginsModelTests.swift */,
 				E1112000000000000000A004 /* HermesWorkspaceFileClientTests.swift */,
 				E1075000000000000000A00A /* HermesUpdateClientTests.swift */,
 				E1075000000000000000A008 /* HermesUpdateMachineTests.swift */,
@@ -1639,6 +1715,7 @@
 				C14300000000000000000004 /* StreamingMarkdownSupportTests.swift */,
 				C13000000000000000000002 /* ChatVerticalScrollAxisGuardTests.swift */,
 				C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */,
+				B14050000000000000000004 /* ChatTranscriptRenderBudgetTests.swift */,
 				C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */,
 				C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */,
 				C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */,
@@ -1661,6 +1738,8 @@
 				C04400000000000000000004 /* CacheFallbackPolicyTests.swift */,
 				C86900000000000000000004 /* NetworkPathMonitorTests.swift */,
 				1A2B3C4D5E6F700000000103 /* AppThemeTests.swift */,
+				C23400000000000000000016 /* AppColorTests.swift */,
+				C23400000000000000000018 /* AppFontTests.swift */,
 				863000000000000000000004 /* NotificationOfferTests.swift */,
 				C012400000000000000005 /* AppIconChoiceTests.swift */,
 				C03120000000000000F006 /* APIClientGitTests.swift */,
@@ -1777,6 +1856,8 @@
 		1A2B3C4D5E6F7000000000C1 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				90089E89E3BEF3B1D16FFB12 /* RFBClient.swift */,
+				21D8EAD32474C507B988C931 /* RFBDecoder.swift */,
 				5619C4EB852849D396C45F95 /* BotProtocol.swift */,
 				BF2EA5336E9B431489F91A63 /* BotClient.swift */,
 				02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */,
@@ -1790,9 +1871,12 @@
 				E1043000000000000000A002 /* HermesKanbanClient.swift */,
 				E1069000000000000000A002 /* HermesSkillsClient.swift */,
 				E1318000000000000000A002 /* HermesEnvironmentClient.swift */,
+				E1582000000000000000A002 /* HermesPluginsClient.swift */,
+				E1582000000000000000A010 /* HermesPluginCatalog.swift */,
 				E1112000000000000000A002 /* HermesWorkspaceFileClient.swift */,
 				E1114000000000000000A002 /* HermesGitClient.swift */,
 				E1075000000000000000A002 /* HermesUpdateClient.swift */,
+				E1611000000000000000A002 /* HermesProfileServing.swift */,
 				E1074000000000000000A002 /* HermesInsightsClient.swift */,
 				E1046000000000000000A002 /* HermesSessionPage.swift */,
 				E1048000000000000000A002 /* HermesSessionActions.swift */,
@@ -1801,6 +1885,7 @@
 				C87080000000000000000002 /* HermesBrowserSignIn.swift */,
 				E1071000000000000000A002 /* HermesTranscription.swift */,
 				C8250A000000000000000002 /* HermesGateway.swift */,
+				C1601CA00000000000000002 /* HermesCanonicalProtocol.swift */,
 				C8970A000000000000000002 /* HermesCompatibility.swift */,
 				1A2B3C4D5E6F7000000000B2 /* APIClient.swift */,
 				C04000000000000000000011 /* APIClient+Sessions.swift */,
@@ -1867,6 +1952,14 @@
 		1A2B3C4D5E6F7000000000C3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				CE62D4ED7F12CB894C054390 /* ScreenCanvas.swift */,
+				3E2900E77AEE7D9DEBC0288D /* ScreenInput.swift */,
+				28ED07BACC5D9828A7439134 /* ScreenControl.swift */,
+				43AB42AA714B106DA5BF543C /* ScreenView.swift */,
+				344CB343107883F5E3398866 /* ScreenSession.swift */,
+				D2FB02013387372DFD3E0951 /* BotAvatarGeneration.swift */,
+				DDAE81D9364269B1131D4795 /* BotGeneratedAvatar.swift */,
+				C65390EF87632CA0D99CEF90 /* BotAvatarLibrary.swift */,
 				B48200000000000000000001 /* BotProfileAppearance.swift */,
 				B48200000000000000000011 /* BotExpressionPickerView.swift */,
 				B48200000000000000000031 /* BotCreator.swift */,
@@ -1937,9 +2030,7 @@
 			isa = PBXGroup;
 			children = (
 				1A2B3C4D5E6F7000000000B5 /* OnboardingView.swift */,
-				C15200000000000000000006 /* OnboardingConnectPage.swift */,
 				C15200000000000000000004 /* OnboardingAgentPromptPage.swift */,
-				C15200000000000000000003 /* OnboardingFeaturesPage.swift */,
 				C15200000000000000000001 /* OnboardingFlowPolicy.swift */,
 				C15200000000000000000005 /* OnboardingTailscalePage.swift */,
 				C15200000000000000000002 /* OnboardingWelcomePage.swift */,
@@ -2028,10 +2119,12 @@
 				C04900000000000000000004 /* ChatComposerVoiceControls.swift */,
 				C042A000000000000000002 /* ChatComposerSelectorControls.swift */,
 				C040F000000000000000002 /* ProviderGlyph.swift */,
-				C0A5C9000000000000000002 /* ChatComposerToolbarScroller.swift */,
 				C08730000000000000000F05 /* ForkOrigin.swift */,
 				C08730000000000000000F04 /* HorizontalOverflowEdgeFades.swift */,
 				C042A000000000000000004 /* ChatComposerSelectorSheets.swift */,
+				C15500000000000000000002 /* ThinkingControl.swift */,
+				C15500000000000000000004 /* ThinkingSliderLooks.swift */,
+				C15500000000000000000006 /* ThinkingSliderLooksGeometric.swift */,
 				C0DE20000000000000000002 /* ChatTactileButtonStyle.swift */,
 				C0DE21000000000000000002 /* ChatMotion.swift */,
 				C0DE25000000000000000002 /* ChatScrollPolicy.swift */,
@@ -2041,7 +2134,7 @@
 				C0DE22000000000000000002 /* ChatHaptics.swift */,
 				105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */,
 				A1022B000000000000000002 /* ApprovalSummary.swift */,
-				A04200000000000000000004 /* ApprovalRequestOverlay.swift */,
+				A04200000000000000000004 /* ApprovalRequestInset.swift */,
 				C1A042000000000000000004 /* ClarificationRequestCard.swift */,
 				C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */,
 				1A2B3C4D5E6F7000000000D9 /* MessageBubbleView.swift */,
@@ -2198,6 +2291,8 @@
 				1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */,
 				125200000000000000000001 /* SettingsRows.swift */,
 				125200000000000000000003 /* SettingsAppPages.swift */,
+				158300000000000000000002 /* SettingsAppearancePage.swift */,
+				C15500000000000000000008 /* ThinkingSliderPickerView.swift */,
 				125200000000000000000005 /* SettingsAboutPage.swift */,
 				139600000000000000000002 /* SupportReport.swift */,
 				139700000000000000000002 /* DiagnosticsLog.swift */,
@@ -2205,6 +2300,8 @@
 				141100000000000000000001 /* SettingsAcknowledgementsPage.swift */,
 				125200000000000000000007 /* SettingsNotificationsPage.swift */,
 				125200000000000000000009 /* SettingsServerPage.swift */,
+				E1611000000000000000A004 /* ProfileServingSection.swift */,
+				E1611000000000000000A006 /* ServeEveryProfileView.swift */,
 				12520000000000000000000B /* WebuiServerSettings.swift */,
 				12520000000000000000000F /* WebuiServerSettingsModel.swift */,
 				12520000000000000000000D /* AddServerView.swift */,
@@ -2215,10 +2312,16 @@
 				103200000000000000000001 /* DefaultProfilePickerView.swift */,
 				1A2B3C4D5E6F70000000111 /* ArchivedSessionsView.swift */,
 				C23400000000000000000012 /* ProviderGlyphGalleryView.swift */,
+				C23400000000000000000014 /* ThemeGalleryView.swift */,
 				1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */,
 				E1318000000000000000A010 /* APIKeyEditor.swift */,
 				E1318000000000000000A008 /* APIKeysView.swift */,
 				E1318000000000000000A006 /* APIKeysModel.swift */,
+				E1582000000000000000A004 /* PluginsModel.swift */,
+				E1582000000000000000A006 /* PluginsView.swift */,
+				E1582000000000000000A012 /* PluginInstallSheet.swift */,
+				E1582000000000000000A016 /* PluginDetailView.swift */,
+				E1582000000000000000A014 /* PluginDiscoverView.swift */,
 				19C1150000000000000000A2 /* CliSessionsSyncModel.swift */,
 				26AB000000000000000000F2 /* ProvidersView.swift */,
 				26AB000000000000000000F1 /* ProvidersViewModel.swift */,
@@ -2235,6 +2338,8 @@
 				531000000000000000000002 /* TipJarPromptState.swift */,
 				870000000000000000000002 /* PerformanceSignposts.swift */,
 				870000000000000000000004 /* HitchMeter.swift */,
+				B14050000000000000000002 /* RenderProbe.swift */,
+				C09200000000000000000012 /* AppColor.swift */,
 				C09200000000000000000002 /* AppFont.swift */,
 				1A2B3C4D5E6F700000000101 /* AppTheme.swift */,
 				863000000000000000000002 /* NotificationOffer.swift */,
@@ -2575,6 +2680,7 @@
 				CA1505000000000000000001 /* Auxiliary.xcstrings in Resources */,
 				CA1505000000000000000005 /* ca.lproj in Resources */,
 				1A2B3C4D5E6F70000000300 /* PrivacyInfo.xcprivacy in Resources */,
+				C09200000000000000000021 /* Fonts in Resources */,
 				9E2A653D968A4ACDA19A8142 /* ThirdPartyNotices in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2613,6 +2719,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				79EEC8486030DA04A092D557 /* ScreenCanvas.swift in Sources */,
+				D5D7BC7A9A48E1E101C20E93 /* ScreenInput.swift in Sources */,
+				D54C4191484B7E0927A7C9BD /* ScreenControl.swift in Sources */,
+				CFA1B013C7784C249E72A5DE /* ScreenView.swift in Sources */,
+				284C1405D843B63B8A2360CA /* ScreenSession.swift in Sources */,
+				FC264D031B2CAEDB4AF53C1D /* RFBClient.swift in Sources */,
+				DAB1829DA684D7E566D41872 /* RFBDecoder.swift in Sources */,
 				A4790000000000000000E001 /* PushEnvironment.swift in Sources */,
 				A4790000000000000000E002 /* PushPairing.swift in Sources */,
 				559000000000000000000001 /* PushPreview.swift in Sources */,
@@ -2625,6 +2738,9 @@
 				B48200000000000000000032 /* BotCreator.swift in Sources */,
 				B48200000000000000000034 /* BotCreateView.swift in Sources */,
 				B48200000000000000000004 /* BotProfileEditor.swift in Sources */,
+				D99CEF90BA3948E3D90239C6 /* BotAvatarLibrary.swift in Sources */,
+				131D47952016B290FA56B00F /* BotGeneratedAvatar.swift in Sources */,
+				FD3E09513D0737A13DCBCDB2 /* BotAvatarGeneration.swift in Sources */,
 				B48200000000000000000022 /* BotFaceMotion.swift in Sources */,
 				B48200000000000000000006 /* BotProfileEditorView.swift in Sources */,
 				D4E8321C0A744DE3A5B8C997 /* ChatComposerPresentation.swift in Sources */,
@@ -2639,9 +2755,12 @@
 				E1043000000000000000A001 /* HermesKanbanClient.swift in Sources */,
 				E1069000000000000000A001 /* HermesSkillsClient.swift in Sources */,
 				E1318000000000000000A001 /* HermesEnvironmentClient.swift in Sources */,
+				E1582000000000000000A001 /* HermesPluginsClient.swift in Sources */,
+				E1582000000000000000A009 /* HermesPluginCatalog.swift in Sources */,
 				E1112000000000000000A001 /* HermesWorkspaceFileClient.swift in Sources */,
 				E1114000000000000000A001 /* HermesGitClient.swift in Sources */,
 				E1075000000000000000A001 /* HermesUpdateClient.swift in Sources */,
+				E1611000000000000000A001 /* HermesProfileServing.swift in Sources */,
 				E1074000000000000000A001 /* HermesInsightsClient.swift in Sources */,
 				E1046000000000000000A001 /* HermesSessionPage.swift in Sources */,
 				E1048000000000000000A001 /* HermesSessionActions.swift in Sources */,
@@ -2650,6 +2769,7 @@
 				C87080000000000000000001 /* HermesBrowserSignIn.swift in Sources */,
 				E1071000000000000000A001 /* HermesTranscription.swift in Sources */,
 				C8250A000000000000000001 /* HermesGateway.swift in Sources */,
+				C1601CA00000000000000001 /* HermesCanonicalProtocol.swift in Sources */,
 				C8970A000000000000000001 /* HermesCompatibility.swift in Sources */,
 				729010E70E8041EA9414997D /* BotArtifactDownload.swift in Sources */,
 				D7750E758B8A432EA96770E2 /* BotAttachmentUpload.swift in Sources */,
@@ -2777,9 +2897,7 @@
 				C86900000000000000000001 /* NetworkPathMonitor.swift in Sources */,
 				1A2B3C4D5E6F7000000000A0 /* KeychainStore.swift in Sources */,
 				1A2B3C4D5E6F7000000000A5 /* OnboardingView.swift in Sources */,
-				C15210000000000000000006 /* OnboardingConnectPage.swift in Sources */,
 				C15210000000000000000004 /* OnboardingAgentPromptPage.swift in Sources */,
-				C15210000000000000000003 /* OnboardingFeaturesPage.swift in Sources */,
 				C15210000000000000000001 /* OnboardingFlowPolicy.swift in Sources */,
 				C15210000000000000000005 /* OnboardingTailscalePage.swift in Sources */,
 				C15210000000000000000002 /* OnboardingWelcomePage.swift in Sources */,
@@ -2803,6 +2921,7 @@
 				1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */,
 				125200000000000000000002 /* SettingsRows.swift in Sources */,
 				125200000000000000000004 /* SettingsAppPages.swift in Sources */,
+				158300000000000000000001 /* SettingsAppearancePage.swift in Sources */,
 				125200000000000000000006 /* SettingsAboutPage.swift in Sources */,
 				139600000000000000000001 /* SupportReport.swift in Sources */,
 				139700000000000000000001 /* DiagnosticsLog.swift in Sources */,
@@ -2810,6 +2929,8 @@
 				141100000000000000000002 /* SettingsAcknowledgementsPage.swift in Sources */,
 				125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */,
 				12520000000000000000000A /* SettingsServerPage.swift in Sources */,
+				E1611000000000000000A003 /* ProfileServingSection.swift in Sources */,
+				E1611000000000000000A005 /* ServeEveryProfileView.swift in Sources */,
 				12520000000000000000000C /* WebuiServerSettings.swift in Sources */,
 				125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */,
 				12520000000000000000000E /* AddServerView.swift in Sources */,
@@ -2820,10 +2941,16 @@
 				103200000000000000000002 /* DefaultProfilePickerView.swift in Sources */,
 				1A2B3C4D5E6F70000000110 /* ArchivedSessionsView.swift in Sources */,
 				C23400000000000000000011 /* ProviderGlyphGalleryView.swift in Sources */,
+				C23400000000000000000013 /* ThemeGalleryView.swift in Sources */,
 				1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */,
 				E1318000000000000000A009 /* APIKeyEditor.swift in Sources */,
 				E1318000000000000000A007 /* APIKeysView.swift in Sources */,
 				E1318000000000000000A005 /* APIKeysModel.swift in Sources */,
+				E1582000000000000000A003 /* PluginsModel.swift in Sources */,
+				E1582000000000000000A005 /* PluginsView.swift in Sources */,
+				E1582000000000000000A011 /* PluginInstallSheet.swift in Sources */,
+				E1582000000000000000A015 /* PluginDetailView.swift in Sources */,
+				E1582000000000000000A013 /* PluginDiscoverView.swift in Sources */,
 				19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */,
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
 				532000000000000000000001 /* RatingPromptState.swift in Sources */,
@@ -2831,7 +2958,9 @@
 				531000000000000000000001 /* TipJarPromptState.swift in Sources */,
 				870000000000000000000001 /* PerformanceSignposts.swift in Sources */,
 				870000000000000000000003 /* HitchMeter.swift in Sources */,
+				B14050000000000000000001 /* RenderProbe.swift in Sources */,
 				C09200000000000000000001 /* AppFont.swift in Sources */,
+				C09200000000000000000011 /* AppColor.swift in Sources */,
 				1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */,
 				863000000000000000000001 /* NotificationOffer.swift in Sources */,
 				C012400000000000000002 /* AppIconChoice.swift in Sources */,
@@ -2868,10 +2997,13 @@
 					C04900000000000000000003 /* ChatComposerVoiceControls.swift in Sources */,
 					C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */,
 					C040F000000000000000001 /* ProviderGlyph.swift in Sources */,
-					C0A5C9000000000000000001 /* ChatComposerToolbarScroller.swift in Sources */,
 					C08730000000000000000B05 /* ForkOrigin.swift in Sources */,
 					C08730000000000000000B04 /* HorizontalOverflowEdgeFades.swift in Sources */,
 					C042A000000000000000003 /* ChatComposerSelectorSheets.swift in Sources */,
+					C15500000000000000000001 /* ThinkingControl.swift in Sources */,
+					C15500000000000000000003 /* ThinkingSliderLooks.swift in Sources */,
+					C15500000000000000000005 /* ThinkingSliderLooksGeometric.swift in Sources */,
+					C15500000000000000000007 /* ThinkingSliderPickerView.swift in Sources */,
 					105050000000000000000001 /* ComposerModelPickerSectionExpansionState.swift in Sources */,
 				1A2B3C4D5E6F7000000000D8 /* MessageBubbleView.swift in Sources */,
 				C87100000000000000000001 /* UserBubbleFoldPolicy.swift in Sources */,
@@ -2967,7 +3099,7 @@
 				1A2B3C4D5E6F70000000152 /* MessageAttachment.swift in Sources */,
 				A04200000000000000000001 /* Approval.swift in Sources */,
 				A1022B000000000000000001 /* ApprovalSummary.swift in Sources */,
-				A04200000000000000000003 /* ApprovalRequestOverlay.swift in Sources */,
+				A04200000000000000000003 /* ApprovalRequestInset.swift in Sources */,
 				C1A042000000000000000001 /* Clarification.swift in Sources */,
 				C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */,
 				C1A0420000000000000000A3 /* PendingRequestSurfaces.swift in Sources */,
@@ -3028,6 +3160,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FD6887A5B7CABFF85B74F360 /* ScreenSessionTests.swift in Sources */,
+				3C47C99D373EDF30CDEAAED1 /* RFBDecoderTests.swift in Sources */,
 				A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */,
 				B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */,
 				B48200000000000000000036 /* BotLifecycleTests.swift in Sources */,
@@ -3043,6 +3177,8 @@
 				E1043000000000000000A003 /* HermesKanbanClientTests.swift in Sources */,
 				E1069000000000000000A003 /* HermesSkillsClientTests.swift in Sources */,
 				E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */,
+				E1611000000000000000A007 /* ServeEveryProfileTests.swift in Sources */,
+				E1582000000000000000A007 /* PluginsModelTests.swift in Sources */,
 				E1112000000000000000A003 /* HermesWorkspaceFileClientTests.swift in Sources */,
 				E1075000000000000000A009 /* HermesUpdateClientTests.swift in Sources */,
 				E1075000000000000000A007 /* HermesUpdateMachineTests.swift in Sources */,
@@ -3068,6 +3204,7 @@
 				A1216000000000000000A005 /* MoveToHermesRunnerTests.swift in Sources */,
 				A1218000000000000000A005 /* MoveToHermesModelTests.swift in Sources */,
 				1331AA23B3B0713A5896D0A3 /* HermexPushProvisioningTests.swift in Sources */,
+				DC0447FD714D103048C79835 /* BotAvatarLibraryTests.swift in Sources */,
 				A4730000000000000000A003 /* BotAvatarTests.swift in Sources */,
 				A4770000000000000000D005 /* HermesDelegatedWorkTests.swift in Sources */,
 				A48400000000000000000905 /* BotSlashCommandTests.swift in Sources */,
@@ -3149,6 +3286,7 @@
 				C14300000000000000000003 /* StreamingMarkdownSupportTests.swift in Sources */,
 				C13000000000000000000001 /* ChatVerticalScrollAxisGuardTests.swift in Sources */,
 				C0DE25000000000000000003 /* ChatScrollPolicyTests.swift in Sources */,
+				B14050000000000000000003 /* ChatTranscriptRenderBudgetTests.swift in Sources */,
 				C8660A000000000000000003 /* InAppBrowserPolicyTests.swift in Sources */,
 				C87100000000000000000003 /* UserBubbleFoldPolicyTests.swift in Sources */,
 				C27800000000000000000003 /* ChatGitControlsVisibilityPolicyTests.swift in Sources */,
@@ -3171,6 +3309,8 @@
 				C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */,
 				C86900000000000000000003 /* NetworkPathMonitorTests.swift in Sources */,
 				1A2B3C4D5E6F700000000102 /* AppThemeTests.swift in Sources */,
+				C23400000000000000000015 /* AppColorTests.swift in Sources */,
+				C23400000000000000000017 /* AppFontTests.swift in Sources */,
 				863000000000000000000003 /* NotificationOfferTests.swift in Sources */,
 				C012400000000000000006 /* AppIconChoiceTests.swift in Sources */,
 				C03120000000000000B006 /* APIClientGitTests.swift in Sources */,
@@ -3463,7 +3603,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -3492,7 +3632,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -3518,7 +3658,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -3543,7 +3683,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).tests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -3569,7 +3709,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).shareextension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -3597,7 +3737,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).shareextension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -3625,7 +3765,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).liveactivitywidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -3654,7 +3794,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).notifications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -3682,7 +3822,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).liveactivitywidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -3711,7 +3851,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.1;
+				MARKETING_VERSION = 2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).notifications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

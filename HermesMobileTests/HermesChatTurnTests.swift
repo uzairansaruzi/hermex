@@ -45,34 +45,37 @@ import SwiftUI
     /// and title, and goes idle only once `session.info` says so after `message.complete`.
     func testRecordedTurnStreamsTextAndTitleAndEndsOnSessionInfo() async throws {
         let frames = try recorded("turn-frames")
-        let chat = await openChat(runtime: "e7d1ef0d", key: "20260925_023517_59d8c3", profile: "inbox-triage")
+        let first = frames[0]["params"]
+        let runtime = try XCTUnwrap(first["session_id"].text)
+        let key = try XCTUnwrap(first["payload"]["stored_session_id"].text)
+        let startedAt = Date(timeIntervalSince1970: try XCTUnwrap(first["payload"]["turn_started_at"].number))
+        let chat = await openChat(runtime: runtime, key: key, profile: "hermex-fixtures")
         chat.receive(frames[0])
         chat.receive(frames[1])
         XCTAssertNotNil(chat.model.activeStreamID, "an unprompted message.start starts a turn")
-        XCTAssertEqual(chat.model.activeRunStartedAt, Date(timeIntervalSince1970: 1790318117.362543),
-                       "the run counts from the host's turn_started_at")
+        XCTAssertEqual(chat.model.activeRunStartedAt, startedAt, "the run counts from the host's turn_started_at")
 
-        frames[2...8].forEach(chat.receive)
+        frames[2..<(frames.count - 1)].forEach(chat.receive)
         chat.model.flushPendingStreamingContent()
+        let complete = try XCTUnwrap(frames.first { $0["params"]["type"].text == "message.complete" })["params"]["payload"]
         XCTAssertEqual(chat.model.messages.map(\.role), ["assistant"])
-        XCTAssertEqual(chat.model.messages.map(\.content), ["ok"],
+        XCTAssertEqual(chat.model.messages.map(\.content), [try XCTUnwrap(complete["text"].text)],
                        "reasoning.available repeats the answer and is never shown again")
         XCTAssertEqual(chat.model.liveReasoningText, "", "thinking.delta is spinner text, not reasoning")
         XCTAssertEqual(chat.model.displayTitle, "fixture-redacted")
         XCTAssertNotNil(chat.model.activeStreamID, "message.complete alone does not make the chat idle")
-        XCTAssertEqual(chat.model.contextWindowSnapshot?.contextLength, 1_048_576)
-        XCTAssertEqual(chat.model.contextWindowSnapshot?.tokensUsed, 14_215)
+        XCTAssertEqual(chat.model.contextWindowSnapshot?.contextLength, try XCTUnwrap(complete["usage"]["context_max"].integer))
+        XCTAssertEqual(chat.model.contextWindowSnapshot?.tokensUsed, try XCTUnwrap(complete["usage"]["context_used"].integer))
 
-        chat.receive(frames[9])
+        chat.receive(frames[frames.count - 1])
         XCTAssertNil(chat.model.activeStreamID)
         XCTAssertEqual(chat.model.latestRunOutcome?.ending, .completed)
         XCTAssertEqual(chat.model.runEndTrigger, 1)
         XCTAssertEqual(chat.liveActivity.titles, [], "a Hermes title never reaches a webui Live Activity")
 
         // The host sends no `session.info {running: true}` before a later turn's start.
-        chat.receive(event(11, "message.start", runtime: "e7d1ef0d"))
-        XCTAssertNotEqual(chat.model.activeRunStartedAt, Date(timeIntervalSince1970: 1790318117.362543),
-                          "a later turn never counts from the last one's start")
+        chat.receive(event(frames.count + 1, "message.start", runtime: runtime))
+        XCTAssertNotEqual(chat.model.activeRunStartedAt, startedAt, "a later turn never counts from the last one's start")
     }
 
     /// The recorded tool turn: the interim reply, one tool row keyed by `tool_id` from start
@@ -81,19 +84,22 @@ import SwiftUI
     func testRecordedToolTurnKeysToolsByIDAndAppendsTheFinalAnswer() async throws {
         let frames = try recorded("turn-tool-approval-frames")
         let key = try XCTUnwrap(frames[0]["params"]["payload"]["stored_session_id"].text)
-        let chat = await openChat(runtime: "7dd4dff2", key: key, profile: "default")
-        frames[0...7].forEach(chat.receive)
+        let runtime = try XCTUnwrap(frames[0]["params"]["session_id"].text)
+        let chat = await openChat(runtime: runtime, key: key, profile: "default")
+        let approval = try XCTUnwrap(frames.firstIndex { $0["method"].text == "approval" })
+        let withdrawal = try XCTUnwrap(frames.firstIndex { $0["params"]["type"].text == "request.cancel" })
+        frames[..<approval].forEach(chat.receive)
         chat.model.flushPendingStreamingContent()
         XCTAssertEqual(chat.model.liveToolCalls.map(\.id), ["fixture-redacted"])
         XCTAssertEqual(chat.model.liveToolCalls.map(\.name), ["terminal"])
         XCTAssertEqual(chat.model.liveToolCalls.map(\.isCompleted), [false])
 
-        chat.receive(frames[8])
+        chat.receive(frames[approval])
         XCTAssertTrue(chat.model.stopNeedsConfirmation, "the approval is an open request")
-        chat.receive(frames[9])
+        frames[(approval + 1)...withdrawal].forEach(chat.receive)
         XCTAssertFalse(chat.model.stopNeedsConfirmation, "request.cancel withdrew it")
 
-        frames[10...].forEach(chat.receive)
+        frames[(withdrawal + 1)...].forEach(chat.receive)
         XCTAssertEqual(chat.model.liveToolCalls.map(\.id), ["fixture-redacted"], "the completion found its start")
         XCTAssertEqual(chat.model.liveToolCalls.map(\.isCompleted), [true])
         XCTAssertEqual(chat.model.messages.map(\.content), ["Let me run a quick check.\n\nThe command returned: 1."])
@@ -357,6 +363,10 @@ import SwiftUI
         XCTAssertEqual(BotPromptMode.steer.outcome(reply("streaming")), .unknown)
         XCTAssertEqual(BotPromptMode.send.outcome(reply("redirected")), .unknown)
         XCTAssertEqual(BotPromptMode.send.outcome(.object(["voice_stopped": .bool(true)])), .voiceStopped)
+        // A canonical host's send is admitted only by a receipt naming its admission (#1602).
+        XCTAssertEqual(BotPromptMode.send.outcome(.object(["status": .string("queued")]), canonical: true), .unknown)
+        XCTAssertEqual(BotPromptMode.send.outcome(.object(["status": .string("terminal"), "admission_id": .string("a1")]),
+                                                  canonical: true), .unknown)
         XCTAssertEqual(BotPromptMode.steer.outcome(.object(["voice_stopped": .bool(true)])), .unknown)
 
         XCTAssertTrue(BotPromptMode.send.definitelyRejected(BotFailure.rejected(4001)))
@@ -507,16 +517,16 @@ import SwiftUI
         XCTAssertEqual(result, .executed(message: nil))
         XCTAssertEqual(chat.writes("prompt.submit").first?["queued"], .bool(true))
         _ = await chat.model.submitStreamingMessage("And the docs", behavior: .queue)
-        XCTAssertEqual(chat.model.queuedPromptMessage?.content, "Then the tests\n\nAnd the docs")
+        XCTAssertEqual(chat.model.queuedPromptMessages.first?.content, "Then the tests\n\nAnd the docs")
         XCTAssertNil(chat.model.queuedMessagesReceipt, "the bubble replaces the receipt")
         XCTAssertEqual(chat.model.messages, [], "the bubble is not a transcript row")
 
         chat.receive(event(2, "message.complete", ["status": .string("complete")]))
         chat.receive(event(3, "session.info", ["running": .bool(false)]))
-        XCTAssertNotNil(chat.model.queuedPromptMessage, "it stays between the turns")
+        XCTAssertFalse(chat.model.queuedPromptMessages.isEmpty, "it stays between the turns")
         chat.receive(event(4, "message.start"))
         XCTAssertEqual(chat.model.messages.map(\.content), ["Then the tests\n\nAnd the docs"])
-        XCTAssertNil(chat.model.queuedPromptMessage)
+        XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty)
     }
 
     /// A reattach restores the host's queued prompt as the bubble, its file reference a chip
@@ -524,12 +534,12 @@ import SwiftUI
     func testAReattachRestoresTheQueuedPromptAsOneBubble() async {
         let chat = await openChat(snapshot: resume(running: true)
             .replacing("queued", with: .object(["user": .string("Then the tests\n\n@file:/a/notes.txt")])))
-        XCTAssertEqual(chat.model.queuedPromptMessage?.content, "Then the tests")
-        XCTAssertEqual(chat.model.queuedPromptMessage?.attachments?.map(\.name), ["notes.txt"])
+        XCTAssertEqual(chat.model.queuedPromptMessages.first?.content, "Then the tests")
+        XCTAssertEqual(chat.model.queuedPromptMessages.first?.attachments?.map(\.name), ["notes.txt"])
 
         chat.receive(event(1, "message.start"))
         XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.map(\.content), ["Then the tests"])
-        XCTAssertNil(chat.model.queuedPromptMessage)
+        XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty)
     }
 
     /// Another client's Stop discards the host's queue too: the bubble goes, Stop no longer
@@ -542,7 +552,7 @@ import SwiftUI
         XCTAssertTrue(chat.model.stopNeedsConfirmation)
 
         chat.receive(event(2, "message.complete", ["status": .string("interrupted")]))
-        XCTAssertNil(chat.model.queuedPromptMessage)
+        XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty)
         XCTAssertFalse(chat.model.stopNeedsConfirmation)
         chat.receive(event(3, "session.info", ["running": .bool(false)]))
         chat.receive(event(4, "message.start"))
@@ -567,11 +577,205 @@ import SwiftUI
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
         _ = await chat.model.submitStreamingMessage("Afterwards", behavior: .queue)
         XCTAssertTrue(chat.model.stopNeedsConfirmation)
-        XCTAssertEqual(chat.model.queuedPromptMessage?.content, "Afterwards")
+        XCTAssertEqual(chat.model.queuedPromptMessages.first?.content, "Afterwards")
         chat.host.always("session.interrupt", .init(result: .object(["status": .string("interrupted")])))
         _ = await chat.model.cancelActiveStream()
         XCTAssertFalse(chat.model.stopNeedsConfirmation, "the host discarded the queue")
-        XCTAssertNil(chat.model.queuedPromptMessage)
+        XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty)
+    }
+
+    // MARK: Canonical hosts (#1602)
+
+    /// A canonical send carries the Profile and a `submission_id` the host admits it by, and its
+    /// recorded receipt, `queued` even on an idle session, clears the draft. Its own turn can start
+    /// ahead of that receipt, listed as queued first: its prompt shows once, with no queued bubble.
+    /// While a lost turn holds the queue, a send waits behind it as a queued bubble, with no turn
+    /// shown running.
+    func testACanonicalReceiptForTheRunningOrABlockedAdmissionShowsNoPhantomTurn() async throws {
+        var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
+        receipt["admission_id"] = .string("a1")
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        // The recorded order: `pending` lists the send's admission as queued, then its turn starts.
+        chat.host.next("prompt.submit", .init(result: .object(receipt), before: [
+            canonicalEvent(1, "session.info", ["pending": .array([admission("a1", "queued", "Run the quick check.")])],
+                           admission: "a1", generation: nil),
+            canonicalEvent(2, "message.start", admission: "a1", generation: 1)
+        ]))
+        let sent = await chat.model.sendMessage("Run the quick check.")
+        XCTAssertTrue(sent, "true clears the draft")
+        let params = try XCTUnwrap(chat.writes("prompt.submit").first)
+        XCTAssertEqual(params["profile"]?.text, "default")
+        XCTAssertEqual(params["submission_id"]?.text?.isEmpty, false)
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty, "the running admission is no follow-up")
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.map(\.content), ["Run the quick check."],
+                       "the send's prompt shows once")
+
+        let blocked = await openChat(runtime: "tip", snapshot: canonicalSnapshot(pending: [
+            admission("lost", "unknown", "Run the quick check.", generation: 2)
+        ]), canonical: true)
+        receipt["admission_id"] = .string("behind")
+        blocked.host.always("prompt.submit", .init(result: .object(receipt)))
+        let queued = await blocked.model.sendMessage("Then the tests")
+        XCTAssertTrue(queued)
+        XCTAssertNil(blocked.model.activeStreamID, "nothing runs until Discard")
+        XCTAssertEqual(blocked.model.queuedPromptMessages.map(\.content), ["Then the tests"])
+    }
+
+    /// An older queued admission that starts while a Send is out, as when another client discards
+    /// the lost turn holding it, shows its own prompt; the Send then waits behind it as a bubble.
+    func testAnOlderAdmissionStartingDuringASendShowsItsOwnPrompt() async throws {
+        var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
+        receipt["admission_id"] = .string("a3")
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(pending: [
+            admission("lost", "unknown", "Earlier", generation: 1), admission("a2", "queued", "Then the tests")
+        ]), canonical: true)
+        chat.host.next("prompt.submit", .init(result: .object(receipt), before: [
+            canonicalEvent(1, "session.info", ["pending": .array([admission("a2", "queued", "Then the tests")])],
+                           admission: "a2", generation: nil),
+            canonicalEvent(2, "message.start", admission: "a2", generation: 2)
+        ]))
+        let sent = await chat.model.sendMessage("Run the quick check.")
+        XCTAssertTrue(sent)
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.map(\.content), ["Then the tests"])
+        XCTAssertEqual(chat.model.queuedPromptMessages.map(\.content), ["Run the quick check."])
+    }
+
+    /// Sends queued behind a canonical turn stay separate admissions, one bubble each in the
+    /// host's order, as its recorded `pending` lists them, and the next turn takes only its own.
+    func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
+        let rows = try XCTUnwrap(try canonical("canonical-resume-queued")["pending"].list)
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(running: true, pending: rows), canonical: true)
+        XCTAssertEqual(chat.model.queuedPromptMessages.map(\.content), ["Then the tests", "And the docs"])
+        XCTAssertTrue(chat.model.stopNeedsConfirmation)
+
+        let next = try XCTUnwrap(rows[1]["admission_id"].text)
+        chat.receive(canonicalEvent(1, "message.start", admission: next, generation: 2))
+        XCTAssertEqual(chat.model.queuedPromptMessages.map(\.content), ["And the docs"])
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.map(\.content), ["Then the tests"])
+    }
+
+    /// A queued admission withdrawn while another runs settles with its own `message.complete`,
+    /// recorded with no generation. It is no turn's completion: the running turn that then fails
+    /// with no completion of its own ends failed, not completed.
+    func testAWithdrawnCanonicalAdmissionIsNotTheRunningTurnsCompletion() async throws {
+        let withdrawn = try canonical("canonical-withdrawn-complete")
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.receive(canonicalEvent(1, "message.start", admission: "running", generation: 1))
+        var params = try XCTUnwrap(withdrawn.fields)
+        params["session_id"] = .string("tip"); params["seq"] = .number(2)
+        chat.receive(.object(params))
+        XCTAssertNotNil(chat.model.activeStreamID, "the running turn goes on")
+
+        chat.receive(canonicalEvent(3, "error", ["message": .string("Provider unavailable")], admission: "running", generation: 1))
+        chat.receive(canonicalEvent(4, "session.info", ["running": .bool(false)], admission: "running", generation: 1))
+        XCTAssertEqual(chat.model.latestRunOutcome?.ending, .failed)
+    }
+
+    /// Stop on a canonical host withdraws the known queued admissions first, then interrupts the
+    /// generation the host last named, here the recorded next turn's (#1341, decision 3). A stop
+    /// the host refuses because a newer turn started (recorded `stale_generation`) sends nothing
+    /// more and asks for another tap.
+    func testCanonicalStopWithdrawsTheQueueThenInterruptsItsGeneration() async throws {
+        let stale = try canonical("canonical-stale-generation")
+        var next = try XCTUnwrap(try canonical("canonical-second-turn-start").fields)
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(running: true, generation: 1, pending: [
+            admission("a1", "started", "Run the quick check.", generation: 1), admission("a2", "queued", "Then the tests")
+        ]), canonical: true)
+        next["session_id"] = .string("tip"); next["seq"] = .number(1)
+        chat.receive(.object(next))
+        XCTAssertNotNil(chat.model.activeStreamID)
+        // A newer turn starting while the queue is withdrawn is not the one this Stop is for.
+        chat.host.next("prompt.cancel", .init(result: .object(["status": .string("terminal"), "outcome": .string("cancelled")]),
+                                              before: [canonicalEvent(2, "session.usage", admission: "a3", generation: 3)]))
+        chat.host.next("session.interrupt", .init(error: stale["code"].integer, message: stale["message"].text ?? "", data: stale["data"]))
+        chat.host.next("session.interrupt", .init(result: .object(["execution_state": .string("running")])))
+        let refused = await chat.model.cancelActiveStream()
+        XCTAssertFalse(refused)
+        XCTAssertEqual(chat.writes("prompt.cancel").map { $0["admission_id"]?.text }, ["a2"])
+        XCTAssertEqual(chat.writes("session.interrupt").map { $0["execution_generation"]?.integer }, [2])
+
+        let stopped = await chat.model.cancelActiveStream()
+        XCTAssertTrue(stopped)
+        XCTAssertEqual(chat.writes("session.interrupt").count, 2, "only the second tap sent a second stop")
+    }
+
+    /// A turn a canonical host lost across its restart (`pending` status `unknown`) shows with
+    /// Discard, which acknowledges it with that turn's own generation, never the session's, and
+    /// never resends its prompt.
+    func testALostCanonicalTurnIsDiscardedWithItsOwnGeneration() async throws {
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(generation: 4, pending: [
+            admission("lost", "unknown", "Run the quick check.", generation: 2), admission("next", "queued", "Then the tests")
+        ]), canonical: true)
+        XCTAssertNotNil(chat.model.lostTurn)
+        chat.host.always("prompt.resolve_unknown", .init(result: .object(["status": .string("terminal")])))
+        await chat.model.discardLostTurn()
+        XCTAssertEqual(chat.writes("prompt.resolve_unknown"), [[
+            "profile": .string("default"), "session_id": .string("tip"), "admission_id": .string("lost"),
+            "execution_generation": .number(2)
+        ]], "the host refuses any other key")
+        XCTAssertNil(chat.model.lostTurn)
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+    }
+
+    /// Fork From Here on a canonical host (#1603) is one fenced `branch` edit that keeps the rows
+    /// through the selected row's own id, with nothing counted, and opens the branch the recorded
+    /// receipt names.
+    func testACanonicalBranchKeepsTheRowsThroughTheSelectedRowsID() async throws {
+        let branch = try canonical("canonical-mutations")["branch"]["result"]
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.mutate", .init(result: branch))
+        let key = try await chat.turn.branch(through: 81, name: "Branched")
+        XCTAssertEqual(key, branch["branched_session_id"].text)
+        let sent = try XCTUnwrap(chat.writes("session.mutate").first)
+        XCTAssertEqual(sent["operation"], .string("branch"))
+        XCTAssertEqual(sent["payload"], .object(["title": .string("Branched"), "through_message_id": .number(81)]))
+        XCTAssertEqual(sent["expected_revision"], .number(2))
+        XCTAssertEqual(sent["expected_generation"], .number(1))
+    }
+
+    /// An `/undo` whose answer was lost goes out again identical, same row and request id, though
+    /// the history read since no longer holds that exchange: deriving a target again would undo
+    /// another one.
+    func testALostCanonicalUndoIsSentAgainIdentical() async throws {
+        let chat = await openChat(runtime: "tip", history: [userRow("First", id: 1), assistantRow("One", id: 2),
+                                                             userRow("Second", id: 3), assistantRow("Two", id: 4)],
+                                  snapshot: canonicalSnapshot(), rpcDeadline: .milliseconds(300), canonical: true)
+        chat.host.withhold("session.mutate")
+        do { try await chat.turn.undo(); XCTFail("The undo's answer was lost") } catch {}
+
+        chat.host.allow("session.mutate")
+        chat.host.always("session.mutate", .init(result: .object(["rewound_count": .number(0)])))
+        serveHistory([userRow("First", id: 1), assistantRow("One", id: 2)])
+        // The lost answer ended the chat's connection, which reattaches on its own.
+        await waitUntil("reattached") { chat.turn.engine.connectionState == .connected }
+        try await chat.turn.undo()
+        let tries = chat.writes("session.mutate")
+        XCTAssertEqual(tries.count, 2)
+        XCTAssertEqual(tries.map { $0["payload"] }, Array(repeating: .object(["target_message_id": .number(3)]), count: 2))
+        XCTAssertEqual(tries[0]["request_id"], tries[1]["request_id"])
+    }
+
+    /// `/compress` on a canonical host is a fenced `compress` edit; its recorded `noop` receipt
+    /// removed nothing and says why, and the transcript stays.
+    func testACanonicalCompressIsAFencedEdit() async throws {
+        let noop = try canonical("canonical-mutations")["compress"]["result"]
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.mutate", .init(result: noop))
+        let compression = try await chat.turn.compress(focus: nil)
+        XCTAssertEqual(compression, .unchanged(noop["summary"]["headline"].text))
+        XCTAssertEqual(chat.writes("session.mutate").map { $0["operation"] }, [.string("compress")])
+        XCTAssertEqual(chat.writes("session.compress"), [])
+    }
+
+    /// A canonical compaction reply that is neither `noop`, a preview nor a receipt (no `revision`)
+    /// says nothing safe about the transcript, so it fails rather than reading as compacted.
+    func testACanonicalCompressReplyWithoutARevisionFails() async throws {
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
+        chat.host.always("session.mutate", .init(result: .object(["session_id": .string("tip"), "operation": .string("compress"),
+                                                                  "status": .string("unexpected")])))
+        do { _ = try await chat.turn.compress(focus: nil); XCTFail("an unreadable compaction reply was refused") }
+        catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
     }
 
     /// A refused password (#884, #942) is never sent again unasked: neither returning from the
@@ -1370,6 +1574,16 @@ import SwiftUI
 
     // MARK: Delegated work
 
+    /// Restored background workers remain inspectable even when the session has no visible
+    /// transcript rows, rather than being covered by the new-conversation placeholder.
+    func testLiveWorkersReplaceTheEmptyConversationPlaceholder() {
+        typealias Placeholder = ChatTranscriptView.Placeholder
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true,
+                                 showsTurnOutcome: false, showsQueuedPrompt: false, showsDelegatedWork: true))
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true,
+                                   showsTurnOutcome: false, showsQueuedPrompt: false, showsDelegatedWork: false), .startPrompt)
+    }
+
     /// The worker count lists the session's workers once it connects, then again only on the
     /// lifecycle frames that change the roster, which coalesce into one read; leaving drops it,
     /// so the toolbar button goes with the connection (#1140).
@@ -1459,7 +1673,7 @@ import SwiftUI
     private func openChat(runtime: String = "runtime", key: String = "tip", profile: String = "default",
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil, lineageRoot: String? = nil,
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
-                          rpcDeadline: Duration = .seconds(30)) async -> Chat {
+                          rpcDeadline: Duration = .seconds(30), canonical: Bool = false) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -1470,7 +1684,7 @@ import SwiftUI
             "session_id": .string(runtime), "stored_session_id": .string(key), "message_count": .number(0),
             "messages": .array([]), "info": .object(["profile_name": .string(profile)])
         ])))
-        let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline))
+        let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline, canonical: canonical))
         serveHistory(history, key: key)
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
@@ -1601,6 +1815,39 @@ import SwiftUI
             .replacing("todo_state", with: .object(finalPlan ?? todos(revision: 2, ["completed", "completed"]))))
         XCTAssertNil(chat.model.activeStreamID, "the idle snapshot ends the followed turn")
         return activity
+    }
+
+    /// A canonical gateway fixture's reply (`scripts/capture-hermes-fixtures --local --gateway`).
+    private func canonical(_ name: String) throws -> BotJSON {
+        guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
+            throw XCTSkip("The source tree is not present (physical device or remote runner).")
+        }
+        return try JSONDecoder().decode(BotJSON.self, from: data)["reply"]
+    }
+
+    /// A canonical host's snapshot of session `tip`, whose id is its runtime: `pending` and
+    /// `prompts` as given, under generation `generation`.
+    private func canonicalSnapshot(running: Bool = false, generation: Int = 1, pending: [BotJSON] = [],
+                                   prompts: [BotJSON] = []) -> BotJSON {
+        .object(["session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
+                 "subscription_id": .string("sub-1"), "execution_generation": .number(Double(generation)), "revision": .number(2),
+                 "running": .bool(running), "messages": .array([]), "pending": .array(pending), "prompts": .array(prompts),
+                 "info": .object(["profile_name": .string("default")])])
+    }
+
+    /// One canonical `pending` row.
+    private func admission(_ id: String, _ status: String, _ text: String, generation: Int? = nil) -> BotJSON {
+        .object(["admission_id": .string(id), "status": .string(status), "text": .string(text),
+                 "execution_generation": generation.map { .number(Double($0)) } ?? .null])
+    }
+
+    /// A canonical frame: an event of session `tip` from admission `admission`, under `generation`.
+    private func canonicalEvent(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:],
+                                admission: String, generation: Int?) -> BotJSON {
+        var params = event(seq, type, payload, runtime: "tip").fields ?? [:]
+        params["admission_id"] = .string(admission)
+        params["execution_generation"] = generation.map { .number(Double($0)) } ?? .null
+        return .object(params)
     }
 
     private func recorded(_ name: String) throws -> [BotJSON] {

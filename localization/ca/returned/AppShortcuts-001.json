@@ -65,8 +65,8 @@
       ],
       "sourceStructure": null,
       "placeholders": [
-        "${applicationName}",
-        "${profile}"
+        "${profile}",
+        "${applicationName}"
       ],
       "protectedTerms": [],
       "comment": null,
@@ -120,8 +120,8 @@
       ],
       "sourceStructure": null,
       "placeholders": [
-        "${applicationName}",
-        "${profile}"
+        "${profile}",
+        "${applicationName}"
       ],
       "protectedTerms": [],
       "comment": null,
@@ -221,8 +221,8 @@
       ],
       "sourceStructure": null,
       "placeholders": [
-        "${applicationName}",
-        "${profile}"
+        "${profile}",
+        "${applicationName}"
       ],
       "protectedTerms": [],
       "comment": null,

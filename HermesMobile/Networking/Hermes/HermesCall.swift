@@ -1,5 +1,10 @@
 import Foundation
 
+/// The host's `approvals.mode`, the three values `config.set` accepts at the pinned commit.
+enum HermesApprovalMode: String, CaseIterable, Sendable {
+    case smart, manual, off
+}
+
 /// Every JSON-RPC request Hermex sends to a direct Hermes gateway: one case per
 /// operation the app uses, and deliberately none for any other upstream method.
 /// A case carries only what its callers vary. Values the contract fixes for
@@ -35,6 +40,54 @@ enum HermesCall: Equatable, Sendable {
     case profilesConfigure(ProfileChanges)
     case profilesCreate(NewProfile)
 
+    // The bot's screen (#1567). Read at the pin and checked against `scripts/local-hermes` on a
+    // Linux host; `docs/agents/screen.md` has the contract. Every failure is 5300.
+    /// `{supported, installed, missing, running, blocker, geometry, lease, profile_key, …}`.
+    case displayStatus(profile: String)
+    /// The same fields, plus a single-use 30 s `ticket` for `/api/display/ws` and a `viewer_id`.
+    /// A `viewerID` this connection minted comes back unchanged; any other gets a new one.
+    case displayObserve(profile: String, viewerID: String?)
+    /// Take Over: `{lease}`. Refuses a `viewerID` this connection didn't mint, with `viewer_mismatch`.
+    case displayLeaseAcquire(profile: String, viewerID: String)
+    /// Hand Back: `{lease}`. `force` skips that refusal, and with a `viewerID` the host still lets
+    /// only that holder release, so another person's takeover survives. It answers success either
+    /// way, so read the lease. With no `viewerID` it clears any holder: the force Hand Back only.
+    case displayLeaseRelease(profile: String, viewerID: String?)
+    /// Starts the screen and answers the status fields once it's up. It can wait 15 s or more for
+    /// the desktop. A refusal, such as too little memory, is 5300 with the host's message.
+    case displayStart(profile: String)
+    /// Stops the screen and answers the status fields plus `stopped`. Refused with
+    /// `viewer_mismatch` while a human holds it, unless `force`.
+    case displayStop(profile: String, force: Bool)
+
+    // Plugins (#1582), per Profile. A Profile the host doesn't have answers 4064.
+    /// `{plugins, user_count, bundled_count}`. Every row, and on 0.22.5 it reads the catalog's pins too.
+    case pluginsList(profile: String)
+    /// `{ok, unchanged, restart_required, gateway_reloaded, activation, name, plugin}`. Always names
+    /// the canonical key, because bare names collide across category folders. Either direction can
+    /// sync the Profile's Python packages first, which took 30 s on a fresh host. A refusal is 5026.
+    case pluginsToggle(profile: String, key: String, enable: Bool)
+    /// `{ok, plugin_name, enabled, missing_env, restart_required, gateway_reloaded, activation, …}`.
+    /// A catalog source names the entry, so the host resolves its repo and enforces its removal list,
+    /// and sends `ref`, because without one the host reuses a disabled copy at whatever commit it has
+    /// rather than the one the review showed. `replace` is the host's `force`, which also lets a
+    /// caution scan through on a repo source; a dangerous one stays blocked. Every refusal is 5026
+    /// with the host's message.
+    case pluginsInstall(profile: String, source: HermesPluginSource, replace: Bool, enable: Bool)
+    /// `{ok, name, cleared_memory_provider?}`. The host refuses a bundled plugin with 5026.
+    case pluginsRemove(profile: String, key: String)
+    /// Re-pins a catalog install or pulls a git one. `{ok: true, unchanged, restart_required, …}`, or
+    /// `{ok: false}` with nothing changed and either `consent_required`, `delta_lines` for a re-pin
+    /// that widens the plugin, or `scan_blocked`, `scan_verdict`, `scan_findings`. `acceptCapabilities`
+    /// answers the first and `acceptCaution` a caution scan; a dangerous one never updates. Each is
+    /// sent only after the user read what it accepts. Any other refusal is 4021.
+    case pluginsUpdate(profile: String, key: String, acceptCapabilities: Bool, acceptCaution: Bool)
+    /// `{ok, name, written, plugin}`. `values` are the manifest's non-secret keys; a wrong type or
+    /// a secret is 4021, and secrets go to `/api/env`. A plugin the host lacks is 4020. Empty `values`
+    /// follow a secret's write, as Desktop's do: this call is what tells the host to reconnect the
+    /// plugin's MCP servers on the new value and tell its other clients.
+    case pluginsSettings(profile: String, key: String, values: [String: BotJSON])
+
     // The canonical Bot Chat
     /// Finds the Profile's Bot Chat by its exact title, hidden rows included.
     case sessionList(profile: String)
@@ -44,7 +97,13 @@ enum HermesCall: Equatable, Sendable {
     case sessionTitle(sessionID: String)
     /// Attaches to a session without closing it when this socket drops.
     case sessionResume(profile: String, sessionID: String, omitMessages: Bool)
-    case sessionEventsSince(sessionID: String, lastSeen: Int)
+    /// The runtime's frames after `lastSeen`. `profile` and `replayEpoch`, the session's own
+    /// epoch from its last snapshot, go only to a canonical host (`canonicalParams`).
+    case sessionEventsSince(profile: String, sessionID: String, lastSeen: Int, replayEpoch: String?)
+    /// Ends this socket's subscription to a session on a canonical host (#1601), sent by the
+    /// gateway when the last screen holding it leaves (`HermesCanonicalSubscriptions`). A stale
+    /// `subscriptionID` answers `detached: false`. Never sent to the dashboard.
+    case sessionDetach(profile: String, sessionID: String, subscriptionID: String)
     /// The inbox's live-status read. `current_session_id` only marks a TUI's
     /// focused row, which Hermex never has.
     case sessionActiveList
@@ -58,6 +117,9 @@ enum HermesCall: Equatable, Sendable {
     /// row until its first prompt (`ConversationTarget.new`). `/clear` (#1050) starts it in
     /// the old chat's working folder and on its model; otherwise the Profile's defaults.
     case sessionNew(profile: String, cwd: String? = nil, model: Model? = nil)
+    /// A hidden draft for one `promptBtw`, on the Profile's model. No prompt ever runs in it. The
+    /// host still writes an empty row for it, so the caller closes and deletes it afterwards.
+    case sessionDraft(profile: String)
     /// `/title` in an open chat (#1048): renames the session `runtime` runs and emits
     /// `session.info`. A title in use or over 100 characters is 4022 with the host's message.
     case sessionRename(runtime: String, title: String)
@@ -94,8 +156,9 @@ enum HermesCall: Equatable, Sendable {
 
     // Turns
     /// Always `queued`: even an idle Send can race Desktop, so a fresh send never
-    /// inherits a host setting that converts it into a redirect or steer.
-    case promptSubmit(sessionID: String, text: String)
+    /// inherits a host setting that converts it into a redirect or steer. `fence` goes only to
+    /// a canonical host (#1602), which also gets a `submission_id` minted for this one send.
+    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil)
     /// Cuts the transcript at one durable prompt row and starts the turn again with
     /// `text`, in one call under the host's history lock. Never `queued`: the host
     /// refuses a cut while busy (4009) instead of queueing or steering it. A Hermes
@@ -111,9 +174,18 @@ enum HermesCall: Equatable, Sendable {
     /// steered by `focus`, and answers `{status, removed, summary, info}`; another compressor
     /// holding the lock answers `{lock_held, message}`. Refused while a turn runs (4009).
     case sessionCompress(runtime: String, focus: String?, profile: String)
-    case sessionSteer(sessionID: String, text: String)
-    case sessionRedirect(sessionID: String, text: String)
-    case sessionInterrupt(sessionID: String)
+    /// On a canonical host `fence` names the running generation the correction or stop is for,
+    /// and a newer one refuses it (`HermesFenceRefusal`).
+    case sessionSteer(sessionID: String, text: String, fence: Fence? = nil)
+    case sessionRedirect(sessionID: String, text: String, fence: Fence? = nil)
+    case sessionInterrupt(sessionID: String, fence: Fence? = nil)
+    /// Withdraws one queued admission on a canonical host (#1602); a started one is interrupted
+    /// in the same call. Answers its receipt, `terminal` once withdrawn.
+    case promptCancel(profile: String, sessionID: String, admissionID: String)
+    /// Acknowledges a turn a canonical host lost across its restart (`status: unknown`), so the
+    /// admissions behind it run (#1602). `fence` is that admission's own generation. Never
+    /// requeues the lost prompt.
+    case promptResolveUnknown(sessionID: String, admissionID: String, fence: Fence)
     case fileAttach(sessionID: String, name: String, dataURL: String)
 
     // Side work (#1013): each runs beside the session's turn, even mid-turn, and answers
@@ -124,7 +196,15 @@ enum HermesCall: Equatable, Sendable {
     case promptBackground(sessionID: String, text: String)
 
     // Answers to the host's requests
-    case approvalRespond(sessionID: String, requestID: String, choice: BotApprovalRequest.Choice)
+    /// On a canonical host `requestID` is the prompt's `prompt_id` and `fence` its generation.
+    case approvalRespond(sessionID: String, requestID: String, choice: BotApprovalRequest.Choice, fence: Fence? = nil)
+    /// A canonical host's single clarify prompt (#1602): `{status: resolved | already_resolved}`.
+    case clarifyRespond(sessionID: String, promptID: String, answer: String, fence: Fence)
+    /// One revision-fenced edit of a session on a canonical host (#1603), where the dashboard's
+    /// rename, delete, branch, undo, rewind, compress and folder calls don't exist. Answers
+    /// `{session_id, revision, execution_generation, operation, …}`; a fence that moved on throws
+    /// `HermesFenceRefusal`, any other refusal `BotSettingFailure` with the host's reason.
+    case sessionMutate(SessionMutation)
     case requestAnswer(id: String, result: RequestAnswer)
     case clarifyLock(requestID: String, questionID: String, answer: String)
     case connectionRespond(sessionID: String, opID: String, answer: BotConnectionOperation.Answer)
@@ -191,7 +271,12 @@ enum HermesCall: Equatable, Sendable {
     case groupsStop(roomID: String, cancelID: String)
     case groupsApprove(roomID: String, memberID: String, taskID: String, executionGeneration: Int,
                        requestID: String, choice: BotApprovalRequest.Choice)
-    case groupsRetry(roomID: String, taskID: String)
+    /// `attempt` names the member and execution generation a canonical host's retry is fenced by
+    /// (#1605); the dashboard takes room and task only.
+    case groupsRetry(roomID: String, taskID: String, attempt: RoomAttempt? = nil)
+    /// Gives up a canonical room task whose outcome is unknown (`indeterminate`, #1605), after the
+    /// user confirmed; the group carries on and it isn't retried. Answers `{discarded, task}`.
+    case groupsDiscard(roomID: String, taskID: String, attempt: RoomAttempt)
     case groupsCreate(RoomCreation)
     case groupsRename(roomID: String, eventID: String, name: String)
     case groupsDisband(roomID: String)
@@ -203,6 +288,102 @@ enum HermesCall: Equatable, Sendable {
     enum AvatarChange: Equatable, Sendable {
         case replace(String)
         case clear
+    }
+
+    /// The member and execution generation a canonical host fences one room task by (#1605).
+    /// `memberID` is echoed back as the host named it, which isn't always one member id: a
+    /// stalled preparation's Retry names every member it couldn't wake (`"chief, coder"`).
+    struct RoomAttempt: Equatable, Sendable {
+        var memberID: String
+        var executionGeneration: Int
+
+        var params: [String: BotJSON] {
+            ["member_id": .string(memberID), "execution_generation": .number(Double(executionGeneration))]
+        }
+        var isAdmissible: Bool { !memberID.isEmpty && executionGeneration > 0 }
+    }
+
+    /// One `session.mutate` (#1603): the edit, under the fences it was prepared at. A retry of
+    /// the same edit after a lost reply sends this exact value again, `requestID` included, so the
+    /// host answers from its receipt instead of applying it twice.
+    struct SessionMutation: Equatable, Sendable {
+        enum Operation: Equatable, Sendable {
+            case rename(String)
+            case delete
+            /// Keeps the rows through `throughMessageID`, a saved row's id; nil copies them all.
+            case branch(title: String?, throughMessageID: Int?)
+            /// Removes the user row `targetMessageID` and every row after it.
+            case rewind(targetMessageID: Int)
+            case compress(focus: String?)
+            case workspace(cwd: String)
+            /// This session's model and provider (#1604). `confirm` is the token a
+            /// `confirmation_required` answer gave for exactly this selection.
+            case model(id: String, provider: String, confirm: String?)
+
+            var name: String {
+                switch self {
+                case .rename: return "rename"
+                case .delete: return "delete"
+                case .branch: return "branch"
+                case .rewind: return "rewind"
+                case .compress: return "compress"
+                case .workspace: return "workspace"
+                case .model: return "model"
+                }
+            }
+
+            var payload: [String: BotJSON] {
+                switch self {
+                case .rename(let title): return ["title": .string(title)]
+                case .delete: return [:]
+                case .branch(let title, let through):
+                    var payload: [String: BotJSON] = [:]
+                    if let title { payload["title"] = .string(title) }
+                    if let through { payload["through_message_id"] = .number(Double(through)) }
+                    return payload
+                case .rewind(let target): return ["target_message_id": .number(Double(target))]
+                case .compress(let focus): return focus.map { ["focus": .string($0)] } ?? [:]
+                case .workspace(let cwd): return ["cwd": .string(cwd)]
+                case .model(let id, let provider, let confirm):
+                    var payload: [String: BotJSON] = ["model": .string(id), "provider": .string(provider)]
+                    if let confirm { payload["confirm"] = .string(confirm) }
+                    return payload
+                }
+            }
+        }
+
+        var profile: String
+        var sessionID: String
+        var requestID: String
+        var revision: Int
+        /// Every edit but a rename is fenced by the execution generation too, as Desktop sends them.
+        var generation: Int?
+        var operation: Operation
+
+        var params: [String: BotJSON] {
+            var params: [String: BotJSON] = [
+                "profile": .string(profile), "session_id": .string(sessionID), "request_id": .string(requestID),
+                "expected_revision": .number(Double(revision)), "operation": .string(operation.name),
+                "payload": .object(operation.payload)
+            ]
+            if case .rename = operation {} else if let generation {
+                params["expected_generation"] = .number(Double(generation))
+            }
+            return params
+        }
+    }
+
+    /// What a canonical host (#1341) fences a session call by: the session's Profile, which routes
+    /// it, and the execution generation it acts on. The dashboard never receives either.
+    struct Fence: Equatable, Sendable {
+        var profile: String
+        var generation: Int?
+
+        var params: [String: BotJSON] {
+            var params: [String: BotJSON] = ["profile": .string(profile)]
+            if let generation { params["execution_generation"] = .number(Double(generation)) }
+            return params
+        }
     }
 
     /// A model the host resolves under one provider.
@@ -248,10 +429,19 @@ enum HermesCall: Equatable, Sendable {
     enum RequestAnswer: Equatable, Sendable {
         case value(String)
         case answer(String)
+
+        /// The server request's result: `{value}` for sudo and secret, `{answer}` for a question.
+        var json: BotJSON {
+            switch self {
+            case .value(let value): return .object(["value": .string(value)])
+            case .answer(let answer): return .object(["answer": .string(answer)])
+            }
+        }
     }
 
-    /// The writes `config.set` may carry. All are runtime-scoped except `personality`. The
-    /// host still has a missing-runtime fallback for effort/fast; never send global or display writes.
+    /// The writes `config.set` may carry. All are runtime-scoped except `personality` and
+    /// `approvalMode`. The host still has a missing-runtime fallback for effort/fast; never send
+    /// global or display writes.
     enum SessionSetting: Equatable, Sendable {
         /// `value` must end in `--session` so the host never writes the Profile's default.
         case model(value: String, confirmExpensive: Bool)
@@ -263,6 +453,9 @@ enum HermesCall: Equatable, Sendable {
         /// session-only personality, so it always writes the Profile's default and switches
         /// this session too. `none` clears it. Sent without a scope, which the host ignores here.
         case personality(String)
+        /// Writes the Profile's `approvals.mode`, deliberately, and the host re-reports
+        /// `session.info` to its sessions. Sent without a scope, which the host ignores here.
+        case approvalMode(HermesApprovalMode)
     }
 
     /// One immutable room creation. A deliberate retry resends the same value.
@@ -293,9 +486,11 @@ enum HermesCall: Equatable, Sendable {
         case .profilesSetAsset: return "profiles.set_asset"
         case .profilesConfigure: return "profiles.configure"
         case .profilesCreate: return "profiles.create"
+        case .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove, .pluginsUpdate, .pluginsSettings: return "plugins.manage"
         case .sessionList: return "session.list"
         case .sessionCreate, .sessionNew: return "session.create"
         case .sessionTitle, .sessionRename: return "session.title"
+        case .sessionDraft: return "session.create"
         case .sessionClose: return "session.close"
         case .sessionDelete: return "session.delete"
         case .sessionBranch: return "session.branch"
@@ -306,12 +501,23 @@ enum HermesCall: Equatable, Sendable {
         case .projectsDelete: return "projects.delete"
         case .sessionResume: return "session.resume"
         case .sessionEventsSince: return "session.events.since"
+        case .sessionDetach: return "session.detach"
         case .sessionActiveList: return "session.active_list"
         case .sessionMostRecent: return "session.most_recent"
+        case .displayStatus: return "display.status"
+        case .displayObserve: return "display.observe"
+        case .displayLeaseAcquire: return "display.lease.acquire"
+        case .displayLeaseRelease: return "display.lease.release"
+        case .displayStart: return "display.start"
+        case .displayStop: return "display.stop"
         case .promptSubmit, .promptRewind: return "prompt.submit"
         case .sessionSteer: return "session.steer"
         case .sessionRedirect: return "session.redirect"
         case .sessionInterrupt: return "session.interrupt"
+        case .promptCancel: return "prompt.cancel"
+        case .promptResolveUnknown: return "prompt.resolve_unknown"
+        case .clarifyRespond: return "clarify.respond"
+        case .sessionMutate: return "session.mutate"
         case .sessionUndo: return "session.undo"
         case .sessionCompress: return "session.compress"
         case .fileAttach: return "file.attach"
@@ -344,6 +550,7 @@ enum HermesCall: Equatable, Sendable {
         case .groupsStop: return "groups.stop"
         case .groupsApprove: return "groups.approve"
         case .groupsRetry: return "groups.retry"
+        case .groupsDiscard: return "groups.discard"
         case .groupsCreate: return "groups.create"
         case .groupsRename: return "groups.rename"
         case .groupsDisband: return "groups.disband"
@@ -359,6 +566,28 @@ enum HermesCall: Equatable, Sendable {
         switch self {
         case .profilesList(let includeSessions): return ["include_sessions": .bool(includeSessions)]
         case .profilesDescribe(let name): return ["name": .string(name)]
+        case .pluginsList(let profile): return ["action": .string("list"), "profile": .string(profile)]
+        case .pluginsToggle(let profile, let key, let enable):
+            return ["action": .string("toggle"), "profile": .string(profile), "key": .string(key), "enable": .bool(enable)]
+        case .pluginsInstall(let profile, let source, let replace, let enable):
+            var params: [String: BotJSON] = ["action": .string("install"), "profile": .string(profile), "enable": .bool(enable)]
+            switch source {
+            case .catalog(let name, let pin):
+                params["catalog_name"] = .string(name)
+                if !pin.isEmpty { params["ref"] = .string(pin) }
+            case .repo(let identifier): params["identifier"] = .string(identifier)
+            }
+            if replace { params["force"] = .bool(true) }
+            return params
+        case .pluginsRemove(let profile, let key):
+            return ["action": .string("remove"), "profile": .string(profile), "name": .string(key)]
+        case .pluginsUpdate(let profile, let key, let acceptCapabilities, let acceptCaution):
+            var params: [String: BotJSON] = ["action": .string("update"), "profile": .string(profile), "name": .string(key)]
+            if acceptCapabilities { params["accept_capabilities"] = .bool(true) }
+            if acceptCaution { params["force"] = .bool(true) }
+            return params
+        case .pluginsSettings(let profile, let key, let values):
+            return ["action": .string("settings"), "profile": .string(profile), "key": .string(key), "values": .object(values)]
         case .profilesGetAsset(let name): return ["name": .string(name), "asset": .string("avatar")]
         case .profilesSetAsset(let name, .replace(let data)):
             return ["name": .string(name), "asset": .string("avatar"), "data": .string(data)]
@@ -376,7 +605,23 @@ enum HermesCall: Equatable, Sendable {
             if let cwd { params["cwd"] = .string(cwd) }
             if let model { params["model"] = .string(model.id); params["provider"] = .string(model.provider) }
             return params
-        case .sessionMostRecent(let profile): return ["profile": .string(profile)]
+        case .sessionDraft(let profile):
+            return ["profile": .string(profile), "hidden": .bool(true), "follow_profile_config": .bool(true),
+                    "close_on_disconnect": .bool(true), "source": .string(Self.source)]
+        case .sessionMostRecent(let profile), .displayStatus(let profile), .displayStart(let profile):
+            return ["profile": .string(profile)]
+        case .displayStop(let profile, let force):
+            return force ? ["profile": .string(profile), "force": .bool(true)] : ["profile": .string(profile)]
+        case .displayObserve(let profile, let viewerID):
+            var params: [String: BotJSON] = ["profile": .string(profile)]
+            if let viewerID { params["viewer_id"] = .string(viewerID) }
+            return params
+        case .displayLeaseAcquire(let profile, let viewerID):
+            return ["profile": .string(profile), "viewer_id": .string(viewerID)]
+        case .displayLeaseRelease(let profile, let viewerID):
+            var params: [String: BotJSON] = ["profile": .string(profile), "force": .bool(true)]
+            if let viewerID { params["viewer_id"] = .string(viewerID) }
+            return params
         case .sessionTitle(let sessionID): return ["session_id": .string(sessionID), "title": .string(Self.botChatTitle)]
         case .sessionRename(let runtime, let title): return ["session_id": .string(runtime), "title": .string(title)]
         case .sessionClose(let runtime), .sessionUndo(let runtime): return ["session_id": .string(runtime)]
@@ -408,10 +653,12 @@ enum HermesCall: Equatable, Sendable {
                                              "close_on_disconnect": .bool(false), "source": .string(Self.source)]
             if omitMessages { params["omit_messages"] = .bool(true) }
             return params
-        case .sessionEventsSince(let sessionID, let lastSeen):
+        case .sessionEventsSince(_, let sessionID, let lastSeen, _):
             return ["session_id": .string(sessionID), "last_seen": .number(Double(lastSeen))]
+        case .sessionDetach(let profile, let sessionID, let subscriptionID):
+            return ["profile": .string(profile), "session_id": .string(sessionID), "subscription_id": .string(subscriptionID)]
         case .sessionActiveList, .groupsCapabilities: return [:]
-        case .promptSubmit(let sessionID, let text):
+        case .promptSubmit(let sessionID, let text, _):
             return ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
         case .promptRewind(let sessionID, let text, let rowID, let deep):
             // `confirm_empty_truncate` too, as Desktop sends whenever it names a row:
@@ -422,19 +669,24 @@ enum HermesCall: Equatable, Sendable {
             ]
             if deep { params["confirm_deep_truncate"] = .bool(true) }
             return params
-        case .sessionSteer(let sessionID, let text), .sessionRedirect(let sessionID, let text),
+        case .sessionSteer(let sessionID, let text, _), .sessionRedirect(let sessionID, let text, _),
              .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text)]
-        case .sessionInterrupt(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID):
+        case .sessionInterrupt(let sessionID, _), .commandsCatalog(let sessionID), .subagentList(let sessionID):
             return ["session_id": .string(sessionID)]
         case .fileAttach(let sessionID, let name, let dataURL):
             return ["session_id": .string(sessionID), "name": .string(name), "data_url": .string(dataURL)]
-        case .approvalRespond(let sessionID, let requestID, let choice):
+        case .promptCancel(let profile, let sessionID, let admissionID):
+            return ["profile": .string(profile), "session_id": .string(sessionID), "admission_id": .string(admissionID)]
+        case .promptResolveUnknown(let sessionID, let admissionID, let fence):
+            return ["session_id": .string(sessionID), "admission_id": .string(admissionID)].merging(fence.params) { $1 }
+        case .clarifyRespond(let sessionID, let promptID, let answer, let fence):
+            return ["session_id": .string(sessionID), "prompt_id": .string(promptID), "answer": .string(answer)]
+                .merging(fence.params) { $1 }
+        case .sessionMutate(let mutation): return mutation.params
+        case .approvalRespond(let sessionID, let requestID, let choice, _):
             return ["session_id": .string(sessionID), "request_id": .string(requestID), "choice": .string(choice.rawValue)]
-        case .requestAnswer(let id, .value(let value)):
-            return ["id": .string(id), "result": .object(["value": .string(value)])]
-        case .requestAnswer(let id, .answer(let answer)):
-            return ["id": .string(id), "result": .object(["answer": .string(answer)])]
+        case .requestAnswer(let id, let result): return ["id": .string(id), "result": result.json]
         case .clarifyLock(let requestID, let questionID, let answer):
             return ["request_id": .string(requestID), "question_id": .string(questionID), "answer": .string(answer)]
         case .connectionRespond(let sessionID, let opID, let answer):
@@ -450,7 +702,10 @@ enum HermesCall: Equatable, Sendable {
         case .profileModelOptions(let profile): return ["profile": .string(profile)]
         case .configSet(let sessionID, let profile, let setting):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "profile": .string(profile)]
-            if case .personality = setting {} else { params["scope"] = .string("session") }
+            switch setting {
+            case .personality, .approvalMode: break
+            default: params["scope"] = .string("session")
+            }
             switch setting {
             case .model(let value, let confirmExpensive):
                 params["key"] = .string("model"); params["value"] = .string(value)
@@ -463,6 +718,8 @@ enum HermesCall: Equatable, Sendable {
                 params["key"] = .string("yolo"); params["value"] = .string(enabled ? "on" : "off")
             case .personality(let name):
                 params["key"] = .string("personality"); params["value"] = .string(name)
+            case .approvalMode(let mode):
+                params["key"] = .string("approvals.mode"); params["value"] = .string(mode.rawValue)
             }
             return params
         case .sessionCwdSet(let sessionID, let profile, let cwd):
@@ -517,7 +774,9 @@ enum HermesCall: Equatable, Sendable {
             return ["room_id": .string(roomID), "member_id": .string(memberID), "task_id": .string(taskID),
                     "execution_generation": .number(Double(executionGeneration)),
                     "request_id": .string(requestID), "choice": .string(choice.rawValue)]
-        case .groupsRetry(let roomID, let taskID): return ["room_id": .string(roomID), "task_id": .string(taskID)]
+        case .groupsRetry(let roomID, let taskID, _): return ["room_id": .string(roomID), "task_id": .string(taskID)]
+        case .groupsDiscard(let roomID, let taskID, let attempt):
+            return ["room_id": .string(roomID), "task_id": .string(taskID)].merging(attempt.params) { $1 }
         case .groupsCreate(let room):
             return ["room_id": .string(room.roomID), "name": .string(room.name), "members": .array(room.members.map(\.json))]
         case .groupsRename(let roomID, let eventID, let name):
@@ -547,13 +806,19 @@ enum HermesCall: Equatable, Sendable {
         let valid: Bool
         switch self {
         case .profilesDescribe(let name): valid = !name.isEmpty
+        case .pluginsList(let profile): valid = !profile.isEmpty
+        case .pluginsToggle(let profile, let key, _), .pluginsRemove(let profile, let key), .pluginsUpdate(let profile, let key, _, _):
+            valid = !profile.isEmpty && !key.isEmpty
+        case .pluginsSettings(let profile, let key, _): valid = !profile.isEmpty && !key.isEmpty
+        case .pluginsInstall(let profile, .catalog(let identifier, _), _, _), .pluginsInstall(let profile, .repo(let identifier), _, _):
+            valid = !profile.isEmpty && !identifier.isEmpty
         case .profilesSetAsset(let name, let avatar):
             // Base64 for the server's 2 MB decoded cap, with small data-URL headroom.
             if case .replace(let data) = avatar { valid = !name.isEmpty && !data.isEmpty && data.utf8.count <= 3_000_000 }
             else { valid = !name.isEmpty }
         case .profilesConfigure(let changes): valid = changes.isAdmissible
         case .profilesCreate(let profile): valid = profile.isAdmissible
-        case .sessionCreate(let profile), .sessionMostRecent(let profile): valid = !profile.isEmpty
+        case .sessionCreate(let profile), .sessionMostRecent(let profile), .sessionDraft(let profile): valid = !profile.isEmpty
         case .sessionNew(let profile, let cwd, let model):
             valid = !profile.isEmpty && cwd?.isEmpty != true && model?.isAdmissible != false
         case .sessionCompress(let runtime, let focus, let profile):
@@ -564,11 +829,17 @@ enum HermesCall: Equatable, Sendable {
         case .sessionRename(let runtime, let title):
             valid = !runtime.isEmpty && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .sessionDelete(let profile, let storedKey): valid = !profile.isEmpty && !storedKey.isEmpty
+        case .sessionDetach(let profile, let sessionID, let subscriptionID):
+            valid = !profile.isEmpty && !sessionID.isEmpty && !subscriptionID.isEmpty
         case .sessionBranch(let runtime, let name, let count):
             valid = !runtime.isEmpty && name.map(Self.isBlank) != true && (count ?? 1) > 0
         case .sessionWorkspaceMove(let profile, let storedKey, let cwd):
             valid = !profile.isEmpty && !storedKey.isEmpty && !Self.isBlank(cwd)
-        case .projectsTree(let profile): valid = !profile.isEmpty
+        case .projectsTree(let profile), .displayStatus(let profile), .displayStart(let profile), .displayStop(let profile, _):
+            valid = !profile.isEmpty
+        case .displayObserve(let profile, let viewerID), .displayLeaseRelease(let profile, let viewerID):
+            valid = !profile.isEmpty && viewerID?.isEmpty != true
+        case .displayLeaseAcquire(let profile, let viewerID): valid = !profile.isEmpty && !viewerID.isEmpty
         case .projectsCreate(let profile, let name, let folder, let color):
             valid = !profile.isEmpty && !Self.isBlank(name) && !Self.isBlank(folder) && color?.isEmpty != true
         case .projectsUpdate(let profile, let id, let name, let color):
@@ -579,7 +850,7 @@ enum HermesCall: Equatable, Sendable {
             switch setting {
             case .model(let value, _): valid = !sessionID.isEmpty && value.hasSuffix(" --session")
             case .reasoning(let value): valid = !sessionID.isEmpty && HermesModelCatalog.effortLevels.contains(value)
-            case .fast, .yolo: valid = !sessionID.isEmpty
+            case .fast, .yolo, .approvalMode: valid = !sessionID.isEmpty
             case .personality(let name):
                 valid = !sessionID.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
@@ -632,12 +903,16 @@ enum HermesCall: Equatable, Sendable {
         case .groupsApprove(let roomID, let memberID, let taskID, let executionGeneration, let requestID, let choice):
             valid = [roomID, memberID, taskID, requestID].allSatisfy(BotRoomRPC.validID) && executionGeneration > 0
                 && [.once, .deny].contains(choice)
-        case .groupsRetry(let roomID, let taskID): valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID)
+        case .groupsRetry(let roomID, let taskID, let attempt):
+            valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID) && attempt?.isAdmissible != false
+        case .groupsDiscard(let roomID, let taskID, let attempt):
+            valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(taskID) && attempt.isAdmissible
         case .groupsCreate(let room): valid = room.isAdmissible
         case .groupsRename(let roomID, let eventID, let name):
             valid = BotRoomRPC.validID(roomID) && BotRoomRPC.validID(eventID) && BotRoomRPC.validName(name)
         case .profilesList, .profilesGetAsset, .sessionList, .sessionResume, .sessionEventsSince, .sessionActiveList,
              .promptSubmit, .sessionSteer, .sessionRedirect, .sessionInterrupt, .fileAttach, .approvalRespond,
+             .promptCancel, .promptResolveUnknown, .clarifyRespond, .sessionMutate,
              .requestAnswer, .clarifyLock, .modelOptions, .configuredModelOptions, .sessionCwdSet, .sessionControlRead,
              .sessionControl, .groupsCapabilities, .clientCapabilities:
             valid = true

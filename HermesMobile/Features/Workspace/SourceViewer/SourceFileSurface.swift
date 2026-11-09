@@ -5,8 +5,6 @@ import UIKit
 /// for the rows on screen, tap-to-select with Copy (and Comment… when the host has a
 /// chat draft), and an initial line placed 30 % down the viewport and highlighted.
 struct SourceFileSurface: View {
-    static let wrapsLinesKey = "workspace.sourceViewer.wrapsLines"
-
     let content: String
     let targetLine: Int?
     let isRefreshing: Bool
@@ -21,7 +19,7 @@ struct SourceFileSurface: View {
     private let serverLanguage: String?
     @State private var viewModel: SourceFileViewModel
     @State private var scrollTarget: ReviewDiffScrollTarget?
-    @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.colorScheme) private var colorScheme
 
@@ -101,18 +99,18 @@ struct SourceFileSurface: View {
             Text("Plain text")
                 .font(AppFont.caption2(weight: .medium))
                 .textCase(.uppercase)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
-        .background(Color(.secondarySystemBackground))
+        .background(Color(.appSurface))
     }
 
     private func selectionBar(count: Int) -> some View {
         HStack(spacing: 12) {
             Text(count == 1 ? String(localized: "1 line selected") : String(localized: "\(count) lines selected"))
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Spacer(minLength: 8)
             Button("Clear") { viewModel.selection.clear() }
                 .font(AppFont.footnote())
@@ -133,7 +131,7 @@ struct SourceFileSurface: View {
         .tint(.primary)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(.appMaterial(.bar))
         .accessibilityElement(children: .contain)
     }
 
@@ -143,9 +141,9 @@ struct SourceFileSurface: View {
         Button(action: action) {
             Text(title)
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(Color(.systemBackground))
+                .foregroundStyle(Color(.appCanvas))
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.appProminent)
     }
 
     /// The requested line is selected and scrolled to once, when the rows first exist.

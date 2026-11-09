@@ -29,6 +29,16 @@ TERMINATE_TIMEOUT = 25
 # sim-doctor reports MEMORY, so runs on different devices take turns.
 SMALL_HOST_BYTES = 16 * 1024 ** 3
 HOST_LOCK_WAIT = 3600
+# A hung runner handshake leaves the log silent for minutes before xcodebuild
+# gives up (378 s observed); a healthy run reaches its first suite in seconds.
+HANDSHAKE_SILENCE = 150
+# xcodebuild logs this once the build is done and the test action starts. The
+# silence check arms only after it, so a quiet compile is never taken for a
+# hang; if a future Xcode stops logging it, attempts wait for xcodebuild again.
+TEST_ACTION_MARKER = "IDESchemeActionSDKRecord"
+# Per-test cap, so a deadlocked test fails in minutes instead of spending the
+# whole --test-timeout. XCTest rounds allowances up to whole minutes.
+TEST_ALLOWANCE = 180
 
 
 def host_memory():
@@ -37,6 +47,10 @@ def host_memory():
 
 class RunnerError(Exception):
     pass
+
+
+class HandshakeStall(Exception):
+    """The test log went silent before any suite started."""
 
 
 @contextmanager
@@ -63,16 +77,27 @@ def lock(path, owner, timeout=0):
         yield handle.fileno()
 
 
-def run(command, output, timeout, lock_fds=()):
-    """Wait locally; on timeout/interruption stop our isolated process group."""
+def run(command, output, timeout, lock_fds=(), stalled=None):
+    """Wait locally; on timeout, interruption or a `stalled(output)` verdict
+    (checked every few seconds) stop our isolated process group."""
     with output.open("w") as log:
         process = subprocess.Popen(
             command, stdout=log, stderr=subprocess.STDOUT,
             pass_fds=tuple(lock_fds), start_new_session=True,
         )
         try:
-            return process.wait(timeout=timeout)
-        except (subprocess.TimeoutExpired, KeyboardInterrupt):
+            if stalled is None:
+                return process.wait(timeout=timeout)
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    return process.wait(timeout=max(0, min(5, deadline - time.monotonic())))
+                except subprocess.TimeoutExpired:
+                    if time.monotonic() >= deadline:
+                        raise
+                    if stalled(output):
+                        raise HandshakeStall
+        except (subprocess.TimeoutExpired, KeyboardInterrupt, HandshakeStall):
             # start_new_session makes the captured child's PID its process-group
             # ID. Never discover targets by name or touch another runner's group.
             with suppress(ProcessLookupError):
@@ -147,7 +172,7 @@ def shut_down(device, run_dir, lock_fds, timeout):
     except (subprocess.TimeoutExpired, OSError):
         failed = True
     print("NOTE: could not shut down the simulator; see " + str(output) if failed
-          else "Simulator: shut down, as this run booted it (--keep-booted keeps it running).",
+          else "Simulator: shut down (--keep-booted keeps it running).",
           flush=True)
 
 
@@ -200,6 +225,23 @@ def runner_hung(summary):
         for failure in summary.get("testFailures", []))
 
 
+def handshake_watch():
+    """A `run` stall check for one xcodebuild test attempt: true once the test
+    action has started and its log has been silent for HANDSHAKE_SILENCE
+    seconds with no suite started, so a hung handshake retries without waiting
+    for xcodebuild's own timeout."""
+    started = False
+
+    def stalled(log):
+        nonlocal started
+        if started or time.time() - log.stat().st_mtime < HANDSHAKE_SILENCE:
+            return False
+        text = log.read_text(errors="replace")
+        started = "Test Suite '" in text
+        return not started and TEST_ACTION_MARKER in text
+    return stalled
+
+
 def print_summary(result, output):
     if not result.exists():
         return None
@@ -241,8 +283,8 @@ def main():
                         help="run the selected tests up to N times in one build and launch, "
                              "stopping at the first failure")
     parser.add_argument("--keep-booted", action="store_true",
-                        help="leave a simulator this run booted running afterwards, "
-                             "e.g. for manual testing")
+                        help="leave the simulator running afterwards, e.g. for manual testing "
+                             "(otherwise a run shuts down a device it booted, and on a 16 GB Mac any device)")
     parser.add_argument("--boot-timeout", type=positive, default=120,
                         help="seconds per simulator readiness operation (default: 120)")
     parser.add_argument("--test-timeout", type=positive, default=1800,
@@ -267,7 +309,8 @@ def main():
             device = select_device(devices(run_dir, (work_fd,)), args.device)
             sim_fd = stack.enter_context(lock(locks_dir / (device["udid"] + ".lock"), owner))
             lock_fds = (work_fd, sim_fd)
-            if host_memory() <= SMALL_HOST_BYTES:
+            small = host_memory() <= SMALL_HOST_BYTES
+            if small:
                 # Same lock as hermex-flow's run-sim.sh builds.
                 print("Waiting for the host build lock (16 GB Mac)…", flush=True)
                 lock_fds += (stack.enter_context(
@@ -276,44 +319,56 @@ def main():
             # Swap at start, so a stalled run can be matched against memory
             # pressure later (scripts/sim-doctor).
             run(["sysctl", "hw.memsize", "vm.swapusage"], run_dir / "memory.log", 10)
-            booted = boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
-            # One deadline covers the first attempt and any retry.
-            deadline = time.monotonic() + args.test_timeout
-            for attempt in ("", "-retry"):
-                terminate_app(device, run_dir, lock_fds, args.boot_timeout, deadline)
-                log = run_dir / ("test" + attempt + ".log")
-                result = run_dir / ("Tests" + attempt + ".xcresult")
-                command = [
-                    "xcodebuild", "test", "-project", str(root / "HermesMobile.xcodeproj"),
-                    "-scheme", "HermesMobile", "-configuration", "Debug",
-                    "-destination", "platform=iOS Simulator,id=" + device["udid"],
-                    "-destination-timeout", "30", "-derivedDataPath", str(build_dir),
-                    "-resultBundlePath", str(result), "-parallel-testing-enabled", "NO",
-                    "-maximum-concurrent-test-simulator-destinations", "1",
-                    "-collect-test-diagnostics", "never",
-                ] + ["-only-testing:" + test for test in args.only]
-                if args.repeat:
-                    command += ["-test-iterations", str(args.repeat), "-run-tests-until-failure"]
-                (run_dir / ("command" + attempt + ".json")).write_text(json.dumps(command, indent=2) + "\n")
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise subprocess.TimeoutExpired(command, 0)
-                code = run(command, log, remaining, lock_fds)
-                summary = print_summary(result, run_dir / ("summary" + attempt + ".json"))
-                if not (code and not attempt and runner_hung(summary)):
-                    break
-                print("RETRY: the test runner hung before connecting; rebooting the simulator "
-                      "and rerunning once.", flush=True)
-                # The reboot spends the same test deadline as the retry.
-                remaining = max(1, deadline - time.monotonic())
-                reboot(device, run_dir, locks_dir, owner, lock_fds,
-                       min(args.boot_timeout, remaining))
-            # Timeouts, setup failures and a runner that hung twice leave the
-            # device up for scripts/sim-doctor.
-            if booted and not args.keep_booted and not runner_hung(summary):
-                shut_down(device, run_dir, lock_fds, args.boot_timeout)
+            summary, booted, hung, finished = None, False, False, False
+            try:
+                booted = boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
+                # One deadline covers the first attempt and any retry.
+                deadline = time.monotonic() + args.test_timeout
+                for attempt in ("", "-retry"):
+                    terminate_app(device, run_dir, lock_fds, args.boot_timeout, deadline)
+                    log = run_dir / ("test" + attempt + ".log")
+                    result = run_dir / ("Tests" + attempt + ".xcresult")
+                    command = [
+                        "xcodebuild", "test", "-project", str(root / "HermesMobile.xcodeproj"),
+                        "-scheme", "HermesMobile", "-configuration", "Debug",
+                        "-destination", "platform=iOS Simulator,id=" + device["udid"],
+                        "-destination-timeout", "30", "-derivedDataPath", str(build_dir),
+                        "-resultBundlePath", str(result), "-parallel-testing-enabled", "NO",
+                        "-maximum-concurrent-test-simulator-destinations", "1",
+                        "-collect-test-diagnostics", "never",
+                        "-test-timeouts-enabled", "YES",
+                        "-default-test-execution-time-allowance", str(TEST_ALLOWANCE),
+                    ] + ["-only-testing:" + test for test in args.only]
+                    if args.repeat:
+                        command += ["-test-iterations", str(args.repeat), "-run-tests-until-failure"]
+                    (run_dir / ("command" + attempt + ".json")).write_text(json.dumps(command, indent=2) + "\n")
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, 0)
+                    try:
+                        code, hung = run(command, log, remaining, lock_fds, stalled=handshake_watch()), False
+                    except HandshakeStall:
+                        code, hung = 1, True
+                    summary = print_summary(result, run_dir / ("summary" + attempt + ".json"))
+                    hung = hung or runner_hung(summary)
+                    if not (code and not attempt and hung):
+                        break
+                    print("RETRY: the test runner hung before connecting; rebooting the simulator "
+                          "and rerunning once.", flush=True)
+                    # The reboot spends the same test deadline as the retry.
+                    remaining = max(1, deadline - time.monotonic())
+                    reboot(device, run_dir, locks_dir, owner, lock_fds,
+                           min(args.boot_timeout, remaining))
+                finished = True
+            finally:
+                # A booted simulator pages a 16 GB Mac for every other lane, so
+                # there it is always shut down. Elsewhere timeouts, setup failures
+                # and a runner that hung twice leave the device up for sim-doctor.
+                if not args.keep_booted and (small or (booted and finished and not hung)):
+                    shut_down(device, run_dir, lock_fds, args.boot_timeout)
             if code:
-                print("FAIL: xcodebuild exited {}. No further retry performed.".format(code), flush=True)
+                print("FAIL: the test runner hung before connecting, twice; run scripts/sim-doctor." if hung
+                      else "FAIL: xcodebuild exited {}. No further retry performed.".format(code), flush=True)
                 failure_excerpt(log)
                 return 1
             if not summary or summary.get("failedTests") != 0 or not summary.get("passedTests"):

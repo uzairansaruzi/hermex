@@ -48,7 +48,7 @@ struct GitInlineCommitButton: View {
                     .font(AppFont.mono(style: .subheadline))
                     .lineLimit(1)
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .adaptiveGlass(.regular, isInteractive: true, fallbackMaterial: .ultraThinMaterial, in: shape)

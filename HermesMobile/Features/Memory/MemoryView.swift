@@ -26,6 +26,7 @@ struct MemoryView: View {
 
     var body: some View {
         content
+            .themedPageBackground()
             .navigationTitle("Memory")
             .modifier(MemoryProfileSubtitle(profile: profile))
             .toolbar {
@@ -90,7 +91,7 @@ struct MemoryView: View {
         } else if !viewModel.hasLoaded {
             ProgressView("Loading memory...")
         } else {
-            List {
+            AppList {
                 ForEach(viewModel.visibleSections) { section in
                     Section {
                         MemorySectionContent(
@@ -117,7 +118,7 @@ struct MemoryView: View {
                             .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
                     } header: {
                         ProjectContextSectionHeader(modifiedAt: viewModel.projectContextMtime)
-                    } footer: {
+                    } appFooter: {
                         ProjectContextSectionFooter(
                             detail: viewModel.projectContextDetail,
                             isShadowed: viewModel.isProjectContextShadowed
@@ -129,7 +130,7 @@ struct MemoryView: View {
                 await loadMemory()
             }
             // Wide tables fade into the grouped row they sit on.
-            .environment(\.markdownTableEdgeFadeColor, Color(.secondarySystemGroupedBackground))
+            .environment(\.markdownTableEdgeFadeColor, Color(.appGroupedSurface))
         }
     }
 
@@ -157,12 +158,12 @@ private struct MemorySectionHeader: View {
             Spacer()
             if let modifiedAt {
                 Text("Modified \(modifiedAt, style: .relative) ago")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(.appSecondary)
             }
             if isReadOnly {
                 Image(systemName: "lock.fill")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .accessibilityLabel(Text("Read-only"))
             } else {
                 Button(action: onEdit) {
@@ -200,11 +201,11 @@ private struct ProjectContextSectionHeader: View {
             Spacer()
             if let modifiedAt {
                 Text("Modified \(modifiedAt, style: .relative) ago")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(.appSecondary)
             }
             Image(systemName: "lock.fill")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .accessibilityLabel(Text("Read-only"))
         }
     }
@@ -233,7 +234,7 @@ private struct MemorySectionContent: View {
     var body: some View {
         if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text(section.emptyMessage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .italic()
         } else {
             MarkdownRenderer(content: content)
@@ -295,16 +296,16 @@ private struct MemoryEditSheet: View {
         let count = limit.map { MemoryCharacterCount(draft: content, limit: $0) }
         let isBusy = isSaving || isReloading
         NavigationStack {
-            Form {
+            AppForm {
                 if isConflicted {
                     Section {
                         VStack(alignment: .leading, spacing: 4) {
                             Label("Changed on the host", systemImage: "exclamationmark.triangle.fill")
                                 .symbolRenderingMode(.multicolor)
-                                .font(.headline)
+                                .font(AppFont.headline())
                             Text("\(section.title) changed since you opened it. Your draft is kept. Reload shows the host's text and drops this draft.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.footnote())
+                                .foregroundStyle(.appSecondary)
                         }
                         .accessibilityElement(children: .combine)
                         Button("Reload") {
@@ -329,7 +330,7 @@ private struct MemoryEditSheet: View {
                         .accessibilityLabel(section.title)
                 } header: {
                     Text(section.title)
-                } footer: {
+                } appFooter: {
                     if isReadOnly {
                         Label("Read-only", systemImage: "lock.fill")
                     } else if notesNextSession {
@@ -340,11 +341,12 @@ private struct MemoryEditSheet: View {
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .foregroundStyle(.red)
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle("Edit \(section.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -395,7 +397,7 @@ private struct MemoryEditTitle: View {
         let limit = count.limit.formatted()
         VStack(spacing: 1) {
             Text(title)
-                .font(.headline)
+                .font(AppFont.headline())
             Group {
                 if count.isOver {
                     Text("\(used) / \(limit) · \(count.overBy.formatted()) over")
@@ -403,11 +405,11 @@ private struct MemoryEditTitle: View {
                         .accessibilityLabel(Text("\(used) of \(limit) characters, \(count.overBy.formatted()) over the limit"))
                 } else {
                     Text(verbatim: "\(used) / \(limit)")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .accessibilityLabel(Text("\(used) of \(limit) characters"))
                 }
             }
-            .font(.caption)
+            .font(AppFont.caption())
             .monospacedDigit()
         }
         .lineLimit(1)

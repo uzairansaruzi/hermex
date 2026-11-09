@@ -56,6 +56,79 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+/// Settings > Appearance's Text Size, app-wide on this iPhone and across every server. Set once
+/// as a scene trait override, so SwiftUI, UIKit, sheets and the app lock all follow it. The share
+/// extension and Live Activity are separate processes and keep following the iPhone.
+enum AppTextSize {
+    static let storageKey = "appearance.textSizeStop"
+
+    /// The slider's stops. The first follows the iPhone. Stored by position, so only append.
+    static let stops: [DynamicTypeSize?] = [
+        nil,
+        .xSmall, .small, .medium, .large, .xLarge, .xxLarge, .xxxLarge,
+        .accessibility1, .accessibility2, .accessibility3, .accessibility4, .accessibility5
+    ]
+
+    /// The stop's size, or nil to follow the iPhone. An unknown position follows the iPhone too.
+    static func size(atStop stop: Int) -> DynamicTypeSize? {
+        stops.indices.contains(stop) ? stops[stop] : nil
+    }
+
+    /// The stop as a percentage of the standard size, which reads the same in every language.
+    static func percentage(of size: DynamicTypeSize) -> Double {
+        let standard = UIFont.preferredFont(forTextStyle: .body, at: .large).pointSize
+        return UIFont.preferredFont(forTextStyle: .body, at: size).pointSize / standard
+    }
+
+    /// Called when a scene connects, before its first frame.
+    @MainActor static func applyStoredSize(to scene: UIWindowScene) {
+        let size = self.size(atStop: UserDefaults.standard.integer(forKey: storageKey))
+        if let size {
+            scene.traitOverrides.preferredContentSizeCategory = UIContentSizeCategory(size)
+        } else {
+            scene.traitOverrides.remove(UITraitPreferredContentSizeCategory.self)
+        }
+    }
+
+    /// Called when the setting changes.
+    @MainActor static func applyStoredSizeToConnectedScenes() {
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            applyStoredSize(to: scene)
+        }
+    }
+}
+
+extension UIFont {
+    /// The style's font at `size`. Plain `preferredFont(forTextStyle:)` reads the iPhone's
+    /// setting, which misses `AppTextSize`.
+    static func preferredFont(forTextStyle style: TextStyle, at size: DynamicTypeSize) -> UIFont {
+        preferredFont(
+            forTextStyle: style,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
+        )
+    }
+}
+
+/// Settings > Appearance's Code section, which covers chat code, tool output, source files and diffs.
+enum CodeDisplaySettings {
+    /// Named for its first home in chat; kept so a stored choice survives.
+    static let wrapsLinesKey = "chatTranscript.wrapsCodeBlockLines"
+    private static let legacySourceWrapsLinesKey = "workspace.sourceViewer.wrapsLines"
+
+    /// Points. Unset, code follows Text Size.
+    static let customSizeKey = "appearance.customCodeSize"
+    static let customSizeRange: ClosedRange<Double> = 10...28
+
+    /// Source files and diffs had their own wrap setting. Either one being on stays on.
+    static func migrateWrapSetting(defaults: UserDefaults = .standard) {
+        guard defaults.object(forKey: legacySourceWrapsLinesKey) != nil else { return }
+        if defaults.bool(forKey: legacySourceWrapsLinesKey) {
+            defaults.set(true, forKey: wrapsLinesKey)
+        }
+        defaults.removeObject(forKey: legacySourceWrapsLinesKey)
+    }
+}
+
 struct HeaderLogoColorPreset: Identifiable, Equatable {
     let name: String
     let hex: String
@@ -173,8 +246,9 @@ extension Color {
 }
 
 /// User-facing switch (issue #261) for tinting the primary actions — the
-/// "New Chat" button and the composer "Send" button — with the chosen Header
-/// Logo Color instead of the default monochrome fill. Defaults to off (opt-in);
+/// "New Chat" button and the composer "Send" button — with the chosen accent, or
+/// the server's Header Logo Color if there is none, instead of the default
+/// monochrome fill. Defaults to off (opt-in);
 /// a control keeps its muted/monochrome look while disabled so a tinted-but-dead
 /// button never reads as interactive.
 enum PrimaryActionTintSettings {
@@ -184,6 +258,18 @@ enum PrimaryActionTintSettings {
     /// setting *and* the control is currently interactive.
     static func usesThemeColor(isEnabled: Bool, controlIsEnabled: Bool) -> Bool {
         isEnabled && controlIsEnabled
+    }
+
+    /// A tinted primary action's fill and label: the accent at its readable color if one is
+    /// chosen, otherwise the server's color.
+    static func colors(accentHex: String?, serverHex: String) -> (fill: Color, label: Color) {
+        if accentHex.flatMap(HeaderLogoColor.normalizedHex) != nil {
+            return (Color(.appAccent), Color(.appOnAccent))
+        }
+        return (
+            HeaderLogoColor.color(for: serverHex),
+            HeaderLogoColor.prefersDarkForeground(for: serverHex) ? .black : .white
+        )
     }
 }
 
@@ -260,7 +346,6 @@ enum ChatTranscriptDisplaySettings {
     static let showsAssistantTurnTimestampsKey = "chatTranscript.showsAssistantTurnTimestamps"
     static let defaultShowsTimestamps = true
     static let showsResponseSpeedKey = "chatTranscript.showsResponseSpeed"
-    static let wrapsCodeBlockLinesKey = "chatTranscript.wrapsCodeBlockLines"
     /// Settings → Chat "Fold Finished Turns": settled turns collapse their
     /// thinking, tool rows, and interim replies behind one elapsed-time row.
     static let foldsSettledTurnsKey = "chatTranscript.foldsSettledTurns"
@@ -521,7 +606,7 @@ enum ChatActiveRunStatusPolicy {
 enum ChatWorkingRowPolicy {
     /// Start date for the transcript's "Working for" tail row, or nil when the
     /// row stays hidden: no active run, the run is being stopped, or the agent
-    /// is waiting on a clarification answer rather than working.
+    /// is waiting on a clarification or approval answer rather than working.
     static func startedAt(
         activeRunStartedAt: Date?,
         isCancellingStream: Bool,

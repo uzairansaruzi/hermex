@@ -11,9 +11,11 @@ struct MessageBubbleView: View {
     @State private var settledReplyMedia = SettledReplyMedia()
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appAppearance) private var appearance
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.displayScale) private var displayScale
     /// The skills this chat can draw as chips, published by `ChatView`.
     @Environment(\.composerChipCatalog) private var composerChipCatalog
     @Environment(\.chatWorkspaceRoot) private var chatWorkspaceRoot
@@ -81,6 +83,7 @@ struct MessageBubbleView: View {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit(.messageBubble)
         if isLocalNotice {
             localNoticeRow
         } else if isLocalAssistant {
@@ -141,6 +144,9 @@ struct MessageBubbleView: View {
                     .onChange(of: dynamicTypeSize) {
                         measureUserBubbleFold(text, rowWidth: userBubbleFold?.rowWidth, bodyFont: bodyFont)
                     }
+                    .onChange(of: AppFontSettings.shared.family) {
+                        measureUserBubbleFold(text, rowWidth: userBubbleFold?.rowWidth, bodyFont: bodyFont)
+                    }
             }
         }
     }
@@ -171,16 +177,16 @@ struct MessageBubbleView: View {
         VStack(alignment: .trailing, spacing: 4) {
             Label {
                 Text("Steer")
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
             } icon: {
                 Image(systemName: "wand.and.stars")
                     .font(.system(size: 11, weight: .semibold))
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
 
             if !message.steerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(message.steerText)
-                    .font(.callout)
+                    .font(AppFont.callout())
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -297,7 +303,7 @@ struct MessageBubbleView: View {
 
             if let speed = assistantResponseSpeedText {
                 Text(speed)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .font(AppFont.footnote())
@@ -368,10 +374,10 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.appMaterial(.thinMaterial), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
         )
         .padding(.vertical, 4)
     }
@@ -389,7 +395,7 @@ struct MessageBubbleView: View {
 
         return VStack(alignment: .leading, spacing: 6) {
             ComposerChipTextLine.text(text, tokens: chips, style: chipStyle)
-                .font(.body)
+                .font(AppFont.body())
                 .lineLimit(isFolded ? UserBubbleFoldPolicy.visibleLines : nil)
                 .textSelection(.enabled)
                 .overlay(alignment: .bottom) {
@@ -445,7 +451,7 @@ struct MessageBubbleView: View {
                 Image(systemName: userBubbleIsExpanded ? "chevron.up" : "chevron.down")
                     .accessibilityHidden(true)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.subheadline(weight: .semibold))
             .contentShape(Rectangle())
         }
         .buttonStyle(.chatTactile(.compactControl))
@@ -467,7 +473,9 @@ struct MessageBubbleView: View {
             colorScheme: colorScheme,
             contrast: colorSchemeContrast,
             layoutDirection: layoutDirection,
-            dynamicTypeSize: dynamicTypeSize
+            dynamicTypeSize: dynamicTypeSize,
+            displayScale: displayScale,
+            appearance: appearance
         )
     }
 
@@ -637,21 +645,18 @@ struct MessageBubbleView: View {
 
     /// The body font at this view's text size, for measuring the fold.
     private var userBubbleBodyFont: UIFont {
-        UIFont.preferredFont(
-            forTextStyle: .body,
-            compatibleWith: UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
-        )
+        .app(forTextStyle: .body, at: dynamicTypeSize)
     }
 
     /// Opaque even when queued, which mixes it toward the transcript's background, so the
     /// fold's gradient still hides the text under it.
     private var userBubbleBackground: Color {
-        let fill = colorScheme == .dark ? Color(.systemGray3) : Color(.systemGray6)
-        return isQueued ? fill.mix(with: Color(.systemBackground), by: 0.45) : fill
+        let fill = Color(.appUserBubble)
+        return isQueued ? fill.mix(with: Color(.appCanvas), by: 0.45) : fill
     }
 
     private var userBubbleForeground: Color {
-        Color(.label)
+        Color(.appText)
     }
 
     private var userBubbleBorder: Color {
@@ -827,7 +832,7 @@ private struct GridAttachmentCell: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.25), lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Image attachment \(attachmentAccessibilityName)")
@@ -836,7 +841,7 @@ private struct GridAttachmentCell: View {
     private var fileCell: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(Color(.appSurface))
 
             VStack(spacing: 5) {
                 Image(systemName: fileIconName)
@@ -844,15 +849,15 @@ private struct GridAttachmentCell: View {
                     .foregroundStyle(fileBadgeColor)
 
                 Text(fileDisplayName)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(Color(.label))
+                    .font(AppFont.caption2(weight: .medium))
+                    .foregroundStyle(Color(.appText))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .truncationMode(.middle)
                     .frame(maxWidth: size - 18)
 
                 Text(fileExtensionLabel)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(AppFont.fixed(size: 11, weight: .bold))
                     .foregroundStyle(fileBadgeColor)
                     .lineLimit(1)
             }
@@ -860,7 +865,7 @@ private struct GridAttachmentCell: View {
         .frame(width: size, height: size)
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.25), lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File attachment \(fileDisplayName), \(fileExtensionLabel)")
@@ -868,20 +873,20 @@ private struct GridAttachmentCell: View {
 
     private var fallbackImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(Color(.appFill))
             .overlay(
                 Image(systemName: "photo")
                     .font(.system(size: 34, weight: .regular))
-                    .foregroundStyle(Color(.tertiaryLabel))
+                    .foregroundStyle(Color(.appTextTertiary))
             )
     }
 
     private var placeholderImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(Color(.appFill))
             .overlay(
                 ProgressView()
-                    .tint(Color(.tertiaryLabel))
+                    .tint(Color(.appTextTertiary))
             )
     }
 
@@ -987,20 +992,20 @@ private struct RemoteAttachmentImage: View {
 
     private var fallbackImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(Color(.appFill))
             .overlay(
                 Image(systemName: "photo")
                     .font(.system(size: 24, weight: .regular))
-                    .foregroundStyle(Color(.tertiaryLabel))
+                    .foregroundStyle(Color(.appTextTertiary))
             )
     }
 
     private var placeholderImage: some View {
         RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.systemFill))
+            .fill(Color(.appFill))
             .overlay(
                 ProgressView()
-                    .tint(Color(.tertiaryLabel))
+                    .tint(Color(.appTextTertiary))
             )
     }
 }

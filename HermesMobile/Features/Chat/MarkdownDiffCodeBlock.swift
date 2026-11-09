@@ -224,6 +224,7 @@ struct DiffCodeBlockText: View {
     var minRowWidth: CGFloat = 0
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     private static let theme = ReviewDiffTheme()
 
@@ -231,7 +232,7 @@ struct DiffCodeBlockText: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(lines) { line in
                 rowText(for: line)
-                    .foregroundStyle(Self.isMuted(line.kind) ? SwiftUI.Color.secondary : SwiftUI.Color.primary)
+                    .foregroundStyle(Self.isMuted(line.kind) ? SwiftUI.Color(.appTextSecondary) : SwiftUI.Color(.appText))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 1.5)
                     .frame(minWidth: minRowWidth, maxWidth: .infinity, alignment: .leading)
@@ -240,7 +241,7 @@ struct DiffCodeBlockText: View {
                     .accessibilityLabel(Self.accessibilityLabel(for: line))
             }
         }
-        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
     }
 
     @ViewBuilder

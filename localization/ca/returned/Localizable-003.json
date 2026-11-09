@@ -5,115 +5,32 @@
   "catalog": "Localizable",
   "entries": [
     {
-      "id": "Localizable::%@ in / %@ out (~%@)",
+      "id": "Localizable::The server didn't confirm the install of %@. This list shows what it reports now, so check it before trying again.",
       "catalog": "Localizable",
-      "key": "%@ in / %@ out (~%@)",
+      "key": "The server didn't confirm the install of %@. This list shows what it reports now, so check it before trying again.",
       "units": [
         {
-          "source": "%1$@ in / %2$@ out (~%3$@)"
+          "source": "The server didn't confirm the install of %@. This list shows what it reports now, so check it before trying again."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
-        "%1$@",
-        "%2$@",
-        "%3$@"
+        "%@"
       ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
-      "surface": "shared-catalog",
+      "surface": "main-app",
       "sourceReferences": [],
-      "target": "%1$@ d'entrada / %2$@ de sortida (~%3$@)"
+      "target": "El servidor no ha confirmat la instal·lació de %@. Aquesta llista mostra el que informa ara, així que comprova-la abans de tornar-ho a provar."
     },
     {
-      "id": "Localizable::%@ is a different host from %@. Its own notifications are unchanged; set them up in its Settings if they’re off. %@ keeps its own until you remove it.",
+      "id": "Localizable::This deletes its files from %@ on the host. You can install it again later.",
       "catalog": "Localizable",
-      "key": "%@ is a different host from %@. Its own notifications are unchanged; set them up in its Settings if they’re off. %@ keeps its own until you remove it.",
+      "key": "This deletes its files from %@ on the host. You can install it again later.",
       "units": [
         {
-          "source": "%@ is a different host from %@. Its own notifications are unchanged; set them up in its Settings if they’re off. %@ keeps its own until you remove it."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 609
-        }
-      ],
-      "target": "%@ és un amfitrió diferent de %@. Les notificacions pròpies no canvien; configura-les a la seva Configuració si estan desactivades. %@ conserva les seves fins que l'eliminis."
-    },
-    {
-      "id": "Localizable::%@ is a different host, so its notifications stop. %@’s own notifications aren’t affected.",
-      "catalog": "Localizable",
-      "key": "%@ is a different host, so its notifications stop. %@’s own notifications aren’t affected.",
-      "units": [
-        {
-          "source": "%@ is a different host, so its notifications stop. %@’s own notifications aren’t affected."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
-          "line": 839
-        }
-      ],
-      "target": "%@ és un amfitrió diferent, així que les seves notificacions s'aturen. Les notificacions pròpies de %@ no s'afecten."
-    },
-    {
-      "id": "Localizable::%@ is reserved for Hermex and Hermes, so it can't be a connection header. Remove this header to connect.",
-      "catalog": "Localizable",
-      "key": "%@ is reserved for Hermex and Hermes, so it can't be a connection header. Remove this header to connect.",
-      "units": [
-        {
-          "source": "%@ is reserved for Hermex and Hermes, so it can't be a connection header. Remove this header to connect."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [
-        "Hermex",
-        "Hermes"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Networking/Hermes/HermesConnection.swift",
-          "line": 834
-        }
-      ],
-      "target": "%@ està reservat per a Hermex i Hermes, per tant no pot ser una capçalera de connexió. Elimina aquesta capçalera per connectar."
-    },
-    {
-      "id": "Localizable::%@ is signed out. Nothing more was sent.",
-      "catalog": "Localizable",
-      "key": "%@ is signed out. Nothing more was sent.",
-      "units": [
-        {
-          "source": "%@ is signed out. Nothing more was sent."
+          "source": "This deletes its files from %@ on the host. You can install it again later."
         }
       ],
       "sourceStructure": null,
@@ -124,266 +41,70 @@
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 383
-        }
-      ],
-      "target": "%@ té la sessió tancada. No s'ha enviat res més."
-    },
-    {
-      "id": "Localizable::%@ is signed out. Sign in, then try again.",
-      "catalog": "Localizable",
-      "key": "%@ is signed out. Sign in, then try again.",
-      "units": [
-        {
-          "source": "%@ is signed out. Sign in, then try again."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 487
-        }
-      ],
-      "target": "%@ té la sessió tancada. Inicia la sessió i torna-ho a provar."
-    },
-    {
-      "id": "Localizable::%@ isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI.",
-      "catalog": "Localizable",
-      "key": "%@ isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI.",
-      "units": [
-        {
-          "source": "%@ isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [
-        "Hermes"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
-          "line": 160
-        }
-      ],
-      "target": "%@ no és un tauler de Hermes. Fes servir l'adreça del tauler, no la interfície web de Hermes."
-    },
-    {
-      "id": "Localizable::%@ isn't a valid header: names can't contain spaces or colons, and values must fit on one line. Fix or remove it to connect.",
-      "catalog": "Localizable",
-      "key": "%@ isn't a valid header: names can't contain spaces or colons, and values must fit on one line. Fix or remove it to connect.",
-      "units": [
-        {
-          "source": "%@ isn't a valid header: names can't contain spaces or colons, and values must fit on one line. Fix or remove it to connect."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Networking/Hermes/HermesConnection.swift",
-          "line": 837
-        }
-      ],
-      "target": "%@ no és una capçalera vàlida: els noms no poden contenir espais ni dos punts, i els valors han de cabre en una sola línia. Corregeix-la o elimina-la per connectar."
-    },
-    {
-      "id": "Localizable::%@ left",
-      "catalog": "Localizable",
-      "key": "%@ left",
-      "units": [
-        {
-          "source": "%@ left"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "en queden %@"
+      "target": "Això n'esborra els fitxers de %@ a l'amfitrió. El podràs instal·lar de nou més tard."
     },
     {
-      "id": "Localizable::%@ of %@",
+      "id": "Localizable::This host's catalog isn't available. You can still install from a repository.",
       "catalog": "Localizable",
-      "key": "%@ of %@",
+      "key": "This host's catalog isn't available. You can still install from a repository.",
       "units": [
         {
-          "source": "%1$@ of %2$@"
+          "source": "This host's catalog isn't available. You can still install from a repository."
         }
       ],
       "sourceStructure": null,
-      "placeholders": [
-        "%1$@",
-        "%2$@"
-      ],
+      "placeholders": [],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/HermesChatActivity.swift",
-          "line": 39
-        },
-        {
-          "file": "HermesMobile/Features/Chat/HermesPlanViews.swift",
-          "line": 149
-        },
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 334
-        }
-      ],
-      "target": "%1$@ de %2$@"
-    },
-    {
-      "id": "Localizable::%@ of %@ characters",
-      "catalog": "Localizable",
-      "key": "%@ of %@ characters",
-      "units": [
-        {
-          "source": "%@ of %@ characters"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Memory/MemoryView.swift",
-          "line": 407
-        }
-      ],
-      "target": "%@ de %@ caràcters"
-    },
-    {
-      "id": "Localizable::%@ of %@ characters, %@ over the limit",
-      "catalog": "Localizable",
-      "key": "%@ of %@ characters, %@ over the limit",
-      "units": [
-        {
-          "source": "%@ of %@ characters, %@ over the limit"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "%@ de %@ caràcters, %@ per sobre del límit"
+      "target": "El catàleg d'aquest amfitrió no està disponible. Encara pots instal·lar des d'un repositori."
     },
     {
-      "id": "Localizable::%@ of observed input",
+      "id": "Localizable::This overwrites the installed plugin with the commit shown here.",
       "catalog": "Localizable",
-      "key": "%@ of observed input",
+      "key": "This overwrites the installed plugin with the commit shown here.",
       "units": [
         {
-          "source": "%@ of observed input"
+          "source": "This overwrites the installed plugin with the commit shown here."
         }
       ],
       "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
+      "placeholders": [],
       "protectedTerms": [],
       "comment": null,
-      "extractionState": "manual",
-      "surface": "shared-catalog",
+      "extractionState": null,
+      "surface": "main-app",
       "sourceReferences": [],
-      "target": "%@ de l'entrada observada"
+      "target": "Això sobreescriu el connector instal·lat amb la comissió que es mostra aquí."
     },
     {
-      "id": "Localizable::%@ on %@",
+      "id": "Localizable::This overwrites the installed plugin. Replacing also lets through anything Hermes's security scan marks as caution, without showing it to you. A dangerous result is still blocked.",
       "catalog": "Localizable",
-      "key": "%@ on %@",
+      "key": "This overwrites the installed plugin. Replacing also lets through anything Hermes's security scan marks as caution, without showing it to you. A dangerous result is still blocked.",
       "units": [
         {
-          "source": "%1$@ on %2$@"
+          "source": "This overwrites the installed plugin. Replacing also lets through anything Hermes's security scan marks as caution, without showing it to you. A dangerous result is still blocked."
         }
       ],
       "sourceStructure": null,
-      "placeholders": [
-        "%1$@",
-        "%2$@"
-      ],
+      "placeholders": [],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 3120
-        }
-      ],
-      "target": "%1$@ a %2$@"
-    },
-    {
-      "id": "Localizable::%@ per active day",
-      "catalog": "Localizable",
-      "key": "%@ per active day",
-      "units": [
-        {
-          "source": "%@ per active day"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": "manual",
-      "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "%@ per dia actiu"
+      "target": "Això sobreescriu el connector instal·lat. La substitució també deixa passar allò que l'anàlisi de seguretat d'Hermes marca com a precaució, sense mostrar-te'l. Un resultat perillós continua bloquejat."
     },
     {
-      "id": "Localizable::%@ percent",
+      "id": "Localizable::This plugin needs Hermes %@ or later, so this host can't install it yet.",
       "catalog": "Localizable",
-      "key": "%@ percent",
+      "key": "This plugin needs Hermes %@ or later, so this host can't install it yet.",
       "units": [
         {
-          "source": "%@ percent"
+          "source": "This plugin needs Hermes %@ or later, so this host can't install it yet."
         }
       ],
       "sourceStructure": null,
@@ -394,213 +115,52 @@
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ContextWindowIndicatorView.swift",
-          "line": 66
-        }
-      ],
-      "target": "%@ per cent"
-    },
-    {
-      "id": "Localizable::%@ refused the connection. Check the port and that the Hermes dashboard is running.",
-      "catalog": "Localizable",
-      "key": "%@ refused the connection. Check the port and that the Hermes dashboard is running.",
-      "units": [
-        {
-          "source": "%@ refused the connection. Check the port and that the Hermes dashboard is running."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [
-        "Hermes"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
-          "line": 139
-        }
-      ],
-      "target": "%@ ha rebutjat la connexió. Comprova el port i que el tauler de Hermes estigui en execució."
-    },
-    {
-      "id": "Localizable::%@ runs %@. Moving needs %@ or later. %@ keeps working as it is.",
-      "catalog": "Localizable",
-      "key": "%@ runs %@. Moving needs %@ or later. %@ keeps working as it is.",
-      "units": [
-        {
-          "source": "%@ runs %@. Moving needs %@ or later. %@ keeps working as it is."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@",
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 200
-        }
-      ],
-      "target": "%@ executa %@. Per fer el trasllat cal %@ o posterior. %@ segueix funcionant tal com està."
-    },
-    {
-      "id": "Localizable::%@ shows one Profile at a time, so chats in its other Profiles aren’t counted or copied by this move.",
-      "catalog": "Localizable",
-      "key": "%@ shows one Profile at a time, so chats in its other Profiles aren’t counted or copied by this move.",
-      "units": [
-        {
-          "source": "%@ shows one Profile at a time, so chats in its other Profiles aren’t counted or copied by this move."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 243
-        }
-      ],
-      "target": "%@ mostra un perfil alhora; per això els xats dels seus altres perfils no es compten ni es copien amb aquest trasllat."
-    },
-    {
-      "id": "Localizable::%@ to you",
-      "catalog": "Localizable",
-      "key": "%@ to you",
-      "units": [
-        {
-          "source": "%@ to you"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotSearchView.swift",
-          "line": 218
-        }
-      ],
-      "target": "%@ per a tu"
-    },
-    {
-      "id": "Localizable::%@ tokens",
-      "catalog": "Localizable",
-      "key": "%@ tokens",
-      "units": [
-        {
-          "source": "%@ tokens"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "%@ tokens"
+      "target": "Aquest connector requereix Hermes %@ o posterior, així que aquest amfitrió encara no el pot instal·lar."
     },
     {
-      "id": "Localizable::%@ used",
+      "id": "Localizable::Verified",
       "catalog": "Localizable",
-      "key": "%@ used",
+      "key": "Verified",
       "units": [
         {
-          "source": "%@ used"
+          "source": "Verified"
         }
       ],
       "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
+      "placeholders": [],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
-      "surface": "shared-catalog",
+      "surface": "main-app",
       "sourceReferences": [],
-      "target": "%@ en ús"
+      "target": "Verificat"
     },
     {
-      "id": "Localizable::%@ used of %@",
+      "id": "Localizable::Applying…",
       "catalog": "Localizable",
-      "key": "%@ used of %@",
+      "key": "Applying…",
       "units": [
         {
-          "source": "%@ used of %@"
+          "source": "Applying…"
         }
       ],
       "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@"
-      ],
+      "placeholders": [],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
-      "surface": "shared-catalog",
+      "surface": "main-app",
       "sourceReferences": [],
-      "target": "S'han usat %@ de %@"
+      "target": "S'està aplicant…"
     },
     {
-      "id": "Localizable::%@ was removed from this iPhone, so its remaining chats can’t be copied. Finish keeps what’s done in %@.",
+      "id": "Localizable::%@ is connected on this Profile. Turning this off disconnects Hermes from it after a restart.",
       "catalog": "Localizable",
-      "key": "%@ was removed from this iPhone, so its remaining chats can’t be copied. Finish keeps what’s done in %@.",
+      "key": "%@ is connected on this Profile. Turning this off disconnects Hermes from it after a restart.",
       "units": [
         {
-          "source": "%@ was removed from this iPhone, so its remaining chats can’t be copied. Finish keeps what’s done in %@."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 453
-        }
-      ],
-      "target": "%@ s'ha eliminat d'aquest iPhone, per tant no es poden copiar els xats que hi queden. En finalitzar es conserva el que s'ha fet a %@."
-    },
-    {
-      "id": "Localizable::%@ was removed",
-      "catalog": "Localizable",
-      "key": "%@ was removed",
-      "units": [
-        {
-          "source": "%@ was removed"
+          "source": "%@ is connected on this Profile. Turning this off disconnects Hermes from it after a restart."
         }
       ],
       "sourceStructure": null,
@@ -611,91 +171,16 @@
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 368
-        }
-      ],
-      "target": "S'ha eliminat %@"
-    },
-    {
-      "id": "Localizable::%@ · Approval needed",
-      "catalog": "Localizable",
-      "key": "%@ · Approval needed",
-      "units": [
-        {
-          "source": "%@ · Approval needed"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": "Push banner title; %@ is the bot's name.",
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Push/PushPreview.swift",
-          "line": 151
-        }
-      ],
-      "target": "%@ · Cal una aprovació"
-    },
-    {
-      "id": "Localizable::%@ · Question",
-      "catalog": "Localizable",
-      "key": "%@ · Question",
-      "units": [
-        {
-          "source": "%@ · Question"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": "Push banner title; %@ is the bot's name.",
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Push/PushPreview.swift",
-          "line": 153
-        }
-      ],
-      "target": "%@ · Pregunta"
-    },
-    {
-      "id": "Localizable::%@ · added",
-      "catalog": "Localizable",
-      "key": "%@ · added",
-      "units": [
-        {
-          "source": "%@ · added"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "%@ · afegit"
+      "target": "%@ està connectat en aquest perfil. Si el desactives, Hermes se'n desconnectarà després de reiniciar."
     },
     {
-      "id": "Localizable::%@ · sent as %@",
+      "id": "Localizable::%@ is off for %@.",
       "catalog": "Localizable",
-      "key": "%@ · sent as %@",
+      "key": "%@ is off for %@.",
       "units": [
         {
-          "source": "%@ · sent as %@"
+          "source": "%@ is off for %@."
         }
       ],
       "sourceStructure": null,
@@ -706,161 +191,59 @@
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
-      "surface": "shared-catalog",
+      "surface": "main-app",
       "sourceReferences": [],
-      "target": "%@ · enviat com a %@"
+      "target": "%@ està desactivat per a %@."
     },
     {
-      "id": "Localizable::%@ · Turn failed",
+      "id": "Localizable::%@ is off for %@. It stops fully after a restart.",
       "catalog": "Localizable",
-      "key": "%@ · Turn failed",
+      "key": "%@ is off for %@. It stops fully after a restart.",
       "units": [
         {
-          "source": "%@ · Turn failed"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": "Push banner title; %@ is the bot's name.",
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Push/PushPreview.swift",
-          "line": 155
-        }
-      ],
-      "target": "%@ · El torn ha fallat"
-    },
-    {
-      "id": "Localizable::%@, %@ effort, sent as %@",
-      "catalog": "Localizable",
-      "key": "%@, %@ effort, sent as %@",
-      "units": [
-        {
-          "source": "%@, %@ effort, sent as %@"
+          "source": "%@ is off for %@. It stops fully after a restart."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
         "%@",
-        "%@",
         "%@"
       ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatComposerSelectorControls.swift",
-          "line": 327
-        }
-      ],
-      "target": "%@, esforç %@, enviat com a %@"
-    },
-    {
-      "id": "Localizable::%@, %@, active server",
-      "catalog": "Localizable",
-      "key": "%@, %@, active server",
-      "units": [
-        {
-          "source": "%1$@, %2$@, active server"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%1$@",
-        "%2$@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Settings/SettingsView.swift",
-          "line": 187
-        }
-      ],
-      "target": "%1$@, %2$@, servidor actiu"
-    },
-    {
-      "id": "Localizable::%@, active server",
-      "catalog": "Localizable",
-      "key": "%@, active server",
-      "units": [
-        {
-          "source": "%@, active server"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
-          "line": 1529
-        }
-      ],
-      "target": "%@, servidor actiu"
-    },
-    {
-      "id": "Localizable::%@, reacted by %@",
-      "catalog": "Localizable",
-      "key": "%@, reacted by %@",
-      "units": [
-        {
-          "source": "%1$@, reacted by %2$@"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%1$@",
-        "%2$@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "%1$@, reacció de %2$@"
+      "target": "%@ està desactivat per a %@. S'aturarà del tot després de reiniciar."
     },
     {
-      "id": "Localizable::%@, reacted by you",
+      "id": "Localizable::%@ is on for %@ and live now.",
       "catalog": "Localizable",
-      "key": "%@, reacted by you",
+      "key": "%@ is on for %@ and live now.",
       "units": [
         {
-          "source": "%@, reacted by you"
+          "source": "%@ is on for %@ and live now."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
+        "%@",
         "%@"
       ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
-      "surface": "shared-catalog",
+      "surface": "main-app",
       "sourceReferences": [],
-      "target": "%@, reacció teva"
+      "target": "%@ està activat per a %@ i ja és actiu."
     },
     {
-      "id": "Localizable::%@. %@",
+      "id": "Localizable::%@ is on for %@. It takes full effect after a restart.",
       "catalog": "Localizable",
-      "key": "%@. %@",
+      "key": "%@ is on for %@. It takes full effect after a restart.",
       "units": [
         {
-          "source": "%@. %@"
+          "source": "%@ is on for %@. It takes full effect after a restart."
         }
       ],
       "sourceStructure": null,
@@ -872,148 +255,16 @@
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/HermesDelegatedWorkView.swift",
-          "line": 268
-        },
-        {
-          "file": "HermesMobile/Features/Settings/AppIconSettingsSection.swift",
-          "line": 164
-        }
-      ],
-      "target": "%@. %@"
-    },
-    {
-      "id": "Localizable::%@. Check them in %@.",
-      "catalog": "Localizable",
-      "key": "%@. Check them in %@.",
-      "units": [
-        {
-          "source": "%@. Check them in %@."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@",
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "%@. Comprova-ho a %@."
+      "target": "%@ està activat per a %@. Tindrà ple efecte després de reiniciar."
     },
     {
-      "id": "Localizable::%@: done",
+      "id": "Localizable::%@ is on for %@. New tools start in new sessions.",
       "catalog": "Localizable",
-      "key": "%@: done",
+      "key": "%@ is on for %@. New tools start in new sessions.",
       "units": [
         {
-          "source": "%@: done"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
-          "line": 195
-        }
-      ],
-      "target": "%@: fet"
-    },
-    {
-      "id": "Localizable::%@: waiting",
-      "catalog": "Localizable",
-      "key": "%@: waiting",
-      "units": [
-        {
-          "source": "%@: waiting"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
-          "line": 197
-        }
-      ],
-      "target": "%@: en espera"
-    },
-    {
-      "id": "Localizable::%@: working",
-      "catalog": "Localizable",
-      "key": "%@: working",
-      "units": [
-        {
-          "source": "%@: working"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
-          "line": 196
-        }
-      ],
-      "target": "%@: treballant"
-    },
-    {
-      "id": "Localizable::%@’s chats stay on its host. Only Hermex’s copy of the server is removed.",
-      "catalog": "Localizable",
-      "key": "%@’s chats stay on its host. Only Hermex’s copy of the server is removed.",
-      "units": [
-        {
-          "source": "%@’s chats stay on its host. Only Hermex’s copy of the server is removed."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [
-        "Hermex"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 633
-        }
-      ],
-      "target": "Els xats de %@ es queden al seu amfitrió. Només s'elimina la còpia del servidor de Hermex."
-    },
-    {
-      "id": "Localizable::%@’s notifications stop with it. %@’s own notifications aren’t affected.",
-      "catalog": "Localizable",
-      "key": "%@’s notifications stop with it. %@’s own notifications aren’t affected.",
-      "units": [
-        {
-          "source": "%@’s notifications stop with it. %@’s own notifications aren’t affected."
+          "source": "%@ is on for %@. New tools start in new sessions."
         }
       ],
       "sourceStructure": null,
@@ -1025,300 +276,674 @@
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
-          "line": 838
-        }
-      ],
-      "target": "Les notificacions de %@ s'aturen amb ell. Les notificacions pròpies de %@ no s'afecten."
+      "sourceReferences": [],
+      "target": "%@ està activat per a %@. Les eines noves s'iniciaran en sessions noves."
     },
     {
-      "id": "Localizable::%lld Cards",
+      "id": "Localizable::%@ was already off for %@.",
       "catalog": "Localizable",
-      "key": "%lld Cards",
+      "key": "%@ was already off for %@.",
       "units": [
         {
-          "variation": "plural",
-          "case": "one",
-          "source": "%lld Card"
-        },
-        {
-          "variation": "plural",
-          "case": "other",
-          "source": "%lld Cards"
-        }
-      ],
-      "sourceStructure": {
-        "variations": {
-          "plural": [
-            "one",
-            "other"
-          ]
-        }
-      },
-      "placeholders": [
-        "%lld",
-        "%lld",
-        "%lld"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
-          "line": 2488
-        }
-      ],
-      "target": {
-        "one": "%lld targeta",
-        "other": "%lld targetes"
-      }
-    },
-    {
-      "id": "Localizable::%lld Dependents",
-      "catalog": "Localizable",
-      "key": "%lld Dependents",
-      "units": [
-        {
-          "variation": "plural",
-          "case": "one",
-          "source": "%lld Dependent"
-        },
-        {
-          "variation": "plural",
-          "case": "other",
-          "source": "%lld Dependents"
-        }
-      ],
-      "sourceStructure": {
-        "variations": {
-          "plural": [
-            "one",
-            "other"
-          ]
-        }
-      },
-      "placeholders": [
-        "%lld",
-        "%lld",
-        "%lld"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
-          "line": 2491
-        }
-      ],
-      "target": {
-        "one": "%lld dependent",
-        "other": "%lld dependents"
-      }
-    },
-    {
-      "id": "Localizable::%lld Prerequisites",
-      "catalog": "Localizable",
-      "key": "%lld Prerequisites",
-      "units": [
-        {
-          "variation": "plural",
-          "case": "one",
-          "source": "%lld Prerequisite"
-        },
-        {
-          "variation": "plural",
-          "case": "other",
-          "source": "%lld Prerequisites"
-        }
-      ],
-      "sourceStructure": {
-        "variations": {
-          "plural": [
-            "one",
-            "other"
-          ]
-        }
-      },
-      "placeholders": [
-        "%lld",
-        "%lld",
-        "%lld"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
-          "line": 2490
-        }
-      ],
-      "target": {
-        "one": "%lld prerequisit",
-        "other": "%lld prerequisits"
-      }
-    },
-    {
-      "id": "Localizable::%lld added",
-      "catalog": "Localizable",
-      "key": "%lld added",
-      "units": [
-        {
-          "source": "%lld added"
+          "source": "%@ was already off for %@."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
-        "%lld"
+        "%@",
+        "%@"
       ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 330
-        },
-        {
-          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
-          "line": 340
-        },
-        {
-          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewDiffCanvasView+Accessibility.swift",
-          "line": 49
-        }
-      ],
-      "target": "%lld afegits"
+      "sourceReferences": [],
+      "target": "%@ ja estava desactivat per a %@."
     },
     {
-      "id": "Localizable::%lld already in Hermes",
+      "id": "Localizable::%@ was already on for %@.",
       "catalog": "Localizable",
-      "key": "%lld already in Hermes",
+      "key": "%@ was already on for %@.",
       "units": [
         {
-          "source": "%lld already in Hermes"
+          "source": "%@ was already on for %@."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
-        "%lld"
+        "%@",
+        "%@"
       ],
-      "protectedTerms": [
-        "Hermes"
-      ],
+      "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 251
-        }
-      ],
-      "target": "%lld ja són a Hermes"
+      "sourceReferences": [],
+      "target": "%@ ja estava activat per a %@."
     },
     {
-      "id": "Localizable::%lld applied. %lld still to send.",
+      "id": "Localizable::Anyone with this server's login could then see and control everything on this computer.",
       "catalog": "Localizable",
-      "key": "%lld applied. %lld still to send.",
+      "key": "Anyone with this server's login could then see and control everything on this computer.",
       "units": [
         {
-          "source": "%lld applied. %lld still to send."
+          "source": "Anyone with this server's login could then see and control everything on this computer."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Qualsevol persona amb l'inici de sessió d'aquest servidor podria veure i controlar tot el que hi ha en aquest ordinador."
+    },
+    {
+      "id": "Localizable::Bot Screen stops working on this Profile until you turn this back on.",
+      "catalog": "Localizable",
+      "key": "Bot Screen stops working on this Profile until you turn this back on.",
+      "units": [
+        {
+          "source": "Bot Screen stops working on this Profile until you turn this back on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Bot Screen deixarà de funcionar en aquest perfil fins que ho tornis a activar."
+    },
+    {
+      "id": "Localizable::Bundled",
+      "catalog": "Localizable",
+      "key": "Bundled",
+      "units": [
+        {
+          "source": "Bundled"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Inclòs"
+    },
+    {
+      "id": "Localizable::Couldn't Load Plugins",
+      "catalog": "Localizable",
+      "key": "Couldn't Load Plugins",
+      "units": [
+        {
+          "source": "Couldn't Load Plugins"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "No s'han pogut carregar els connectors"
+    },
+    {
+      "id": "Localizable::Enabled",
+      "catalog": "Localizable",
+      "key": "Enabled",
+      "units": [
+        {
+          "source": "Enabled"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Activat"
+    },
+    {
+      "id": "Localizable::Hermex notifications from this Profile stop until you turn this back on.",
+      "catalog": "Localizable",
+      "key": "Hermex notifications from this Profile stop until you turn this back on.",
+      "units": [
+        {
+          "source": "Hermex notifications from this Profile stop until you turn this back on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Les notificacions de Hermex d'aquest perfil s'aturaran fins que ho tornis a activar."
+    },
+    {
+      "id": "Localizable::Keep Off",
+      "catalog": "Localizable",
+      "key": "Keep Off",
+      "units": [
+        {
+          "source": "Keep Off"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Mantén desactivat"
+    },
+    {
+      "id": "Localizable::Keep On",
+      "catalog": "Localizable",
+      "key": "Keep On",
+      "units": [
+        {
+          "source": "Keep On"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Mantén activat"
+    },
+    {
+      "id": "Localizable::Loading plugins…",
+      "catalog": "Localizable",
+      "key": "Loading plugins…",
+      "units": [
+        {
+          "source": "Loading plugins…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "S'estan carregant els connectors…"
+    },
+    {
+      "id": "Localizable::MCP server %@ didn't connect.",
+      "catalog": "Localizable",
+      "key": "MCP server %@ didn't connect.",
+      "units": [
+        {
+          "source": "MCP server %@ didn't connect."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
-        "%lld",
-        "%lld"
+        "%@"
       ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 402
-        }
-      ],
-      "target": "%lld aplicats. En queden %lld per enviar."
+      "sourceReferences": [],
+      "target": "El servidor MCP %@ no s'ha connectat."
     },
     {
-      "id": "Localizable::%lld applied.",
+      "id": "Localizable::No Plugins Match",
       "catalog": "Localizable",
-      "key": "%lld applied.",
+      "key": "No Plugins Match",
       "units": [
         {
-          "source": "%lld applied."
+          "source": "No Plugins Match"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Cap connector coincideix"
+    },
+    {
+      "id": "Localizable::Plugins",
+      "catalog": "Localizable",
+      "key": "Plugins",
+      "units": [
+        {
+          "source": "Plugins"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Connectors"
+    },
+    {
+      "id": "Localizable::Restart Gateway…",
+      "catalog": "Localizable",
+      "key": "Restart Gateway…",
+      "units": [
+        {
+          "source": "Restart Gateway…"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Reinicia la passarel·la…"
+    },
+    {
+      "id": "Localizable::Restart the gateway?",
+      "catalog": "Localizable",
+      "key": "Restart the gateway?",
+      "units": [
+        {
+          "source": "Restart the gateway?"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Vols reiniciar la passarel·la?"
+    },
+    {
+      "id": "Localizable::Running work on %@ stops. If this host runs one gateway for all its Profiles, work on the others stops too.",
+      "catalog": "Localizable",
+      "key": "Running work on %@ stops. If this host runs one gateway for all its Profiles, work on the others stops too.",
+      "units": [
+        {
+          "source": "Running work on %@ stops. If this host runs one gateway for all its Profiles, work on the others stops too."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
-        "%lld"
+        "%@"
       ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 403
-        }
-      ],
-      "target": "%lld aplicats."
+      "sourceReferences": [],
+      "target": "La feina en execució a %@ s'aturarà. Si aquest amfitrió executa una sola passarel·la per a tots els perfils, la feina dels altres també s'aturarà."
     },
     {
-      "id": "Localizable::%lld changes",
+      "id": "Localizable::Search installed",
       "catalog": "Localizable",
-      "key": "%lld changes",
+      "key": "Search installed",
       "units": [
         {
-          "variation": "plural",
-          "case": "one",
-          "source": "%lld change"
-        },
-        {
-          "variation": "plural",
-          "case": "other",
-          "source": "%lld changes"
+          "source": "Search installed"
         }
       ],
-      "sourceStructure": {
-        "variations": {
-          "plural": [
-            "one",
-            "other"
-          ]
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Cerca entre els instal·lats"
+    },
+    {
+      "id": "Localizable::The gateway for %@ is restarting.",
+      "catalog": "Localizable",
+      "key": "The gateway for %@ is restarting.",
+      "units": [
+        {
+          "source": "The gateway for %@ is restarting."
         }
-      },
+      ],
+      "sourceStructure": null,
       "placeholders": [
-        "%lld",
-        "%lld",
-        "%lld"
+        "%@"
       ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
-      "sourceReferences": [
+      "sourceReferences": [],
+      "target": "La passarel·la de %@ s'està reiniciant."
+    },
+    {
+      "id": "Localizable::The server didn't confirm the change to %@. This list shows what it reports now.",
+      "catalog": "Localizable",
+      "key": "The server didn't confirm the change to %@. This list shows what it reports now.",
+      "units": [
         {
-          "file": "HermesMobile/Models/TurnFileChangeSummary.swift",
-          "line": 80
+          "source": "The server didn't confirm the change to %@. This list shows what it reports now."
         }
       ],
-      "target": {
-        "one": "%lld canvi",
-        "other": "%lld canvis"
-      }
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "El servidor no ha confirmat el canvi a %@. Aquesta llista mostra el que informa ara."
+    },
+    {
+      "id": "Localizable::This Hermes host can't manage plugins from Hermex. Update Hermes on the host, then try again.",
+      "catalog": "Localizable",
+      "key": "This Hermes host can't manage plugins from Hermex. Update Hermes on the host, then try again.",
+      "units": [
+        {
+          "source": "This Hermes host can't manage plugins from Hermex. Update Hermes on the host, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Aquest amfitrió de Hermes no pot gestionar connectors des de Hermex. Actualitza Hermes a l'amfitrió i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::This changes how people sign in to this server. It can lock this iPhone out until you fix it on the host.",
+      "catalog": "Localizable",
+      "key": "This changes how people sign in to this server. It can lock this iPhone out until you fix it on the host.",
+      "units": [
+        {
+          "source": "This changes how people sign in to this server. It can lock this iPhone out until you fix it on the host."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Això canvia la manera d'iniciar sessió en aquest servidor. Pot deixar aquest iPhone sense accés fins que ho arreglis a l'amfitrió."
+    },
+    {
+      "id": "Localizable::This is the memory provider this Profile uses. New sessions can't reach what it stored until you turn it back on.",
+      "catalog": "Localizable",
+      "key": "This is the memory provider this Profile uses. New sessions can't reach what it stored until you turn it back on.",
+      "units": [
+        {
+          "source": "This is the memory provider this Profile uses. New sessions can't reach what it stored until you turn it back on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Aquest és el proveïdor de memòria que usa aquest perfil. Les sessions noves no podran accedir al que ha desat fins que el tornis a activar."
+    },
+    {
+      "id": "Localizable::This is the password sign-in for this server. Hermex signs in with it, so turning it off can lock this iPhone out until you fix it on the host.",
+      "catalog": "Localizable",
+      "key": "This is the password sign-in for this server. Hermex signs in with it, so turning it off can lock this iPhone out until you fix it on the host.",
+      "units": [
+        {
+          "source": "This is the password sign-in for this server. Hermex signs in with it, so turning it off can lock this iPhone out until you fix it on the host."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Aquest és l'inici de sessió amb contrasenya d'aquest servidor. Hermex l'usa per iniciar sessió, així que si el desactives, aquest iPhone pot quedar sense accés fins que ho arreglis a l'amfitrió."
+    },
+    {
+      "id": "Localizable::This may be the memory provider this Profile uses. New sessions can't reach what it stored until you turn it back on.",
+      "catalog": "Localizable",
+      "key": "This may be the memory provider this Profile uses. New sessions can't reach what it stored until you turn it back on.",
+      "units": [
+        {
+          "source": "This may be the memory provider this Profile uses. New sessions can't reach what it stored until you turn it back on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Pot ser el proveïdor de memòria que usa aquest perfil. Les sessions noves no podran accedir al que ha desat fins que el tornis a activar."
+    },
+    {
+      "id": "Localizable::This messaging platform may be connected. Turning it off disconnects Hermes from it after a restart.",
+      "catalog": "Localizable",
+      "key": "This messaging platform may be connected. Turning it off disconnects Hermes from it after a restart.",
+      "units": [
+        {
+          "source": "This messaging platform may be connected. Turning it off disconnects Hermes from it after a restart."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Pot ser que aquesta plataforma de missatgeria estigui connectada. Si la desactives, Hermes se'n desconnectarà després de reiniciar."
+    },
+    {
+      "id": "Localizable::Turn Off",
+      "catalog": "Localizable",
+      "key": "Turn Off",
+      "units": [
+        {
+          "source": "Turn Off"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Desactiva"
+    },
+    {
+      "id": "Localizable::Turn On",
+      "catalog": "Localizable",
+      "key": "Turn On",
+      "units": [
+        {
+          "source": "Turn On"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Activa"
+    },
+    {
+      "id": "Localizable::Turn off %@?",
+      "catalog": "Localizable",
+      "key": "Turn off %@?",
+      "units": [
+        {
+          "source": "Turn off %@?"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Vols desactivar %@?"
+    },
+    {
+      "id": "Localizable::Turn on %@?",
+      "catalog": "Localizable",
+      "key": "Turn on %@?",
+      "units": [
+        {
+          "source": "Turn on %@?"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Vols activar %@?"
+    },
+    {
+      "id": "Localizable::Updates",
+      "catalog": "Localizable",
+      "key": "Updates",
+      "units": [
+        {
+          "source": "Updates"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Actualitzacions"
+    },
+    {
+      "id": "Localizable::Yours",
+      "catalog": "Localizable",
+      "key": "Yours",
+      "units": [
+        {
+          "source": "Yours"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Els teus"
+    },
+    {
+      "id": "Localizable::A tiny orange cat holding a wrench",
+      "catalog": "Localizable",
+      "key": "A tiny orange cat holding a wrench",
+      "units": [
+        {
+          "source": "A tiny orange cat holding a wrench"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Un gatet taronja que té una clau anglesa"
+    },
+    {
+      "id": "Localizable::Accessibility",
+      "catalog": "Localizable",
+      "key": "Accessibility",
+      "units": [
+        {
+          "source": "Accessibility"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Accessibilitat"
+    },
+    {
+      "id": "Localizable::Add your server",
+      "catalog": "Localizable",
+      "key": "Add your server",
+      "units": [
+        {
+          "source": "Add your server"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Afegeix el teu servidor"
+    },
+    {
+      "id": "Localizable::Allow screen access",
+      "catalog": "Localizable",
+      "key": "Allow screen access",
+      "units": [
+        {
+          "source": "Allow screen access"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [],
+      "target": "Permet l'accés a la pantalla"
     }
   ]
 }

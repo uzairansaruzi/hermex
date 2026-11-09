@@ -18,7 +18,7 @@ struct ReviewCommentSheet: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(verbatim: heading)
                     .font(AppFont.mono(style: .caption))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel(accessibilityHeading)
                     .accessibilityValue(Text(verbatim: context.path))
@@ -29,6 +29,7 @@ struct ReviewCommentSheet: View {
             }
             .padding(.horizontal)
             .padding(.top, 8)
+            .themedPageBackground()
             .navigationTitle("Comment")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -41,6 +42,7 @@ struct ReviewCommentSheet: View {
             }
             .onAppear { isCommentFocused = true }
         }
+        .themedPageBackground()
         .presentationDetents([.height(compactHeight), .medium])
         .adaptiveFormPresentation()
     }
@@ -68,19 +70,19 @@ struct ReviewCommentStatusBar: View {
         HStack(spacing: 12) {
             Text("\(addedCount) comments added")
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Spacer(minLength: 8)
             if let onReturnToChat {
                 Button(action: onReturnToChat) {
                     Text("Back to Chat")
                         .font(AppFont.footnote(weight: .semibold))
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.appProminent)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(.appMaterial(.bar))
         .accessibilityElement(children: .contain)
     }
 }

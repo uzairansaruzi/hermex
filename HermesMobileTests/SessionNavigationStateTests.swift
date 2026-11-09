@@ -636,15 +636,33 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         XCTAssertEqual(log.detail, 2, "A root selection must reset the detail stack")
     }
 
-    /// Pins the visibility policy the split view applies on a root selection. The
-    /// portrait close is not hosted: UISplitViewController's display-mode change did
-    /// not settle reliably on CI's parallel test clones, and a collapsed sidebar can't
-    /// be told apart from `.automatic` in an iPhone-idiom host anyway.
-    func testRootSelectionHidesAnOpenedSidebarButKeepsACollapsedOne() {
-        XCTAssertEqual(NavigationSplitViewVisibility.all.afterRootSelection, .automatic)
-        XCTAssertEqual(NavigationSplitViewVisibility.doubleColumn.afterRootSelection, .automatic)
-        XCTAssertEqual(NavigationSplitViewVisibility.automatic.afterRootSelection, .automatic)
-        XCTAssertEqual(NavigationSplitViewVisibility.detailOnly.afterRootSelection, .detailOnly)
+    /// Pins the visibility policy the split view applies on a root selection or width change. The
+    /// portrait close is not hosted: UISplitViewController's display-mode change did not settle
+    /// reliably on CI's parallel test clones, and a collapsed sidebar can't be told apart from
+    /// `.automatic` in an iPhone-idiom host anyway.
+    func testRoomySplitKeepsItsSidebarOutUnlessTheUserCollapsedIt() {
+        typealias Visibility = NavigationSplitViewVisibility
+        XCTAssertEqual(Visibility.settled(isRoomy: true, isCollapsedByUser: false), .doubleColumn)
+        XCTAssertEqual(Visibility.settled(isRoomy: false, isCollapsedByUser: false), .automatic)
+        XCTAssertEqual(Visibility.settled(isRoomy: true, isCollapsedByUser: true), .detailOnly)
+    }
+
+    func testOnlyHidingAnOpenSidebarCountsAsTheUserCollapsingIt() {
+        typealias Visibility = NavigationSplitViewVisibility
+        XCTAssertTrue(Visibility.detailOnly.isCollapsedByUser(after: .doubleColumn, was: false))
+        XCTAssertFalse(Visibility.detailOnly.isCollapsedByUser(after: .automatic, was: false),
+                       "The system writes .detailOnly for a sidebar .automatic hid")
+        XCTAssertTrue(Visibility.automatic.isCollapsedByUser(after: .detailOnly, was: true),
+                      "A collapse survives a selection or width change")
+        XCTAssertFalse(Visibility.doubleColumn.isCollapsedByUser(after: .detailOnly, was: true))
+    }
+
+    /// A push above an open chat clears both, so a fold keeps a Settings sheet a sheet. Unfolding
+    /// has nowhere to push, so a pushed Settings becomes one.
+    func testSettingsPresentationSurvivesAWidthChange() {
+        XCTAssertEqual(HermesSettingsPresentation.sheet.afterWidthChange(usesSplit: false), .sheet)
+        XCTAssertEqual(HermesSettingsPresentation.pushed.afterWidthChange(usesSplit: true), .sheet)
+        XCTAssertEqual(HermesSettingsPresentation.pushed.afterWidthChange(usesSplit: false), .pushed)
     }
 
     /// Settings subpages (`NavigationLink`) and file or fork screens
@@ -839,6 +857,11 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
 
     func testRegularHermesSessionsOwnsASplit() throws {
         try assertSplit(in: sessions(), sizeClass: .regular, expected: true)
+    }
+
+    /// A Plus/Max iPhone in landscape: a split here would rebuild the chat on every rotation (#1528).
+    func testRegularWidthCompactHeightHermesSessionsKeepsItsStack() throws {
+        try assertSplit(in: NavigationStack { sessions() }, sizeClass: .regular, verticalSizeClass: .compact, expected: false)
     }
 
     func testCompactHermesSessionsStillPushesInItsCallerStack() throws {
@@ -1107,6 +1130,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     }
 
     private func assertSplit<V: View>(in view: V, sizeClass: UserInterfaceSizeClass,
+                                      verticalSizeClass: UserInterfaceSizeClass = .regular,
                                       expected: Bool) throws {
         let container = try ModelContainer(for: CachedSession.self, CachedMessage.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -1114,7 +1138,8 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
                                hermesConnections: HermesConnections(keychain: InMemoryKeychainStore()))
         let host = UIHostingController(rootView: view.modelContainer(container)
             .environment(auth)
-            .environment(\.horizontalSizeClass, sizeClass))
+            .environment(\.horizontalSizeClass, sizeClass)
+            .environment(\.verticalSizeClass, verticalSizeClass))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.traitOverrides.horizontalSizeClass = sizeClass == .regular ? .regular : .compact

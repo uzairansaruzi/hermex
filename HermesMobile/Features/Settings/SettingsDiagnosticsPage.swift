@@ -56,7 +56,7 @@ struct SettingsDiagnosticsPage: View {
 
     var body: some View {
         let entries = model.entries ?? []
-        List {
+        AppList {
             if !entries.isEmpty {
                 Section {
                     ForEach(entries) { entry in
@@ -67,7 +67,7 @@ struct SettingsDiagnosticsPage: View {
                                 }
                             }
                     }
-                } footer: {
+                } appFooter: {
                     Text("iOS delivers these reports. Hermex keeps up to 10 for 14 days, on this device only.")
                 }
             }
@@ -135,12 +135,12 @@ private struct DiagnosticRowLabel: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 Text(detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
             }
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }
@@ -162,6 +162,7 @@ private struct DiagnosticReportPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
         }
+        .themedPageBackground()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

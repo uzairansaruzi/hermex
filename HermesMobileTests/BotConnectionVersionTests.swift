@@ -249,8 +249,7 @@ final class BotConnectionVersionTests: XCTestCase {
         var expired = BotConnection(id: UUID(), name: "Host", address: hermes, username: "u1", password: "", installID: "install-1")
         expired.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "dead")
         try store.save(expired, server: hermes)
-        var status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
-        status.signInMethod = .browser
+        let status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
         let model = BotConnectionSetup(
             server: hermes, isServerSignIn: true, store: store, makeWire: { _ in XCTFail("No password wire"); return ConnectionSetupWire() },
             discard: { _ in XCTFail("The same account keeps its data") }, probe: { _, _ in .success(status) },
@@ -280,6 +279,53 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(record.password, "")
     }
 
+    /// On a host offering both, a saved browser sign-in opens on Browser; switching it to
+    /// Password saves no `oauth`, and back to Browser saves no password (#1539). Neither switch
+    /// is another account, even with no `install_id` to compare: the UUID, and with it drafts,
+    /// cache and push pairing, stays.
+    func testSwitchingASavedServerBetweenBrowserAndPasswordKeepsOnlyOneCredential() async throws {
+        defer { HermesHostFixture.reset() }
+        let hermes = URL(string: "https://hermes.example")!
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        var browserSignIn = BotConnection(id: UUID(), name: "Host", address: hermes, username: "u1", password: "")
+        browserSignIn.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "refresh-0")
+        try store.save(browserSignIn, server: hermes)
+        let model = BotConnectionSetup(
+            server: hermes, isServerSignIn: true, store: store, makeWire: { _ in ConnectionSetupWire() },
+            discard: { _ in XCTFail("Switching the sign-in method keeps the connection's data") },
+            probe: { _, _ in .success(BotHostStatus(HermesBrowserSignInTests.bothStatus)) },
+            hermesConfiguration: { HermesHostFixture.configuration { request in
+                switch request.url?.path {
+                case "/api/status": return .json(200, HermesBrowserSignInTests.bothStatus)
+                case "/auth/native/token": return .json(200, HermesBrowserSignInTests.tokens)
+                case "/api/auth/me": return .json(200, .object(["provider": .string("nous"), "user_id": .string("u1")]))
+                default: return nil
+                }
+            } })
+        model.load()
+        await model.checkStatus()
+        XCTAssertTrue(model.offersSignInChoice)
+        XCTAssertEqual(model.signInMethod, .browser)
+
+        model.signInMethod = .password
+        model.username = "admin"; model.password = "secret"
+        let savedPassword = await model.connect()
+        XCTAssertTrue(savedPassword)
+        let passwordRecord = try XCTUnwrap(store.load(server: hermes))
+        XCTAssertEqual(passwordRecord.id, browserSignIn.id)
+        XCTAssertNil(passwordRecord.oauth)
+        XCTAssertEqual(passwordRecord.password, "secret")
+
+        model.signInMethod = .browser
+        let presenter = HermesBrowserSignIn.Presenter { url in _ = try await HermesBrowserSignInTests.callback(url, code: "code-1") }
+        let savedBrowser = await model.connect(browser: presenter)
+        XCTAssertTrue(savedBrowser)
+        let browserRecord = try XCTUnwrap(store.load(server: hermes))
+        XCTAssertEqual(browserRecord.id, browserSignIn.id)
+        XCTAssertEqual(browserRecord.oauth?.refreshToken, "refresh-1")
+        XCTAssertEqual(browserRecord.password, "")
+    }
+
     /// A signed-out Hermes server whose status read failed can't tell whether it signs in
     /// through the browser, so it offers to read it again; one that answered doesn't.
     func testASignedOutServerWhoseStatusFailedOffersToCheckAgain() async {
@@ -292,9 +338,7 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertTrue(model.offersStatusRetry)
         XCTAssertEqual(model.signInMethod, .password)
 
-        var status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
-        status.signInMethod = .browser
-        reply = .success(status)
+        reply = .success(BotHostStatus(HermesBrowserSignInTests.browserStatus))
         await model.checkStatus()
         XCTAssertFalse(model.offersStatusRetry)
         XCTAssertEqual(model.signInMethod, .browser)

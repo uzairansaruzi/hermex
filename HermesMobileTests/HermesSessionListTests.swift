@@ -59,6 +59,12 @@ import Observation
         XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary"])
         XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["past-page-job"])
         XCTAssertEqual(wire.scheduledSearches.map(\.query), ["needle"])
+        // Cron Sessions off in Settings hides the host's cron matches too (#1585).
+        var cronHidden = AutomatedSessionVisibility.showAll
+        cronHidden.showsCron = false
+        let hidden = list.scheduledSessionGroups(searchText: "needle", selectedProjectID: nil, automatedVisibility: cronHidden)
+        XCTAssertEqual(hidden.ordinary.compactMap(\.sessionId), ["ordinary"])
+        XCTAssertTrue(hidden.scheduled.isEmpty)
     }
 
     func testScheduledPagesLoadIndependentlyAndKeepTotalCount() async throws {

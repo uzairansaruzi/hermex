@@ -151,5 +151,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/DMSans-Variable.ttf</string>
+		<string>Fonts/DMSans-Italic-Variable.ttf</string>
+		<string>Fonts/Lora-Variable.ttf</string>
+		<string>Fonts/Lora-Italic-Variable.ttf</string>
+	</array>
 </dict>
 </plist>

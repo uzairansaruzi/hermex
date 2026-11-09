@@ -12,9 +12,9 @@ _Avoid_: server (alone, when the kind matters), WebUI
 A configured Hermes dashboard that Hermex reaches directly, and the default kind when adding a server. Its sign-in is its own Hermes connection, and it opens on the Bots inbox.
 _Avoid_: Hermes connection (that is the sign-in), bot server
 
-**Connection mode**:
-How this iPhone reaches the server, chosen in the connect form: Same Wi-Fi, Private network or Cloudflare Tunnel. It changes only the form's placeholder, help and header rows, and is not saved.
-_Avoid_: network type, connection type
+**Connection Options**:
+The Add Server sheet's page for everything optional: Cloudflare Access's service token, other connection headers, and the new server's name, initials and color. Network hints appear only in a failed connection's advice.
+_Avoid_: Advanced, connection mode, network type
 
 **Move to Hermes**:
 Copying a webui server's chats to a Hermes server and routing its old links, Shortcuts and notifications there. The webui server stays configured and usable, marked **Moved**, until the user removes it.
@@ -35,6 +35,21 @@ Ends a paused move without retrying the rest. Nothing in Hermes is undone; what 
 **Unchecked**:
 A chat the move couldn't confirm is in Hermes or missing from it. Never counted as missing, and never as copied.
 _Avoid_: missing, failed
+
+## Appearance
+
+**Color scheme**:
+System, Light or Dark. The code's `AppTheme` predates themes and means this.
+
+**Theme**:
+A named set of colors with a light and a dark palette. A user can pick a different one for each mode. Default is iOS's system colors.
+_Avoid_: skin, palette (for the user-facing choice)
+
+**Accent**:
+The color of tints and accent fills: the theme's own, or a user's pick, moved just far enough to stay readable.
+
+**Server color**:
+A server's header color, which identifies the server. It isn't part of a theme.
 
 ## Kanban
 
@@ -144,6 +159,18 @@ _Avoid_: session id (when the kind matters)
 
 ## Chat
 
+**Model settings**:
+The sheet the composer's model label opens: the current model, Thinking, Fast, Approvals, Favorites and Recent. Each change applies on its own and shows pending or failed beside its row.
+_Avoid_: model menu, composer options
+
+**Chat settings**:
+The sheet the chat header opens: workspace, branch, Profile and context. A chat with nothing sent yet has the same controls in a row above the composer.
+_Avoid_: session settings
+
+**Approval mode**:
+A Profile's `approvals.mode` on the host: Smart, Manual or Off, for every chat in that Profile. YOLO is the same idea for one chat. A webui server has only YOLO.
+_Avoid_: YOLO (for the mode)
+
 **Fork**:
 A chat created from another chat's history by Fork From Here or `/branch` (`/api/session/branch`). The server marks it `session_source: fork` with a `parent_session_id`, and Hermex shows a "Forked from" row that opens the parent. Agent child sessions (subagents, cron, CLI `/new`) also carry a parent but are not Forks. On a Hermes host it is `session.branch`'s copy, marked by `_branched_from` in its row's `model_config`; a Hermes Duplicate is an independent copy with no parent, and no Fork.
 _Avoid_: Branch (for the chat), child session
@@ -155,3 +182,9 @@ _Avoid_: chat target, session kind
 **Turn identity**:
 Which run a chat is following: a webui stream id, or for a Hermes session its stored key and the host's `turn_started_at`. A Hermes turn ends once `message.complete` and `session.info {running: false}` have both arrived.
 _Avoid_: stream id (for a Hermes turn), run id
+
+## Screen
+
+**Screen**:
+The place a bot's `computer_use` acts, shown live in the app: on Linux the bot's own virtual desktop, on Mac and Windows the real logged-in desktop. See `docs/agents/screen.md`.
+_Avoid_: Bot Desktop (except for Linux's kind of Screen), remote desktop, VNC (in copy)

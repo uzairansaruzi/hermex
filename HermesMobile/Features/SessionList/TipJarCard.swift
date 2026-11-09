@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TipJarCard: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isAppThemed) private var isThemed
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -27,20 +28,20 @@ struct TipJarCard: View {
             HStack(alignment: .top, spacing: 12) {
                 companion
                 Text("Keep Hermex going")
-                    .font(.headline)
+                    .font(AppFont.headline())
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, minHeight: faceSize, alignment: .leading)
                 closeButton
             }
             Text("Hermex is free and open source, with no ads and no tracking. Supporters make that possible.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(AppFont.subheadline())
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             links
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(colorScheme == .dark ? Color(white: 0.14) : .white,
+        .background(isThemed ? Color(.appSurface) : colorScheme == .dark ? Color(white: 0.14) : .white,
                     in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
@@ -97,8 +98,8 @@ struct TipJarCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
             }
-            .font(.subheadline.weight(.semibold))
-            .buttonStyle(.borderedProminent)
+            .font(AppFont.subheadline(weight: .semibold))
+            .buttonStyle(.appProminent)
             .buttonBorderShape(.capsule)
             .controlSize(.large)
             .tint(accent)
@@ -106,11 +107,11 @@ struct TipJarCard: View {
 
             Link(destination: AppConfig.tipURL) {
                 Text("or buy Uzi a coffee")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .accessibilityLabel("Buy Uzi a coffee, opens in browser")
         }
         .environment(\.openURL, OpenURLAction { url in
@@ -126,7 +127,7 @@ struct TipJarCard: View {
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 28, height: 28)
                 .background(.fill.tertiary, in: Circle())
                 .frame(width: 44, height: 44)

@@ -18,10 +18,13 @@ struct AcknowledgementNotice: Hashable {
     /// The project's home page, from `Package.resolved` (Lucide is a bundled asset, not a package).
     var projectURL: URL? {
         switch name {
+        case "DM Sans": URL(staticString: "https://github.com/googlefonts/dm-fonts")
         case "Highlightr": URL(staticString: "https://github.com/raspu/Highlightr")
         case "KeychainAccess": URL(staticString: "https://github.com/kishikawakatsumi/KeychainAccess")
         case "LDSwiftEventSource": URL(staticString: "https://github.com/LaunchDarkly/swift-eventsource")
+        case "Lora": URL(staticString: "https://github.com/cyrealtype/Lora-Cyrillic")
         case "Lucide icons": URL(staticString: "https://github.com/lucide-icons/lucide")
+        case "Open Bot Avatar": URL(staticString: "https://github.com/DominikScholz/open-bot-avatar")
         case "MarkdownUI": URL(staticString: "https://github.com/gonzalezreal/swift-markdown-ui")
         case "NetworkImage": URL(staticString: "https://github.com/gonzalezreal/NetworkImage")
         case "Splash": URL(staticString: "https://github.com/JohnSundell/Splash")
@@ -37,7 +40,12 @@ struct AcknowledgementNotice: Hashable {
         for suffix in ["-LICENSE", "-COPYING"] where name.hasSuffix(suffix) {
             name.removeLast(suffix.count)
         }
-        return name == "LucideIcons" ? "Lucide icons" : name
+        switch name {
+        case "DMSans": return "DM Sans"
+        case "LucideIcons": return "Lucide icons"
+        case "OpenBotAvatar": return "Open Bot Avatar"
+        default: return name
+        }
     }
 }
 
@@ -46,9 +54,11 @@ struct SettingsAcknowledgementsPage: View {
     private static let notices = AcknowledgementNotice.loadAll()
 
     var body: some View {
-        List(Self.notices, id: \.url) { notice in
-            NavigationLink(notice.name) {
-                AcknowledgementNoticePage(notice: notice)
+        AppList {
+            ForEach(Self.notices, id: \.url) { notice in
+                NavigationLink(notice.name) {
+                    AcknowledgementNoticePage(notice: notice)
+                }
             }
         }
         .settingsPage(String(localized: "Acknowledgements"))
@@ -70,7 +80,7 @@ private struct AcknowledgementNoticePage: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if let projectURL = notice.projectURL {
                             Link((projectURL.host() ?? "") + projectURL.path(), destination: projectURL)
-                                .font(.footnote)
+                                .font(AppFont.footnote())
                         }
                         Text(verbatim: text)
                             .font(.footnote.monospaced())
@@ -83,6 +93,7 @@ private struct AcknowledgementNoticePage: View {
                 Color.clear
             }
         }
+        .themedPageBackground()
         .navigationTitle(notice.name)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: notice.url) {

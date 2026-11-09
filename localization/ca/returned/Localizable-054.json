@@ -5,12 +5,12 @@
   "catalog": "Localizable",
   "entries": [
     {
-      "id": "Localizable::Voice input",
+      "id": "Localizable::The server refused the request. Check the server permissions and try again.",
       "catalog": "Localizable",
-      "key": "Voice input",
+      "key": "The server refused the request. Check the server permissions and try again.",
       "units": [
         {
-          "source": "Voice input"
+          "source": "The server refused the request. Check the server permissions and try again."
         }
       ],
       "sourceStructure": null,
@@ -21,42 +21,48 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Chat/ChatComposerVoiceControls.swift",
-          "line": 146
+          "file": "HermesMobile/Networking/APIClient+Workspace.swift",
+          "line": 43
+        },
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 38
         }
       ],
-      "target": "Entrada de veu"
+      "target": "El servidor ha rebutjat la sol·licitud. Comprova els permisos del servidor i torna-ho a provar."
     },
     {
-      "id": "Localizable::Voice input and mobile-friendly composer controls",
+      "id": "Localizable::The server refused the request: %@",
       "catalog": "Localizable",
-      "key": "Voice input and mobile-friendly composer controls",
+      "key": "The server refused the request: %@",
       "units": [
         {
-          "source": "Voice input and mobile-friendly composer controls"
+          "source": "The server refused the request: %@"
         }
       ],
       "sourceStructure": null,
-      "placeholders": [],
+      "placeholders": [
+        "%@"
+      ],
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Onboarding/OnboardingFeaturesPage.swift",
-          "line": 9
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 36
         }
       ],
-      "target": "Entrada de veu i controls del camp de redacció adaptats al mòbil"
+      "target": "El servidor ha rebutjat la sol·licitud: %@"
     },
     {
-      "id": "Localizable::Voice input can start only while Hermex is active.",
+      "id": "Localizable::The server refused this Dispatcher request. Hermex did not retry it.",
       "catalog": "Localizable",
-      "key": "Voice input can start only while Hermex is active.",
+      "key": "The server refused this Dispatcher request. Hermex did not retry it.",
       "units": [
         {
-          "source": "Voice input can start only while Hermex is active."
+          "source": "The server refused this Dispatcher request. Hermex did not retry it."
         }
       ],
       "sourceStructure": null,
@@ -69,113 +75,48 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Chat/ComposerVoiceInputController.swift",
-          "line": 963
+          "file": "HermesMobile/Features/Kanban/KanbanFeatureState.swift",
+          "line": 141
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 519
         }
       ],
-      "target": "L'entrada de veu només es pot iniciar mentre Hermex està actiu."
+      "target": "El servidor ha rebutjat aquesta sol·licitud del Dispatcher. Hermex no l'ha reintentada."
     },
     {
-      "id": "Localizable::Voice input could not start recording. Try again in a moment.",
+      "id": "Localizable::The server refused to change this session. If an earlier Hermex 2.0 build created it, duplicate it and change the copy.",
       "catalog": "Localizable",
-      "key": "Voice input could not start recording. Try again in a moment.",
+      "key": "The server refused to change this session. If an earlier Hermex 2.0 build created it, duplicate it and change the copy.",
       "units": [
         {
-          "source": "Voice input could not start recording. Try again in a moment."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ComposerVoiceInputController.swift",
-          "line": 967
-        }
-      ],
-      "target": "L'entrada de veu no ha pogut començar a enregistrar. Torna-ho a provar d'aquí una estona."
-    },
-    {
-      "id": "Localizable::Voice input is already preparing the microphone. Try again in a moment.",
-      "catalog": "Localizable",
-      "key": "Voice input is already preparing the microphone. Try again in a moment.",
-      "units": [
-        {
-          "source": "Voice input is already preparing the microphone. Try again in a moment."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ComposerVoiceInputController.swift",
-          "line": 965
-        }
-      ],
-      "target": "L'entrada de veu ja està preparant el micròfon. Torna-ho a provar d'aquí una estona."
-    },
-    {
-      "id": "Localizable::Voice input is not available because the microphone input format is invalid.",
-      "catalog": "Localizable",
-      "key": "Voice input is not available because the microphone input format is invalid.",
-      "units": [
-        {
-          "source": "Voice input is not available because the microphone input format is invalid."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ComposerVoiceInputController.swift",
-          "line": 961
-        }
-      ],
-      "target": "L'entrada de veu no està disponible perquè el format d'entrada del micròfon no és vàlid."
-    },
-    {
-      "id": "Localizable::Wait for Hermes to confirm the last message before changing goals.",
-      "catalog": "Localizable",
-      "key": "Wait for Hermes to confirm the last message before changing goals.",
-      "units": [
-        {
-          "source": "Wait for Hermes to confirm the last message before changing goals."
+          "source": "The server refused to change this session. If an earlier Hermex 2.0 build created it, duplicate it and change the copy."
         }
       ],
       "sourceStructure": null,
       "placeholders": [],
       "protectedTerms": [
-        "Hermes"
+        "Hermex"
       ],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 3646
+          "file": "HermesMobile/Networking/Hermes/HermesSessionActions.swift",
+          "line": 53
         }
       ],
-      "target": "Espera que Hermes confirmi el darrer missatge abans de canviar els objectius."
+      "target": "El servidor s'ha negat a canviar aquesta sessió. Si la va crear una versió anterior de Hermex 2.0, duplica-la i canvia la còpia."
     },
     {
-      "id": "Localizable::Wait for running chats",
+      "id": "Localizable::The server rejected the request.",
       "catalog": "Localizable",
-      "key": "Wait for running chats",
+      "key": "The server rejected the request.",
       "units": [
         {
-          "source": "Wait for running chats"
+          "source": "The server rejected the request."
         }
       ],
       "sourceStructure": null,
@@ -186,549 +127,27 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 212
-        }
-      ],
-      "target": "Espera els xats en execució"
-    },
-    {
-      "id": "Localizable::Wait for the active response to finish before changing this repository.",
-      "catalog": "Localizable",
-      "key": "Wait for the active response to finish before changing this repository.",
-      "units": [
-        {
-          "source": "Wait for the active response to finish before changing this repository."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Workspace/GitWorkspaceViewModel.swift",
-          "line": 648
+          "file": "HermesMobile/Features/Kanban/KanbanCardEditorView.swift",
+          "line": 194
         },
         {
-          "file": "HermesMobile/Networking/Hermes/HermesGitClient.swift",
-          "line": 695
-        }
-      ],
-      "target": "Espera que la resposta activa acabi abans de canviar aquest repositori."
-    },
-    {
-      "id": "Localizable::Wait for the bot to finish.",
-      "catalog": "Localizable",
-      "key": "Wait for the bot to finish.",
-      "units": [
-        {
-          "source": "Wait for the bot to finish."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
-      "sourceReferences": [],
-      "target": "Espera que el bot acabi."
-    },
-    {
-      "id": "Localizable::Wait for the conversation to finish clearing.",
-      "catalog": "Localizable",
-      "key": "Wait for the conversation to finish clearing.",
-      "units": [
-        {
-          "source": "Wait for the conversation to finish clearing."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 2914
+          "file": "HermesMobile/Models/Workspace.swift",
+          "line": 58
         },
         {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5158
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 31
         }
       ],
-      "target": "Espera que la conversa acabi d'esborrar-se."
+      "target": "El servidor ha rebutjat la sol·licitud."
     },
     {
-      "id": "Localizable::Wait for the current /btw answer to finish first.",
+      "id": "Localizable::The server rejected the request: %@",
       "catalog": "Localizable",
-      "key": "Wait for the current /btw answer to finish first.",
+      "key": "The server rejected the request: %@",
       "units": [
         {
-          "source": "Wait for the current /btw answer to finish first."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4064
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4131
-        }
-      ],
-      "target": "Espera primer que la resposta actual de /btw acabi."
-    },
-    {
-      "id": "Localizable::Wait for the current reply to finish.",
-      "catalog": "Localizable",
-      "key": "Wait for the current reply to finish.",
-      "units": [
-        {
-          "source": "Wait for the current reply to finish."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5921
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 6039
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 6104
-        }
-      ],
-      "target": "Espera que la resposta actual acabi."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before changing goals.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before changing goals.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before changing goals."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 3580
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 3642
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de canviar els objectius."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before changing models.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before changing models.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before changing models."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 1188
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de canviar de model."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before changing personality.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before changing personality.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before changing personality."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4516
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4619
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4629
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de canviar la personalitat."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before changing profiles.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before changing profiles.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before changing profiles."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 1536
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de canviar de perfil."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before changing reasoning.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before changing reasoning.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before changing reasoning."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 1623
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4597
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de canviar el raonament."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before changing workspace.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before changing workspace.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before changing workspace."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 1399
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 1479
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de canviar l'espai de treball."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before clearing the conversation.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before clearing the conversation.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before clearing the conversation."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5154
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans d'esborrar la conversa."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before compressing context.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before compressing context.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before compressing context."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5055
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de comprimir el context."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before editing.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before editing.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before editing."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5714
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans d'editar."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before forking.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before forking.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before forking."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4969
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5501
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5564
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5587
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de bifurcar."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before regenerating.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before regenerating.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before regenerating."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5828
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de regenerar."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before renaming the session.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before renaming the session.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before renaming the session."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4462
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de canviar el nom de la sessió."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before retrying messages.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before retrying messages.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before retrying messages."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5268
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de reintentar missatges."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before starting a new session.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before starting a new session.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before starting a new session."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5019
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans d'iniciar una sessió nova."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before undoing messages.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before undoing messages.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before undoing messages."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5228
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de desfer missatges."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before using /btw.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before using /btw.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before using /btw."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4060
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de fer servir /btw."
-    },
-    {
-      "id": "Localizable::Wait for the current response to finish before you %@.",
-      "catalog": "Localizable",
-      "key": "Wait for the current response to finish before you %@.",
-      "units": [
-        {
-          "source": "Wait for the current response to finish before you %@."
+          "source": "The server rejected the request: %@"
         }
       ],
       "sourceStructure": null,
@@ -741,92 +160,288 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 5375
-        }
-      ],
-      "target": "Espera que la resposta actual acabi abans de %@."
-    },
-    {
-      "id": "Localizable::Wait for this chat to connect before changing models.",
-      "catalog": "Localizable",
-      "key": "Wait for this chat to connect before changing models.",
-      "units": [
-        {
-          "source": "Wait for this chat to connect before changing models."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4360
-        }
-      ],
-      "target": "Espera que aquest xat es connecti abans de canviar de model."
-    },
-    {
-      "id": "Localizable::Wait for this chat to connect before changing reasoning.",
-      "catalog": "Localizable",
-      "key": "Wait for this chat to connect before changing reasoning.",
-      "units": [
-        {
-          "source": "Wait for this chat to connect before changing reasoning."
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 4601
-        }
-      ],
-      "target": "Espera que aquest xat es connecti abans de canviar el raonament."
-    },
-    {
-      "id": "Localizable::Waiting",
-      "catalog": "Localizable",
-      "key": "Waiting",
-      "units": [
-        {
-          "source": "Waiting"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Chat/HermesRequestCards.swift",
-          "line": 169
+          "file": "HermesMobile/Models/Workspace.swift",
+          "line": 56
         },
         {
-          "file": "HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift",
-          "line": 471
+          "file": "HermesMobile/Networking/APIClient+Memory.swift",
+          "line": 216
+        },
+        {
+          "file": "HermesMobile/Networking/APIClient+Workspace.swift",
+          "line": 44
+        },
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 29
+        },
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesCronClient.swift",
+          "line": 206
         }
       ],
-      "target": "En espera"
+      "target": "El servidor ha rebutjat la sol·licitud: %@"
     },
     {
-      "id": "Localizable::Waiting for Hermes to come back",
+      "id": "Localizable::The server response could not be read.",
       "catalog": "Localizable",
-      "key": "Waiting for Hermes to come back",
+      "key": "The server response could not be read.",
       "units": [
         {
-          "source": "Waiting for Hermes to come back"
+          "source": "The server response could not be read."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 58
+        },
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 56
+        }
+      ],
+      "target": "No s'ha pogut llegir la resposta del servidor."
+    },
+    {
+      "id": "Localizable::The server response could not be read. Check that the URL points to your configured server.",
+      "catalog": "Localizable",
+      "key": "The server response could not be read. Check that the URL points to your configured server.",
+      "units": [
+        {
+          "source": "The server response could not be read. Check that the URL points to your configured server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "URL"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/APIError.swift",
+          "line": 26
+        }
+      ],
+      "target": "No s'ha pogut llegir la resposta del servidor. Comprova que l'URL apunti al teu servidor configurat."
+    },
+    {
+      "id": "Localizable::The server shows only the start of this run's output.",
+      "catalog": "Localizable",
+      "key": "The server shows only the start of this run's output.",
+      "units": [
+        {
+          "source": "The server shows only the start of this run's output."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/TaskRunOutputSheet.swift",
+          "line": 26
+        }
+      ],
+      "target": "El servidor només mostra l'inici de la sortida d'aquesta execució."
+    },
+    {
+      "id": "Localizable::The server took too long to respond. Check that the Mac is awake and the server is running.",
+      "catalog": "Localizable",
+      "key": "The server took too long to respond. Check that the Mac is awake and the server is running.",
+      "units": [
+        {
+          "source": "The server took too long to respond. Check that the Mac is awake and the server is running."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "El servidor ha trigat massa a respondre. Comprova que el Mac estigui despert i que el servidor s'estigui executant."
+    },
+    {
+      "id": "Localizable::The site asked for a sign-in code.",
+      "catalog": "Localizable",
+      "key": "The site asked for a sign-in code.",
+      "units": [
+        {
+          "source": "The site asked for a sign-in code."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "El lloc ha demanat un codi d'inici de sessió."
+    },
+    {
+      "id": "Localizable::The slug cannot be changed after the Board is created.",
+      "catalog": "Localizable",
+      "key": "The slug cannot be changed after the Board is created.",
+      "units": [
+        {
+          "source": "The slug cannot be changed after the Board is created."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1872
+        }
+      ],
+      "target": "El slug no es pot canviar després de crear el tauler."
+    },
+    {
+      "id": "Localizable::The stream reconnected without this answer. Ask again with /btw.",
+      "catalog": "Localizable",
+      "key": "The stream reconnected without this answer. Ask again with /btw.",
+      "units": [
+        {
+          "source": "The stream reconnected without this answer. Ask again with /btw."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesBtwPanel.swift",
+          "line": 246
+        }
+      ],
+      "target": "La transmissió s'ha reconnectat sense aquesta resposta. Torna a preguntar amb /btw."
+    },
+    {
+      "id": "Localizable::The stream returned a malformed error event.",
+      "catalog": "Localizable",
+      "key": "The stream returned a malformed error event.",
+      "units": [
+        {
+          "source": "The stream returned a malformed error event."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/SSEClient.swift",
+          "line": 311
+        }
+      ],
+      "target": "La transmissió ha retornat un esdeveniment d'error amb un format no vàlid."
+    },
+    {
+      "id": "Localizable::The stream returned an error.",
+      "catalog": "Localizable",
+      "key": "The stream returned an error.",
+      "units": [
+        {
+          "source": "The stream returned an error."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/SSEClient.swift",
+          "line": 313
+        }
+      ],
+      "target": "La transmissió ha retornat un error."
+    },
+    {
+      "id": "Localizable::The turn failed",
+      "catalog": "Localizable",
+      "key": "The turn failed",
+      "units": [
+        {
+          "source": "The turn failed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesTurnOutcomeRow.swift",
+          "line": 64
+        }
+      ],
+      "target": "El torn ha fallat"
+    },
+    {
+      "id": "Localizable::The update could not be applied.",
+      "catalog": "Localizable",
+      "key": "The update could not be applied.",
+      "units": [
+        {
+          "source": "The update could not be applied."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/WebuiServerSettings.swift",
+          "line": 373
+        },
+        {
+          "file": "HermesMobile/Features/Settings/WebuiServerSettingsModel.swift",
+          "line": 191
+        }
+      ],
+      "target": "No s'ha pogut aplicar l'actualització."
+    },
+    {
+      "id": "Localizable::The update finished, but Hermes hasn’t answered for 2 minutes. Run this on your host, then check again.",
+      "catalog": "Localizable",
+      "key": "The update finished, but Hermes hasn’t answered for 2 minutes. Run this on your host, then check again.",
+      "units": [
+        {
+          "source": "The update finished, but Hermes hasn’t answered for 2 minutes. Run this on your host, then check again."
         }
       ],
       "sourceStructure": null,
@@ -839,23 +454,46 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
-          "line": 248
-        },
-        {
           "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
-          "line": 69
+          "line": 86
         }
       ],
-      "target": "S'està esperant que Hermes torni"
+      "target": "L'actualització ha acabat, però Hermes fa 2 minuts que no respon. Executa això al teu amfitrió i torna-ho a comprovar."
     },
     {
-      "id": "Localizable::Waiting for approval",
+      "id": "Localizable::The update finished, but Hermes still runs %@. Run this on your host, then check again.",
       "catalog": "Localizable",
-      "key": "Waiting for approval",
+      "key": "The update finished, but Hermes still runs %@. Run this on your host, then check again.",
       "units": [
         {
-          "source": "Waiting for approval"
+          "source": "The update finished, but Hermes still runs %@. Run this on your host, then check again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
+          "line": 82
+        }
+      ],
+      "target": "L'actualització ha acabat, però Hermes encara executa %@. Executa això al teu amfitrió i torna-ho a comprovar."
+    },
+    {
+      "id": "Localizable::The update is taking longer than expected to finish. Try again in a moment.",
+      "catalog": "Localizable",
+      "key": "The update is taking longer than expected to finish. Try again in a moment.",
+      "units": [
+        {
+          "source": "The update is taking longer than expected to finish. Try again in a moment."
         }
       ],
       "sourceStructure": null,
@@ -866,31 +504,182 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/SessionList/SessionRowView.swift",
-          "line": 497
+          "file": "HermesMobile/Features/Settings/WebuiServerSettingsModel.swift",
+          "line": 248
+        }
+      ],
+      "target": "L'actualització està trigant més del previst. Torna-ho a provar d'aquí a una mica."
+    },
+    {
+      "id": "Localizable::The work changed before this message could be sent. Choose an action again.",
+      "catalog": "Localizable",
+      "key": "The work changed before this message could be sent. Choose an action again.",
+      "units": [
+        {
+          "source": "The work changed before this message could be sent. Choose an action again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": "manual",
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "La feina ha canviat abans que es pogués enviar aquest missatge. Torna a triar una acció."
+    },
+    {
+      "id": "Localizable::The working tree is clean.",
+      "catalog": "Localizable",
+      "key": "The working tree is clean.",
+      "units": [
+        {
+          "source": "The working tree is clean."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "L'arbre de treball està net."
+    },
+    {
+      "id": "Localizable::Theme",
+      "catalog": "Localizable",
+      "key": "Theme",
+      "units": [
+        {
+          "source": "Theme"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsAppPages.swift",
+          "line": 19
+        }
+      ],
+      "target": "Tema"
+    },
+    {
+      "id": "Localizable::Theme switching is not available from mobile slash commands.",
+      "catalog": "Localizable",
+      "key": "Theme switching is not available from mobile slash commands.",
+      "units": [
+        {
+          "source": "Theme switching is not available from mobile slash commands."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/SlashCommandExecutor.swift",
+          "line": 95
+        }
+      ],
+      "target": "El canvi de tema no està disponible amb les ordres de barra de l'app mòbil."
+    },
+    {
+      "id": "Localizable::There are no changes to commit.",
+      "catalog": "Localizable",
+      "key": "There are no changes to commit.",
+      "units": [
+        {
+          "source": "There are no changes to commit."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatView.swift",
+          "line": 1652
+        }
+      ],
+      "target": "No hi ha canvis per cometre."
+    },
+    {
+      "id": "Localizable::There is no assistant text to listen to.",
+      "catalog": "Localizable",
+      "key": "There is no assistant text to listen to.",
+      "units": [
+        {
+          "source": "There is no assistant text to listen to."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 6209
+        }
+      ],
+      "target": "No hi ha text de l'assistent per escoltar."
+    },
+    {
+      "id": "Localizable::Thinking",
+      "catalog": "Localizable",
+      "key": "Thinking",
+      "units": [
+        {
+          "source": "Thinking"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ReasoningBlockView.swift",
+          "line": 37
         },
         {
           "file": "HermesMobile/LiveActivities/AgentLiveActivityManager.swift",
-          "line": 927
+          "line": 431
         },
         {
           "file": "HermesMobile/LiveActivities/AgentRunActivityAttributes.swift",
-          "line": 289
+          "line": 275
         },
         {
           "file": "HermesMobile/LiveActivities/AgentRunActivityAttributes.swift",
-          "line": 566
+          "line": 527
         }
       ],
-      "target": "S'està esperant l'aprovació"
+      "target": "S'està pensant"
     },
     {
-      "id": "Localizable::Waiting for network",
+      "id": "Localizable::Thinking and Tool Cards",
       "catalog": "Localizable",
-      "key": "Waiting for network",
+      "key": "Thinking and Tool Cards",
       "units": [
         {
-          "source": "Waiting for network"
+          "source": "Thinking and Tool Cards"
         }
       ],
       "sourceStructure": null,
@@ -898,30 +687,17 @@
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Config/AppTheme.swift",
-          "line": 418
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatTranscriptSupportingViews.swift",
-          "line": 1066
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
-          "line": 6346
-        }
-      ],
-      "target": "S'està esperant la xarxa"
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Targetes de raonament i eines"
     },
     {
-      "id": "Localizable::Waiting for you",
+      "id": "Localizable::Thinking and Tool cards start expanded instead of collapsed. Tapping a card still toggles it.",
       "catalog": "Localizable",
-      "key": "Waiting for you",
+      "key": "Thinking and Tool cards start expanded instead of collapsed. Tapping a card still toggles it.",
       "units": [
         {
-          "source": "Waiting for you"
+          "source": "Thinking and Tool cards start expanded instead of collapsed. Tapping a card still toggles it."
         }
       ],
       "sourceStructure": null,
@@ -929,90 +705,17 @@
       "protectedTerms": [],
       "comment": null,
       "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Config/AppTheme.swift",
-          "line": 422
-        },
-        {
-          "file": "HermesMobile/Features/Bots/BotsInboxView.swift",
-          "line": 919
-        },
-        {
-          "file": "HermesMobile/Features/Bots/BotsInboxView.swift",
-          "line": 929
-        },
-        {
-          "file": "HermesMobile/Features/Chat/ChatView.swift",
-          "line": 1859
-        },
-        {
-          "file": "HermesMobile/LiveActivities/AgentRunActivityAttributes.swift",
-          "line": 287
-        }
-      ],
-      "target": "T'espera"
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Les targetes de raonament i eines comencen desplegades en lloc de replegades. Tocar una targeta continua desplegant-la o replegant-la."
     },
     {
-      "id": "Localizable::Waiting for your answer",
+      "id": "Localizable::Thinking, %@",
       "catalog": "Localizable",
-      "key": "Waiting for your answer",
+      "key": "Thinking, %@",
       "units": [
         {
-          "source": "Waiting for your answer"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Config/AppTheme.swift",
-          "line": 441
-        },
-        {
-          "file": "HermesMobile/Features/Bots/BotRoomComposerView.swift",
-          "line": 166
-        }
-      ],
-      "target": "S'està esperant la teva resposta"
-    },
-    {
-      "id": "Localizable::Waiting on Hermes Desktop",
-      "catalog": "Localizable",
-      "key": "Waiting on Hermes Desktop",
-      "units": [
-        {
-          "source": "Waiting on Hermes Desktop"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [
-        "Hermes"
-      ],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotRoomComposerView.swift",
-          "line": 167
-        }
-      ],
-      "target": "S'està esperant Hermes Desktop"
-    },
-    {
-      "id": "Localizable::Waiting · %@ left",
-      "catalog": "Localizable",
-      "key": "Waiting · %@ left",
-      "units": [
-        {
-          "source": "Waiting · %@ left"
+          "source": "Thinking, %@"
         }
       ],
       "sourceStructure": null,
@@ -1025,19 +728,19 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Chat/HermesRequestCards.swift",
-          "line": 62
+          "file": "HermesMobile/Features/Chat/ReasoningBlockView.swift",
+          "line": 41
         }
       ],
-      "target": "En espera · queden %@"
+      "target": "S'està pensant, %@"
     },
     {
-      "id": "Localizable::Want a notification when it’s done?",
+      "id": "Localizable::Thought",
       "catalog": "Localizable",
-      "key": "Want a notification when it’s done?",
+      "key": "Thought",
       "units": [
         {
-          "source": "Want a notification when it’s done?"
+          "source": "Thought"
         }
       ],
       "sourceStructure": null,
@@ -1048,19 +751,123 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Config/NotificationOffer.swift",
+          "file": "HermesMobile/Features/Chat/ReasoningBlockView.swift",
+          "line": 37
+        }
+      ],
+      "target": "Pensament"
+    },
+    {
+      "id": "Localizable::Thought, %@",
+      "catalog": "Localizable",
+      "key": "Thought, %@",
+      "units": [
+        {
+          "source": "Thought, %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ReasoningBlockView.swift",
+          "line": 42
+        }
+      ],
+      "target": "Pensament, %@"
+    },
+    {
+      "id": "Localizable::This Board no longer exists. Choose another Board.",
+      "catalog": "Localizable",
+      "key": "This Board no longer exists. Choose another Board.",
+      "units": [
+        {
+          "source": "This Board no longer exists. Choose another Board."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanFeatureState.swift",
+          "line": 148
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 523
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 611
+        }
+      ],
+      "target": "Aquest tauler ja no existeix. Tria'n un altre."
+    },
+    {
+      "id": "Localizable::This Branch",
+      "catalog": "Localizable",
+      "key": "This Branch",
+      "units": [
+        {
+          "source": "This Branch"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
           "line": 89
         }
       ],
-      "target": "Vols rebre una notificació quan acabi?"
+      "target": "Aquesta branca"
     },
     {
-      "id": "Localizable::Wary",
+      "id": "Localizable::This Board no longer exists. Return to Kanban to choose another Board.",
       "catalog": "Localizable",
-      "key": "Wary",
+      "key": "This Board no longer exists. Return to Kanban to choose another Board.",
       "units": [
         {
-          "source": "Wary"
+          "source": "This Board no longer exists. Return to Kanban to choose another Board."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Kanban"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 52
+        }
+      ],
+      "target": "Aquest tauler ja no existeix. Torna al Kanban per triar-ne un altre."
+    },
+    {
+      "id": "Localizable::This Card changed on the server after the editor opened. Your draft has been preserved.",
+      "catalog": "Localizable",
+      "key": "This Card changed on the server after the editor opened. Your draft has been preserved.",
+      "units": [
+        {
+          "source": "This Card changed on the server after the editor opened. Your draft has been preserved."
         }
       ],
       "sourceStructure": null,
@@ -1071,19 +878,19 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Bots/BotProfileAppearance.swift",
-          "line": 144
+          "file": "HermesMobile/Features/Kanban/KanbanCardEditorView.swift",
+          "line": 223
         }
       ],
-      "target": "Desconfiat"
+      "target": "Aquesta targeta ha canviat al servidor després d'obrir l'editor. S'ha conservat el teu esborrany."
     },
     {
-      "id": "Localizable::Weekdays",
+      "id": "Localizable::This Card no longer exists on this Board. The Board has been refreshed.",
       "catalog": "Localizable",
-      "key": "Weekdays",
+      "key": "This Card no longer exists on this Board. The Board has been refreshed.",
       "units": [
         {
-          "source": "Weekdays"
+          "source": "This Card no longer exists on this Board. The Board has been refreshed."
         }
       ],
       "sourceStructure": null,
@@ -1094,112 +901,19 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/Tasks/CronScheduleHumanizer.swift",
-          "line": 5
-        },
-        {
-          "file": "HermesMobile/Features/Tasks/CronScheduleHumanizer.swift",
-          "line": 103
+          "file": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift",
+          "line": 46
         }
       ],
-      "target": "Dies feiners"
+      "target": "Aquesta targeta ja no existeix en aquest tauler. S'ha actualitzat el tauler."
     },
     {
-      "id": "Localizable::Weekends",
+      "id": "Localizable::This deletes the session and its messages from the Hermes host. It can't be undone.",
       "catalog": "Localizable",
-      "key": "Weekends",
+      "key": "This deletes the session and its messages from the Hermes host. It can't be undone.",
       "units": [
         {
-          "source": "Weekends"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Tasks/CronScheduleHumanizer.swift",
-          "line": 104
-        }
-      ],
-      "target": "Caps de setmana"
-    },
-    {
-      "id": "Localizable::Weekly on %@",
-      "catalog": "Localizable",
-      "key": "Weekly on %@",
-      "units": [
-        {
-          "source": "Weekly on %@"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [
-        "%@"
-      ],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "shared-catalog",
-      "sourceReferences": [],
-      "target": "Cada setmana el %@"
-    },
-    {
-      "id": "Localizable::What this bot is for (optional)",
-      "catalog": "Localizable",
-      "key": "What this bot is for (optional)",
-      "units": [
-        {
-          "source": "What this bot is for (optional)"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Bots/BotCreateView.swift",
-          "line": 54
-        }
-      ],
-      "target": "Per a què serveix aquest bot (opcional)"
-    },
-    {
-      "id": "Localizable::What you get",
-      "catalog": "Localizable",
-      "key": "What you get",
-      "units": [
-        {
-          "source": "What you get"
-        }
-      ],
-      "sourceStructure": null,
-      "placeholders": [],
-      "protectedTerms": [],
-      "comment": null,
-      "extractionState": null,
-      "surface": "main-app",
-      "sourceReferences": [
-        {
-          "file": "HermesMobile/Features/Onboarding/OnboardingFeaturesPage.swift",
-          "line": 18
-        }
-      ],
-      "target": "Què obtens"
-    },
-    {
-      "id": "Localizable::Which Hermes host?",
-      "catalog": "Localizable",
-      "key": "Which Hermes host?",
-      "units": [
-        {
-          "source": "Which Hermes host?"
+          "source": "This deletes the session and its messages from the Hermes host. It can't be undone."
         }
       ],
       "sourceStructure": null,
@@ -1212,54 +926,326 @@
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
-          "line": 61
+          "file": "HermesMobile/Features/SessionList/SessionListActionConfirmations.swift",
+          "line": 55
+        },
+        {
+          "file": "HermesMobile/Features/Settings/ArchivedSessionsView.swift",
+          "line": 84
         }
       ],
-      "target": "Quin amfitrió de Hermes?"
+      "target": "Això suprimeix la sessió i els seus missatges de l'amfitrió de Hermes. No es pot desfer."
     },
     {
-      "id": "Localizable::White",
+      "id": "Localizable::This Hermes connection does not support Bot chat here.",
       "catalog": "Localizable",
-      "key": "White",
+      "key": "This Hermes connection does not support Bot chat here.",
       "units": [
         {
-          "source": "White"
+          "source": "This Hermes connection does not support Bot chat here."
         }
       ],
       "sourceStructure": null,
       "placeholders": [],
-      "protectedTerms": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
       "comment": null,
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [
         {
-          "file": "HermesMobile/Config/AppTheme.swift",
-          "line": 80
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 77
+        },
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 89
         }
       ],
-      "target": "Blanc"
+      "target": "Aquesta connexió de Hermes no admet el xat de bot aquí."
     },
     {
-      "id": "Localizable::Will connect to %@",
+      "id": "Localizable::This Hermes connection no longer owns these workers. Reconnect to inspect them.",
       "catalog": "Localizable",
-      "key": "Will connect to %@",
+      "key": "This Hermes connection no longer owns these workers. Reconnect to inspect them.",
       "units": [
         {
-          "source": "Will connect to %@"
+          "source": "This Hermes connection no longer owns these workers. Reconnect to inspect them."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWork.swift",
+          "line": 380
+        }
+      ],
+      "target": "Aquesta connexió de Hermes ja no és propietària d'aquests treballadors. Reconnecta't per inspeccionar-los."
+    },
+    {
+      "id": "Localizable::This Hermes host approves every command itself, so approvals can't be turned back on from here.",
+      "catalog": "Localizable",
+      "key": "This Hermes host approves every command itself, so approvals can't be turned back on from here.",
+      "units": [
+        {
+          "source": "This Hermes host approves every command itself, so approvals can't be turned back on from here."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4276
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes aprova ell mateix cada ordre, per això no es poden reactivar les aprovacions des d'aquí."
+    },
+    {
+      "id": "Localizable::This Hermes host does not support delegated-work inspection.",
+      "catalog": "Localizable",
+      "key": "This Hermes host does not support delegated-work inspection.",
+      "units": [
+        {
+          "source": "This Hermes host does not support delegated-work inspection."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWork.swift",
+          "line": 383
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes no admet la inspecció de feina delegada."
+    },
+    {
+      "id": "Localizable::This Hermes host doesn’t offer the password sign-in push setup needs.",
+      "catalog": "Localizable",
+      "key": "This Hermes host doesn’t offer the password sign-in push setup needs.",
+      "units": [
+        {
+          "source": "This Hermes host doesn’t offer the password sign-in push setup needs."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 760
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes no ofereix l'inici de sessió amb contrasenya que necessita la configuració del push."
+    },
+    {
+      "id": "Localizable::This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.",
+      "catalog": "Localizable",
+      "key": "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.",
+      "units": [
+        {
+          "source": "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 94
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes només ofereix inici de sessió amb navegador, que Hermex encara no admet. Per connectar-te ara, afegeix un nom d'usuari i una contrasenya del tauler a l'amfitrió."
+    },
+    {
+      "id": "Localizable::This Hermes host refused the step (HTTP %lld). Check the host’s logs, then try again.",
+      "catalog": "Localizable",
+      "key": "This Hermes host refused the step (HTTP %lld). Check the host’s logs, then try again.",
+      "units": [
+        {
+          "source": "This Hermes host refused the step (HTTP %lld). Check the host’s logs, then try again."
         }
       ],
       "sourceStructure": null,
       "placeholders": [
-        "%@"
+        "%lld"
       ],
-      "protectedTerms": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 758
+        },
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateMachine.swift",
+          "line": 477
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes ha rebutjat el pas (HTTP %lld). Comprova els registres de l'amfitrió i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::This Hermes host rejected the saved sign-in. Reconnect above, then try again.",
+      "catalog": "Localizable",
+      "key": "This Hermes host rejected the saved sign-in. Reconnect above, then try again.",
+      "units": [
+        {
+          "source": "This Hermes host rejected the saved sign-in. Reconnect above, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
       "comment": null,
       "extractionState": null,
       "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "Es connectarà a %@"
+      "target": "Aquest amfitrió de Hermes ha rebutjat la sessió desada. Reconnecta't més amunt i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again.",
+      "catalog": "Localizable",
+      "key": "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again.",
+      "units": [
+        {
+          "source": "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushProvisioner.swift",
+          "line": 751
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes ha rebutjat la sessió desada. Actualitza la connexió de Hermes i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin.",
+      "catalog": "Localizable",
+      "key": "This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin.",
+      "units": [
+        {
+          "source": "This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushPairing.swift",
+          "line": 108
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes ha retornat claus d'aparellament que Hermex no pot fer servir. Actualitza el connector hermex-push."
+    },
+    {
+      "id": "Localizable::This Hermes host runs %@. Hermex needs Hermes %@ or later. Update Hermes on the host, then try again.",
+      "catalog": "Localizable",
+      "key": "This Hermes host runs %@. Hermex needs Hermes %@ or later. Update Hermes on the host, then try again.",
+      "units": [
+        {
+          "source": "This Hermes host runs %@. Hermex needs Hermes %@ or later. Update Hermes on the host, then try again."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Networking/Bots/BotProtocol.swift",
+          "line": 101
+        }
+      ],
+      "target": "Aquest amfitrió de Hermes executa %@. Hermex necessita Hermes %@ o posterior. Actualitza Hermes a l'amfitrió i torna-ho a provar."
+    },
+    {
+      "id": "Localizable::This Hermes version cannot organize bots from the phone.",
+      "catalog": "Localizable",
+      "key": "This Hermes version cannot organize bots from the phone.",
+      "units": [
+        {
+          "source": "This Hermes version cannot organize bots from the phone."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotInbox.swift",
+          "line": 619
+        }
+      ],
+      "target": "Aquesta versió de Hermes no pot organitzar bots des del telèfon."
     }
   ]
 }

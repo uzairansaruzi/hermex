@@ -231,6 +231,14 @@ struct HermexShortcuts: AppShortcutsProvider {
     }
 }
 
+extension SharedShortcutDestination {
+    /// The new chat for this text on the Hermes server it names; nil once that server is gone.
+    func newChat(in servers: [ServerAccount]) -> HermesNewChatDestination? {
+        servers.lazy.filter { $0.kind == .hermes }.compactMap { URL(string: $0.id) }.first(where: opens(on:))
+            .map { HermesNewChatDestination(server: $0, profile: profile) }
+    }
+}
+
 /// A new Hermes session a Shortcut asked for (#1180): New Chat or New Chat with Voice on the
 /// active Hermes server, or New Chat in Profile on a Hermes server's Profile. `ContentView`
 /// holds it until its server is active and signed in; that server's Sessions list then opens it.

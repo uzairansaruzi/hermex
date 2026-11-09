@@ -1,40 +1,94 @@
 import SwiftUI
 import UIKit
 
-/// Hermes home owns a split only at regular width; pushed lists keep their caller's stack.
+/// A home owns a split only at regular width with room to stand in; pushed lists keep their
+/// caller's stack. A Plus/Max iPhone in landscape is regular width but compact height, and stays on
+/// its stack: a split there would rebuild the open chat in the middle of every rotation (#1528).
 enum HermesHomeLayout {
-    static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
-        isHome && horizontalSizeClass == .regular
+    static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?,
+                          verticalSizeClass: UserInterfaceSizeClass?) -> Bool {
+        isHome && horizontalSizeClass == .regular && verticalSizeClass != .compact
     }
 }
 
-/// The regular-width shell (iPad, landscape Plus/Max). A sidebar root selection
-/// bumps `rootRevision`, which rebuilds only the detail root and pops any screen
-/// pushed above it (#116). The sidebar keeps its identity, scroll position, and
-/// row state across selections (#689); its visibility follows `afterRootSelection`.
+/// The regular-width shell (iPad, iPhone Duo's inner display). A sidebar root
+/// selection bumps `rootRevision`, which rebuilds only the detail root and pops any screen pushed
+/// above it (#116). The sidebar keeps its identity, scroll position, and row state across selections
+/// (#689); its visibility follows `settled(isRoomy:isCollapsedByUser:)` as selections land and the
+/// width changes.
 struct SessionSplitView<Sidebar: View, Detail: View>: View {
     let rootRevision: Int
+    /// The Hermes home's sidebar hides its top bar, and the system's toggle with it, so the detail
+    /// carries a way to hide an open sidebar. Where the detail draws a vertical bar (unfolded iPhone
+    /// Duo) it shows the sidebar too, in place of the system's toggle, which would float outside it.
+    var offersHideSidebar = false
+    /// Each change shows a hidden sidebar: the Sessions home's search, which opens in its header.
+    var sidebarRequests = 0
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var isRoomy = false
+    /// Tracked apart from `columnVisibility`, where the system also writes `.detailOnly` for a
+    /// hidden `.automatic` sidebar.
+    @State private var isCollapsedByUser = false
     @State private var detailColumn = DetailColumnNavigation()
+    /// Read in the detail column, whose bar is the vertical one: the sidebar's own reading follows
+    /// whether it shows a bar, which it doesn't once the detail takes its items.
+    @State private var detailHasVerticalBar = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
+                .toolbar(removing: offersSidebarToggle ? .sidebarToggle : nil)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 380, max: 420)
+                .environment(\.splitDetailHasVerticalBar, detailHasVerticalBar)
         } detail: {
             NavigationStack {
                 detail
                     .background { DetailColumnNavigationReader(column: detailColumn) }
+                    .background {
+                        VerticalBarReader { hasVerticalBar in
+                            Color.clear.onChange(of: hasVerticalBar, initial: true) { detailHasVerticalBar = hasVerticalBar }
+                        }
+                    }
+                    .toolbar {
+                        if offersHideSidebar && columnVisibility.showsSidebar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Hide Sidebar", systemImage: "sidebar.left") {
+                                    withAnimation(reduceMotion ? nil : .default) { columnVisibility = .detailOnly }
+                                }
+                            }
+                        } else if offersSidebarToggle {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button("Show Sidebar", systemImage: "sidebar.left") {
+                                    withAnimation(reduceMotion ? nil : .default) { columnVisibility = .doubleColumn }
+                                }
+                            }
+                        }
+                    }
             }
             .id(rootRevision)
         }
         .navigationSplitViewStyle(.balanced)
+        // Fires for the first layout too, so a roomy launch or unfold opens with the sidebar out.
+        .onGeometryChange(for: Bool.self) { $0.size.width >= NavigationSplitViewVisibility.roomyWidth } action: { isRoomy in
+            self.isRoomy = isRoomy
+            columnVisibility = .settled(isRoomy: isRoomy, isCollapsedByUser: isCollapsedByUser)
+        }
+        .onChange(of: columnVisibility) { old, new in
+            isCollapsedByUser = new.isCollapsedByUser(after: old, was: isCollapsedByUser)
+        }
         .onChange(of: rootRevision) {
-            columnVisibility = columnVisibility.afterRootSelection
+            columnVisibility = .settled(isRoomy: isRoomy, isCollapsedByUser: isCollapsedByUser)
             detailColumn.popToRoot()
         }
+        .onChange(of: sidebarRequests) {
+            if !columnVisibility.showsSidebar { columnVisibility = .doubleColumn }
+        }
     }
+
+    private var offersSidebarToggle: Bool { offersHideSidebar && detailHasVerticalBar }
 }
 
 /// The detail column's `UINavigationController`. The split view adopts the detail
@@ -83,12 +137,28 @@ private struct DetailColumnNavigationReader: UIViewControllerRepresentable {
 }
 
 extension NavigationSplitViewVisibility {
-    /// The sidebar visibility after a root selection. An opened sidebar returns to
-    /// the system default, which hides it where it covers the detail (portrait) and
-    /// keeps it where it sits beside the detail (landscape). A sidebar the user
-    /// collapsed stays collapsed.
-    var afterRootSelection: Self {
-        self == .detailOnly ? .detailOnly : .automatic
+    /// The split's width that fits the sidebar beside a phone-width detail, so the sidebar stays
+    /// out: iPhone Duo's inner display and landscape iPads, not a portrait iPad.
+    static let roomyWidth: CGFloat = 850
+
+    /// The sidebar visibility after a root selection or a width change. A sidebar the user
+    /// collapsed stays collapsed. Otherwise a roomy split keeps it beside the detail, and any other
+    /// returns it to the system default, which hides it where it would cover the detail.
+    static func settled(isRoomy: Bool, isCollapsedByUser: Bool) -> Self {
+        if isCollapsedByUser { return .detailOnly }
+        return isRoomy ? .doubleColumn : .automatic
+    }
+
+    var showsSidebar: Bool {
+        self == .doubleColumn || self == .all
+    }
+
+    /// Whether the user has collapsed the sidebar once visibility moves here from `old`. The system
+    /// only hides a sidebar that's out when the user asks it to; it also writes `.detailOnly` for
+    /// a sidebar `.automatic` hid, which isn't a collapse.
+    func isCollapsedByUser(after old: Self, was wasCollapsed: Bool) -> Bool {
+        if showsSidebar { return false }
+        return wasCollapsed || (old.showsSidebar && self == .detailOnly)
     }
 }
 
@@ -105,6 +175,9 @@ struct SessionListRowActions {
     let createProject: (SessionSummary) -> Void
     let refreshProjects: () -> Void
     let export: (SessionSummary, SessionExportFormat) -> Void
+    /// A Hermes home's Add Server, which replaces Retry when the address is a gateway's own
+    /// listener (#1598): its address can't change, and retrying reaches the same listener.
+    var addServer: (() -> Void)?
 }
 
 /// Which row actions a session offers. A Hermes server's row (#1046, #1048) offers pin,
@@ -209,7 +282,9 @@ enum SessionListMotion {
 /// Settings and a hold switches servers. With a `field`, search grows the pill into a text field
 /// that pushes the wordmark out and turns the avatar into Close; without one (the Bots side,
 /// whose search is a sheet) the pill stays put and `openSearch` alone runs. A Hermes home's
-/// list passes `connection` for the status line under the wordmark (#1374).
+/// list passes `connection` for the status line under the wordmark (#1374). Where the home's bar
+/// holds search and the avatar (`homeBarOwnsSearch`, iPhone Duo), the pill shows only while the
+/// field is open.
 struct SessionsHeader: View {
     /// The pill's search field and the state it grows with.
     struct Field {
@@ -235,6 +310,7 @@ struct SessionsHeader: View {
     private static let iconHitTarget: CGFloat = 44
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.homeBarOwnsSearch) private var barOwnsSearch
     let logoColor: Color
     let avatar: Avatar
     var field: Field?
@@ -256,8 +332,10 @@ struct SessionsHeader: View {
                     .clipped()
                     .accessibilityHidden(isExpanded)
 
-                pill
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                if isExpanded || !barOwnsSearch {
+                    pill
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             HomeConnectionStatusLine(driver: connectionStatus, reconnectNow: reconnectNow)
         }
@@ -286,7 +364,7 @@ struct SessionsHeader: View {
             } label: {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(isExpanded ? .secondary : .primary)
+                    .foregroundStyle(isExpanded ? .appSecondary : .appPrimary)
                     .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
                     .frame(width: Self.iconHitTarget, height: Self.iconHitTarget)
                     .contentShape(Rectangle())
@@ -342,7 +420,7 @@ struct SessionsHeader: View {
         } label: {
             Image(systemName: "xmark.circle.fill")
                 .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
                 .frame(width: Self.iconHitTarget, height: Self.iconHitTarget)
                 .contentShape(Rectangle())
@@ -361,7 +439,7 @@ struct SessionsHeader: View {
         } label: {
             ZStack {
                 Text(avatar.initials)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(avatar.foreground)
                     .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
                     .background(avatar.color, in: Circle())
@@ -372,7 +450,7 @@ struct SessionsHeader: View {
 
                 Image(systemName: "xmark")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
                     .opacity(isExpanded ? 1 : 0)
                     .scaleEffect(isExpanded ? 1 : 0.72)
@@ -561,7 +639,7 @@ struct SessionSidebarUtilityRows: View {
             title: String(localized: "Active Profile"),
             assetImage: "LucideUserRoundCog",
             isExpanded: profilesAreExpanded,
-            tint: viewModel.activeProfileErrorMessage == nil ? .primary : .orange
+            tint: viewModel.activeProfileErrorMessage == nil ? Color(.appText) : .orange
         ) {
             profilesAreExpanded.toggle()
         } accessory: {
@@ -646,12 +724,12 @@ struct SessionSidebarUtilityRows: View {
                         // Flat translucent fill rather than Liquid Glass: the glass
                         // elevation shadow would spill past this tightly-sized List
                         // row and get clipped by the next row's opaque background.
-                        .background(.thinMaterial, in: Capsule())
+                        .background(.appMaterial(.thinMaterial), in: Capsule())
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(AppFont.footnote(weight: .medium))
+                .foregroundStyle(.appSecondary)
                 .buttonStyle(.plain)
                 .accessibilityLabel("Show all projects")
                 .accessibilityHint("Clears the selected project filter.")
@@ -665,8 +743,8 @@ struct SessionSidebarUtilityRows: View {
             presentProjectCreation()
         } label: {
             Image(systemName: "plus")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.body(weight: .semibold))
+                .foregroundStyle(.appSecondary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
@@ -780,7 +858,7 @@ struct HomeConnectionStatusLine: View {
                 }
             }
             .font(AppFont.footnote())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .transition(.opacity)
         }
     }
@@ -870,8 +948,8 @@ struct SessionListRowsSection: View {
             HStack(spacing: 10) {
                 if !isSearchActive {
                     Text("Sessions")
-                        .font(.title3.bold())
-                        .foregroundStyle(.primary)
+                        .font(AppFont.title3().bold())
+                        .foregroundStyle(.appPrimary)
                 }
 
                 Spacer()
@@ -913,14 +991,20 @@ struct SessionListRowsSection: View {
                 descriptionLineLimit: 3
             )
 
-            Button("Retry", action: actions.retryLoad)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
-                .buttonStyle(.plain)
-                .frame(minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Retry loading sessions")
-                .accessibilityHint("Attempts to reconnect to the server and reload sessions.")
+            Group {
+                if let addServer = actions.addServer, viewModel.sessionLoadError as? BotFailure == .gatewayListener {
+                    Button("Add Server", action: addServer)
+                } else {
+                    Button("Retry", action: actions.retryLoad)
+                        .accessibilityLabel("Retry loading sessions")
+                        .accessibilityHint("Attempts to reconnect to the server and reload sessions.")
+                }
+            }
+            .font(AppFont.subheadline(weight: .medium))
+            .foregroundStyle(.appPrimary)
+            .buttonStyle(.plain)
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .padding(.horizontal, 24)
     }
@@ -1086,11 +1170,11 @@ struct ScheduledSessionsDisclosure: View {
             userIsExpanded.toggle()
         } accessory: {
             Text("\(totalCount)")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.footnote(weight: .semibold))
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
-                .background(.thinMaterial, in: Capsule())
+                .background(.appMaterial(.thinMaterial), in: Capsule())
         }
         .padding(.horizontal, 24)
         .padding(.top, isSearchActive ? 16 : 12)
@@ -1123,12 +1207,12 @@ struct ScheduledSessionsDisclosure: View {
                         Image(systemName: "magnifyingglass")
                             .frame(width: 24)
                         Text("View all")
-                            .font(.subheadline.weight(.medium))
+                            .font(AppFont.subheadline(weight: .medium))
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.forward")
-                            .font(.caption.weight(.semibold))
+                            .font(AppFont.caption(weight: .semibold))
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .padding(.horizontal, 24)
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
@@ -1157,8 +1241,8 @@ struct NeedsYouSessionsSection: View {
             Spacer(minLength: 0)
             Text("\(sessions.count)")
         }
-        .font(.footnote.weight(.semibold))
-        .foregroundStyle(.secondary)
+        .font(AppFont.footnote(weight: .semibold))
+        .foregroundStyle(.appSecondary)
         .padding(.horizontal, 24)
         .padding(.top, 12)
         .padding(.bottom, 4)
@@ -1196,7 +1280,7 @@ struct ScheduledSessionsView: View {
     @State private var searchText = ""
 
     var body: some View {
-        List {
+        AppList(rows: .plain) {
             if sessions.isEmpty {
                 SessionListStatusRow(
                     title: searchText.isEmpty
@@ -1224,8 +1308,8 @@ struct ScheduledSessionsView: View {
             }
             if viewModel.isHermes && viewModel.hasMoreScheduledSessions && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button("Load more") { Task { await viewModel.loadMoreHermesScheduledSessions() } }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.subheadline())
+                    .foregroundStyle(.appSecondary)
                     .disabled(viewModel.isLoadingMoreScheduledSessions)
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .sessionsScreenListRow()
@@ -1235,6 +1319,7 @@ struct ScheduledSessionsView: View {
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
+        .themedPageBackground()
         .navigationTitle("Scheduled sessions")
         .searchable(text: $searchText, prompt: "Search sessions")
         .task(id: searchText) {
@@ -1552,7 +1637,7 @@ extension View {
     func sessionsScreenListRow(insets: EdgeInsets = EdgeInsets()) -> some View {
         listRowInsets(insets)
             .listRowSeparator(.hidden)
-            .listRowBackground(Color(.systemBackground))
+            .listRowBackground(Color(.appCanvas))
     }
 
     func sessionsTopChromeListRow() -> some View {
@@ -1639,8 +1724,8 @@ struct SidebarNavButton: View {
                 SidebarUtilityIcon(assetImage: assetImage)
 
                 Text(title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.body(weight: .semibold))
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
@@ -1658,7 +1743,7 @@ struct SidebarDisclosureButton<Accessory: View>: View {
     let title: String
     let assetImage: String
     let isExpanded: Bool
-    var tint: Color = .primary
+    var tint: Color = Color(.appText)
     let action: () -> Void
     @ViewBuilder let accessory: () -> Accessory
 
@@ -1668,8 +1753,8 @@ struct SidebarDisclosureButton<Accessory: View>: View {
                 SidebarUtilityIcon(assetImage: assetImage, tint: tint)
 
                 Text(title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.body(weight: .semibold))
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
@@ -1698,8 +1783,8 @@ private struct SidebarDisclosureChevron: View {
     // rotation reverses there so the open state still points down (issue #294).
     var body: some View {
         Image(systemName: "chevron.forward")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .font(AppFont.caption(weight: .semibold))
+            .foregroundStyle(.appSecondary)
             .frame(width: 24, height: 24)
             .rotationEffect(
                 .degrees(RTLLayout.disclosureChevronRotationDegrees(
@@ -1716,7 +1801,7 @@ private struct SidebarDisclosureChevron: View {
 
 struct SidebarUtilityIcon: View {
     let assetImage: String
-    var tint: Color = .primary
+    var tint: Color = Color(.appText)
 
     var body: some View {
         Image(assetImage)
@@ -1733,7 +1818,7 @@ struct SidebarUtilityIcon: View {
 struct SidebarSelectedSubrowIndicator: View {
     var body: some View {
         Image(systemName: "checkmark")
-            .font(.caption2.weight(.bold))
+            .font(AppFont.caption2(weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 18, height: 18)
             .background(Color.accentColor, in: Circle())
@@ -1778,18 +1863,18 @@ struct ActiveProfilePickerRow: View {
             HStack(spacing: 18) {
                 SidebarUtilityIcon(
                     assetImage: "LucideUserRound",
-                    tint: isSelected ? Color.accentColor : .primary
+                    tint: isSelected ? Color.accentColor : Color(.appText)
                 )
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(profile.displayName)
-                        .font(.body)
-                        .foregroundStyle(.primary)
+                        .font(AppFont.body())
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(1)
 
                     Text(defaultModelTitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.caption())
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                 }
 
@@ -1843,8 +1928,8 @@ struct ProjectFilterRow: View {
                     SidebarUtilityIcon(assetImage: "LucideFolder", tint: projectColor)
 
                     Text(displayName)
-                        .font(.body)
-                        .foregroundStyle(.primary)
+                        .font(AppFont.body())
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(1)
 
                     Spacer(minLength: 0)
@@ -1852,8 +1937,8 @@ struct ProjectFilterRow: View {
                     HStack(spacing: 8) {
                         if count > 0 {
                             Text("\(count)")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.caption(weight: .semibold))
+                                .foregroundStyle(.appSecondary)
                         }
 
                         if isSelected {
@@ -1904,8 +1989,8 @@ struct ProjectFilterRow: View {
         } label: {
             Label(String(localized: "Project actions for \(displayName)"), systemImage: "ellipsis")
                 .labelStyle(.iconOnly)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.body(weight: .semibold))
+                .foregroundStyle(.appSecondary)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
@@ -1993,14 +2078,14 @@ struct CompactStatusRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Image(systemName: systemImage)
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(AppFont.body())
+                .foregroundStyle(.appSecondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
             Text(title)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(AppFont.subheadline())
+                .foregroundStyle(.appSecondary)
                 .lineLimit(2)
 
             Spacer(minLength: 0)
@@ -2018,22 +2103,22 @@ private struct SessionListStatusRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: systemImage)
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(AppFont.body())
+                .foregroundStyle(.appSecondary)
                 .frame(width: 24)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(2)
                     .accessibilityAddTraits(.isHeader)
 
                 if let description {
                     Text(description)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(descriptionLineLimit)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2060,7 +2145,7 @@ struct SessionRowSkeletonView: View {
             if let metadataLabel {
                 Text(verbatim: metadataLabel)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(metadataLineLimit)
             }
         }
@@ -2092,7 +2177,7 @@ struct SessionRowSkeletonView: View {
     private var titleText: some View {
         Text(verbatim: configuration.title)
             .font(AppFont.headline(weight: .semibold))
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
             .truncationMode(.tail)
             .fixedSize(horizontal: false, vertical: true)
@@ -2101,7 +2186,7 @@ struct SessionRowSkeletonView: View {
     private var relativeDateText: some View {
         Text(verbatim: configuration.relativeDate)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
     }
@@ -2178,7 +2263,7 @@ struct OfflineCacheBanner: View {
                 .accessibilityHidden(true)
 
             Text("Offline - viewing cached version")
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .fontWeight(.semibold)
 
             Spacer()

@@ -110,6 +110,9 @@ struct ChatScrollObserver: UIViewRepresentable {
         var onFollowEvent: @MainActor (ChatScrollPolicy.FollowEvent) -> Void
 
         private weak var scrollView: UIScrollView?
+        /// The observer view itself: it backs the transcript content, so its
+        /// origin is the content's origin in the scroll view.
+        private weak var contentView: UIView?
         private weak var observedPanGesture: UIPanGestureRecognizer?
         private var observations: [NSKeyValueObservation] = []
         private var metricContext: MetricContext
@@ -131,7 +134,7 @@ struct ChatScrollObserver: UIViewRepresentable {
                 guard oldValue !== scrollPositionController else { return }
                 oldValue?.detach()
                 if let scrollView {
-                    scrollPositionController?.attach(to: scrollView)
+                    scrollPositionController?.attach(to: scrollView, contentView: contentView)
                 }
             }
         }
@@ -157,9 +160,10 @@ struct ChatScrollObserver: UIViewRepresentable {
 
         func attachIfNeeded(from view: UIView, delivery: MetricDelivery) {
             guard let scrollView = enclosingScrollView(for: view) else { return }
+            contentView = view
 
             guard scrollView !== self.scrollView else {
-                scrollPositionController?.attach(to: scrollView)
+                scrollPositionController?.attach(to: scrollView, contentView: view)
                 reportMetrics(delivery: delivery)
                 return
             }
@@ -169,7 +173,7 @@ struct ChatScrollObserver: UIViewRepresentable {
             deliveredGeometry = nil
             endUserScrollSessionSilently()
             self.scrollView = scrollView
-            scrollPositionController?.attach(to: scrollView)
+            scrollPositionController?.attach(to: scrollView, contentView: view)
 
             observedPanGesture?.removeTarget(self, action: nil)
             scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanGesture(_:)))
@@ -252,6 +256,7 @@ struct ChatScrollObserver: UIViewRepresentable {
         private func finishUserScrollSession(isAtBottom: Bool) {
             cancelSettle()
             isUserScrollSessionActive = false
+            scrollPositionController?.readerSettled()
             onFollowEvent(.userScrollEnd(isAtBottom: isAtBottom))
         }
 
@@ -371,8 +376,69 @@ struct ChatScrollObserver: UIViewRepresentable {
     }
 }
 
+/// What one open chat keeps when a size-class change rebuilds its screen (#1528). An iPad window
+/// crossing compact and regular width, or an iPhone Duo folding, swaps the navigation stack for
+/// the split view, and SwiftUI makes a new `ChatView` in the other branch. Whoever says
+/// which chat is open holds one of these for as long as it is, and hands it to the `ChatView` of
+/// either branch. The new view takes the old one's model, with its loaded history, its stream and
+/// its follow latch, and the reader's place in the transcript.
+///
+/// SwiftUI gives no order to the swap: the new view can appear before or after the old one leaves,
+/// and a split view can build an extra `ChatView` that appears and leaves while another stays on
+/// screen. So this counts the views on screen rather than naming one owner.
+@MainActor final class ChatContinuity: Equatable {
+    /// The model of the view on screen, for its successor. Set as a view appears, since SwiftUI
+    /// can init a `ChatView` it never shows.
+    private(set) var model: ChatViewModel?
+    /// The transcript load finished, so a successor must not load again: that would replace the
+    /// older pages the reader loaded with the newest one.
+    var didLoadMessages = false
+    private var viewsOnScreen: [(id: UUID, returnsWaitingSend: (String, HermesWaitingSend.Return) -> Void)] = []
+    private var transcriptsOnScreen: [ChatScrollPositionController] = []
+    /// The transcript that left with none on screen, whose place the next one takes.
+    private var lastTranscript: ChatScrollPositionController?
+
+    nonisolated init() {}
+
+    nonisolated static func == (lhs: ChatContinuity, rhs: ChatContinuity) -> Bool { lhs === rhs }
+
+    /// `returnsWaitingSend` puts a waiting send that came back into this view's composer.
+    func viewAppeared(_ view: UUID, model: ChatViewModel,
+                      returnsWaitingSend: @escaping (String, HermesWaitingSend.Return) -> Void) {
+        viewsOnScreen.removeAll { $0.id == view }
+        viewsOnScreen.append((view, returnsWaitingSend))
+        self.model = model
+        model.onWaitingSendReturned = returnsWaitingSend
+    }
+
+    /// True once no view of this chat is on screen, when the chat really left and its model stops
+    /// its work. The next view to appear starts it again, as when a pushed screen pops.
+    func viewDisappeared(_ view: UUID) -> Bool {
+        viewsOnScreen.removeAll { $0.id == view }
+        // An extra view that appeared last took the composer's place; the one staying takes it back.
+        if let staying = viewsOnScreen.last { model?.onWaitingSendReturned = staying.returnsWaitingSend }
+        return viewsOnScreen.isEmpty
+    }
+
+    /// A transcript of this chat appeared. One that replaces another keeps its reader's place,
+    /// unless the reader is following: a new transcript already opens at the live edge.
+    func transcriptAppeared(_ controller: ChatScrollPositionController, isFollowing: Bool) {
+        let previous = transcriptsOnScreen.last ?? lastTranscript
+        if let previous, previous !== controller, !isFollowing, let place = previous.readingPlace {
+            controller.restore(place)
+        }
+        transcriptsOnScreen.append(controller)
+        lastTranscript = nil
+    }
+
+    func transcriptDisappeared(_ controller: ChatScrollPositionController) {
+        transcriptsOnScreen.removeAll { $0 === controller }
+        if transcriptsOnScreen.isEmpty { lastTranscript = controller }
+    }
+}
+
 /// Keeps the reader's exact vertical position through a layout change SwiftUI
-/// would otherwise move them for. Two cases:
+/// would otherwise move them for. Three cases:
 ///
 /// - **Prepend.** Older rows are inserted above the reader; the offset shifts
 ///   by the net content-height growth. `ScrollViewProxy.scrollTo(_:anchor:)`
@@ -384,6 +450,19 @@ struct ChatScrollObserver: UIViewRepresentable {
 ///   shows up as an offset change in the same run-loop turn as a size change
 ///   and is put back. Any other offset change is someone scrolling on purpose
 ///   (VoiceOver, a hardware keyboard, a follow scroll) and releases the hold.
+/// - **Reflow.** The column width or text size changed, so every row rewraps
+///   and the raw offset lands on another passage (#1414). Rows, and the plan
+///   and compression card between them, report their frames
+///   (`rowFrameChanged`) under the layout they were measured in; the
+///   first frame of a new layout captures the reader's place from the old
+///   layout's frames, and the anchor row's new frames put it back. A reader
+///   at the top stays at the top, through any change in the bars' insets, and
+///   undoes SwiftUI like a hold, with its resync (#1528). A reader following
+///   the live edge is left alone, as is any prepend or hold already in flight.
+///   Otherwise ends like a hold, without its resync.
+/// - **Handoff.** A size-class change rebuilt the transcript (`ChatContinuity`).
+///   The new controller keeps the old one's reading place as a reflow does, and
+///   undoes the bottom anchor SwiftUI opens a new transcript at.
 ///
 /// The controller snapshots the UIKit scroll geometry, then corrects during
 /// the following layout passes for a bounded window. Corrections are
@@ -396,9 +475,21 @@ final class ChatScrollPositionController {
         case prepend
         /// Offset stays put; SwiftUI-driven offset changes are reverted.
         case hold
+        /// Offset keeps `reflowPlace` at the reading line; otherwise like `hold`.
+        case reflow
+    }
+
+    /// What a row's wrapping depends on: the capped column width and the text
+    /// size. A change to either is a reflow.
+    struct Layout: Equatable {
+        let contentWidth: CGFloat
+        let dynamicTypeSize: DynamicTypeSize
     }
 
     private weak var scrollView: UIScrollView?
+    /// The transcript content's view, for converting row frames (measured in the
+    /// content's coordinate space) to UIKit scroll content coordinates.
+    private weak var contentView: UIView?
     private var mode = Mode.prepend
     /// Set by `capture()`, cleared by anything that replaces the baseline, so
     /// a hold armed while the older-message request is in flight cannot be
@@ -423,18 +514,131 @@ final class ChatScrollPositionController {
     /// makes from inside the content-size setter, before that callback runs.
     private var contentSizeChangedThisTurn = false
     private var lastObservedContentHeight: CGFloat?
+    /// Row frames in the content's coordinate space, under `rowFramesLayout`.
+    /// Plain storage, written only when a row's frame changes; never per scroll.
+    private var rowFrames: [String: CGRect] = [:]
+    private var rowFramesLayout: Layout?
+    private var reflowPlace: ChatScrollPolicy.ReadingPlace?
+    /// Puts back an offset change riding on a size change in the same turn:
+    /// SwiftUI re-applying a default anchor. Off for a row's reflow, where no
+    /// size-change anchor applies and that change is the reader's.
+    private var undoesSwiftUIAnchors = false
+    /// A place handed over before this controller had a scroll view.
+    private var pendingPlace: ChatScrollPolicy.ReadingPlace?
+    /// Where the reader was when last asked, for a successor's handoff after the scroll view or
+    /// the rows left, in whichever order they go. An anchor survives the rows moving under it.
+    private var lastPlace: ChatScrollPolicy.ReadingPlace?
+    /// A SwiftUI scroll to the transcript's top: how keeping the top resyncs.
+    var resyncToTop: (() -> Void)?
 
     var isHoldingPosition: Bool {
         mode == .hold && baselineOffsetY != nil
     }
 
-    func attach(to scrollView: UIScrollView) {
+    func attach(to scrollView: UIScrollView, contentView: UIView? = nil) {
+        self.contentView = contentView ?? self.contentView
         guard scrollView !== self.scrollView else { return }
         cancelPreservation()
         self.scrollView = scrollView
+        if let pendingPlace {
+            self.pendingPlace = nil
+            keep(pendingPlace, in: scrollView, undoesSwiftUIAnchors: true)
+        }
+    }
+
+    /// A row's frame changed; `id` is its `renderID`, or a stable key for a
+    /// block drawn between rows (a plan, a compression card). The first frame
+    /// under a new `layout` arms a reflow from the frames still stored for the
+    /// old one; a reflow already running keeps its anchor through further
+    /// layouts (a second rotation).
+    func rowFrameChanged(id: String, frame: CGRect, layout: Layout, isFollowing: Bool) {
+        if let previous = rowFramesLayout, previous != layout {
+            if mode == .reflow, reflowPlace != nil {
+                scheduleQuietRelease()
+            } else {
+                armReflow(isFollowing: isFollowing)
+            }
+        }
+        rowFramesLayout = layout
+        rowFrames[id] = frame
+        if mode == .reflow, reflowPlace?.dependsOnFrame(of: id) == true {
+            applyCompensation()
+            scheduleQuietRelease()
+        }
+    }
+
+    /// A row left the transcript.
+    func forgetRow(id: String) {
+        rowFrames[id] = nil
+    }
+
+    private func armReflow(isFollowing: Bool) {
+        guard !isFollowing,
+              baselineOffsetY == nil,
+              let scrollView,
+              !scrollView.isDragging,
+              !scrollView.isTracking,
+              !scrollView.isDecelerating,
+              let place = place(in: scrollView)
+        else { return }
+
+        keep(place, in: scrollView, undoesSwiftUIAnchors: place == .top)
+    }
+
+    /// The reader's place in `scrollView`, from the frames of the layout it was
+    /// last measured in. Nil with no rows to place it among.
+    private func place(in scrollView: UIScrollView) -> ChatScrollPolicy.ReadingPlace? {
+        guard !rowFrames.isEmpty else { return nil }
+        let topInset = scrollView.adjustedContentInset.top
+        let readingLineY = scrollView.contentOffset.y + topInset - contentOriginY(in: scrollView)
+        return ChatScrollPolicy.reflowAnchor(
+            readingLineY: readingLineY,
+            isAtTop: scrollView.contentOffset.y <= -topInset + 0.5,
+            rowFrames: rowFrames
+        ).map { .row($0) } ?? .top
+    }
+
+    private func keep(_ place: ChatScrollPolicy.ReadingPlace, in scrollView: UIScrollView, undoesSwiftUIAnchors: Bool) {
+        reflowPlace = place
+        lastPlace = place
+        self.undoesSwiftUIAnchors = undoesSwiftUIAnchors
+        baselineContentHeight = scrollView.contentSize.height
+        baselineOffsetY = scrollView.contentOffset.y
+        lastObservedContentHeight = scrollView.contentSize.height
+        if place == .top { resyncAfterHold = resyncToTop }
+        beginPreservation(mode: .reflow, scrollView: scrollView, window: ChatScrollPolicy.disclosureHoldMaximum)
+        applyCompensation()
+        scheduleQuietRelease()
+    }
+
+    /// Where the reader is now, or was when last known. A reflow running keeps the place it took
+    /// before the rows moved.
+    var readingPlace: ChatScrollPolicy.ReadingPlace? {
+        reflowPlace ?? scrollView.flatMap(place(in:)) ?? lastPlace
+    }
+
+    /// The reader's gesture came to rest. Once per gesture, never per scroll.
+    func readerSettled() {
+        lastPlace = readingPlace
+    }
+
+    /// Keeps the reader at a place the previous transcript of this chat reported.
+    func restore(_ place: ChatScrollPolicy.ReadingPlace) {
+        // A transcript that leaves before it has a scroll view still passes this on.
+        lastPlace = place
+        guard let scrollView else {
+            pendingPlace = place
+            return
+        }
+        keep(place, in: scrollView, undoesSwiftUIAnchors: true)
+    }
+
+    private func contentOriginY(in scrollView: UIScrollView) -> CGFloat {
+        contentView.map { $0.convert(CGPoint.zero, to: scrollView).y } ?? 0
     }
 
     func detach() {
+        lastPlace = readingPlace
         cancelPreservation()
         scrollView = nil
     }
@@ -493,20 +697,22 @@ final class ChatScrollPositionController {
         baselineContentHeight = scrollView.contentSize.height
         baselineOffsetY = scrollView.contentOffset.y
         lastObservedContentHeight = scrollView.contentSize.height
+        undoesSwiftUIAnchors = true
         resyncAfterHold = resync
         beginPreservation(mode: .hold, scrollView: scrollView, window: ChatScrollPolicy.disclosureHoldMaximum)
         scheduleQuietRelease()
     }
 
-    /// Hold ran to completion (quiet or capped): let go, then resync SwiftUI
-    /// if the hold had to fight it. A hold ended by a gesture or a deliberate
+    /// Hold or reflow ran to completion (quiet or capped): let go, then resync
+    /// SwiftUI if a hold had to fight it. A hold ended by a gesture or a deliberate
     /// scroll needs no resync; that scroll does it.
     private func finishHold() {
         applyCompensation()
+        let minimumOffsetY = scrollView.map { -$0.adjustedContentInset.top }
         let resync = Self.shouldResync(
             didRevertSwiftUIOffset: didRevertSwiftUIOffset,
-            heldOffsetY: baselineOffsetY,
-            minimumOffsetY: scrollView.map { -$0.adjustedContentInset.top }
+            heldOffsetY: reflowPlace == .top ? minimumOffsetY : baselineOffsetY,
+            minimumOffsetY: minimumOffsetY
         ) ? resyncAfterHold : nil
         cancelPreservation()
         resync?()
@@ -525,11 +731,11 @@ final class ChatScrollPositionController {
         return heldOffsetY <= minimumOffsetY + 0.5
     }
 
-    /// Ends a disclosure pin early: the transcript is about to scroll on
-    /// purpose (follow, scroll-to-bottom, keyboard). A prepend preservation is
-    /// left alone.
+    /// Ends a disclosure pin or reflow early: the transcript is about to scroll
+    /// on purpose (follow, scroll-to-bottom, keyboard). A prepend preservation
+    /// is left alone.
     func releaseHold() {
-        guard mode == .hold else { return }
+        guard mode != .prepend else { return }
         cancelPreservation()
     }
 
@@ -556,7 +762,7 @@ final class ChatScrollPositionController {
         completionTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(window))
             guard !Task.isCancelled, let self else { return }
-            if mode == .hold {
+            if mode != .prepend {
                 self.finishHold()
             } else {
                 self.applyCompensation()
@@ -580,6 +786,8 @@ final class ChatScrollPositionController {
         lastObservedContentHeight = nil
         baselineContentHeight = nil
         baselineOffsetY = nil
+        reflowPlace = nil
+        undoesSwiftUIAnchors = false
         isApplyingCompensation = false
     }
 
@@ -607,7 +815,7 @@ final class ChatScrollPositionController {
         guard scrollView === self.scrollView else { return }
 
         applyCompensation()
-        if mode == .hold {
+        if mode != .prepend {
             contentSizeChangedThisTurn = true
             lastObservedContentHeight = scrollView.contentSize.height
             DispatchQueue.main.async { [weak self] in
@@ -638,16 +846,17 @@ final class ChatScrollPositionController {
         }
     }
 
-    /// User movement releases the preservation. In hold mode an offset change
-    /// riding on a size change is SwiftUI re-anchoring and is put back; any
-    /// other offset change is a deliberate scroll and releases the hold.
+    /// User movement releases the preservation. In hold and reflow modes an
+    /// offset change UIKit makes inside the content-size setter is put back, and
+    /// with `undoesSwiftUIAnchors` so is one riding on a size change in the same
+    /// turn. Any other offset change is a deliberate scroll and releases it.
     private func handleOffsetChange(_ scrollView: UIScrollView) {
         guard !isApplyingCompensation, scrollView === self.scrollView else { return }
 
         if scrollView.isDragging || scrollView.isTracking || scrollView.isDecelerating {
             cancelPreservation()
-        } else if mode == .hold {
-            let sizeIsChanging = contentSizeChangedThisTurn
+        } else if mode != .prepend {
+            let sizeIsChanging = (undoesSwiftUIAnchors && contentSizeChangedThisTurn)
                 || scrollView.contentSize.height != lastObservedContentHeight
             if sizeIsChanging {
                 applyCompensation()
@@ -659,8 +868,18 @@ final class ChatScrollPositionController {
     }
 
     private func compensatedOffsetY(in scrollView: UIScrollView) -> CGFloat? {
-        guard let baselineContentHeight, let baselineOffsetY else { return nil }
+        guard let baselineContentHeight, var baselineOffsetY else { return nil }
 
+        switch reflowPlace {
+        case .top?:
+            baselineOffsetY = -scrollView.adjustedContentInset.top
+        case .row(let anchor)?:
+            guard let frame = rowFrames[anchor.id] else { return nil }
+            baselineOffsetY = ChatScrollPolicy.reflowReadingLineY(anchor: anchor, newFrame: frame)
+                + contentOriginY(in: scrollView) - scrollView.adjustedContentInset.top
+        case nil:
+            break
+        }
         return Self.compensatedOffsetY(
             baselineOffsetY: baselineOffsetY,
             contentHeightDelta: mode == .prepend ? scrollView.contentSize.height - baselineContentHeight : 0,
@@ -674,7 +893,7 @@ final class ChatScrollPositionController {
         guard let scrollView, let targetY = compensatedOffsetY(in: scrollView) else { return }
         guard abs(scrollView.contentOffset.y - targetY) > 0.5 else { return }
 
-        if mode == .hold {
+        if undoesSwiftUIAnchors {
             didRevertSwiftUIOffset = true
         }
         isApplyingCompensation = true
@@ -706,27 +925,15 @@ final class ChatScrollPositionController {
 /// `layoutDirection` also isolates the subtree's bidi resolution from the parent
 /// paragraph direction.
 ///
-/// Forcing LTR also changes how the *parent* resolves this view's
-/// `.leading`/`.trailing` alignment guides: an LTR child inside an RTL
-/// `VStack(alignment: .leading)` reports its leading edge as its physical left,
-/// so the RTL parent — which pins `.leading` to its right edge — would hug or push
-/// a narrower-than-container child off the wrong side. When the parent is RTL we
-/// remap the guides back to the parent's expectation; in LTR (the default) the
-/// guide closures return the unmodified values, so it is a no-op.
+/// An RTL parent still places this view by its own leading edge, on the right.
+/// Don't remap the alignment guides for it: flipping them here lines siblings up
+/// edge to edge, which stretches the column off-screen (#1068).
 private struct ForcedLeftToRightModifier: ViewModifier {
     @Environment(\.layoutDirection) private var parentDirection
     let isForced: Bool
 
     func body(content: Content) -> some View {
-        let flips = isForced && parentDirection == .rightToLeft
-        content
-            .environment(\.layoutDirection, isForced ? .leftToRight : parentDirection)
-            .alignmentGuide(.leading) { dimensions in
-                flips ? dimensions[.trailing] : dimensions[.leading]
-            }
-            .alignmentGuide(.trailing) { dimensions in
-                flips ? dimensions[.leading] : dimensions[.trailing]
-            }
+        content.environment(\.layoutDirection, isForced ? .leftToRight : parentDirection)
     }
 }
 
@@ -954,8 +1161,8 @@ struct ChatWorkingRowView: View {
                 dots
 
                 Text("Working for \(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: context.date))")
-                    .font(.caption.weight(.medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption(weight: .medium).monospacedDigit())
+                    .foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -980,44 +1187,6 @@ struct ChatWorkingRowView: View {
     }
 }
 
-struct BottomComposerMaterialFade: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    let composerHeight: CGFloat
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            ZStack {
-                Rectangle()
-                    .fill(.bar)
-
-                if colorScheme == .dark {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.58))
-                }
-            }
-            .frame(height: max(96, composerHeight + 34))
-            .mask(
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black.opacity(0.18), location: 0.18),
-                        .init(color: .black.opacity(0.72), location: 0.46),
-                        .init(color: .black, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-        }
-        .ignoresSafeArea(edges: .bottom)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
 /// Transcript chip shown while the active stream is being checked,
 /// reconnected, or waiting for the network. It spins while work is under way,
 /// or shows a static dot under Reduce Motion. Waiting for the network always
@@ -1038,17 +1207,17 @@ struct StreamRecoveryStatusView: View {
             }
 
             Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(.appSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.88)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule(style: .continuous))
+        .background(.appMaterial(.regularMaterial), in: Capsule(style: .continuous))
         .overlay(
             Capsule(style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
@@ -1127,8 +1296,8 @@ private struct ChatTranscriptLoadingSkeletonRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(.secondarySystemFill))
-            .foregroundStyle(.primary)
+            .background(Color(.appFillSecondary))
+            .foregroundStyle(.appPrimary)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .redacted(reason: .placeholder)
@@ -1137,7 +1306,7 @@ private struct ChatTranscriptLoadingSkeletonRow: View {
 
     private func skeletonLine(_ line: ChatTranscriptSkeletonLine) -> some View {
         Text(verbatim: line.text)
-            .font(.body)
+            .font(AppFont.body())
             .lineLimit(1)
             .frame(maxWidth: line.maxWidth, alignment: configuration.role == .user ? .trailing : .leading)
     }
@@ -1209,7 +1378,7 @@ struct ChatOfflineCacheBanner: View {
                 .imageScale(.small)
 
             Text("Offline — viewing cached version")
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .fontWeight(.semibold)
 
             Spacer()
@@ -1238,18 +1407,18 @@ struct PinnedLocalNoticeStack: View {
                         .foregroundStyle(Color.green)
 
                     Text(Self.plainText(notice))
-                        .font(.footnote)
-                        .foregroundStyle(.primary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12)
-                .background(.ultraThinMaterial)
+                .background(.appMaterial(.ultraThinMaterial))
                 .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.45), lineWidth: 0.5)
+                        .stroke(Color(.appSeparator).opacity(0.45), lineWidth: 0.5)
                 )
             }
         }
@@ -1330,7 +1499,7 @@ struct ShortcutTextNotice: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "info.circle.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(isWarning ? Color.orange : Color.secondary)
+                .foregroundStyle(isWarning ? Color.orange : Color(.appTextSecondary))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -1347,27 +1516,27 @@ struct ShortcutTextNotice: View {
                             Text("Added from Troubleshooting. Review before sending.")
                         }
                     }
-                    .font(.footnote)
-                    .foregroundStyle(.primary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                     if hasHiddenCharacters {
                         Button("Remove Hidden Characters", action: removeHiddenCharacters)
-                            .font(.footnote.weight(.semibold))
+                            .font(AppFont.footnote(weight: .semibold))
                     } else if canUndoRemoval {
                         Button("Undo", action: undoRemoval)
-                            .font(.footnote.weight(.semibold))
+                            .font(AppFont.footnote(weight: .semibold))
                     }
                 }
                 if let waiting {
                     Text("Another text is waiting.")
-                        .font(.footnote)
-                        .foregroundStyle(origin != nil ? .secondary : .primary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(origin != nil ? .appSecondary : .appPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 16) {
                         Button("Open Next", action: waiting.openNext)
                         Button("Discard", role: .destructive, action: waiting.discard)
                     }
-                    .font(.footnote.weight(.semibold))
+                    .font(AppFont.footnote(weight: .semibold))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1375,8 +1544,8 @@ struct ShortcutTextNotice: View {
             if origin != nil {
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.footnote(weight: .semibold))
+                        .foregroundStyle(.appSecondary)
                         .frame(minWidth: 28, minHeight: 28)
                         .contentShape(Rectangle())
                 }
@@ -1385,11 +1554,11 @@ struct ShortcutTextNotice: View {
             }
         }
         .padding(12)
-        .background(.ultraThinMaterial)
+        .background(.appMaterial(.ultraThinMaterial))
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
-                .stroke(Color(.separator).opacity(0.45), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.45), lineWidth: 0.5)
         )
         .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
         .accessibilityElement(children: .contain)

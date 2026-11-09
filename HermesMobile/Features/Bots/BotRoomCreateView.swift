@@ -16,6 +16,7 @@ import SwiftUI
                 if naming { nameStep }
                 else { membersStep }
             }
+            .themedPageBackground()
             .navigationTitle("New Group Chat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -44,10 +45,10 @@ import SwiftUI
     }
 
     private var membersStep: some View {
-        List {
+        AppList {
             Section {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("To:").foregroundStyle(.secondary)
+                    Text("To:").foregroundStyle(.appSecondary)
                     if !creator.selected.isEmpty {
                         ViewThatFits(in: .horizontal) {
                             chips
@@ -62,16 +63,23 @@ import SwiftUI
                         .accessibilityLabel("Find group members")
                 }
                 .padding(.vertical, 8)
-            } footer: {
-                if creator.selected.count == 6 { Text("Groups can have up to six members.") }
-                else { Text("Choose two to six bots.") }
+            } appFooter: {
+                VStack(alignment: .leading, spacing: 4) {
+                    if creator.selected.count == 6 { Text("Groups can have up to six members.") }
+                    else { Text("Choose two to six bots.") }
+                    if creator.leavesOutBots { Text("Some bots can’t join group chats on this Hermes, so they aren’t listed.") }
+                }
             }
             Section {
+                if creator.tooFewToSeat {
+                    Text("Fewer than two bots can join group chats on this Hermes.")
+                        .font(AppFont.callout()).foregroundStyle(.appSecondary)
+                }
                 ForEach(creator.remaining) { bot in
                     Button { creator.select(bot) } label: {
                         HStack(spacing: 14) {
                             BotAvatarView(profile: bot, avatar: avatars[bot.id], size: 36, motion: .still)
-                            Text(bot.name).foregroundStyle(.primary)
+                            Text(bot.name).foregroundStyle(.appPrimary)
                         }
                         .padding(.vertical, 6)
                     }
@@ -91,7 +99,7 @@ import SwiftUI
             HStack(spacing: 6) {
                 BotAvatarView(profile: bot, avatar: avatars[bot.id], size: 24, motion: .still)
                 Text(bot.name)
-                Image(systemName: "xmark").font(.caption)
+                Image(systemName: "xmark").font(AppFont.caption())
             }
             .padding(8).background(.quaternary, in: Capsule())
         }
@@ -104,20 +112,20 @@ import SwiftUI
                 BotRoomAvatars(room: creator.preview, roster: creator.roster, avatars: avatars, size: 84)
                     .padding(.top, 48)
                 TextField("Group name", text: $creator.name)
-                    .font(.title2.bold()).multilineTextAlignment(.center)
+                    .font(AppFont.title2().bold()).multilineTextAlignment(.center)
                     .padding(20).background(.quaternary, in: RoundedRectangle(cornerRadius: 20))
                     .focused($focused, equals: .name).disabled(creator.locked)
                     .submitLabel(.done)
                     .onSubmit { if creator.mayCreate { Task { await creator.create() } } }
                 if !BotRoomRPC.validName(creator.name) {
-                    Text("Enter a name of up to 200 characters.").font(.caption).foregroundStyle(.secondary)
+                    Text("Enter a name of up to 200 characters.").font(AppFont.caption()).foregroundStyle(.appSecondary)
                 }
-                if let message = creator.message { Text(message).font(.callout) }
+                if let message = creator.message { Text(message).font(AppFont.callout()) }
                 Button(creator.busy ? "Creating…" : creator.locked ? "Try Again" : "Create") {
                     focused = nil
                     Task { await creator.create() }
                 }
-                .buttonStyle(.borderedProminent).controlSize(.large)
+                .buttonStyle(.appProminent).controlSize(.large)
                 .disabled(!creator.mayCreate)
             }
             .padding(20)

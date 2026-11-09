@@ -351,7 +351,7 @@ private struct HermexAttachmentPickerLayout {
     let leadingPadding: CGFloat
     let bottomPadding: CGFloat
 
-    static func resolve(containerSize: CGSize, mode: HermexAttachmentPickerMode) -> Self {
+    static func resolve(containerSize: CGSize, mode: HermexAttachmentPickerMode, menuRowCount: Int) -> Self {
         let width = max(1, containerSize.width)
         let height = max(1, containerSize.height)
         let expanded = mode == .photos || mode == .camera
@@ -367,7 +367,7 @@ private struct HermexAttachmentPickerLayout {
         let preferredExpandedHeight = max(460, height * 0.66)
         let panelHeight = expanded
             ? min(expandedMaximumHeight, min(preferredExpandedHeight, availableHeight))
-            : min(222, availableHeight)
+            : min(CGFloat(menuRowCount) * 66 + 24, availableHeight)
         return Self(
             panelSize: CGSize(width: panelWidth, height: panelHeight),
             leadingPadding: leadingPadding,
@@ -383,7 +383,8 @@ private struct HermexAttachmentPickerLayout {
 
 /// Hosts the picker inside the app's existing window instead of presenting a
 /// new controller. Its bottom follows the keyboard, so the composer remains
-/// first responder and the picker always occupies the space above it.
+/// first responder and the picker always occupies the space above it, in the
+/// composer's column.
 enum HermexAttachmentPickerPresentation {
     static let overlayHostAccessibilityIdentifier = "HermexAttachmentPickerOverlay"
 }
@@ -414,8 +415,9 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
             isPresented: isPresented,
             anchor: controller,
             // This sibling host does not inherit SwiftUI's scene environment.
-            // Forward it so camera/media work starts and stops with its owner.
-            overlay: AnyView(overlay().environment(\.scenePhase, scenePhase))
+            // Forward it so camera/media work starts and stops with its owner,
+            // and set the root font it would otherwise miss.
+            overlay: AnyView(overlay().environment(\.scenePhase, scenePhase).appRootFont())
         )
     }
 
@@ -449,7 +451,7 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
                 }
                 return
             }
-            attach(to: root)
+            attach(to: root, anchor: anchor)
         }
 
         private func attachIfPossible(to anchor: UIViewController) {
@@ -457,10 +459,12 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
                   wantsPresentation,
                   let root = anchor.view.window?.rootViewController
             else { return }
-            attach(to: root)
+            attach(to: root, anchor: anchor)
         }
 
-        private func attach(to root: UIViewController) {
+        /// Spans the owner's column, so beside a sidebar the card stays by the composer that opened
+        /// it, and follows the column as the sidebar moves or the device folds.
+        private func attach(to root: UIViewController, anchor: UIViewController) {
             guard let container = root.view.superview ?? root.view.window else { return }
 
             let host = UIHostingController(rootView: latestOverlay)
@@ -473,10 +477,12 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
             // Install the overlay beside it in their common container instead.
             container.addSubview(host.view)
             root.view.keyboardLayoutGuide.followsUndockedKeyboard = true
+            // Sidebars and vertical bars cover the column, so its safe area marks what shows.
+            let column = (anchor.parent ?? root).view.safeAreaLayoutGuide
             NSLayoutConstraint.activate([
                 host.view.topAnchor.constraint(equalTo: root.view.topAnchor),
-                host.view.leadingAnchor.constraint(equalTo: root.view.leadingAnchor),
-                host.view.trailingAnchor.constraint(equalTo: root.view.trailingAnchor),
+                host.view.leadingAnchor.constraint(equalTo: column.leadingAnchor),
+                host.view.trailingAnchor.constraint(equalTo: column.trailingAnchor),
                 host.view.bottomAnchor.constraint(equalTo: root.view.keyboardLayoutGuide.topAnchor)
             ])
             self.host = host
@@ -504,9 +510,9 @@ struct HermexAttachmentPanelSurface: ViewModifier {
         content
             .background {
                 if reduceTransparency {
-                    Color(.secondarySystemBackground)
+                    Color(.appSurface)
                 } else {
-                    Rectangle().fill(.regularMaterial)
+                    Rectangle().fill(.appMaterial(.regularMaterial))
                 }
             }
             .shadow(color: .black.opacity(0.24), radius: 27, y: 12)
@@ -530,12 +536,16 @@ struct HermexAttachmentPickerView: View {
 
     let imageCapacity: Int
     let onChooseFiles: () -> Void
+    /// Offers Voice note, which starts a recording the composer's bar then stops or cancels.
+    var onRecordVoiceNote: (() -> Void)? = nil
     let onAdd: ([HermexPickedMedia]) -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = HermexAttachmentPickerLayout.resolve(containerSize: proxy.size, mode: mode)
+            let layout = HermexAttachmentPickerLayout.resolve(
+                containerSize: proxy.size, mode: mode, menuRowCount: onRecordVoiceNote == nil ? 3 : 4
+            )
             ZStack(alignment: .bottomLeading) {
                 Button(action: dismissPicker) {
                     Color.black.opacity(isVisible ? (mode == .menu ? 0.08 : 0.2) : 0)
@@ -608,6 +618,13 @@ struct HermexAttachmentPickerView: View {
                 animate { mode = .photos }
                 Task { await model.loadLibrary() }
             }
+            if let onRecordVoiceNote {
+                menuRow(title: "Voice note", systemImage: "waveform", enabled: !isBusy) {
+                    guard !isDismissing else { return }
+                    onRecordVoiceNote()
+                    animateDismissal()
+                }
+            }
         }
         .padding(.vertical, 12)
         .accessibilityElement(children: .contain)
@@ -650,7 +667,7 @@ struct HermexAttachmentPickerView: View {
                             Text(confirmLabel)
                         }
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .foregroundStyle(model.selectionCount == 0 ? .white.opacity(0.58) : .white)
                     .padding(.horizontal, 18)
                     .frame(minHeight: 46)
@@ -668,7 +685,7 @@ struct HermexAttachmentPickerView: View {
 
             if model.hasLimitedAccess {
                 Button("Manage Access", action: openSettings)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .frame(height: 36)
@@ -716,7 +733,7 @@ struct HermexAttachmentPickerView: View {
                     spacing: spacing
                 ) {
                     ForEach(0..<15, id: \.self) { _ in
-                        Color(.secondarySystemBackground)
+                        Color(.appSurface)
                             .frame(width: side, height: side)
                     }
                 }
@@ -726,19 +743,19 @@ struct HermexAttachmentPickerView: View {
             }
         case .empty:
             placeholder {
-                Image(systemName: "photo.on.rectangle").font(.title2)
+                Image(systemName: "photo.on.rectangle").font(AppFont.title2())
                 Text("No photos are available.")
             }
         case .denied:
             placeholder {
-                Image(systemName: "photo.badge.exclamationmark").font(.title2)
-                Text("Photo access is off").font(.headline)
+                Image(systemName: "photo.badge.exclamationmark").font(AppFont.title2())
+                Text("Photo access is off").font(AppFont.headline())
                 Text("Allow access in Settings to browse recent photos here.")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                 Button("Open Settings", action: openSettings)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
             }
         }
     }
@@ -754,7 +771,7 @@ struct HermexAttachmentPickerView: View {
                 .overlay(alignment: .bottomTrailing) {
                     if let order {
                         Text("\(order)")
-                            .font(.caption.weight(.bold))
+                            .font(AppFont.caption(weight: .bold))
                             .monospacedDigit()
                             .foregroundStyle(.white)
                             .frame(width: 24, height: 24)
@@ -781,7 +798,7 @@ struct HermexAttachmentPickerView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .foregroundStyle(.white.opacity(enabled ? 1 : 0.45))
                 .frame(width: 46, height: 46)
                 .background(.black.opacity(0.54), in: Circle())
@@ -794,7 +811,7 @@ struct HermexAttachmentPickerView: View {
 
     private func placeholder<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 10, content: content)
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(32)
     }
@@ -1007,12 +1024,12 @@ struct HermexAttachmentMenuRow: View {
             HStack(spacing: 14) {
                 Image(systemName: systemImage)
                     .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .frame(width: 42, height: 42)
                     .background(.primary.opacity(0.08), in: Circle())
                 title
-                    .font(.title3.weight(.regular))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.title3(weight: .regular))
+                    .foregroundStyle(.appPrimary)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)

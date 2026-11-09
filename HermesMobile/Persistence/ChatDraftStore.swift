@@ -1226,6 +1226,14 @@ final class ChatDraftStore {
         return file
     }
 
+    /// Points a staged attachment's record at its edited copy (#1456), keeping its place.
+    func replaceAttachmentRecord(_ record: ChatDraftAttachment, for key: ChatDraftKey) {
+        updateDraft(for: key) { draft in
+            guard let index = draft.attachments.firstIndex(where: { $0.id == record.id }) else { return }
+            draft.attachments[index] = record
+        }
+    }
+
     func removeAttachmentReference(id: UUID, for key: ChatDraftKey) {
         updateDraft(for: key) { $0.attachments.removeAll { $0.id == id } }
     }

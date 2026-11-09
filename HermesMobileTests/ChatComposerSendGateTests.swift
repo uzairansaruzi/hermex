@@ -1,4 +1,5 @@
 import AVFoundation
+import SwiftUI
 import UIKit
 import XCTest
 @testable import HermesMobile
@@ -7,6 +8,267 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
+    /// A host's level the model's list doesn't name stays on the ladder and stays current.
+    /// iPhone Duo's displays leave about 300 pt above the keyboard with a regular size class. An
+    /// editor that kept growing there pushed Send behind the keyboard.
+    func testAShortViewportHoldsTheEditorToItsMinimumWhateverTheSizeClass() {
+        XCTAssertEqual(
+            ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .regular, isViewportShort: true),
+            ComposerTextInputHeight.shortViewportMinimum)
+        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .regular, isViewportShort: false), 160)
+    }
+
+    func testThinkingLadderKeepsALevelTheListDoesNotName() {
+        let ladder = ThinkingLadder(levels: ["low", "high"], current: "turbo")
+
+        XCTAssertEqual(ladder.levels, ["low", "high", "turbo"])
+        XCTAssertEqual(ladder.currentIndex, 2)
+    }
+
+    /// A drag lands on the nearest level, past either end included, and sends one change: none
+    /// when it comes back to where it started.
+    func testThinkingLadderSendsOnlyAChangeFromWhereTheDragLands() {
+        let ladder = ThinkingLadder(levels: ["low", "medium", "high"], current: "medium")
+
+        XCTAssertEqual(ladder.index(atPosition: ThinkingLadder.position(atX: -50, width: 300)), 0)
+        XCTAssertEqual(ladder.index(atPosition: ThinkingLadder.position(atX: 140, width: 300)), 1)
+        XCTAssertEqual(ladder.index(atPosition: ThinkingLadder.position(atX: 900, width: 300)), 2)
+        XCTAssertEqual(ladder.commit(at: 2), "high")
+        XCTAssertNil(ladder.commit(at: 1))
+    }
+
+    /// A drag ticks once per level crossed and picks one level on release. Coming back to where it
+    /// started picks nothing, and a cancelled touch leaves nothing behind.
+    func testThinkingSliderDragTicksPerLevelAndPicksOnceOnRelease() {
+        let ladder = ThinkingLadder(levels: ["low", "medium", "high"], current: "low")
+        var drag = ThinkingSliderDrag()
+
+        XCTAssertFalse(drag.move(to: 0.1, on: ladder), "Still on the current level")
+        XCTAssertTrue(drag.move(to: 0.5, on: ladder))
+        XCTAssertFalse(drag.move(to: 0.6, on: ladder), "Still on the same level")
+        XCTAssertTrue(drag.move(to: 1, on: ladder))
+        XCTAssertEqual(drag.end(on: ladder), 2)
+        XCTAssertEqual(drag.position, 1, "The thumb must not head back before the pick reaches the ladder")
+        XCTAssertNil(drag.end(on: ladder), "One release, one pick")
+
+        _ = drag.move(to: 1, on: ladder)
+        _ = drag.move(to: 0, on: ladder)
+        XCTAssertNil(drag.end(on: ladder), "Back on the current level")
+        XCTAssertNil(drag.position)
+
+        _ = drag.move(to: 1, on: ladder)
+        drag.cancel()
+        XCTAssertNil(drag.position)
+        XCTAssertNil(drag.end(on: ladder))
+    }
+
+    /// A vertical swipe that starts on the control is the list scrolling, not a level change.
+    func testOnlyASidewaysDragAdjustsTheThinkingLevel() {
+        XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: 40, height: 6)))
+        XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: -40, height: -6)))
+        XCTAssertFalse(ThinkingLadder.isAdjustment(CGSize(width: 6, height: 40)))
+        XCTAssertFalse(ThinkingLadder.isAdjustment(CGSize(width: -6, height: -40)))
+    }
+
+    /// Reduce Motion lands on the level with no time passing, so a look never moves.
+    func testThinkingSliderSnapsWithNoTimePassingUnderReduceMotion() {
+        let store = ThinkingSliderStore(), size = CGSize(width: 348, height: 56)
+        _ = store.advance(time: 100, target: 0, followsFinger: false, size: size, isStill: true)
+        let frame = store.advance(time: 200, target: 1, followsFinger: false, size: size, isStill: true)
+
+        XCTAssertEqual(frame.level, 1)
+        XCTAssertEqual(frame.delta, 0)
+        XCTAssertEqual(frame.thumbX, 348 - ThinkingSliderMetrics.inset)
+    }
+
+    /// The thumb keeps up with a finger more closely than it eases to a tapped level, and a
+    /// paused track resumes without a jump, however long it was held.
+    func testThinkingSliderFollowsTheFingerAndResumesWithoutAJump() {
+        let size = CGSize(width: 348, height: 56)
+        func step(followsFinger: Bool) -> Double {
+            let store = ThinkingSliderStore()
+            _ = store.advance(time: 100, target: 0, followsFinger: followsFinger, size: size, isStill: false)
+            return store.advance(time: 100 + 1.0 / 60, target: 1, followsFinger: followsFinger, size: size, isStill: false).level
+        }
+        XCTAssertGreaterThan(step(followsFinger: true), step(followsFinger: false))
+
+        let store = ThinkingSliderStore()
+        _ = store.advance(time: 100, target: 0, followsFinger: false, size: size, isStill: false)
+        let resumed = store.advance(time: 1000, target: 0, followsFinger: false, size: size, isStill: false)
+        XCTAssertEqual(resumed.delta, 0.05)
+    }
+
+    /// Every look draws its whole ladder without trapping, and paints something, at the real width
+    /// and at the sliver a first layout can pass. Particle counts rise and fall between frames.
+    @MainActor
+    func testEveryThinkingSliderLookDrawsAtAnyLevelAndWidth() throws {
+        for look in ThinkingSliderLook.allCases {
+            for width in [348.0, 1.0] {
+                let store = ThinkingSliderStore()
+                let levels = [0.0, 1, 0.5, 0, 1, 0.14]
+                let canvas = Canvas { context, size in
+                    for (step, level) in levels.enumerated() {
+                        let frame = store.advance(
+                            time: Double(step) * 0.04, target: level, followsFinger: true, size: size, isStill: false
+                        )
+                        var track = context
+                        look.drawTrack(&track, frame, store)
+                        look.drawThumb(&track, frame)
+                    }
+                }
+                .frame(width: width, height: ThinkingSliderMetrics.height)
+                let image = try XCTUnwrap(ImageRenderer(content: canvas).uiImage, look.name)
+                XCTAssertEqual(image.size.width, width, look.name)
+                XCTAssertNotNil(store.level, "\(look.name) never drew")
+            }
+        }
+    }
+
+    /// VoiceOver's swipe moves one level and stops at each end.
+    func testThinkingLadderAdjustsOneLevelAndStopsAtTheEnds() {
+        let middle = ThinkingLadder(levels: ["low", "medium", "high"], current: "medium")
+        XCTAssertEqual(middle.adjusted(by: 1), 2)
+        XCTAssertEqual(middle.adjusted(by: -1), 0)
+        XCTAssertNil(ThinkingLadder(levels: ["low", "high"], current: "high").adjusted(by: 1))
+        XCTAssertEqual(ThinkingLadder(levels: ["low", "high"], current: nil).adjusted(by: 1), 0)
+    }
+
+    /// The Approvals row shows the state in effect: Off wins, then YOLO, then the mode. A mode
+    /// newer than this app still shows, and a webui session has no mode to show.
+    func testApprovalsRowShowsTheStateInEffect() {
+        func approvals(yolo: Bool = false, mode: String?, mayTurnOff: Bool = true) -> ComposerApprovals {
+            ComposerApprovals(isYoloOn: yolo, offersModes: mode != nil, mode: mode, mayTurnOffYolo: mayTurnOff,
+                              isChanging: false, errorMessage: nil)
+        }
+
+        XCTAssertEqual(approvals(yolo: true, mode: "off", mayTurnOff: false).value, "Off")
+        XCTAssertEqual(approvals(yolo: true, mode: "smart").value, "YOLO")
+        XCTAssertEqual(approvals(mode: "manual").value, "Manual")
+        XCTAssertEqual(approvals(mode: "cautious").value, "Cautious")
+        XCTAssertNil(approvals(mode: nil).value)
+        XCTAssertEqual(approvals(yolo: true, mode: nil).value, "YOLO")
+        XCTAssertTrue(approvals(yolo: true, mode: "manual", mayTurnOff: false).isYoloLocked)
+        XCTAssertFalse(approvals(yolo: true, mode: "manual").isYoloLocked)
+    }
+
+    /// A change's answer shows beside the row that asked, never on another row, and an
+    /// old error doesn't show on a row nobody touched since the sheet opened.
+    func testModelSettingsShowsAnswersOnlyBesideTheRowThatAsked() {
+        func status(_ row: ModelSettingsRow, _ lastChanged: ModelSettingsRow?, updating: Bool = false,
+                    error: String? = nil, notice: String? = nil) -> ModelSettingsRowStatus? {
+            ModelSettingsRowStatus.resolve(row: row, lastChanged: lastChanged, isUpdating: updating,
+                                           errorMessage: error, notice: notice)
+        }
+
+        XCTAssertNil(status(.model, .model, updating: true, error: "old"), "Nothing shows while a change is out")
+        XCTAssertEqual(status(.model, .model, error: "Refused"), .failed("Refused"))
+        XCTAssertEqual(status(.model, .model, notice: "After this response"), .notice("After this response"))
+        XCTAssertNil(status(.model, .model))
+        XCTAssertNil(status(.thinking, .model, error: "Refused"))
+        XCTAssertNil(status(.model, nil, error: "old"))
+    }
+
+    /// A chat's settings leave the composer after its first message, and an existing chat
+    /// that hasn't loaded yet never shows them.
+    func testNewChatControlsShowOnlyBeforeTheFirstMessage() {
+        XCTAssertTrue(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: nil, isStreaming: false))
+        XCTAssertTrue(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 0, isStreaming: false))
+        XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: true, serverMessageCount: 0, isStreaming: false))
+        XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 4, isStreaming: false))
+        XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 0, isStreaming: true))
+    }
+
+    /// The header names the workspace and the Profile, whichever of them there is.
+    func testHeaderSubtitleNamesWorkspaceAndProfile() {
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", profileTitle: "Default"), "hermes · Default")
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", profileTitle: "Profile"), "hermes")
+        XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, profileTitle: "Default"), "Default")
+        XCTAssertNil(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, profileTitle: nil))
+    }
+
+    /// A level shows at once. Levels asked for meanwhile don't pile up: only the newest goes, and
+    /// a refused one clears at once so the chat's own level shows.
+    @MainActor
+    func testThinkingLevelsShowAtOnceAndOnlyTheNewestWaitingOneGoes() async {
+        let sender = ThinkingLevelSender()
+        var sent: [String] = []
+        var answers: [CheckedContinuation<Bool, Never>] = []
+        let firstOut = expectation(description: "the first level is out")
+        let newestOut = expectation(description: "the newest level is out")
+        let send: (String) async -> Bool = { level in
+            sent.append(level)
+            return await withCheckedContinuation {
+                answers.append($0)
+                (level == "low" ? firstOut : newestOut).fulfill()
+            }
+        }
+
+        sender.request("low", send: send)
+        XCTAssertEqual(sender.pendingLevel, "low")
+        await fulfillment(of: [firstOut], timeout: 5)
+
+        sender.request("medium", send: send)
+        sender.request("high", send: send)
+        XCTAssertEqual(sender.pendingLevel, "high")
+        XCTAssertEqual(sent, ["low"])
+
+        answers.removeFirst().resume(returning: true)
+        await fulfillment(of: [newestOut], timeout: 5)
+        answers.removeFirst().resume(returning: false)
+        await waitUntil("a refused level clears") { sender.pendingLevel == nil }
+
+        XCTAssertEqual(sent, ["low", "high"])
+    }
+
+    /// An accepted level outlasts the host's answer, since clearing on the answer flashes the old
+    /// level before the chat's own value reaches the screen. It then lets go.
+    @MainActor
+    func testAnAcceptedThinkingLevelOutlastsTheAnswer() async {
+        let holding = ThinkingLevelSender(settleDelay: .seconds(60))
+        holding.request("high") { _ in true }
+        await waitUntil("the host answered") { !holding.isSending }
+        XCTAssertEqual(holding.pendingLevel, "high")
+
+        let settled = ThinkingLevelSender(settleDelay: .zero)
+        settled.request("high") { _ in true }
+        await waitUntil("the level lets go") { settled.pendingLevel == nil }
+    }
+
+    /// A run holds configuration but not `+` (#1436); offline and read-only hold both.
+    func testAttachingStaysOpenDuringARunWhereConfigurationIsHeld() {
+        func gate(_ session: SessionSummary = SessionSummary(sessionId: "s"), offline: Bool = false) -> ChatComposerControlGate {
+            ChatComposerControlGate(
+                access: ChatComposerAccess(session: session, isViewingCachedData: offline),
+                isSending: false, isCompressingSession: false, isWaitingForStream: true, isUpdatingConfiguration: false
+            )
+        }
+
+        XCTAssertTrue(gate().allowsAttaching)
+        XCTAssertFalse(gate().allowsConfiguration)
+        XCTAssertFalse(gate(offline: true).allowsAttaching)
+        XCTAssertFalse(gate(SessionSummary(sessionId: "s", readOnly: true)).allowsAttaching)
+    }
+
+    /// During a run Model settings still opens to turn YOLO off, the only way to stop a bypass
+    /// without stopping the work. Nothing else reopens it.
+    func testModelSettingsOpensDuringARunOnlyToTurnYoloOff() {
+        func allows(yolo: Bool, mayTurnOff: Bool = true, offline: Bool = false, running: Bool = true) -> Bool {
+            ChatComposerControlGate(
+                access: ChatComposerAccess(session: SessionSummary(sessionId: "s"), isViewingCachedData: offline),
+                isSending: false, isCompressingSession: false, isWaitingForStream: running, isUpdatingConfiguration: false
+            ).allowsModelSettings(approvals: ComposerApprovals(
+                isYoloOn: yolo, offersModes: true, mode: "manual", mayTurnOffYolo: mayTurnOff,
+                isChanging: false, errorMessage: nil
+            ))
+        }
+
+        XCTAssertTrue(allows(yolo: false, running: false))
+        XCTAssertTrue(allows(yolo: true))
+        XCTAssertFalse(allows(yolo: false), "Nothing to turn off, so the run holds it")
+        XCTAssertFalse(allows(yolo: true, mayTurnOff: false), "The host holds YOLO on")
+        XCTAssertFalse(allows(yolo: true, offline: true))
+    }
+
     func testSendFocusPreservesFailureNewEditingAndNewDraft() {
         XCTAssertEqual(ChatSendFocusPolicy.focusAfterSubmission(
             succeeded: true, dismissKeyboard: true, wasFocused: true,

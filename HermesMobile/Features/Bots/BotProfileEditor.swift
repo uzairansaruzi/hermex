@@ -156,6 +156,14 @@ struct BotProfileDetails: Equatable, Sendable {
             try ensureOwner(owner, client)
             let details = BotProfileDetails(detailsPayload, expectedName: profile.id)
             guard details.name == profile.id else { throw BotFailure.wrongIdentity }
+            // A bot chat's pill opens this with a bare row until its roster read answers. Saving
+            // that would claim revision 0 and read as a change made elsewhere, so read the real one.
+            if lookRevision == nil, let roster = try? await client.call(.profilesList(includeSessions: false), validateDispatch: validate(owner)) {
+                try ensureOwner(owner, client)
+                if let row = roster["profiles"].list?.first(where: { $0["name"].text == profile.id }), let fresh = BotProfile(row) {
+                    profile = fresh; receivedLook = fresh.look; lookRevision = fresh.lookRevision
+                }
+            }
             if let options = try? await client.call(.configuredModelOptions, validateDispatch: validate(owner)) {
                 try ensureOwner(owner, client)
                 modelGroups = HermesModelCatalog(options).groups
@@ -206,10 +214,29 @@ struct BotProfileDetails: Equatable, Sendable {
 
     func setShape(_ shape: BotAvatarShape) {
         draft.appearance.shape = shape.rawValue
+        draft.appearance.generated = nil
         draft.appearance.custom = true
         draft.appearance.imageKind = "shape"
         avatar = nil; avatarChange = .remove
         clearOutcome(.appearance); clearOutcome(.avatar)
+    }
+
+    /// Takes an avatar the host's model drew. The stored `shape` stays, for Desktop and older builds.
+    func setGenerated(_ generated: BotGeneratedAvatar) {
+        if draft.appearance.shape.flatMap(BotAvatarShape.init(rawValue:)) == nil {
+            draft.appearance.shape = BotAvatarShape.circle.rawValue
+        }
+        draft.appearance.generated = generated
+        draft.appearance.custom = true
+        draft.appearance.imageKind = "shape"
+        avatar = nil; avatarChange = .remove
+        clearOutcome(.appearance); clearOutcome(.avatar)
+    }
+
+    /// One tool-free model call under this bot, for "Describe It".
+    func sendAvatarPrompt(_ prompt: String) async throws -> String {
+        guard let client = wire else { throw BotFailure.stale }
+        return try await BotAvatarGeneration.ask(prompt, profile: profile.id, transport: client, validateDispatch: validate(generation))
     }
 
     func setColor(_ color: String) {
@@ -233,6 +260,7 @@ struct BotProfileDetails: Equatable, Sendable {
 
     func resetAppearance() {
         draft.appearance.shape = nil; draft.appearance.color = nil; draft.appearance.expression = nil
+        draft.appearance.generated = nil
         draft.appearance.custom = false; draft.appearance.imageKind = nil
         avatar = nil; avatarChange = .remove
         clearOutcome(.appearance); clearOutcome(.avatar)
@@ -243,7 +271,7 @@ struct BotProfileDetails: Equatable, Sendable {
             throw BotProfileEditorImageError.unsupported
         }
         avatar = image; avatarChange = .replace(normalized)
-        draft.appearance.custom = true; draft.appearance.imageKind = "photo"
+        draft.appearance.custom = true; draft.appearance.imageKind = "photo"; draft.appearance.generated = nil
         clearOutcome(.appearance); clearOutcome(.avatar)
     }
 

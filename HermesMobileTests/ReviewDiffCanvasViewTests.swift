@@ -41,6 +41,18 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(canvas.index(ofAccessibilityElement: element), NSNotFound)
     }
 
+    func testCustomCodeSizeResizesRowsAndClearingItRestoresThem() {
+        let canvas = makeCanvas(rows: [header("a"), line("a", 0)])
+        let rowHeight = canvas.layout.height(forRowAt: 1)
+
+        canvas.customCodeSize = 24
+        XCTAssertEqual(canvas.style.codeFont.pointSize, 24)
+        XCTAssertGreaterThan(canvas.layout.height(forRowAt: 1), rowHeight)
+
+        canvas.customCodeSize = nil
+        XCTAssertEqual(canvas.layout.height(forRowAt: 1), rowHeight)
+    }
+
     func testWrappingDisablesHorizontalPan() {
         let long = ReviewDiffRow(
             id: "s:0",

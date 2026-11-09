@@ -764,6 +764,40 @@ import XCTest
         reader.close()
     }
 
+    /// A canonical host fences a room task by its member and generation (#1605). Retry names
+    /// both, and a task whose outcome is unknown offers Discard instead, never Retry; Discard
+    /// sends all four fields, and a host that doesn't list `groups.discard` gets no card button.
+    func testACanonicalRoomTaskIsRetriedOrDiscardedUnderItsFence() async throws {
+        let wire = RoomWire()
+        var caps = RoomFixture.capabilities.fields!
+        caps["methods"] = .array((RoomFixture.methods + ["groups.discard"]).map(BotJSON.string))
+        wire.capabilities = .object(caps)
+        func action(_ kind: String, _ task: String, member: String = "chief") -> BotJSON {
+            .object(["kind": .string(kind), "member_id": .string(member), "task_id": .string(task), "execution_generation": .number(3)])
+        }
+        // A stalled preparation's Retry names every member it couldn't wake.
+        wire.driverStatus = RoomFixture.status(actions: [action("retry", "prepare:fixture-room", member: "chief, coder"),
+                                                         action("discard", "task:2")])
+        let reader = makeReader(wire); await reader.open()
+        let retry = reader.status.actions[0], discard = reader.status.actions[1]
+        XCTAssertFalse(discard.isRetry)
+        XCTAssertTrue(reader.mayAct(discard))
+        await reader.act(retry)
+        let attempt = HermesCall.RoomAttempt(memberID: "chief, coder", executionGeneration: 3)
+        XCTAssertEqual(wire.writeCalls.first, .groupsRetry(roomID: "fixture-room", taskID: "prepare:fixture-room", attempt: attempt))
+        await reader.act(discard)
+        XCTAssertNil(reader.commandMessage)
+        XCTAssertEqual(wire.writes.last?.0, "groups.discard")
+        XCTAssertEqual(wire.writes.last?.1, ["room_id": .string("fixture-room"), "member_id": .string("chief"),
+                                             "task_id": .string("task:2"), "execution_generation": .number(3)])
+        reader.close()
+
+        wire.capabilities = RoomFixture.capabilities
+        let older = makeReader(wire); await older.open()
+        XCTAssertFalse(older.mayAct(older.status.actions[1]))
+        older.close()
+    }
+
     func testForeignOrMissingAuthorityAndMissingMethodPreventWrites() async {
         let wire = RoomWire(); wire.authority = "elsewhere"
         let reader = makeReader(wire); await reader.open(); reader.draft = "hello"
@@ -1006,6 +1040,8 @@ enum RoomFixture {
     var failure: Error?
     var driverStatus = RoomFixture.status()
     var writes: [(String, [String: BotJSON])] = []
+    /// The writes as typed calls, for what only a canonical socket adds to their params.
+    var writeCalls: [HermesCall] = []
     var beforeWrite: (() async -> Void)?
     var beforeSummaryDispatch: (() async -> Void)?
     var beforeSummaryReply: (() async -> Void)?
@@ -1023,10 +1059,11 @@ enum RoomFixture {
     func close() { closed += 1 }
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let method = call.method, params = try call.params()
-        if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.create", "groups.rename", "groups.disband"].contains(method) {
+        if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.discard", "groups.create", "groups.rename",
+            "groups.disband"].contains(method) {
             await beforeWrite?()
             try validateDispatch?()
-            writes.append((method, params))
+            writes.append((method, params)); writeCalls.append(call)
             if let writeFailure { throw writeFailure }
             var result: BotJSON
             switch method {
@@ -1061,6 +1098,7 @@ enum RoomFixture {
                 driverStatus = RoomFixture.status(stopping: 1)
                 result = .object(["cancelled": .number(1)])
             case "groups.approve": result = .object(["approved": .bool(true)])
+            case "groups.discard": result = .object(["discarded": .bool(true), "task": params["task_id"]!])
             default: result = .object(["retried": .bool(true)])
             }
             if loseWrite { onDisconnect?(BotFailure.transport); throw BotFailure.transport }
