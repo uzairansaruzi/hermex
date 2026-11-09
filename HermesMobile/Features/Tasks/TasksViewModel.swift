@@ -36,9 +36,18 @@ final class TasksViewModel {
     /// Jobs with a row action in flight, so a row cannot be double-fired and
     /// can show that it is waiting on the server.
     private(set) var pendingActionJobIDs: Set<String> = []
-    /// Bumped by every list shown and every change applied, so a row's Run Now read sent
-    /// before one can't put back what it replaced (#1041).
-    private var listChanges = 0
+    /// Bumped by every change applied to a row, so a list read sent before one can't put
+    /// back what it replaced (#1041).
+    private var rowChanges = 0
+    /// Numbers the list reads, so one that lands after a newer read was shown is dropped.
+    private var readsSent = 0
+    private var newestReadShown = 0
+
+    /// One read of the list, taken when its request goes out.
+    private struct ListRead {
+        let number: Int
+        let rowChanges: Int
+    }
 
     private let server: URL
     /// The server's Tasks, shared with the detail screens and editors this list opens.
@@ -67,13 +76,11 @@ final class TasksViewModel {
         }
 
         do {
-            let changesBefore = listChanges
+            let read = beginListRead()
             async let listResponse = client.cronJobs()
             async let deliveryOptionsResponse = listDeliveryOptions()
 
-            // A read sent before a row's change or a newer list can't put the old state back.
-            let list = try await listResponse
-            if listChanges == changesBefore { show(list) }
+            show(try await listResponse, from: read)
             deliveryOptions = await deliveryOptionsResponse
         } catch {
             lastError = error
@@ -81,10 +88,17 @@ final class TasksViewModel {
         }
     }
 
+    private func beginListRead() -> ListRead {
+        readsSent += 1
+        return ListRead(number: readsSent, rowChanges: rowChanges)
+    }
+
     /// Shows one read of the list: a load's, or one a row's Run Now made on a Hermes host
-    /// while it followed the run (#1041).
-    private func show(_ list: CronJobList) {
-        listChanges += 1
+    /// while it followed the run (#1041). A read that went out before a row changed, or
+    /// before a read already shown, is dropped: it can only put older state back.
+    private func show(_ list: CronJobList, from read: ListRead) {
+        guard read.rowChanges == rowChanges, read.number > newestReadShown else { return }
+        newestReadShown = read.number
         runningJobs = list.runningJobs
         jobs = list.jobs
         if let recent = list.recentRuns {
@@ -219,7 +233,7 @@ final class TasksViewModel {
     }
 
     func apply(_ mutation: CronJobListMutation) {
-        listChanges += 1
+        rowChanges += 1
         switch mutation {
         case .upsert(let job):
             upsert(job)
@@ -244,9 +258,9 @@ final class TasksViewModel {
         var elapsed: Double?
         guard let jobID = await perform(job, action: { detail in
             detail.readList = { [weak self, client] in
-                let changesBefore = self?.listChanges
+                let read = self?.beginListRead()
                 let list = try await client.cronJobs()
-                if let self, listChanges == changesBefore, !Task.isCancelled { show(list) }
+                if let self, let read, !Task.isCancelled { show(list, from: read) }
                 return list
             }
             let didRun = await detail.runNow()
