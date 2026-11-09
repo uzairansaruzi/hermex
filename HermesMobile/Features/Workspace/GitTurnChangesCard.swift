@@ -9,6 +9,7 @@ import SwiftUI
 /// counted under its header, with what that range includes one tap away (#1392).
 struct GitTurnChangesCard: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var isExpanded = true
     @State private var showsRangeInfo = false
@@ -77,7 +78,7 @@ struct GitTurnChangesCard: View {
                     : String(localized: "Expand file changes"),
                 rotation: isExpanded ? 0 : -90
             ) {
-                withAnimation(.easeInOut(duration: 0.18)) { isExpanded.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { isExpanded.toggle() }
             }
         }
         .padding(.leading, 12)

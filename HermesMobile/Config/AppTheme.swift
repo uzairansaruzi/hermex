@@ -435,12 +435,6 @@ enum SectionVisibilitySettings {
     static let projectsKey = "sectionVisibility.projects"
     static let chatFilesKey = "sectionVisibility.chatFiles"
     static let chatGitKey = "sectionVisibility.chatGit"
-
-    /// Every entry defaults to visible, so an install that predates these toggles
-    /// looks exactly as it did before.
-    static func isVisible(_ key: String, in defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: key) as? Bool ?? true
-    }
 }
 
 /// App-wide preview gate for Bot Mode (#496): the Bots row on a webui server's main

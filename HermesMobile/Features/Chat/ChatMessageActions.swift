@@ -10,9 +10,6 @@ struct SelectableTextPresentation: Identifiable, Equatable {
         self.text = text
     }
 
-    init(context: MessageActionContext) {
-        self.init(id: context.messageID, text: context.copyText)
-    }
 }
 
 /// One entry of the message action menu. The SwiftUI menu and the UIKit
@@ -201,7 +198,6 @@ struct SelectableTextView: UIViewRepresentable {
 struct EditMessageSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    let originalText: String
     @Binding var editDraft: String
     let onSubmit: () -> Void
 

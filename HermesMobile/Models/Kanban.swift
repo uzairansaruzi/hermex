@@ -1125,7 +1125,7 @@ enum KanbanStaleness: Equatable, Sendable {
 }
 
 /// Retains an unknown server Status rather than turning it into a decoding
-/// failure. Future mutation slices can use `isSupported` to keep it read-only.
+/// failure; `isSupported` keeps it read-only.
 /// Scheduled and Review are Hermes-only Columns; webui never sends them.
 struct KanbanStatus: Equatable, Hashable, Sendable {
     let rawValue: String

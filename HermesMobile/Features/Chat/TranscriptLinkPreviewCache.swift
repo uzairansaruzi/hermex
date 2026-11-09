@@ -47,11 +47,6 @@ actor TranscriptLinkPreviewCache {
         evictIfNeeded()
     }
 
-    func removeAll() {
-        entries.removeAll()
-        recency.removeAll()
-    }
-
     static func cacheKey(for url: URL) -> String? {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let scheme = components.scheme?.lowercased(),

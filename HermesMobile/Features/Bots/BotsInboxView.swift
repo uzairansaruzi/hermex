@@ -761,6 +761,8 @@ extension BotsInboxView {
                 deleting = nil
                 renamingRoom = nil; disbanding = nil; filing = nil
                 showingSectionOrder = false
+                // Another host answers for itself whether it has Screen.
+                screenTarget = nil; hostLacksScreen = false
             }
             .sheet(isPresented: $showingSectionOrder) {
                 BotSectionOrderView(inbox: inbox)

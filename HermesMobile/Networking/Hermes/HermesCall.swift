@@ -281,7 +281,7 @@ enum HermesCall: Equatable, Sendable {
     case groupsRename(roomID: String, eventID: String, name: String)
     case groupsDisband(roomID: String)
 
-    /// The socket handshake's opt-in to server→client requests. `BotClient` sends it itself.
+    /// The socket handshake's opt-in to server→client requests. `HermesGateway` sends it itself.
     case clientCapabilities
 
     /// A new avatar as a base64 data URL, or its removal.

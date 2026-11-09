@@ -20,11 +20,6 @@ struct WorkspaceManagerView: View {
         self.onRegistryChanged = onRegistryChanged
     }
 
-    init(viewModel: WorkspaceRegistryViewModel, onRegistryChanged: @escaping () async -> Void) {
-        _viewModel = State(initialValue: viewModel)
-        self.onRegistryChanged = onRegistryChanged
-    }
-
     var body: some View {
         NavigationStack {
             AppList {

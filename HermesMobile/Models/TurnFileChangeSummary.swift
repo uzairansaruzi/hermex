@@ -72,20 +72,6 @@ struct TurnFileChangeSummary: Equatable {
 
     /// The range's files backing the changes, for opening the per-turn diff sheet.
     var diffFiles: [GitFile] { changes.compactMap(\.gitFile) }
-
-    /// Compact composer-capsule title, e.g. "1 change" / "3 changes".
-    var capsuleTitle: String {
-        fileCount == 1
-            ? String(localized: "1 change")
-            : String(localized: "\(fileCount) changes")
-    }
-
-    /// Sheet/header title, e.g. "1 file changed" / "3 files changed".
-    var filesChangedTitle: String {
-        fileCount == 1
-            ? String(localized: "1 file changed")
-            : String(localized: "\(fileCount) files changed")
-    }
 }
 
 /// Pure aggregation of a turn's file changes from tool-call metadata, joined to one range's rows.

@@ -30,7 +30,6 @@ struct SlashCommandAutocompleteView: View {
     let onSelectSkillSubArg: (SkillSlashSuggestion) -> Void
     let onSelectSubArg: (String) -> Void
     var onSelectHostArgument: (HermesSlashCompletion.Item) -> Void = { _ in }
-    let onDismiss: () -> Void
 
     /// The last completed background ranking pass, or `nil` before the first one lands.
     @State private var cachedResults: SlashAutocompleteResults?
@@ -478,7 +477,8 @@ struct ParsedSlashQuery {
 
     var isSubArgMode: Bool {
         guard let command, command.subArgs != .none else { return false }
-        return hasArgument(after: command.name)
+        // The typed name, not the canonical one: the lookup above ignores case.
+        return hasArgument(after: commandName)
     }
 
     /// The query is past a host command's name (#1036): the host completes its argument.

@@ -1098,14 +1098,13 @@ final class ChatViewModel {
     private func scheduleStreamingScrollTrigger() {
         guard pendingStreamingScrollTriggerTask == nil else { return }
 
-        let expectedSessionID = sessionID
         let delay = streamingScrollCoalescingDelayNanoseconds
         pendingStreamingScrollTriggerTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: delay)
             guard let self else { return }
 
             self.pendingStreamingScrollTriggerTask = nil
-            guard !Task.isCancelled, self.sessionID == expectedSessionID else { return }
+            guard !Task.isCancelled else { return }
 
             self.streamingScrollTrigger += 1
         }
@@ -1119,7 +1118,6 @@ final class ChatViewModel {
     private func scheduleStreamingContentFlush() {
         guard pendingStreamingContentFlushTask == nil else { return }
 
-        let expectedSessionID = sessionID
         let tick = streamingRevealTick
         pendingStreamingContentFlushTask = Task { @MainActor [weak self] in
             try? await tick()
@@ -1128,8 +1126,6 @@ final class ChatViewModel {
             guard let self, !Task.isCancelled else { return }
 
             self.pendingStreamingContentFlushTask = nil
-            guard self.sessionID == expectedSessionID else { return }
-
             self.revealStreamingContentTick()
         }
     }
@@ -1434,10 +1430,13 @@ final class ChatViewModel {
             return
         }
 
+        // Each keystroke cancels the previous load, whose answer and cancellation both go unused.
         do {
             let response = try await client.workspaceSuggestions(prefix: prefix)
+            guard !Task.isCancelled else { return }
             workspaceSuggestions = response.suggestions ?? []
         } catch {
+            guard !Task.isCancelled else { return }
             lastError = error
             composerConfigurationErrorMessage = error.localizedDescription
         }

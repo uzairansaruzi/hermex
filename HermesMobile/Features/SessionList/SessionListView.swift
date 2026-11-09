@@ -1004,16 +1004,6 @@ struct SessionListView: View {
         selectedProjectID != nil || !normalizedSearchText.isEmpty
     }
 
-    private func isActiveProfile(_ profile: ProfileSummary) -> Bool {
-        guard let profileName = profile.normalizedName else { return false }
-
-        if let activeProfileName = viewModel.activeProfileName {
-            return profileName == activeProfileName
-        }
-
-        return profile.isActive == true
-    }
-
     private var settingsInitials: String {
         SessionIdentitySettings.displayInitials(
             displayName: identityDisplayName,

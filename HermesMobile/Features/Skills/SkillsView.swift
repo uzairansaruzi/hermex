@@ -6,7 +6,6 @@ struct SkillsView: View {
     private let profile: String?
 
     @State private var viewModel: SkillsViewModel
-    @State private var selectedSkill: SkillSummary?
     @State private var searchText = ""
     /// A failed toggle's notice (#1410).
     @State private var toast = ActionToastState()
@@ -399,14 +398,19 @@ struct SkillDetailView: View {
         guard let name = skill.name else { return }
         isLoadingFile = true
         selectedFile = fileName
-        defer { isLoadingFile = false }
+        openedFile = nil
 
+        let loaded: SkillDetailResponse
         do {
-            openedFile = try await client.skillContent(name: name, file: fileName)
+            loaded = try await client.skillContent(name: name, file: fileName)
         } catch {
-            openedFile = SkillDetailResponse(name: name, content: String(localized: "Could not load file: \(error.localizedDescription)"),
-                                             linkedFiles: nil)
+            loaded = SkillDetailResponse(name: name, content: String(localized: "Could not load file: \(error.localizedDescription)"),
+                                         linkedFiles: nil)
         }
+        // A slow read for a file the sheet has left must not land under another file's title.
+        guard selectedFile == fileName else { return }
+        openedFile = loaded
+        isLoadingFile = false
     }
 }
 

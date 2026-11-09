@@ -3,7 +3,7 @@ import Foundation
 // Tolerant, read-only models for the server "workspace git" API (issue #312, Slice A).
 //
 // Every field is optional and unknown keys are ignored so the app never crashes on a
-// field the server adds or renames (hard rule #3). The shared `APIClient` decoder uses
+// field the server adds or renames. The shared `APIClient` decoder uses
 // `.convertFromSnakeCase`, so snake_case JSON keys (`is_git`, `old_path`, `too_large`, …)
 // map onto these camelCase properties automatically.
 //
@@ -259,7 +259,7 @@ struct GitBranchReview: Equatable {
     var totalDeletions: Int { files.reduce(0) { $0 + ($1.deletions ?? 0) } }
 }
 
-// MARK: - git/branches (decoded + tested now; interactive picker is Slice B)
+// MARK: - git/branches
 
 struct GitBranchesResponse: Decodable, Equatable {
     let branches: GitBranches?

@@ -5,16 +5,6 @@ enum AdaptiveReadableContentWidth {
     static let workspace: CGFloat = 1_000
 }
 
-private struct AdaptiveReadableContentModifier: ViewModifier {
-    let maxWidth: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .frame(maxWidth: maxWidth)
-            .frame(maxWidth: .infinity)
-    }
-}
-
 private struct AdaptiveReadableScrollContentModifier: ViewModifier {
     let maxWidth: CGFloat
     @State private var width: CGFloat = 0
@@ -39,10 +29,6 @@ private struct AdaptiveReadableScrollContentModifier: ViewModifier {
 }
 
 extension View {
-    func adaptiveReadableContent(maxWidth: CGFloat) -> some View {
-        modifier(AdaptiveReadableContentModifier(maxWidth: maxWidth))
-    }
-
     func adaptiveReadableScrollContent(maxWidth: CGFloat) -> some View {
         modifier(AdaptiveReadableScrollContentModifier(maxWidth: maxWidth))
     }
@@ -78,14 +64,6 @@ enum GlassPreference {
         }
 
         return false
-    }
-
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.object(forKey: isEnabledKey) != nil else {
-            return defaultIsEnabled
-        }
-
-        return defaults.bool(forKey: isEnabledKey)
     }
 }
 

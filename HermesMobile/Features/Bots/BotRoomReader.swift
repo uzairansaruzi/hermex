@@ -244,9 +244,7 @@ import Observation
     var showsWelcome: Bool { link == .live && !hasEarlier && !BotRoomEvent.hasConversation(in: events) }
     var showsStop: Bool { status.working || status.stopping > 0 || awaitingStop }
     var mayStop: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 && status.stoppable > 0 }
-    var mayEditDraft: Bool { mayEditDraft(in: nil) }
     var maySend: Bool { maySend(in: nil) }
-    var mayResend: Bool { mayResend(in: nil) }
     func mayEditDraft(in threadID: String?) -> Bool { !busy && uncertainSend(in: threadID) == nil }
     func maySend(in threadID: String?) -> Bool {
         allows("groups.send") && mayEditDraft(in: threadID) && BotRoomRPC.validText(draft(in: threadID))

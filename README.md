@@ -129,12 +129,12 @@ scripts/test-sim <simulator-udid>
 
 - [`AGENTS.md`](AGENTS.md): the working agreement. It covers product boundaries, server-contract rules, locked dependencies, verification, and PR flow.
 - [`CONTEXT.md`](CONTEXT.md): the project's vocabulary.
-- [`DEVELOPMENT.md`](DEVELOPMENT.md): local development, server setup, and the maintainer release runbook.
+- [`DEVELOPMENT.md`](DEVELOPMENT.md): local development and server setup.
 - [`CHANGELOG.md`](CHANGELOG.md): what changed in each App Store release.
 - [`docs/agents/hermes-server.md`](docs/agents/hermes-server.md): how Hermex signs in to a Hermes host and reconnects.
 - [`docs/agents/push.md`](docs/agents/push.md): the push components and the data the relay sees.
 - [`docs/agents/`](docs/agents): the other agent conventions and feature notes.
-- [`TESTFLIGHT.md`](TESTFLIGHT.md): maintainer-only TestFlight and App Store Connect operations.
+- [`TESTFLIGHT.md`](TESTFLIGHT.md): the maintainer release runbook, TestFlight and App Store Connect operations.
 - [`SECURITY.md`](SECURITY.md): how to report a vulnerability.
 - [GitHub Issues](https://github.com/uzairansaruzi/hermex/issues): the roadmap, active bugs, and feature requests.
 

@@ -1739,7 +1739,6 @@ struct SidebarNavButton: View {
 }
 
 struct SidebarDisclosureButton<Accessory: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: String
     let assetImage: String
     let isExpanded: Bool
