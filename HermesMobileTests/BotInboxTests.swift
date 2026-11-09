@@ -81,6 +81,9 @@ import SwiftUI
         let other = try peerRow(alias: "second", reachable: true)
         let rows = BotInbox.flatRoster(locals: [local], peers: [peer, other, peer])
         XCTAssertEqual(rows.map(\.name), ["Cindy", "Cindy", "Cindy"])
+        XCTAssertEqual(Set(rows.map(\.spokenName)).count, 3)
+        XCTAssertTrue(rows[1].spokenName.contains("other"))
+        XCTAssertFalse(try peerRow(alias: "other", reachable: false).spokenName.contains("?"))
         XCTAssertEqual(Set(rows.map(\.rosterID)).count, 3)
         XCTAssertEqual(rows.count, 3)
     }

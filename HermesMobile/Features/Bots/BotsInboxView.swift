@@ -222,6 +222,7 @@ import SwiftUI
                             }
                         }
                         .disabled(!bot.reachable || inbox.link != .live)
+                        .accessibilityLabel(bot.spokenName)
                     }
                 }
                 chatRows((inbox.pinned + inbox.sections.flatMap(\.chats)).filter {

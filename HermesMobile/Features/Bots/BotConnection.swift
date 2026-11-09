@@ -203,6 +203,8 @@ struct BotProfile: Identifiable, Hashable {
     let peer: BotPeer?
     var rosterID: String { peer.map { "peer:" + $0.identity } ?? "local:" + id }
     var reachable: Bool { peer?.reachable ?? true }
+    /// VoiceOver identity. A peer adds its alias and profile so a shared display name is not ambiguous.
+    var spokenName: String { peer.map { "\(name), \($0.rosterDetail)" } ?? name }
     let name: String
     let title: String?
     let displayName: String?
@@ -326,7 +328,7 @@ struct BotPeer: Codable, Hashable, Sendable {
     var unavailableReason: String? { reachable ? nil : reachability.capitalized }
     var rosterDetail: String {
         let origin = peerAlias + " / " + profile
-        return unavailableReason.map { origin + " ? " + $0 } ?? origin
+        return unavailableReason.map { origin + " · " + $0 } ?? origin
     }
     let installationID: String?
     let roomLink: RoomLink?

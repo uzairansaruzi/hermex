@@ -90,7 +90,7 @@ import SwiftUI
                         .padding(.vertical, 6)
                     }
                     .disabled(creator.selected.count >= 6 || !bot.reachable)
-                    .accessibilityLabel("Add \(bot.name)")
+                    .accessibilityLabel("Add \(bot.spokenName)")
                 }
             }
         }
@@ -110,7 +110,7 @@ import SwiftUI
             .padding(8).background(.quaternary, in: Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Remove \(bot.name)")
+        .accessibilityLabel("Remove \(bot.spokenName)")
     }
     private var nameStep: some View {
         ScrollView {
