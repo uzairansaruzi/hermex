@@ -1276,7 +1276,7 @@
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [],
-      "target": "Un bot que has escollit ja no pot entrar en xats de grup en aquest Hermes. Torna enrere i torna'l a escollir."
+      "target": "Un bot que has escollit ja no pot entrar en xats de grup en aquest Hermes. Torna enrere i torna a triar."
     },
     {
       "id": "Localizable::Some bots can’t join group chats on this Hermes, so they aren’t listed.",

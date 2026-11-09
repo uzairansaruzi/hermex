@@ -776,7 +776,7 @@
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [],
-      "target": "Alguna persona té aquesta pantalla. La perdrà immediatament i tot el que tingui obert s'tancarà."
+      "target": "Alguna persona té aquesta pantalla. La perdrà immediatament i tot el que tingui obert es tancarà."
     },
     {
       "id": "Localizable::Sprout",
