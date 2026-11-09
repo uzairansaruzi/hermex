@@ -454,7 +454,7 @@
           "line": 244
         }
       ],
-      "target": "Comet"
+      "target": "Fes commit"
     },
     {
       "id": "Localizable::Commit %@",
@@ -487,7 +487,7 @@
           "line": 193
         }
       ],
-      "target": "Commit %@"
+      "target": "Fes commit de %@"
     },
     {
       "id": "Localizable::Commit & Push",
@@ -530,7 +530,7 @@
           "line": 11
         }
       ],
-      "target": "Comet i fes push"
+      "target": "Fes commit i fes push"
     },
     {
       "id": "Localizable::Commit & push complete",
@@ -553,7 +553,7 @@
           "line": 1644
         }
       ],
-      "target": "S'ha comès i s'ha fet push."
+      "target": "S'ha fet commit i s'ha fet push."
     },
     {
       "id": "Localizable::Commit Changes",
@@ -576,7 +576,7 @@
           "line": 37
         }
       ],
-      "target": "Comet els canvis"
+      "target": "Canvis per fer commit"
     },
     {
       "id": "Localizable::Commit Selected",
@@ -599,7 +599,7 @@
           "line": 235
         }
       ],
-      "target": "Comet els seleccionats"
+      "target": "Fes commit dels seleccionats"
     },
     {
       "id": "Localizable::Commit and push",
@@ -622,7 +622,7 @@
           "line": 60
         }
       ],
-      "target": "Comet i fes push"
+      "target": "Fes commit i fes push"
     },
     {
       "id": "Localizable::Commit complete",
@@ -645,7 +645,7 @@
           "line": 1644
         }
       ],
-      "target": "S'ha completat la comissió."
+      "target": "S'ha fet commit."
     },
     {
       "id": "Localizable::Commit message",
@@ -668,7 +668,7 @@
           "line": 199
         }
       ],
-      "target": "Missatge de comissió"
+      "target": "Missatge de commit"
     },
     {
       "id": "Localizable::Commit or discard first.",
@@ -695,7 +695,7 @@
           "line": 697
         }
       ],
-      "target": "Primer comet-ho o descarta-ho."
+      "target": "Fes commit o descarta-ho primer."
     },
     {
       "id": "Localizable::Committed — push failed",
@@ -718,7 +718,7 @@
           "line": 1643
         }
       ],
-      "target": "Comès — el push ha fallat"
+      "target": "S'ha fet commit — el push ha fallat"
     },
     {
       "id": "Localizable::Committed, but some files couldn’t be staged again.",
@@ -741,7 +741,7 @@
           "line": 956
         }
       ],
-      "target": "S'ha comès, però alguns fitxers no s'han pogut tornar a preparar."
+      "target": "S'ha fet commit, però alguns fitxers no s'han pogut tornar a preparar."
     },
     {
       "id": "Localizable::Committed, but the push failed.",
@@ -764,7 +764,7 @@
           "line": 968
         }
       ],
-      "target": "S'ha comès, però el push ha fallat."
+      "target": "S'ha fet commit, però el push ha fallat."
     },
     {
       "id": "Localizable::Committing...",
@@ -791,7 +791,7 @@
           "line": 705
         }
       ],
-      "target": "S'està cometent..."
+      "target": "S'està fent el commit..."
     },
     {
       "id": "Localizable::Compared with branch base",

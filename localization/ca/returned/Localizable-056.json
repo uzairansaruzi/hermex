@@ -284,7 +284,7 @@
           "line": 58
         }
       ],
-      "target": "Això elimina els canvis locals sense cometre i suprimeix els fitxers no seguits. No es pot desfer."
+      "target": "Això elimina els canvis locals sense fer commit i suprimeix els fitxers no seguits. No es pot desfer."
     },
     {
       "id": "Localizable::This removes local uncommitted changes. This cannot be undone.",
@@ -307,7 +307,7 @@
           "line": 59
         }
       ],
-      "target": "Això elimina els canvis locals sense cometre. No es pot desfer."
+      "target": "Això elimina els canvis locals sense fer commit. No es pot desfer."
     },
     {
       "id": "Localizable::This removes the scheduled task from the Hermes server.",
@@ -1004,7 +1004,7 @@
           "line": 1750
         }
       ],
-      "target": "Aquest espai de treball té canvis sense cometre. Desa'ls temporalment, canvia de branca i després restaura els canvis desats per a la branca de destinació."
+      "target": "Aquest espai de treball té canvis sense fer commit. Desa'ls temporalment, canvia de branca i després restaura els canvis desats per a la branca de destinació."
     },
     {
       "id": "Localizable::Thread",

@@ -661,7 +661,7 @@
           "line": 110
         }
       ],
-      "target": "Mostra els canvis pendents de cometre dels fitxers que ha tocat aquest torn. La feina que l'agent ja ha comès no es mostra."
+      "target": "Mostra els canvis sense fer commit dels fitxers que ha tocat aquest torn. La feina que l'agent ja ha inclòs en un commit no es mostra."
     },
     {
       "id": "Localizable::Sign-in",

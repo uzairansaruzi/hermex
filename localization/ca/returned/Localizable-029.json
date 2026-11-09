@@ -274,7 +274,7 @@
       "extractionState": null,
       "surface": "shared-catalog",
       "sourceReferences": [],
-      "target": "Amaga el menú de git, el selector de branca i els controls de comissió."
+      "target": "Amaga el menú de git, el selector de branca i els controls de commit."
     },
     {
       "id": "Localizable::High",

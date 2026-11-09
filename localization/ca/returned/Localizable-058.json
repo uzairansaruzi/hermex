@@ -229,7 +229,7 @@
           "line": 88
         }
       ],
-      "target": "Pendent de cometre"
+      "target": "Sense commit"
     },
     {
       "id": "Localizable::Uncommitted Changes",
@@ -252,7 +252,7 @@
           "line": 1749
         }
       ],
-      "target": "Canvis pendents de cometre"
+      "target": "Canvis pendents de fer commit"
     },
     {
       "id": "Localizable::Undo",

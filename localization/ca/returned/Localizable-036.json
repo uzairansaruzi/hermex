@@ -76,7 +76,7 @@
           "line": 200
         }
       ],
-      "target": "No hi ha canvis comesos respecte a la base de la branca."
+      "target": "No s'ha fet commit de cap canvi respecte a la base de la branca."
     },
     {
       "id": "Localizable::No key",

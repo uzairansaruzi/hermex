@@ -883,8 +883,8 @@
         }
       ],
       "target": {
-        "one": "Mostra la primera %lld línia",
-        "other": "Mostra les primeres %lld línies"
+        "one": "Mostra %lld línia inicial",
+        "other": "Mostra les %lld primeres línies"
       }
     },
     {

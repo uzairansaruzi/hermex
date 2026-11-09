@@ -1023,7 +1023,7 @@
           "line": 1740
         }
       ],
-      "target": "El pull només fa avançament ràpid i no crearà cap comissió de fusió."
+      "target": "El pull només fa avançament ràpid i no crearà cap commit de fusió."
     },
     {
       "id": "Localizable::Pulling...",
@@ -1171,7 +1171,7 @@
           "line": 1738
         }
       ],
-      "target": "Vols fer push de les comissions locals?"
+      "target": "Vols fer push dels commits locals?"
     },
     {
       "id": "Localizable::Push after commit",
@@ -1194,7 +1194,7 @@
           "line": 226
         }
       ],
-      "target": "Fes push després de cometre"
+      "target": "Fes push després del commit"
     },
     {
       "id": "Localizable::Push complete",

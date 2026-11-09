@@ -644,7 +644,7 @@
           "line": 92
         }
       ],
-      "target": "Canvis sense cometre"
+      "target": "Canvis sense commit"
     },
     {
       "id": "Localizable::Use %@’s Headers",

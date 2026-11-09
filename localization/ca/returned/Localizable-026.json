@@ -1297,7 +1297,7 @@
           "line": 693
         }
       ],
-      "target": "Prepara o treu de l'índex completament els fitxers parcialment preparats o canviats de nom abans de cometre els fitxers seleccionats"
+      "target": "Prepara o treu de l'índex completament els fitxers parcialment preparats o canviats de nom abans de fer commit dels fitxers seleccionats"
     }
   ]
 }

@@ -260,7 +260,7 @@
           "line": 451
         }
       ],
-      "target": "Hi ha massa canvis per fer una comissió ràpida (més de 500 fitxers). Fes-la en lots més petits o fes servir git directament."
+      "target": "Hi ha massa canvis per fer un commit ràpid (més de 500 fitxers). Fes-ho en lots més petits o fes servir git directament."
     },
     {
       "id": "Localizable::Too many changes to quick-commit. Commit in smaller batches, or use git directly.",
@@ -283,7 +283,7 @@
           "line": 1663
         }
       ],
-      "target": "Hi ha massa canvis per fer una comissió ràpida. Fes-la en lots més petits o fes servir git directament."
+      "target": "Hi ha massa canvis per fer un commit ràpid. Fes-ho en lots més petits o fes servir git directament."
     },
     {
       "id": "Localizable::Too many sign-in attempts. Wait a minute, then try again.",

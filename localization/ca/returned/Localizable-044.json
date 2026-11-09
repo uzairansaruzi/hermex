@@ -409,7 +409,7 @@
           "line": 686
         }
       ],
-      "target": "Resol els conflictes abans de cometre els fitxers seleccionats"
+      "target": "Resol els conflictes abans de fer commit dels fitxers seleccionats"
     },
     {
       "id": "Localizable::Resolve conflicts before committing",
@@ -432,7 +432,7 @@
           "line": 685
         }
       ],
-      "target": "Resol els conflictes abans de cometre"
+      "target": "Resol els conflictes abans de fer commit"
     },
     {
       "id": "Localizable::Responding",

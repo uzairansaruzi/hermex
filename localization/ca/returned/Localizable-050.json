@@ -440,7 +440,7 @@
           "line": 687
         }
       ],
-      "target": "Prepara els canvis abans de cometre"
+      "target": "Prepara els canvis abans de fer commit"
     },
     {
       "id": "Localizable::Staged",
