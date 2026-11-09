@@ -79,6 +79,7 @@ struct ChatDraft: Equatable, Sendable {
     var botSubmissionUncertain = false
     var peerRequestID: String?
     var peerRequestText: String?
+    var peerRequestInstallation: String?
     var lastUsedAt: Date?
     /// The shares (`SharedImportReservation.occurrenceID`s) already moved into this draft,
     /// so a retried or replayed share isn't added twice (#1181, #1197). Rides along with the content; never
@@ -423,6 +424,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         var botSubmissionUncertain: Bool?
         var peerRequestID: String?
         var peerRequestText: String?
+        var peerRequestInstallation: String?
         var sharedImportIDs: [String]?
         /// Written before #1476, which records `textOrigin` instead; true reads as a Shortcut's.
         var fromShortcut: Bool?
@@ -440,7 +442,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case quotes
             case attachments
             case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut, textOrigin
-            case peerRequestID, peerRequestText
+            case peerRequestID, peerRequestText, peerRequestInstallation
             case waitingSendText, waitingSendCreatedAt
         }
 
@@ -471,6 +473,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             }
             lastUsedAt = draft.lastUsedAt
             peerRequestID = draft.peerRequestID; peerRequestText = draft.peerRequestText
+            peerRequestInstallation = draft.peerRequestInstallation
             botSubmissionUncertain = draft.botSubmissionUncertain
             text = draft.text
             quotes = draft.quotes.map { FailableQuote(value: QuoteRecord($0)) }
@@ -497,6 +500,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 ?? (["bot", "hermesSession"].contains(context) && container.contains(.botSubmissionUncertain))
             peerRequestID = try? container.decodeIfPresent(String.self, forKey: .peerRequestID)
             peerRequestText = try? container.decodeIfPresent(String.self, forKey: .peerRequestText)
+            peerRequestInstallation = try? container.decodeIfPresent(String.self, forKey: .peerRequestInstallation)
             text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? nil
             quotes = (try? container.decodeIfPresent([FailableQuote].self, forKey: .quotes)) ?? nil
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
@@ -551,6 +555,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 settings: settings?.settings,
                 botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
                 peerRequestID: peerRequestID, peerRequestText: peerRequestText,
+                peerRequestInstallation: peerRequestInstallation,
                 lastUsedAt: lastUsedAt,
                 sharedImportIDs: Set(sharedImportIDs ?? []),
                 textOrigin: textOrigin.flatMap(ImportedTextOrigin.init(rawValue:)) ?? (fromShortcut == true ? .shortcut : nil),
@@ -698,10 +703,14 @@ final class ChatDraftStore {
 
     /// Persist the delivery identity before dispatch so an explicit retry after relaunch
     /// uses the same request ID and payload. Only a peer context can hold it.
-    func setPeerRequest(id: String, text: String, for key: ChatDraftKey) {
+    func setPeerRequest(id: String, text: String, installation: String? = nil, for key: ChatDraftKey) {
         guard case .peer = key.context else { return }
         markChangedBeforeLoad(key)
-        updateDraft(for: key) { $0.peerRequestID = id; $0.peerRequestText = text }
+        updateDraft(for: key) {
+            $0.peerRequestID = id
+            $0.peerRequestText = text
+            $0.peerRequestInstallation = installation
+        }
     }
 
     /// Marks a Bot Chat or Hermes session prompt sent with its outcome unknown (#508).
@@ -943,6 +952,7 @@ final class ChatDraftStore {
             // A confirmed peer delivery must not remain a retry of that same request.
             draft.peerRequestID = nil
             draft.peerRequestText = nil
+            draft.peerRequestInstallation = nil
         }
     }
 

@@ -231,6 +231,8 @@ import UIKit
     private var routeFailures = 0
     private static let routeFailuresBeforeAdvice = 3
     private var reloadTask: Task<Void, Never>?
+    /// Peer roster reads must not hold the local roster or New Chat behind a slow host.
+    private var peerReloadTask: Task<Void, Never>?
     private var reloadWanted = false
     private var reloadSerial = 0
     /// False once the host answered `session.active_list` with "method not found";
@@ -423,12 +425,17 @@ import UIKit
             routeFailures = 0; routeAdvice = nil
             recordInstallID(opened.serverInstallID, for: saved)
             guard await reload(opened) else { return }
+            // Local profiles are already published. Do not leave New Chat disabled while
+            // the peer roster is still in flight.
+            link = .live
+            reconnect.succeeded()
+            let peers = peerReloadTask
             // The status read runs beside rooms and avatars; nothing above waits for it.
             let statuses = statusPollTask
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
-            link = .live
-            reconnect.succeeded()
+            await peers?.value
+            guard wire === opened, !Task.isCancelled else { return }
             await refreshAvatars(opened)
             // A pull-to-refresh ends once the fresh statuses are in, too.
             await statuses?.value
@@ -511,6 +518,7 @@ import UIKit
         openSerial += 1
         reconnect.cancel()
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
+        peerReloadTask?.cancel(); peerReloadTask = nil
         statusPollTask?.cancel(); statusPollTask = nil
         wire?.close(); wire = nil
         link = .idle
@@ -663,20 +671,8 @@ import UIKit
             let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
-            // Older hosts may not implement peers. Only a method-not-found is an empty
-            // peer roster; transient failures keep known peers visible but unavailable.
-            var peerRows: [BotJSON]
-            do {
-                let result = try await client.call(.peersRoster)
-                guard let bots = result["bots"].list else { throw BotFailure.unsupported }
-                peerRows = bots
-            } catch {
-                peerRows = peers.compactMap { $0.peer?.unavailable.json }
-                if client.unavailableMethods.contains("peers.roster") || (error as? BotFailure) == .rejected(-32601) { peerRows = [] }
-            }
             guard wire === client, serial == reloadSerial, !Task.isCancelled else { return false }
             profiles = Self.roster(rows)
-            peers = Self.peerRoster(peerRows)
             setReconnecting(false)
             if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
@@ -697,15 +693,41 @@ import UIKit
                 guard wire === client, serial == reloadSerial else { return false }
             }
             if let scope {
-                await rosterCache.save(rows + peerRows, scope: scope, readAt: readAt)
+                await rosterCache.save(rows, scope: scope, readAt: readAt)
                 guard wire === client, serial == reloadSerial else { return false }
             }
             startLiveStatusRead(client)
+            startPeerReload(client, serial: serial, localRows: rows, scope: scope, readAt: readAt)
             return true
         } catch {
             guard wire === client, serial == reloadSerial else { return false }
             drop(client, error: error)
             return false
+        }
+    }
+
+    /// Reads peers after the local roster is already visible. A missing method is an
+    /// empty peer list; a stall or transient failure leaves known peers unavailable.
+    private func startPeerReload(_ client: any BotTransport, serial: Int, localRows: [BotJSON],
+                                 scope: BotRosterCache.Scope?, readAt: ContinuousClock.Instant) {
+        peerReloadTask?.cancel()
+        peerReloadTask = Task { [weak self] in
+            guard let self else { return }
+            var peerRows: [BotJSON]
+            do {
+                let result = try await client.call(.peersRoster)
+                guard !Task.isCancelled, let bots = result["bots"].list else { throw BotFailure.unsupported }
+                peerRows = bots
+            } catch {
+                guard !Task.isCancelled else { return }
+                peerRows = self.peers.compactMap { $0.peer?.unavailable.json }
+                if client.unavailableMethods.contains("peers.roster") || (error as? BotFailure) == .rejected(-32601) { peerRows = [] }
+            }
+            guard !Task.isCancelled, self.wire === client, self.reloadSerial == serial else { return }
+            self.peers = Self.peerRoster(peerRows)
+            if let scope {
+                await self.rosterCache.save(localRows + peerRows, scope: scope, readAt: readAt)
+            }
         }
     }
 
@@ -973,6 +995,7 @@ import UIKit
     /// `routeAdvice` if the host stays unreachable.
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
+        peerReloadTask?.cancel(); peerReloadTask = nil
         statusPollTask?.cancel(); statusPollTask = nil
         client.close(); wire = nil
         link = .disconnected

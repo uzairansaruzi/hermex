@@ -398,6 +398,14 @@ struct BotPeer: Codable, Hashable, Sendable {
     }
 }
 
+/// A saved retry belongs to the installation that was current when it was attempted.
+enum BotPeerRetry {
+    static func matchesInstallation(_ saved: String?, _ fresh: String?) -> Bool {
+        guard let saved, let fresh else { return true }
+        return saved == fresh
+    }
+}
+
 /// An acknowledgement must belong to the selected route and name the canonical session.
 struct BotPeerDelivery {
     let status: String

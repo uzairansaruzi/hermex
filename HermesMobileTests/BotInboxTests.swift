@@ -50,16 +50,40 @@ import SwiftUI
         let persistence = ChatDraftFilePersistence(directoryURL: rosterRoot)
         let store = ChatDraftStore(persistence: persistence)
         store.setDraft("Unsent", for: key)
-        store.setPeerRequest(id: "same-request", text: "Unsent", for: key)
+        store.setPeerRequest(id: "same-request", text: "Unsent", installation: "install-a", for: key)
         try await store.flush()
         let restored = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: rosterRoot))
         let draft = await restored.draft(for: key)
         XCTAssertEqual(draft?.text, "Unsent")
         XCTAssertEqual(draft?.peerRequestID, "same-request")
         XCTAssertEqual(draft?.peerRequestText, "Unsent")
+        XCTAssertEqual(draft?.peerRequestInstallation, "install-a")
         let wrongServer = ChatDraftKey.peer(server: URL(string: "https://two.example")!, connectionID: connectionID, peer: peer)
         let absent = await restored.draft(for: wrongServer)
         XCTAssertNil(absent)
+    }
+
+    func testLocalRosterStaysUsableWhilePeerRosterIsHeld() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("local")])
+        wire.holdsPeers = true
+        wire.peerRows = [try XCTUnwrap(try peerRow(alias: "remote", reachable: true).peer).json]
+        let inbox = try makeInbox(wires: [wire])
+        let held = expectation(description: "peer roster held")
+        wire.onCall = { if $0 == "peers.roster" { held.fulfill() } }
+        let opened = Task { await inbox.open() }
+        await fulfillment(of: [held], timeout: 5)
+        let deadline = Date().addingTimeInterval(2)
+        while inbox.link != .live, Date() < deadline {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(inbox.link, .live)
+        XCTAssertEqual(inbox.profiles.map(\.id), ["local"])
+        XCTAssertTrue(inbox.mayEdit(try XCTUnwrap(inbox.profiles.first)))
+        XCTAssertTrue(inbox.peers.isEmpty, "A stalled peer roster must not hide the local bots")
+        wire.holdsPeers = false
+        wire.release()
+        await opened.value
+        XCTAssertEqual(inbox.peers.map(\.peer?.peerAlias), ["remote"])
     }
 
     func testConfirmedPeerDeliveryRetiresItsRetryIdentity() async throws {
@@ -72,6 +96,7 @@ import SwiftUI
         let draft = await store.draft(for: key)
         XCTAssertNil(draft?.peerRequestID)
         XCTAssertNil(draft?.peerRequestText)
+        XCTAssertNil(draft?.peerRequestInstallation)
         XCTAssertNil(draft)
     }
 
@@ -139,6 +164,12 @@ import SwiftUI
         XCTAssertNil(BotPeerDelivery(receipt("opaque", "unknown"), routeID: "opaque"))
         XCTAssertNil(BotPeerDelivery(receipt("opaque", "completed", ""), routeID: "opaque"))
         XCTAssertNil(BotPeerDelivery(.object(["ok": .bool(true)]), routeID: "opaque"))
+    }
+
+    func testPeerRetryStaysOnTheAttemptedInstallation() {
+        XCTAssertTrue(BotPeerRetry.matchesInstallation("install", "install"))
+        XCTAssertTrue(BotPeerRetry.matchesInstallation(nil, "other"), "An unknown attempt cannot prove a move")
+        XCTAssertFalse(BotPeerRetry.matchesInstallation("install", "other"))
     }
 
     private func peerRow(alias: String, reachable: Bool) throws -> BotProfile {
@@ -1683,6 +1714,8 @@ import SwiftUI
     /// Calls made from an already cancelled task, which the real client refuses as stale.
     private(set) var cancelledCalls = 0
     var onCall: ((String) -> Void)?
+    /// While true, `peers.roster` waits for `release()`.
+    var holdsPeers = false
     /// While true, `profiles.list` waits for `release()`.
     var holdsList = false
     /// Live runtimes for `session.active_list`; nil answers "method not found", as an older host does.
@@ -1740,7 +1773,9 @@ import SwiftUI
             return try roomCommand(method, params)
         case "groups.list":
             return .object(["rooms": .array(rooms ?? [])])
-        case "peers.roster": return .object(["bots": .array(peerRows)])
+        case "peers.roster":
+            if holdsPeers { await withCheckedContinuation { held.append($0) } }
+            return .object(["bots": .array(peerRows)])
         case "profiles.list":
             if holdsList { await withCheckedContinuation { held.append($0) } }
             return .object(["profiles": .array(roster), "bot_mode_protocol": .bool(true)])

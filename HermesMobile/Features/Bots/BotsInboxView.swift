@@ -1022,6 +1022,7 @@ enum BotInboxDateLabel {
     @State private var owner = UUID()
     @State private var requestID = UUID().uuidString
     @State private var attemptedText: String?
+    @State private var attemptedInstallation: String?
     @State private var reply: String?
     private var key: ChatDraftKey { .peer(server: server, connectionID: connection.id, peer: peer) }
     private var available: Bool { currentPeer()?.reachable == true }
@@ -1045,7 +1046,11 @@ enum BotInboxDateLabel {
             let draft = await ChatDraftStore.shared.draft(for: key)
             guard !Task.isCancelled else { return }
             text = draft?.text ?? ""
-            if let id = draft?.peerRequestID { requestID = id; attemptedText = draft?.peerRequestText }
+            if let id = draft?.peerRequestID {
+                requestID = id
+                attemptedText = draft?.peerRequestText
+                attemptedInstallation = draft?.peerRequestInstallation
+            }
             loaded = true
         }
         .onChange(of: text) {
@@ -1066,22 +1071,29 @@ enum BotInboxDateLabel {
         let client = BotClient(saved: connection, server: server)
         wire = client; busy = true; notice = nil
         let message = text
-        if attemptedText != message { requestID = UUID().uuidString; attemptedText = message }
+        if attemptedText != message {
+            requestID = UUID().uuidString
+            attemptedText = message
+            attemptedInstallation = peer.installationID
+        }
         defer { client.close(); if owner == token { wire = nil; busy = false } }
         func check() throws {
             guard owner == token, !Task.isCancelled, available,
                   try BotConnectionStore().load(server: server)?.id == connection.id else { throw BotFailure.stale }
         }
         do {
-            ChatDraftStore.shared.setPeerRequest(id: requestID, text: message, for: key)
+            ChatDraftStore.shared.setPeerRequest(id: requestID, text: message, installation: attemptedInstallation, for: key)
             try await ChatDraftStore.shared.flush()
             try check(); try await client.connect(); try check()
             let roster = try await client.call(.peersRoster)
             try check()
             guard let rows = roster["bots"].list,
-                  let fresh = BotInbox.peerRoster(rows).first(where: { $0.peer?.identity == peer.identity && $0.reachable })?.peer,
-                  peer.installationID == nil || peer.installationID == fresh.installationID else {
+                  let fresh = BotInbox.peerRoster(rows).first(where: { $0.peer?.identity == peer.identity && $0.reachable })?.peer else {
                 notice = "This peer is unavailable. Your draft is kept."
+                return
+            }
+            guard BotPeerRetry.matchesInstallation(attemptedInstallation, fresh.installationID) else {
+                notice = "This peer moved to another installation. Your draft is kept."
                 return
             }
             let result = try await client.call(.peersDM(routeID: fresh.id,
@@ -1092,7 +1104,7 @@ enum BotInboxDateLabel {
                 return
             }
             reply = result["reply"].text
-            text = ""; attemptedText = nil; requestID = UUID().uuidString
+            text = ""; attemptedText = nil; attemptedInstallation = nil; requestID = UUID().uuidString
             ChatDraftStore.shared.clearDraft(for: key)
             notice = result["status"].text == "queued" ? "Message queued" : "Message delivered"
         } catch {
