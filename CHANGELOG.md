@@ -7,7 +7,7 @@ Security sections per release.
 
 ## [Unreleased]
 
-## [2.1.0] - Unreleased
+## [2.1.0] - 2026-11-09
 
 Hermex now works with a Hermes Webapp ([#1341]). Add a host that serves its
 dashboard from the gateway, sign in, and chats, sessions and rooms run over the
@@ -15,8 +15,9 @@ Webapp's session protocol. When a Webapp serves only one Profile, Hermex says
 why and helps you fix it from the phone.
 
 ### Added
-- Appearance: themes, an accent color, an app-wide font, text size, and code
-  display settings. ([#1589], [#1591], [#1593])
+- Appearance: themes, an accent color, an app-wide font, text size, code
+  display settings, and 15 looks for the Thinking slider. ([#1554], [#1589],
+  [#1591], [#1593])
 - Bot Screen (beta, off until you turn it on for a server): watch a bot work
   and take over for a login, CAPTCHA or 2FA step. ([#1578])
 - Manage a server's plugins and browse the plugin marketplace from Settings.
