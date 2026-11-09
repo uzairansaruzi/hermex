@@ -46,7 +46,7 @@
         "ca": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Fragment %lld de %lld"
+            "value": "Pedaç %lld de %lld"
           }
         }
       },
