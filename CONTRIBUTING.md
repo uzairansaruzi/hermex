@@ -34,8 +34,7 @@ scripts/test-sim <simulator-udid> --only HermesMobileTests/<TestClass>
 Choose an available iPhone UDID from `xcrun simctl list devices available`.
 The runner builds a signed Debug app and runs tests serially on that device;
 see [Local XCTest](DEVELOPMENT.md#local-xctest) for focused tests and logs.
-The same suite runs in CI on every pull request with code signing disabled,
-so forks get green CI without any secrets.
+CI runs the suite with code signing disabled, so forks get green CI without any secrets.
 
 ## Code signing for contributors
 
