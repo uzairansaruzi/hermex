@@ -698,7 +698,7 @@
           "line": 288
         }
       ],
-      "target": "Vols deixar-lo en execució?"
+      "target": "Vols sortir de l'estat d'execució?"
     },
     {
       "id": "Localizable::Leave empty to use the host’s default instructions.",
@@ -748,7 +748,7 @@
           "line": 301
         }
       ],
-      "target": "Deixar-ho en execució pot esborrar la reserva i l'estat del treballador de la targeta."
+      "target": "Sortir de l'estat d'execució pot esborrar la reserva i l'estat del treballador de la targeta."
     },
     {
       "id": "Localizable::Leaving the model on Server default lets the server use the selected profile's model.",

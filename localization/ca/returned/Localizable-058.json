@@ -1184,7 +1184,7 @@
           "line": 51
         }
       ],
-      "target": "Actualitza Hermex per canviar de sessió en aquest servidor."
+      "target": "Actualitza Hermex per modificar les sessions en aquest servidor."
     },
     {
       "id": "Localizable::Update available",

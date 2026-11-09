@@ -78,7 +78,7 @@
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [],
-      "target": "Això sobreescriu el connector instal·lat amb la comissió que es mostra aquí."
+      "target": "Això sobreescriu el connector instal·lat amb el commit que es mostra aquí."
     },
     {
       "id": "Localizable::This overwrites the installed plugin. Replacing also lets through anything Hermes's security scan marks as caution, without showing it to you. A dangerous result is still blocked.",

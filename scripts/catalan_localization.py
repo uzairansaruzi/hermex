@@ -245,20 +245,22 @@ def validate_package(
     if source_names != expected_names or returned_names != expected_names:
         raise PackageError("Source or returned files do not match the manifest")
 
-    if repo is not None:
-        actual_revision = subprocess.check_output(
-            ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
-        ).strip()
-        if check_source_hashes:
-            if actual_revision != manifest.get("sourceRevision"):
-                raise PackageError(
-                    f"Stale package: expected {manifest.get('sourceRevision')}, found {actual_revision}"
-                )
-            for item in manifest.get("sourceFiles", []):
-                path = repo / item["path"]
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                if digest != item["sha256"]:
-                    raise PackageError(f"Source changed since extraction: {item['path']}")
+    if repo is not None and check_source_hashes:
+        try:
+            actual_revision = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+            ).strip()
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise PackageError(f"Cannot read repository revision: {error}") from error
+        if actual_revision != manifest.get("sourceRevision"):
+            raise PackageError(
+                f"Stale package: expected {manifest.get('sourceRevision')}, found {actual_revision}"
+            )
+        for item in manifest.get("sourceFiles", []):
+            path = repo / item["path"]
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if digest != item["sha256"]:
+                raise PackageError(f"Source changed since extraction: {item['path']}")
 
     errors: list[str] = []
     totals: Counter[str] = Counter()

@@ -646,7 +646,7 @@
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [],
-      "target": "Ningú ha revisat això. Hermes baixarà aquest codi i l'executarà al teu amfitrió, amb el mateix accés que Hermes. Instal·la la darrera comissió, no una fixada."
+      "target": "Ningú ha revisat això. Hermes baixarà aquest codi i l'executarà al teu amfitrió, amb el mateix accés que Hermes. Instal·la el darrer commit, no un commit fixat."
     },
     {
       "id": "Localizable::Nous maintains this plugin. It still runs on your host with the same access as Hermes.",
@@ -723,7 +723,7 @@
       "extractionState": null,
       "surface": "main-app",
       "sourceReferences": [],
-      "target": "Nous ha revisat aquesta fitxa en aquesta comissió. Tot i això, s'executa al teu amfitrió amb el mateix accés que Hermes. Instal·la només allò en què confies."
+      "target": "Nous ha revisat aquesta fitxa en aquest commit. Tot i això, s'executa al teu amfitrió amb el mateix accés que Hermes. Instal·la només allò en què confies."
     },
     {
       "id": "Localizable::Nous verified this comes from the company whose product it integrates. It still runs on your host with the same access as Hermes.",

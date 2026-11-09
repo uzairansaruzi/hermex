@@ -25,7 +25,7 @@
           "line": 111
         }
       ],
-      "target": "Connecta't a aquest amfitrió en lloc."
+      "target": "Connecta't a aquest amfitrió"
     },
     {
       "id": "Localizable::Connect to your dashboard",
@@ -128,7 +128,7 @@
           "line": 121
         }
       ],
-      "target": "Connectar-te a aquest amfitrió en lloc esborra els esborranys, els xats en memòria cau i l'aparellament de notificacions d'aquesta connexió en aquest iPhone."
+      "target": "Connectar-te a aquest amfitrió esborra els esborranys, els xats en memòria cau i l'aparellament de notificacions d'aquesta connexió en aquest iPhone."
     },
     {
       "id": "Localizable::Connecting…",

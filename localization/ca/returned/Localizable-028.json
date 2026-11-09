@@ -482,8 +482,8 @@
         }
       ],
       "target": {
-        "one": "Hermes està instal·lant %lld comissió al teu amfitrió.",
-        "other": "Hermes està instal·lant %lld comissions al teu amfitrió."
+        "one": "Hermes està instal·lant %lld commit al teu amfitrió.",
+        "other": "Hermes està instal·lant %lld commits al teu amfitrió."
       }
     },
     {

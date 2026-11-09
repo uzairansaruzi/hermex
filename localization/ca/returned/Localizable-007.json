@@ -588,7 +588,7 @@
           "line": 109
         }
       ],
-      "target": "Compara la comissió de l'inici del torn amb els fitxers d'ara. S'hi inclouen els canvis que ja estaven pendents de cometre."
+      "target": "Compara el commit de l'inici del torn amb els fitxers d'ara. S'hi inclouen els canvis que ja estaven pendents de fer commit."
     },
     {
       "id": "Localizable::Comment…",

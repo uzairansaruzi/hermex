@@ -356,7 +356,7 @@
           "line": 230
         }
       ],
-      "target": "Aquesta sessió encara està responent aquí. Atura primer la resposta i després suprimeix-la."
+      "target": "Aquesta sessió encara està responent aquí. Atura primer la resposta i després suprimeix la sessió."
     },
     {
       "id": "Localizable::This session is open in another app, so nothing was deleted. Close it there, then try again.",

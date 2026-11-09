@@ -19,7 +19,9 @@ Registre: **tuteig**, català estàndard general, natural i sense formalitat exc
 
 ## Plurals
 
-Per a entrades estructurades, la traducció és un diccionari amb **exactament** les mateixes cases que la font (normalment `one`/`other`): `one` = singular català (1), `other` = plural (0, 2, 3…). Cada branca és la frase completa amb `%arg` al lloc del nombre.
+Per a entrades estructurades, la traducció és un diccionari amb **exactament** les mateixes cases que la font (normalment `one`/`other`): `one` = singular català (1), `other` = plural (0, 2, 3…). Cada branca és la frase completa.
+
+Cada branca conserva **els placeholders de la seva pròpia branca de la font**, no els de l'altra: si la branca `one` de la font no duu cap nombre, la traducció tampoc no n'hi ha de dur; si en duu (`%lld`, `%@`, `%arg`…), s'hi manté. L'importador compara cada branca amb la seva i rebutja el paquet sencer si no coincideixen.
 
 ## Termes protegits (NO es tradueixen)
 
@@ -102,6 +104,16 @@ Hermex, Hermes, hermes-webui, hermex-push, Dispatcher, Siri, VoiceOver, Tailscal
 | share extension | extensió de compartició |
 | push (notificacions) | push («notificacions push») |
 | side question | pregunta paral·lela |
+| commit (nom, Git) | **commit** (masc., pl. **commits**) |
+| commit (verb) | **fer commit** («Fes commit de %@», «Fes commit dels canvis») |
+| committed | **s'ha fet commit** (o la forma que demani la frase) |
+| uncommitted | **pendent de fer commit** / **sense fer commit** |
+| commit message | **missatge de commit** |
+| Committing… | **S'està fent el commit…** |
+| branch (Git) | **branca** |
+| push / pull (Git) | **push** / **pull** (sense traduir) |
+
+Git: «comissió», «comissions», «cometre», «comès» i «cometent» són **no preferits** — «comissió» és una comissió o una taxa, no un commit. Les files de Git del glossari del projecte duen aquests termes amb estat `non-preferred`.
 
 ## Decisions de context
 
@@ -118,6 +130,6 @@ Hermex, Hermes, hermes-webui, hermex-push, Dispatcher, Siri, VoiceOver, Tailscal
 ## Decisions de la revisió (31/10)
 
 - move (nom) → **trasllat** (mai «moviment»); path → **ruta**; media → **contingut multimèdia**; claim (Kanban) → **reserva**.
-- bloquejat/bloqueja (mai «blocat»); commit (verb): **comet**, participi **comès**; «darrer/darrera» (no «últim»).
+- bloquejat/bloqueja (mai «blocat»); commit (nom, Git): **commit**; commit (verb): **fer commit**, participi **s'ha fet commit** — des del 9/11 substitueix la decisió anterior («comet»/«comès», ara no preferida); «darrer/darrera» (no «últim»).
 - Botons dins de frases: entre «cometes baixes» («Permet durant la sessió», «Reprèn»).
 - Reasoning: Mínim / Baix / Mitjà / Alt / Molt alt / Màx.
