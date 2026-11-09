@@ -20,6 +20,7 @@ from typing import Any
 
 PLACEHOLDER_RE = re.compile(
     r"%%|"
+    r"%arg|"  # Apple's plural template token; without its own branch "%a" (hex float) eats it
     r"%(?:\d+\$)?[-+ #0']*\d*(?:\.\d+)?(?:hh|h|ll|l|q|L|z|t|j)?[@diuoxXfFeEgGaAcCsSp]|"
     r"%[A-Za-z_][A-Za-z0-9_]*|"
     r"\$\{[A-Za-z_][A-Za-z0-9_]*\}"

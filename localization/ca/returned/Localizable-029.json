@@ -1174,9 +1174,9 @@
         }
       },
       "placeholders": [
-        "%a",
+        "%arg",
         "%2$@",
-        "%a",
+        "%arg",
         "%2$@"
       ],
       "protectedTerms": [

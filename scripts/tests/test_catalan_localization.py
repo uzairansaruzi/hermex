@@ -52,6 +52,11 @@ class CatalanLocalizationTests(unittest.TestCase):
         errors = localization.validate_document_pair(source, returned)
         self.assertTrue(any("empty target" in error for error in errors))
 
+    def test_apple_plural_token_is_one_placeholder(self):
+        counts = localization.placeholder_counts("%arg chats in %2$@, %arg drafts")
+        self.assertEqual(counts, {"%arg": 2, "%2$@": 1})
+        self.assertEqual(localization.placeholder_counts("%a percent"), {"%a": 1})
+
     def test_duplicate_ids(self):
         source = document([entry(target=None), entry(target=None)])
         returned = document([entry(target="TARGET"), entry(target="TARGET")])
