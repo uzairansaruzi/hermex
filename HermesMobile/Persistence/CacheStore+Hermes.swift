@@ -33,10 +33,6 @@ extension CacheStore {
         "\(serverURL.absoluteString)|\(hermesScope(profile: profile, lineageRoot: lineageRoot))"
     }
 
-    static func hermesMessageKey(serverURL: URL, profile: String, lineageRoot: String, rowID: Int) -> String {
-        hermesMessageKey(serverURL: serverURL, scope: hermesScope(profile: profile, lineageRoot: lineageRoot), rowID: rowID)
-    }
-
     private static func hermesMessageKey(serverURL: URL, scope: String, rowID: Int) -> String {
         "\(serverURL.absoluteString)|\(scope)|row|\(rowID)"
     }

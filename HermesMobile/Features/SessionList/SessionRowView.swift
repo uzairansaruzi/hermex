@@ -650,14 +650,6 @@ enum SessionRowDisplaySettings {
     ) -> Bool {
         defaults.object(forKey: showClaudeCodeSessionsKey(for: server)) as? Bool ?? true
     }
-
-    static func showsSubagentSessions(in defaults: UserDefaults = .standard) -> Bool {
-        guard let stored = defaults.object(forKey: showSubagentSessionsKey) as? Bool else {
-            return defaultShowsSubagentSessions
-        }
-
-        return stored
-    }
 }
 
 enum SessionSidebarDisclosureSettings {
@@ -667,30 +659,6 @@ enum SessionSidebarDisclosureSettings {
     static let defaultProfilesAreExpanded = false
     static let defaultProjectsAreExpanded = false
     static let defaultScheduledSessionsAreExpanded = false
-
-    static func profilesAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: profilesAreExpandedKey) as? Bool else {
-            return defaultProfilesAreExpanded
-        }
-
-        return value
-    }
-
-    static func projectsAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: projectsAreExpandedKey) as? Bool else {
-            return defaultProjectsAreExpanded
-        }
-
-        return value
-    }
-
-    static func scheduledSessionsAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: scheduledSessionsAreExpandedKey) as? Bool else {
-            return defaultScheduledSessionsAreExpanded
-        }
-
-        return value
-    }
 }
 
 enum SessionIdentitySettings {

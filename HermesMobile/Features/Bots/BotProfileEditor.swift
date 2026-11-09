@@ -16,7 +16,6 @@ struct BotProfileDetails: Equatable, Sendable {
     var model: ModelCatalogOption?
     var skills: [BotProfileCapability]
     var toolsets: [BotProfileCapability]
-    var toolsetsPinned: Bool
     var mcpServers: [BotProfileCapability]
 
     init(_ payload: BotJSON, expectedName: String) {
@@ -32,7 +31,6 @@ struct BotProfileDetails: Equatable, Sendable {
             let count = row["tool_count"].integer.map { String($0) }
             return [description, count].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         }
-        toolsetsPinned = payload["toolsets_pinned"].flag == true
         mcpServers = Self.capabilities(payload["mcp_servers"], label: "name") { $0["transport"].text }
     }
 

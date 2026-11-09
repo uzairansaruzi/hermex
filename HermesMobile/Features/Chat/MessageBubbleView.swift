@@ -881,15 +881,6 @@ private struct GridAttachmentCell: View {
             )
     }
 
-    private var placeholderImage: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(.appFill))
-            .overlay(
-                ProgressView()
-                    .tint(Color(.appTextTertiary))
-            )
-    }
-
     private var fileExtensionLabel: String {
         let ext = URL(fileURLWithPath: attachment.name ?? "").pathExtension.uppercased()
         return ext.isEmpty ? String(localized: "FILE") : String(ext.prefix(5))

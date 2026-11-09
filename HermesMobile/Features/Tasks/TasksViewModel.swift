@@ -67,10 +67,13 @@ final class TasksViewModel {
         }
 
         do {
+            let changesBefore = listChanges
             async let listResponse = client.cronJobs()
             async let deliveryOptionsResponse = listDeliveryOptions()
 
-            show(try await listResponse)
+            // A read sent before a row's change or a newer list can't put the old state back.
+            let list = try await listResponse
+            if listChanges == changesBefore { show(list) }
             deliveryOptions = await deliveryOptionsResponse
         } catch {
             lastError = error

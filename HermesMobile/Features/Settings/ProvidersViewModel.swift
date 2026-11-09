@@ -43,6 +43,8 @@ final class ProvidersViewModel {
             // down) mid-request — don't surface "cancelled" as a load error.
         } catch let error as URLError where error.code == .cancelled {
             // Same cancellation, surfaced through URLSession.
+        } catch APIError.network(let underlying) where (underlying as? URLError)?.code == .cancelled {
+            // Same cancellation, as `APIClient` wraps it.
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription

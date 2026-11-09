@@ -61,7 +61,8 @@ private struct PluginSettingsForm: View {
     }
 
     private static func drafts(for plugin: HermesPlugin) -> [String: String] {
-        Dictionary(uniqueKeysWithValues: plugin.settings.map { ($0.key, $0.text) })
+        // A repeated key in the host's schema keeps its first entry instead of trapping.
+        return Dictionary(plugin.settings.map { ($0.key, $0.text) }, uniquingKeysWith: { first, _ in first })
     }
 
     private var problems: [String: String] {

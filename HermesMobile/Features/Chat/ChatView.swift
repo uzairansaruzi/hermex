@@ -366,8 +366,6 @@ struct ChatView: View {
     /// scrolls are suspended so a disclosure toggle grows or shrinks in place.
     @State private var isDisclosureSettling = false
     @State private var disclosureSettleGeneration = 0
-    /// Settled turns the user has opened, plus failed or stopped turns, which
-    /// start open. Keyed by turn so paging older messages in does not shift them.
     @State private var transcriptStructureMemo = TranscriptStructureMemo()
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
@@ -1419,7 +1417,6 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showEditSheet) {
                 EditMessageSheet(
-                    originalText: editContext?.copyText ?? "",
                     editDraft: $editDraft,
                     onSubmit: {
                         if let context = editContext {
@@ -2171,8 +2168,12 @@ struct ChatView: View {
 
     /// Where the draft's added text came from while its notice shows: the draft holds that text,
     /// or a removal of its hidden characters can still be undone, even one that took all of it.
+    /// `body` reads this, so the draft is read only when there is an origin to show; see
+    /// `draftMessage`.
     private var shownTextOrigin: ImportedTextOrigin? {
-        textBeforeHiddenRemoval?.origin ?? (draftMessage.isEmpty ? nil : textOrigin)
+        if let removed = textBeforeHiddenRemoval { return removed.origin }
+        guard let textOrigin, !draftMessage.isEmpty else { return nil }
+        return textOrigin
     }
 
     private var showsShortcutProvenance: Bool { shownTextOrigin != nil }
@@ -2798,11 +2799,9 @@ struct ChatView: View {
         await hydrateDraftIfNeeded()
         prepareInitialAppearance()
 
-        guard ChatInitialAppearancePolicy.shouldBeginAsyncWork(
-            hasCompletedAppearance: didCompleteInitialAppearance
-        ) else {
-            return
-        }
+        // Keeps transcript reconciliation and other state-heavy startup work out of the
+        // system navigation transition; the cache and the transcript request went out above.
+        guard didCompleteInitialAppearance else { return }
 
         async let chatStartup: Void = performInitialAsyncWork()
         async let gitAvailability: Void = loadInitialGitAvailability()

@@ -3,6 +3,7 @@ import UIKit
 
 struct AppIconSettingsSection: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedAppIcon = AppIconChoice.system
     @State private var updatingAppIcon: AppIconChoice?
     @State private var appIconErrorMessage: String?
@@ -69,7 +70,7 @@ struct AppIconSettingsSection: View {
 
         UIApplication.shared.setAlternateIconName(appIcon.alternateIconName) { error in
             Task { @MainActor in
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .default) {
                     updatingAppIcon = nil
 
                     if let error {

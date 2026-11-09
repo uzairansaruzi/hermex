@@ -153,7 +153,6 @@ struct MessageComposerView: View {
     @Environment(\.composerViewportIsShort) private var viewportIsShort
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
@@ -530,8 +529,7 @@ struct MessageComposerView: View {
         composerSelection = composerSelection.moved(to: completed.selection)
     }
 
-    /// A row the user tapped in the `/` panel: completes it with a selection
-    /// tick. Dismissing the panel calls `applyCompletion` directly, silently.
+    /// A row the user tapped in the `/` panel: completes it with a selection tick.
     private func pickCompletion(_ replacement: String) {
         applyCompletion(replacement)
         ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
@@ -690,9 +688,6 @@ struct MessageComposerView: View {
                                    completion.applies(to: trigger.text) {
                                     pickCompletion(completion.applying(item))
                                 }
-                            },
-                            onDismiss: {
-                                applyCompletion("")
                             }
                         )
                         .padding(.horizontal)
@@ -1221,6 +1216,7 @@ struct MessageComposerView: View {
             isDisabled: isVoiceInputDisabled,
             color: metaControlColor,
             isRecordingVoiceNote: voiceNoteRecorder.isRecording,
+            supportsVoiceNotes: showsSessionControls,
             onTap: toggleVoiceInput,
             onRecordingStart: { startVoiceNoteRecording() },
             // A note started from `+` ends at its bar's buttons, so a hold on the mic can't touch it.
@@ -1408,10 +1404,6 @@ struct MessageComposerView: View {
                 showsPicker: $showsGitBranchPicker
             )
         }
-    }
-
-    private var usesAccessibilityLayout: Bool {
-        dynamicTypeSize.isAccessibilitySize
     }
 
     private var metaControlFont: Font {

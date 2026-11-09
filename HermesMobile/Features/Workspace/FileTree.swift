@@ -101,10 +101,6 @@ struct FileTree: Equatable {
         }
     }
 
-    mutating func removeAll() {
-        children.removeAll()
-    }
-
     /// Directories first, then Finder-style natural order (case-insensitive, numeric-aware).
     static func sorted(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
         nodes.sorted { left, right in

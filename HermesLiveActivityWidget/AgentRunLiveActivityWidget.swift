@@ -203,7 +203,7 @@ private struct AgentRunLockScreenView: View {
 
         if context.presentedState.isStale {
             // Stale webui names the card as stale. A disconnected Bot is handled above.
-            return "Latest status shown"
+            return String(localized: "Latest status shown")
         }
 
         if let errorSummary = context.presentedState.errorSummary, !errorSummary.isEmpty {

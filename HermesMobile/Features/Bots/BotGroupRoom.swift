@@ -68,7 +68,6 @@ struct BotRoomStatus: Equatable {
     let stopping: Int
     let stoppable: Int
     let actions: [BotRoomAction]
-    var pending: Bool { !actions.isEmpty }
     init(_ value: BotJSON) {
         working = value["working"].flag == true
         blocked = value["blocked"].flag == true

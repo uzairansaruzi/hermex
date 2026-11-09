@@ -17,7 +17,7 @@ user is looking at. It ships dark behind a per-server "Bot Screen (beta)" switch
   generation token rejects anything late from before the last `open()` or `close()`.
 - `ScreenSource`: where the picture comes from, a bot's desktop or the host's. Nothing above it
   branches on the host except what it calls itself.
-- `ScreenFrameStore` and `ScreenFramebufferView`: frames go straight to a `CALayer`, so a frame
+- `ScreenFrameStore` and `ScreenCanvas`: frames go straight to a `CALayer`, so a frame
   never invalidates SwiftUI.
 
 Tight needs zlib. The SDK's `zlib` module autolinks the system `libz`, so it needs no project

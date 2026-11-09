@@ -348,6 +348,8 @@ final class AuthManager {
             serverRegistry.activate(url: serverURL)
             persistCustomHeaders(for: serverURL)
             refreshServers()
+            // As on a switch: the App Intents cache holds the previous server's profiles (#339).
+            ProfileEntityCache.shared.save([])
             state = .loggedIn(server: serverURL)
             return .added(serverURL)
         } catch {
@@ -531,6 +533,8 @@ final class AuthManager {
             // Only once the record's removal has retired the shared connection: a Bots inbox
             // still on screen can save a roster it reads during the awaits above (#1403).
             await BotRosterCache.shared.remove(server: active)
+            // The awaits above can outlast a switch to another server, which stays on screen.
+            guard state.server == active else { return }
             lastErrorMessage = nil
             state = .loggedOut(server: active)
             return

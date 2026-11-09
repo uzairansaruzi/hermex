@@ -354,8 +354,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         case parentSessionId, relationshipType, readOnly, isReadOnly, matchType, matchPreview
     }
 
-    /// Lossy field by field, like `SessionDetail` and `ProjectSummary` already
-    /// are (`AGENTS.md` hard rule 3).
+    /// Lossy field by field, like `SessionDetail` and `ProjectSummary` already are.
     ///
     /// The synthesized `Decodable` this replaces failed the whole value on one
     /// mistyped field, and `SessionsResponse` decoded the array as a unit — so a

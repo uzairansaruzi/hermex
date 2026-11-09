@@ -302,6 +302,16 @@ final class ContractReadinessTests: XCTestCase {
         }
     }
 
+    /// The server decodes a query's `+` as a space, so a path holding one must go out escaped.
+    func testQueryValuesEscapePlus() throws {
+        let url = Endpoint.file(sessionID: "s1", path: "src/C++ notes/a+b.md")
+            .url(relativeTo: URL(string: "https://example.test")!)
+        let query = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery)
+
+        XCTAssertFalse(query.contains("+"))
+        XCTAssertTrue(query.contains("path=src/C%2B%2B%20notes/a%2Bb.md"))
+    }
+
     func testJSONPostRequestsOmitBrowserCSRFHeaders() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/session/pin")

@@ -723,7 +723,7 @@ struct TranscriptMediaPreviewView: View {
                             Task { await loadMedia(force: true) }
                         }
                     }
-                } else if let data = viewModel.previewData, let image = UIImage(data: data) {
+                } else if let image = viewModel.previewImage {
                     imageContent(image)
                 } else if let audioData = viewModel.audioData {
                     audioContent(audioData)

@@ -223,7 +223,7 @@ struct KanbanCardEditorView: View {
                     .foregroundStyle(.orange)
                 Text("This Card changed on the server after the editor opened. Your draft has been preserved.")
                 if let remote = state.remoteCard {
-                    LabeledContent("Server Title") { Text(remote.title ?? String(localized: "Untitled Task")) }
+                    LabeledContent("Server Title") { Text(remote.title ?? String(localized: "Untitled Card")) }
                     LabeledContent("Server Status") {
                         Text(KanbanStatusPresentation(remote.status?.rawValue ?? "").title)
                     }

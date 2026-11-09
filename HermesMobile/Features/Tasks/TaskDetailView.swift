@@ -83,7 +83,8 @@ struct TaskDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await loadDetail() }
         .toolbar { toolbarContent }
-        .sheet(isPresented: $isPresentingEditTask) {
+        // A failed save leaves its message for the sheet; it goes with the sheet.
+        .sheet(isPresented: $isPresentingEditTask, onDismiss: viewModel.clearActionError) {
             CronJobEditorSheet(
                 title: String(localized: "Edit Task"),
                 server: server,

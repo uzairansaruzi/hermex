@@ -28,12 +28,6 @@ enum BotPendingRequest: Equatable {
         case .connection(let operation): return operation.opID
         }
     }
-
-    /// False only for the kinds whose answer lives in the Desktop renderer.
-    var isAnswerable: Bool {
-        if case .desktopTask = self { return false }
-        return true
-    }
 }
 
 /// A server request, received live or restored from `open_requests`.
@@ -89,9 +83,6 @@ struct BotApprovalRequest: Equatable {
     /// The host's wire vocabulary for `approval.respond`'s `choice`.
     enum Choice: String, Equatable, CaseIterable {
         case once, session, always, deny
-
-        /// True for the choice that writes a permanent rule into the host's config.
-        var isPermanent: Bool { self == .always }
     }
 
     let requestID: String

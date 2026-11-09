@@ -945,7 +945,6 @@ enum HermesREST: Equatable, Sendable {
         return try url(base, "api/cron/jobs/\(id)" + (action.map { "/" + $0 } ?? ""), profile: profile)
     }
 
-    /// One path segment of the host's own id characters, so an id never names another route.
     /// Whether `file` names one path inside a repository, as a Git write's `file` must: not blank,
     /// not absolute, no `.` or `..` part, and no empty part but a folder's trailing slash
     /// (`Sources/`, as an untracked folder's row names it).
@@ -980,6 +979,7 @@ enum HermesREST: Equatable, Sendable {
         return try send("POST", base.appendingPathComponent(route), body)
     }
 
+    /// One path segment of the host's own id characters, so an id never names another route.
     private static func isSegment(_ value: String) -> Bool {
         !value.isEmpty && value.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || "_-".unicodeScalars.contains($0) }
     }

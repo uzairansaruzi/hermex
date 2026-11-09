@@ -235,10 +235,10 @@ struct DefaultProfilePickerView: View {
 
     private func profileAccessibilityValue(for profile: ProfileSummary) -> String {
         if isSelected(profile) {
-            return "Selected"
+            return String(localized: "Selected")
         }
 
-        return profile.isDefault == true ? "Server Default" : ""
+        return profile.isDefault == true ? String(localized: "Server Default") : ""
     }
 
     private func isSelected(_ profile: ProfileSummary) -> Bool {

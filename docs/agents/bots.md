@@ -544,9 +544,10 @@ half-typed value. With no associated domain, iOS offers no "Save Password?" afte
 
 Bot Chat answered the password-vault prompts (#943); with its screen gone they are
 not read (#1148), and a Hermes chat never answered them.
-The old per-kind answer methods (`clarify.respond`, `sudo.respond`,
-`secret.respond`, `mcp.setup.respond`) no longer exist at the pin and are off
-the allowlist.
+The old per-kind answer methods (`sudo.respond`, `secret.respond`,
+`mcp.setup.respond`) no longer exist at the pin and are off the allowlist.
+`clarify.respond` is the canonical protocol's clarify answer on a gateway Webapp
+(`hermes-server.md` § The canonical session protocol).
 
 `terminal.read`, `window.read`, `preview.read`, `preview.act` and `tour` require
 Desktop renderer data the phone cannot supply. Their cards report the wait and
@@ -2301,7 +2302,7 @@ activity but no current-work start timestamp.
 
 The Hermes connection screen is not behind the Bot Mode gate (#557). Pairing for
 push needs that login, and push serves the server's webui sessions too, so
-`ServerDetailView` links it for every configured server while the Bots inbox
+`SettingsServerPage` links it for every configured server while the Bots inbox
 stays gated. Its copy says "Hermes connection" and why a webui-only user would
 add one.
 

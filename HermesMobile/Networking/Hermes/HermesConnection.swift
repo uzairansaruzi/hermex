@@ -66,7 +66,7 @@ import OSLog
     private(set) var attemptCount = 0
     /// Each Profile's `keepPlatformNote` check on this connection, by Profile: one that found the
     /// note current or wrote it, or one still running, which a later call waits for. A failed
-    /// check is dropped, so each Profile is read once per sign-in unless a read fails.
+    /// check is dropped, so each Profile is read once per connection unless a read fails.
     private var platformNoteChecks: [String: Task<Bool, Never>] = [:]
     /// The standard-deadline session. The gateway socket opens on it, with its cookies.
     let session: URLSession
@@ -990,9 +990,11 @@ enum HermesConnectionLog {
     /// Names `error` for a log line without its description or user info: a `URLError`'s
     /// user info holds the failing URL, and so the host, and a rejection can carry the
     /// host's own text. `BotFailure`'s payloads are status and error codes, and the
-    /// release `/api/status` reported for `.outdated`.
+    /// release `/api/status` reported for `.outdated`; `.profileNotServed` carries a Profile
+    /// name and the host's prose, so it is named without them.
     static func reason(_ error: Error) -> String {
         switch error {
+        case BotFailure.profileNotServed: return "profileNotServed"
         case let failure as BotFailure: return "\(failure)"
         case let error as URLError: return "URLError \(error.code.rawValue)"
         case is DecodingError: return "DecodingError"

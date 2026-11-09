@@ -23,10 +23,11 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Running tests
 
-The full XCTest suite is the repo's green bar — it must pass before any PR:
+Run the tests your change affects before opening a PR; CI runs the full XCTest suite
+on every push and is the green bar ([`AGENTS.md`](AGENTS.md) § Verifying):
 
 ```zsh
-scripts/test-sim <simulator-udid>
+scripts/test-sim <simulator-udid> --only HermesMobileTests/<TestClass>
 ```
 
 Choose an available iPhone UDID from `xcrun simctl list devices available`.
@@ -142,7 +143,7 @@ the issue for your approval. Send it:
      upstream source (`hermes-agent`, or `hermes-webui` for legacy servers) or
      your own running server.
    - **No new third-party dependencies** without approval.
-4. **Run the full test suite** (command above) and make sure it passes.
+4. **Run the affected tests** (command above) and make sure they pass.
 5. **Open a PR** against `master` using the PR template — link the issue with
    `Fixes #<number>`, describe what changed and how you tested it. CI must be
    green; automated review bots may comment, and the maintainer reviews and
