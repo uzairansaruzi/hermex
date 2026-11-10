@@ -1027,6 +1027,27 @@ import XCTest
         session.leave()
     }
 
+    /// A plugin whose capture keeps failing with no reason in its status would otherwise show
+    /// "Reconnecting" forever. Two failures in a row before a frame settle; a frame, or Check
+    /// Again, starts the count over.
+    func testAHostThatKeepsFailingToCaptureSaysSoInsteadOfRetryingForever() async {
+        let session = makeHostSession(rest: livePlugin())
+        session.open()
+        await socket(0).end(code: 4001)
+        await socket(1).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        await socket(1).end(code: 4001)
+        await socket(2).end(code: 4001)
+        await socket(3).end(code: 4001)
+        await reach(.driverProblem("This computer's driver couldn't capture the screen."), on: session)
+
+        session.open()
+        await socket(4).end(code: 4001)
+        await socket(5).serve(ScriptedRFBSocket.oneFrame)
+        await reach(.live, on: session)
+        session.leave()
+    }
+
     // MARK: - Idle
 
     func testIdleAsksThenHandsBackAndInputPutsItOff() async {

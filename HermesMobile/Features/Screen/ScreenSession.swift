@@ -396,6 +396,8 @@ enum HermexScreenPlugin {
     @ObservationIgnored private var stream: Task<Void, Never>?
     /// Attempts since the last frame, which picks the next wait.
     @ObservationIgnored private var failures = 0
+    /// Host captures in a row that failed before a frame, after a status that found nothing wrong.
+    @ObservationIgnored private var blindCaptureFailures = 0
     /// Wakes a backoff wait early when the network changes.
     @ObservationIgnored private var wait: Task<Void, Never>?
     /// The id this gateway connection minted, and what `display.lease` calls this screen.
@@ -442,6 +444,7 @@ enum HermexScreenPlugin {
     func open() {
         stopStream()
         failures = 0
+        blindCaptureFailures = 0
         options.holds.idleNotification.cancel(server: server, profile: profile)
         if phase != .live, phase != .reconnecting { set(.connecting) }
         let owner = generation
@@ -538,6 +541,7 @@ enum HermexScreenPlugin {
                 guard owner == generation else { return }
                 let reason = HermesConnectionLog.reason(error)
                 HermesConnectionLog.logger.notice("screen stream ended: \(reason, privacy: .public)")
+                let sawFrame = isStreamReady
                 endStream()
                 switch ScreenStreamOutcome(error, source: source) {
                 case .settled(let phase):
@@ -555,7 +559,15 @@ enum HermexScreenPlugin {
                     // A spent or expired ticket: a new one fixes it, once.
                     failures = 1
                     continue
-                case .reopen, .retry:
+                case .captureFailed where !sawFrame:
+                    // The plugin gave no reason, so a second failure in a row stops the loop
+                    // rather than reconnecting over a blank picture forever.
+                    blindCaptureFailures += 1
+                    if blindCaptureFailures >= 2 {
+                        set(.driverProblem(String(localized: "This computer's driver couldn't capture the screen.")))
+                        return
+                    }
+                case .reopen, .retry, .captureFailed:
                     break
                 }
             }
@@ -732,6 +744,7 @@ enum HermexScreenPlugin {
         guard owner == generation else { return }
         frames.show(image)
         failures = 0
+        blindCaptureFailures = 0
         isStreamReady = true
         set(.live)
         if takesOverWhenLive {
@@ -1141,6 +1154,8 @@ private enum ScreenStreamOutcome {
     case reopen
     /// Wait out the backoff, then open again.
     case retry
+    /// A host's capture failed. Retries like `.retry`, until it keeps failing before a frame.
+    case captureFailed
 
     init(_ error: Error, source: ScreenSource) {
         switch error {
@@ -1153,8 +1168,9 @@ private enum ScreenStreamOutcome {
         case RFBStreamEnd.closed(code: 4401):
             self = .reopen
         case RFBStreamEnd.closed(code: 4001):
-            // A bot's screen stopped. A host's desktop has no such state: its read says what's wrong.
-            self = source == .botDesktop ? .settled(.stopped) : .retry
+            // A bot's screen stopped. A host's desktop has no such state: its capture failed, and the
+            // next read usually says why.
+            self = source == .botDesktop ? .settled(.stopped) : .captureFailed
         case RFBStreamEnd.closed(code: 1003), is RFBFailure:
             self = .settled(.failed)
         case let failure as ScreenCallFailure:

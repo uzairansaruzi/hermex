@@ -133,7 +133,9 @@ what differs by OS comes from the plugin's own fields (`refusal`, `locked_input`
 `POST /observe` mints a viewer id and a single-use ticket, a hold moves to a new id on return, and
 Hand Back names the saved id with `force`. The stream takes the dashboard's own pass as `?ticket=`
 plus `?stream_ticket=`. Close codes match stock, plus 4002: its own timer ended the takeover, or
-another client handed back.
+another client handed back. Its 4001 means a capture failed, so the app re-reads `/status` for the
+reason. When that finds none and the stream fails again before a frame, the app shows the driver
+problem with `hermes computer-use doctor` instead of reconnecting forever.
 
 - A takeover holds every Profile's lease, because one desktop is every bot's. So it pauses every bot
   on that host.
