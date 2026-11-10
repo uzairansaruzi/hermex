@@ -1279,6 +1279,30 @@ import XCTest
         XCTAssertEqual(edge.x, 1439)
         XCTAssertEqual(edge.y, 0)
     }
+
+    /// ⌘⇧S follows the chat on screen (#1633): a chat popping back into view before the pushed one
+    /// leaves keeps its own Screen, one with no Screen to open keeps the Bots home's out, and the
+    /// last chat to leave hands ⌘⇧S back.
+    func testTheScreenShortcutStaysWithTheChatOnScreen() {
+        let shortcut = ScreenShortcut()
+        let (list, pushed) = (UUID(), UUID())
+        let (listOpener, pushedOpener) = (BotScreenOpener(), BotScreenOpener())
+        shortcut.offer(listOpener, from: list)
+        shortcut.offer(pushedOpener, from: pushed)
+        shortcut.withdraw(list)
+        XCTAssertTrue(shortcut.opener === pushedOpener, "the chat that pushed gave up nothing it held")
+
+        shortcut.offer(listOpener, from: list)
+        shortcut.withdraw(pushed)
+        XCTAssertTrue(shortcut.opener === listOpener, "back on the first chat before the pushed one left")
+
+        shortcut.offer(nil, from: list)
+        XCTAssertTrue(shortcut.hasChat, "a chat with no Screen to open still keeps the Bots home's out")
+        XCTAssertNil(shortcut.opener)
+
+        shortcut.withdraw(list)
+        XCTAssertFalse(shortcut.hasChat)
+    }
 }
 
 /// The stream sockets a session opened, which a test can wait on.

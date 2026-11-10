@@ -1051,10 +1051,11 @@ import SwiftUI
 
     /// Back from the background mid-turn: the replay carries what was missed, the reply
     /// continues without repeating, and nothing is sent again.
-    /// A bot's live `computer_use` raises the Screen card (#1632): the turn's end leaves it, the
-    /// next turn's start clears it, even one that began while away, and a replay never raises it.
-    func testABotChatsLiveComputerUseRaisesTheScreenCardUntilTheNextTurn() async {
-        let chat = await openChat(botChatRoot: "tip")
+    /// A live `computer_use` raises the Screen card (#1632), in a session as in a Bot Chat (#1633):
+    /// the turn's end leaves it, the next turn's start clears it, even one that began while away,
+    /// and a replay never raises it.
+    func testALiveComputerUseRaisesTheScreenCardUntilTheNextTurn() async {
+        let chat = await openChat()
         defer { chat.model.suspendStreamForBackground() }
         chat.receive(event(1, "message.start"))
         chat.receive(event(2, "tool.start", ["tool_id": .string("t1"), "name": .string("browser_click")]))

@@ -1188,8 +1188,12 @@ struct ChatView: View {
             .onChange(of: showsLiveActivityResponseExcerpts) {
                 viewModel.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
             }
+            .onChange(of: screenShortcut.map(ObjectIdentifier.init)) {
+                if isOnScreen { ScreenShortcut.shared.offer(screenShortcut, from: viewID) }
+            }
             .onDisappear {
                 isOnScreen = false
+                ScreenShortcut.shared.withdraw(viewID)
                 toastState.dismiss()
                 composerFocusRevision += 1
                 completionScrollPolicy.readerDidInteract()
@@ -1225,6 +1229,7 @@ struct ChatView: View {
                 }
                 viewModel.protectDraftAttachments(for: draftKey)
                 isOnScreen = true
+                ScreenShortcut.shared.offer(screenShortcut, from: viewID)
                 gitAvailabilityViewModel.resumePullRequestReads()
                 appearanceTask?.cancel()
                 appearanceTask = Task {
@@ -1294,6 +1299,7 @@ struct ChatView: View {
             }
             .navigationDestination(item: $pushedHermesSession) { chat in
                 ChatView(hermesSession: chat, onReplace: { pushedHermesSession = $0 }, onOpenSessions: onOpenHermesSessions)
+                    .modifier(SessionScreenModifier(chat: chat))
                     .id(chat.id)
             }
             .navigationDestination(item: $pushedHermesSessionList) { entry in
@@ -2330,9 +2336,16 @@ struct ChatView: View {
         )
     }
 
-    /// A Bot Chat's Screen card (#1632), while the Bots home offers its Screen (`openBotScreen`).
+    /// What ⌘⇧S opens while this chat is on screen (#1633): its card's Screen, except while the chat
+    /// shows that the host doesn't serve its Profile.
+    private var screenShortcut: BotScreenOpener? {
+        viewModel.errorUnserved == nil ? openBotScreen : nil
+    }
+
+    /// A Hermes chat's Screen card (#1632, #1633), while the Bots home or `SessionScreenModifier`
+    /// offers its Screen (`openBotScreen`).
     private var botScreenCard: BotScreenCard? {
-        guard let openBotScreen, !viewModel.isViewingCachedData, let use = viewModel.hermesBotChat?.screenUse else { return nil }
+        guard let openBotScreen, !viewModel.isViewingCachedData, let use = viewModel.hermesScreenUse else { return nil }
         return BotScreenCard(use: use, open: { openBotScreen(takingOver: false) }, takeOver: { openBotScreen(takingOver: true) })
     }
 

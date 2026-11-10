@@ -164,14 +164,21 @@ pins, after two testers pass.
 ## Entries
 
 The bot chat's toolbar, the Bots home row and tile menus (outside the edit-only group, which
-`mayEdit` disables), ⌘⇧S for the selected bot, and `hermes-agent://bot?…&screen=1`. There is no
-App Intent or Lock Screen control in v1.
+`mayEdit` disables), ⌘⇧S for the selected bot or the session chat on screen, and
+`hermes-agent://bot?…&screen=1`. There is no App Intent or Lock Screen control in v1.
 
 The Bot Chat also shows a card in the transcript once a live turn calls `computer_use`, and after
 that turn, until the next one starts (#1632). Replayed and rebuilt history never raises it, and a
 browser tool doesn't count. Open shows the Screen; Take Over opens it and takes control at the first
 frame unless this iPhone already holds it. The Bots home hands the chat `openBotScreen` only while
 its other entries show, which is the card's gate.
+
+A session chat shows the same card, for its own Profile on its own server and connection (#1633).
+`SessionScreenModifier` is applied where each `ChatView(hermesSession:)` is built (the Sessions
+list's two sites, Archived, and a session pushed from a chat), with the same gate and its own
+-32601 flag, so the card may show once more there on a host without `display.*`. ⌘⇧S opens the
+Screen of the chat on screen through `ScreenShortcut`, except while that chat says the host doesn't
+serve its Profile. Sessions have no toolbar button.
 
 ## Testing against a Linux host
 

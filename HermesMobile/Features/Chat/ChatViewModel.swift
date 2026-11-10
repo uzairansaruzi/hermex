@@ -1034,6 +1034,9 @@ final class ChatViewModel {
     /// A bot's Bot Chat's turns (#1145), for its pill, `@` roster and profile; nil otherwise.
     var hermesBotChat: HermesChatTurnCoordinator? { hermesTurn?.policy == .botChat ? hermesTurn : nil }
 
+    /// Whether a Hermes chat's latest turn used the bot's screen (#1632, #1633), for its Screen card.
+    var hermesScreenUse: BotScreenUse? { hermesTurn?.screenUse }
+
     /// The effort chip's level: a Hermes session's `session.info` effort (#1016), else webui's.
     var composerReasoningEffort: String? {
         hermesSettings.map { $0.controls.effort } ?? selectedReasoningEffort

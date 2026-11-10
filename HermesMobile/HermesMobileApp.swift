@@ -33,6 +33,15 @@ struct HermexCommands: Commands {
         AppLock.shared.isLocked ? nil : focusedActions
     }
 
+    /// The Screen of the chat on screen (`ScreenShortcut`, #1633), wherever it was pushed from, or
+    /// with no chat on screen the Bots home's selected bot. Off while the app lock is up, as every command is.
+    @MainActor private var openScreen: (() -> Void)? {
+        guard !AppLock.shared.isLocked else { return nil }
+        let shortcut = ScreenShortcut.shared
+        guard shortcut.hasChat else { return focusedActions?.openScreen }
+        return shortcut.opener.map { opener in { opener(takingOver: false) } }
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Chat") {
@@ -51,9 +60,9 @@ struct HermexCommands: Commands {
         }
 
         CommandGroup(after: .sidebar) {
-            Button("Open Screen") { actions?.openScreen?() }
+            Button("Open Screen") { openScreen?() }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(actions?.openScreen == nil)
+                .disabled(openScreen == nil)
         }
 
         // View menu, beside Toggle Sidebar. ⌘⇧] and ⌘⇧[ back up ⌃Tab in case
