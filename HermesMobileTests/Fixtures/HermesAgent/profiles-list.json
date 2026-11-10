@@ -16,7 +16,7 @@
       },
       "description" : "fixture-redacted",
       "display_name" : "fixture-redacted",
-      "has_avatar" : false,
+      "has_avatar" : true,
       "is_default" : false,
       "last_session" : null,
       "model" : "fixture-redacted",
@@ -24,7 +24,7 @@
       "path" : "/fixture/path",
       "previous_names" : [],
       "provider" : "fixture-redacted",
-      "skill_count" : 146,
+      "skill_count" : 143,
       "ui_meta" : {
         "hermes-bots" : {
           "custom" : true,

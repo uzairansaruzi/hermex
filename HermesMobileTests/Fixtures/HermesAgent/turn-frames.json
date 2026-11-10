@@ -21,12 +21,12 @@
         "running" : true,
         "service_tier" : "fixture-redacted",
         "skills" : {},
-        "stored_session_id" : "20261106_111607_abe930",
+        "stored_session_id" : "20261109_224558_2946de",
         "system_prompt" : "fixture-redacted",
         "terminal_backend" : "fixture-redacted",
         "title" : "fixture-redacted",
         "tools" : {},
-        "turn_started_at" : 1793981767.904626,
+        "turn_started_at" : 1794282358.716875,
         "update_behind" : 0,
         "update_command" : "fixture-redacted",
         "usage" : {
@@ -41,11 +41,11 @@
           "reasoning" : 0,
           "total" : 0
         },
-        "version" : "0.23.0",
+        "version" : "0.23.1",
         "yolo" : false
       },
       "seq" : 1,
-      "session_id" : "bc7fbed6",
+      "session_id" : "678fa35b",
       "type" : "session.info"
     }
   },
@@ -57,7 +57,7 @@
         "turn_id" : "fixture-redacted"
       },
       "seq" : 2,
-      "session_id" : "bc7fbed6",
+      "session_id" : "678fa35b",
       "type" : "message.start"
     }
   },
@@ -66,11 +66,11 @@
     "method" : "event",
     "params" : {
       "payload" : {
-        "session_id" : "20261106_111607_abe930",
+        "session_id" : "20261109_224558_2946de",
         "title" : "fixture-redacted"
       },
       "seq" : 3,
-      "session_id" : "bc7fbed6",
+      "session_id" : "678fa35b",
       "type" : "session.title"
     }
   },
@@ -79,10 +79,10 @@
     "method" : "event",
     "params" : {
       "payload" : {
-        "text" : "(｡•́︿•̀｡) computing..."
+        "text" : "(◔_◔) processing..."
       },
       "seq" : 4,
-      "session_id" : "bc7fbed6",
+      "session_id" : "678fa35b",
       "type" : "thinking.delta"
     }
   },
@@ -94,7 +94,7 @@
         "text" : ""
       },
       "seq" : 5,
-      "session_id" : "bc7fbed6",
+      "session_id" : "678fa35b",
       "type" : "thinking.delta"
     }
   },
@@ -109,8 +109,21 @@
         "turn_id" : "fixture-redacted"
       },
       "seq" : 6,
-      "session_id" : "bc7fbed6",
+      "session_id" : "678fa35b",
       "type" : "message.delta"
+    }
+  },
+  {
+    "jsonrpc" : "2.0",
+    "method" : "event",
+    "params" : {
+      "payload" : {
+        "session_id" : "20261109_224558_2946de",
+        "title" : "fixture-redacted"
+      },
+      "seq" : 7,
+      "session_id" : "678fa35b",
+      "type" : "session.title"
     }
   },
   {
@@ -120,8 +133,8 @@
       "payload" : {
         "text" : ""
       },
-      "seq" : 7,
-      "session_id" : "bc7fbed6",
+      "seq" : 8,
+      "session_id" : "678fa35b",
       "type" : "thinking.delta"
     }
   },
@@ -132,40 +145,40 @@
       "payload" : {
         "persisted_turn" : {
           "complete" : true,
-          "final_assistant_row_id" : 30,
+          "final_assistant_row_id" : 32,
           "row_ids" : [
-            29,
-            30
+            31,
+            32
           ],
-          "user_row_id" : 29,
+          "user_row_id" : 31,
           "user_row_ids" : [
-            29
+            31
           ]
         },
         "status" : "complete",
         "text" : "ok.",
         "usage" : {
           "active_subagents" : 0,
-          "avg_latency_s" : 2,
-          "avg_tps" : 20.6,
+          "avg_latency_s" : 1.3,
+          "avg_tps" : 189,
           "calls" : 1,
-          "completion" : 42,
+          "completion" : 252,
           "compressions" : 0,
           "context_estimated" : false,
           "context_max" : 1048576,
           "context_percent" : 2,
           "context_source" : "fixture-redacted",
-          "context_used" : 16699,
-          "input" : 16699,
+          "context_used" : 17887,
+          "input" : 17887,
           "model" : "fixture-redacted",
-          "output" : 42,
-          "prompt" : 16699,
-          "reasoning" : 40,
-          "total" : 16741
+          "output" : 252,
+          "prompt" : 17887,
+          "reasoning" : 250,
+          "total" : 18139
         }
       },
-      "seq" : 8,
-      "session_id" : "bc7fbed6",
+      "seq" : 9,
+      "session_id" : "678fa35b",
       "type" : "message.complete"
     }
   },
@@ -191,7 +204,7 @@
         "running" : false,
         "service_tier" : "fixture-redacted",
         "skills" : {},
-        "stored_session_id" : "20261106_111607_abe930",
+        "stored_session_id" : "20261109_224558_2946de",
         "system_prompt" : "fixture-redacted",
         "terminal_backend" : "fixture-redacted",
         "title" : "fixture-redacted",
@@ -201,28 +214,28 @@
         "update_command" : "fixture-redacted",
         "usage" : {
           "active_subagents" : 0,
-          "avg_latency_s" : 2,
-          "avg_tps" : 20.6,
+          "avg_latency_s" : 1.3,
+          "avg_tps" : 189,
           "calls" : 1,
-          "completion" : 42,
+          "completion" : 252,
           "compressions" : 0,
           "context_estimated" : false,
           "context_max" : 1048576,
           "context_percent" : 2,
           "context_source" : "fixture-redacted",
-          "context_used" : 16699,
-          "input" : 16699,
+          "context_used" : 17887,
+          "input" : 17887,
           "model" : "fixture-redacted",
-          "output" : 42,
-          "prompt" : 16699,
-          "reasoning" : 40,
-          "total" : 16741
+          "output" : 252,
+          "prompt" : 17887,
+          "reasoning" : 250,
+          "total" : 18139
         },
-        "version" : "0.23.0",
+        "version" : "0.23.1",
         "yolo" : false
       },
-      "seq" : 9,
-      "session_id" : "bc7fbed6",
+      "seq" : 10,
+      "session_id" : "678fa35b",
       "type" : "session.info"
     }
   }

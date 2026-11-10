@@ -1,11 +1,11 @@
 {
-  "captured_at" : "2026-11-06T19:12:09Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
     "change_events" : true,
     "heartbeat" : true,
-    "replay_epoch" : "f2f1987866ee4de2a1308574206efcf9",
+    "replay_epoch" : "5584909ef0ce4e83a126a3b17a811491",
     "session_authority" : true
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }

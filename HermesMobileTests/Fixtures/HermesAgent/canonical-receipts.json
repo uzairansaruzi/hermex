@@ -1,43 +1,43 @@
 {
-  "captured_at" : "2026-11-06T20:43:34Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
     "behind_running" : {
-      "admission_id" : "d8fb83a67d5a44d2b7cf3f6cada4399a",
+      "admission_id" : "a9a5879eafd84c01b1b2b635cc881f2e",
       "authority_epoch" : 1,
       "execution_generation" : null,
       "outcome" : null,
       "ref" : {
         "profile_id" : "fixture-redacted",
-        "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+        "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
       },
-      "sequence" : 10,
+      "sequence" : 3,
       "status" : "queued"
     },
     "cancelled" : {
-      "admission_id" : "8b2f2da1fb1e4760b8a09249ebff4f22",
+      "admission_id" : "8c5be98a81d94634adb09bc94943d43d",
       "authority_epoch" : 1,
       "execution_generation" : null,
       "outcome" : "cancelled",
       "ref" : {
         "profile_id" : "fixture-redacted",
-        "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+        "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
       },
-      "sequence" : 11,
+      "sequence" : 4,
       "status" : "terminal"
     },
     "idle" : {
-      "admission_id" : "db8d2aeb9b774a4bbdcaf9e49f807c05",
+      "admission_id" : "a520daeb4a354aba959258a3278a6675",
       "authority_epoch" : 1,
       "execution_generation" : null,
       "outcome" : null,
       "ref" : {
         "profile_id" : "fixture-redacted",
-        "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+        "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
       },
-      "sequence" : 9,
+      "sequence" : 2,
       "status" : "queued"
     }
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }

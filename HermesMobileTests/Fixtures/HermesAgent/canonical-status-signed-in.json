@@ -1,6 +1,6 @@
 {
-  "captured_at" : "2026-11-07T02:11:48Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
     "active_agents" : 0,
     "active_sessions" : 0,
@@ -35,10 +35,10 @@
     },
     "config_version" : 0,
     "disk" : {
-      "free_mb" : 90117,
+      "free_mb" : 64055,
       "pressure" : "fixture-redacted",
       "total_mb" : 471482,
-      "used_percent" : 80.9
+      "used_percent" : 86.4
     },
     "gateway_busy" : false,
     "gateway_drainable" : true,
@@ -51,7 +51,7 @@
     "gateway_state" : "fixture-redacted",
     "gateway_updated_at" : "fixture-redacted",
     "install_id" : "fixture-install",
-    "latest_config_version" : 52,
+    "latest_config_version" : 53,
     "memory" : {
       "boot_id" : "fixture-redacted",
       "gateway_rss_mb" : null,
@@ -73,7 +73,7 @@
     "release_date" : "fixture-redacted",
     "restart_drain_timeout" : 0,
     "shared_profile_warning" : false,
-    "version" : "0.23.0"
+    "version" : "0.23.1"
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }

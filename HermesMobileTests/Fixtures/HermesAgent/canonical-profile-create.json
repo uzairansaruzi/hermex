@@ -1,11 +1,12 @@
 {
-  "captured_at" : "2026-11-06T19:12:09Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
     "authority_epoch" : 1,
     "execution_generation" : 0,
     "info" : {
       "api_mode" : null,
+      "archived" : false,
       "branch" : "fixture-redacted",
       "credential_hint" : null,
       "cwd" : "/fixture/cwd",
@@ -33,7 +34,7 @@
         "fixture-redacted"
       ],
       "fast" : false,
-      "last_active_at" : 1793992329.658886,
+      "last_active_at" : 1794282455.873351,
       "launch_request" : {
         "source" : "fixture-redacted"
       },
@@ -43,14 +44,14 @@
       "profile_id" : "fixture-redacted",
       "profile_name" : "fixtures-sibling",
       "project" : null,
-      "provider" : "fixture-redacted",
+      "provider" : "custom",
       "reasoning_effort" : "fixture-redacted",
       "reasoning_effort_wire" : "fixture-redacted",
       "release_date" : "fixture-redacted",
       "service_tier" : "fixture-redacted",
       "skills" : {},
       "source" : "fixture-redacted",
-      "started_at" : 1793992329.658886,
+      "started_at" : 1794282455.873351,
       "title" : null,
       "tool_availability" : {
         "disabled_tools" : [],
@@ -85,7 +86,7 @@
         "reasoning" : 0,
         "total" : 0
       },
-      "version" : "0.23.0",
+      "version" : "0.23.1",
       "yolo" : false
     },
     "last_sequence" : 0,
@@ -95,13 +96,13 @@
     "pending" : [],
     "pending_connection" : null,
     "prompts" : [],
-    "replay_epoch" : "11199b46fbff4c558cb746b7d7416397",
+    "replay_epoch" : "c2862cf5a8a843bf8e8ff47881cd5970",
     "revision" : 0,
     "running" : false,
-    "session_id" : "local-7722a272d8b9b8708771d9d7e442bef5d31649539c3c40473f856fb13d820f21",
-    "stored_session_id" : "local-7722a272d8b9b8708771d9d7e442bef5d31649539c3c40473f856fb13d820f21",
-    "subscription_id" : "f324504380bf49a386441902c17674b1",
+    "session_id" : "local-a8259bc064147722fcbe2f7d450e528e2b8fe3752d7a3bd564959e0145174bb8",
+    "stored_session_id" : "local-a8259bc064147722fcbe2f7d450e528e2b8fe3752d7a3bd564959e0145174bb8",
+    "subscription_id" : "8b07ed417bc44c78b47fe299b9b42a36",
     "todo_state" : null
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }

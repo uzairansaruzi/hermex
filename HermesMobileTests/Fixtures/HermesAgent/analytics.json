@@ -1,6 +1,6 @@
 {
-  "captured_at" : "2026-11-06T16:19:16Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:46:58Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "insights" : {
     "days" : 30,
     "messages" : 0,
@@ -16,7 +16,7 @@
         "capabilities" : {},
         "estimated_cost" : 0,
         "input_tokens" : 0,
-        "last_used_at" : 1793981956.2053819,
+        "last_used_at" : 1794282418.33329,
         "model" : "fixture-redacted",
         "output_tokens" : 0,
         "provider" : "custom",
@@ -55,7 +55,7 @@
         "actual_cost" : 0,
         "api_calls" : 2,
         "cache_read_tokens" : 0,
-        "day" : "2026-11-06",
+        "day" : "2026-11-09",
         "estimated_cost" : 0,
         "input_tokens" : 0,
         "output_tokens" : 0,
@@ -77,5 +77,5 @@
       "total_sessions" : 1
     }
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }

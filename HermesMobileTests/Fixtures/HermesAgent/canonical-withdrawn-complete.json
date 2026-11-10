@@ -1,19 +1,19 @@
 {
-  "captured_at" : "2026-11-06T20:43:34Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
-    "admission_id" : "8b2f2da1fb1e4760b8a09249ebff4f22",
+    "admission_id" : "8c5be98a81d94634adb09bc94943d43d",
     "authority_epoch" : 1,
     "payload" : {
-      "admission_id" : "8b2f2da1fb1e4760b8a09249ebff4f22",
+      "admission_id" : "8c5be98a81d94634adb09bc94943d43d",
       "content" : "fixture-redacted",
       "outcome" : "cancelled",
       "text" : ""
     },
-    "replay_epoch" : "53dd2ae42004452d8bfd769b64081bda",
+    "replay_epoch" : "06fafbe229a240bda5ff6b8b8eaeddbe",
     "seq" : 14,
-    "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e",
+    "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493",
     "type" : "message.complete"
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }
