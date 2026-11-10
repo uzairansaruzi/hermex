@@ -74,7 +74,8 @@ struct BotScreenCard: View {
 
     private var buttons: some View {
         HStack(spacing: 8) {
-            Button("Open", action: open)
+            Button(String(localized: "screen.card.open", defaultValue: "Open",
+                          comment: "Screen card button: open the bot's Screen to watch it, a verb"), action: open)
                 .buttonStyle(.bordered)
                 .accessibilityLabel(Text("Open Screen"))
             Button("Take Over", action: takeOver)
