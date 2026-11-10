@@ -1,11 +1,12 @@
 {
-  "captured_at" : "2026-11-06T20:43:34Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
     "authority_epoch" : 1,
     "execution_generation" : 1,
     "info" : {
       "api_mode" : "fixture-redacted",
+      "archived" : false,
       "branch" : "fixture-redacted",
       "context_length" : 256000,
       "credential_hint" : "fixture-redacted",
@@ -34,7 +35,7 @@
         "fixture-redacted"
       ],
       "fast" : false,
-      "last_active_at" : 1793997811.0970309,
+      "last_active_at" : 1794282456.259867,
       "launch_request" : {
         "source" : "fixture-redacted"
       },
@@ -44,14 +45,14 @@
       "profile_id" : "fixture-redacted",
       "profile_name" : "default",
       "project" : null,
-      "provider" : "fixture-redacted",
+      "provider" : "custom",
       "reasoning_effort" : "fixture-redacted",
       "reasoning_effort_wire" : "fixture-redacted",
       "release_date" : "fixture-redacted",
       "service_tier" : "fixture-redacted",
       "skills" : {},
       "source" : "fixture-redacted",
-      "started_at" : 1793997810.710452,
+      "started_at" : 1794282456.074735,
       "system_prompt" : "fixture-redacted",
       "title" : null,
       "tool_availability" : {
@@ -90,7 +91,7 @@
         "reasoning" : 0,
         "total" : 0
       },
-      "version" : "0.23.0",
+      "version" : "0.23.1",
       "yolo" : false
     },
     "last_sequence" : 12,
@@ -100,55 +101,55 @@
     "open_requests" : [],
     "pending" : [
       {
-        "admission_id" : "db8d2aeb9b774a4bbdcaf9e49f807c05",
+        "admission_id" : "a520daeb4a354aba959258a3278a6675",
         "authority_epoch" : 1,
         "controls" : [],
         "execution_generation" : 1,
-        "input_id" : "78E4FECD-C0F8-4F0C-8924-B4DCCE344261",
+        "input_id" : "5D7C8F48-A191-4DDF-BF2B-9590C4964434",
         "outcome" : null,
         "ref" : {
           "profile_id" : "fixture-redacted",
-          "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+          "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
         },
-        "sequence" : 9,
+        "sequence" : 2,
         "status" : "started",
         "steering" : false,
         "text" : "Run the quick check."
       },
       {
-        "admission_id" : "d8fb83a67d5a44d2b7cf3f6cada4399a",
+        "admission_id" : "a9a5879eafd84c01b1b2b635cc881f2e",
         "authority_epoch" : 1,
         "controls" : [
           "fixture-redacted",
           "fixture-redacted"
         ],
         "execution_generation" : null,
-        "input_id" : "A88C54D6-7807-4946-98A6-6B7E79AB611C",
+        "input_id" : "4DADB85D-D9B6-459D-A7DD-DF142049CBF5",
         "outcome" : null,
         "ref" : {
           "profile_id" : "fixture-redacted",
-          "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+          "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
         },
-        "sequence" : 10,
+        "sequence" : 3,
         "status" : "queued",
         "steering" : false,
         "text" : "Then the tests"
       },
       {
-        "admission_id" : "8b2f2da1fb1e4760b8a09249ebff4f22",
+        "admission_id" : "8c5be98a81d94634adb09bc94943d43d",
         "authority_epoch" : 1,
         "controls" : [
           "fixture-redacted",
           "fixture-redacted"
         ],
         "execution_generation" : null,
-        "input_id" : "85271E81-95D9-4DCD-AE44-EAD48584CCFC",
+        "input_id" : "4FA570C2-3F19-42B0-B784-7C7B94EAD3A4",
         "outcome" : null,
         "ref" : {
           "profile_id" : "fixture-redacted",
-          "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e"
+          "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
         },
-        "sequence" : 11,
+        "sequence" : 4,
         "status" : "queued",
         "steering" : false,
         "text" : "And the docs"
@@ -167,17 +168,17 @@
         "description" : "script execution via -e/-c flag",
         "execution_generation" : 1,
         "kind" : "approval",
-        "prompt_id" : "76c1c1b6e37241009574ae5e0708ef82",
+        "prompt_id" : "e16fc5d310e34854a15740b6385c7056",
         "timeout_s" : 300
       }
     ],
-    "replay_epoch" : "53dd2ae42004452d8bfd769b64081bda",
+    "replay_epoch" : "06fafbe229a240bda5ff6b8b8eaeddbe",
     "revision" : 0,
     "running" : true,
-    "session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e",
-    "stored_session_id" : "local-c378e4b0135984f281a8b42b8e38178d9268baae2b654e4692963aa9b757a99e",
-    "subscription_id" : "a08fb9f3a02f4b84a934816699f10ec8",
+    "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493",
+    "stored_session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493",
+    "subscription_id" : "ec6b528f895f411d93610fb55476f1a7",
     "todo_state" : null
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }

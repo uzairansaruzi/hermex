@@ -46,8 +46,8 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 
 ## Upstream RPC methods Hermex never calls
 
-At the pin (0.23.0, `2bd378ed`) the gateway contract has 261 methods and `HermesCall` sends
-68 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
+At the pin (0.23.1, `3b421578`) the gateway contract has 262 methods and `HermesCall` sends
+69 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
 
 | Family | Methods | Status | Note |
 | :--- | :--- | :---: | :--- |

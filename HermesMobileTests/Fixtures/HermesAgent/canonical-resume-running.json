@@ -1,11 +1,12 @@
 {
-  "captured_at" : "2026-11-06T19:12:09Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
     "authority_epoch" : 1,
     "execution_generation" : 1,
     "info" : {
       "api_mode" : "fixture-redacted",
+      "archived" : false,
       "branch" : "fixture-redacted",
       "context_length" : 256000,
       "credential_hint" : "fixture-redacted",
@@ -34,7 +35,7 @@
         "fixture-redacted"
       ],
       "fast" : false,
-      "last_active_at" : 1793992329.075391,
+      "last_active_at" : 1794282453.91442,
       "launch_request" : {
         "source" : "fixture-redacted"
       },
@@ -44,14 +45,14 @@
       "profile_id" : "fixture-redacted",
       "profile_name" : "default",
       "project" : null,
-      "provider" : "fixture-redacted",
+      "provider" : "custom",
       "reasoning_effort" : "fixture-redacted",
       "reasoning_effort_wire" : "fixture-redacted",
       "release_date" : "fixture-redacted",
       "service_tier" : "fixture-redacted",
       "skills" : {},
       "source" : "fixture-redacted",
-      "started_at" : 1793992328.881604,
+      "started_at" : 1794282452.834022,
       "system_prompt" : "fixture-redacted",
       "title" : null,
       "tool_availability" : {
@@ -79,7 +80,7 @@
       "update_command" : "fixture-redacted",
       "usage" : {
         "active_subagents" : 0,
-        "avg_latency_s" : 0,
+        "avg_latency_s" : 0.4,
         "calls" : 1,
         "completion" : 0,
         "compressions" : 0,
@@ -90,7 +91,7 @@
         "reasoning" : 0,
         "total" : 0
       },
-      "version" : "0.23.0",
+      "version" : "0.23.1",
       "yolo" : false
     },
     "last_sequence" : 10,
@@ -100,17 +101,17 @@
     "open_requests" : [],
     "pending" : [
       {
-        "admission_id" : "7abc3eb019664aad8f68e314adb24a5f",
+        "admission_id" : "b76f6d359bb447f1a6cf979aea65bfcb",
         "authority_epoch" : 1,
         "controls" : [],
         "execution_generation" : 1,
-        "input_id" : "5800C19F-053E-4A02-A3E9-5380FBEEB690",
+        "input_id" : "5D210CFF-FA6F-46CA-AD03-848BFC22943D",
         "outcome" : null,
         "ref" : {
           "profile_id" : "fixture-redacted",
-          "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4"
+          "session_id" : "local-4438fe0803e1083c2d3ebf518546d1e75760a1fa6dc157c950649891ace2f416"
         },
-        "sequence" : 5,
+        "sequence" : 1,
         "status" : "started",
         "steering" : false,
         "text" : "Run the quick check."
@@ -126,20 +127,20 @@
           "always"
         ],
         "command" : "python3 -c \"print(1)\"",
-        "description" : "fixture-redacted",
+        "description" : "script execution via -e/-c flag",
         "execution_generation" : 1,
         "kind" : "approval",
-        "prompt_id" : "7c1f391996034d88809ec5c41b59ee8e",
+        "prompt_id" : "74883657c0d748f69a75244eb9aa35fc",
         "timeout_s" : 300
       }
     ],
-    "replay_epoch" : "eb1fd1954119468cbd245a505c340d9e",
+    "replay_epoch" : "3f82fb819fe149cdab6046ecc824708b",
     "revision" : 0,
     "running" : true,
-    "session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
-    "stored_session_id" : "local-e3aa79f4190c14de131c2586f4d02f733a02751e70af873077a29c1741b2fac4",
-    "subscription_id" : "a0dbff502a294fe693f385d6cd778134",
+    "session_id" : "local-4438fe0803e1083c2d3ebf518546d1e75760a1fa6dc157c950649891ace2f416",
+    "stored_session_id" : "local-4438fe0803e1083c2d3ebf518546d1e75760a1fa6dc157c950649891ace2f416",
+    "subscription_id" : "948758be282b4bcc9178a09f96353f21",
     "todo_state" : null
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }

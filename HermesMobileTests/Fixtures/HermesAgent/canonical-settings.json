@@ -1,6 +1,6 @@
 {
-  "captured_at" : "2026-11-06T22:20:46Z",
-  "hermes_agent_sha" : "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
   "reply" : {
     "approval_mode" : {
       "id" : 57,
@@ -49,7 +49,7 @@
         "operation" : "model",
         "provider" : "custom",
         "revision" : 1,
-        "session_id" : "local-0f56ee22bd51e84eea6aa56733d87b0a86f6d9647af26f2cc407498c61340a90"
+        "session_id" : "local-4f08377cf492d7db2086770925ca8cf82e06482be2842e37557e8b9f4192b076"
       }
     },
     "personality" : {
@@ -71,5 +71,5 @@
       }
     }
   },
-  "version" : "0.23.0"
+  "version" : "0.23.1"
 }
