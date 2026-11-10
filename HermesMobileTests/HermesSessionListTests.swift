@@ -55,6 +55,9 @@ import Observation
         wire.holdsPages = false
         wire.release()
         await waitUntil("refresh has extended to the newly loaded page") { wire.scheduledReads.count == 4 }
+        // The refresh reads live states only once it has applied its pages: it kept the Load more's rows.
+        await waitUntil("refresh applied") { wire.calls.filter { $0.method == "session.active_list" }.count == 2 }
+        XCTAssertEqual(list.sessions.count, 101)
         // Reopening waits for its complete refresh too, while retaining that page depth.
         await list.openHermes()
         XCTAssertEqual(list.sessions.count, 101)
