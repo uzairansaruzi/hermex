@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import HermesMobile
 
 final class StreamingMarkdownBlockSplitterTests: XCTestCase {
@@ -237,5 +239,33 @@ final class TableCellWidthCapTests: XCTestCase {
             idealWidth: 40, proposedWidth: 200, minWidth: minWidth, maxWidth: maxWidth
         )
         XCTAssertEqual(width, 200)
+    }
+}
+
+/// The mounted live reasoning view retains its UIKit state as SwiftUI replaces wrapper values.
+@MainActor final class ReasoningRenderingTests: XCTestCase {
+    func testLiveReasoningShowsAppendsAndReplacements() async throws {
+        let suite = "ReasoningRenderingTests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.set(ThinkingAndToolCards.expanded.rawValue, forKey: ChatTranscriptDisplaySettings.thinkingAndToolCardsKey)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let host = UIHostingController(rootView: ReasoningBlockView(text: "start", liveStreamID: "first").defaultAppStorage(defaults))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 900))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let long = String(repeating: "日本語と👩🏽‍💻の推論。\n\n", count: 200)
+        for (text, stream) in [(long, "first"), (long + "tail", "first"), ("replacement", "first")] {
+            host.rootView = ReasoningBlockView(text: text, liveStreamID: stream).defaultAppStorage(defaults)
+            await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+            window.layoutIfNeeded()
+            func textViews(in view: UIView) -> [UITextView] {
+                (view as? UITextView).map { [$0] } ?? view.subviews.flatMap { textViews(in: $0) }
+            }
+            let expected = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let textView = try XCTUnwrap(textViews(in: host.view).first { $0.text == expected })
+            XCTAssertEqual(textView.text, expected)
+            XCTAssertEqual(textView.accessibilityLabel, expected)
+        }
     }
 }

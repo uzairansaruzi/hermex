@@ -20,6 +20,27 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
         super.tearDown()
     }
 
+    func testUnclosedDisplayDelimitersStayLiteralUntilTheStreamClosesThem() {
+        let partial = #"\[one \[two "#
+        XCTAssertEqual(MarkdownMathSegmenter.segments(in: partial), [.markdown(partial)])
+        XCTAssertEqual(MarkdownMathSegmenter.segments(in: partial + "$$x$$"),
+                       [.markdown(partial), .displayMath("x")])
+        XCTAssertEqual(MarkdownMathSegmenter.segments(in: partial + #"\]"#),
+                       [.displayMath(#"one \[two"#)])
+        // Escaped and code-protected closers cannot terminate a partial formula.
+        let protected = #"\[one `\]` \\]"#
+        XCTAssertEqual(MarkdownMathSegmenter.segments(in: protected), [.markdown(protected)])
+    }
+
+    func testUnclosedInlineDelimitersDoNotHideMathOnTheNextLine() {
+        let partial = #"\(one \(two "#
+        XCTAssertEqual(MarkdownMathFormatter.replacingInlineMath(in: partial), partial)
+        XCTAssertEqual(MarkdownMathFormatter.replacingInlineMath(in: partial + "\n" + #"\(x^2\)"#),
+                       partial + "\nx²")
+        // One delimiter kind failing does not exhaust the other's closing search.
+        XCTAssertEqual(MarkdownMathFormatter.replacingInlineMath(in: partial + "$x^2$"), partial + "x²")
+    }
+
     func testDisplayMathStillSegments() {
         guard case .segmented(let segments) = MarkdownMathLayoutCache.layout(for: "before $$x = 1$$ after") else {
             return XCTFail("Expected display math to produce a segmented layout.")

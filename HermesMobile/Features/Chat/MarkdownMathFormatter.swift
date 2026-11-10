@@ -49,16 +49,22 @@ struct MarkdownMathFormatter {
         let protected = MarkdownMathProtection.mask(for: characters)
         var result = ""
         var index = 0
+        var exhaustedParens = false
 
         while index < characters.count {
+            // Parenthesized math searches the whole line for a closer. A failed dollar
+            // candidate can stop early at another dollar, so it must not be remembered.
+            if characters[index] == "\n" { exhaustedParens = false }
             guard let delimiter = inlineDelimiter(in: characters, at: index, protected: protected),
-                  let closeIndex = closingInlineDelimiter(
-                    in: characters,
-                    from: index + delimiter.openLength,
-                    protected: protected,
-                    delimiter: delimiter
-                  )
-            else {
+                  !(delimiter == .parens && exhaustedParens) else {
+                result.append(characters[index])
+                index += 1
+                continue
+            }
+            guard let closeIndex = closingInlineDelimiter(
+                in: characters, from: index + delimiter.openLength, protected: protected, delimiter: delimiter
+            ) else {
+                if delimiter == .parens { exhaustedParens = true }
                 result.append(characters[index])
                 index += 1
                 continue
@@ -292,7 +298,7 @@ private enum InlineDelimiter: CaseIterable {
             if index + 1 < characters.count, characters[index + 1].isNumber || characters[index + 1].isWhitespace { return false }
             return !MarkdownMathProtection.isEscaped(characters, at: index)
         case .parens:
-            return matches(#"\("#, in: characters, at: index, protected: protected)
+            return matches("\\", "(", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         }
     }
@@ -308,22 +314,19 @@ private enum InlineDelimiter: CaseIterable {
             if index > 0, characters[index - 1].isWhitespace { return false }
             return !MarkdownMathProtection.isEscaped(characters, at: index)
         case .parens:
-            return matches(#"\)"#, in: characters, at: index, protected: protected)
+            return matches("\\", ")", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         }
     }
 
     private func matches(
-        _ token: String,
+        _ first: Character, _ second: Character? = nil,
         in characters: [Character],
         at index: Int,
         protected: [Bool]
     ) -> Bool {
-        let tokenCharacters = Array(token)
-        guard index >= 0, index + tokenCharacters.count <= characters.count else { return false }
-        for offset in 0..<tokenCharacters.count where protected[index + offset] {
-            return false
-        }
-        return Array(characters[index..<(index + tokenCharacters.count)]) == tokenCharacters
+        guard index >= 0, index < characters.count, !protected[index], characters[index] == first else { return false }
+        guard let second else { return true }
+        return index + 1 < characters.count && !protected[index + 1] && characters[index + 1] == second
     }
 }

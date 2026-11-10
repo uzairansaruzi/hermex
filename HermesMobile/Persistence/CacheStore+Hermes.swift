@@ -145,8 +145,10 @@ extension CacheStore {
         let serverURLString = serverURL.absoluteString
         let prefix = profile.map { hermesSessionKey(serverURL: serverURL, profile: $0, lineageRoot: "") }
             ?? "\(serverURLString)|hermes|"
-        let descriptor = FetchDescriptor<CachedSession>(predicate: #Predicate { $0.serverURLString == serverURLString })
-        return try context.fetch(descriptor).filter { $0.cacheKey.hasPrefix(prefix) }
+        let descriptor = FetchDescriptor<CachedSession>(predicate: #Predicate {
+            $0.serverURLString == serverURLString && $0.cacheKey.starts(with: prefix)
+        })
+        return try context.fetch(descriptor)
     }
 
     // MARK: Transcripts

@@ -615,6 +615,7 @@ final class ChatAttachmentPreviewViewModel {
     private let item: ChatAttachmentPreviewItem
     private let apiClient: APIClient
     private var didLoad = false
+    private var loadGeneration = 0
 
     private(set) var preview: FilePreviewContent? {
         didSet {
@@ -637,6 +638,14 @@ final class ChatAttachmentPreviewViewModel {
     func load(force: Bool = false) async {
         guard force || !didLoad else { return }
         didLoad = true
+        loadGeneration += 1
+        let generation = loadGeneration
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+                if Task.isCancelled { didLoad = false }
+            }
+        }
         preview = nil
 
         // A pathless item, such as a Hermes session's chip (#1012), shows its local copy
@@ -655,15 +664,17 @@ final class ChatAttachmentPreviewViewModel {
         isLoading = true
         errorMessage = nil
         lastError = nil
-        defer { isLoading = false }
 
         do {
             if item.inferredIsImage {
                 let data = try await apiClient.rawFileData(sessionID: sessionID, path: path)
-                if let previewData = ImagePreviewDownsampler.previewData(
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+                let previewData = await ImagePreviewDownsampler.previewDataAsync(
                     from: data,
                     maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
-                ) {
+                )
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+                if let previewData {
                     preview = .image(.init(data: previewData, originalByteCount: data.count))
                 } else {
                     preview = .unavailable(String(localized: "Could not decode this image."))
@@ -672,18 +683,25 @@ final class ChatAttachmentPreviewViewModel {
                 // Raw bytes (no downsampling) so AVAudioPlayer gets the original
                 // encoded audio; checked before the Quick Look list, which would
                 // otherwise take m4a/mp3/wav/flac away from the inline player.
-                preview = .audio(try await apiClient.rawFileData(sessionID: sessionID, path: path))
+                let data = try await apiClient.rawFileData(sessionID: sessionID, path: path)
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+                preview = .audio(data)
             } else if item.binaryPreview == .quickLook {
                 let apiClient = apiClient
-                preview = try await FilePreviewContent.loadQuickLook(name: item.displayName, knownSize: item.size) {
+                let content = try await FilePreviewContent.loadQuickLook(name: item.displayName, knownSize: item.size) {
                     try await apiClient.rawFilePreviewData(sessionID: sessionID, path: path)
                 }.content
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+                preview = content
             } else if item.binaryPreview == .unavailable {
                 preview = .unavailable(String(localized: "Preview is not available for this file type."))
             } else {
-                preview = .text(try await apiClient.file(sessionID: sessionID, path: path))
+                let file = try await apiClient.file(sessionID: sessionID, path: path)
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+                preview = .text(file)
             }
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }

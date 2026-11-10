@@ -32,16 +32,20 @@ struct MarkdownMathSegmenter {
         var segments: [MarkdownMathSegment] = []
         var cursor = 0
         var index = 0
+        // A failed search exhausted this suffix. Keep the result local: the next
+        // streaming update may supply its closer, or use another delimiter kind.
+        var exhausted = Set<DisplayDelimiter>()
 
         while index < characters.count {
             guard let delimiter = displayDelimiter(in: characters, at: index, protected: protected),
-                  let closeIndex = closingDisplayDelimiter(
-                    in: characters,
-                    from: index + delimiter.openLength,
-                    protected: protected,
-                    delimiter: delimiter
-                  )
-            else {
+                  !exhausted.contains(delimiter) else {
+                index += 1
+                continue
+            }
+            guard let closeIndex = closingDisplayDelimiter(
+                in: characters, from: index + delimiter.openLength, protected: protected, delimiter: delimiter
+            ) else {
+                exhausted.insert(delimiter)
                 index += 1
                 continue
             }
@@ -110,7 +114,7 @@ struct MarkdownMathSegmenter {
     }
 }
 
-private enum DisplayDelimiter: CaseIterable {
+private enum DisplayDelimiter: CaseIterable, Hashable {
     case dollars
     case brackets
 
@@ -131,10 +135,10 @@ private enum DisplayDelimiter: CaseIterable {
     func isOpen(in characters: [Character], at index: Int, protected: [Bool]) -> Bool {
         switch self {
         case .dollars:
-            return matches("$$", in: characters, at: index, protected: protected)
+            return matches("$", "$", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         case .brackets:
-            return matches(#"\["#, in: characters, at: index, protected: protected)
+            return matches("\\", "[", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         }
     }
@@ -142,26 +146,22 @@ private enum DisplayDelimiter: CaseIterable {
     func isClose(in characters: [Character], at index: Int, protected: [Bool]) -> Bool {
         switch self {
         case .dollars:
-            return matches("$$", in: characters, at: index, protected: protected)
+            return matches("$", "$", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         case .brackets:
-            return matches(#"\]"#, in: characters, at: index, protected: protected)
+            return matches("\\", "]", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         }
     }
 
     private func matches(
-        _ token: String,
+        _ first: Character, _ second: Character,
         in characters: [Character],
         at index: Int,
         protected: [Bool]
     ) -> Bool {
-        let tokenCharacters = Array(token)
-        guard index >= 0, index + tokenCharacters.count <= characters.count else { return false }
-        for offset in 0..<tokenCharacters.count where protected[index + offset] {
-            return false
-        }
-        return Array(characters[index..<(index + tokenCharacters.count)]) == tokenCharacters
+        guard index >= 0, index < characters.count, !protected[index], characters[index] == first else { return false }
+        return index + 1 < characters.count && !protected[index + 1] && characters[index + 1] == second
     }
 }
 
