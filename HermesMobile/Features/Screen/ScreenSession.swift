@@ -367,6 +367,8 @@ enum HermexScreenPlugin {
         var removesFromItsProfile = false
         /// How often an open host stream re-reads whether its screen is locked.
         var lockPoll: Duration = .seconds(20)
+        /// Take over at the first frame, once, as a chat's Take Over asks (#1632).
+        var takesOverWhenLive = false
     }
 
     let profile: String
@@ -413,6 +415,8 @@ enum HermexScreenPlugin {
     @ObservationIgnored private var isReleasing = false
     /// A Take Over on its way. A host's goes by HTTP, so a release sent after it can overtake it.
     @ObservationIgnored private var acquiring: Task<Void, Never>?
+    /// `Options.takesOverWhenLive` not yet spent.
+    @ObservationIgnored private var takesOverWhenLive: Bool
     /// Where the trackpad's pointer is, in framebuffer pixels.
     @ObservationIgnored private var pointer: (x: Int, y: Int)?
 
@@ -422,6 +426,7 @@ enum HermexScreenPlugin {
         self.server = server
         self.client = client
         self.options = options
+        takesOverWhenLive = options.takesOverWhenLive
         client.onEvent = { [weak self] event in self?.handle(event) }
         // A new gateway socket means a new viewer id, so everything starts again from the status.
         client.onDisconnect = { [weak self] _ in self?.restart() }
@@ -729,6 +734,11 @@ enum HermexScreenPlugin {
         failures = 0
         isStreamReady = true
         set(.live)
+        if takesOverWhenLive {
+            takesOverWhenLive = false
+            // As the Take Over button would at this moment.
+            if control != .mine, !isHostLocked || canUnlockHost { takeOver() }
+        }
     }
 
     private func makeSocket(_ upgrade: URLRequest) -> any RFBSocket {

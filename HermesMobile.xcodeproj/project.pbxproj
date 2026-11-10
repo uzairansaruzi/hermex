@@ -587,6 +587,7 @@
 		A4770000000000000000D003 /* HermesDelegatedWorkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4770000000000000000D004 /* HermesDelegatedWorkView.swift */; };
 		A4770000000000000000D005 /* HermesDelegatedWorkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4770000000000000000D006 /* HermesDelegatedWorkTests.swift */; };
 		A4750000000000000000B0A3 /* BotPendingRequestCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B0A4 /* BotPendingRequestCard.swift */; };
+		10FE23BFDDEDB030826B9CD2 /* BotScreenCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D9EC5B8C3594AF5C70C49F /* BotScreenCard.swift */; };
 		C8780A000000000000000003 /* HermesTurnOutcomeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8780A000000000000000004 /* HermesTurnOutcomeRow.swift */; };
 		E1139000000000000000A001 /* HermesChatActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1139000000000000000A002 /* HermesChatActivity.swift */; };
 		E1139000000000000000A003 /* HermesPlanViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1139000000000000000A004 /* HermesPlanViews.swift */; };
@@ -1338,6 +1339,7 @@
 		A4770000000000000000D004 /* HermesDelegatedWorkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesDelegatedWorkView.swift; sourceTree = "<group>"; };
 		A4770000000000000000D006 /* HermesDelegatedWorkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesDelegatedWorkTests.swift; sourceTree = "<group>"; };
 		A4750000000000000000B0A4 /* BotPendingRequestCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotPendingRequestCard.swift"; sourceTree = "<group>"; };
+		F3D9EC5B8C3594AF5C70C49F /* BotScreenCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotScreenCard.swift"; sourceTree = "<group>"; };
 		C8780A000000000000000004 /* HermesTurnOutcomeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesTurnOutcomeRow.swift; sourceTree = "<group>"; };
 		E1139000000000000000A002 /* HermesChatActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatActivity.swift; sourceTree = "<group>"; };
 		E1139000000000000000A004 /* HermesPlanViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesPlanViews.swift; sourceTree = "<group>"; };
@@ -2009,6 +2011,7 @@
 				A48400000000000000000553 /* BotMessageActions.swift */,
 				3293C5390FE34E0884C3AED1 /* BotArtifact.swift */,
 				A4750000000000000000B0A4 /* BotPendingRequestCard.swift */,
+				F3D9EC5B8C3594AF5C70C49F /* BotScreenCard.swift */,
 				A4750000000000000000B0A2 /* BotPendingRequest.swift */,
 				1A2B3C4D5E6F7000000000C4 /* Onboarding */,
 				C09300000000000000000010 /* Shared */,
@@ -2813,6 +2816,7 @@
 				A48400000000000000000554 /* BotMessageActions.swift in Sources */,
 				9D8D75592454423A8BB6E2E6 /* BotArtifact.swift in Sources */,
 				A4750000000000000000B0A3 /* BotPendingRequestCard.swift in Sources */,
+				10FE23BFDDEDB030826B9CD2 /* BotScreenCard.swift in Sources */,
 				C8780A000000000000000003 /* HermesTurnOutcomeRow.swift in Sources */,
 				A4750000000000000000B0A1 /* BotPendingRequest.swift in Sources */,
 				1A2B3C4D5E6F700000000001 /* HermesMobileApp.swift in Sources */,

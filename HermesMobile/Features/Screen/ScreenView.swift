@@ -20,11 +20,13 @@ struct ScreenView: View {
     /// Tells the entries the host has no screen at all, so they hide.
     private let onUnavailable: () -> Void
 
+    /// `takesOverWhenLive` is an entry's Take Over (#1632): control is taken at the first frame.
     init(profile: String, title: String, server: URL, connection: BotConnection, removesFromItsProfile: Bool = false,
-         onUnavailable: @escaping () -> Void) {
+         takesOverWhenLive: Bool = false, onUnavailable: @escaping () -> Void) {
         self.onUnavailable = onUnavailable
         var options = ScreenSession.Options()
         options.removesFromItsProfile = removesFromItsProfile
+        options.takesOverWhenLive = takesOverWhenLive
         _session = State(initialValue: ScreenSession(
             profile: profile, title: title, server: server, client: BotClient(saved: connection, server: server), options: options))
         _usesTrackpad = AppStorage(wrappedValue: false, BotScreenSettings.trackpadKey(for: server))

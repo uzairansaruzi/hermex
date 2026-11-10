@@ -1051,6 +1051,30 @@ import SwiftUI
 
     /// Back from the background mid-turn: the replay carries what was missed, the reply
     /// continues without repeating, and nothing is sent again.
+    /// A bot's live `computer_use` raises the Screen card (#1632): the turn's end leaves it, the
+    /// next turn's start clears it, even one that began while away, and a replay never raises it.
+    func testABotChatsLiveComputerUseRaisesTheScreenCardUntilTheNextTurn() async {
+        let chat = await openChat(botChatRoot: "tip")
+        defer { chat.model.suspendStreamForBackground() }
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "tool.start", ["tool_id": .string("t1"), "name": .string("browser_click")]))
+        XCTAssertNil(chat.turn.screenUse, "a browser tool doesn't mean the screen is in use")
+        chat.receive(event(3, "tool.start", ["tool_id": .string("t2"), "name": .string("computer_use")]))
+        XCTAssertEqual(chat.turn.screenUse, .active)
+        chat.receive(event(4, "message.complete", ["text": .string("Stuck at a login.")]))
+        chat.receive(event(5, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.turn.screenUse, .ended)
+
+        chat.model.suspendStreamForBackground()
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 7, events: [
+            event(6, "message.start"),
+            event(7, "tool.start", ["tool_id": .string("t3"), "name": .string("computer_use")])
+        ])))
+        chat.host.always("session.resume", .init(result: resume(running: true)))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertNil(chat.turn.screenUse, "a replayed call is history, not the bot at work now")
+    }
+
     func testReattachContinuesFromTheReplayWithoutDuplicatingOrResending() async {
         let chat = await openChat()
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -1673,7 +1697,8 @@ import SwiftUI
     private func openChat(runtime: String = "runtime", key: String = "tip", profile: String = "default",
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil, lineageRoot: String? = nil,
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
-                          rpcDeadline: Duration = .seconds(30), canonical: Bool = false) async -> Chat {
+                          rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
+                          botChatRoot: String? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -1688,7 +1713,8 @@ import SwiftUI
         serveHistory(history, key: key)
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
-        let turn = HermesChatTurnCoordinator(engine: engine, lineageRoot: lineageRoot, isNetworkAvailable: { true })
+        let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
+                                             isNetworkAvailable: { true })
         let liveActivity = TitleRecordingLiveActivity()
         let model = ChatViewModel(
             session: SessionSummary(profile: profile), server: URL(string: "https://hermes.example")!,
