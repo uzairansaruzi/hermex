@@ -227,7 +227,7 @@ enum ScreenSource: String, Codable, Equatable, Sendable {
 enum HermexScreenPlugin {
     static let name = "hermex-screen"
     static let installIdentifier = "uzairansaruzi/hermex-screen"
-    static let pinnedCommit = "dad2cf0ebb5017eee05eddd0fc19ea44ab0a72e6"
+    static let pinnedCommit = "463935999b5bfa11e7a25585869a387f804625e7"
 
     /// Whether its routes are live, from `GET /capabilities`' status and body.
     enum State: Equatable {
