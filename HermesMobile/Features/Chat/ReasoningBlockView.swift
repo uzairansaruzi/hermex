@@ -191,25 +191,15 @@ enum StreamingReasoningTextStorageUpdate: Equatable {
 private struct LiveReasoningTextView: View {
     let text: String
 
-    @State private var state: StreamingReasoningTextState
-
-    init(text: String) {
-        self.text = text
-        _state = State(initialValue: StreamingReasoningTextState(text: text))
-    }
-
     var body: some View {
-        StreamingReasoningTextView(state: state)
+        StreamingReasoningTextView(text: text)
         .frame(maxWidth: .infinity, alignment: .leading)
         .allowsHitTesting(false)
-        .onChange(of: text) { _, newText in
-            state.update(with: newText)
-        }
     }
 }
 
 private struct StreamingReasoningTextView: UIViewRepresentable {
-    let state: StreamingReasoningTextState
+    let text: String
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -237,12 +227,12 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
 
         context.coordinator.update(
             textView,
-            to: state,
+            to: text,
             font: font,
             textColor: textColor
         )
         textView.textAlignment = layoutDirection == .rightToLeft ? .right : .left
-        textView.accessibilityLabel = state.sourceText
+        textView.accessibilityLabel = text
     }
 
     /// Reports at most the row body cap. Past it the text view scrolls itself
@@ -288,6 +278,9 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
             "HermexStreamingReasoningChunkID"
         )
 
+        // Retained for this mounted text view, so SwiftUI recreating the wrapper
+        // never chunks the entire reply again before applying its appended suffix.
+        private var state = StreamingReasoningTextState()
         private var renderedText = ""
         private var stableChunkIDs: [Int] = []
         private var stableUTF16Length = 0
@@ -296,10 +289,11 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
 
         func update(
             _ textView: UITextView,
-            to state: StreamingReasoningTextState,
+            to text: String,
             font: UIFont,
             textColor: UIColor
         ) {
+            state.update(with: text)
             let storageUpdate = StreamingReasoningTextStorageUpdate.make(
                 renderedText: renderedText,
                 newText: state.sourceText

@@ -827,10 +827,10 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.hermesLineageRoot(forKey: "tip", profile: "default", serverURL: hermesServer, in: context), "root")
 
         // The same session id in another Profile's store is another session.
-        let other = HermesSessionRow(id: "tip", title: "Elsewhere", lineageRootID: "root").summary(in: "research")
-        try CacheStore.cacheHermesSessions([other], profile: "research", reachedEnd: true, serverURL: hermesServer, in: context)
+        let other = HermesSessionRow(id: "tip", title: "Elsewhere", lineageRootID: "root").summary(in: "default-extra")
+        try CacheStore.cacheHermesSessions([other], profile: "default-extra", reachedEnd: true, serverURL: hermesServer, in: context)
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default", in: context).map(\.title), ["Chain"])
-        XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "research", in: context).map(\.title), ["Elsewhere"])
+        XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default-extra", in: context).map(\.title), ["Elsewhere"])
     }
 
     /// Each page is upserted and none sweeps, so reading page 1 alone keeps the rows later pages
