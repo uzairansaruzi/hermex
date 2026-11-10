@@ -306,7 +306,7 @@ private struct ConnectedAppDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { _ in
-            Text("Hermes on this server will lose access to \(name) for the \(model.profile ?? "") Profile.")
+            Text("Hermes on this server will lose access to this \(name) account for the \(model.profile ?? "") Profile.")
         }
         .onChange(of: app?.accounts.isEmpty != false) { _, isEmpty in
             if isEmpty { dismiss() }

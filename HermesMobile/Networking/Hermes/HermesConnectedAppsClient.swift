@@ -83,11 +83,12 @@ enum HermesConnectedAppsDeadEnd: Error, Equatable {
     /// 4032 `NEEDS_NOUS_AUTH`: the Profile has no usable Nous sign-in and may not create a guest one.
     case needsNousSignIn
 
+    /// A read's refusal is a `BotFailure`; a connect's or a removal's keeps the host's message.
     init?(_ error: Error) {
         switch error {
-        case BotFailure.rejected(-32601): self = .hostTooOld
-        case BotFailure.rejected(4031): self = .unavailable
-        case BotFailure.rejected(4032): self = .needsNousSignIn
+        case BotFailure.rejected(-32601), BotSettingFailure.rejected(-32601, _): self = .hostTooOld
+        case BotFailure.rejected(4031), BotSettingFailure.rejected(4031, _): self = .unavailable
+        case BotFailure.rejected(4032), BotSettingFailure.rejected(4032, _): self = .needsNousSignIn
         default: return nil
         }
     }

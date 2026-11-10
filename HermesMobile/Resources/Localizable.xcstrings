@@ -58231,108 +58231,108 @@
         }
       }
     },
-    "Hermes on this server will lose access to %@ for the %@ Profile." : {
+    "Hermes on this server will lose access to this %@ account for the %@ Profile." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "سيفقد Hermes على هذا الخادم الوصول إلى %1$@ لملف التعريف %2$@."
+            "value" : "سيفقد Hermes على هذا الخادم الوصول إلى حساب %1$@ هذا لملف التعريف %2$@."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes auf diesem Server verliert für das Profil %2$@ den Zugriff auf %1$@."
+            "value" : "Hermes auf diesem Server verliert für das Profil %2$@ den Zugriff auf dieses %1$@-Konto."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes en este servidor perderá el acceso a %1$@ para el perfil %2$@."
+            "value" : "Hermes en este servidor perderá el acceso a esta cuenta de %1$@ para el perfil %2$@."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes sur ce serveur perdra l’accès à %1$@ pour le profil %2$@."
+            "value" : "Hermes sur ce serveur perdra l’accès à ce compte %1$@ pour le profil %2$@."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes בשרת הזה יאבד את הגישה אל %1$@ עבור הפרופיל %2$@."
+            "value" : "Hermes בשרת הזה יאבד את הגישה לחשבון %1$@ הזה עבור הפרופיל %2$@."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes su questo server perderà l’accesso a %1$@ per il profilo %2$@."
+            "value" : "Hermes su questo server perderà l’accesso a questo account %1$@ per il profilo %2$@."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "このサーバの Hermes は、プロファイル %2$@ で %1$@ にアクセスできなくなります。"
+            "value" : "このサーバの Hermes は、プロファイル %2$@ でこの %1$@ アカウントにアクセスできなくなります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "이 서버의 Hermes는 %2$@ 프로필에서 %1$@에 접근할 수 없게 됩니다."
+            "value" : "이 서버의 Hermes는 %2$@ 프로필에서 이 %1$@ 계정에 접근할 수 없게 됩니다."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes op deze server verliest de toegang tot %1$@ voor het profiel %2$@."
+            "value" : "Hermes op deze server verliest de toegang tot dit %1$@-account voor het profiel %2$@."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes na tym serwerze utraci dostęp do %1$@ dla profilu %2$@."
+            "value" : "Hermes na tym serwerze utraci dostęp do tego konta %1$@ dla profilu %2$@."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "O Hermes neste servidor perderá o acesso a %1$@ no perfil %2$@."
+            "value" : "O Hermes neste servidor perderá o acesso a esta conta do %1$@ no perfil %2$@."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Hermes на этом сервере потеряет доступ к %1$@ для профиля %2$@."
+            "value" : "Hermes на этом сервере потеряет доступ к этой учётной записи %1$@ для профиля %2$@."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Bu sunucudaki Hermes, %2$@ profili için %1$@ erişimini kaybedecek."
+            "value" : "Bu sunucudaki Hermes, %2$@ profili için bu %1$@ hesabına erişimini kaybedecek."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "اس سرور پر Hermes پروفائل %2$@ کے لیے %1$@ تک رسائی کھو دے گا۔"
+            "value" : "اس سرور پر Hermes پروفائل %2$@ کے لیے اس %1$@ اکاؤنٹ تک رسائی کھو دے گا۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "此伺服器上的 Hermes 將失去設定檔 %2$@ 對 %1$@ 的存取權限。"
+            "value" : "此伺服器上的 Hermes 將失去設定檔 %2$@ 對此 %1$@ 帳戶的存取權限。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "此服务器上的 Hermes 将失去配置文件 %2$@ 对 %1$@ 的访问权限。"
+            "value" : "此服务器上的 Hermes 将失去配置文件 %2$@ 对此 %1$@ 账户的访问权限。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "此伺服器上的 Hermes 將失去設定檔 %2$@ 對 %1$@ 的存取權限。"
+            "value" : "此伺服器上的 Hermes 將失去設定檔 %2$@ 對此 %1$@ 帳號的存取權限。"
           }
         }
       }

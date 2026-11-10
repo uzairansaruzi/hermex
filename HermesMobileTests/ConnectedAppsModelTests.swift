@@ -118,7 +118,7 @@ import XCTest
 
         await model.connect(notion) { _ in XCTFail("a refused sign-in has no link to open") }
 
-        XCTAssertNotNil(model.actionError)
+        XCTAssertEqual(model.actionError, "Connector request failed. Try again explicitly.", "the host's own reason")
         XCTAssertEqual(model.state, .loaded([notion]), "the rows are read again and stay")
         let sent = host.requests.filter { $0["method"].text == "connectors.connect" }.count
         await model.connect(notion) { _ in }

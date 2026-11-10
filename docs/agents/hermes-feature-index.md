@@ -72,8 +72,7 @@ At the pin (0.23.1, `3b421578`) the gateway contract has 262 methods and `Hermes
 | Subagents and processes | `subagent.steer`, `subagent.roster`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.*` | untriaged | Hermex previews up to three live workers in chat; View all opens the session's list, tail and interrupt controls. Completed delegations keep their transcript result cards. |
 | Checkpoints | `rollback.*` | untriaged | Restore a working tree to a checkpoint. |
 | Tools and MCP | `tools.*`, `toolsets.list`, `mcp.*` | untriaged | Toolset switches and MCP server setup, including OAuth. |
-| Connected Apps | `connectors.catalog`, `connectors.list`, `connectors.accounts`, `connectors.connect`, `connectors.operation.wake`, `connectors.accounts.remove`, `connection.respond` | covered | Settings → Server → Connected Apps (#1629), for the Profile's own Nous account (`owner: account`); chats answer session-owned `connection.*` requests. `docs/agents/hermes-server.md` § Connected Apps. |
-| Connector administration | `connectors.accounts.rename`, `connectors.policy.*`, `connectors.tools`, `connectors.operation.status` | untriaged | Naming accounts, a second account for one app, per-tool policy and tool lists. |
+| Connector administration | `connectors.accounts.rename`, `connectors.policy.*`, `connectors.tools`, `connectors.operation.status` | untriaged | Connected Apps (#1629, `hermes-server.md` § Connected Apps) connects and disconnects; naming accounts, a second account for one app, per-tool policy and tool lists are not built. |
 | Provider keys | `model.save_key` | covered | The API Keys screen writes every key, provider or not, through `PUT` and `DELETE /api/env` (#1318). |
 | Provider sign-out | `model.disconnect` | untriaged | Signs out of an OAuth provider; not in #1318. |
 | Vault | `vault.*` | untriaged | Password managers; vault prompts get no card (#1148). |
