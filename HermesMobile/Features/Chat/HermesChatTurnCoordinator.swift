@@ -388,9 +388,9 @@ struct HermesLostTurn: Equatable {
 
     // MARK: Bot Chat (#1145)
 
-    /// Whether the bot used its screen in the latest turn (#1632), for the chat's Screen card. Only
-    /// a live frame raises it, so replayed history and a rebuild never do; any new turn clears it.
-    /// Bot Chat only.
+    /// Whether the bot used its screen in the latest turn (#1632), for the chat's Screen card, in a
+    /// session as in a Bot Chat (#1633). Only a live frame raises it, so replayed history and a
+    /// rebuild never do; any new turn clears it.
     private(set) var screenUse: BotScreenUse?
 
     /// The bot whose Bot Chat this is, from the latest roster read, or a bare row for its
@@ -1347,7 +1347,7 @@ struct HermesLostTurn: Equatable {
         case "tool.start":
             ensureTurn()
             let tool = Self.toolEvent(payload, completed: false)
-            if live, policy == .botChat, tool.name == BotScreenUse.toolName, screenUse != .active { screenUse = .active }
+            if live, tool.name == BotScreenUse.toolName, screenUse != .active { screenUse = .active }
             drivenLiveActivity?.update(.toolStarted(name: tool.name))
             delegate?.streamCoordinatorAppendToolCall(tool)
         case "tool.complete":

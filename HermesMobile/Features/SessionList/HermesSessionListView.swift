@@ -416,6 +416,7 @@ struct HermesSessionListView: View {
                 if !opened.query.isEmpty && home != nil { isSearchExpanded = true }
             }, onDraftKeyChange: identifyChat(chat), waitingShortcut: shortcutReview.waiting(in: chat.id),
             continuity: covers.chatContinuity)
+            .modifier(SessionScreenModifier(chat: chat))
             .id(chat.id)
         }
         .navigationDestination(isPresented: $navigation.covers.showingScheduled) {
@@ -465,7 +466,7 @@ struct HermesSessionListView: View {
                 searchText = opened.query
                 if !opened.query.isEmpty { isSearchExpanded = true }
             }, onDraftKeyChange: identifyChat(chat), waitingShortcut: shortcutReview.waiting(in: chat.id),
-            continuity: covers.chatContinuity).id(chat.id)
+            continuity: covers.chatContinuity).modifier(SessionScreenModifier(chat: chat)).id(chat.id)
         } else if let entry = covers.tasks {
             TasksView(server: entry.server, onAPIError: { _ in }, client: entry.client, newTaskProfile: entry.newTaskProfile).id(entry.id)
         } else if let entry = covers.skills {

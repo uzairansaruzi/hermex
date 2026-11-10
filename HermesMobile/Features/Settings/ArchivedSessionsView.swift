@@ -44,7 +44,7 @@ struct ArchivedSessionsView: View {
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
             .navigationDestination(item: $openedHermesChat) { chat in
-                ChatView(hermesSession: chat).id(chat.id)
+                ChatView(hermesSession: chat).modifier(SessionScreenModifier(chat: chat)).id(chat.id)
             }
             .task {
                 await load()
