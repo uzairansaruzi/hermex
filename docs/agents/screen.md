@@ -164,6 +164,12 @@ The bot chat's toolbar, the Bots home row and tile menus (outside the edit-only 
 `mayEdit` disables), ⌘⇧S for the selected bot, and `hermes-agent://bot?…&screen=1`. There is no
 App Intent or Lock Screen control in v1.
 
+The Bot Chat also shows a card in the transcript once a live turn calls `computer_use`, and after
+that turn, until the next one starts (#1632). Replayed and rebuilt history never raises it, and a
+browser tool doesn't count. Open shows the Screen; Take Over opens it and takes control at the first
+frame unless this iPhone already holds it. The Bots home hands the chat `openBotScreen` only while
+its other entries show, which is the card's gate.
+
 ## Testing against a Linux host
 
 `scripts/local-hermes` on a Codespace, with a random password and `dashboard.public_url` set to

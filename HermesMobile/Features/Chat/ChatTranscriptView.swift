@@ -134,6 +134,8 @@ struct ChatTranscriptView: View {
     var settledPlanAfterRenderID: String? = nil
     /// How a Hermes chat's last turn ended (#1139), under that turn.
     var turnOutcome: HermesTurnOutcomeRow? = nil
+    /// A Bot Chat's bot is using, or just used, its screen (#1632), under its live reply.
+    var screenCard: BotScreenCard? = nil
     /// A Hermes chat's queued prompts (`ChatViewModel.queuedPromptMessages`, #1379, #1602), drawn
     /// last in the host's order as pending bubbles whose only action is `onCopyQueuedPrompt`.
     var queuedPrompts: [ChatMessage] = []
@@ -513,6 +515,7 @@ struct ChatTranscriptView: View {
                 HermesDelegatedWorkInlineView(work: delegatedWork, onOpen: onOpenDelegatedWork)
                     .equatable()
             }
+            screenCard
             workingRow
             turnOutcome
             if let requestWithdrawal {

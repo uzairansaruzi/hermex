@@ -388,6 +388,11 @@ struct HermesLostTurn: Equatable {
 
     // MARK: Bot Chat (#1145)
 
+    /// Whether the bot used its screen in the latest turn (#1632), for the chat's Screen card. Only
+    /// a live frame raises it, so replayed history and a rebuild never do; any new turn clears it.
+    /// Bot Chat only.
+    private(set) var screenUse: BotScreenUse?
+
     /// The bot whose Bot Chat this is, from the latest roster read, or a bare row for its
     /// Profile until one answers. Nil in a session.
     var botProfile: BotProfile? {
@@ -1209,6 +1214,7 @@ struct HermesLostTurn: Equatable {
     // MARK: Turns
 
     private func beginTurn(startedAt: Double?, prompt: String?) {
+        if screenUse != nil { screenUse = nil }
         turnsStarted += 1
         // A send's own turn can begin from its start frame, ahead of the reply; any other has no base.
         let base = isSubmittingSend ? pendingBase : nil
@@ -1246,6 +1252,7 @@ struct HermesLostTurn: Equatable {
     /// same outcome, haptic and alert.
     private func finish(_ ending: TranscriptTurnRunOutcome.Ending) {
         guard let streamID = activeStreamID else { return }
+        endScreenUse()
         let startedAt = turnStartedAt
         endLiveActivity(ending)
         liveActivity = nil
@@ -1274,6 +1281,11 @@ struct HermesLostTurn: Equatable {
         }
     }
 
+    /// A turn that was using the screen is over, or no longer seen live.
+    private func endScreenUse() {
+        if screenUse == .active { screenUse = .ended }
+    }
+
     /// The host's start for the running turn, which can only move it earlier.
     private func adoptStart(_ startedAt: Double) {
         turnStartedAt = startedAt
@@ -1289,8 +1301,8 @@ struct HermesLostTurn: Equatable {
         drivenLiveActivity?.update(.sessionTitle(shown))
     }
 
-    /// One event of this runtime, in `seq` order.
-    private func apply(_ frame: BotJSON) {
+    /// One event of this runtime, in `seq` order. `live` is a frame as it happened, not a replay's.
+    private func apply(_ frame: BotJSON, live: Bool = false) {
         let payload = frame["payload"]
         switch frame["type"].text ?? "" {
         case "message.start":
@@ -1335,6 +1347,7 @@ struct HermesLostTurn: Equatable {
         case "tool.start":
             ensureTurn()
             let tool = Self.toolEvent(payload, completed: false)
+            if live, policy == .botChat, tool.name == BotScreenUse.toolName, screenUse != .active { screenUse = .active }
             drivenLiveActivity?.update(.toolStarted(name: tool.name))
             delegate?.streamCoordinatorAppendToolCall(tool)
         case "tool.complete":
@@ -2109,6 +2122,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidFollowReplacedChat() {
         followedReplacements += 1
         savedTurn = nil; completedFailed = false; queuedPrompts = []; lostTurn = nil; runningAdmission = nil; turnBase = nil
+        screenUse = nil
         finish(.cancelled)
         sideTasks.forgetChat()
         forgetHistoryUntilRebuild()
@@ -2143,7 +2157,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
             replayedReply = Self.replyText(frames)
             return
         }
-        frames.forEach(apply)
+        frames.forEach { apply($0) }
     }
 
     /// A rebuild reads the newest history rows first, while the engine still holds the frames.
@@ -2193,7 +2207,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
             sideTasks.receive(frame)
             return rebuildAfterGap()
         }
-        apply(frame)
+        apply(frame, live: true)
     }
 
     func conversationDidLoseFrames() { rebuildAfterGap() }
@@ -2217,6 +2231,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
+        endScreenUse()
         drivenLiveActivity?.markStale()
         if failure == .rejected(401) { needsSignIn = true }
         guard !retrying else { return }

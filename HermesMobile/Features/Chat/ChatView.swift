@@ -298,6 +298,7 @@ struct ChatView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.hermesUpdateSignIn) private var updateHermesSignIn
+    @Environment(\.openBotScreen) private var openBotScreen
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
     @AppStorage(SessionChatPreferences.dismissKeyboardKey) private var dismissKeyboardAfterSend = false
@@ -2329,6 +2330,12 @@ struct ChatView: View {
         )
     }
 
+    /// A Bot Chat's Screen card (#1632), while the Bots home offers its Screen (`openBotScreen`).
+    private var botScreenCard: BotScreenCard? {
+        guard let openBotScreen, !viewModel.isViewingCachedData, let use = viewModel.hermesBotChat?.screenUse else { return nil }
+        return BotScreenCard(use: use, open: { openBotScreen(takingOver: false) }, takeOver: { openBotScreen(takingOver: true) })
+    }
+
     /// Serve Every Profile for `profile`, from the chat's error (#1611). The chat loads again once
     /// the gateway serves it.
     @ViewBuilder
@@ -2467,6 +2474,7 @@ struct ChatView: View {
             settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
             settledPlanAfterRenderID: settledPlanAfterRenderID,
             turnOutcome: hermesTurnOutcome,
+            screenCard: botScreenCard,
             queuedPrompts: viewModel.queuedPromptMessages,
             lostTurn: viewModel.lostTurn,
             onDiscardLostTurn: { Task { await viewModel.discardLostTurn() } },

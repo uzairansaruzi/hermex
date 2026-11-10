@@ -322,6 +322,20 @@ import XCTest
         session.suspend()
     }
 
+    /// A chat's Take Over (#1632) opens the Screen and takes control at its first frame.
+    func testTakingOverWhenLiveAcquiresAtTheFirstFrame() async {
+        standUp()
+        host.always("display.lease.acquire", .init(result: .object(["lease": lease(holder: "human", viewer: "viewer-1")])))
+        let session = makeSession { $0.takesOverWhenLive = true }
+        session.open()
+        let stream = await socket(0)
+        XCTAssertTrue(requests("display.lease.acquire").isEmpty, "nothing taken before the picture shows")
+        await stream.serve(ScriptedRFBSocket.oneFrame)
+        await reach(.mine, on: session)
+        XCTAssertEqual(requests("display.lease.acquire").count, 1)
+        session.suspend()
+    }
+
     /// Switching apps keeps control: nothing releases, and the return moves the hold to the new
     /// socket's id with no prompt.
     func testReturningFromTheBackgroundTakesTheHoldBackUnderTheNewID() async throws {

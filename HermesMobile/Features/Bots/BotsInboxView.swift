@@ -84,7 +84,8 @@ import SwiftUI
         let toasted = navigationSurface
             .focusedSceneValue(\.hermexSceneActions, sceneActions)
             .fullScreenCover(item: $screenTarget) { target in
-                ScreenView(profile: target.profile.id, title: target.profile.name, server: server, connection: target.connection) {
+                ScreenView(profile: target.profile.id, title: target.profile.name, server: server, connection: target.connection,
+                           takesOverWhenLive: target.takesOver) {
                     hostLacksScreen = true
                 }
             }
@@ -452,6 +453,7 @@ import SwiftUI
             .id([profile.id, connection.id.uuidString, inbox.selection.conversation ?? ""])
             .onAppear { inbox.markSeen(profile) }
             .onDisappear { inbox.noteReturn(from: profile) }
+            .modifier(BotScreenOpenerModifier(isOffered: canOpenScreen) { takingOver in openScreen(profile, takingOver: takingOver) })
             .toolbar {
                 if canOpenScreen {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -561,9 +563,10 @@ import SwiftUI
         isScreenEnabled && !hostLacksScreen
     }
 
-    private func openScreen(_ profile: BotProfile) {
+    /// Opens `profile`'s Screen; `takingOver` takes control once its picture is live (#1632).
+    private func openScreen(_ profile: BotProfile, takingOver: Bool = false) {
         guard canOpenScreen, let connection = inbox.connection else { return }
-        screenTarget = BotScreenTarget(profile: profile, connection: connection)
+        screenTarget = BotScreenTarget(profile: profile, connection: connection, takesOver: takingOver)
     }
 
     /// The tiles, then the rows under them, as the list shows them, which it does only with a
@@ -897,10 +900,11 @@ private enum BotCreationIntent: Identifiable {
     var source: BotProfile? { if case .duplicate(let profile) = self { return profile }; return nil }
 }
 
-/// One open Screen: the bot, on the connection the entry saw.
+/// One open Screen: the bot, on the connection the entry saw, and whether the entry was Take Over.
 private struct BotScreenTarget: Identifiable {
     let profile: BotProfile
     let connection: BotConnection
+    let takesOver: Bool
     var id: String { connection.id.uuidString + "|" + profile.id }
 }
 
