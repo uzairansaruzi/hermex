@@ -675,6 +675,37 @@ the dashboard runs as. A row's identity is its `key`: names collide across categ
   they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only
   a user install can be the active one.
 
+## Connected Apps
+
+The Connected Apps screen (Settings → Server → Connected Apps, #1629) manages the apps one
+Profile's Nous account reaches, over `connectors.*` with `owner: {type: "account"}`. The list is
+`connectors.catalog` joined with `connectors.accounts`; `connectors.list` adds only `enabled`, the
+account's policy. Nothing is cached. Verified on a live 0.23.1 host.
+
+- **Dead ends are error codes.** -32601 is a host without the methods, 4031
+  `CONNECTORS_UNAVAILABLE` a host with them turned off or an account without them, 4032
+  `NEEDS_NOUS_AUTH` a Profile with no usable Nous sign-in. On a host with no Nous account the
+  first connect creates a free guest identity unless `nous.guest` is false.
+- **The browser return is the desktop's.** The host asks the portal to return every account
+  sign-in to `hermes://connections/done?status=…&op=…`, and a client cannot name its own. Hermex
+  doesn't register `hermes://`; the official Hermes app does. So the link opens in a non-ephemeral
+  `ASWebAuthenticationSession` with `callback: .customScheme("hermes")`, which catches the return
+  and closes itself. An `SFSafariViewController` or Safari offers to open the official app instead.
+  A chat's session-owned sign-in gets no return at all, because only a `desktop` session asks for one.
+- **When the browser closes**, however it closed, send `connectors.operation.wake` and read the
+  list again. The accounts are read from the portal, so the answer is current without waiting for
+  the host's `connection.update`.
+- **A sign-in outlives its account.** The link lasts about ten minutes (`deadline_at`). Removing a
+  pending account leaves its operation open, and `connectors.connect` hands that operation and its
+  dead link back until the deadline; the portal answers the link with 404. So after a connect,
+  an operation whose `connection_id` is missing from `connectors.accounts` is settled with
+  `connection.respond` (`result: {settled_by: "continue"}`) and connect is sent once more.
+- **Connect on an app that is already connected** answers `state: connected`, `settled: true` and
+  no `connect_url`.
+- **Logos are bundled.** The catalog's `logo_url`s are SVG only, which UIKit can't decode, so the
+  logos ship in `Assets.xcassets/ConnectedApps/<slug>` and an app without one shows its initial.
+  Refresh them from the catalog's `logo_url`s when the pin advances.
+
 ## Plugin routes and host restarts
 
 The dashboard mounts the routers of enabled plugins when its process starts

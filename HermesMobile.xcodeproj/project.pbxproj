@@ -20,12 +20,16 @@
 		E1582000000000000000A003 /* PluginsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A004 /* PluginsModel.swift */; };
 		E1582000000000000000A005 /* PluginsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A006 /* PluginsView.swift */; };
 		E1582000000000000000A007 /* PluginsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1582000000000000000A008 /* PluginsModelTests.swift */; };
+		E1629000000000000000A007 /* ConnectedAppsModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1629000000000000000A008 /* ConnectedAppsModelTests.swift */; };
 		E1318000000000000000A009 /* APIKeyEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A010 /* APIKeyEditor.swift */; };
 		E1318000000000000000A007 /* APIKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A008 /* APIKeysView.swift */; };
+		E1629000000000000000A005 /* ConnectedAppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1629000000000000000A006 /* ConnectedAppsView.swift */; };
 		E1318000000000000000A005 /* APIKeysModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A006 /* APIKeysModel.swift */; };
+		E1629000000000000000A003 /* ConnectedAppsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1629000000000000000A004 /* ConnectedAppsModel.swift */; };
 		E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */; };
 		E1611000000000000000A007 /* ServeEveryProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A008 /* ServeEveryProfileTests.swift */; };
 		E1318000000000000000A001 /* HermesEnvironmentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A002 /* HermesEnvironmentClient.swift */; };
+		E1629000000000000000A001 /* HermesConnectedAppsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1629000000000000000A002 /* HermesConnectedAppsClient.swift */; };
 		A1022B000000000000000001 /* ApprovalSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000002 /* ApprovalSummary.swift */; };
 		A1022B000000000000000003 /* ApprovalSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000004 /* ApprovalSummaryTests.swift */; };
 		A4790000000000000000E001 /* PushEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F001 /* PushEnvironment.swift */; };
@@ -771,11 +775,15 @@
 		E1582000000000000000A004 /* PluginsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsModel.swift; sourceTree = "<group>"; };
 		E1582000000000000000A006 /* PluginsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsView.swift; sourceTree = "<group>"; };
 		E1582000000000000000A008 /* PluginsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsModelTests.swift; sourceTree = "<group>"; };
+		E1629000000000000000A008 /* ConnectedAppsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAppsModelTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A008 /* APIKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysView.swift; sourceTree = "<group>"; };
+		E1629000000000000000A006 /* ConnectedAppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAppsView.swift; sourceTree = "<group>"; };
 		E1318000000000000000A006 /* APIKeysModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysModel.swift; sourceTree = "<group>"; };
+		E1629000000000000000A004 /* ConnectedAppsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAppsModel.swift; sourceTree = "<group>"; };
 		E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesEnvironmentClientTests.swift; sourceTree = "<group>"; };
 		E1611000000000000000A008 /* ServeEveryProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServeEveryProfileTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A002 /* HermesEnvironmentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesEnvironmentClient.swift"; sourceTree = "<group>"; };
+		E1629000000000000000A002 /* HermesConnectedAppsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesConnectedAppsClient.swift"; sourceTree = "<group>"; };
 		A1022B000000000000000002 /* ApprovalSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummary.swift; sourceTree = "<group>"; };
 		A1022B000000000000000004 /* ApprovalSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummaryTests.swift; sourceTree = "<group>"; };
 		B48200000000000000000001 /* BotProfileAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileAppearance.swift; sourceTree = "<group>"; };
@@ -1595,6 +1603,7 @@
 				E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */,
 				E1611000000000000000A008 /* ServeEveryProfileTests.swift */,
 				E1582000000000000000A008 /* PluginsModelTests.swift */,
+				E1629000000000000000A008 /* ConnectedAppsModelTests.swift */,
 				E1112000000000000000A004 /* HermesWorkspaceFileClientTests.swift */,
 				E1075000000000000000A00A /* HermesUpdateClientTests.swift */,
 				E1075000000000000000A008 /* HermesUpdateMachineTests.swift */,
@@ -1861,6 +1870,7 @@
 				E1043000000000000000A002 /* HermesKanbanClient.swift */,
 				E1069000000000000000A002 /* HermesSkillsClient.swift */,
 				E1318000000000000000A002 /* HermesEnvironmentClient.swift */,
+				E1629000000000000000A002 /* HermesConnectedAppsClient.swift */,
 				E1582000000000000000A002 /* HermesPluginsClient.swift */,
 				E1582000000000000000A010 /* HermesPluginCatalog.swift */,
 				E1112000000000000000A002 /* HermesWorkspaceFileClient.swift */,
@@ -2306,7 +2316,9 @@
 				1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */,
 				E1318000000000000000A010 /* APIKeyEditor.swift */,
 				E1318000000000000000A008 /* APIKeysView.swift */,
+				E1629000000000000000A006 /* ConnectedAppsView.swift */,
 				E1318000000000000000A006 /* APIKeysModel.swift */,
+				E1629000000000000000A004 /* ConnectedAppsModel.swift */,
 				E1582000000000000000A004 /* PluginsModel.swift */,
 				E1582000000000000000A006 /* PluginsView.swift */,
 				E1582000000000000000A012 /* PluginInstallSheet.swift */,
@@ -2738,6 +2750,7 @@
 				E1043000000000000000A001 /* HermesKanbanClient.swift in Sources */,
 				E1069000000000000000A001 /* HermesSkillsClient.swift in Sources */,
 				E1318000000000000000A001 /* HermesEnvironmentClient.swift in Sources */,
+				E1629000000000000000A001 /* HermesConnectedAppsClient.swift in Sources */,
 				E1582000000000000000A001 /* HermesPluginsClient.swift in Sources */,
 				E1582000000000000000A009 /* HermesPluginCatalog.swift in Sources */,
 				E1112000000000000000A001 /* HermesWorkspaceFileClient.swift in Sources */,
@@ -2928,7 +2941,9 @@
 				1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */,
 				E1318000000000000000A009 /* APIKeyEditor.swift in Sources */,
 				E1318000000000000000A007 /* APIKeysView.swift in Sources */,
+				E1629000000000000000A005 /* ConnectedAppsView.swift in Sources */,
 				E1318000000000000000A005 /* APIKeysModel.swift in Sources */,
+				E1629000000000000000A003 /* ConnectedAppsModel.swift in Sources */,
 				E1582000000000000000A003 /* PluginsModel.swift in Sources */,
 				E1582000000000000000A005 /* PluginsView.swift in Sources */,
 				E1582000000000000000A011 /* PluginInstallSheet.swift in Sources */,
@@ -3162,6 +3177,7 @@
 				E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */,
 				E1611000000000000000A007 /* ServeEveryProfileTests.swift in Sources */,
 				E1582000000000000000A007 /* PluginsModelTests.swift in Sources */,
+				E1629000000000000000A007 /* ConnectedAppsModelTests.swift in Sources */,
 				E1112000000000000000A003 /* HermesWorkspaceFileClientTests.swift in Sources */,
 				E1075000000000000000A009 /* HermesUpdateClientTests.swift in Sources */,
 				E1075000000000000000A007 /* HermesUpdateMachineTests.swift in Sources */,

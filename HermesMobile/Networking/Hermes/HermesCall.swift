@@ -60,6 +60,30 @@ enum HermesCall: Equatable, Sendable {
     /// `viewer_mismatch` while a human holds it, unless `force`.
     case displayStop(profile: String, force: Bool)
 
+    // Connected apps (#1629), per Profile, on that Profile's own Nous account (`owner: account`).
+    // A refusal carries `error.data.reason`; a host without them answers -32601.
+    /// `{connectors: [{slug, name, description, category, logo_url}]}`: every app the Profile's
+    /// Nous account may connect, or the public catalog when the host has no Nous identity yet.
+    case connectedAppsCatalog(profile: String)
+    /// `{available, connectors: [{connector, enabled, connected, connection_status}]}`. `enabled`
+    /// is the account's policy; nothing else says an app is turned off.
+    case connectedAppsList(profile: String)
+    /// Starts a sign-in for `app`, or returns the one still open. `{op_id, deadline_at, settled,
+    /// targets: [{name, state, connect_url, connection_id}]}`; the link lasts about ten minutes,
+    /// and an app that is already connected answers `state: connected` with no link. `repairing`
+    /// replaces that broken account, named by its alias when it has one. The first sign-in on a
+    /// host with no Nous account creates a free guest identity there.
+    case connectedAppsConnect(profile: String, app: String, repairing: HermesConnectedApp.Account? = nil)
+    /// The browser came back, so the host reads the accounts now rather than at its next tick.
+    case connectedAppsWake(profile: String, opID: String)
+    /// Closes a sign-in nobody will finish, so the next connect mints a new link instead of
+    /// returning this one. `{status: "ok", settled}`.
+    case connectedAppsSettle(profile: String, opID: String)
+    /// `{accounts: [{connection_id, connector, status, label, alias, active, disabled}]}`.
+    case connectedAppsAccounts(profile: String)
+    /// Removes one account, connected or still waiting. `{connection_id, connector, status: "removed"}`.
+    case connectedAppsRemove(profile: String, connectionID: String)
+
     // Plugins (#1582), per Profile. A Profile the host doesn't have answers 4064.
     /// `{plugins, user_count, bundled_count}`. Every row, and on 0.22.5 it reads the catalog's pins too.
     case pluginsList(profile: String)
@@ -487,6 +511,13 @@ enum HermesCall: Equatable, Sendable {
         case .profilesConfigure: return "profiles.configure"
         case .profilesCreate: return "profiles.create"
         case .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove, .pluginsUpdate, .pluginsSettings: return "plugins.manage"
+        case .connectedAppsCatalog: return "connectors.catalog"
+        case .connectedAppsList: return "connectors.list"
+        case .connectedAppsConnect: return "connectors.connect"
+        case .connectedAppsWake: return "connectors.operation.wake"
+        case .connectedAppsSettle: return "connection.respond"
+        case .connectedAppsAccounts: return "connectors.accounts"
+        case .connectedAppsRemove: return "connectors.accounts.remove"
         case .sessionList: return "session.list"
         case .sessionCreate, .sessionNew: return "session.create"
         case .sessionTitle, .sessionRename: return "session.title"
@@ -566,6 +597,23 @@ enum HermesCall: Equatable, Sendable {
         switch self {
         case .profilesList(let includeSessions): return ["include_sessions": .bool(includeSessions)]
         case .profilesDescribe(let name): return ["name": .string(name)]
+        case .connectedAppsConnect(let profile, let app, let repairing):
+            var params: [String: BotJSON] = ["profile": .string(profile), "owner": Self.accountOwner,
+                                             "connectors": .array([.string(app)]), "reconnect": .bool(repairing != nil)]
+            // A named account is addressed by its name; an unnamed one only has its id.
+            if let alias = repairing?.alias { params["alias"] = .string(alias) }
+            else if let repairing { params["connection_id"] = .string(repairing.id) }
+            return params
+        case .connectedAppsWake(let profile, let opID):
+            return ["profile": .string(profile), "owner": Self.accountOwner, "op_id": .string(opID)]
+        case .connectedAppsSettle(let profile, let opID):
+            return ["profile": .string(profile), "owner": Self.accountOwner, "op_id": .string(opID),
+                    "result": .object(["settled_by": .string("continue")])]
+        case .connectedAppsList(let profile):
+            return ["profile": .string(profile), "owner": Self.accountOwner]
+        case .connectedAppsCatalog(let profile), .connectedAppsAccounts(let profile): return ["profile": .string(profile)]
+        case .connectedAppsRemove(let profile, let connectionID):
+            return ["profile": .string(profile), "connection_id": .string(connectionID)]
         case .pluginsList(let profile): return ["action": .string("list"), "profile": .string(profile)]
         case .pluginsToggle(let profile, let key, let enable):
             return ["action": .string("toggle"), "profile": .string(profile), "key": .string(key), "enable": .bool(enable)]
@@ -797,6 +845,9 @@ enum HermesCall: Equatable, Sendable {
     }
 
     /// One line that opens with `/` and names something after it.
+    /// The `owner` of a call made for the Profile's Nous account rather than for one session.
+    private static let accountOwner: BotJSON = .object(["type": .string("account")])
+
     private static func isSlashLine(_ text: String) -> Bool {
         text.count > 1 && text.hasPrefix("/") && !text.contains(where: \.isNewline)
     }
@@ -806,7 +857,14 @@ enum HermesCall: Equatable, Sendable {
         let valid: Bool
         switch self {
         case .profilesDescribe(let name): valid = !name.isEmpty
-        case .pluginsList(let profile): valid = !profile.isEmpty
+        case .pluginsList(let profile), .connectedAppsCatalog(let profile), .connectedAppsList(let profile),
+             .connectedAppsAccounts(let profile):
+            valid = !profile.isEmpty
+        case .connectedAppsConnect(let profile, let app, let repairing):
+            valid = !profile.isEmpty && !app.isEmpty && repairing?.id.isEmpty != true && repairing?.alias?.isEmpty != true
+        case .connectedAppsWake(let profile, let name), .connectedAppsSettle(let profile, let name),
+             .connectedAppsRemove(let profile, let name):
+            valid = !profile.isEmpty && !name.isEmpty
         case .pluginsToggle(let profile, let key, _), .pluginsRemove(let profile, let key), .pluginsUpdate(let profile, let key, _, _):
             valid = !profile.isEmpty && !key.isEmpty
         case .pluginsSettings(let profile, let key, _): valid = !profile.isEmpty && !key.isEmpty
