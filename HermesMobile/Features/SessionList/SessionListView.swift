@@ -123,6 +123,7 @@ struct SessionListView: View {
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingProjectCreation: SessionSummary?
     @State private var sessionOpenTask: Task<Void, Never>?
+    @State private var openingSignpostSessionID: String?
     @State private var sessionExportShareItem: SessionExportShareItem?
     @State private var isPresentingProjectCreation = false
     @State private var isPresentingAddServer = false
@@ -419,7 +420,7 @@ struct SessionListView: View {
             }
             .onDisappear {
                 ratingRequestID = nil
-                sessionOpenTask?.cancel()
+                cancelSessionOpening()
                 viewModel.invalidateSessionOpening()
                 actionToast.dismiss()
             }
@@ -1490,7 +1491,7 @@ struct SessionListView: View {
     private func openPendingWebuiPush() async {
         guard let destination = pendingWebuiPush, destination.server == server,
               authManager.state == .loggedIn(server: server), !Task.isCancelled else { return }
-        sessionOpenTask?.cancel()
+        cancelSessionOpening()
         viewModel.invalidateSessionOpening()
         navigationState.openSessionList()
         persistLastSelectedSession()
@@ -1588,9 +1589,19 @@ struct SessionListView: View {
     }
 
     private func startOpeningSession(_ session: SessionSummary) {
+        cancelSessionOpening()
         SessionOpenSignpost.begin(sessionID: session.sessionId)
-        sessionOpenTask?.cancel()
+        openingSignpostSessionID = session.sessionId
         sessionOpenTask = Task { await openSession(session) }
+    }
+
+    private func cancelSessionOpening() {
+        sessionOpenTask?.cancel()
+        sessionOpenTask = nil
+        if let openingSignpostSessionID {
+            SessionOpenSignpost.end(sessionID: openingSignpostSessionID, messages: nil)
+        }
+        openingSignpostSessionID = nil
     }
 
     private func openSession(_ session: SessionSummary) async {
@@ -1598,11 +1609,11 @@ struct SessionListView: View {
         // A failed open leaves `actionErrorMessage` set, which shows as a failure toast.
         guard !Task.isCancelled else { return }
 
+        openingSignpostSessionID = nil
         if let sessionToOpen {
             selectSession(sessionToOpen)
         } else {
-            // No chat will show to end the interval; a cancelled open is ended by
-            // the newer `begin` instead.
+            // No chat will show to end the failed-open interval.
             SessionOpenSignpost.end(sessionID: session.sessionId, messages: nil)
         }
     }
