@@ -1937,7 +1937,6 @@ final class SessionListViewModel {
         guard let wire = hermesWire, hermesProfile != nil else { return }
         hermesReadSerial += 1
         let serial = hermesReadSerial
-        let pageSize = HermesREST.sessionPageSize
         var holdsPaging = true
         defer {
             if holdsPaging, serial == hermesReadSerial {
@@ -1946,25 +1945,27 @@ final class SessionListViewModel {
                 if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
             }
         }
-        var pages = HermesProfilePages()
         do {
-            for profile in hermesListedProfiles {
-                let wanted = max(hermesPages[profile].nextOffset + (isLoadingMoreSessions ? pageSize : 0), pageSize)
-                while pages[profile].hasMore, pages[profile].nextOffset < wanted {
-                    let page = try await wire.sessionPage(profile: profile, offset: pages[profile].nextOffset, archived: false)
-                    guard serial == hermesReadSerial, hermesWire === wire else { return }
-                    pages[profile].append(page)
-                }
+            // Independent page chains share the connection latency. Keep each chain ordered
+            // and cap the refresh at two concurrent requests, even across many Profiles.
+            async let ordinary = readHermesPages(wire, previous: hermesPages, loadingMore: isLoadingMoreSessions,
+                                                scheduled: false, profiles: hermesListedProfiles, serial: serial)
+            async let cron = readHermesPages(wire, previous: hermesScheduledPages, loadingMore: isLoadingMoreScheduledSessions,
+                                            scheduled: true, profiles: hermesListedProfiles, serial: serial)
+            var (pages, scheduled) = try await (ordinary, cron)
+            // A Load more can finish while the other chain is waiting. Extend this
+            // refresh to that depth before applying, so it never takes those rows away.
+            while hermesListedProfiles.contains(where: { profile in
+                (pages[profile].hasMore && pages[profile].nextOffset < hermesPages[profile].nextOffset)
+                    || (scheduled[profile].hasMore && scheduled[profile].nextOffset < hermesScheduledPages[profile].nextOffset)
+            }) {
+                async let moreOrdinary = readHermesPages(wire, previous: hermesPages, loadingMore: false,
+                                                        scheduled: false, profiles: hermesListedProfiles, serial: serial, starting: pages)
+                async let moreCron = readHermesPages(wire, previous: hermesScheduledPages, loadingMore: false,
+                                                    scheduled: true, profiles: hermesListedProfiles, serial: serial, starting: scheduled)
+                (pages, scheduled) = try await (moreOrdinary, moreCron)
             }
-            var scheduled = HermesProfilePages()
-            for profile in hermesListedProfiles {
-                let wanted = max(hermesScheduledPages[profile].nextOffset + (isLoadingMoreScheduledSessions ? pageSize : 0), pageSize)
-                while scheduled[profile].hasMore, scheduled[profile].nextOffset < wanted {
-                    let page = try await wire.scheduledSessionPage(profile: profile, offset: scheduled[profile].nextOffset, archived: false)
-                    guard serial == hermesReadSerial, hermesWire === wire else { return }
-                    scheduled[profile].append(page)
-                }
-            }
+            guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
             applyHermesScheduled(scheduled)
             applyHermes(pages, readSerial: serial)
             setHermesReconnecting(false)
@@ -1998,6 +1999,33 @@ final class SessionListViewModel {
             if showCachedHermesSessions(after: error) { return }
             showHermesFailure(error)
         }
+    }
+
+    /// Reads one ordered page chain; a replaced refresh never starts another request.
+    private func readHermesPages(
+        _ wire: any BotTransport, previous: HermesProfilePages, loadingMore: Bool,
+        scheduled: Bool, profiles: [String], serial: Int, starting: HermesProfilePages = HermesProfilePages()
+    ) async throws -> HermesProfilePages {
+        let pageSize = HermesREST.sessionPageSize
+        var pages = starting
+        for profile in profiles {
+            let wanted = max(previous[profile].nextOffset + (loadingMore ? pageSize : 0), pageSize)
+            while pages[profile].hasMore, pages[profile].nextOffset < wanted {
+                try Task.checkCancellation()
+                guard serial == hermesReadSerial, hermesWire === wire else { throw CancellationError() }
+                let offset = pages[profile].nextOffset
+                let page: HermesSessionPage
+                if scheduled {
+                    page = try await wire.scheduledSessionPage(profile: profile, offset: offset, archived: false)
+                } else {
+                    page = try await wire.sessionPage(profile: profile, offset: offset, archived: false)
+                }
+                try Task.checkCancellation()
+                guard serial == hermesReadSerial, hermesWire === wire else { throw CancellationError() }
+                pages[profile].append(page)
+            }
+        }
+        return pages
     }
 
     private func applyHermes(_ pages: HermesProfilePages, readSerial: Int) {

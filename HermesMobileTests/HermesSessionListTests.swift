@@ -22,6 +22,46 @@ import Observation
         super.tearDown()
     }
 
+    func testOrdinaryAndScheduledPagesStartTogetherAndCancelWithTheirOwner() async {
+        let wire = HermesSessionListWire()
+        wire.holdsPages = true
+        wire.holdsScheduledPages = true
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        let loading = Task { await list.openHermes() }
+        await waitUntil("both independent pages started") { wire.pageReads.count == 1 && wire.scheduledReads.count == 1 }
+        loading.cancel()
+        await loading.value
+        XCTAssertTrue(list.sessions.isEmpty)
+        XCTAssertFalse(list.isLoading)
+        XCTAssertNil(list.errorMessage)
+    }
+
+    func testScheduledLoadMoreDuringAnOrdinaryRefreshKeepsItsRows() async {
+        let wire = HermesSessionListWire()
+        let first = (0..<100).map { HermesSessionRow(id: "job-\($0)", source: "cron") }
+        wire.scheduledPages["default"] = [0: HermesSessionPage(rows: first, total: 101),
+                                           100: HermesSessionPage(rows: [HermesSessionRow(id: "last-job", source: "cron")], total: 101)]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        wire.holdsPages = true
+        wire.emit("sessions.changed")
+        await waitUntil("refresh has read scheduled rows while ordinary is parked") {
+            wire.pageReads.count == 2 && wire.scheduledReads.count == 2
+        }
+        await list.loadMoreHermesScheduledSessions()
+        XCTAssertEqual(list.sessions.count, 101)
+        wire.holdsPages = false
+        wire.release()
+        await waitUntil("refresh has extended to the newly loaded page") { wire.scheduledReads.count == 4 }
+        // Reopening waits for its complete refresh too, while retaining that page depth.
+        await list.openHermes()
+        XCTAssertEqual(list.sessions.count, 101)
+        XCTAssertTrue(list.sessions.contains { $0.sessionId == "last-job" })
+        XCTAssertFalse(list.hasMoreScheduledSessions)
+    }
+
     // MARK: Scheduled sessions
 
     func testScheduledSectionLoadsGroupsCountsAndFollowsProfile() async throws {
@@ -106,8 +146,11 @@ import Observation
         await more.value
 
         XCTAssertFalse(list.isLoadingMoreScheduledSessions, "the failed read let go of the scheduled Load more")
+        // The failed refresh may or may not start its own scheduled read before the ordinary
+        // failure cancels it, so count only what this Load more reads.
+        let earlierReads = wire.scheduledReads.count
         await list.loadMoreHermesScheduledSessions()
-        XCTAssertEqual(wire.scheduledReads.map(\.offset), [0, 100, 100])
+        XCTAssertEqual(wire.scheduledReads.dropFirst(earlierReads).map(\.offset), [100])
         XCTAssertTrue(list.sessions.contains { $0.sessionId == "last-job" })
         XCTAssertFalse(list.hasMoreScheduledSessions)
     }
@@ -1293,6 +1336,20 @@ import Observation
     private(set) var changes: [HermesSessionChange] = []
     private(set) var calls: [(method: String, profile: String?)] = []
     @ObservationIgnored private var held: [CheckedContinuation<Void, Never>] = []
+    @ObservationIgnored private var heldPages: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+    private func parkPage() async throws {
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume() }
+                else { heldPages[id] = continuation }
+            }
+        } onCancel: {
+            Task { @MainActor in self.heldPages.removeValue(forKey: id)?.resume() }
+        }
+        try Task.checkCancellation()
+    }
 
     func connect() async throws {
         connects += 1
@@ -1326,7 +1383,7 @@ import Observation
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
         pageReads.append((profile, offset))
         let reply = pages[profile]?[offset] ?? HermesSessionPage(rows: [])
-        if holdsPages { await withCheckedContinuation { held.append($0) } }
+        if holdsPages { try await parkPage() }
         answeredPages += 1
         if let failure = pageFailure { pageFailure = nil; throw failure }
         if removed.contains(profile) { throw BotFailure.rejected(404) }
@@ -1336,7 +1393,7 @@ import Observation
     func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
         scheduledReads.append((profile, offset))
         let reply = scheduledPages[profile]?[offset] ?? HermesSessionPage(rows: [])
-        if holdsScheduledPages { await withCheckedContinuation { held.append($0) } }
+        if holdsScheduledPages { try await parkPage() }
         if let failure = pageFailure { pageFailure = nil; throw failure }
         return reply
     }
@@ -1363,6 +1420,9 @@ import Observation
     }
 
     func release() {
+        let pages = heldPages
+        heldPages = [:]
+        for continuation in pages.values { continuation.resume() }
         let waiting = held
         held = []
         for continuation in waiting { continuation.resume() }
