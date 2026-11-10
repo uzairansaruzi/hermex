@@ -1,0 +1,15 @@
+{
+  "images": [
+    {
+      "filename": "wispr_flow_mcp.svg",
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  },
+  "properties": {
+    "preserves-vector-representation": true
+  }
+}

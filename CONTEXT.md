@@ -16,6 +16,10 @@ _Avoid_: Hermes connection (that is the sign-in), bot server
 The Add Server sheet's page for everything optional: Cloudflare Access's service token, other connection headers, and the new server's name, initials and color. Network hints appear only in a failed connection's advice.
 _Avoid_: Advanced, connection mode, network type
 
+**Connected Apps**:
+The apps a Hermes server's Profile reaches through its Nous account, such as Notion or Slack, and the Settings page that connects and disconnects them. An app has one or more **accounts**; signing in happens on Nous Portal.
+_Avoid_: Connections, Connectors (upstream's name for the same thing), integrations
+
 **Move to Hermes**:
 Copying a webui server's chats to a Hermes server and routing its old links, Shortcuts and notifications there. The webui server stays configured and usable, marked **Moved**, until the user removes it.
 _Avoid_: migration (in UI copy), import

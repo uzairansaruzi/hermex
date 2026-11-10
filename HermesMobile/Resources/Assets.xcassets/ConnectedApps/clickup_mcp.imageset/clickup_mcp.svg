@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none" viewBox="0 0 80 80">
+<!-- SVG created with Arrow, by QuiverAI (https://quiver.ai) -->
+  <defs>
+    <linearGradient id="paint0_linear_2108_8956" x1="17.59" x2="62.41" y1="25.18" y2="25.18" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FA00FF" offset="0" />
+      <stop stop-color="#FD6D71" offset=".5156" />
+      <stop stop-color="#FFC700" offset="1" />
+    </linearGradient>
+    <linearGradient id="paint1_linear_2108_8956" x1="16.57" x2="63.37" y1="58.12" y2="58.12" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#852FFD" offset="0" />
+      <stop stop-color="#6A7AFA" offset=".4948" />
+      <stop stop-color="#46CBF6" offset="1" />
+    </linearGradient>
+  </defs>
+  <path d="m40.09 11.65-22.5 19.37 7.11 8.27 15.39-13.24 15.26 13.24 7.06-8.24-22.32-19.4z" fill="url(#paint0_linear_2108_8956)" />
+  <path d="m25.18 48.27-8.61 6.58c6.27 8.47 14.92 13.11 23.55 13.11 8.62 0 17.7-4.65 23.25-13.15l-8.67-6.48c-4.08 5.75-9.53 8.62-14.58 8.62-5.39 0-10.9-3.2-14.94-8.68z" fill="url(#paint1_linear_2108_8956)" />
+</svg>

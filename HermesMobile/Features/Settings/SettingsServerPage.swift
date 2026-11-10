@@ -201,6 +201,12 @@ struct SettingsServerPage: View {
                 } label: {
                     SettingsLabel(title: String(localized: "Plugins"), systemImage: "puzzlepiece.extension")
                 }
+
+                NavigationLink {
+                    ConnectedAppsView(connection: hermesConnection, server: server)
+                } label: {
+                    SettingsLabel(title: String(localized: "Connected Apps"), systemImage: "app.connected.to.app.below.fill")
+                }
             }
         }
     }

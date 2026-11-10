@@ -659,7 +659,8 @@ private extension HermesCall {
     /// a refused `/compress`, whose 5005 message says why the compaction failed (#1050), a
     /// refused project change or move, such as 5063 naming the project that has the folder (#1052),
     /// a refused branch, whose 5008 message names the session using its name (#1051), and a
-    /// refused plugin toggle, install, removal, update or setting, whose message says why (#1582).
+    /// refused plugin toggle, install, removal, update or setting, whose message says why (#1582),
+    /// and a refused app sign-in or account removal, whose message is the host's reason (#1629).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         if method.hasPrefix("display.") { return .screen }
@@ -669,7 +670,7 @@ private extension HermesCall {
         case .commandDispatch(let name, _, _) where name == "goal": return .setting
         case .slashExec, .sessionRename, .promptRewind, .sessionUndo, .sessionCompress, .sessionWorkspaceMove, .sessionMutate,
              .projectsCreate, .projectsUpdate, .projectsDelete, .sessionBranch, .pluginsToggle, .pluginsInstall,
-             .pluginsRemove, .pluginsUpdate, .pluginsSettings: return .setting
+             .pluginsRemove, .pluginsUpdate, .pluginsSettings, .connectedAppsConnect, .connectedAppsRemove: return .setting
         default: return .plain
         }
     }
