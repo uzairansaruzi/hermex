@@ -49,7 +49,9 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.width.rounded() } action: { width = $0 }
             .onChange(of: cacheKey) {
                 isPainted = false
-                measurement = HTMLReportCache.measurement(for: cacheKey)
+                // Until the page measures under the new key, it keeps the height it had, so the
+                // transcript doesn't shift.
+                measurement = HTMLReportCache.measurement(for: cacheKey) ?? measurement
             }
             .loadsOnceVisible(id: reference.id) { admittedID = $0 }
             .task(id: LoadKey(admittedID: admittedID, attempt: model.attempt, attach: loader.loadKey)) {
@@ -248,7 +250,7 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
     /// The first measure for this `cacheKey` locks the row's height; a later load under the same
     /// key keeps it, so the row never jumps.
     private func lockHeight(_ contentHeight: CGFloat) {
-        if measurement == nil {
+        if HTMLReportCache.measurement(for: cacheKey) == nil {
             let cap = Self.heightCap
             let next = HTMLReportMeasurement(height: min(max(contentHeight, 24), cap), isClipped: contentHeight > cap)
             HTMLReportCache.store(next, for: cacheKey)
