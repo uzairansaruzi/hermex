@@ -1,3 +1,4 @@
+import CryptoKit
 import Observation
 import SwiftUI
 import UIKit
@@ -251,6 +252,9 @@ private struct TranscriptHTMLReportsModifier: ViewModifier {
     private(set) var data: Data?
     /// The page, decoded once, once `ready`.
     private(set) var html: String?
+    /// A digest of `data`, which keys the locked height: an agent that rewrites a report at the
+    /// same path gets the new page measured, not the old one's height.
+    private(set) var contentTag: String?
     /// Bumped by `retry`, which keys the row's load task.
     private(set) var attempt = 0
 
@@ -262,6 +266,7 @@ private struct TranscriptHTMLReportsModifier: ViewModifier {
             guard !Task.isCancelled else { return }
             self.data = data
             html = String(decoding: data, as: UTF8.self)
+            contentTag = SHA256.hash(data: data).prefix(8).map { String(format: "%02x", $0) }.joined()
             phase = .ready
         } catch BotArtifactFailure.tooLarge {
             guard !Task.isCancelled else { return }
@@ -285,6 +290,7 @@ private struct TranscriptHTMLReportsModifier: ViewModifier {
         phase = .waiting
         data = nil
         html = nil
+        contentTag = nil
         attempt += 1
     }
 }

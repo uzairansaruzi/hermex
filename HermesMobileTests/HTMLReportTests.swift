@@ -56,6 +56,22 @@ final class HTMLReportTests: XCTestCase {
         XCTAssertEqual(model.html, "<p>ok</p>")
     }
 
+    func testARewrittenReportAtTheSamePathIsMeasuredAsNewContent() async {
+        let report = TranscriptMediaReference(rawReference: "/tmp/report.html")
+        var page = "<p>short</p>"
+        let loader = TranscriptHTMLReportLoader()
+        loader.load = { _ in Data(page.utf8) }
+        let first = TranscriptHTMLReportModel()
+        await first.load(report, using: loader)
+
+        page = "<p>longer, rewritten by the agent</p>"
+        let second = TranscriptHTMLReportModel()
+        await second.load(report, using: loader)
+
+        XCTAssertNotNil(first.contentTag)
+        XCTAssertNotEqual(first.contentTag, second.contentTag)
+    }
+
     func testAPageWhoseWebProcessDiesReloadsOnceThenFails() {
         var failures = 0
         let theme = HTMLReportTheme(appearance: .default, colorScheme: .dark, dynamicTypeSize: .large)
