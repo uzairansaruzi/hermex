@@ -163,7 +163,7 @@ pins, after two testers pass.
 
 ## Entries
 
-The bot chat's toolbar, the Bots home row and tile menus (outside the edit-only group, which
+The chat header's Screen button, the Bots home row and tile menus (outside the edit-only group, which
 `mayEdit` disables), ⌘⇧S for the selected bot or the session chat on screen, and
 `hermes-agent://bot?…&screen=1`. There is no App Intent or Lock Screen control in v1.
 
@@ -178,7 +178,13 @@ A session chat shows the same card, for its own Profile on its own server and co
 list's two sites, Archived, and a session pushed from a chat), with the same gate and its own
 -32601 flag, so the card may show once more there on a host without `display.*`. ⌘⇧S opens the
 Screen of the chat on screen through `ScreenShortcut`, except while that chat says the host doesn't
-serve its Profile. Sessions have no toolbar button.
+serve its Profile.
+
+The header's Screen button (#1640) is one `ChatView` button for Bot Chats and sessions alike: the
+last slot in the trailing pill, after Git, or one more item there in the vertical bar. It shows
+whenever the chat has `openBotScreen`, whether or not a turn used the screen, hides with ⌘⇧S while
+the chat says the host doesn't serve its Profile, and opens the Screen to watch. Take Over stays on
+the card.
 
 ## Testing against a Linux host
 
