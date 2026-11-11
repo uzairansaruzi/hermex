@@ -162,8 +162,10 @@ struct HTMLReportMeasurement: Equatable {
 
     func image(for key: String) -> UIImage? { images[key] }
 
+    /// An image larger than the whole limit, such as a tall report on an iPad, isn't kept.
     func store(_ image: UIImage, for key: String) {
         remove(key)
+        guard Self.cost(of: image) <= byteLimit else { return }
         images[key] = image
         order.append(key)
         bytes += Self.cost(of: image)

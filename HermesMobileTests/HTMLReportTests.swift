@@ -81,10 +81,12 @@ final class HTMLReportTests: XCTestCase {
         snapshots.store(image, for: "a")
         snapshots.store(image, for: "b")
         snapshots.store(image, for: "c")
+        snapshots.store(UIGraphicsImageRenderer(size: CGSize(width: 10, height: 30)).image { _ in }, for: "tall")
 
         XCTAssertNil(snapshots.image(for: "a"))
         XCTAssertNotNil(snapshots.image(for: "b"))
         XCTAssertNotNil(snapshots.image(for: "c"))
+        XCTAssertNil(snapshots.image(for: "tall"), "an image over the whole limit isn't kept")
     }
 
     func testANewTextSizeOrFontMeasuresTheReportAgain() {

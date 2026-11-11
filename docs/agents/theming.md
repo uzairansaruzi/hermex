@@ -58,7 +58,7 @@ These stay San Francisco: system menus and alerts, segmented controls, and `Cont
 
 ## HTML reports
 
-A Hermes reply's `.html` file renders in place in the chat and in a full-height sheet (#1623, `HermesMobile/Features/Chat/HTMLReport.swift`). The page gets the active theme, font and text size as zero-specificity defaults (`:where()`), so any style of its own wins. A live page restyles in place when the theme, accent, font, text size or light/dark changes. These CSS variables are set on `:root`:
+A Hermes reply's `.html` file renders in place in the chat and in a full-height sheet (#1623, `HermesMobile/Features/Chat/HTMLReport.swift`). Like a browser, a visible report loads whatever remote images, styles or scripts it names without a tap, so those hosts see the request and the device's IP address; no Hermes cookie, credential or header goes with it. The page gets the active theme, font and text size as zero-specificity defaults (`:where()`), so any style of its own wins. A live page restyles in place when the theme, accent, font, text size or light/dark changes. These CSS variables are set on `:root`:
 
 | Variable | From |
 |---|---|
