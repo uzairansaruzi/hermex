@@ -837,7 +837,7 @@ struct ChatView: View {
         in replyMedia: [TranscriptMediaReference]
     ) {
         presentPreviewRestoringComposerFocusIfNeeded {
-            if isHermesSession, reference.isHermesDocumentCandidate {
+            if isHermesSession, reference.isHermesDocumentCandidate || reference.isHTMLReportCandidate {
                 hermesFilePreviewItem = HermesFilePreviewItem(reference: reference)
                 return
             }
@@ -2532,6 +2532,9 @@ struct ChatView: View {
         .transcriptLinks(perform: handleTranscriptLink)
         .environment(\.chatWorkspaceRoot, session.workspace)
         .environment(\.previewsHermesDocuments, isHermesSession)
+        .transcriptHTMLReports(loadKey: viewModel.attachmentLoadKey, load: isHermesSession ? { [viewModel] reference in
+            try await viewModel.transcriptHTMLReportData(for: reference)
+        } : nil)
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }

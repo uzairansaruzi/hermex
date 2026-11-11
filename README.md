@@ -41,7 +41,7 @@ Hermex is a native SwiftUI app for iPhone and iPad. It connects directly to a [H
 
 On a Hermes server, Hermex gives you these features:
 
-- **Chat.** Stream replies with the agent's thinking and tool calls. Steer or stop a run, answer approvals and questions, and attach images and documents. Pick the model, Profile, and reasoning effort from the composer.
+- **Chat.** Stream replies with the agent's thinking and tool calls. Steer or stop a run, answer approvals and questions, and attach images and documents. Pick the model, Profile, and reasoning effort from the composer. HTML reports the agent sends render right in the chat, in your theme ([how to ask for one](docs/agents/theming.md#html-reports)).
 - **Voice.** Dictate with the host's speech-to-text, and listen to replies in the host's voice.
 - **Sessions.** Search, rename, pin, archive, branch, and export sessions, and group them into projects. Cached sessions stay readable offline.
 - **Bots.** Chat with your Hermes bots one to one or in group chats.

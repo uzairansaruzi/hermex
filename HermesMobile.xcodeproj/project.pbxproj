@@ -252,6 +252,9 @@
 		D1FF76200000000000000002 /* MarkdownDiffCodeBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */; };
 		C14300000000000000000001 /* StreamingMarkdownSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14300000000000000000002 /* StreamingMarkdownSupport.swift */; };
 		C0DE34000000000000000001 /* TranscriptMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000002 /* TranscriptMedia.swift */; };
+		C0DE16230000000000000001 /* HTMLReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE16230000000000000002 /* HTMLReport.swift */; };
+		C0DE16230000000000000003 /* HTMLReportWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE16230000000000000004 /* HTMLReportWebView.swift */; };
+		C0DE16230000000000000005 /* TranscriptHTMLReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE16230000000000000006 /* TranscriptHTMLReportView.swift */; };
 		C0DE34000000000000000006 /* TranscriptMediaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE34000000000000000005 /* TranscriptMediaView.swift */; };
 		C0DE86700000000000000001 /* TranscriptImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE86700000000000000002 /* TranscriptImageCache.swift */; };
 		1F18000000000000000000B2 /* TranscriptMediaImageLightbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F18000000000000000000A2 /* TranscriptMediaImageLightbox.swift */; };
@@ -666,6 +669,7 @@
 		B0F90198095C496B8F4D64BA /* BotArtifactPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = B86ED8785A2E4AB0A01B24E9 /* BotArtifactPreview.swift */; };
 		729010E70E8041EA9414997D /* BotArtifactDownload.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FB3FA2B0654D06B7B2B032 /* BotArtifactDownload.swift */; };
 		C8D6BA506D0F43B3AB34A9B4 /* BotArtifactTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13BC5694F485465CA9648F24 /* BotArtifactTests.swift */; };
+		C0DE16230000000000000007 /* HTMLReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE16230000000000000008 /* HTMLReportTests.swift */; };
 		D7750E758B8A432EA96770E2 /* BotAttachmentUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6923C3D8C6C4822BEF3C41C /* BotAttachmentUpload.swift */; };
 		127110E3C3924333B7967315 /* BotAttachmentSendingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */; };
 		A48400000000000000000101 /* BotMentions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48400000000000000000102 /* BotMentions.swift */; };
@@ -995,6 +999,9 @@
 		D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDiffCodeBlock.swift; sourceTree = "<group>"; };
 		C14300000000000000000002 /* StreamingMarkdownSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingMarkdownSupport.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000002 /* TranscriptMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMedia.swift; sourceTree = "<group>"; };
+		C0DE16230000000000000002 /* HTMLReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLReport.swift; sourceTree = "<group>"; };
+		C0DE16230000000000000004 /* HTMLReportWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLReportWebView.swift; sourceTree = "<group>"; };
+		C0DE16230000000000000006 /* TranscriptHTMLReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptHTMLReportView.swift; sourceTree = "<group>"; };
 		C0DE34000000000000000005 /* TranscriptMediaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaView.swift; sourceTree = "<group>"; };
 		C0DE86700000000000000002 /* TranscriptImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptImageCache.swift; sourceTree = "<group>"; };
 		1F18000000000000000000A2 /* TranscriptMediaImageLightbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMediaImageLightbox.swift; sourceTree = "<group>"; };
@@ -1418,6 +1425,7 @@
 		B86ED8785A2E4AB0A01B24E9 /* BotArtifactPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotArtifactPreview.swift"; sourceTree = "<group>"; };
 		D2FB3FA2B0654D06B7B2B032 /* BotArtifactDownload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotArtifactDownload.swift"; sourceTree = "<group>"; };
 		13BC5694F485465CA9648F24 /* BotArtifactTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotArtifactTests.swift"; sourceTree = "<group>"; };
+		C0DE16230000000000000008 /* HTMLReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HTMLReportTests.swift"; sourceTree = "<group>"; };
 		B6923C3D8C6C4822BEF3C41C /* BotAttachmentUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotAttachmentUpload.swift"; sourceTree = "<group>"; };
 		7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotAttachmentSendingTests.swift"; sourceTree = "<group>"; };
 		A48400000000000000000102 /* BotMentions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotMentions.swift"; sourceTree = "<group>"; };
@@ -1614,6 +1622,7 @@
 				C8890A000000000000000002 /* HermesConnectionLogTests.swift */,
 				7BBB8E5B895948939E22118C /* BotAttachmentSendingTests.swift */,
 				13BC5694F485465CA9648F24 /* BotArtifactTests.swift */,
+				C0DE16230000000000000008 /* HTMLReportTests.swift */,
 				EE6A7BC5738C4EF9AB0A965B /* BotDraftTests.swift */,
 				689A646974F44DF4BFE57FD7 /* BotDeepLinkTests.swift */,
 				B1176000000000000000A004 /* HermesSessionLinkTests.swift */,
@@ -2168,6 +2177,9 @@
 				1A2B3C4D5E6F7000000000DB /* MarkdownRenderer.swift */,
 				C14300000000000000000002 /* StreamingMarkdownSupport.swift */,
 				C0DE34000000000000000002 /* TranscriptMedia.swift */,
+				C0DE16230000000000000002 /* HTMLReport.swift */,
+				C0DE16230000000000000004 /* HTMLReportWebView.swift */,
+				C0DE16230000000000000006 /* TranscriptHTMLReportView.swift */,
 				C0DE34000000000000000005 /* TranscriptMediaView.swift */,
 				C0DE86700000000000000002 /* TranscriptImageCache.swift */,
 				1F18000000000000000000A2 /* TranscriptMediaImageLightbox.swift */,
@@ -3044,6 +3056,9 @@
 				D1FF76200000000000000002 /* MarkdownDiffCodeBlock.swift in Sources */,
 				C14300000000000000000001 /* StreamingMarkdownSupport.swift in Sources */,
 				C0DE34000000000000000001 /* TranscriptMedia.swift in Sources */,
+				C0DE16230000000000000001 /* HTMLReport.swift in Sources */,
+				C0DE16230000000000000003 /* HTMLReportWebView.swift in Sources */,
+				C0DE16230000000000000005 /* TranscriptHTMLReportView.swift in Sources */,
 				C0DE34000000000000000006 /* TranscriptMediaView.swift in Sources */,
 				C0DE86700000000000000001 /* TranscriptImageCache.swift in Sources */,
 				1F18000000000000000000B2 /* TranscriptMediaImageLightbox.swift in Sources */,
@@ -3190,6 +3205,7 @@
 				C8890A000000000000000001 /* HermesConnectionLogTests.swift in Sources */,
 				127110E3C3924333B7967315 /* BotAttachmentSendingTests.swift in Sources */,
 				C8D6BA506D0F43B3AB34A9B4 /* BotArtifactTests.swift in Sources */,
+				C0DE16230000000000000007 /* HTMLReportTests.swift in Sources */,
 				142E7F57D82742678CF78DCA /* BotDraftTests.swift in Sources */,
 				CF99AE7CDC2E472881C269AC /* BotDeepLinkTests.swift in Sources */,
 				B1176000000000000000A003 /* HermesSessionLinkTests.swift in Sources */,
