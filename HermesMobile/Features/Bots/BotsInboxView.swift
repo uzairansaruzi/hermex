@@ -454,15 +454,6 @@ import SwiftUI
             .onAppear { inbox.markSeen(profile) }
             .onDisappear { inbox.noteReturn(from: profile) }
             .modifier(BotScreenOpenerModifier(isOffered: canOpenScreen) { takingOver in openScreen(profile, takingOver: takingOver) })
-            .toolbar {
-                if canOpenScreen {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { openScreen(profile) } label: {
-                            Label("Screen", systemImage: "display")
-                        }
-                    }
-                }
-            }
         }
     }
 

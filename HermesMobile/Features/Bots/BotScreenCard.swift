@@ -23,7 +23,7 @@ final class BotScreenOpener {
 
 extension EnvironmentValues {
     /// Set by the Bots home only while its own Screen entries show, and for a session chat by
-    /// `SessionScreenModifier` behind the same gate, so nil hides the chat's card.
+    /// `SessionScreenModifier` behind the same gate, so nil hides the chat's card and header button.
     @Entry var openBotScreen: BotScreenOpener? = nil
 }
 
