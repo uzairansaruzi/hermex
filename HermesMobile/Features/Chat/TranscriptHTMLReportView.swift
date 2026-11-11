@@ -254,6 +254,7 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
     private func lockHeight(_ contentHeight: CGFloat) {
         let contentKey = "\(cacheKey)|\(model.contentTag ?? "")"
         if let locked = HTMLReportCache.measurement(for: contentKey) {
+            HTMLReportCache.store(locked, for: cacheKey)
             measurement = locked
         } else {
             let cap = Self.heightCap
