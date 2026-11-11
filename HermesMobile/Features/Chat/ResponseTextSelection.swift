@@ -26,6 +26,7 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     @Environment(\.displayScale) private var displayScale
     @Environment(\.locale) private var locale
     @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
+    @Environment(\.transcriptHTMLReportLoader) private var htmlReportLoader
     @Environment(\.markdownTableEdgeFadeColor) private var tableEdgeFadeColor
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @Environment(\.openURL) private var openURL
@@ -57,6 +58,7 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
             displayScale: displayScale,
             locale: locale,
             previewsHermesDocuments: previewsHermesDocuments,
+            htmlReportLoader: htmlReportLoader,
             tableEdgeFadeColor: tableEdgeFadeColor,
             chatDisclosureToggled: chatDisclosureToggled
         ))
@@ -75,6 +77,7 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
             .environment(\.displayScale, environment.displayScale)
             .environment(\.locale, environment.locale)
             .environment(\.previewsHermesDocuments, environment.previewsHermesDocuments)
+            .environment(\.transcriptHTMLReportLoader, environment.htmlReportLoader)
             .environment(\.markdownTableEdgeFadeColor, environment.tableEdgeFadeColor)
             .environment(\.chatDisclosureToggled, environment.chatDisclosureToggled)
             .environment(\.openURL, controller.forwardedOpenURL))
@@ -94,6 +97,7 @@ struct ResponseSelectionEnvironment: Equatable {
     let displayScale: CGFloat
     let locale: Locale
     let previewsHermesDocuments: Bool
+    let htmlReportLoader: TranscriptHTMLReportLoader?
     let tableEdgeFadeColor: Color?
     let chatDisclosureToggled: ChatDisclosureToggleAction
 }

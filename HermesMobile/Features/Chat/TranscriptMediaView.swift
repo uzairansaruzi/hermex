@@ -77,12 +77,14 @@ struct TranscriptMediaContentView: View {
                         cacheNamespace: cacheNamespace,
                         loadMediaImage: loadMediaImage,
                         loadMediaData: loadMediaData,
-                        onPreviewMedia: onPreviewMedia
+                        onPreviewMedia: onPreviewMedia,
+                        isStreaming: isStreaming
                     )
                     // Pin other media LTR so it keeps its leading-edge anchor inside an RTL
                     // message (#259); the text segments above still follow the chat
                     // direction, and so does a Hermes document's preview row.
-                    if previewsHermesDocuments && reference.isHermesDocumentCandidate
+                    if previewsHermesDocuments
+                        && (reference.isHermesDocumentCandidate || reference.isHTMLReportCandidate)
                         && onPreviewMedia != nil && loadMediaData != nil {
                         thumbnail
                     } else {
@@ -100,7 +102,9 @@ private struct TranscriptMediaThumbnailView: View {
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
+    let isStreaming: Bool
     @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
+    @Environment(\.transcriptHTMLReportLoader) private var htmlReportLoader
 
     @State private var image: UIImage?
     @State private var didAttemptLoad = false
@@ -168,14 +172,28 @@ private struct TranscriptMediaThumbnailView: View {
 
         case .unsupported where loadMediaData != nil:
             if let loadMediaData {
-                TranscriptMediaFileExportView(
+                let fileCard = TranscriptMediaFileExportView(
                     reference: reference,
                     loadMediaData: {
                         await loadMediaData(reference)
                     },
-                    onPreview: previewsHermesDocuments && reference.isHermesDocumentCandidate
+                    onPreview: previewsHermesDocuments
+                        && (reference.isHermesDocumentCandidate || reference.isHTMLReportCandidate)
                         ? onPreviewMedia.map { preview in { preview(reference) } } : nil
                 )
+                // A streaming reply keeps the card; the report renders once the reply settles.
+                if HTMLReport.rendersInline(reference, loader: htmlReportLoader, isStreaming: isStreaming),
+                   let htmlReportLoader, let onPreviewMedia {
+                    TranscriptHTMLReportView(
+                        reference: reference,
+                        cacheNamespace: cacheNamespace,
+                        loader: htmlReportLoader,
+                        onExpand: { onPreviewMedia(reference) },
+                        fileCard: { fileCard }
+                    )
+                } else {
+                    fileCard
+                }
             } else {
                 TranscriptMediaUnavailableChip(reference: reference)
             }

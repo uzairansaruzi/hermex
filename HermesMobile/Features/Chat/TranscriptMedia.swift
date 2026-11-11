@@ -114,6 +114,12 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         return BinaryFilePreview(path: path) == .quickLook
     }
 
+    /// An `.html` or `.htm` file, which a Hermes reply renders in place (#1623). A remote URL
+    /// is classified by its path, never its query.
+    var isHTMLReportCandidate: Bool {
+        mediaKind == .unsupported && ["html", "htm"].contains(pathExtension)
+    }
+
     private var pathExtension: String {
         switch source {
         case let .remoteURL(url):

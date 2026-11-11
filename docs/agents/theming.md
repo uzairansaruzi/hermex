@@ -55,3 +55,22 @@ A trait can't swap a SwiftUI `Font`, so the tokens read `AppFontSettings.shared.
 The bundled fonts, DM Sans and Lora, live unmodified in `Resources/Fonts` under `UIAppFonts`, with their licenses in `ThirdPartyNotices`.
 
 These stay San Francisco: system menus and alerts, segmented controls, and `ContentUnavailableView`, which sets its own fonts. The share extension and Live Activity are separate processes and don't follow the setting.
+
+## HTML reports
+
+A Hermes reply's `.html` file renders in place in the chat and in a full-height sheet (#1623, `HermesMobile/Features/Chat/HTMLReport.swift`). Like a browser, a visible report loads whatever remote images, styles or scripts it names without a tap, so those hosts see the request and the device's IP address; no Hermes cookie, credential or header goes with it. The page gets the active theme, font and text size as zero-specificity defaults (`:where()`), so any style of its own wins. A live page restyles in place when the theme, accent, font, text size or light/dark changes. These CSS variables are set on `:root`:
+
+| Variable | From |
+|---|---|
+| `--background` | canvas |
+| `--foreground` | text |
+| `--card` | surface |
+| `--muted-foreground` | secondary text |
+| `--border` | separator |
+| `--primary` | accent |
+| `--font-sans` | the Font setting; DM Sans falls back to the system sans and Lora to Georgia, because the page's web process can't see bundled fonts |
+| `--font-mono` | the system monospaced font |
+
+A user can paste this to their agent:
+
+> When you make an HTML report for me, send it as a single `.html` file. Style it with the CSS variables `--background`, `--foreground`, `--card`, `--muted-foreground`, `--border`, `--primary`, `--font-sans` and `--font-mono` instead of fixed colors and fonts, so it matches my app's theme in light and dark. Inline images, styles and data; a relative link to another file won't load.

@@ -18,6 +18,8 @@ import UniformTypeIdentifiers
 
     private var loaded: (file: QuickLookTemporaryFile, data: Data)?
     var fileURL: URL? { loaded?.file.url }
+    /// The page, decoded once, when `load` was asked to render an HTML report (#1623).
+    private(set) var html: String?
     private(set) var errorMessage: String?
     private var generation = 0
 
@@ -32,7 +34,7 @@ import UniformTypeIdentifiers
         )
     }
 
-    func load(name: String, download: () async throws -> Data) async {
+    func load(name: String, decodesHTML: Bool = false, download: () async throws -> Data) async {
         cleanup()
         let owner = generation
         errorMessage = nil
@@ -44,6 +46,7 @@ import UniformTypeIdentifiers
             // Returning drops a late write, which deletes its directory.
             guard !Task.isCancelled, owner == generation else { return }
             loaded = (written, data)
+            if decodesHTML { html = String(decoding: data, as: UTF8.self) }
         } catch {
             guard !Task.isCancelled, owner == generation else { return }
             errorMessage = error.localizedDescription
@@ -53,12 +56,13 @@ import UniformTypeIdentifiers
     func cleanup() {
         generation += 1
         loaded = nil
+        html = nil
     }
 
 }
 
-/// A Hermes chat's sent file or artifact in Quick Look. Once loaded, Save to Files and
-/// Share sit beside Done and act on the bytes already downloaded.
+/// A Hermes chat's sent file or artifact in Quick Look, or an HTML report in its own web view.
+/// Once loaded, Save to Files and Share sit beside Done and act on the bytes already downloaded.
 struct BotArtifactPreview: View {
     let reference: TranscriptMediaReference
     /// The title and saved file name; the reference's file name when nil.
@@ -73,7 +77,9 @@ struct BotArtifactPreview: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let url = model.fileURL {
+                if let html = model.html {
+                    HTMLReportSheetPage(html: html)
+                } else if let url = model.fileURL {
                     QuickLookFileView(url: url)
                 } else if let error = model.errorMessage {
                     ContentUnavailableView {
@@ -129,7 +135,9 @@ struct BotArtifactPreview: View {
         } message: {
             Text(exportErrorMessage ?? "")
         }
-        .task(id: attempt) { await model.load(name: name, download: download) }
+        .task(id: attempt) {
+            await model.load(name: name, decodesHTML: reference.isHTMLReportCandidate, download: download)
+        }
         .onDisappear { model.cleanup() }
     }
 

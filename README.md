@@ -34,14 +34,14 @@ More screenshots are on [hermexapp.com](https://hermexapp.com).
 Hermex is a native SwiftUI app for iPhone and iPad. It connects directly to a [Hermes Agent](https://github.com/NousResearch/hermes-agent) host that you run. From your phone, you start and steer sessions, follow streaming work, answer the agent's questions, and review what it changed. Your server runs the agent and its tools, holds your data, and calls the model providers you configure.
 
 - **Free.** Hermex has no subscriptions and no in-app purchases.
-- **Private.** Hermex has no analytics and no tracking. Agent traffic goes only to your server. Push notifications are optional and off until you turn them on. They pass through an open-source relay that you can host yourself, and the relay never sees message text, server URLs, or credentials. [`docs/agents/push.md`](docs/agents/push.md) lists the metadata the relay does see.
+- **Private.** Hermex has no analytics and no tracking. Agent traffic goes only to your server, except that an HTML report your agent sends can load images or scripts from the web when it shows, as a browser would. Push notifications are optional and off until you turn them on. They pass through an open-source relay that you can host yourself, and the relay never sees message text, server URLs, or credentials. [`docs/agents/push.md`](docs/agents/push.md) lists the metadata the relay does see.
 - **Native.** Hermex runs on iOS and iPadOS 18 or later, and it isn't a web wrapper.
 
 ## What you can do
 
 On a Hermes server, Hermex gives you these features:
 
-- **Chat.** Stream replies with the agent's thinking and tool calls. Steer or stop a run, answer approvals and questions, and attach images and documents. Pick the model, Profile, and reasoning effort from the composer.
+- **Chat.** Stream replies with the agent's thinking and tool calls. Steer or stop a run, answer approvals and questions, and attach images and documents. Pick the model, Profile, and reasoning effort from the composer. HTML reports the agent sends render right in the chat, in your theme ([how to ask for one](docs/agents/theming.md#html-reports)).
 - **Voice.** Dictate with the host's speech-to-text, and listen to replies in the host's voice.
 - **Sessions.** Search, rename, pin, archive, branch, and export sessions, and group them into projects. Cached sessions stay readable offline.
 - **Bots.** Chat with your Hermes bots one to one or in group chats.

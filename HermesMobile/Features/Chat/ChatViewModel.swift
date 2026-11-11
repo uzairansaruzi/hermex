@@ -2030,6 +2030,21 @@ final class ChatViewModel {
         return await hermesTranscriptMediaData(for: reference, from: hermesTurn, whole: true)
     }
 
+    /// A Hermes reply's HTML report for its inline render (#1623), at most
+    /// `HTMLReport.inlineByteLimit`: a larger file throws `BotArtifactFailure.tooLarge` and stays a
+    /// card. A host path downloads through this attach; a remote URL is a public, cookie-less fetch
+    /// with no server's credentials, as the document sheet's is. Throws `.stale` on webui.
+    func transcriptHTMLReportData(for reference: TranscriptMediaReference) async throws -> Data {
+        guard let hermesTurn else { throw BotFailure.stale }
+        switch reference.source {
+        case let .localPath(path):
+            return try await hermesTurn.attachmentData(path: path, limit: HTMLReport.inlineByteLimit)
+        case let .remoteURL(url):
+            return try await BotArtifactDownload.data(session: APIClient.sharedPublicMediaSession,
+                                                      request: URLRequest(url: url), limit: HTMLReport.inlineByteLimit)
+        }
+    }
+
     private func hermesTranscriptMediaData(for reference: TranscriptMediaReference, from turn: HermesChatTurnCoordinator,
                                            whole: Bool) async -> Data? {
         switch reference.source {
