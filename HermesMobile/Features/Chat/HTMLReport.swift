@@ -132,12 +132,14 @@ struct HTMLReportMeasurement: Equatable {
 }
 
 /// Measured heights that outlive a chat, so reopening one keeps its reports' heights instead of
-/// jumping. Keys hold the server namespace, the file and the row width, so nothing crosses servers.
+/// jumping. Keys hold the server namespace, the file, and what lays the page out (the row width,
+/// the font and the text size), so nothing crosses servers and a new font or size measures again.
 @MainActor enum HTMLReportCache {
     private static var measurements: [String: HTMLReportMeasurement] = [:]
 
-    static func key(namespace: String, reference: TranscriptMediaReference, width: CGFloat) -> String {
-        "\(namespace)|\(reference.id)|\(Int(width.rounded()))"
+    static func key(namespace: String, reference: TranscriptMediaReference, width: CGFloat,
+                    family: AppFontFamily, dynamicTypeSize: DynamicTypeSize) -> String {
+        "\(namespace)|\(reference.id)|\(Int(width.rounded()))|\(family.rawValue)|\(dynamicTypeSize)"
     }
 
     static func measurement(for key: String) -> HTMLReportMeasurement? { measurements[key] }

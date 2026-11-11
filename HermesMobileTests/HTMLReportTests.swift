@@ -1,3 +1,4 @@
+import SwiftUI
 import WebKit
 import XCTest
 @testable import HermesMobile
@@ -84,6 +85,18 @@ final class HTMLReportTests: XCTestCase {
         XCTAssertNil(snapshots.image(for: "a"))
         XCTAssertNotNil(snapshots.image(for: "b"))
         XCTAssertNotNil(snapshots.image(for: "c"))
+    }
+
+    func testANewTextSizeOrFontMeasuresTheReportAgain() {
+        let report = TranscriptMediaReference(rawReference: "/tmp/report.html")
+        func key(_ family: AppFontFamily, _ size: DynamicTypeSize) -> String {
+            HTMLReportCache.key(namespace: "server-a", reference: report, width: 390, family: family, dynamicTypeSize: size)
+        }
+        HTMLReportCache.store(HTMLReportMeasurement(height: 600, isClipped: false), for: key(.sanFrancisco, .large))
+
+        XCTAssertNotNil(HTMLReportCache.measurement(for: key(.sanFrancisco, .large)))
+        XCTAssertNil(HTMLReportCache.measurement(for: key(.sanFrancisco, .xxxLarge)))
+        XCTAssertNil(HTMLReportCache.measurement(for: key(.georgia, .large)))
     }
 
     func testTheTopFrameNeverNavigatesAndTappedLinksGoToTheRouter() throws {

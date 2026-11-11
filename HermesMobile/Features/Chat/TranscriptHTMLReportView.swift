@@ -46,9 +46,8 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
                 page
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
-                guard newWidth.rounded() != width.rounded() else { return }
-                width = newWidth
+            .onGeometryChange(for: CGFloat.self) { $0.size.width.rounded() } action: { width = $0 }
+            .onChange(of: cacheKey) {
                 isPainted = false
                 measurement = HTMLReportCache.measurement(for: cacheKey)
             }
@@ -148,8 +147,8 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
                         onAnchorTap: onExpand
                     )
                     .accessibilityLabel(reference.displayName)
-                    // A new width lays the page out again and measures it at that width.
-                    .id(Int(width.rounded()))
+                    // A new width, font or text size lays the page out again and measures it.
+                    .id(cacheKey)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -218,7 +217,8 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
     private var isVisible: Bool { selectionScope?.collectsGlyphs ?? true }
 
     private var cacheKey: String {
-        HTMLReportCache.key(namespace: cacheNamespace, reference: reference, width: width)
+        HTMLReportCache.key(namespace: cacheNamespace, reference: reference, width: width,
+                            family: AppFontSettings.shared.family, dynamicTypeSize: dynamicTypeSize)
     }
 
     private var pageHeight: CGFloat { measurement?.height ?? Self.placeholderHeight }
@@ -245,8 +245,8 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
         isPainted = false
     }
 
-    /// The first measure at this width locks the row's height; a later load at the same width
-    /// keeps it, so the row never jumps.
+    /// The first measure for this `cacheKey` locks the row's height; a later load under the same
+    /// key keeps it, so the row never jumps.
     private func lockHeight(_ contentHeight: CGFloat) {
         if measurement == nil {
             let cap = Self.heightCap
