@@ -257,7 +257,8 @@ extension EnvironmentValues {
 /// Routes link taps through one `OpenURLAction` that outlives body passes, for
 /// the same reason as `ChatDisclosureToggleAction`. The screen's `handler` sees
 /// each link first and returns nil for links it does not own; of those, web
-/// pages open in the in-app browser and the rest go to the system.
+/// pages go to `SafariView` (their app, else the in-app browser) and the rest
+/// go to the system.
 final class TranscriptLinkRouter {
     enum Decision {
         case host(OpenURLAction.Result)
@@ -302,8 +303,9 @@ extension View {
 
     /// Routes every link tap below this view through `handler` first, without
     /// invalidating link readers when the caller rebuilds the closure. Links
-    /// the handler returns nil for open web pages in an in-app Safari sheet
-    /// over whatever is on screen (`SafariView`); other links go to the system.
+    /// the handler returns nil for open web pages in the app that claims them,
+    /// else in an in-app Safari sheet over whatever is on screen (`SafariView`);
+    /// other links go to the system.
     func transcriptLinks(perform handler: @escaping (URL) -> OpenURLAction.Result?) -> some View {
         modifier(TranscriptLinksModifier())
             .modifier(TranscriptLinkHandlerModifier(handler: handler))
