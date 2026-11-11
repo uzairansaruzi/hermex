@@ -247,10 +247,12 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
         isPainted = false
     }
 
-    /// The first measure for this `cacheKey` locks the row's height; a later load under the same
-    /// key keeps it, so the row never jumps.
+    /// The first measure for this `cacheKey` locks the height; a later load under the same key,
+    /// in this row or another showing the same file, takes the locked one, so no row jumps.
     private func lockHeight(_ contentHeight: CGFloat) {
-        if HTMLReportCache.measurement(for: cacheKey) == nil {
+        if let locked = HTMLReportCache.measurement(for: cacheKey) {
+            measurement = locked
+        } else {
             let cap = Self.heightCap
             let next = HTMLReportMeasurement(height: min(max(contentHeight, 24), cap), isClipped: contentHeight > cap)
             HTMLReportCache.store(next, for: cacheKey)
