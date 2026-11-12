@@ -21,6 +21,7 @@ struct ContentView: View {
                 // Cold launch: an App Intent may have queued a deep link before this
                 // view appeared (e.g. Action button "New Chat"). Drain it now (#337).
                 drainPendingIntentDeepLink()
+                await UsageReports.shared.appBecameActive()
             }
             .onChange(of: intentRouter.pendingDeepLink) {
                 // Warm launch: the intent set the deep link after the view appeared.
@@ -71,6 +72,8 @@ struct ContentView: View {
                 // and the creators on their next Create (#902).
                 if scenePhase == .background { HermesConnections.shared.closeForBackground() }
                 guard scenePhase == .active else { return }
+                // Sends last week's usage report once, when reports are allowed (#1662).
+                Task { await UsageReports.shared.appBecameActive() }
                 importPendingSharedDraftIfAvailable()
                 // #248: the foreground pass stays silent — the in-session run-end
                 // paths own notifications while the app is alive.
@@ -212,6 +215,7 @@ struct ContentView: View {
         // A Bot widget names its server by digest and its bot by Profile only (#1643), so it finds
         // the server's current Bot connection, or waits for a signed-out Hermes server's sign-in.
         if let destination = BotWidgetDestination(url: url) {
+            UsageReports.shared.record(.homeWidget)
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers,
                                            isBotModeEnabled: isBotModeEnabled))
             return
@@ -220,6 +224,7 @@ struct ContentView: View {
         // A Limits widget's tap opens Usage only on the signed-in active server and connection its
         // limits were read through (#1409), never switching servers; anything else opens the app as is.
         if let usage = HermesUsageDestination(url: url) {
+            UsageReports.shared.record(.homeWidget)
             if usage.opens(state: authManager.state, servers: authManager.servers) { pendingLinks.hermesUsage = usage }
             return
         }
@@ -303,6 +308,7 @@ struct ContentView: View {
     private func drainPendingIntentDeepLink() {
         guard let url = intentRouter.pendingDeepLink else { return }
         intentRouter.pendingDeepLink = nil
+        UsageReports.shared.record(.appIntents)
         handleOpenURL(url)
     }
 
@@ -311,6 +317,8 @@ struct ContentView: View {
     }
 
     private func consumePendingSharedImport(_ reservation: SharedImportReservation) {
+        // A share from the share extension; a Shortcut's queued text has a destination instead.
+        if reservation.sharedImport.shortcut == nil { UsageReports.shared.record(.shareExtension) }
         shares.consume(reservation, in: HermesShareDraft.containerURL(), active: authManager.state.server,
                        servers: authManager.servers)
     }

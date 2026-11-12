@@ -6,10 +6,20 @@ struct SessionListCardSlot: View {
     @AppStorage(TipJar.completedResponseCountKey) private var completedResponses = 0
     @AppStorage(TipJar.dismissedReleaseKey) private var tipDismissedRelease: String?
     @AppStorage(GitHubStar.dismissedReleaseKey) private var starDismissedRelease: String?
+    @AppStorage(UsageReports.Keys.acceptedVersion) private var acceptedUsageVersion: Int?
+    @AppStorage(UsageReports.Keys.declinedVersion) private var declinedUsageVersion: Int?
 
     var body: some View {
+        let consent = UsageReportConsent(acceptedVersion: acceptedUsageVersion, declinedVersion: declinedUsageVersion)
         switch SessionListCard.current(completedResponses: completedResponses, tipDismissedRelease: tipDismissedRelease,
-                                       starDismissedRelease: starDismissedRelease, hasSharedImport: hasSharedImport) {
+                                       starDismissedRelease: starDismissedRelease, usageReportConsent: consent,
+                                       hasSharedImport: hasSharedImport) {
+        case .usageReports:
+            if let question = consent.question() {
+                UsageReportsCard(question: question)
+                    .padding(.horizontal, 16)
+                    .sessionsScreenListRow()
+            }
         case .tip:
             TipJarCard()
                 .padding(.horizontal, 16)
@@ -24,13 +34,69 @@ struct SessionListCardSlot: View {
     }
 }
 
+/// Asks whether to send a weekly usage report (#1662), or, once the report has gained fields,
+/// whether to send those too. Only an answer hides it: "See what's sent" opens the preview and
+/// leaves the card in place.
+struct UsageReportsCard: View {
+    let question: UsageReportConsent.Question
+    @State private var isShowingPreview = false
+
+    var body: some View {
+        SessionListCardShell(card: .usageReports, title: title, message: message, faceShape: "circle",
+                             hasCloseButton: false) {
+            VStack(spacing: 4) {
+                HStack(spacing: 10) {
+                    SessionListCardAnswerButton(title: "No thanks") { UsageReports.shared.decline() }
+                    SessionListCardAnswerButton(title: "Allow") { UsageReports.shared.allow() }
+                }
+                Button {
+                    isShowingPreview = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("See what’s sent")
+                        Image(systemName: "chevron.forward")
+                            .font(AppFont.caption(weight: .semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .foregroundStyle(.appSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .font(AppFont.subheadline())
+            }
+            .padding(.top, 2)
+        }
+        .sheet(isPresented: $isShowingPreview) {
+            UsageReportPreviewSheet()
+        }
+    }
+
+    private var title: LocalizedStringKey {
+        switch question {
+        case .allow: "Help improve Hermex"
+        case .moreFields: "Usage reports can say more"
+        }
+    }
+
+    private var message: Text {
+        switch question {
+        case .allow:
+            Text("Send a weekly usage summary to the developer. Never message text, server addresses or file names.")
+        case .moreFields(let fields):
+            Text("This version adds \(Text(fields.formatted(.list(type: .and))).bold()) to the weekly summary. No thanks keeps sending the summary you already allowed.")
+        }
+    }
+}
+
 /// Asks for support. Opening either link hides the card for good; the membership page sells any perks.
 struct TipJarCard: View {
     var body: some View {
         SessionListCardShell(
             card: .tip,
             title: "Keep Hermex going",
-            message: "Hermex is free and open source, with no ads and no tracking. Supporters make that possible.",
+            message: Text("Hermex is free and open source, with no ads and no tracking. Supporters make that possible."),
             faceShape: "circle"
         ) {
             VStack(spacing: 4) {
@@ -56,7 +122,7 @@ struct GitHubStarCard: View {
         SessionListCardShell(
             card: .star,
             title: "Star Hermex on GitHub",
-            message: "Hermex is free and open source. A star costs nothing and helps more people find it.",
+            message: Text("Hermex is free and open source. A star costs nothing and helps more people find it."),
             faceShape: "star",
             // The tip card's eyes, moved in from the star's arm.
             eyeLayout: .classic.centered(x: 0.06, y: 0)
@@ -93,8 +159,28 @@ private struct SessionListCardButton: View {
     }
 }
 
+/// The usage reports card's two answers: gray capsules of equal weight, so neither reads as the default.
+private struct SessionListCardAnswerButton: View {
+    let title: LocalizedStringKey
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(AppFont.subheadline(weight: .semibold))
+                .foregroundStyle(.appPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(Color(.secondarySystemFill), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// The shell the session list cards share: a greeting face, title, "Not now" X, body and
-/// actions. Any link opened from `actions` hides the card for good.
+/// actions. Any link opened from `actions` hides a tip or star card for good.
 private struct SessionListCardShell<Actions: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isAppThemed) private var isThemed
@@ -103,34 +189,34 @@ private struct SessionListCardShell<Actions: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var greetingPhase = SessionListCardGreeting.Phase.neutral
     @State private var isVisible = false
-    @AppStorage private var dismissedRelease: String?
 
     let card: SessionListCard
     let title: LocalizedStringKey
-    let message: LocalizedStringKey
+    let message: Text
     /// A `BotAvatarShape` raw value for the yellow face.
     let faceShape: String
     /// Nil keeps the shape's own eye placement.
     let eyeLayout: BotAvatarEyeLayout?
+    /// False for a card that leaves only by an answer.
+    let hasCloseButton: Bool
     let actions: Actions
 
-    init(card: SessionListCard, title: LocalizedStringKey, message: LocalizedStringKey, faceShape: String,
-         eyeLayout: BotAvatarEyeLayout? = nil, @ViewBuilder actions: () -> Actions) {
+    init(card: SessionListCard, title: LocalizedStringKey, message: Text, faceShape: String,
+         eyeLayout: BotAvatarEyeLayout? = nil, hasCloseButton: Bool = true, @ViewBuilder actions: () -> Actions) {
         self.card = card
         self.title = title
         self.message = message
         self.faceShape = faceShape
         self.eyeLayout = eyeLayout
+        self.hasCloseButton = hasCloseButton
         self.actions = actions()
-        _dismissedRelease = AppStorage(card.dismissedReleaseKey)
     }
 
     private var state: SessionListCardState { SessionListCardState(card: card, defaults: .standard) }
 
-    private var dismissed: Bool { dismissedRelease == state.release }
-
+    // An answer removes the card from the slot, which ends `isVisible` and the greeting with it.
     private var canAnimate: Bool {
-        isVisible && scenePhase == .active && !reduceMotion && !dismissed
+        isVisible && scenePhase == .active && !reduceMotion
     }
 
     private var faceSize: CGFloat { dynamicTypeSize.isAccessibilitySize ? 36 : 50 }
@@ -143,15 +229,15 @@ private struct SessionListCardShell<Actions: View>: View {
                     .font(AppFont.headline())
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, minHeight: faceSize, alignment: .leading)
-                closeButton
+                if hasCloseButton { closeButton }
             }
-            Text(message)
+            message
                 .font(AppFont.subheadline())
                 .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
             actions
                 .environment(\.openURL, OpenURLAction { url in
-                    state.recordLinkOpened()
+                    state.openLinkFromCard()
                     return .systemAction(url)
                 })
         }
@@ -167,10 +253,11 @@ private struct SessionListCardShell<Actions: View>: View {
         .onAppear {
             isVisible = true
             RatingPromptState.shared.recordCardShown(card)
+            UsageReports.shared.record(card, \.shown)
         }
         .onDisappear { isVisible = false }
         .task(id: canAnimate) {
-            guard isVisible, scenePhase == .active, !dismissed else { return }
+            guard isVisible, scenePhase == .active else { return }
             await SessionListCardGreeting.shared.play(reduceMotion: reduceMotion) { greetingPhase = $0 }
         }
     }
@@ -205,7 +292,7 @@ private struct SessionListCardShell<Actions: View>: View {
     /// "Not now": hides the card until the next feature release.
     private var closeButton: some View {
         Button {
-            state.dismiss()
+            state.dismissFromCard()
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 12, weight: .bold))

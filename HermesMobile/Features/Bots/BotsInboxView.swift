@@ -140,6 +140,7 @@ import SwiftUI
             }), roster: inbox.profiles, avatars: inbox.avatars,
                 onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                 .id(key)
+                .onAppear { UsageReports.shared.record(.bots) }
         } else { ContentUnavailableView("Select a Bot", systemImage: "bubble.left.and.bubble.right") }
     }
 
@@ -159,6 +160,7 @@ import SwiftUI
                     }), roster: inbox.profiles, avatars: inbox.avatars,
                         onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                     .id(key)
+                    .onAppear { UsageReports.shared.record(.bots) }
                 }
             }
             .navigationDestination(item: $editSelection) { selection in
@@ -451,7 +453,7 @@ import SwiftUI
             // could let two destinations share one identity and keep the wrong
             // conversation on screen.
             .id([profile.id, connection.id.uuidString, inbox.selection.conversation ?? ""])
-            .onAppear { inbox.markSeen(profile) }
+            .onAppear { inbox.markSeen(profile); UsageReports.shared.record(.bots) }
             .onDisappear { inbox.noteReturn(from: profile) }
             .modifier(BotScreenOpenerModifier(isOffered: canOpenScreen) { takingOver in openScreen(profile, takingOver: takingOver) })
         }

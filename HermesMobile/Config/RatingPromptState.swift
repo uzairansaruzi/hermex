@@ -34,7 +34,7 @@ enum RatingPromptMoment {
 @MainActor
 final class RatingPromptState {
     static let shared: RatingPromptState = {
-        let state = RatingPromptState(defaults: .standard)
+        let state = RatingPromptState(defaults: .standard, usage: .shared)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--rating-prompt-eligible") {
             state.prepareForTesting()
@@ -49,12 +49,15 @@ final class RatingPromptState {
     }
 
     private let defaults: UserDefaults
+    /// Also counts each completed response for the week's usage report, when reports are allowed.
+    private let usage: UsageReports?
     private var streamOwners: [StreamOwner] = []
     private(set) var isFirstLaunch: Bool
     private(set) var cardShownThisLaunch: SessionListCard?
 
-    init(defaults: UserDefaults, now: Date = Date()) {
+    init(defaults: UserDefaults, now: Date = Date(), usage: UsageReports? = nil) {
         self.defaults = defaults
+        self.usage = usage
         isFirstLaunch = defaults.object(forKey: RatingPromptSettings.firstLaunchDateKey) == nil
         if isFirstLaunch {
             defaults.set(now, forKey: RatingPromptSettings.firstLaunchDateKey)
@@ -72,6 +75,7 @@ final class RatingPromptState {
 
     func recordCompletedResponse() {
         defaults.set(policy.completedResponses + 1, forKey: TipJar.completedResponseCountKey)
+        usage?.recordCompletedResponse()
     }
 
     /// A webui stream or a Hermes chat on `server`; a running turn holds the request back.

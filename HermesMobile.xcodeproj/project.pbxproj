@@ -245,6 +245,7 @@
 		E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */; };
 		532000000000000000000003 /* RatingPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000004 /* RatingPromptTests.swift */; };
 		531000000000000000000201 /* SessionListCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000202 /* SessionListCardTests.swift */; };
+		C66200000000000000000005 /* UsageReportsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66200000000000000000006 /* UsageReportsTests.swift */; };
 		870000000000000000000201 /* HitchMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000202 /* HitchMeterTests.swift */; };
 		C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */; };
 		C14040000000000000000001 /* TestWaits.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14040000000000000000002 /* TestWaits.swift */; };
@@ -367,6 +368,7 @@
 		139700000000000000000001 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000002 /* DiagnosticsLog.swift */; };
 		139700000000000000000003 /* SettingsDiagnosticsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000004 /* SettingsDiagnosticsPage.swift */; };
 		125200000000000000000006 /* SettingsAboutPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000005 /* SettingsAboutPage.swift */; };
+		C66200000000000000000003 /* SettingsUsageReportsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66200000000000000000004 /* SettingsUsageReportsPage.swift */; };
 		141100000000000000000002 /* SettingsAcknowledgementsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141100000000000000000001 /* SettingsAcknowledgementsPage.swift */; };
 		125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000007 /* SettingsNotificationsPage.swift */; };
 		12520000000000000000000A /* SettingsServerPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000009 /* SettingsServerPage.swift */; };
@@ -381,6 +383,7 @@
 		532000000000000000000001 /* RatingPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000002 /* RatingPromptState.swift */; };
 		5320000000000000000000D1 /* DevAutoLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5320000000000000000000D2 /* DevAutoLogin.swift */; };
 		531000000000000000000001 /* SessionListCardState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000002 /* SessionListCardState.swift */; };
+		C66200000000000000000001 /* UsageReports.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66200000000000000000002 /* UsageReports.swift */; };
 		870000000000000000000001 /* PerformanceSignposts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000002 /* PerformanceSignposts.swift */; };
 		870000000000000000000003 /* HitchMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000004 /* HitchMeter.swift */; };
 		B14050000000000000000001 /* RenderProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14050000000000000000002 /* RenderProbe.swift */; };
@@ -999,6 +1002,7 @@
 		E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatLiveActivityTests.swift; sourceTree = "<group>"; };
 		532000000000000000000004 /* RatingPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptTests.swift; sourceTree = "<group>"; };
 		531000000000000000000202 /* SessionListCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListCardTests.swift; sourceTree = "<group>"; };
+		C66200000000000000000006 /* UsageReportsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageReportsTests.swift; sourceTree = "<group>"; };
 		870000000000000000000202 /* HitchMeterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeterTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedSSEStreamFixture.swift; sourceTree = "<group>"; };
 		C14040000000000000000002 /* TestWaits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWaits.swift; sourceTree = "<group>"; };
@@ -1121,6 +1125,7 @@
 		139700000000000000000002 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
 		139700000000000000000004 /* SettingsDiagnosticsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDiagnosticsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000005 /* SettingsAboutPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAboutPage.swift; sourceTree = "<group>"; };
+		C66200000000000000000004 /* SettingsUsageReportsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUsageReportsPage.swift; sourceTree = "<group>"; };
 		141100000000000000000001 /* SettingsAcknowledgementsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAcknowledgementsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000007 /* SettingsNotificationsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000009 /* SettingsServerPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsServerPage.swift; sourceTree = "<group>"; };
@@ -1135,6 +1140,7 @@
 		532000000000000000000002 /* RatingPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptState.swift; sourceTree = "<group>"; };
 		5320000000000000000000D2 /* DevAutoLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevAutoLogin.swift; sourceTree = "<group>"; };
 		531000000000000000000002 /* SessionListCardState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListCardState.swift; sourceTree = "<group>"; };
+		C66200000000000000000002 /* UsageReports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageReports.swift; sourceTree = "<group>"; };
 		870000000000000000000002 /* PerformanceSignposts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceSignposts.swift; sourceTree = "<group>"; };
 		870000000000000000000004 /* HitchMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeter.swift; sourceTree = "<group>"; };
 		B14050000000000000000002 /* RenderProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderProbe.swift; sourceTree = "<group>"; };
@@ -1719,6 +1725,7 @@
 					E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */,
 				532000000000000000000004 /* RatingPromptTests.swift */,
 				531000000000000000000202 /* SessionListCardTests.swift */,
+				C66200000000000000000006 /* UsageReportsTests.swift */,
 				870000000000000000000202 /* HitchMeterTests.swift */,
 					C04800000000000000000004 /* ChatAttachmentCoordinatorTests.swift */,
 					C0GATE000000000000000002 /* ChatComposerSendGateTests.swift */,
@@ -2331,6 +2338,7 @@
 				158300000000000000000002 /* SettingsAppearancePage.swift */,
 				C15500000000000000000008 /* ThinkingSliderPickerView.swift */,
 				125200000000000000000005 /* SettingsAboutPage.swift */,
+				C66200000000000000000004 /* SettingsUsageReportsPage.swift */,
 				139600000000000000000002 /* SupportReport.swift */,
 				139700000000000000000002 /* DiagnosticsLog.swift */,
 				139700000000000000000004 /* SettingsDiagnosticsPage.swift */,
@@ -2375,6 +2383,7 @@
 				532000000000000000000002 /* RatingPromptState.swift */,
 				5320000000000000000000D2 /* DevAutoLogin.swift */,
 				531000000000000000000002 /* SessionListCardState.swift */,
+				C66200000000000000000002 /* UsageReports.swift */,
 				870000000000000000000002 /* PerformanceSignposts.swift */,
 				870000000000000000000004 /* HitchMeter.swift */,
 				B14050000000000000000002 /* RenderProbe.swift */,
@@ -2963,6 +2972,7 @@
 				125200000000000000000004 /* SettingsAppPages.swift in Sources */,
 				158300000000000000000001 /* SettingsAppearancePage.swift in Sources */,
 				125200000000000000000006 /* SettingsAboutPage.swift in Sources */,
+				C66200000000000000000003 /* SettingsUsageReportsPage.swift in Sources */,
 				139600000000000000000001 /* SupportReport.swift in Sources */,
 				139700000000000000000001 /* DiagnosticsLog.swift in Sources */,
 				139700000000000000000003 /* SettingsDiagnosticsPage.swift in Sources */,
@@ -2998,6 +3008,7 @@
 				532000000000000000000001 /* RatingPromptState.swift in Sources */,
 				5320000000000000000000D1 /* DevAutoLogin.swift in Sources */,
 				531000000000000000000001 /* SessionListCardState.swift in Sources */,
+				C66200000000000000000001 /* UsageReports.swift in Sources */,
 				870000000000000000000001 /* PerformanceSignposts.swift in Sources */,
 				870000000000000000000003 /* HitchMeter.swift in Sources */,
 				B14050000000000000000001 /* RenderProbe.swift in Sources */,
@@ -3306,6 +3317,7 @@
 					E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */,
 				532000000000000000000003 /* RatingPromptTests.swift in Sources */,
 				531000000000000000000201 /* SessionListCardTests.swift in Sources */,
+				C66200000000000000000005 /* UsageReportsTests.swift in Sources */,
 				870000000000000000000201 /* HitchMeterTests.swift in Sources */,
 					C04800000000000000000003 /* ChatAttachmentCoordinatorTests.swift in Sources */,
 					C0GATE000000000000000001 /* ChatComposerSendGateTests.swift in Sources */,

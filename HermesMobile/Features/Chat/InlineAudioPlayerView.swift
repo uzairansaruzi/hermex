@@ -169,8 +169,10 @@ final class ComposerAudioCaptureState {
 
     private init() {}
 
+    /// Every composer recording and dictation starts here, so it also tallies voice input (#1662).
     func setCapturing(_ capturing: Bool) {
         isCapturing = capturing
+        if capturing { UsageReports.shared.record(.voiceInput) }
     }
 }
 

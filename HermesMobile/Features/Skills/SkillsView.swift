@@ -25,6 +25,7 @@ struct SkillsView: View {
         content
             .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
             .modifier(SkillsTitle(profile: profile))
+            .onAppear { UsageReports.shared.record(.skills) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
