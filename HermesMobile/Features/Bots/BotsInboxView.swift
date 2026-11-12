@@ -921,17 +921,18 @@ private struct BotHeroTile: View {
                     Text(profile.name).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
                     if unread { BotUnreadDot() }
                 }
-                if let status {
-                    // Two lines, so a long translation at a large size still reads whole.
-                    BotLiveStatusLabel(status: status, font: AppFont.footnote(weight: .semibold), isStale: statusIsStale)
-                        .lineLimit(2).multilineTextAlignment(.center)
-                } else {
-                    // Holds the status line's place: statuses arrive after the tiles, and a tile
-                    // growing then dropped the whole list under the pinned bots. The longer status,
-                    // hidden, so it takes the lines that one would at this text size.
-                    BotLiveStatusLabel(status: .waiting, font: AppFont.footnote(weight: .semibold), isStale: false)
-                        .lineLimit(2).multilineTextAlignment(.center).hidden().accessibilityHidden(true)
-                }
+                // The longer status, hidden, holds the line's place at this text size whether a
+                // status shows or not: statuses arrive after the tiles, and a tile changing height
+                // moved the whole list under the pinned bots. Two lines, so a long translation at
+                // a large size still reads whole.
+                BotLiveStatusLabel(status: .waiting, font: AppFont.footnote(weight: .semibold), isStale: false)
+                    .lineLimit(2).multilineTextAlignment(.center).hidden().accessibilityHidden(true)
+                    .overlay(alignment: .top) {
+                        if let status {
+                            BotLiveStatusLabel(status: status, font: AppFont.footnote(weight: .semibold), isStale: statusIsStale)
+                                .lineLimit(2).multilineTextAlignment(.center)
+                        }
+                    }
             }
         }
         .frame(maxWidth: 132)
