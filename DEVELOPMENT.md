@@ -105,7 +105,7 @@ available. It builds a signed Debug app once and runs XCTest serially on the
 assigned simulator (once, or up to N times with `--repeat N`). Separate worktrees can test concurrently on separate devices.
 
 Choose the session's simulator once (`hermex-flow` owns its device pool). The
-main checkout normally uses **iPhone 17**. Resolve its UDID with
+main checkout normally uses **iPhone 17e**. Resolve its UDID with
 `xcrun simctl list devices available`; names shared by multiple iOS runtimes
 are ambiguous, so pass the UDID. The runner never chooses another device or
 creates one, and refuses to boot a fifth simulator.

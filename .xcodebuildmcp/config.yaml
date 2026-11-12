@@ -6,7 +6,7 @@ sessionDefaults:
   projectPath: "./HermesMobile.xcodeproj"
   scheme: "HermesMobile"
   configuration: "Debug"
-  simulatorName: "iPhone 17"
+  simulatorName: "iPhone 17e"
   bundleId: "com.uzairansar.hermesmobile"
   # Shared with scripts/test-sim, so a launch after tests reuses their build.
   derivedDataPath: "./.build/DerivedData"
