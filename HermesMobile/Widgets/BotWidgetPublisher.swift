@@ -11,7 +11,8 @@ import WidgetKit
     static let shared = BotWidgetPublisher(file: BotWidgetSnapshotFile.shared)
 
     private let file: BotWidgetSnapshotFile?
-    private let serverTitle: @MainActor (URL) -> String
+    /// The server's section title, or nil once it is no longer configured.
+    private let serverTitle: @MainActor (URL) -> String?
     private let reloadWidget: () -> Void
     private let configuredBots: () async -> [BotWidgetDestination]
     /// The newest render started per server key. A render that resumes after a newer one started,
@@ -19,7 +20,7 @@ import WidgetKit
     private var renderGenerations: [String: Int] = [:]
 
     init(file: BotWidgetSnapshotFile?,
-         serverTitle: @escaping @MainActor (URL) -> String = BotWidgetPublisher.registryTitle,
+         serverTitle: @escaping @MainActor (URL) -> String? = BotWidgetPublisher.registryTitle,
          reloadWidget: @escaping () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: BotWidgetSnapshot.widgetKind) },
          configuredBots: @escaping () async -> [BotWidgetDestination] = BotWidgetPublisher.currentConfigurations) {
         self.file = file
@@ -29,16 +30,17 @@ import WidgetKit
     }
 
     /// Replaces `server`'s bots with `profiles`, read through `connectionID`, an empty roster
-    /// dropping the server, and reloads the widget only when that changed something.
+    /// dropping the server, and reloads the widget only when that changed something. A roster that
+    /// arrives after its server was removed writes nothing, so it can't bring the rows back.
     func publish(_ profiles: [BotProfile], server: URL, connectionID: UUID) {
-        guard let file else { return }
+        guard let file, let title = serverTitle(server) else { return }
         let key = BotHistoryCache.Scope.key(server)
         let bots = profiles.prefix(BotWidgetSnapshot.maxBotsPerServer).map {
             BotWidgetSnapshot.Bot(profile: $0.id, title: $0.name, avatar: Self.avatarName(serverKey: key, profile: $0, connectionID: connectionID))
         }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         let current = file.read()
         var snapshot = current
-        let entry = BotWidgetSnapshot.Server(serverKey: key, title: serverTitle(server), bots: bots)
+        let entry = BotWidgetSnapshot.Server(serverKey: key, title: title, bots: bots)
         if let index = snapshot.servers.firstIndex(where: { $0.serverKey == key }) {
             if bots.isEmpty { snapshot.servers.remove(at: index) } else { snapshot.servers[index] = entry }
         } else if !bots.isEmpty {
@@ -144,10 +146,10 @@ import WidgetKit
     }
 
     /// The server's display name, or a neutral title when it is empty or just repeats the host,
-    /// so the app group never holds a host name.
-    static func registryTitle(for server: URL) -> String {
-        let name = ServerRegistry.shared.servers.first { $0.id == server.absoluteString }?.displayName
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    /// so the app group never holds a host name. Nil for a server no longer configured.
+    static func registryTitle(for server: URL) -> String? {
+        guard let account = ServerRegistry.shared.servers.first(where: { $0.id == server.absoluteString }) else { return nil }
+        let name = account.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowered = name.lowercased()
         let addresses = [server.host, server.absoluteString, server.host.map { "\($0):\(server.port ?? 0)" }]
             .compactMap { $0?.lowercased() }
