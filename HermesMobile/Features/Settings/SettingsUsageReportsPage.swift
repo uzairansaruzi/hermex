@@ -83,7 +83,10 @@ struct UsageReportPreview: View {
         // A return to the app may be in a new week, which the foreground send has just rolled over.
         .task(id: PreviewKey(acceptedVersion: acceptedVersion, isActive: scenePhase == .active)) {
             guard scenePhase == .active else { return }
-            report = await UsageReports.shared.preview()
+            let preview = await UsageReports.shared.preview()
+            // A newer key (an answer, a return to the app) has its own task; a stale one doesn't overwrite it.
+            guard !Task.isCancelled else { return }
+            report = preview
         }
     }
 
