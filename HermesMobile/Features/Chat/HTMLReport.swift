@@ -1,4 +1,5 @@
 import CryptoKit
+import JavaScriptCore
 import Observation
 import SwiftUI
 import UIKit
@@ -19,31 +20,77 @@ enum HTMLReport {
     }
 }
 
-/// An `svg` code fence in a reply (#1649). A settled one gains a View button in its header that
-/// opens the drawing in the report sheet, in the report's sandbox. Nothing draws in the
-/// transcript, and the code block stays, so the source is never lost.
-enum SVGFence {
-    /// Whether a fence offers View. A streaming fence doesn't: its source is still incomplete.
-    static func offersView(language: String?, isStreaming: Bool) -> Bool {
-        !isStreaming && MarkdownHighlightPolicy.normalizedLanguage(from: language) == "svg"
+/// A code fence that draws as a picture (#1649): `svg`, or `mermaid` through the bundled Pele
+/// engine (`MermaidDiagram`). A settled one gains a View button in its header that opens the
+/// drawing in the report sheet, in the report's sandbox. Nothing draws in the transcript, and
+/// the code block stays, so the source is never lost.
+enum DrawableFence {
+    case svg
+    case mermaid
+
+    /// The fence's kind when it offers View; nil for any other language, and for a streaming
+    /// fence, whose source is still incomplete.
+    init?(language: String?, isStreaming: Bool) {
+        guard !isStreaming else { return nil }
+        switch MarkdownHighlightPolicy.normalizedLanguage(from: language) {
+        case "svg": self = .svg
+        case "mermaid": self = .mermaid
+        default: return nil
+        }
     }
 
-    /// The sheet's page: the drawing fit to the sheet's width on a white card, since agent SVGs
-    /// usually have no background and draw in black. Only an SVG with a `viewBox` can scale; one
-    /// without keeps its own size and scrolls inside the card instead of being cropped. Nil when
-    /// the source isn't a well-formed `<svg>` document, so the sheet shows its failure state
-    /// rather than a blank page.
-    static func page(for source: String) -> String? {
+    /// The sheet's page for the fence's source, or nil when it can't draw, so the sheet shows its
+    /// failure state rather than a blank page. A diagram lays out to fit `width`, the sheet's.
+    /// It runs the diagram engine, so call it off the main actor.
+    func page(for source: String, width: CGFloat) -> String? {
         let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard XMLRootElementReader.rootName(of: source) == "svg" else { return nil }
-        return """
+        switch self {
+        case .svg:
+            guard XMLRootElementReader.rootName(of: source) == "svg" else { return nil }
+            return Self.card(source)
+        case .mermaid:
+            return MermaidDiagram.svg(for: source, maxWidth: width - Self.cardInsets).map(Self.card)
+        }
+    }
+
+    /// The body's and card's padding on both sides.
+    private static let cardInsets: CGFloat = 56
+
+    /// A drawing on a white card, since agent SVGs usually have no background and draw in black.
+    /// An agent SVG with a `viewBox` fits the sheet's width; one without keeps its own size and
+    /// scrolls inside the card instead of being cropped. A Pele diagram keeps its own size, which
+    /// already fits, rather than stretching its 16-point labels; pinch to zoom in.
+    private static func card(_ svg: String) -> String {
+        """
         <!doctype html><html><head><style>
         body{margin:0;padding:16px}
         .svg-card{background:#fff;color:#000;border-radius:14px;padding:12px;overflow-x:auto}
         .svg-card>svg{display:block;margin:0 auto}
-        .svg-card>svg[viewBox]{width:100%;height:auto}
-        </style></head><body><div class="svg-card">\(source)</div></body></html>
+        .svg-card>svg[viewBox]:not(.pele){width:100%;height:auto}
+        </style></head><body><div class="svg-card">\(svg)</div></body></html>
         """
+    }
+}
+
+/// Draws Mermaid source as SVG with Pele 1.13.0 (MIT, `Resources/pele.global.js`), the engine
+/// Hermes Desktop draws with. Each call loads the engine from the app bundle into its own
+/// JavaScriptCore context, which has no network, DOM, or app access, and releases it after; a
+/// load takes tens of milliseconds, so call it off the main actor, on tap. Links and images are
+/// off, as upstream's are: the diagram is display-only.
+enum MermaidDiagram {
+    /// The diagram's SVG, or nil when Pele can't parse it or the engine fails to load.
+    static func svg(for source: String, maxWidth: CGFloat) -> String? {
+        guard let url = Bundle.main.url(forResource: "pele.global", withExtension: "js"),
+              let engine = try? String(contentsOf: url, encoding: .utf8),
+              let context = JSContext() else { return nil }
+        context.evaluateScript(engine, withSourceURL: url)
+        let options: [String: Any] = ["links": false, "images": false, "maxWidth": Double(maxWidth)]
+        let result = context.objectForKeyedSubscript("pele")?
+            .invokeMethod("render", withArguments: [source, options])
+        guard context.exception == nil, let svg = result?.objectForKeyedSubscript("svg"), svg.isString else {
+            return nil
+        }
+        return svg.toString()
     }
 }
 

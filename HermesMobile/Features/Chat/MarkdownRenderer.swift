@@ -192,7 +192,7 @@ private struct StreamingMarkdownChunkedView: View {
 extension EnvironmentValues {
     /// True inside a streaming reply, sealed chunks included: they render with
     /// `isStreaming: false` to highlight, but the reply swaps to its settled view
-    /// when it ends, so a control there (an SVG fence's View) would vanish mid-use.
+    /// when it ends, so a control there (a drawable fence's View) would vanish mid-use.
     @Entry var markdownReplyIsStreaming = false
 }
 
@@ -229,7 +229,8 @@ private struct ChatMarkdownView: View {
 /// math language (`math`/`latex`/`tex`) and the body parses as math; otherwise
 /// renders it as a normal syntax-highlighted code block. A math fence whose
 /// body SwiftMath can't parse falls back to the code block too, so nothing is
-/// lost. A settled `svg` fence's code block gains a View button (`SVGFence`).
+/// lost. A settled `svg` or `mermaid` fence's code block gains a View button
+/// (`DrawableFence`).
 private struct MathFenceOrCodeBlock: View {
     let language: String?
     let content: String
@@ -244,7 +245,7 @@ private struct MathFenceOrCodeBlock: View {
                 language: language,
                 content: content,
                 isStreaming: isStreaming,
-                offersSVGView: SVGFence.offersView(language: language, isStreaming: isStreaming || replyIsStreaming)
+                drawableFence: DrawableFence(language: language, isStreaming: isStreaming || replyIsStreaming)
             )
         }
     }
@@ -254,7 +255,7 @@ private struct ChatCodeBlock: View {
     let language: String?
     let content: String
     let isStreaming: Bool
-    let offersSVGView: Bool
+    let drawableFence: DrawableFence?
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -280,8 +281,8 @@ private struct ChatCodeBlock: View {
 
                 Spacer()
 
-                if offersSVGView {
-                    SVGFenceViewButton(source: content)
+                if let drawableFence {
+                    DrawableFenceViewButton(fence: drawableFence, source: content)
                 }
 
                 Button {
@@ -491,21 +492,16 @@ private struct ChatCodeBlock: View {
     }
 }
 
-/// An `svg` fence's View button (#1649), beside wrap and copy. The page is built on tap, so a
-/// transcript row never parses or draws the SVG.
-private struct SVGFenceViewButton: View {
-    /// One tap's page; nil when the source isn't a drawable SVG.
-    private struct Presentation: Identifiable {
-        let id = UUID()
-        let html: String?
-    }
-
+/// A drawable fence's View button (#1649), beside wrap and copy. Its page is built when the
+/// sheet opens, so a transcript row never parses or draws the source.
+private struct DrawableFenceViewButton: View {
+    let fence: DrawableFence
     let source: String
-    @State private var presentation: Presentation?
+    @State private var isPresented = false
 
     var body: some View {
         Button {
-            presentation = Presentation(html: SVGFence.page(for: source))
+            isPresented = true
         } label: {
             Image(systemName: "eye")
                 .font(.system(size: 18, weight: .semibold))
@@ -513,22 +509,74 @@ private struct SVGFenceViewButton: View {
         }
         .buttonStyle(.chatTactile(.icon))
         .foregroundStyle(SwiftUI.Color(.appText))
-        .accessibilityLabel("View image")
-        .sheet(item: $presentation) { presentation in
+        .accessibilityLabel(label)
+        .sheet(isPresented: $isPresented) {
             NavigationStack {
-                HTMLReportSheetPage(html: presentation.html)
+                DrawableFenceSheetPage(fence: fence, source: source)
                     .themedPageBackground()
-                    .navigationTitle(Text(verbatim: "SVG"))
+                    .navigationTitle(Text(verbatim: title))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { self.presentation = nil }
+                            Button("Done") { isPresented = false }
                         }
                     }
             }
             // The code block forces left to right (#259); the sheet follows the app again.
             .environment(\.layoutDirection,
                          UIApplication.shared.userInterfaceLayoutDirection == .rightToLeft ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var label: LocalizedStringKey {
+        switch fence {
+        case .svg: "View image"
+        case .mermaid: "View diagram"
+        }
+    }
+
+    private var title: String {
+        switch fence {
+        case .svg: "SVG"
+        case .mermaid: "Mermaid"
+        }
+    }
+}
+
+/// The fence's drawing in the report sheet. Its page is built once the sheet has a width, off the
+/// main actor since a diagram runs its engine; until then the sheet shows only its background.
+private struct DrawableFenceSheetPage: View {
+    private enum Drawing {
+        case pending
+        /// Nil when the source can't draw: the sheet's failure state.
+        case drawn(String?)
+    }
+
+    let fence: DrawableFence
+    let source: String
+    @State private var width: CGFloat = 0
+    @State private var drawing = Drawing.pending
+
+    var body: some View {
+        ZStack {
+            if case let .drawn(html) = drawing {
+                HTMLReportSheetPage(html: html)
+            } else {
+                SwiftUI.Color.clear
+            }
+        }
+        // The first width only: the page doesn't reload, and a diagram still fits a later one.
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
+            if width == 0 { width = newWidth }
+        }
+        .task(id: width) {
+            guard width > 0 else { return }
+            let (fence, source, width) = (fence, source, width)
+            let html = await Task.detached(priority: .userInitiated) {
+                fence.page(for: source, width: width)
+            }.value
+            guard !Task.isCancelled else { return }
+            drawing = .drawn(html)
         }
     }
 }

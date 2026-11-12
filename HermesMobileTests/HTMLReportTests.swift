@@ -21,16 +21,24 @@ final class HTMLReportTests: XCTestCase {
         ))
     }
 
-    func testOnlyASettledSVGFenceOffersView() {
-        XCTAssertTrue(SVGFence.offersView(language: "svg", isStreaming: false))
-        XCTAssertFalse(SVGFence.offersView(language: "svg", isStreaming: true))
-        XCTAssertFalse(SVGFence.offersView(language: "python", isStreaming: false))
+    func testOnlyASettledDrawableFenceOffersView() {
+        XCTAssertEqual(DrawableFence(language: "svg", isStreaming: false), .svg)
+        XCTAssertEqual(DrawableFence(language: "mermaid", isStreaming: false), .mermaid)
+        XCTAssertNil(DrawableFence(language: "svg", isStreaming: true))
+        XCTAssertNil(DrawableFence(language: "python", isStreaming: false))
     }
 
     func testAnSVGThatCannotDrawOpensTheFailureState() {
-        XCTAssertNotNil(SVGFence.page(for: "\n<?xml version=\"1.0\"?>\n<svg viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>\n"))
-        XCTAssertNil(SVGFence.page(for: "<svg viewBox=\"0 0 10 10\"><rect width=\"10\""))
-        XCTAssertNil(SVGFence.page(for: "<html><body>not a drawing</body></html>"))
+        XCTAssertNotNil(DrawableFence.svg.page(for: "\n<?xml version=\"1.0\"?>\n<svg viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>\n", width: 390))
+        XCTAssertNil(DrawableFence.svg.page(for: "<svg viewBox=\"0 0 10 10\"><rect width=\"10\"", width: 390))
+        XCTAssertNil(DrawableFence.svg.page(for: "<html><body>not a drawing</body></html>", width: 390))
+    }
+
+    /// Runs the bundled engine, so it also proves the app ships it.
+    func testADiagramThatCannotParseOpensTheFailureState() throws {
+        let page = try XCTUnwrap(DrawableFence.mermaid.page(for: "flowchart LR\n  A[Ask] --> B[Answer]\n", width: 390))
+        XCTAssertTrue(page.contains("<svg"))
+        XCTAssertNil(DrawableFence.mermaid.page(for: "flowchart LR\n  A -->", width: 390))
     }
 
     func testAFileOverTheInlineLimitStaysACard() async {

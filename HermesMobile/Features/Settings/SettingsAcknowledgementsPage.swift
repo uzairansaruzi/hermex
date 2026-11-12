@@ -25,6 +25,7 @@ struct AcknowledgementNotice: Hashable {
         case "Lora": URL(staticString: "https://github.com/cyrealtype/Lora-Cyrillic")
         case "Lucide icons": URL(staticString: "https://github.com/lucide-icons/lucide")
         case "Open Bot Avatar": URL(staticString: "https://github.com/DominikScholz/open-bot-avatar")
+        case "Pele": URL(staticString: "https://github.com/obsidianmd/pele")
         case "MarkdownUI": URL(staticString: "https://github.com/gonzalezreal/swift-markdown-ui")
         case "NetworkImage": URL(staticString: "https://github.com/gonzalezreal/NetworkImage")
         case "Splash": URL(staticString: "https://github.com/JohnSundell/Splash")
