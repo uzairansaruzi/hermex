@@ -2316,6 +2316,15 @@ final class SessionListViewModel {
         }
     }
 
+    /// One fresh `session.active_list` on the live socket: whether no session on the host is
+    /// running or waiting. Nil when the list isn't live or the read fails. The rating prompt asks
+    /// it, since the list's own states pause while a chat covers it.
+    func hermesHostIsIdle() async -> Bool? {
+        guard isHermesLive, let wire = hermesWire,
+              let reply = try? await wire.call(.sessionActiveList) else { return nil }
+        return SessionRowAttentionState.hermesStates(reply["sessions"].list ?? []).isEmpty
+    }
+
     /// Replaces any live-state read in flight with one read, now or after `delay`.
     private func startHermesStatusRead(_ wire: any BotTransport, after delay: Duration? = nil) {
         hermesStatusTask?.cancel(); hermesStatusTask = nil

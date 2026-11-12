@@ -14,6 +14,13 @@ enum TipJar {
     static let completedResponseCountKey = "engagement.completedResponseCount"
 }
 
+// Device-wide preferences for the "Star Hermex on GitHub" card.
+enum GitHubStar {
+    /// The release (major.minor) on which "Not now" was last tapped.
+    static let dismissedReleaseKey = "githubStar.dismissedRelease"
+    static let linkOpenedKey = "githubStar.linkOpened"
+}
+
 enum RatingPromptSettings {
     static let firstLaunchDateKey = "ratingPrompt.firstLaunchDate"
     static let lastRequestDateKey = "ratingPrompt.lastRequestDate"

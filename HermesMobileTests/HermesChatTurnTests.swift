@@ -252,6 +252,41 @@ import SwiftUI
         XCTAssertNil(chat.model.hermesTurnBase, "a turn this chat did not send has no base")
     }
 
+    /// Only a turn that completes counts toward the session list cards and the rating prompt,
+    /// once, however many frames settle it.
+    func testOnlyACompletedTurnCountsAsACompletedReply() async throws {
+        let suite = "HermesChatTurnTests.rating.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let rating = RatingPromptState(defaults: defaults)
+        let chat = await openChat(ratingPromptState: rating)
+        var seq = 0
+        for status in ["complete", "interrupted", "error", "complete"] {
+            chat.receive(event(seq + 1, "message.start"))
+            chat.receive(event(seq + 2, "message.complete", ["status": .string(status)]))
+            chat.receive(event(seq + 3, "session.info", ["running": .bool(false)]))
+            chat.receive(event(seq + 4, "session.info", ["running": .bool(false)]))
+            seq += 4
+        }
+        XCTAssertEqual(rating.policy.completedResponses, 2)
+    }
+
+    /// A running Hermes turn holds the rating request back on its server, like a webui stream.
+    func testARunningTurnHoldsTheRatingRequestBack() async throws {
+        let suite = "HermesChatTurnTests.ratingStream.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let rating = RatingPromptState(defaults: defaults)
+        let chat = await openChat(ratingPromptState: rating)
+        let server = try XCTUnwrap(URL(string: "https://hermes.example"))
+        chat.receive(event(1, "message.start"))
+        XCTAssertTrue(rating.hasActiveStream(on: server))
+        XCTAssertFalse(rating.hasActiveStream(on: try XCTUnwrap(URL(string: "https://other.example"))))
+        chat.receive(event(2, "message.complete", ["status": .string("complete")]))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        XCTAssertFalse(rating.hasActiveStream(on: server))
+    }
+
     /// A HEAD read that fails sends anyway, with no base, so the card shows uncommitted changes.
     /// A send cancelled during the read sends nothing.
     func testAFailedHeadReadStillSendsAndACancelledOneSendsNothing() async throws {
@@ -1699,7 +1734,7 @@ import SwiftUI
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil, lineageRoot: String? = nil,
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
                           rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
-                          botChatRoot: String? = nil) async -> Chat {
+                          botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -1715,7 +1750,7 @@ import SwiftUI
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
-                                             isNetworkAvailable: { true })
+                                             isNetworkAvailable: { true }, ratingPromptState: ratingPromptState)
         let liveActivity = TitleRecordingLiveActivity()
         let model = ChatViewModel(
             session: SessionSummary(profile: profile), server: URL(string: "https://hermes.example")!,

@@ -339,6 +339,8 @@ struct HermesLostTurn: Equatable {
     @ObservationIgnored private let previewLimit: Int
     /// The shared Live Activity manager this chat's turns drive (#1014); nil drives none.
     @ObservationIgnored private let liveActivities: (any AgentLiveActivityManaging)?
+    /// Counts completed replies for the session list cards and the rating prompt.
+    @ObservationIgnored private let ratingPromptState: RatingPromptState
     /// The running turn's activity: its session key (a bot's `key` in a Bot Chat), the turn, the
     /// host's `turn_started_at` or this chat's own id when the turn began without one, which is a
     /// session's stream id, and the stored key its pushes come under, as last told to the
@@ -364,9 +366,11 @@ struct HermesLostTurn: Equatable {
          liveActivities: (any AgentLiveActivityManaging)? = nil,
          writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
-         previewLimit: Int = BotArtifactBuffer.maximumBytes) {
+         previewLimit: Int = BotArtifactBuffer.maximumBytes,
+         ratingPromptState: RatingPromptState? = nil) {
         self.engine = engine
         self.previewLimit = previewLimit
+        self.ratingPromptState = ratingPromptState ?? .shared
         let policy = HermesChatPolicy(target: engine.target, botChatRoot: botChatRoot)
         self.policy = policy
         self.liveActivities = liveActivities
@@ -393,6 +397,7 @@ struct HermesLostTurn: Equatable {
         settings.onRosterRead = { [weak self] in self?.botRosterDidChange() }
         settings.onAvatarsChange = { [weak self] in self?.botPictureDidChange() }
         activity.delegatedWork.onWorkersChanged = { [weak self] in self?.syncBotWorkSummary() }
+        self.ratingPromptState.register(self, server: engine.server)
     }
 
     /// The chat `chat` opens over the connection's shared gateway socket, or its Profile's own on
@@ -1303,6 +1308,7 @@ struct HermesLostTurn: Equatable {
         liveActivity = nil
         latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt ?? Date(), endedAt: Date(), ending: ending)
         if ending == .completed {
+            ratingPromptState.recordCompletedResponse()
             successfulResponseCompletion = .init(streamID: streamID, needsTranscriptRefresh: false)
             delegate?.streamCoordinatorApplyDone(DoneStreamEvent())
         }
