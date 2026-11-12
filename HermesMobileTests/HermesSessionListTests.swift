@@ -349,7 +349,12 @@ import Observation
             ("@file:`/Users/someone/.hermes/attachments/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed-report.pdf`", "report.pdf"),
             ("Summarize report.pdf @file:`/Users/someone/.hermes/attach...", "Summarize report.pdf"),
             ("Plan the launch for the new pricing page and draft the e...", "Plan the launch for the new pricing page and draft the e..."),
-            ("Email bob@example.com about [the plan]", "Email bob@example.com about [the plan]")
+            ("Email bob@example.com about [the plan]", "Email bob@example.com about [the plan]"),
+            // A host's own image notes (#1644): its native hint, cut, and its text-mode note.
+            ("What is this?  [Image attached at: /private/var/folders/sk/6...", "What is this?"),
+            ("What do you see in this image?  [Image attached at: /h/.hermes/cache/documents/native-inputs/3f/"
+                + "dashboard_20261111_194223_195f8b19_cat.png] [screenshot]", "cat.png"),
+            ("[The user sent an image~ Here's what I can see: A small red square on a white...", nil)
         ]
         for row in rows {
             XCTAssertEqual(MessageAttachment.hermesTitle(row.text), row.shown, row.text)

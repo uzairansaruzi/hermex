@@ -18,7 +18,7 @@ import Foundation
     /// Bumped by `close()`, `connect()` and a lost socket, so this screen's late HTTP
     /// results are dropped.
     private var attempt = 0
-    private var imageUploads: [UUID: Task<String, Error>] = [:]
+    private var imageUploads: [UUID: Task<BotUploadedImage, Error>] = [:]
     private var artifactTasks: [UUID: Task<Data, Error>] = [:]
     var replayEpoch: String? { gateway.replayEpoch }
     var speaksCanonicalProtocol: Bool { gateway.speaksCanonicalProtocol }
@@ -320,7 +320,7 @@ import Foundation
     var attachedRuntimes: Set<String> { http.attachedRuntimes }
     func release(profile: String, sessionID: String) { gateway.release(consumerID, from: .init(profile: profile, id: sessionID)) }
 
-    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
+    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> BotUploadedImage {
         guard context.connectionID == http.connection.id, gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
         let id = UUID()
@@ -332,9 +332,9 @@ import Foundation
         imageUploads[id] = task
         defer { imageUploads[id] = nil }
         return try await withTaskCancellationHandler {
-            let path = try await task.value
+            let image = try await task.value
             try checkOwner(attempt)
-            return path
+            return image
         } onCancel: { task.cancel() }
     }
 

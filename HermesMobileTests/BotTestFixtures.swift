@@ -242,8 +242,8 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var beforeResume: (() async -> Void)?
     var transformResume: ((BotJSON) -> BotJSON)?
     var attachFile: (([String: BotJSON]) async throws -> BotJSON)?
-    var imageUpload: ((Data, String, BotArtifactContext) async throws -> String)?
-    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
+    var imageUpload: ((Data, String, BotArtifactContext) async throws -> BotUploadedImage)?
+    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> BotUploadedImage {
         guard let imageUpload else { throw BotFailure.unsupported }
         return try await imageUpload(data, filename, context)
     }

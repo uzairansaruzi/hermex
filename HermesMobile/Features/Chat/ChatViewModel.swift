@@ -629,13 +629,10 @@ final class ChatViewModel {
     /// The prompts a Hermes host holds for later turns, as the transcript's pending bubbles show
     /// them (#1379): outside `messages`, in the order the host runs them, one per canonical
     /// admission (#1602), and each gone once its turn's start shows the real row or a Stop
-    /// discards it. Their reference lines are chips, as on a sent row.
+    /// discards it. Their reference lines are chips, as on a sent row, and so are the photos a
+    /// canonical send carried (#1644).
     var queuedPromptMessages: [ChatMessage] {
-        (hermesTurn?.queuedPrompts ?? []).map {
-            HermesChatTurnCoordinator.displayed(ChatMessage(
-                role: "user", content: $0.text, timestamp: nil, messageId: "hermes-queued-prompt-\($0.id)"
-            ))
-        }
+        (hermesTurn?.queuedPrompts ?? []).map { Self.hermesPromptRow($0, id: "hermes-queued-prompt-\($0.id)", timestamp: nil) }
     }
 
     /// A turn a canonical host lost across its restart (#1602), as its row shows it: with its
@@ -8416,17 +8413,23 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 }
 
 extension ChatViewModel: HermesChatTurnDelegate {
-    func hermesTurnDidStart(prompt: String?) {
+    func hermesTurnDidStart(prompt: HermesQueuedPrompt?) {
         flushPendingStreamingContent()
         archiveLiveActivityForNewTurn()
         streamingAssistantMessageID = nil
         responseCompletionNeedsTranscriptRefresh = false
         if let prompt {
-            messages.append(HermesChatTurnCoordinator.displayed(ChatMessage(
-                role: "user", content: prompt, timestamp: Date().timeIntervalSince1970,
-                messageId: "local-\(UUID().uuidString)"
-            )))
+            messages.append(Self.hermesPromptRow(prompt, id: "local-\(UUID().uuidString)", timestamp: Date().timeIntervalSince1970))
         }
+    }
+
+    /// A prompt the host holds or just ran, as its user row shows it: its text's references and
+    /// its photos as chips.
+    private static func hermesPromptRow(_ prompt: HermesQueuedPrompt, id: String, timestamp: Double?) -> ChatMessage {
+        HermesChatTurnCoordinator.displayed(ChatMessage(
+            role: "user", content: prompt.text, timestamp: timestamp, messageId: id,
+            attachments: prompt.images.isEmpty ? nil : prompt.images
+        ))
     }
 
     func hermesTurnDidComplete(reply: String) {

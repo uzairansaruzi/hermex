@@ -37,6 +37,7 @@ import UIKit
             "What is this?\n\n[The user attached an image: dashboard_20261004_031500_ab12cd34_photo.jpg]\n"
                 + "[Examine it with the vision_analyze tool using image_url: \(Self.storedImage)]"
         )])
+        XCTAssertNil(chat.writes("prompt.submit").first?["attachments"], "a dashboard listener takes no per-prompt images")
         let row = try XCTUnwrap(chat.model.messages.last)
         XCTAssertEqual(row.content, "What is this?")
         XCTAssertEqual(row.attachments, [MessageAttachment(name: "photo.jpg", mime: "image/jpeg", size: staged.size, isImage: true)])
@@ -878,6 +879,88 @@ import UIKit
         XCTAssertEqual(downloads.count, 2)
     }
 
+    // MARK: Canonical hosts (#1644)
+
+    /// On a canonical host a photo goes as the prompt's own attachment: `prompt.submit` names the
+    /// path and type the upload answered, and its text has no instruction pair. The sending row's
+    /// chip is the composer's, as on any host (`testSendUploadsTheImageAndSubmitsItsInstructionLine`).
+    func testACanonicalSendCarriesItsPhotoAsAnAttachment() async throws {
+        let chat = await openChat(canonical: true)
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/chat/image-upload" else { return nil }
+            return .json(200, .object(["ok": .bool(true), "path": .string(Self.storedImage), "mime_type": .string("image/jpeg")]))
+        }
+        chat.host.always("prompt.submit", .init(result: Self.receipt("a1")))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+
+        let sent = await chat.model.sendMessage("What is this?")
+        XCTAssertTrue(sent)
+        let params = try XCTUnwrap(chat.writes("prompt.submit").first)
+        XCTAssertEqual(params["text"], .string("What is this?"))
+        XCTAssertEqual(params["attachments"], .array([.object(["path": .string(Self.storedImage), "mime": .string("image/jpeg")])]))
+    }
+
+    /// A photo queued on a canonical host keeps its chip while the host's `pending` lists only its
+    /// text, and the row its turn opens with shows it once, with the chip.
+    func testAQueuedCanonicalPhotoKeepsItsChipIntoItsTurn() async throws {
+        let chat = await openChat(canonical: true)
+        chat.receive(event(1, "message.start", runtime: "tip", admission: "a1"))
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/chat/image-upload" else { return nil }
+            return .json(200, .object(["ok": .bool(true), "path": .string(Self.storedImage)]))
+        }
+        chat.host.always("prompt.submit", .init(result: Self.receipt("a2")))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+
+        let result = await chat.model.submitStreamingMessage("", behavior: .queue)
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.writes("prompt.submit").first?["attachments"],
+                       .array([.object(["path": .string(Self.storedImage), "mime": .string("image/jpeg")])]),
+                       "a reply without `mime_type` takes the type the phone encoded")
+        chat.receive(event(2, "session.info", ["pending": .array([
+            .object(["admission_id": .string("a2"), "status": .string("queued"), "text": .string("")])
+        ])], runtime: "tip", admission: "a1"))
+        XCTAssertEqual(chat.model.queuedPromptMessages.map { $0.attachments?.map(\.name) }, [["photo.jpg"]])
+
+        chat.receive(event(3, "message.complete", ["status": .string("complete")], runtime: "tip", admission: "a1"))
+        chat.receive(event(4, "session.info", ["running": .bool(false)], runtime: "tip", admission: "a1"))
+        chat.receive(event(5, "message.start", runtime: "tip", admission: "a2"))
+        XCTAssertEqual(chat.model.queuedPromptMessages, [])
+        let rows = chat.model.messages.filter { $0.role == "user" }
+        XCTAssertEqual(rows.map { $0.attachments?.map(\.path) }, [[Self.storedImage]])
+    }
+
+    /// A host stores a canonical send's photos as its own image notes (#1644): native hints after
+    /// the caption with their `[screenshot]` lines, its default caption when there was none (and its
+    /// context footer ahead of the hints), or text mode's notes before the caption. Each photo shows
+    /// as a chip on the stored path with no path left in the text, and ↑ recalls only what was
+    /// typed. The rows are the shapes `scripts/local-hermes --gateway` stored at the pin, their
+    /// paths shortened.
+    func testTheHostsImageNotesShowAsChips() async throws {
+        let saved = "/home/u/.hermes/cache/documents/native-inputs/3fd6e6be/dashboard_20261111_194223_195f8b19_"
+        let windows = #"C:\Users\u\.hermes\cache\documents\native-inputs\3fd6e6be\dashboard_20261111_194229_ad25ea0b_scan.png"#
+        let stored = [
+            "What is this?\n\n[Image attached at: \(saved)photo.png]\n[screenshot]",
+            "What do you see in this image?\n\n[Image attached at: \(saved)a.png]\n[Image attached at: \(windows)]\n[screenshot]\n[screenshot]",
+            "Read @file:/h/notes.txt\n\n--- Context Warnings ---\n- @file:/h/notes.txt: path is outside the allowed workspace\n\n"
+                + "[Image attached at: \(saved)b.png]\n[screenshot]",
+            "[The user sent an image~ Here's what I can see:\nA red square.]\n"
+                + "[If you need a closer look, use vision_analyze with image_url: \(saved)c.png ~]\n\nDescribe it"
+        ]
+        let chat = await openChat(history: stored.enumerated().flatMap { index, content in [
+            BotJSON.object(["id": .number(Double(index * 2 + 1)), "role": .string("user"), "content": .string(content),
+                            "timestamp": .number(1_790_000_000 + Double(index * 20))]),
+            .object(["id": .number(Double(index * 2 + 2)), "role": .string("assistant"), "content": .string("Seen."),
+                     "timestamp": .number(1_790_000_010 + Double(index * 20))])
+        ] })
+        let rows = chat.model.messages.filter { $0.role == "user" }
+        XCTAssertEqual(rows.map(\.content), ["What is this?", "", "Read @file:/h/notes.txt", "Describe it"])
+        XCTAssertEqual(rows.map { $0.attachments?.map(\.name) }, [["photo.png"], ["a.png", "scan.png"], ["b.png"], ["c.png"]])
+        XCTAssertEqual(rows.map { $0.attachments?.map(\.path) },
+                       [[saved + "photo.png"], [saved + "a.png", windows], [saved + "b.png"], [saved + "c.png"]])
+        XCTAssertEqual(chat.model.lastSentText, "Describe it")
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -910,23 +993,39 @@ import UIKit
         }
     }
 
-    private func event(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:]) -> BotJSON {
-        .object(["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string(type),
-                 "payload": .object(payload)])
+    /// One of `runtime`'s event frames; a canonical host's (`runtime` `tip`) names its `admission`.
+    private func event(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:], runtime: String = "runtime",
+                       admission: String? = nil) -> BotJSON {
+        var frame: [String: BotJSON] = ["session_id": .string(runtime), "seq": .number(Double(seq)), "type": .string(type),
+                                        "payload": .object(payload)]
+        frame["admission_id"] = admission.map { .string($0) }
+        return .object(frame)
     }
 
-    /// `previewLimit` is the chat's preview cap, which a test lowers to stay small.
-    private func openChat(history: [BotJSON] = [], previewLimit: Int = BotArtifactBuffer.maximumBytes) async -> Chat {
+    /// A canonical host's admission receipt for a send (#1602).
+    private static func receipt(_ admission: String) -> BotJSON {
+        .object(["admission_id": .string(admission), "sequence": .number(1), "status": .string("queued")])
+    }
+
+    /// `previewLimit` is the chat's preview cap, which a test lowers to stay small. `canonical`
+    /// opens it on a gateway's canonical listener (#1341), where the session's runtime is its key.
+    private func openChat(history: [BotJSON] = [], previewLimit: Int = BotArtifactBuffer.maximumBytes,
+                          canonical: Bool = false) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        host.always("session.resume", .init(result: .object([
+        host.always("session.resume", .init(result: canonical ? .object([
+            "session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
+            "subscription_id": .string("sub-1"), "revision": .number(2), "execution_generation": .number(1),
+            "running": .bool(false), "messages": .array([]), "pending": .array([]), "prompts": .array([]),
+            "info": .object(["profile_name": .string("default")])
+        ]) : .object([
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         let copies = BotAttachmentCopies()
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60))
-        let client = BotClient(http: host.connection(Self.connection))
+        let client = BotClient(http: host.connection(Self.connection, canonical: canonical))
         _ = HermesHostFixture.configuration { request in
             request.url?.path == "/api/sessions/tip/messages" ? .json(200, .object(["messages": .array(history)])) : nil
         }

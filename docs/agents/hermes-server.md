@@ -424,6 +424,10 @@ Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` 
   `execution_generation`. A stale fence is `HermesFenceRefusal` and nothing is resent. A sudo or
   secret answer is a bare JSON-RPC response frame (`id` and `result`) with no generation.
 - Session edits are one fenced `session.mutate`, the model included (#1603, #1604).
+- A send's photos go as its own `attachments: [{path, mime}]` (#1644), so the host stores them
+  with the prompt and every client shows them. `pending` rows list text only, and the resume
+  snapshot has no `inflight`, so a queued photo's chip lives in the chat's memory until its turn
+  starts (`HermesChatTurnCoordinator.queuedImages`).
 - Rooms fence Retry and Discard by member and generation, and seat only
   `seatable_profiles` (#1605).
 - Each Profile's chats get a socket of their own on a Webapp (`HermesConnection.gateway(profile:)`):

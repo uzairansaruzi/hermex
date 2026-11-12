@@ -162,17 +162,19 @@ extension MessageAttachment {
     }
 
     /// A Hermes session's user text as its transcript shows it (#1012), and the chips it
-    /// names. Each `\n\n` block that is a reference a Hermex send appends becomes a chip:
-    /// Hermes's vision-tool instruction pair (`BotAttachmentUpload.imageReference`) or a
+    /// names. The image notes a host stores with a prompt's photos become chips
+    /// (`hostImageNotes`, #1644). So does each `\n\n` block that is a reference a Hermex send
+    /// appends: Hermes's vision-tool instruction pair (`BotAttachmentUpload.imageReference`) or a
     /// lone `@file:` token, plain or quoted (`file.attach`'s `ref_text`). The footer the
     /// host saves after a prompt's `@file:` tokens (`--- Context Warnings ---` and
     /// `--- Attached Context ---`, with the text or path it inlines) is dropped. Each
     /// attachment carries its display name and the host path the reference names, which
     /// Bot Chat (#1017) and a Hermes session's chips (#1030) download through; neither shows it.
-    /// Text with neither comes back as it is. The webui marker rule above is separate and
+    /// Text with none of these comes back as it is. The webui marker rule above is separate and
     /// never reads these.
     static func hermesReferences(in content: String) -> (text: String, attachments: [MessageAttachment]) {
-        guard content.contains("@file:") || content.contains("[The user attached an image: ")
+        guard content.contains("@file:") || content.contains("[The user attached an image")
+                || content.contains("[The user sent an image") || content.contains("[Image attached")
                 || content.contains(" Context ---") || content.contains("--- Context Warnings ---")
         else { return (content, []) }
         // Hermes's text-mode image line pair, whose first line names the stored file and second
@@ -181,11 +183,13 @@ extension MessageAttachment {
         let imageReference =
             /\[The user attached an image: ([^\n]*)\]\n\[Examine it with the vision_analyze tool using image_url: ((?:\/|[A-Za-z]:[\\\/])[^\n]*)\]/
         let fileReference = /@file:(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/
-        var text = content
+        // The host saves its context footer ahead of native image hints, so they go first.
+        let notes = hostImageNotes(in: content)
+        var text = notes.text
         let footer = text.firstRange(of: /(?:^|\n)--- (?:Context Warnings|Attached Context) ---[ \t]*(?:\n|$)/)
         if let footer { text = String(text[..<footer.lowerBound]) }
         var kept: [String] = []
-        var attachments: [MessageAttachment] = []
+        var attachments = notes.paths.map { MessageAttachment(name: hermesImageName(hostFileName($0)), path: $0, isImage: true) }
         for block in text.components(separatedBy: "\n\n") {
             let line = block.trimmingCharacters(in: .whitespacesAndNewlines)
             if let image = line.wholeMatch(of: imageReference) {
@@ -203,10 +207,40 @@ extension MessageAttachment {
         return (String(shown), attachments)
     }
 
+    /// The caption a host gives a photo sent with no text, in its native form.
+    private static let defaultImageCaption = "What do you see in this image?"
+
+    /// A stored prompt without the image notes a host saved for its photos, and the paths they
+    /// name, as hermes-agent's own `split_image_notes` reads them (`agent/image_routing.py`):
+    /// the text-mode notes before the typed text, one per photo (`[The user sent an image…`,
+    /// ending `image_url: <path>]` or `<path> ~]`), or else the native form's trailing hints,
+    /// one `[Image attached at: <absolute path>]` line per photo, here followed by the
+    /// `[screenshot]` lines the host saves after them. A native caption that is only the
+    /// default one is no text. Text without such notes comes back as it is.
+    private static func hostImageNotes(in content: String) -> (text: String, paths: [String]) {
+        let note = /\[The user (?:sent|attached) an image[\s\S]*?image_url: ([^\n]+?)(?: ~)?\](?:\n\n|$)/
+        let hint = /\[Image attached(?: at)?: ((?:\/|[A-Za-z]:[\\\/])[^\n]*)\]/
+        var rest = Substring(content)
+        var paths: [String] = []
+        while let match = rest.prefixMatch(of: note) {
+            paths.append(match.1.trimmingCharacters(in: .whitespaces))
+            rest = rest[match.range.upperBound...]
+        }
+        if !paths.isEmpty { return (String(rest), paths) }
+        guard let gap = content.range(of: "\n\n", options: .backwards) else { return (content, []) }
+        let lines = content[gap.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "\n")
+        let hints = lines.prefix { $0.wholeMatch(of: hint) != nil }
+        guard !hints.isEmpty, lines.dropFirst(hints.count).allSatisfy({ $0 == "[screenshot]" }) else { return (content, []) }
+        let caption = String(content[..<gap.lowerBound])
+        return (caption.trimmingCharacters(in: .whitespacesAndNewlines) == defaultImageCaption ? "" : caption,
+                hints.compactMap { $0.wholeMatch(of: hint).map { String($0.1) } })
+    }
+
     /// A Hermes session's title or `preview` as a session row and the chat header show it
-    /// (#1046). The reference lines a Hermex send appends (`hermesReferences`) are dropped, as
-    /// saved or flattened onto one line as `preview` has them, and so is one the host cut off
-    /// at the end of a short title (48 characters and `…`) or a `preview` (60 and `...`). With
+    /// (#1046). The reference lines a Hermex send appends and the host's image notes
+    /// (`hermesReferences`) are dropped, as saved or flattened onto one line as `preview` has
+    /// them, and so is one the host cut off at the end of a short title (48 characters and `…`)
+    /// or a `preview` (60 and `...`). A native photo's default caption goes with its hint. With
     /// no typed text left, the first attachment's name stands in; nil when there is none,
     /// such as a reference cut before its name, so the caller falls back. Display only:
     /// nothing is written to the host, and text without a reference comes back as it is.
@@ -219,7 +253,8 @@ extension MessageAttachment {
         var line = saved.text.replacing(/\s+/, with: " ")
         let cut = ["...", "…"].first { line.hasSuffix($0) }
         if let cut { line.removeLast(cut.count) }
-        let reference = /\[The user attached an image: ([^\]]*)\]|\[Examine it with the vision_analyze tool using image_url: [^\]]*\]|@file:(?:`([^`]+)`|"([^"]+)"|'([^']+)'|(\S+))/
+        // Groups: the pair's name, an `@file:` path in each quoting, a host image note's path.
+        let reference = /\[The user attached an image: ([^\]]*)\]|\[Examine it with the vision_analyze tool using image_url: [^\]]*\]|@file:(?:`([^`]+)`|"([^"]+)"|'([^']+)'|(\S+))|\[Image attached(?: at)?: ([^\]]*)\]|\[If you need a closer look, use vision_analyze with image_url: ([^\]]*?)(?: ~)?\]|\[The user sent an image[^\]]*\]|\[screenshot\]/
         let matches = line.matches(of: reference)
         // A token that runs into the cut is not whole, so neither is its name.
         var cutInsideReference = cut != nil && matches.last?.range.upperBound == line.endIndex
@@ -228,28 +263,39 @@ extension MessageAttachment {
                 names.append(hermesImageName(image))
             } else if let path = match.output.2 ?? match.output.3 ?? match.output.4 ?? match.output.5 {
                 names.append(hermesFileName(path))
+            } else if let path = match.output.6 ?? match.output.7 {
+                names.append(hermesImageName(hostFileName(path)))
             }
         }
         for match in matches.reversed() { line.removeSubrange(match.range) }
         // A reference the cut ended inside its opening words, or before its closing bracket.
         if cut != nil, let start = line.lastIndex(where: { $0 == "[" || $0 == "@" }) {
             let tail = String(line[start...])
-            let markers = ["[The user attached an image: ", "[Examine it with the vision_analyze tool using image_url: ", "@file:"]
+            let markers = ["[The user attached an image: ", "[Examine it with the vision_analyze tool using image_url: ", "@file:",
+                           "[Image attached at: ", "[Image attached: ", "[The user sent an image",
+                           "[If you need a closer look, use vision_analyze with image_url: ", "[screenshot]"]
             if markers.contains(where: { $0.hasPrefix(tail) || tail.hasPrefix($0) }) {
                 line.removeSubrange(start...)
                 cutInsideReference = true
             }
         }
         guard !matches.isEmpty || cutInsideReference || !saved.attachments.isEmpty || saved.text != text else { return text }
-        let typed = line.replacing(/\s+/, with: " ").trimmingCharacters(in: .whitespaces)
+        var typed = line.replacing(/\s+/, with: " ").trimmingCharacters(in: .whitespaces)
+        if typed == defaultImageCaption { typed = "" }
         if !typed.isEmpty { return typed + (cutInsideReference ? "" : cut ?? "") }
         return names.first
     }
 
     /// An image reference's file name without the `dashboard_<date>_<time>_<hex>_` prefix the
     /// host's upload gave it.
-    private static func hermesImageName(_ name: Substring) -> String {
+    private static func hermesImageName(_ name: some StringProtocol) -> String {
         String(name).replacing(/^dashboard_\d{8}_\d{6}_[0-9a-f]{8}_/, with: "")
+    }
+
+    /// A host path's last component, after `/` or a Windows host's `\` (#1312).
+    private static func hostFileName(_ path: some StringProtocol) -> String {
+        let path = String(path)
+        return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
     }
 
     /// An `@file:` path's file name without the UUID prefix `file.attach` gave it.
