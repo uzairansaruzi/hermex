@@ -15,7 +15,7 @@ struct HermesUnservedProfile: Equatable {
     /// A turn began: the last turn's live work is archived and the next reply opens a new
     /// assistant row. `prompt` is a queued prompt the host just ran, shown as the turn's
     /// user row; nil when the chat already shows it or the turn has none.
-    func hermesTurnDidStart(prompt: String?)
+    func hermesTurnDidStart(prompt: HermesQueuedPrompt?)
     /// `message.complete`'s reply text: kept when deltas already carried it, appended when not.
     func hermesTurnDidComplete(reply: String)
     /// Replaces the transcript with the settled history and the in-flight turn.
@@ -144,6 +144,9 @@ struct HermesQueuedPrompt: Equatable, Identifiable {
     static let dashboardSlot = "queued"
     let id: String
     let text: String
+    /// The chips of the photos this chat's canonical send carried as `attachments` (#1644),
+    /// which the host's `pending` doesn't list. A dashboard prompt names its photos in `text`.
+    var images: [MessageAttachment] = []
 }
 
 /// A turn a canonical host lost across its restart (`pending` status `unknown`, #1602): its prompt
@@ -208,6 +211,10 @@ struct HermesLostTurn: Equatable {
     /// The prompt a Send or a canonical edit is sending, as `pending` would list it, while its reply
     /// is out: a canonical turn starting with that text is its own, whose row the chat shows.
     @ObservationIgnored private var submittingText: String?
+    /// The photos of this chat's queued canonical sends, by admission, until each turn starts or
+    /// a Stop withdraws it (#1644): the host's `pending` lists text only, so its queued bubble and
+    /// the row its turn opens with take their chips from here. Kept in memory only.
+    @ObservationIgnored private var queuedImages: [String: [MessageAttachment]] = [:]
     /// Host requests open on this runtime (#1011, #1141): an approval, a question, a credential
     /// prompt, a Desktop task, a connection operation.
     let requests: HermesChatRequests
@@ -523,11 +530,12 @@ struct HermesLostTurn: Equatable {
 
     /// A send is uploading its files; `cancelAttachmentUpload()` stops it.
     private(set) var isUploadingAttachments = false
-    @ObservationIgnored private var attachmentUpload: Task<[String], Error>?
+    @ObservationIgnored private var attachmentUpload: Task<(references: [String], images: [UploadedImage]), Error>?
 
     /// Sends `text` in `mode` on the attached runtime, attaching first if the chat has not.
     /// `attachments` (Send and Queue only) upload first on that attach and runtime, and
-    /// their references follow the text. A Steer or Queue then releases an open connection
+    /// their references follow the text; on a canonical host the photos go as the prompt's
+    /// `attachments` instead (#1644). A Steer or Queue then releases an open connection
     /// operation (`continueConnection`); a lost release holds the message. An idle Send in a local
     /// folder then waits for one HEAD read, the base its turn's File changes card compares
     /// against (#1392); a failed read sends without one, and a cancel or reattach meanwhile sends
@@ -544,9 +552,9 @@ struct HermesLostTurn: Equatable {
         // Only a fresh turn takes files (`docs/agents/bots.md`); the chat never offers more.
         guard attachments.isEmpty || mode.startsTurn else { throw NotSent(underlying: BotFailure.unsupported) }
         let attempt = engine.generation
-        let references: [String]
+        let references: [String], images: [UploadedImage]
         do {
-            references = try await upload(attachments, runtime: runtime, attempt: attempt)
+            (references, images) = try await upload(attachments, runtime: runtime, attempt: attempt, canonical: isCanonical)
         } catch {
             throw NotSent(underlying: error, duringUpload: true)
         }
@@ -586,7 +594,8 @@ struct HermesLostTurn: Equatable {
         var dispatched = false
         let reply: BotJSON
         do {
-            reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote, fence: engine.fence),
+            reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote, fence: engine.fence,
+                                                     images: images.map(\.stored)),
                                            attempt: attempt, runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
         } catch {
             if let stale = error as? HermesFenceRefusal { engine.adoptGeneration(stale.generation) }
@@ -608,9 +617,13 @@ struct HermesLostTurn: Equatable {
             }
         case .followUpQueued, .redirectQueued:
             if let admission = reply["admission_id"].text, !admission.isEmpty {
+                let chips = images.map(\.chip)
+                if !chips.isEmpty { queuedImages[admission] = chips }
                 // The `pending` the host reports next may already list it.
-                if !queuedPrompts.contains(where: { $0.id == admission }) {
-                    queuedPrompts.append(HermesQueuedPrompt(id: admission, text: prompt))
+                if let listed = queuedPrompts.firstIndex(where: { $0.id == admission }) {
+                    queuedPrompts[listed].images = chips
+                } else {
+                    queuedPrompts.append(HermesQueuedPrompt(id: admission, text: prompt, images: chips))
                 }
             } else {
                 let merged = queuedPrompts.first.map { "\($0.text)\n\n\(prompt)" } ?? prompt
@@ -639,25 +652,41 @@ struct HermesLostTurn: Equatable {
         return try await headReader?.headSHA()
     }
 
+    /// A photo a send stored: what the prompt's `attachments` name, and the chip its queued
+    /// bubble shows until the host saves the row (#1644).
+    struct UploadedImage {
+        let stored: BotUploadedImage
+        let chip: MessageAttachment
+    }
+
     /// Uploads a send's files in order on the attach and runtime it captured
-    /// (`docs/agents/bots.md` § attachments), and returns their references: an
-    /// image's vision-tool line pair after image-upload, a document's `file.attach`
-    /// `ref_text` verbatim. The first failure, a cancel or a reattach ends it, so a
-    /// partial set is never submitted. Files already stored stay on the host.
-    private func upload(_ attachments: [OutgoingAttachment], runtime: String, attempt: Int) async throws -> [String] {
-        guard !attachments.isEmpty else { return [] }
+    /// (`docs/agents/bots.md` § attachments), and returns the text references and the
+    /// photos: a document's `file.attach` `ref_text` verbatim, and an image as stored by
+    /// image-upload, which on a `canonical` host travels as the prompt's own attachment
+    /// (#1644) and on any other as the vision-tool line pair among the references. The
+    /// first failure, a cancel or a reattach ends it, so a partial set is never submitted.
+    /// Files already stored stay on the host.
+    private func upload(_ attachments: [OutgoingAttachment], runtime: String, attempt: Int,
+                        canonical: Bool) async throws -> (references: [String], images: [UploadedImage]) {
+        guard !attachments.isEmpty else { return ([], []) }
         guard let key = engine.storedKey else { throw BotFailure.stale }
         let context = BotArtifactContext(connectionID: engine.connection.id, profile: engine.target.profile,
                                          sessionID: key, generation: attempt)
         let task = Task { [engine] in
-            var references: [String] = []
+            var references: [String] = [], images: [UploadedImage] = []
             for attachment in attachments {
                 try engine.check(attempt)
                 let data = try await attachment.data()
                 try engine.check(attempt)
                 if attachment.isImage {
-                    let path = try await engine.wire.uploadImage(data: data, filename: attachment.name, context: context)
-                    references.append(BotAttachmentUpload.imageReference(path: try BotAttachmentUpload.verifiedPath(path)))
+                    let stored = try await engine.wire.uploadImage(data: data, filename: attachment.name, context: context)
+                    let path = try BotAttachmentUpload.verifiedPath(stored.path)
+                    if canonical {
+                        images.append(UploadedImage(stored: stored, chip: MessageAttachment(
+                            name: attachment.name, path: path, mime: stored.mime, isImage: true)))
+                    } else {
+                        references.append(BotAttachmentUpload.imageReference(path: path))
+                    }
                 } else {
                     let call = await BotAttachmentUpload.fileAttach(data: data, runtime: runtime,
                                                                     filename: attachment.name, mime: attachment.mime)
@@ -669,7 +698,7 @@ struct HermesLostTurn: Equatable {
                 }
             }
             try engine.check(attempt)
-            return references
+            return (references: references, images: images)
         }
         attachmentUpload = task
         isUploadingAttachments = true
@@ -906,6 +935,7 @@ struct HermesLostTurn: Equatable {
                     _ = try await engine.write(.promptCancel(profile: engine.target.profile, sessionID: runtime, admissionID: queued.id),
                                                attempt: attempt, runtime: runtime)
                     queuedPrompts.removeAll { $0.id == queued.id }
+                    queuedImages[queued.id] = nil
                 }
             }
             _ = try await engine.write(.sessionInterrupt(sessionID: runtime, fence: fence), attempt: attempt, runtime: runtime)
@@ -1214,7 +1244,7 @@ struct HermesLostTurn: Equatable {
 
     // MARK: Turns
 
-    private func beginTurn(startedAt: Double?, prompt: String?) {
+    private func beginTurn(startedAt: Double?, prompt: HermesQueuedPrompt?) {
         if screenUse != nil { screenUse = nil }
         turnsStarted += 1
         // A send's own turn can begin from its start frame, ahead of the reply; any other has no base.
@@ -1312,17 +1342,18 @@ struct HermesLostTurn: Equatable {
                 // A new turn while the last waits on `session.info`: that one is over.
                 finish(pendingEnding ?? .completed)
             }
-            var prompt: String?
+            var prompt: HermesQueuedPrompt?
             runningAdmission = frame["admission_id"].text
             if let admission = frame["admission_id"].text, !admission.isEmpty {
                 // A canonical turn starts one admission: the queued one it names, if any. A send's
                 // own admission can be listed as queued just before it starts; its row is shown.
                 if let index = queuedPrompts.firstIndex(where: { $0.id == admission }) {
-                    let queued = queuedPrompts.remove(at: index).text
-                    if !isSubmittingSend || queued != submittingText { prompt = queued }
+                    let queued = queuedPrompts.remove(at: index)
+                    if !isSubmittingSend || queued.text != submittingText { prompt = queued }
                 }
+                queuedImages[admission] = nil
             } else if !isSubmittingSend {
-                prompt = queuedPrompts.first?.text; queuedPrompts = []
+                prompt = queuedPrompts.first; queuedPrompts = []
             }
             beginTurn(startedAt: hostTurnStartedAt, prompt: prompt)
         case "message.delta":
@@ -1422,7 +1453,7 @@ struct HermesLostTurn: Equatable {
         queuedPrompts = rows.compactMap { row in
             guard row["status"].text == "queued", row["steering"].flag != true,
                   let id = row["admission_id"].text, !id.isEmpty else { return nil }
-            return HermesQueuedPrompt(id: id, text: BotMentions.displayText(row["text"].text ?? ""))
+            return HermesQueuedPrompt(id: id, text: BotMentions.displayText(row["text"].text ?? ""), images: queuedImages[id] ?? [])
         }
         lostTurn = rows.lazy.compactMap { row -> HermesLostTurn? in
             guard row["status"].text == "unknown", let id = row["admission_id"].text, !id.isEmpty,
@@ -2122,8 +2153,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     /// history and snapshot and rebuilds.
     func conversationDidFollowReplacedChat() {
         followedReplacements += 1
-        savedTurn = nil; completedFailed = false; queuedPrompts = []; lostTurn = nil; runningAdmission = nil; turnBase = nil
-        screenUse = nil
+        savedTurn = nil; completedFailed = false; queuedPrompts = []; queuedImages = [:]; lostTurn = nil; runningAdmission = nil
+        turnBase = nil; screenUse = nil
         finish(.cancelled)
         sideTasks.forgetChat()
         forgetHistoryUntilRebuild()

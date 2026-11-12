@@ -625,12 +625,22 @@ Send and Queue upload the selected files and put only acknowledged references in
 that prompt. Steer/Redirect remain text-only. Images use the authenticated
 `POST /api/chat/image-upload?profile=…` with `{filename, data_url}` using the
 matching JPEG or PNG data URL and require
-`{ok: true, path}`. This stores the image without touching `attached_images`.
-The prompt carries the returned absolute path with the vision-tool instruction
-used by Hermes's `_build_image_ref_message`; analysis uses the host's configured
-`vision_analyze` tool. This deliberately avoids `image.attach_bytes` and its
-shared next-prompt queue. It does not request native inline vision from the
-conversation model.
+`{ok: true, path}`, reading `mime_type` when present. This stores the image without
+touching `attached_images`, and deliberately avoids `image.attach_bytes` and its
+shared next-prompt queue.
+
+On a canonical gateway (#1644) the prompt names each image in `prompt.submit`'s
+`attachments: [{path, mime}]` (exactly those keys; PNG, JPEG, GIF or WebP; at most
+10; the path in that Profile's image folder). The host routes it natively or by
+text for its model and stores the user row with its own notes: trailing
+`[Image attached at: <path>]` and `[screenshot]` lines after the caption (`What do
+you see in this image?` when there was none), or leading `[The user sent an image…`
+notes in text mode, each naming a `cache/documents/native-inputs/` copy.
+`MessageAttachment.hermesReferences` reads both as chips, as Desktop draws them as
+pictures. On a dashboard listener, which has no per-prompt images, the prompt
+carries the returned absolute path with the vision-tool instruction used by
+Hermes's `_build_image_ref_message`, and analysis uses the host's configured
+`vision_analyze` tool; other clients see those two lines as text.
 
 Documents use `file.attach` with `{session_id, name, data_url}` on the captured
 runtime and require `attached`, `path` and `ref_text`. The returned `@file:` token

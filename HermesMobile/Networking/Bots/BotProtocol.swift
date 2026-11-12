@@ -328,7 +328,7 @@ extension HermesAttemptRecord.Outcome {
     /// Answers the host's server request `id` with a JSON-RPC response frame carrying `result`, as a
     /// canonical host takes a sudo or secret value (#1602). No reply comes back.
     func respond(toRequest id: String, result: BotJSON, validateDispatch: (() throws -> Void)?) async throws
-    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String
+    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> BotUploadedImage
     /// One file the host serves by `path` under `context`'s Profile and session. `limit` caps a
     /// preview's bytes; nil reads the whole file, as a MEDIA file's export does (#1112).
     func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data
@@ -399,7 +399,7 @@ extension BotTransport {
     var unavailableMethods: Set<String> { [] }
     var lastAttempt: HermesAttemptRecord? { nil }
 
-    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
+    func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> BotUploadedImage {
         throw BotFailure.unsupported
     }
 

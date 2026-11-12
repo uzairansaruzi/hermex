@@ -57,10 +57,11 @@ import UIKit
             XCTAssertTrue(payload?["data_url"]?.hasPrefix("data:image/png;base64,") == true)
             return (200, [:], Data(#"{"ok":true,"path":"/profile/images/overlay.png"}"#.utf8))
         }
-        let path = try await BotAttachmentUpload.send(try BotAttachmentUpload.request(
+        let stored = try await BotAttachmentUpload.send(try BotAttachmentUpload.request(
             data: transparentPhoto, filename: "overlay.png", profile: "inbox-triage", base: URL(string: "https://bot.example")!
         ), on: session)
-        XCTAssertEqual(path, "/profile/images/overlay.png")
+        XCTAssertEqual(stored, BotUploadedImage(path: "/profile/images/overlay.png", mime: "image/png"),
+                       "a reply without `mime_type` keeps the type the phone encoded")
     }
 
     func testImageHTTPUploadUsesProfileAndReturnedPathAndRejectsMissingAcknowledgment() async throws {
@@ -77,8 +78,8 @@ import UIKit
         }
         let request = try BotAttachmentUpload.request(data: photo, filename: "photo.jpg", profile: "inbox-triage",
                                                       base: URL(string: "https://bot.example")!)
-        let path = try await BotAttachmentUpload.send(request, on: session)
-        XCTAssertEqual(path, "/profile/images/photo.jpg")
+        let stored = try await BotAttachmentUpload.send(request, on: session)
+        XCTAssertEqual(stored.path, "/profile/images/photo.jpg")
         for body in [#"{"path":"/images/photo.jpg"}"#, #"{"ok":true,"path":"https://other.example/photo.jpg"}"#] {
             BotArtifactHTTPFixture.handler = { _ in (200, [:], Data(body.utf8)) }
             do {
