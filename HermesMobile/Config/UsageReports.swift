@@ -422,11 +422,12 @@ final class UsageReports {
     /// The report for the week in progress, as it would be sent; the example before consent.
     func preview(now: Date = Date()) async -> UsageReport {
         let week = UsageWeekID(containing: now)
-        let device = await device()
         guard let version = consent.acceptedVersion else {
-            return build(version: currentVersion, tallies: .sample(week: week), firstOfMonth: true, device: device)
+            return build(version: currentVersion, tallies: .sample(week: week), firstOfMonth: true, device: await device())
         }
-        return build(version: version, tallies: rollOver(now), firstOfMonth: isFirstReport(ofMonthOf: week), device: device)
+        // Roll over before the await: resuming in a later week with this `now` would discard that week's tallies.
+        let tallies = rollOver(now)
+        return build(version: version, tallies: tallies, firstOfMonth: isFirstReport(ofMonthOf: week), device: await device())
     }
 
     private func build(version: Int, tallies: UsageTallies, firstOfMonth: Bool, device: UsageDevice) -> UsageReport {
