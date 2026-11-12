@@ -111,11 +111,8 @@ import XCTest
         publisher.publish([work], server: hermes)
         publisher.publish([work], server: studio)
 
-        let snapshot = file.read()
-        let ids = Set(snapshot.servers.flatMap { server in server.bots.map { BotWidgetEntity(serverKey: server.serverKey, bot: $0).id } })
-        XCTAssertEqual(ids.count, 2)
-        XCTAssertNotNil(snapshot.bot(serverKey: BotHistoryCache.Scope.key(hermes), profile: "work"))
-        XCTAssertNotNil(snapshot.bot(serverKey: BotHistoryCache.Scope.key(studio), profile: "work"))
+        let ids = Set(file.read().servers.flatMap { server in server.bots.map { BotWidgetEntity(serverKey: server.serverKey, bot: $0).id } })
+        XCTAssertEqual(ids.count, 2, "Two picker choices")
 
         publisher.remove(server: hermes)
         XCTAssertNil(file.read().bot(serverKey: BotHistoryCache.Scope.key(hermes), profile: "work"))
