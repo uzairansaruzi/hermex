@@ -45,7 +45,7 @@ struct CronRunHistoryItem: Decodable, Equatable, Identifiable {
 
     /// Unique within a job's output directory, which is what makes it a safe
     /// list identity as well as the detail request's key. On a Hermes host,
-    /// the run's session id (`cron_<job>_<time>`), or a script-only run's
+    /// the run's stored session id (`local-*`, or legacy `cron_<job>_<time>`), or a script-only run's
     /// `cron_output:` id, which no route opens.
     let filename: String
     /// Bytes on disk. `nil` when the server sent something unusable rather

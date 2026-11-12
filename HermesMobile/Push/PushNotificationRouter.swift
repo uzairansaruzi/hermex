@@ -101,7 +101,8 @@ import UserNotifications
         let payload = PushPayload(userInfo: userInfo)
         guard payload.source != "webui", let key = HermesDeepLink.normalizedSessionID(payload.sessionID) else { return nil }
         return HermesSessionDestination(server: server, profile: payload.profile, key: key,
-                                        opensParent: userInfo["is_subagent"] as? Bool == true)
+                                        opensParent: userInfo["is_subagent"] as? Bool == true,
+                                        opensTaskOutput: payload.kind == "delivery")
     }
 
     /// The servers whose pairing is the banner's install: `activeServer` first, then by URL.

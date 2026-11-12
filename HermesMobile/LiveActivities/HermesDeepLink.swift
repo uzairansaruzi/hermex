@@ -147,6 +147,7 @@ enum HermesDeepLink {
         }
         items.append(URLQueryItem(name: "id", value: key))
         if destination.opensParent { items.append(URLQueryItem(name: subagentQueryItem, value: "1")) }
+        if destination.opensTaskOutput { items.append(URLQueryItem(name: "taskOutput", value: "1")) }
         components.queryItems = items
         return components.url
     }
@@ -206,6 +207,8 @@ struct HermesSessionDestination: Hashable {
     let key: String
     /// The key is a subagent's (#1177): the lookup opens the session that delegated to it.
     var opensParent = false
+    /// Explicit platform delivery opens the Tasks output reader.
+    var opensTaskOutput = false
     /// The configured webui server a moved webui link named (#1217): when no Profile here has the
     /// key, the Sessions list opens it there instead (`MovedWebuiRoute`). Never part of a link.
     var movedFrom: URL?

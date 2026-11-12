@@ -131,3 +131,18 @@ move record, which outlives the webui entry and goes with the destination
   move could own one, it opens only where every candidate agrees, counting
   unmoved webui servers, and otherwise opens nothing: the active server never
   breaks the tie.
+
+## Explicit deliveries (#566)
+
+Plugin 0.8.0 adds `input`, `delivery`, and `system` kinds. Unknown kinds keep the
+plugin's sealed English title, including on App Store 2.1. An updated relay sends the new kinds directly. An older relay explicitly ignores
+`delivery`/`system`, after which the plugin reuses the saved snapshot as `reply`;
+that compatibility path follows the Replies preference and opens as a conversation. `input` observes actual sudo waits and never includes the submitted value. Its
+secret observer awaits an upstream hook: neither 0.23.1 nor current main emits
+the human-input hooks around its secret capture callbacks. Explicit `deliver: hermex` saves a delivery snapshot
+in the originating Profile before sending its clipped, sealed preview. It is a
+copy of the delivered result, not the original agent run or an entry in cron history.
+A delivery tap uses the ordinary paired server and Profile lookup, then opens the
+Tasks output reader (`taskOutput=1`) for that exact snapshot. Older apps open the
+same snapshot as a conversation. Previews off still opens it via the existing
+all-Profile lookup. `hermex:system` is a normal-priority system notice.

@@ -82,6 +82,11 @@ struct HermesSessionListView: View {
     @State private var viewModel: SessionListViewModel
     /// What covers the rows, the project lane and the search, kept by the list's owner.
     @State private var navigation: HermesSessionListNavigation
+    @State private var deliveredRun: CronRunHistoryItem?
+    @State private var deliveredOutput: CronRunOutput?
+    @State private var deliveredError: String?
+    @State private var loadingDelivery = false
+    @State private var deliveredProfile: String?
     @State private var actionToast = ActionToastState()
     @FocusState private var isSearchFieldFocused: Bool
     /// Counts the home's search requests, each of which scrolls the header back (`HomeHeaderScroll`)
@@ -333,6 +338,11 @@ struct HermesSessionListView: View {
         // Only with a link: `covers` is observed, and its setter runs for any mutating call.
         .onChange(of: pendingLink, initial: true) { if pendingLink != nil { covers.accept(pendingLink, on: entry.server) } }
         .task(id: pendingLink) { await openPendingLink() }
+        .sheet(item: $deliveredRun) { run in
+            TaskRunOutputSheet(run: run, output: deliveredOutput, isLoading: loadingDelivery,
+                               errorMessage: deliveredError, retry: { Task { await loadDelivery(run) } })
+                .task(id: run.id) { await loadDelivery(run) }
+        }
         .onChange(of: pendingUsage, initial: true) { if pendingUsage != nil { covers.bringForward() } }
         .task(id: UsageReadiness(link: pendingUsage, isLive: viewModel.isHermesLive)) { await openPendingUsage() }
         // A Shortcut's new session and a share bring the rows forward at once, and open once the
@@ -847,6 +857,7 @@ struct HermesSessionListView: View {
     /// sign-out or switch routes the held link again.
     private func openPendingLink() async {
         guard let link = pendingLink, link.server == entry.server else { return }
+        deliveredRun = nil
         let wire = BotClient(saved: entry.connection, server: entry.server)
         defer { wire.close() }
         let outcome: HermesSessionLookup.Outcome
@@ -863,7 +874,13 @@ struct HermesSessionListView: View {
         pendingLink = nil
         switch outcome {
         case .found(let session):
-            if let bot = session.hermesBot(on: entry.server, connectionID: entry.connection.id) {
+            if link.opensTaskOutput {
+                deliveredProfile = session.profile
+                deliveredOutput = nil
+                deliveredError = nil
+                loadingDelivery = true
+                deliveredRun = CronRunHistoryItem(filename: session.id)
+            } else if let bot = session.hermesBot(on: entry.server, connectionID: entry.connection.id) {
                 AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
             } else if let profile = session.profile,
                       let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) {
@@ -884,6 +901,21 @@ struct HermesSessionListView: View {
         case .room:
             break
         }
+    }
+
+    private func loadDelivery(_ run: CronRunHistoryItem) async {
+        loadingDelivery = true
+        deliveredError = nil
+        let client = HermesCronClient(saved: entry.connection, server: entry.server)
+        do {
+            let response = try await client.cronRunDetail(jobID: "", profile: deliveredProfile, run: run)
+            guard !Task.isCancelled, deliveredRun?.id == run.id else { return }
+            deliveredOutput = CronRunOutput(filename: run.filename, text: response.content ?? "")
+        } catch {
+            guard !Task.isCancelled, deliveredRun?.id == run.id else { return }
+            deliveredError = error.localizedDescription
+        }
+        loadingDelivery = false
     }
 
     /// Opens Usage for the Profile a Limits widget's tap names (#1409) once the list reads the host

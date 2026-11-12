@@ -434,6 +434,26 @@ import XCTest
                        HermesSessionDestination(server: server, profile: "research", key: "tip-2"))
     }
 
+    func testDeliveryTapKeepsServerAndProfileAndOpensTasksOutput() throws {
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info["kind"] = "delivery"
+        info["source"] = "other"
+        info["session_id"] = "hermex-delivery-run1"
+        info[PushPayload.profileKey] = "research"
+        let url = try XCTUnwrap(PushNotificationRouter.link(userInfo: info, pairings: [server: pairing],
+                                                           servers: [account(server, .hermes)]))
+        let destination = try XCTUnwrap(HermesSessionDestination(url: url))
+        XCTAssertEqual(destination.server, server)
+        XCTAssertEqual(destination.profile, "research")
+        XCTAssertEqual(destination.key, "hermex-delivery-run1")
+        XCTAssertTrue(destination.opensTaskOutput)
+        info["kind"] = "system"
+        let systemURL = try XCTUnwrap(PushNotificationRouter.link(userInfo: info, pairings: [server: pairing],
+                                                                 servers: [account(server, .hermes)]))
+        XCTAssertFalse(try XCTUnwrap(HermesSessionDestination(url: systemURL)).opensTaskOutput)
+    }
+
     func testForegroundShowsRelayPushesButQuietsTheOpenChatsReplies() {
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
         let open = PushPresence.Viewer(server: server, sessionID: "s1")

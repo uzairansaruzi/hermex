@@ -16,7 +16,8 @@ extension HermesSessionDestination {
         let profile = items.first { $0.name == HermesDeepLink.profileQueryItem }
             .map { ($0.value ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
         let opensParent = items.contains { $0.name == HermesDeepLink.subagentQueryItem && $0.value == "1" }
-        self.init(server: server, profile: profile, key: key, opensParent: opensParent)
+        self.init(server: server, profile: profile, key: key, opensParent: opensParent,
+                  opensTaskOutput: items.contains { $0.name == "taskOutput" && $0.value == "1" })
     }
 }
 

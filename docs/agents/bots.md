@@ -1173,7 +1173,7 @@ action runs the same machine and shows each list it reads, unless a change or a 
 landed on the list while that read was out.
 
 Run history (#1042) is `GET …/{id}/runs?profile=&limit=100`: the Task's newest 100 run
-sessions (`cron_<job>_<YYYYmmdd_HHMMSS>`), newest first, as one page with no offset or
+sessions (`local-*` on 0.23.1, legacy `cron_<job>_<YYYYmmdd_HHMMSS>` on older hosts), newest first, as one page with no offset or
 total, so there is no "Load more". A row decodes only its id, start and end, `is_active`,
 model, tokens and cost; never `system_prompt`, and not `preview`, which is the Task's prompt
 behind the scheduler's cron preamble on every run. A run's output is its session's final
