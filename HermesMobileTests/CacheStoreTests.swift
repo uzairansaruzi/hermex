@@ -833,6 +833,25 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default-extra", in: context).map(\.title), ["Elsewhere"])
     }
 
+    /// The cache holds no tool or reasoning cards, only which rows anchor them, so a cached
+    /// transcript can draw a turn's fold row before the host answers. A later read that finds
+    /// the row anchors nothing clears it.
+    func testHermesTranscriptRemembersWhichRowsAnchorWork() throws {
+        let context = try makeContext()
+        let scope = CacheStore.hermesScope(profile: "default", lineageRoot: "root")
+        let rows = [hermesMessage(1), hermesMessage(2)]
+        let anchor = try XCTUnwrap(rows[1].messageId)
+        try CacheStore.cacheHermesMessages(rows, workAnchorIDs: [anchor], newestCoverage: .all, serverURL: hermesServer,
+                                           scope: scope, in: context)
+        let cached = try CacheStore.cachedHermesTranscript(serverURL: hermesServer, scope: scope, in: context, limit: 10)
+        XCTAssertEqual(cached.messages, rows)
+        XCTAssertEqual(cached.workAnchorIDs, [anchor])
+
+        try CacheStore.cacheHermesMessages(rows, newestCoverage: .all, serverURL: hermesServer, scope: scope, in: context)
+        XCTAssertEqual(try CacheStore.cachedHermesTranscript(serverURL: hermesServer, scope: scope, in: context, limit: 10)
+            .workAnchorIDs, [])
+    }
+
     /// Each page is upserted and none sweeps, so reading page 1 alone keeps the rows later pages
     /// brought. A walk that reached the list's end drops a cached row it lacks. Archived rows
     /// are never cached.

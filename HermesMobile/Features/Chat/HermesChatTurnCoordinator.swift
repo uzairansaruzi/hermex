@@ -83,6 +83,18 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// link opened (#1176) shares the list row's copy and draft before any cached row names the
     /// root. Nil asks the cache, else takes the key.
     var lineageRoot: String? = nil
+    /// The title of the row this chat opened from, as the header shows it, so the header names
+    /// the chat from its first frame instead of "Untitled Session" until the host answers. Nil
+    /// for a chat opened without a row, such as a link's.
+    var title: String? = nil
+    /// That row's working folder, which the header names until the host reports the session's
+    /// own. Display only: Files, Git and the folder chip wait for the host's.
+    var workspace: String? = nil
+    /// That row's model, which the composer's chip names until the host reports the live one.
+    var model: String? = nil
+    /// The roster row a bot's Bot Chat opened from, so its pill has the bot's name and look from
+    /// the first frame instead of a bare Profile name until the chat's own roster read lands.
+    var bot: BotProfile? = nil
     /// New Chat with Voice opened it on a Hermes server (#1180): its composer starts dictation.
     var autoStartsVoiceInput = false
     /// What the share this new session opened for left out (#1401), which its composer says once.
@@ -348,6 +360,7 @@ struct HermesLostTurn: Equatable {
     /// A session's draft goes under its `lineageRoot` when given (`HermesSessionChat.lineageRoot`).
     /// `previewLimit` caps a preview's download; a test passes less than the 25 MB.
     init(engine: HermesConversation, botChatRoot: String? = nil, lineageRoot: String? = nil,
+         openedBot: BotProfile? = nil,
          liveActivities: (any AgentLiveActivityManaging)? = nil,
          writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
@@ -361,7 +374,7 @@ struct HermesLostTurn: Equatable {
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
         sideTasks = HermesChatSideTasks(engine: engine)
-        settings = HermesChatSettings(engine: engine, loadsAvatars: policy == .botChat)
+        settings = HermesChatSettings(engine: engine, loadsAvatars: policy == .botChat, openedBot: openedBot)
         slashCommands = HermesSlashCommands(engine: engine, policy: policy)
         activity = HermesChatActivity(wire: engine.wire)
         self.lineageRoot = lineageRoot
@@ -389,7 +402,8 @@ struct HermesLostTurn: Equatable {
                                              linkedRoot: chat.linkedRoot,
                                              wire: BotClient(saved: chat.connection, server: chat.server,
                                                              profile: chat.target.profile)),
-                  botChatRoot: chat.botChatRoot, lineageRoot: chat.lineageRoot, liveActivities: AgentLiveActivityManager.shared,
+                  botChatRoot: chat.botChatRoot, lineageRoot: chat.lineageRoot, openedBot: chat.bot,
+                  liveActivities: AgentLiveActivityManager.shared,
                   writeBotAvatar: BotLiveActivity.writeAvatar)
     }
 

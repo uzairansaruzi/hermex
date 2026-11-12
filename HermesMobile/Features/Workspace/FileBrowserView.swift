@@ -78,7 +78,9 @@ struct FileBrowserView: View {
 
         // A workspace search keeps the list up while the root loads or fails; the bar over
         // it carries the root's progress, error and retry.
-        if viewModel.isLoadingRoot && !viewModel.tree.isRootLoaded && !showsWorkspaceSection {
+        // A root neither loaded nor failed is still on its way, so the first frame shows progress
+        // rather than "No Files".
+        if !viewModel.tree.isRootLoaded && viewModel.errorMessage == nil && !showsWorkspaceSection {
             ProgressView("Loading files...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let errorMessage = viewModel.errorMessage, !viewModel.tree.isRootLoaded, !showsWorkspaceSection {

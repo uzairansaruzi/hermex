@@ -295,7 +295,8 @@ struct SkillDetailView: View {
     let onAPIError: (Error) -> Void
 
     @State private var detail: SkillDetailResponse?
-    @State private var isLoading = false
+    /// True from the start, so the page shows progress, not "No Content", until its load runs.
+    @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedFile: String?
     @State private var openedFile: SkillDetailResponse?
@@ -380,7 +381,7 @@ struct SkillDetailView: View {
     }
 
     private func loadDetail() async {
-        guard let name = skill.name else { return }
+        guard let name = skill.name else { isLoading = false; return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

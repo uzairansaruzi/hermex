@@ -146,7 +146,9 @@ final class InsightsViewModel {
     private(set) var serverInsights: InsightsResponse?
     var selectedTimeframe: AnalyticsTimeframe = .last30Days
     private(set) var loadedTimeframe: AnalyticsTimeframe = .last30Days
-    private(set) var isLoading = false
+    /// True from the start: the screen loads as it appears, and until then "none" would be a guess
+    /// that drew the empty state for a frame before the spinner.
+    private(set) var isLoading = true
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
     private(set) var dataSource: InsightsDataSource = .local

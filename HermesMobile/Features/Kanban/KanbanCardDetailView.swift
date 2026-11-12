@@ -3,9 +3,12 @@ import SwiftUI
 struct KanbanCardDetailView: View {
     let featureModel: KanbanFeatureState
     @State private var state: KanbanCardDetailState?
+    /// The card's title as the board showed it, which titles the screen until its detail loads.
+    private let boardTitle: String?
 
     init(featureModel: KanbanFeatureState, cardID: String) {
         self.featureModel = featureModel
+        boardTitle = featureModel.allCards.first { $0.cardID == cardID }?.title
         _state = State(initialValue: featureModel.makeCardDetailState(cardID: cardID))
     }
 
@@ -18,7 +21,7 @@ struct KanbanCardDetailView: View {
             }
         }
         .themedPageBackground()
-        .navigationTitle(state?.detail?.card?.title ?? String(localized: "Loading"))
+        .navigationTitle(state?.detail?.card?.title ?? boardTitle ?? String(localized: "Loading"))
         .navigationBarTitleDisplayMode(.inline)
         .transcriptLinks()
     }

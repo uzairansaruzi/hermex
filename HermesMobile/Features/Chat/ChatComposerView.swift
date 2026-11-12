@@ -265,7 +265,8 @@ struct MessageComposerView: View {
     let onLoadSkillSuggestions: () async -> Void
     let onSelectWorkspace: (String) async -> Void
     let onSelectProfile: (ProfileSummary) -> Void
-    let onHeightChange: (CGFloat) -> Void
+    /// The composer's measured height, and whether that is its resting layout (`isResting`).
+    let onHeightChange: (_ height: CGFloat, _ isResting: Bool) -> Void
     let onPhotoMediaSelected: ([HermexPickedMedia]) -> Void
     let onFileURLsSelected: ([URL]) -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
@@ -750,10 +751,10 @@ struct MessageComposerView: View {
             GeometryReader { proxy in
                 Color.clear
                     .onAppear {
-                        onHeightChange(proxy.size.height)
+                        onHeightChange(proxy.size.height, isResting)
                     }
                     .onChange(of: proxy.size.height) { _, newHeight in
-                        onHeightChange(newHeight)
+                        onHeightChange(newHeight, isResting)
                     }
             }
         )
@@ -1025,6 +1026,13 @@ struct MessageComposerView: View {
     /// Pill while the editor is idle; card while it is focused. Controls in the pill
     /// open their sheets without expanding it. `shouldRestoreFocus…` keeps a focused
     /// card open while its sheet is up, until focus comes back.
+    /// Collapsed with no status or recording row above the card: the layout whose height a chat
+    /// can start from before its own composer is measured.
+    private var isResting: Bool {
+        !isExpanded && !voiceNoteRecorder.isRecording && voiceNoteStatus == nil && voiceStatus == nil
+            && composerStatus == nil
+    }
+
     private var isExpanded: Bool {
         isCardOpen
             || isDictating

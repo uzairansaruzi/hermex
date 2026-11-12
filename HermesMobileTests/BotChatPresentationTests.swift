@@ -782,7 +782,7 @@ private struct SessionChatPresentationFixture: View {
             onSendVoiceNote: { _, _ in }, onCancel: { probe.cancels += 1 }, onSelectModel: { _ in },
             onModelPickerOpen: {}, onSelectReasoningEffort: { _ in false }, onLoadWorkspaceSuggestions: { _ in },
             onWorkspaceRegistryChanged: {}, onLoadPersonalitySuggestions: {}, onLoadSkillSuggestions: {},
-            onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _ in },
+            onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _, _ in },
             onPhotoMediaSelected: { _ in }, onFileURLsSelected: { _ in }, onPasteFileProviders: { _ in },
             onPasteFileURLs: { _ in }, onPasteImageProviders: { _ in }, onPasteImages: { _ in },
             onRemoveAttachment: { _ in }, onPreviewAttachment: { _ in }, onDismissUploadAttachmentError: {},

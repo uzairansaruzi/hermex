@@ -286,10 +286,15 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isLoadingRoot)
     }
 
+    /// A cancelled first load reports no error, and loads again the next time the screen
+    /// appears, since it left nothing to show.
     @MainActor
-    func testCancelledRootRequestDoesNotSurfaceAnError() async throws {
-        let client = makeClient { _ in
-            throw URLError(.cancelled)
+    func testCancelledRootRequestDoesNotSurfaceAnErrorAndLoadsAgain() async throws {
+        let log = RequestLog()
+        let client = makeClient { [self] request in
+            log.record(listedPath(in: request))
+            guard log.listedPaths.count > 1 else { throw URLError(.cancelled) }
+            return apiTestJSONResponse(#"{"path": ".", "entries": []}"#, for: request)
         }
         let viewModel = try makeViewModel(client: client)
 
@@ -298,6 +303,10 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isLoadingRoot)
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertNil(viewModel.lastError)
+
+        await viewModel.loadInitialRootIfNeeded()
+
+        XCTAssertTrue(viewModel.tree.isRootLoaded)
     }
 
     // MARK: - Hermes (#1112)

@@ -20,7 +20,9 @@ final class TasksViewModel {
     /// The in-flight feed request, so a reload cancels the one before it and
     /// tests can wait for the feed without polling.
     private(set) var recentRunsTask: Task<Void, Never>?
-    private(set) var isLoading = false
+    /// True from the start: the screen loads as it appears, and until then "none" would be a guess
+    /// that drew the empty state for a frame before the spinner.
+    private(set) var isLoading = true
     private(set) var isMutating = false
     private(set) var errorMessage: String?
     private(set) var actionErrorMessage: String?
