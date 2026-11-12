@@ -245,6 +245,8 @@ import UIKit
     private let rosterCache: BotRosterCache
     /// Where each roster read leaves the Profiles' names for the Shortcuts picker (#1180).
     private let profileNames: HermesProfileNameCache
+    /// Where each roster read leaves the bots for the Bot widget's picker (#1643).
+    private let widgets: BotWidgetPublisher
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
     /// Drops this phone's drafts for one deleted bot.
     private let purgeLocalState: @MainActor (UUID, String) async -> Void
@@ -263,7 +265,8 @@ import UIKit
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
          avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, rosterCache: BotRosterCache = .shared,
-         profileNames: HermesProfileNameCache = .shared, reloadSpacing: Duration = .seconds(1),
+         profileNames: HermesProfileNameCache = .shared, widgets: BotWidgetPublisher? = nil,
+         reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          statusPollInterval: Duration = .seconds(5),
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
@@ -275,6 +278,7 @@ import UIKit
         reconnect = BotReconnectSchedule(delays: reconnectDelays, isNetworkAvailable: isNetworkAvailable)
         self.isNetworkAvailable = isNetworkAvailable
         self.historyCache = historyCache; self.rosterCache = rosterCache; self.profileNames = profileNames
+        self.widgets = widgets ?? .shared
         self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
@@ -660,6 +664,7 @@ import UIKit
             if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
             }
+            widgets.publish(profiles, server: server)
             var changed = false
             for profile in profiles {
                 guard let lastActive = profile.lastActive?.timeIntervalSince1970,
@@ -935,6 +940,9 @@ import UIKit
         await avatarStore.refresh(profiles, connectionID: connection.id, using: client) {
             if wire === client { avatars = avatarStore.images(connectionID: connection.id) }
         }
+        // After the photos, so a configured Bot widget gets its bot's photo rather than its face.
+        guard wire === client, !Task.isCancelled else { return }
+        await widgets.renderAvatars(profiles, server: server, photos: avatars)
     }
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for as long as

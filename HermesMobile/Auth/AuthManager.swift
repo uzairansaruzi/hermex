@@ -570,6 +570,8 @@ final class AuthManager {
         SessionUnreadStore().remove(for: serverURL)
         // Kept through a sign-out, which the Shortcuts picker still lists the server's Profiles across (#1180).
         HermesProfileNameCache.shared.remove(server: serverURL)
+        // Kept through a sign-out too, so a Bot widget still opens its bot after the next sign-in (#1643).
+        BotWidgetPublisher.shared.remove(server: serverURL)
         await ChatDraftStore.shared.discardBotDrafts(server: serverURL)
         await forgetPush(serverURL)
         let isActive = state.server?.absoluteString == account.id
