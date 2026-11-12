@@ -29,17 +29,19 @@ enum SVGFence {
     }
 
     /// The sheet's page: the drawing fit to the sheet's width on a white card, since agent SVGs
-    /// usually have no background and draw in black. Nil when the source isn't a well-formed
-    /// `<svg>` document, so the sheet shows its failure state rather than a blank page.
+    /// usually have no background and draw in black. Only an SVG with a `viewBox` can scale; one
+    /// without keeps its own size and scrolls inside the card instead of being cropped. Nil when
+    /// the source isn't a well-formed `<svg>` document, so the sheet shows its failure state
+    /// rather than a blank page.
     static func page(for source: String) -> String? {
         let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
         guard XMLRootElementReader.rootName(of: source) == "svg" else { return nil }
         return """
         <!doctype html><html><head><style>
         body{margin:0;padding:16px}
-        .svg-card{background:#fff;border-radius:14px;padding:12px}
-        .svg-card>svg{display:block;max-width:100%;height:auto;margin:0 auto}
-        .svg-card>svg[viewBox]{width:100%}
+        .svg-card{background:#fff;color:#000;border-radius:14px;padding:12px;overflow-x:auto}
+        .svg-card>svg{display:block;margin:0 auto}
+        .svg-card>svg[viewBox]{width:100%;height:auto}
         </style></head><body><div class="svg-card">\(source)</div></body></html>
         """
     }
