@@ -72,6 +72,33 @@ import XCTest
                                    botConnectionID: ids))
         XCTAssertEqual(links.bot, BotDestination(server: hermes, connectionID: signedIn, profile: "work"))
         XCTAssertNil(links.botWidget)
+
+        saved = nil
+        links = PendingLinks()
+        XCTAssertNil(links.open(try tap(hermes), state: .loggedOut(server: hermes), servers: servers,
+                                isBotModeEnabled: false, botConnectionID: ids))
+        XCTAssertNil(links.reroute(state: .loggedIn(server: studio), servers: servers, isBotModeEnabled: false,
+                                   botConnectionID: ids))
+        XCTAssertNil(links.botWidget, "Switching away drops the held tap, so a later sign-in can't open it")
+    }
+
+    /// A photo the editor replaced keeps its look revision, so its widget copy goes until rendered again.
+    func testAReplacedPhotoIsRenderedAgainAtTheSameLookRevision() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = BotWidgetSnapshotFile(directory: directory)
+        let key = BotHistoryCache.Scope.key(hermes)
+        let publisher = BotWidgetPublisher(file: file, serverTitle: { _ in "" }, reloadWidget: {},
+                                           configuredBots: { [BotWidgetDestination(serverKey: key, profile: "work")] })
+        let work = try XCTUnwrap(BotProfile(.object(["name": .string("work"), "ui_meta_revisions": .object(["hermes-bots": .number(3)])])))
+        let avatar = file.avatarURL(BotWidgetPublisher.avatarName(serverKey: key, profile: work), dark: true)
+
+        await publisher.renderAvatars([work], server: hermes, photos: [:])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: avatar.path))
+        publisher.forgetAvatar(server: hermes, profile: "work")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: avatar.path))
+        await publisher.renderAvatars([work], server: hermes, photos: [:])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: avatar.path))
     }
 
     func testTheSnapshotKeepsEqualProfileNamesOnTwoServersApartAndDropsARemovedServer() throws {

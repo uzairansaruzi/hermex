@@ -76,6 +76,17 @@ import WidgetKit
         if rendered { reloadWidget() }
     }
 
+    /// Deletes one bot's rendered avatars, for a photo replaced without a new look revision
+    /// (`BotProfileEditor` saves the asset alone); the next roster read renders it again.
+    func forgetAvatar(server: URL, profile: String) {
+        guard let file else { return }
+        let prefix = Self.avatarPrefix(serverKey: BotHistoryCache.Scope.key(server)) + Self.profileDigest(profile) + "-"
+        for url in (try? FileManager.default.contentsOfDirectory(at: file.avatarDirectory, includingPropertiesForKeys: nil)) ?? []
+        where url.lastPathComponent.hasPrefix(prefix) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     /// Drops a removed server's bots and avatar files.
     func remove(server: URL) {
         guard let file else { return }
@@ -94,8 +105,11 @@ import WidgetKit
 
     /// `<server key prefix>-<Profile digest>-<look revision>`, so a new look gets a new file.
     static func avatarName(serverKey: String, profile: BotProfile) -> String {
-        let digest = SHA256.hash(data: Data(profile.id.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
-        return "\(avatarPrefix(serverKey: serverKey))\(digest)-\(profile.lookRevision.map(String.init) ?? "u")"
+        "\(avatarPrefix(serverKey: serverKey))\(profileDigest(profile.id))-\(profile.lookRevision.map(String.init) ?? "u")"
+    }
+
+    private static func profileDigest(_ profile: String) -> String {
+        SHA256.hash(data: Data(profile.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func avatarPrefix(serverKey: String) -> String { "\(serverKey.prefix(16))-" }
