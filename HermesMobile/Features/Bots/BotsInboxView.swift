@@ -925,6 +925,10 @@ private struct BotHeroTile: View {
                     // Two lines, so a long translation at a large size still reads whole.
                     BotLiveStatusLabel(status: status, font: AppFont.footnote(weight: .semibold), isStale: statusIsStale)
                         .lineLimit(2).multilineTextAlignment(.center)
+                } else {
+                    // Holds the status line's place: statuses arrive after the tiles, and a tile
+                    // growing then dropped the whole list under the pinned bots.
+                    Text(verbatim: " ").font(AppFont.footnote(weight: .semibold)).accessibilityHidden(true)
                 }
             }
         }

@@ -334,6 +334,8 @@ struct ChatView: View {
     /// The parent the row this Hermes chat opened from named, which its "Forked from" row
     /// checks (#1051).
     let hermesParentKey: String?
+    /// The working folder of the row a Hermes chat opened from (`HermesSessionChat.workspace`).
+    let hermesRowWorkspace: String?
     /// A scheduled task's run (#1413): its prompt row shows as a `CronRunPromptCard`.
     let isCronRun: Bool
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
@@ -420,7 +422,25 @@ struct ChatView: View {
     @State private var viewID = UUID()
     @State private var gitAvailabilityViewModel: GitWorkspaceAvailabilityViewModel
     @State private var gitAlert: GitChatAlert?
-    @State private var composerHeight: CGFloat = 52
+    /// Starts at the last empty composer's measured height, so the transcript's bottom inset is
+    /// right on a chat's first frame instead of moving once the composer is measured. Kept
+    /// across launches, since the height follows the font and text size.
+    @State private var composerHeight = ChatView.restingComposerHeight
+    private static let restingComposerHeightKey = "chat.restingComposerHeight"
+    @MainActor private static var restingComposerHeight: CGFloat = {
+        let saved = UserDefaults.standard.double(forKey: restingComposerHeightKey)
+        return saved > 0 ? saved : 52
+    }()
+
+    /// Remembers the composer's height while it is at rest: its resting layout, with no draft or
+    /// attachments, and not a new chat's taller controls.
+    private func rememberRestingComposerHeight(_ height: CGFloat, isResting: Bool) {
+        guard isResting, draftMessage.isEmpty, viewModel.pendingAttachments.isEmpty, !showsNewChatControls,
+              height != ChatView.restingComposerHeight else { return }
+        ChatView.restingComposerHeight = height
+        UserDefaults.standard.set(Double(height), forKey: ChatView.restingComposerHeightKey)
+    }
+
     /// Measured height of the collapsed clarification bar, the request's only
     /// layout footprint; the expanded card overlays the transcript instead.
     @State private var clarificationBarHeight: CGFloat = 0
@@ -529,6 +549,7 @@ struct ChatView: View {
         isHermesSession = hermesSession != nil
         hermesSessionChatID = hermesSession?.id.uuidString
         hermesParentKey = hermesSession?.parentKey
+        hermesRowWorkspace = hermesSession?.workspace
         isCronRun = hermesSession?.isCronRun == true
         self.onReplaceHermesSession = onReplaceHermesSession
         hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
@@ -573,7 +594,8 @@ struct ChatView: View {
          onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil,
          continuity: ChatContinuity? = nil) {
         self.init(
-            session: SessionSummary(profile: hermesSession.target.profile),
+            session: SessionSummary(title: hermesSession.title, model: hermesSession.model,
+                                    profile: hermesSession.target.profile),
             server: hermesSession.server,
             onAPIError: { _ in },
             shareNotice: hermesSession.shareNotice,
@@ -713,8 +735,9 @@ struct ChatView: View {
             onSelectProfile: { profile in
                 handleProfileSelection(profile)
             },
-            onHeightChange: { height in
+            onHeightChange: { height, isResting in
                 composerHeight = height
+                rememberRestingComposerHeight(height, isResting: isResting)
             },
             onPhotoMediaSelected: { media in
                 Task { await handlePhotoSelection(media) }
@@ -2237,7 +2260,13 @@ struct ChatView: View {
     /// A bot's chat has no subtitle to tap, since the pill opens its bot.
     private var showsBotChatSettingsButton: Bool { viewModel.hermesBotChat != nil }
 
-    private var showsFilesLink: Bool { showsFilesButton && (!isHermesSession || browsableHermesWorkspace != nil) }
+    /// A Hermes chat opened from a row with a folder shows Files from its first frame, disabled
+    /// until the host names the session's folder, instead of the button arriving a moment later.
+    /// A folder Files can't read (not a `local` backend) then takes it away again.
+    private var showsFilesLink: Bool {
+        showsFilesButton && (!isHermesSession || browsableHermesWorkspace != nil
+                             || hermesRowWorkspace != nil && viewModel.hermesWorkspace == nil)
+    }
 
     private var showsGitMenu: Bool { showsGitControls && gitAvailabilityViewModel.hasRepository }
 
@@ -2259,7 +2288,7 @@ struct ChatView: View {
         } label: {
             Label("Files", systemImage: "folder")
         }
-        .disabled(viewModel.isViewingCachedData)
+        .disabled(viewModel.isViewingCachedData || isHermesSession && browsableHermesWorkspace == nil)
         .accessibilityLabel("Files")
     }
 
@@ -2727,7 +2756,9 @@ struct ChatView: View {
 
     private var headerSubtitle: String? {
         ChatToolbarSubtitleResolver.subtitle(
-            workspacePath: viewModel.selectedWorkspacePath,
+            // The row's folder stands in until the host names the session's, so the line is
+            // whole from the first frame.
+            workspacePath: viewModel.selectedWorkspacePath ?? hermesRowWorkspace,
             profileTitle: viewModel.selectedProfileTitle
         )
     }
@@ -2764,6 +2795,7 @@ struct ChatView: View {
         let activityAnchorIDs: Set<String> = thinkingAndToolCards.showsCards
             ? Set(viewModel.displayedReasoningGroups.compactMap(\.anchorMessageID))
                 .union(viewModel.completedToolCallGroups.compactMap(\.anchorMessageID))
+                .union(viewModel.hermesCachedWorkAnchorIDs)
             : []
         let inputs = TranscriptStructureMemo.Inputs(
             structureRevision: viewModel.transcriptStructureRevision,

@@ -511,7 +511,9 @@ struct ChatTranscriptView: View {
 
             transcriptLooseBlocks
             liveResponseBlocks
-            if let delegatedWork {
+            // Only with workers to list: an empty preview is still a row to the stack, whose
+            // spacing moved the transcript up as the host's rows replaced the cached copy.
+            if let delegatedWork, delegatedWork.activeCount > 0 {
                 HermesDelegatedWorkInlineView(work: delegatedWork, onOpen: onOpenDelegatedWork)
                     .equatable()
             }

@@ -177,6 +177,19 @@ extension CacheStore {
         limit: Int,
         now: Date = Date()
     ) throws -> [ChatMessage] {
+        try cachedHermesTranscript(serverURL: serverURL, scope: scope, in: context, limit: limit, now: now).messages
+    }
+
+    /// `cachedHermesMessages` with the ids of the rows that anchor their turn's tool or
+    /// reasoning cards (`CachedMessage.anchorsWork`).
+    @MainActor
+    static func cachedHermesTranscript(
+        serverURL: URL,
+        scope: String,
+        in context: ModelContext,
+        limit: Int,
+        now: Date = Date()
+    ) throws -> (messages: [ChatMessage], workAnchorIDs: Set<String>) {
         let serverURLString = serverURL.absoluteString
         var descriptor = FetchDescriptor<CachedMessage>(
             predicate: #Predicate {
@@ -185,7 +198,9 @@ extension CacheStore {
             sortBy: [SortDescriptor(\.sortIndex, order: .reverse)]
         )
         descriptor.fetchLimit = limit
-        return try context.fetch(descriptor).reversed().map(ChatMessage.init(cachedMessage:))
+        let rows = try context.fetch(descriptor)
+        return (rows.reversed().map(ChatMessage.init(cachedMessage:)),
+                Set(rows.compactMap { $0.anchorsWork == true ? $0.messageId : nil }))
     }
 
     /// Upserts a Hermes session's settled history as the chat holds it, `messages` in its
@@ -208,10 +223,12 @@ extension CacheStore {
                                 scope: hermesScope(profile: profile, lineageRoot: lineageRoot), in: context, cachedAt: cachedAt)
     }
 
-    /// `cacheHermesMessages` under `scope`, a session's or a Bot Chat's.
+    /// `cacheHermesMessages` under `scope`, a session's or a Bot Chat's. `workAnchorIDs` are
+    /// the rows that anchor their turn's tool or reasoning cards.
     @MainActor
     static func cacheHermesMessages(
         _ messages: [ChatMessage],
+        workAnchorIDs: Set<String> = [],
         newestCoverage: HermesNewestCoverage?,
         serverURL: URL,
         scope: String,
@@ -230,12 +247,18 @@ extension CacheStore {
         for (offset, row) in held.enumerated() {
             let rowKey = key(row.id)
             guard written.insert(rowKey).inserted else { continue }
+            let cachedRow: CachedMessage
             if let existing = cachedByKey[rowKey] {
                 existing.refresh(from: row.message, sortIndex: start + offset, cachedAt: cachedAt)
+                cachedRow = existing
             } else {
-                context.insert(CachedMessage(serverURLString: serverURLString, sessionID: scope, message: row.message,
-                                             sortIndex: start + offset, cacheKey: rowKey, cachedAt: cachedAt))
+                cachedRow = CachedMessage(serverURLString: serverURLString, sessionID: scope, message: row.message,
+                                          sortIndex: start + offset, cacheKey: rowKey, cachedAt: cachedAt)
+                context.insert(cachedRow)
             }
+            // Written only on a change, so an unchanged row stays clean.
+            let anchorsWork = row.message.messageId.map(workAnchorIDs.contains) ?? false
+            if (cachedRow.anchorsWork ?? false) != anchorsWork { cachedRow.anchorsWork = anchorsWork }
         }
         try saveAndTrim(context, now: cachedAt)
     }

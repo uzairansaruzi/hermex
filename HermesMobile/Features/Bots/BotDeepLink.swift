@@ -195,7 +195,7 @@ struct BotInboxSelection {
     func chat(server: URL, connection: BotConnection) -> HermesSessionChat? {
         profile.map {
             HermesSessionChat(server: server, connection: connection, target: .canonicalChat(profile: $0.id),
-                              linkedRoot: conversation)
+                              linkedRoot: conversation, bot: $0)
         }
     }
 }

@@ -115,11 +115,15 @@ enum HermesProfilePreference {
     @ObservationIgnored private var latestInfo: BotJSON?
     private let engine: HermesConversation
 
-    init(engine: HermesConversation, loadsAvatars: Bool = false) {
+    /// `openedBot` is the roster row a Bot Chat opened from: with the pictures the shared store
+    /// already holds, it gives the pill the bot's name, look and photo before the first read.
+    init(engine: HermesConversation, loadsAvatars: Bool = false, openedBot: BotProfile? = nil) {
         self.engine = engine
         self.loadsAvatars = loadsAvatars
         profile = engine.target.profile
         mentions = BotMentions(roster: [], excluding: profile)
+        if let openedBot { bots = [openedBot] }
+        if loadsAvatars { avatars = BotAvatarStore.shared.images(connectionID: engine.connection.id) }
     }
 
     /// The model the chip shows: a pick waiting for the running response, else the

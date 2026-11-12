@@ -8047,6 +8047,10 @@ final class ChatViewModel {
     /// The ids of the tool and reasoning groups the settled history last laid out (#1047): an
     /// older page replaces exactly these, and keeps the groups the chat archived itself.
     @ObservationIgnored private var hermesHistoryGroupIDs: Set<String> = []
+    /// The rows of a cached Hermes transcript that anchor their turn's tool or reasoning cards.
+    /// The cache holds no cards, so these let the cached copy draw each turn's fold row where
+    /// the host's rows will, instead of the row arriving a moment later and moving the reply.
+    private(set) var hermesCachedWorkAnchorIDs: Set<String> = []
 
     /// Where a Hermes transcript's first row counts from. A page never says how many rows come
     /// before it, so the count starts high and an older page moves it back (#1047).
@@ -8454,6 +8458,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
             guard transcript.newestCoverage != nil || isCachedCopyProvisional && !isBotChat else { return }
             isViewingCachedData = false
         }
+        hermesCachedWorkAnchorIDs = []
         resetPendingStreamingContentBuffers()
         let next = Self.hermesKeepingOwnRows(of: messages, in: transcript.messages + transcript.live)
             + (transcript.streamingReply.map { [$0] } ?? [])
@@ -8619,17 +8624,18 @@ extension ChatViewModel: HermesChatTurnDelegate {
     }
 
     /// With nothing on screen, shows the newest page of the chat's cached transcript, read-only
-    /// (`isViewingCachedData`), with no tool, reasoning or compaction cards, until a newest
+    /// (`isViewingCachedData`), with no tool, reasoning or compaction cards (only each turn's fold row), until a newest
     /// read replaces it: `provisional` while the host has yet to answer, else as the offline
     /// state. Returns whether it shows the cached copy.
     @discardableResult
     private func showCachedHermesTranscript(provisional: Bool) -> Bool {
         guard messages.isEmpty, let scope = hermesCacheScope() else { return false }
         var cached: [ChatMessage] = []
+        var workAnchorIDs: Set<String> = []
         do {
             for readScope in [scope.scope, scope.fallback].compactMap({ $0 }) where cached.isEmpty {
-                cached = try CacheStore.cachedHermesMessages(serverURL: scope.server, scope: readScope, in: scope.context,
-                                                             limit: HermesREST.transcriptPageSize)
+                (cached, workAnchorIDs) = try CacheStore.cachedHermesTranscript(
+                    serverURL: scope.server, scope: readScope, in: scope.context, limit: HermesREST.transcriptPageSize)
             }
         } catch {
             cacheErrorMessage = error.localizedDescription
@@ -8646,6 +8652,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         setCompletedToolCallGroups([])
         completedReasoningGroups = []
         hermesHistoryGroupIDs = []
+        hermesCachedWorkAnchorIDs = workAnchorIDs
         hermesCompaction = nil
         recomputeCompressionReferenceCard()
         transcriptRelayoutScrollToken += 1
@@ -8658,7 +8665,10 @@ extension ChatViewModel: HermesChatTurnDelegate {
     private func cacheHermesHistory(_ transcript: HermesChatTranscript) {
         guard let scope = hermesCacheScope(), hermesCacheEpoch == CacheStore.hermesCacheEpoch(serverURL: scope.server) else { return }
         do {
-            try CacheStore.cacheHermesMessages(transcript.messages, newestCoverage: transcript.newestCoverage,
+            let workAnchorIDs = Set(transcript.toolCallGroups.compactMap(\.anchorMessageID)
+                + transcript.reasoningGroups.compactMap(\.anchorMessageID))
+            try CacheStore.cacheHermesMessages(transcript.messages, workAnchorIDs: workAnchorIDs,
+                                               newestCoverage: transcript.newestCoverage,
                                                serverURL: scope.server, scope: scope.scope, in: scope.context)
             if let sameRoot = scope.sameRoot, let coverage = transcript.newestCoverage {
                 try CacheStore.dropHermesMessagesTheHostCut(from: transcript.messages, newestCoverage: coverage,

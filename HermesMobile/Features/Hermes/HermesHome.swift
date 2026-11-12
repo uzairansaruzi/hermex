@@ -47,9 +47,12 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
             let ownsRail = hasVerticalBar && !home.isSidebar
             let detailOwnsRail = home.isSidebar && detailHasVerticalBar
             content
+                .modifier(RailTopInset(isActive: ownsRail))
                 .modifier(HiddenBottomScrollEdge())
                 .themedPageBackground()
-                .navigationTitle(home.title)
+                // With the rail the bar stays visible, and returning from a pushed screen drew
+                // the title for a moment before its removal landed, so the rail's home has none.
+                .navigationTitle(ownsRail ? "" : home.title)
                 .navigationBarTitleDisplayMode(.inline)
                 // The vertical bar carries the navigation bar's items, so it stays; its title would
                 // be a row of its own above the header.
@@ -143,6 +146,10 @@ extension View {
 
 /// Calls `content` with whether the system draws a vertical bar here (iOS 27.1, iPhone Duo). In a
 /// split it is the detail column's: the sidebar reads it too, but its bars stay horizontal.
+///
+/// The system reports no bar while a pushed screen covers the reader, a swipe back included,
+/// which redrew the screen underneath without its rail until the swipe landed. So a bar once
+/// seen stays until the size class changes, as a fold does.
 struct VerticalBarReader<Content: View>: View {
     @ViewBuilder let content: (Bool) -> Content
 
@@ -158,10 +165,15 @@ struct VerticalBarReader<Content: View>: View {
 @available(iOS 27.1, *)
 private struct VerticalBarEdgeReader<Content: View>: View {
     @Environment(\.toolbarVerticalEdge) private var edge
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @State private var sawBar = false
     let content: (Bool) -> Content
 
     var body: some View {
-        content(edge != nil)
+        content(edge != nil || sawBar)
+            .onChange(of: edge != nil, initial: true) { if edge != nil { sawBar = true } }
+            .onChange(of: [horizontalSizeClass, verticalSizeClass]) { sawBar = edge != nil }
     }
 }
 
@@ -204,6 +216,20 @@ private struct HermesHomeAvatarMenu: View {
         }
         .accessibilityLabel("Settings")
         .accessibilityHint("Opens Settings. Long press to switch servers.")
+    }
+}
+
+/// The rail's home has no top bar, but a swipe back lends it the pushed screen's until the swipe
+/// lands, which dropped the list by a row and then jumped it back. So with the rail the list
+/// ignores the bar and keeps the 24 points an empty one leaves above it.
+private struct RailTopInset: ViewModifier {
+    let isActive: Bool
+
+    func body(content: Content) -> some View {
+        // One branch, so the list keeps its identity as the rail comes and goes.
+        content
+            .contentMargins(.top, isActive ? 24 : 0, for: .scrollContent)
+            .ignoresSafeArea(.container, edges: isActive ? .top : [])
     }
 }
 
