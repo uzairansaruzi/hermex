@@ -41,7 +41,8 @@ struct BotWidgetSnapshot: Codable, Equatable, Sendable {
 /// `<app group>/Widgets/bot-chats.json` and the avatars beside it, where the app leaves the Bot
 /// widget's data. A missing, oversized, unreadable or other-version file reads as empty.
 struct BotWidgetSnapshotFile {
-    static let maxBytes = 256 * 1024
+    /// Room for every server at its row cap: 16 x 200 bots at about 300 bytes each.
+    static let maxBytes = 1024 * 1024
 
     let url: URL
     let avatarDirectory: URL

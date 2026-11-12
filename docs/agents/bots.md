@@ -1504,7 +1504,7 @@ bot link and routes as above; a signed-out Hermes server is made active so its s
 shows, and `PendingLinks.botWidget` holds the tap until sign-in saves the new connection, or
 drops it once another server is active. The widget and its picker read only
 `Widgets/bot-chats.json`, which `BotWidgetPublisher` writes on each roster read; avatars are
-rendered only for configured bots, once per look revision, after the inbox's photos load.
+rendered only for configured bots, once per look revision and Bot connection, after the inbox's photos load.
 
 ## Opening a Hermes session from outside the app (#1176)
 

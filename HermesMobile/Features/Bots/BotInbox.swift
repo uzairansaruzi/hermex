@@ -664,7 +664,7 @@ import UIKit
             if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
             }
-            widgets.publish(profiles, server: server)
+            if let connection { widgets.publish(profiles, server: server, connectionID: connection.id) }
             var changed = false
             for profile in profiles {
                 guard let lastActive = profile.lastActive?.timeIntervalSince1970,
@@ -942,7 +942,7 @@ import UIKit
         }
         // After the photos, so a configured Bot widget gets its bot's photo rather than its face.
         guard wire === client, !Task.isCancelled else { return }
-        await widgets.renderAvatars(profiles, server: server, photos: avatars)
+        await widgets.renderAvatars(profiles, server: server, connectionID: connection.id, photos: avatars)
     }
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for as long as

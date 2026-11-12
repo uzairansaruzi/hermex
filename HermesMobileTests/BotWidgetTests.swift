@@ -91,13 +91,15 @@ import XCTest
         let publisher = BotWidgetPublisher(file: file, serverTitle: { _ in "" }, reloadWidget: {},
                                            configuredBots: { [BotWidgetDestination(serverKey: key, profile: "work")] })
         let work = try XCTUnwrap(BotProfile(.object(["name": .string("work"), "ui_meta_revisions": .object(["hermes-bots": .number(3)])])))
-        let avatar = file.avatarURL(BotWidgetPublisher.avatarName(serverKey: key, profile: work), dark: true)
+        let connection = UUID()
+        let avatar = file.avatarURL(BotWidgetPublisher.avatarName(serverKey: key, profile: work, connectionID: connection), dark: true)
+        publisher.publish([work], server: hermes, connectionID: connection)
 
-        await publisher.renderAvatars([work], server: hermes, photos: [:])
+        await publisher.renderAvatars([work], server: hermes, connectionID: connection, photos: [:])
         XCTAssertTrue(FileManager.default.fileExists(atPath: avatar.path))
         publisher.forgetAvatar(server: hermes, profile: "work")
         XCTAssertFalse(FileManager.default.fileExists(atPath: avatar.path))
-        await publisher.renderAvatars([work], server: hermes, photos: [:])
+        await publisher.renderAvatars([work], server: hermes, connectionID: connection, photos: [:])
         XCTAssertTrue(FileManager.default.fileExists(atPath: avatar.path))
     }
 
@@ -108,8 +110,8 @@ import XCTest
         let publisher = BotWidgetPublisher(file: file, serverTitle: { $0.host ?? "" }, reloadWidget: {},
                                            configuredBots: { [] })
         let work = try XCTUnwrap(BotProfile(.object(["name": .string("work")])))
-        publisher.publish([work], server: hermes)
-        publisher.publish([work], server: studio)
+        publisher.publish([work], server: hermes, connectionID: UUID())
+        publisher.publish([work], server: studio, connectionID: UUID())
 
         let ids = Set(file.read().servers.flatMap { server in server.bots.map { BotWidgetEntity(serverKey: server.serverKey, bot: $0).id } })
         XCTAssertEqual(ids.count, 2, "Two picker choices")

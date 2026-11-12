@@ -25,13 +25,13 @@ import WidgetKit
         self.configuredBots = configuredBots
     }
 
-    /// Replaces `server`'s bots with `profiles`, an empty roster dropping the server, and reloads
-    /// the widget only when that changed something.
-    func publish(_ profiles: [BotProfile], server: URL) {
+    /// Replaces `server`'s bots with `profiles`, read through `connectionID`, an empty roster
+    /// dropping the server, and reloads the widget only when that changed something.
+    func publish(_ profiles: [BotProfile], server: URL, connectionID: UUID) {
         guard let file else { return }
         let key = BotHistoryCache.Scope.key(server)
         let bots = profiles.prefix(BotWidgetSnapshot.maxBotsPerServer).map {
-            BotWidgetSnapshot.Bot(profile: $0.id, title: $0.name, avatar: Self.avatarName(serverKey: key, profile: $0))
+            BotWidgetSnapshot.Bot(profile: $0.id, title: $0.name, avatar: Self.avatarName(serverKey: key, profile: $0, connectionID: connectionID))
         }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         let current = file.read()
         var snapshot = current
@@ -49,14 +49,16 @@ import WidgetKit
     /// Renders the avatar of each bot on `server` that a widget is configured for, unless its look
     /// revision already has a file, and deletes the server's other avatar files. A photo bot whose
     /// photo hasn't loaded is skipped, so its widget keeps the fallback face until the next read.
-    func renderAvatars(_ profiles: [BotProfile], server: URL, photos: [String: UIImage]) async {
+    func renderAvatars(_ profiles: [BotProfile], server: URL, connectionID: UUID, photos: [String: UIImage]) async {
         guard let file else { return }
         let key = BotHistoryCache.Scope.key(server)
         let wanted = Set(await configuredBots().filter { $0.serverKey == key }.map(\.profile))
+        // A removal during the wait deleted this server's rows; drawing now would bring its files back.
+        guard file.read().servers.contains(where: { $0.serverKey == key }) else { return }
         var keep: Set<String> = []
         var rendered = false
         for profile in profiles where wanted.contains(profile.id) {
-            let name = Self.avatarName(serverKey: key, profile: profile)
+            let name = Self.avatarName(serverKey: key, profile: profile, connectionID: connectionID)
             keep.insert(name)
             let isCurrent = profile.lookRevision != nil
                 && [false, true].allSatisfy { FileManager.default.fileExists(atPath: file.avatarURL(name, dark: $0).path) }
@@ -103,13 +105,18 @@ import WidgetKit
         reloadWidget()
     }
 
-    /// `<server key prefix>-<Profile digest>-<look revision>`, so a new look gets a new file.
-    static func avatarName(serverKey: String, profile: BotProfile) -> String {
-        "\(avatarPrefix(serverKey: serverKey))\(profileDigest(profile.id))-\(profile.lookRevision.map(String.init) ?? "u")"
+    /// `<server key prefix>-<Profile digest>-<connection digest>-<look revision>`, so a new look, or
+    /// a replaced connection whose host reuses the Profile name and revision, gets a new file. The
+    /// connection is a digest, so the app group still holds no connection UUID.
+    static func avatarName(serverKey: String, profile: BotProfile, connectionID: UUID) -> String {
+        let revision = profile.lookRevision.map(String.init) ?? "u"
+        return "\(avatarPrefix(serverKey: serverKey))\(profileDigest(profile.id))-\(digest(connectionID.uuidString, bytes: 4))-\(revision)"
     }
 
-    private static func profileDigest(_ profile: String) -> String {
-        SHA256.hash(data: Data(profile.utf8)).prefix(8).map { String(format: "%02x", $0) }.joined()
+    private static func profileDigest(_ profile: String) -> String { digest(profile, bytes: 8) }
+
+    private static func digest(_ text: String, bytes: Int) -> String {
+        SHA256.hash(data: Data(text.utf8)).prefix(bytes).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func avatarPrefix(serverKey: String) -> String { "\(serverKey.prefix(16))-" }
