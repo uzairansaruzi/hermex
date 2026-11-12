@@ -19,6 +19,50 @@ enum HTMLReport {
     }
 }
 
+/// An `svg` code fence in a reply (#1649). A settled one gains a View button in its header that
+/// opens the drawing in the report sheet, in the report's sandbox. Nothing draws in the
+/// transcript, and the code block stays, so the source is never lost.
+enum SVGFence {
+    /// Whether a fence offers View. A streaming fence doesn't: its source is still incomplete.
+    static func offersView(language: String?, isStreaming: Bool) -> Bool {
+        !isStreaming && MarkdownHighlightPolicy.normalizedLanguage(from: language) == "svg"
+    }
+
+    /// The sheet's page: the drawing fit to the sheet's width on a white card, since agent SVGs
+    /// usually have no background and draw in black. Nil when the source isn't a well-formed
+    /// `<svg>` document, so the sheet shows its failure state rather than a blank page.
+    static func page(for source: String) -> String? {
+        let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard XMLRootElementReader.rootName(of: source) == "svg" else { return nil }
+        return """
+        <!doctype html><html><head><style>
+        body{margin:0;padding:16px}
+        .svg-card{background:#fff;border-radius:14px;padding:12px}
+        .svg-card>svg{display:block;max-width:100%;height:auto;margin:0 auto}
+        .svg-card>svg[viewBox]{width:100%}
+        </style></head><body><div class="svg-card">\(source)</div></body></html>
+        """
+    }
+}
+
+/// Parses a whole XML document and reports its root element's name, or nil when it isn't
+/// well-formed.
+private final class XMLRootElementReader: NSObject, XMLParserDelegate {
+    private var rootName: String?
+
+    static func rootName(of source: String) -> String? {
+        let parser = XMLParser(data: Data(source.utf8))
+        let reader = XMLRootElementReader()
+        parser.delegate = reader
+        return parser.parse() ? reader.rootName : nil
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
+                qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
+        if rootName == nil { rootName = elementName }
+    }
+}
+
 /// The user's theme as low-priority CSS defaults, so a page with no styles of its own looks
 /// like the rest of the app. Everything sits under `:where()`, which has no specificity, so any
 /// rule of the page's own wins. The variables use the common web names (`docs/agents/theming.md` § HTML reports).

@@ -185,7 +185,15 @@ private struct StreamingMarkdownChunkedView: View {
                 )
             }
         }
+        .environment(\.markdownReplyIsStreaming, true)
     }
+}
+
+extension EnvironmentValues {
+    /// True inside a streaming reply, sealed chunks included: they render with
+    /// `isStreaming: false` to highlight, but the reply swaps to its settled view
+    /// when it ends, so a control there (an SVG fence's View) would vanish mid-use.
+    @Entry var markdownReplyIsStreaming = false
 }
 
 private struct ChatMarkdownView: View {
@@ -221,11 +229,12 @@ private struct ChatMarkdownView: View {
 /// math language (`math`/`latex`/`tex`) and the body parses as math; otherwise
 /// renders it as a normal syntax-highlighted code block. A math fence whose
 /// body SwiftMath can't parse falls back to the code block too, so nothing is
-/// lost.
+/// lost. A settled `svg` fence's code block gains a View button (`SVGFence`).
 private struct MathFenceOrCodeBlock: View {
     let language: String?
     let content: String
     let isStreaming: Bool
+    @Environment(\.markdownReplyIsStreaming) private var replyIsStreaming
 
     var body: some View {
         if MathFenceLanguage.matches(language), MathLaTeX.isRenderable(content) {
@@ -234,7 +243,8 @@ private struct MathFenceOrCodeBlock: View {
             ChatCodeBlock(
                 language: language,
                 content: content,
-                isStreaming: isStreaming
+                isStreaming: isStreaming,
+                offersSVGView: SVGFence.offersView(language: language, isStreaming: isStreaming || replyIsStreaming)
             )
         }
     }
@@ -244,6 +254,7 @@ private struct ChatCodeBlock: View {
     let language: String?
     let content: String
     let isStreaming: Bool
+    let offersSVGView: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -268,6 +279,10 @@ private struct ChatCodeBlock: View {
                 }
 
                 Spacer()
+
+                if offersSVGView {
+                    SVGFenceViewButton(source: content)
+                }
 
                 Button {
                     wrapsCodeBlockLines.toggle()
@@ -473,6 +488,48 @@ private struct ChatCodeBlock: View {
         logger.info(
             "Syntax highlighting fallback reason=\(reason.rawValue, privacy: .public) languageCategory=\(MarkdownHighlightPolicy.languageLogCategory(for: normalizedLanguage), privacy: .public) characters=\(code.count, privacy: .public) lines=\(MarkdownHighlightPolicy.lineCount(in: code), privacy: .public)"
         )
+    }
+}
+
+/// An `svg` fence's View button (#1649), beside wrap and copy. The page is built on tap, so a
+/// transcript row never parses or draws the SVG.
+private struct SVGFenceViewButton: View {
+    /// One tap's page; nil when the source isn't a drawable SVG.
+    private struct Presentation: Identifiable {
+        let id = UUID()
+        let html: String?
+    }
+
+    let source: String
+    @State private var presentation: Presentation?
+
+    var body: some View {
+        Button {
+            presentation = Presentation(html: SVGFence.page(for: source))
+        } label: {
+            Image(systemName: "eye")
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.chatTactile(.icon))
+        .foregroundStyle(SwiftUI.Color(.appText))
+        .accessibilityLabel("View image")
+        .sheet(item: $presentation) { presentation in
+            NavigationStack {
+                HTMLReportSheetPage(html: presentation.html)
+                    .themedPageBackground()
+                    .navigationTitle(Text(verbatim: "SVG"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { self.presentation = nil }
+                        }
+                    }
+            }
+            // The code block forces left to right (#259); the sheet follows the app again.
+            .environment(\.layoutDirection,
+                         UIApplication.shared.userInterfaceLayoutDirection == .rightToLeft ? .rightToLeft : .leftToRight)
+        }
     }
 }
 

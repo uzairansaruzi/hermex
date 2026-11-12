@@ -281,18 +281,16 @@ struct HTMLReportWebView: UIViewRepresentable {
 }
 
 /// A report in its full-height sheet: it scrolls, follows the app's theme, and routes its links
-/// as the transcript does.
+/// as the transcript does. A nil page shows the failure state, as a page that fails to load does.
 struct HTMLReportSheetPage: View {
-    let html: String
+    let html: String?
     @Environment(\.appAppearance) private var appearance
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var didFail = false
 
     var body: some View {
-        if didFail {
-            ContentUnavailableView("Couldn't Display This Report", systemImage: "exclamationmark.triangle")
-        } else {
+        if let html, !didFail {
             HTMLReportWebView(
                 html: html,
                 theme: HTMLReportTheme(appearance: appearance, colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize),
@@ -301,6 +299,8 @@ struct HTMLReportSheetPage: View {
             )
             .ignoresSafeArea(edges: .bottom)
             .transcriptLinks()
+        } else {
+            ContentUnavailableView("Couldn't Display This Report", systemImage: "exclamationmark.triangle")
         }
     }
 }
