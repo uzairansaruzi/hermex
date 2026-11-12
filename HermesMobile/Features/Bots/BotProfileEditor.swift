@@ -447,6 +447,8 @@ struct BotProfileDetails: Equatable, Sendable {
         guard reply["ok"].flag == true, reply["asset"].text == "avatar" else { throw BotFailure.unsupported }
         // The shared store holds thumbnails only; the full picture stays with this editor.
         avatarStore.setImage(avatar.flatMap(BotAvatarStore.thumbnail), connectionID: connection.id, profile: profile.id, revision: lookRevision)
+        // The look revision stays, so the Bot widget's copy is current only until deleted here (#1643).
+        BotWidgetPublisher.shared.forgetAvatar(server: server, profile: profile.id)
         avatarChange = .unchanged; outcomes[.avatar] = .saved
     }
 

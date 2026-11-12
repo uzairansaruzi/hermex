@@ -156,6 +156,7 @@ struct ContentView: View {
         pendingLinks.hermesSession = nil
         pendingLinks.hermesNewChat = nil
         pendingLinks.hermesUsage = nil
+        pendingLinks.botWidget = nil
         if let destination = WebuiPushDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
@@ -205,6 +206,14 @@ struct ContentView: View {
         if let destination = HermesDeepLink.botDestination(from: url) {
             switchServer(pendingLinks.route(destination, state: authManager.state, servers: authManager.servers,
                                             isBotModeEnabled: isBotModeEnabled))
+            return
+        }
+
+        // A Bot widget names its server by digest and its bot by Profile only (#1643), so it finds
+        // the server's current Bot connection, or waits for a signed-out Hermes server's sign-in.
+        if let destination = BotWidgetDestination(url: url) {
+            switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers,
+                                           isBotModeEnabled: isBotModeEnabled))
             return
         }
 
@@ -1019,6 +1028,9 @@ struct PendingLinks {
     /// The Usage screen a Limits widget's tap asked for (#1409). The Hermes home turns to Sessions,
     /// whose list opens it. Never routed to another server: a change of server drops it.
     var hermesUsage: HermesUsageDestination?
+    /// The bot a Bot widget's tap named on a signed-out Hermes server (#1643), held by server digest
+    /// and Profile until its sign-in saves a new Bot connection, which `reroute` turns into `bot`.
+    var botWidget: BotWidgetDestination?
 
     /// A webui conversation link replaces whatever other link was waiting.
     @MainActor mutating func open(_ destination: WebuiPushDestination, state: AuthManager.State,
@@ -1042,6 +1054,27 @@ struct PendingLinks {
         return route(destination, state: state, servers: servers)
     }
 
+    /// So does a Bot widget's tap (#1643). With a saved Bot connection it becomes a bot link, routed
+    /// as one; a signed-out Hermes server is made active so its sign-in form shows, and the link
+    /// waits for it. A digest no configured server has, or a webui server with no Bot connection,
+    /// opens the app as it is.
+    @MainActor mutating func open(
+        _ destination: BotWidgetDestination, state: AuthManager.State, servers: [ServerAccount], isBotModeEnabled: Bool,
+        botConnectionID: @MainActor (URL) -> UUID? = BotDeepLinkRouter.savedConnectionID
+    ) -> ServerAccount? {
+        self = PendingLinks()
+        guard let account = servers.first(where: { URL(string: $0.urlString).map(BotHistoryCache.Scope.key) == destination.serverKey }),
+              let server = URL(string: account.urlString) else { return nil }
+        if let connectionID = botConnectionID(server) {
+            let bot = BotDestination(server: server, connectionID: connectionID, profile: destination.profile)
+            return route(bot, state: state, servers: servers, isBotModeEnabled: isBotModeEnabled,
+                         botConnectionID: botConnectionID)
+        }
+        guard account.kind == .hermes else { return nil }
+        botWidget = destination
+        return state.server == server ? nil : account
+    }
+
     /// Routes every held conversation link again once a sign-in or server switch changes what
     /// it can reach.
     @MainActor mutating func reroute(
@@ -1057,7 +1090,25 @@ struct PendingLinks {
         if let hermesSession { account = route(hermesSession, state: state, servers: servers) ?? account }
         if let hermesNewChat { account = route(hermesNewChat, state: state, servers: servers) ?? account }
         if let hermesUsage, !hermesUsage.opens(state: state, servers: servers) { self.hermesUsage = nil }
+        if let botWidget { account = reroute(botWidget, state: state, servers: servers, isBotModeEnabled: isBotModeEnabled,
+                                             botConnectionID: botConnectionID) ?? account }
         return account
+    }
+
+    /// A held Bot widget tap: routed as a bot link once its server has a Bot connection again, kept
+    /// while that server stays active and signed out, and dropped once another server is active.
+    @MainActor private mutating func reroute(
+        _ destination: BotWidgetDestination, state: AuthManager.State, servers: [ServerAccount], isBotModeEnabled: Bool,
+        botConnectionID: @MainActor (URL) -> UUID?
+    ) -> ServerAccount? {
+        botWidget = nil
+        guard let server = state.server, BotHistoryCache.Scope.key(server) == destination.serverKey else { return nil }
+        guard let connectionID = botConnectionID(server) else {
+            botWidget = destination
+            return nil
+        }
+        return route(BotDestination(server: server, connectionID: connectionID, profile: destination.profile),
+                     state: state, servers: servers, isBotModeEnabled: isBotModeEnabled, botConnectionID: botConnectionID)
     }
 
     /// A new Hermes session: dropped when its server is gone, else held while it signs in or activates.

@@ -1493,6 +1493,19 @@ link never sends a prompt and never auto-continues on its own.
 seeded as `HermesConversation.root` (`linkedRoot`), so a link to a chat the host has since
 replaced opens the current one with the same notice as a reattach (#1339).
 
+The Bot widget (#1643, `HermesLiveActivityWidget/BotWidget.swift`) shows one bot on a small
+widget (its `bot` setting) or a row of 4 per row on medium and large (its ordered `bots` list, up
+to 4 and 8), each bot its own link. Every tap uses a second route,
+`hermes-agent://bot-widget?server=<digest>&profile=…` (`BotWidgetDestination`), because the
+app group holds no server URL and a connection UUID dies on sign-out. Its own host keeps
+`botDestination(from:)` from reading it. `ContentView` finds the configured server whose URL
+digest matches (none: the app just opens). With a saved Bot connection it becomes an ordinary
+bot link and routes as above; a signed-out Hermes server is made active so its sign-in form
+shows, and `PendingLinks.botWidget` holds the tap until sign-in saves the new connection, or
+drops it once another server is active. The widget and its picker read only
+`Widgets/bot-chats.json`, which `BotWidgetPublisher` writes on each roster read; avatars are
+rendered only for configured bots, once per look revision and Bot connection, after the inbox's photos load.
+
 ## Opening a Hermes session from outside the app (#1176)
 
 `hermes-agent://session?server=…&id=<stored key>[&profile=…]` names one stored session on one

@@ -551,6 +551,8 @@ final class AuthManager {
         advanceAfterRemoving(activeServer: active)
         // After the Bot record and its connection are gone, as in the Hermes branch above.
         await BotRosterCache.shared.remove(server: active)
+        // This sign-out removed the server, so its Bot widget rows go too (#1643).
+        BotWidgetPublisher.shared.remove(server: active)
     }
 
     /// Removes a configured server. When it's the active one this behaves like
@@ -586,6 +588,9 @@ final class AuthManager {
         }
         // After the Bot record and its connection are gone, as in `signOut`.
         await BotRosterCache.shared.remove(server: serverURL)
+        // Here too, so a roster read during the awaits can't write the rows back. A Hermes sign-out
+        // keeps them, so a Bot widget still opens its bot after the next sign-in (#1643).
+        BotWidgetPublisher.shared.remove(server: serverURL)
         // After the entry is gone, so a running Move finds no record and writes nothing more (#1216).
         MoveToHermesJournal.discard(sources: movedSources, destinationID: account.id)
     }
