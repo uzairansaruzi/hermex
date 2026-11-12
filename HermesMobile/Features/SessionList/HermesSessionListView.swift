@@ -72,6 +72,9 @@ struct HermesSessionListView: View {
     private let didAbandonShare: (SharedImportReservation) -> Void
     /// The Shortcut texts behind the one a chat here shows (#1402).
     private let shortcutReview: ShortcutTextReview
+    /// Whether the home's own Settings or Add Server covers the list, read when a rating request
+    /// checks it.
+    private let isCoveredByHome: () -> Bool
     /// Moving `pendingShare` into its new session's draft; leaving cancels it.
     @State private var shareTransfer: Task<Void, Never>?
     /// A share whose move failed, still claimed, until the user discards it or the alert closes (#1196).
@@ -107,7 +110,8 @@ struct HermesSessionListView: View {
          didRouteShare: @escaping (SharedImportReservation) -> Void = { _ in },
          didDeclineShare: @escaping (SharedImportReservation) -> Void = { _ in },
          didAbandonShare: @escaping (SharedImportReservation) -> Void = { _ in },
-         shortcutReview: ShortcutTextReview = ShortcutTextReview()) {
+         shortcutReview: ShortcutTextReview = ShortcutTextReview(),
+         isCoveredByHome: @escaping () -> Bool = { false }) {
         _navigation = State(initialValue: navigation ?? HermesSessionListNavigation(searchText: entry.query))
         self.entry = entry
         self.home = home
@@ -120,6 +124,7 @@ struct HermesSessionListView: View {
         self.didDeclineShare = didDeclineShare
         self.didAbandonShare = didAbandonShare
         self.shortcutReview = shortcutReview
+        self.isCoveredByHome = isCoveredByHome
         _viewModel = State(initialValue: model)
     }
 
@@ -417,7 +422,7 @@ struct HermesSessionListView: View {
     /// The home's rows on screen with nothing over them or pending, so a rating request
     /// interrupts nothing. Whether the host is running anything is read fresh (`hermesHostIsIdle`).
     private var isQuietSessionListVisible: Bool {
-        home != nil && scenePhase == .active && viewModel.isHermesLive
+        home != nil && scenePhase == .active && viewModel.isHermesLive && !isCoveredByHome()
             && covers.chat == nil && !covers.isCoveredByScreen
             && pendingLink == nil && pendingNewChat == nil && pendingUsage == nil
             && pendingShare == nil && shareTransfer == nil && failedShare == nil

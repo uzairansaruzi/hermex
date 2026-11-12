@@ -835,7 +835,8 @@ struct HermesServerHome: View {
                                       pendingUsage: $pendingUsage,
                                       pendingShare: pendingShare, claimShare: claimShare,
                                       didRouteShare: didRouteShare, didDeclineShare: didDeclineShare,
-                                      didAbandonShare: didAbandonShare, shortcutReview: shortcutReview)
+                                      didAbandonShare: didAbandonShare, shortcutReview: shortcutReview,
+                                      isCoveredByHome: { settings != nil || isPresentingAddServer })
                     .id(sessions.entry.id)
             } else {
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home, inbox: inbox)

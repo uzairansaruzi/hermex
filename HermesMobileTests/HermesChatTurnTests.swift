@@ -255,10 +255,7 @@ import SwiftUI
     /// Only a turn that completes counts toward the session list cards and the rating prompt,
     /// once, however many frames settle it.
     func testOnlyACompletedTurnCountsAsACompletedReply() async throws {
-        let suite = "HermesChatTurnTests.rating.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
-        let rating = RatingPromptState(defaults: defaults)
+        let rating = isolatedRatingState()
         let chat = await openChat(ratingPromptState: rating)
         var seq = 0
         for status in ["complete", "interrupted", "error", "complete"] {
@@ -273,10 +270,7 @@ import SwiftUI
 
     /// A running Hermes turn holds the rating request back on its server, like a webui stream.
     func testARunningTurnHoldsTheRatingRequestBack() async throws {
-        let suite = "HermesChatTurnTests.ratingStream.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
-        let rating = RatingPromptState(defaults: defaults)
+        let rating = isolatedRatingState()
         let chat = await openChat(ratingPromptState: rating)
         let server = try XCTUnwrap(URL(string: "https://hermes.example"))
         chat.receive(event(1, "message.start"))
@@ -1750,7 +1744,8 @@ import SwiftUI
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
-                                             isNetworkAvailable: { true }, ratingPromptState: ratingPromptState)
+                                             isNetworkAvailable: { true },
+                                             ratingPromptState: ratingPromptState ?? isolatedRatingState())
         let liveActivity = TitleRecordingLiveActivity()
         let model = ChatViewModel(
             session: SessionSummary(profile: profile), server: URL(string: "https://hermes.example")!,
@@ -1761,6 +1756,14 @@ import SwiftUI
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)
+    }
+
+    /// A rating state on its own defaults, so a completed turn never writes the device's counter.
+    private func isolatedRatingState() -> RatingPromptState {
+        let suite = "HermesChatTurnTests.rating.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return RatingPromptState(defaults: defaults)
     }
 
     /// A failed turn's retained `inflight`, as `session.resume` carries it (`_fail_inflight_turn`).
