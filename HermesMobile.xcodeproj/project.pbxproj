@@ -124,7 +124,7 @@
 		1A2B3C4D5E6F70000000410 /* OnboardingComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000411 /* OnboardingComponents.swift */; };
 		1A2B3C4D5E6F7000000000A6 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B6 /* OnboardingViewModel.swift */; };
 		1A2B3C4D5E6F7000000000A7 /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B7 /* SessionListView.swift */; };
-		531000000000000000000101 /* TipJarCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000102 /* TipJarCard.swift */; };
+		531000000000000000000101 /* SessionListCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000102 /* SessionListCards.swift */; };
 		1A2B3C4D5E6F7000000000A8 /* Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B8 /* Endpoints.swift */; };
 		1A2B3C4D5E6F7000000000A9 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000B9 /* JSONValue.swift */; };
 		1A2B3C4D5E6F7000000000AA /* ChatMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000BA /* ChatMessage.swift */; };
@@ -244,7 +244,7 @@
 		141100000000000000000004 /* SettingsAcknowledgementsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 141100000000000000000003 /* SettingsAcknowledgementsTests.swift */; };
 		E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */; };
 		532000000000000000000003 /* RatingPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000004 /* RatingPromptTests.swift */; };
-		531000000000000000000201 /* TipJarPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000202 /* TipJarPromptTests.swift */; };
+		531000000000000000000201 /* SessionListCardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000202 /* SessionListCardTests.swift */; };
 		870000000000000000000201 /* HitchMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000202 /* HitchMeterTests.swift */; };
 		C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */; };
 		C14040000000000000000001 /* TestWaits.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14040000000000000000002 /* TestWaits.swift */; };
@@ -380,7 +380,7 @@
 		1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */; };
 		532000000000000000000001 /* RatingPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000002 /* RatingPromptState.swift */; };
 		5320000000000000000000D1 /* DevAutoLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5320000000000000000000D2 /* DevAutoLogin.swift */; };
-		531000000000000000000001 /* TipJarPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000002 /* TipJarPromptState.swift */; };
+		531000000000000000000001 /* SessionListCardState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000002 /* SessionListCardState.swift */; };
 		870000000000000000000001 /* PerformanceSignposts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000002 /* PerformanceSignposts.swift */; };
 		870000000000000000000003 /* HitchMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000004 /* HitchMeter.swift */; };
 		B14050000000000000000001 /* RenderProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14050000000000000000002 /* RenderProbe.swift */; };
@@ -878,7 +878,7 @@
 		1A2B3C4D5E6F70000000411 /* OnboardingComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingComponents.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B6 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B7 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
-		531000000000000000000102 /* TipJarCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarCard.swift; sourceTree = "<group>"; };
+		531000000000000000000102 /* SessionListCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListCards.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B8 /* Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Endpoints.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B9 /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000BA /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
@@ -998,7 +998,7 @@
 		141100000000000000000003 /* SettingsAcknowledgementsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAcknowledgementsTests.swift; sourceTree = "<group>"; };
 		E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatLiveActivityTests.swift; sourceTree = "<group>"; };
 		532000000000000000000004 /* RatingPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptTests.swift; sourceTree = "<group>"; };
-		531000000000000000000202 /* TipJarPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptTests.swift; sourceTree = "<group>"; };
+		531000000000000000000202 /* SessionListCardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListCardTests.swift; sourceTree = "<group>"; };
 		870000000000000000000202 /* HitchMeterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeterTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedSSEStreamFixture.swift; sourceTree = "<group>"; };
 		C14040000000000000000002 /* TestWaits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestWaits.swift; sourceTree = "<group>"; };
@@ -1134,7 +1134,7 @@
 		1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		532000000000000000000002 /* RatingPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptState.swift; sourceTree = "<group>"; };
 		5320000000000000000000D2 /* DevAutoLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevAutoLogin.swift; sourceTree = "<group>"; };
-		531000000000000000000002 /* TipJarPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptState.swift; sourceTree = "<group>"; };
+		531000000000000000000002 /* SessionListCardState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListCardState.swift; sourceTree = "<group>"; };
 		870000000000000000000002 /* PerformanceSignposts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceSignposts.swift; sourceTree = "<group>"; };
 		870000000000000000000004 /* HitchMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeter.swift; sourceTree = "<group>"; };
 		B14050000000000000000002 /* RenderProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderProbe.swift; sourceTree = "<group>"; };
@@ -1718,7 +1718,7 @@
 					141100000000000000000003 /* SettingsAcknowledgementsTests.swift */,
 					E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */,
 				532000000000000000000004 /* RatingPromptTests.swift */,
-				531000000000000000000202 /* TipJarPromptTests.swift */,
+				531000000000000000000202 /* SessionListCardTests.swift */,
 				870000000000000000000202 /* HitchMeterTests.swift */,
 					C04800000000000000000004 /* ChatAttachmentCoordinatorTests.swift */,
 					C0GATE000000000000000002 /* ChatComposerSendGateTests.swift */,
@@ -2108,7 +2108,7 @@
 			isa = PBXGroup;
 			children = (
 				1A2B3C4D5E6F7000000000B7 /* SessionListView.swift */,
-				531000000000000000000102 /* TipJarCard.swift */,
+				531000000000000000000102 /* SessionListCards.swift */,
 				1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */,
 				B23000000000000000000002 /* SessionSearchExcerpt.swift */,
 				1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */,
@@ -2374,7 +2374,7 @@
 				1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */,
 				532000000000000000000002 /* RatingPromptState.swift */,
 				5320000000000000000000D2 /* DevAutoLogin.swift */,
-				531000000000000000000002 /* TipJarPromptState.swift */,
+				531000000000000000000002 /* SessionListCardState.swift */,
 				870000000000000000000002 /* PerformanceSignposts.swift */,
 				870000000000000000000004 /* HitchMeter.swift */,
 				B14050000000000000000002 /* RenderProbe.swift */,
@@ -2997,7 +2997,7 @@
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
 				532000000000000000000001 /* RatingPromptState.swift in Sources */,
 				5320000000000000000000D1 /* DevAutoLogin.swift in Sources */,
-				531000000000000000000001 /* TipJarPromptState.swift in Sources */,
+				531000000000000000000001 /* SessionListCardState.swift in Sources */,
 				870000000000000000000001 /* PerformanceSignposts.swift in Sources */,
 				870000000000000000000003 /* HitchMeter.swift in Sources */,
 				B14050000000000000000001 /* RenderProbe.swift in Sources */,
@@ -3013,7 +3013,7 @@
 				C0366000000000000000003 /* ModelPickerConfiguration.swift in Sources */,
 				C09500000000000000000005 /* AdaptiveGlassDebugFixture.swift in Sources */,
 					1A2B3C4D5E6F7000000000A7 /* SessionListView.swift in Sources */,
-					531000000000000000000101 /* TipJarCard.swift in Sources */,
+					531000000000000000000101 /* SessionListCards.swift in Sources */,
 					1A2B3C4D5E6F7000000000AF /* ChatView.swift in Sources */,
 					C05100000000000000000001 /* ChatTranscriptView.swift in Sources */,
 					C05100000000000000000002 /* ChatMessageActions.swift in Sources */,
@@ -3305,7 +3305,7 @@
 					141100000000000000000004 /* SettingsAcknowledgementsTests.swift in Sources */,
 					E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */,
 				532000000000000000000003 /* RatingPromptTests.swift in Sources */,
-				531000000000000000000201 /* TipJarPromptTests.swift in Sources */,
+				531000000000000000000201 /* SessionListCardTests.swift in Sources */,
 				870000000000000000000201 /* HitchMeterTests.swift in Sources */,
 					C04800000000000000000003 /* ChatAttachmentCoordinatorTests.swift in Sources */,
 					C0GATE000000000000000001 /* ChatComposerSendGateTests.swift in Sources */,

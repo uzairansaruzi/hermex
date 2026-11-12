@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 /// A Hermes server's Sessions list (#1046): the server, its saved connection, and the Profile the
@@ -36,6 +37,7 @@ struct HermesSessionListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var modelContext
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsMessageCount = true
@@ -70,6 +72,9 @@ struct HermesSessionListView: View {
     private let didAbandonShare: (SharedImportReservation) -> Void
     /// The Shortcut texts behind the one a chat here shows (#1402).
     private let shortcutReview: ShortcutTextReview
+    /// Whether the home's own Settings or Add Server covers the list, read when a rating request
+    /// checks it.
+    private let isCoveredByHome: () -> Bool
     /// Moving `pendingShare` into its new session's draft; leaving cancels it.
     @State private var shareTransfer: Task<Void, Never>?
     /// A share whose move failed, still claimed, until the user discards it or the alert closes (#1196).
@@ -82,6 +87,10 @@ struct HermesSessionListView: View {
     /// Counts the home's search requests, each of which scrolls the header back (`HomeHeaderScroll`)
     /// and, in a split, shows the sidebar that holds it.
     @State private var searchRequests = 0
+    @State private var wasBackgrounded = false
+    /// A new id asks for an App Store rating at `ratingMoment`, if the list is quiet then.
+    @State private var ratingRequestID: UUID?
+    @State private var ratingMoment: RatingPromptMoment = .coldLaunch
 
     /// The list a chat's `/sessions` pushed.
     init(entry: HermesSessionListEntry) {
@@ -101,7 +110,8 @@ struct HermesSessionListView: View {
          didRouteShare: @escaping (SharedImportReservation) -> Void = { _ in },
          didDeclineShare: @escaping (SharedImportReservation) -> Void = { _ in },
          didAbandonShare: @escaping (SharedImportReservation) -> Void = { _ in },
-         shortcutReview: ShortcutTextReview = ShortcutTextReview()) {
+         shortcutReview: ShortcutTextReview = ShortcutTextReview(),
+         isCoveredByHome: @escaping () -> Bool = { false }) {
         _navigation = State(initialValue: navigation ?? HermesSessionListNavigation(searchText: entry.query))
         self.entry = entry
         self.home = home
@@ -114,6 +124,7 @@ struct HermesSessionListView: View {
         self.didDeclineShare = didDeclineShare
         self.didAbandonShare = didAbandonShare
         self.shortcutReview = shortcutReview
+        self.isCoveredByHome = isCoveredByHome
         _viewModel = State(initialValue: model)
     }
 
@@ -155,6 +166,7 @@ struct HermesSessionListView: View {
                 )
                 .sessionsTopChromeListRow()
                 .id(HomeHeaderScroll.headerID)
+                SessionListCardSlot(hasSharedImport: pendingShare != nil)
                 MoveToHermesBanner(serverID: entry.server.absoluteString)
             }
             if viewModel.showsOfflineCache {
@@ -333,6 +345,7 @@ struct HermesSessionListView: View {
             openPendingShare()
         }
         .onDisappear {
+            ratingRequestID = nil
             shareTransfer?.cancel()
             shareTransfer = nil
             queueFailedShareAgain()
@@ -356,9 +369,18 @@ struct HermesSessionListView: View {
             if let new, new.id != old?.id { SessionOpenSignpost.begin(sessionID: new.id.uuidString) }
             // A Shortcut text's chat closing lets the next waiting text open (#1402).
             if let old, new?.id != old.id { shortcutReview.end(old.id) }
+            ratingRequestID = nil
+            if old != nil, new == nil { requestRating(at: .returnedToSessionList) }
         }
         .onChange(of: viewModel.sessions.count, initial: true) { LaunchSignpost.end(rows: viewModel.sessions.count) }
         .onChange(of: scenePhase) {
+            if scenePhase == .background { wasBackgrounded = true }
+            if scenePhase == .active, wasBackgrounded {
+                wasBackgrounded = false
+                requestRating(at: .foreground)
+            } else if scenePhase != .active {
+                ratingRequestID = nil
+            }
             switch scenePhase {
             case .background: viewModel.closeHermes()
             // Control Center and banners (`.inactive`) keep the socket; only a closed list reopens.
@@ -369,6 +391,45 @@ struct HermesSessionListView: View {
         }
         // A lost list reconnects as the network returns rather than on its backoff (#1372).
         .onChange(of: NetworkPathMonitor.shared.changeCount) { viewModel.networkPathDidChange() }
+        // A foreground return reopens the socket first, so the check waits for the list to be live.
+        .task(id: RatingCheck(request: ratingRequestID, isLive: viewModel.isHermesLive)) {
+            guard ratingRequestID != nil, viewModel.isHermesLive else { return }
+            await RatingPromptState.shared.requestWhenQuiet(
+                moment: ratingMoment,
+                server: entry.server,
+                isSessionListVisible: {
+                    if let card = SessionListCard.current(hasSharedImport: pendingShare != nil), isQuietSessionListVisible {
+                        RatingPromptState.shared.recordCardShown(card)
+                    }
+                    return isQuietSessionListVisible
+                },
+                // Nil, so this moment is skipped, unless the host reads idle now.
+                loadSessions: { await viewModel.hermesHostIsIdle() == true ? [] : nil },
+                request: { requestReview() }
+            )
+            // One check per moment: a later reconnect doesn't ask again.
+            if !Task.isCancelled { ratingRequestID = nil }
+        }
+    }
+
+    /// Only the home list asks; a list a chat's `/sessions` pushed never does.
+    private func requestRating(at moment: RatingPromptMoment) {
+        guard home != nil else { return }
+        ratingMoment = moment
+        ratingRequestID = UUID()
+    }
+
+    /// The home's rows on screen with nothing over them or pending, so a rating request
+    /// interrupts nothing. Whether the host is running anything is read fresh (`hermesHostIsIdle`).
+    private var isQuietSessionListVisible: Bool {
+        home != nil && scenePhase == .active && viewModel.isHermesLive && !isCoveredByHome()
+            && covers.chat == nil && !covers.isCoveredByScreen
+            && pendingLink == nil && pendingNewChat == nil && pendingUsage == nil
+            && pendingShare == nil && shareTransfer == nil && failedShare == nil
+            && !isSearchExpanded && !isSearching && !viewModel.isCreatingSession
+            && covers.renaming == nil && covers.deleting == nil && covers.exported == nil
+            && covers.creatingProject == nil && covers.renamingProject == nil && covers.deletingProject == nil
+            && covers.moving == nil
     }
 
     private var usesSplit: Bool {
@@ -1133,6 +1194,12 @@ private struct NewChatReadiness: Equatable {
 /// A Limits widget's Usage link, and whether the list has read the host it waits on.
 private struct UsageReadiness: Equatable {
     let link: HermesUsageDestination?
+    let isLive: Bool
+}
+
+/// A rating request, checked again once the list is live.
+private struct RatingCheck: Hashable {
+    let request: UUID?
     let isLive: Bool
 }
 

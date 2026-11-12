@@ -105,8 +105,6 @@ struct SessionListView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.requestReview) private var requestReview
-    @AppStorage(TipJar.completedResponseCountKey) private var completedResponses = 0
-    @AppStorage(TipJar.dismissedReleaseKey) private var tipDismissedRelease: String?
     @State private var wasBackgrounded = false
     @State private var foregroundRefresh = SessionListForegroundRefresh()
     @State private var ratingRequestID: UUID?
@@ -240,8 +238,8 @@ struct SessionListView: View {
                     moment: ratingMoment,
                     server: server,
                     isSessionListVisible: {
-                        if showsTipCard && isQuietSessionListVisible {
-                            RatingPromptState.shared.recordTipCardShown()
+                        if let card = SessionListCard.current(hasSharedImport: hasSharedImport), isQuietSessionListVisible {
+                            RatingPromptState.shared.recordCardShown(card)
                         }
                         return isQuietSessionListVisible
                     },
@@ -487,15 +485,7 @@ struct SessionListView: View {
             .focusedSceneValue(\.hermexSceneActions, sceneActions)
     }
 
-    private var showsTipCard: Bool {
-        let tip = TipJarPromptState(defaults: .standard)
-        // Reading the stored release subscribes the list, so "Not now" hides the card at once.
-        return tipDismissedRelease != tip.release && tip.isEligible(
-            completedResponses: completedResponses,
-            hasSharedImport: hasWaitingSharedImport || pendingSharedImport != nil,
-            ratingPolicy: RatingPromptState.shared.policy
-        )
-    }
+    private var hasSharedImport: Bool { hasWaitingSharedImport || pendingSharedImport != nil }
 
     private var isQuietSessionListVisible: Bool {
         guard case .loggedIn(let activeServer) = authManager.state, activeServer == server else { return false }
@@ -746,10 +736,7 @@ struct SessionListView: View {
             header
                 .sessionsTopChromeListRow()
 
-            if showsTipCard {
-                TipJarCard()
-                    .sessionsScreenListRow()
-            }
+            SessionListCardSlot(hasSharedImport: hasSharedImport)
 
             MoveToHermesBanner(serverID: server.absoluteString)
 

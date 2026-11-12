@@ -455,6 +455,27 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working, "b": .input])
     }
 
+    /// The rating prompt's idle check reads the host fresh: any running or waiting session, listed
+    /// or not, is busy, and a list that isn't live has no answer.
+    func testHostIdleCheckReadsTheHostFresh() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        let list = makeList(wire)
+        let notLive = await list.hermesHostIsIdle()
+        XCTAssertNil(notLive)
+
+        await list.openHermes()
+        wire.active = [live("a", "idle")]
+        let idle = await list.hermesHostIsIdle()
+        XCTAssertEqual(idle, true)
+        wire.active = [live("elsewhere", "working")]
+        let busy = await list.hermesHostIsIdle()
+        XCTAssertEqual(busy, false)
+        wire.active = [live("a", "paused")]
+        let unknown = await list.hermesHostIsIdle()
+        XCTAssertEqual(unknown, false, "a status the app doesn't know is not idle")
+    }
+
     /// Loaded rows waiting on the user lift into Needs you in list order, pinned ones too, after
     /// the project lane; working and cron rows stay put, a search lifts nothing, and an answered
     /// row returns on the next status read (#1393).

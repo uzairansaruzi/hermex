@@ -4,6 +4,8 @@ enum AppConfig {
     static let tipURL = URL(staticString: "https://buymeacoffee.com/callmeuzi")
     static let membershipURL = URL(staticString: "https://buymeacoffee.com/callmeuzi/membership")
     static let writeReviewURL = URL(staticString: "https://apps.apple.com/app/id6767006319?action=write-review")
+    /// Handed to iOS, so the GitHub app opens it when installed.
+    static let repositoryURL = URL(staticString: "https://github.com/uzairansaruzi/hermex")
     /// GitHub's issue template chooser: Report a Problem's fallback when the app can't prefill the bug form.
     static let reportProblemURL = URL(staticString: "https://github.com/uzairansaruzi/hermex/issues/new/choose")
     /// The bug report form; `SupportReport.issueURL` fills in its version inputs.

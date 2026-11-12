@@ -200,6 +200,8 @@ struct BotAvatarMarkView: View {
     let appearance: BotProfileAppearance
     let size: CGFloat
     var pose: BotFacePose = .rest
+    /// Replaces the shape's own eye placement, so a card's face keeps one set of eyes on any shape.
+    var eyeLayout: BotAvatarEyeLayout?
 
     private var presentation: BotAvatarPresentation {
         BotAvatarPresentation(name: name, appearance: appearance)
@@ -210,7 +212,7 @@ struct BotAvatarMarkView: View {
             BotAvatarBody(shape: presentation.shape, generatedPath: presentation.generatedPath)
                 .fill(presentation.color)
             let geometry = BotAvatarExpression.resolve(appearance.expression).geometry
-            let layout = presentation.eyeLayout
+            let layout = eyeLayout ?? presentation.eyeLayout
             HStack(spacing: size * layout.gap * geometry.split / 15.46) {
                 eye(geometry.left, layout)
                 eye(geometry.right, layout)
@@ -362,6 +364,11 @@ struct BotAvatarEyeLayout: Equatable {
 
     /// The classic mark's leaning eyes, off to one side.
     static let classic = BotAvatarEyeLayout(x: 0.12, y: -0.08, width: 0.075, height: 0.22, lean: -18, gap: 0.1, travel: 1)
+
+    /// The same eyes centered at a point, as fractions of the mark from its center.
+    func centered(x: Double, y: Double) -> BotAvatarEyeLayout {
+        BotAvatarEyeLayout(x: x, y: y, width: width, height: height, lean: lean, gap: gap, travel: travel)
+    }
 
     /// Upright eyes at a placement. A smaller travel keeps a look inside a narrow body.
     init(_ eyes: BotAvatarEyes) {

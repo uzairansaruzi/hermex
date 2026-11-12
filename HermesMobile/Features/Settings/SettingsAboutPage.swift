@@ -85,7 +85,7 @@ struct SettingsAboutPage: View {
                     )
                 }
                 .environment(\.openURL, OpenURLAction { url in
-                    TipJarPromptState(defaults: .standard).recordLinkOpened()
+                    SessionListCardState(card: .tip, defaults: .standard).recordLinkOpened()
                     return .systemAction(url)
                 })
 
@@ -95,6 +95,17 @@ struct SettingsAboutPage: View {
                     destination: AppConfig.writeReviewURL,
                     accessibilityLabel: String(localized: "Rate Hermex, opens the App Store")
                 )
+
+                SettingsExternalLink(
+                    title: String(localized: "Star on GitHub"),
+                    systemImage: "chevron.left.forwardslash.chevron.right",
+                    destination: AppConfig.repositoryURL,
+                    accessibilityLabel: String(localized: "Star on GitHub, opens GitHub")
+                )
+                .environment(\.openURL, OpenURLAction { url in
+                    SessionListCardState(card: .star, defaults: .standard).recordLinkOpened()
+                    return .systemAction(url)
+                })
             }
 
             Section {

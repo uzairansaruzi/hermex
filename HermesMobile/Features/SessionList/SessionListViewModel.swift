@@ -2316,6 +2316,17 @@ final class SessionListViewModel {
         }
     }
 
+    /// One fresh `session.active_list` on the live socket: whether every session on the host is
+    /// `idle`. An unknown or missing status counts as busy. Nil when the list isn't live, the read
+    /// fails, or the reply has no `sessions`. The rating prompt asks it, since the list's own
+    /// states pause while a chat covers it.
+    func hermesHostIsIdle() async -> Bool? {
+        guard isHermesLive, let wire = hermesWire,
+              let reply = try? await wire.call(.sessionActiveList),
+              let sessions = reply["sessions"].list else { return nil }
+        return sessions.allSatisfy { $0["status"].text == "idle" }
+    }
+
     /// Replaces any live-state read in flight with one read, now or after `delay`.
     private func startHermesStatusRead(_ wire: any BotTransport, after delay: Duration? = nil) {
         hermesStatusTask?.cancel(); hermesStatusTask = nil
