@@ -73,7 +73,9 @@ struct BotWidgetEntry: TimelineEntry {
     }
 }
 
-/// A single entry: the snapshot only changes when the app writes it, and that reloads the widget.
+/// A single entry: the snapshot only changes when the app writes it, and that reloads the widget. An
+/// entry with an unavailable bot asks again hourly, since before the first unlock after a restart
+/// the snapshot can't be read and every bot looks gone.
 struct BotWidgetTimeline: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> BotWidgetEntry {
         let hermes = BotWidgetEntry.Slot.bot(title: String(localized: "Hermes"), light: nil, dark: nil,
@@ -87,7 +89,8 @@ struct BotWidgetTimeline: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: BotWidgetConfigurationIntent, in context: Context) async -> Timeline<BotWidgetEntry> {
-        Timeline(entries: [BotWidgetEntry(date: Date(), configuration: configuration, family: context.family)], policy: .never)
+        let entry = BotWidgetEntry(date: Date(), configuration: configuration, family: context.family)
+        return Timeline(entries: [entry], policy: entry.slots.contains(.unavailable) ? .after(entry.date.addingTimeInterval(60 * 60)) : .never)
     }
 }
 

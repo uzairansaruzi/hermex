@@ -14,6 +14,9 @@ import WidgetKit
     private let serverTitle: @MainActor (URL) -> String
     private let reloadWidget: () -> Void
     private let configuredBots: () async -> [BotWidgetDestination]
+    /// The newest render started per server key. A render that resumes after a newer one started,
+    /// or after the server's removal, is stale and writes nothing.
+    private var renderGenerations: [String: Int] = [:]
 
     init(file: BotWidgetSnapshotFile?,
          serverTitle: @escaping @MainActor (URL) -> String = BotWidgetPublisher.registryTitle,
@@ -52,9 +55,10 @@ import WidgetKit
     func renderAvatars(_ profiles: [BotProfile], server: URL, connectionID: UUID, photos: [String: UIImage]) async {
         guard let file else { return }
         let key = BotHistoryCache.Scope.key(server)
+        let generation = renderGenerations[key, default: 0] + 1
+        renderGenerations[key] = generation
         let wanted = Set(await configuredBots().filter { $0.serverKey == key }.map(\.profile))
-        // A removal during the wait deleted this server's rows; drawing now would bring its files back.
-        guard file.read().servers.contains(where: { $0.serverKey == key }) else { return }
+        guard renderGenerations[key] == generation else { return }
         var keep: Set<String> = []
         var rendered = false
         for profile in profiles where wanted.contains(profile.id) {
@@ -93,6 +97,7 @@ import WidgetKit
     func remove(server: URL) {
         guard let file else { return }
         let key = BotHistoryCache.Scope.key(server)
+        renderGenerations[key, default: 0] += 1
         let prefix = Self.avatarPrefix(serverKey: key)
         for url in (try? FileManager.default.contentsOfDirectory(at: file.avatarDirectory, includingPropertiesForKeys: nil)) ?? []
         where url.lastPathComponent.hasPrefix(prefix) {
