@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsComposerPage: View {
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(SessionChatPreferences.dismissKeyboardKey) private var dismissKeyboardAfterSend = false
+    @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = false
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
@@ -27,6 +28,14 @@ struct SettingsComposerPage: View {
 
                 Toggle(isOn: $dismissKeyboardAfterSend) {
                     SettingsLabel(title: String(localized: "Dismiss keyboard after sending"), systemImage: "keyboard.chevron.compact.down")
+                }
+
+                Toggle(isOn: $returnSends) {
+                    SettingsLabel(
+                        title: String(localized: "Send with Return"),
+                        systemImage: "return",
+                        note: String(localized: "On a hardware keyboard. Shift-Return adds a new line.")
+                    )
                 }
             }
 
