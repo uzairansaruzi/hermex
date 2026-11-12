@@ -186,6 +186,9 @@ final class FileBrowserViewModel {
             } else if !Self.isCancellationError(error) {
                 lastError = error
                 errorMessage = error.localizedDescription
+            } else if !tree.isRootLoaded {
+                // A cancelled first load left nothing to show: the next appearance loads again.
+                hasLoadedInitialRoot = false
             }
             isLoadingRoot = false
         }
