@@ -465,11 +465,15 @@ import Observation
         XCTAssertNil(notLive)
 
         await list.openHermes()
+        wire.active = [live("a", "idle")]
         let idle = await list.hermesHostIsIdle()
         XCTAssertEqual(idle, true)
         wire.active = [live("elsewhere", "working")]
         let busy = await list.hermesHostIsIdle()
         XCTAssertEqual(busy, false)
+        wire.active = [live("a", "paused")]
+        let unknown = await list.hermesHostIsIdle()
+        XCTAssertEqual(unknown, false, "a status the app doesn't know is not idle")
     }
 
     /// Loaded rows waiting on the user lift into Needs you in list order, pinned ones too, after
