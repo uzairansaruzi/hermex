@@ -72,6 +72,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     var acceptsAttachments = true
     var keyboardCommands = ComposerKeyboardCommands()
+    /// Settings' Send with Return (#1655): a hardware-keyboard ↩ does what ⌘↩ does,
+    /// and ⇧↩ or ⌥↩ types the newline. UIKit sends key commands only from a
+    /// hardware keyboard, so the on-screen Return key keeps typing newlines.
+    var returnSends = false
     /// The chat's last sent message, which ↑ brings back into an empty editor
     /// on a hardware keyboard. Nil where there is no single author to recall
     /// (Bot rooms), which leaves ↑ to move the caret.
@@ -609,6 +613,29 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
                 title: send.title, action: #selector(sendFromKeyboard), input: "\r", modifierFlags: .command
             ))
         }
+        // Left out entirely while an IME composition is open, so ↩ confirms the
+        // candidate. Otherwise registered even while Send is unavailable, so ↩ on an
+        // empty or blocked draft does nothing rather than type a newline.
+        if returnSends, acceptsKeyboardCommands {
+            let send = UIKeyCommand(
+                title: keyboardCommands.send?.title ?? String(localized: "Send Message"),
+                action: #selector(returnFromKeyboard), input: "\r", modifierFlags: []
+            )
+            send.wantsPriorityOverSystemBehavior = true
+            commands.append(send)
+            // ⌥↩ works too but stays out of the ⌘-hold overlay, which lists ⇧↩ once.
+            let newlines = [
+                UIKeyCommand(
+                    title: String(localized: "New Line"), action: #selector(newlineFromKeyboard),
+                    input: "\r", modifierFlags: .shift
+                ),
+                UIKeyCommand(input: "\r", modifierFlags: .alternate, action: #selector(newlineFromKeyboard)),
+            ]
+            for newline in newlines {
+                newline.wantsPriorityOverSystemBehavior = true
+                commands.append(newline)
+            }
+        }
         if let alternateSend = keyboardCommands.alternateSend {
             commands.append(UIKeyCommand(
                 title: alternateSend.title, action: #selector(alternateSendFromKeyboard), input: "\r",
@@ -644,6 +671,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(sendFromKeyboard) {
             return acceptsKeyboardCommands && keyboardCommands.send != nil
+        }
+
+        if action == #selector(returnFromKeyboard) || action == #selector(newlineFromKeyboard) {
+            return acceptsKeyboardCommands && returnSends
         }
 
         if action == #selector(alternateSendFromKeyboard) {
@@ -683,6 +714,16 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     @objc private func sendFromKeyboard() {
         guard acceptsKeyboardCommands else { return }
         keyboardCommands.send?.perform()
+    }
+
+    @objc private func returnFromKeyboard() {
+        guard acceptsKeyboardCommands, returnSends else { return }
+        keyboardCommands.send?.perform()
+    }
+
+    @objc private func newlineFromKeyboard() {
+        guard acceptsKeyboardCommands, returnSends else { return }
+        insertText("\n")
     }
 
     @objc private func alternateSendFromKeyboard() {

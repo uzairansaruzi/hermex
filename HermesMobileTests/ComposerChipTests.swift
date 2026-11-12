@@ -1030,6 +1030,55 @@ final class ComposerUndoTests: XCTestCase {
         XCTAssertEqual(performed, [])
     }
 
+    /// Send with Return (#1655): ↩ sends only once turned on; ⇧↩ and ⌥↩ then type the newline.
+    func testReturnSendsOnlyWhenTurnedOnAndShiftOrOptionReturnTypesANewline() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        XCTAssertNil(returnKey(in: editor, modifiers: []))
+
+        editor.returnSends = true
+        editor.perform(try XCTUnwrap(returnKey(in: editor, modifiers: [])?.action))
+        editor.perform(try XCTUnwrap(returnKey(in: editor, modifiers: .shift)?.action))
+        editor.perform(try XCTUnwrap(returnKey(in: editor, modifiers: .alternate)?.action))
+
+        XCTAssertEqual(performed, ["test-send"])
+        XCTAssertEqual(editor.text, "\n\n")
+    }
+
+    /// While Send is unavailable, ↩ still belongs to Send with Return: it does nothing
+    /// rather than type the newline it no longer means.
+    func testReturnDoesNothingWhileSendIsUnavailable() throws {
+        let editor = ComposerChipTextView()
+        editor.returnSends = true
+        let send = try XCTUnwrap(returnKey(in: editor, modifiers: [])?.action)
+
+        XCTAssertTrue(editor.canPerformAction(send, withSender: nil))
+        editor.perform(send)
+
+        XCTAssertEqual(editor.text, "")
+    }
+
+    /// With Send with Return on, an IME's ↩ still confirms the candidate rather than sending.
+    func testReturnConfirmsAnIMECompositionInsteadOfSending() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        editor.returnSends = true
+        let send = try XCTUnwrap(returnKey(in: editor, modifiers: [])?.action)
+
+        editor.setMarkedText("に", selectedRange: NSRange(location: 1, length: 0))
+        XCTAssertNil(returnKey(in: editor, modifiers: []))
+        XCTAssertFalse(editor.canPerformAction(send, withSender: nil))
+        editor.perform(send)
+
+        XCTAssertEqual(performed, [])
+    }
+
+    private func returnKey(in editor: ComposerChipTextView, modifiers: UIKeyModifierFlags) -> UIKeyCommand? {
+        editor.keyCommands?.first { $0.input == "\r" && $0.modifierFlags == modifiers }
+    }
+
     private func commands(_ record: @escaping (String) -> Void) -> ComposerKeyboardCommands {
         ComposerKeyboardCommands(
             send: .init(title: "test-send") { record("test-send") },

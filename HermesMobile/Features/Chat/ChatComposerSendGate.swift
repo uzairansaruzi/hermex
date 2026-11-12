@@ -230,6 +230,8 @@ struct ChatComposerSendHold {
 /// Device-local presentation choices shared by Sessions servers, never Bot Chat.
 enum SessionChatPreferences {
     static let dismissKeyboardKey = "sessionChat.dismissKeyboardAfterSend"
+    /// Settings' Send with Return (#1655), read by every composer editor. Off by default.
+    static let returnSendsKey = "sessionChat.returnSends"
     static let completionPositionKey = "sessionChat.completionPosition"
 
     enum CompletionPosition: String, CaseIterable {

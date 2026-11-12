@@ -41,6 +41,7 @@ struct ComposerTextInputView: View {
     /// Compact in iPhone landscape, where the card editor stops growing, as it does in a short viewport.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.composerViewportIsShort) private var viewportIsShort
+    @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = false
 
     /// The chips the editor has drawn. The collapsed pill draws this same set
     /// rather than deriving its own, because a trailing chip whose space was
@@ -92,6 +93,7 @@ struct ComposerTextInputView: View {
                 isFocused: $isFocused,
                 isDisabled: isDisabled,
                 keyboardCommands: keyboardCommands,
+                returnSends: returnSends,
                 chipSkills: chipSkills,
                 chipFilePaths: chipFilePaths,
                 chipBots: chipBots,
@@ -224,6 +226,7 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     let isDisabled: Bool
     let keyboardCommands: ComposerKeyboardCommands
+    let returnSends: Bool
     let chipSkills: [SkillSlashSuggestion]
     let chipFilePaths: Set<String>
     let chipBots: [String: ComposerBotReference]
@@ -271,6 +274,7 @@ private struct ComposerTextView: UIViewRepresentable {
         // which would reach the server as an object-replacement character.
         textView.allowsEditingTextAttributes = false
         textView.keyboardCommands = keyboardCommands
+        textView.returnSends = returnSends
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
@@ -310,6 +314,7 @@ private struct ComposerTextView: UIViewRepresentable {
         context.coordinator.acceptsAttachments = acceptsAttachments
         context.coordinator.syncEditing(for: textView, isDisabled: isDisabled)
         textView.keyboardCommands = keyboardCommands
+        textView.returnSends = returnSends
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
