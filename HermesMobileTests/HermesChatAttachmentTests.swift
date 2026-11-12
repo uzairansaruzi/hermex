@@ -882,7 +882,8 @@ import UIKit
     // MARK: Canonical hosts (#1644)
 
     /// On a canonical host a photo goes as the prompt's own attachment: `prompt.submit` names the
-    /// path and type the upload answered, and its text has no instruction pair.
+    /// path and type the upload answered, and its text has no instruction pair. The sending row's
+    /// chip is the composer's, as on any host (`testSendUploadsTheImageAndSubmitsItsInstructionLine`).
     func testACanonicalSendCarriesItsPhotoAsAnAttachment() async throws {
         let chat = await openChat(canonical: true)
         _ = HermesHostFixture.configuration { request in
@@ -897,7 +898,6 @@ import UIKit
         let params = try XCTUnwrap(chat.writes("prompt.submit").first)
         XCTAssertEqual(params["text"], .string("What is this?"))
         XCTAssertEqual(params["attachments"], .array([.object(["path": .string(Self.storedImage), "mime": .string("image/jpeg")])]))
-        XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["photo.jpg"])
     }
 
     /// A photo queued on a canonical host keeps its chip while the host's `pending` lists only its
