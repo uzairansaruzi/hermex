@@ -59,7 +59,7 @@ enum DrawableFence {
     /// A drawing on a white card, since agent SVGs usually have no background and draw in black.
     /// An agent SVG with a `viewBox` fits the sheet's width; one without keeps its own size and
     /// scrolls inside the card instead of being cropped. A Pele diagram keeps its own size, which
-    /// already fits, so its text stays at body size.
+    /// already fits, rather than stretching its 16-point labels; pinch to zoom in.
     private static func card(_ svg: String) -> String {
         """
         <!doctype html><html><head><style>
