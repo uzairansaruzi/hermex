@@ -14,7 +14,8 @@ import WidgetKit
     /// The server's section title, or nil once it is no longer configured.
     private let serverTitle: @MainActor (URL) -> String?
     private let reloadWidget: () -> Void
-    private let configuredBots: () async -> [BotWidgetDestination]
+    /// The bots the Home Screen's Bot widgets show, or nil when WidgetKit couldn't say.
+    private let configuredBots: () async -> [BotWidgetDestination]?
     /// The newest render started per server key. A render that resumes after a newer one started,
     /// or after the server's removal, is stale and writes nothing.
     private var renderGenerations: [String: Int] = [:]
@@ -22,7 +23,7 @@ import WidgetKit
     init(file: BotWidgetSnapshotFile?,
          serverTitle: @escaping @MainActor (URL) -> String? = BotWidgetPublisher.registryTitle,
          reloadWidget: @escaping () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: BotWidgetSnapshot.widgetKind) },
-         configuredBots: @escaping () async -> [BotWidgetDestination] = BotWidgetPublisher.currentConfigurations) {
+         configuredBots: @escaping () async -> [BotWidgetDestination]? = BotWidgetPublisher.currentConfigurations) {
         self.file = file
         self.serverTitle = serverTitle
         self.reloadWidget = reloadWidget
@@ -59,8 +60,9 @@ import WidgetKit
         let key = BotHistoryCache.Scope.key(server)
         let generation = renderGenerations[key, default: 0] + 1
         renderGenerations[key] = generation
-        let wanted = Set(await configuredBots().filter { $0.serverKey == key }.map(\.profile))
-        guard renderGenerations[key] == generation else { return }
+        // A failed lookup renders and deletes nothing, rather than reading as "no widgets".
+        guard let configured = await configuredBots(), renderGenerations[key] == generation else { return }
+        let wanted = Set(configured.filter { $0.serverKey == key }.map(\.profile))
         var keep: Set<String> = []
         var rendered = false
         for profile in profiles where wanted.contains(profile.id) {
@@ -157,9 +159,9 @@ import WidgetKit
         return name
     }
 
-    /// The bots the Home Screen's Bot widgets are configured with.
-    static func currentConfigurations() async -> [BotWidgetDestination] {
-        let widgets = (try? await WidgetCenter.shared.currentConfigurations()) ?? []
+    /// The bots the Home Screen's Bot widgets are configured with, or nil when WidgetKit fails.
+    static func currentConfigurations() async -> [BotWidgetDestination]? {
+        guard let widgets = try? await WidgetCenter.shared.currentConfigurations() else { return nil }
         return widgets.filter { $0.kind == BotWidgetSnapshot.widgetKind }.flatMap {
             $0.widgetConfigurationIntent(of: BotWidgetConfigurationIntent.self)?.destinations ?? []
         }
