@@ -21,6 +21,18 @@ final class HTMLReportTests: XCTestCase {
         ))
     }
 
+    func testOnlyASettledSVGFenceOffersView() {
+        XCTAssertTrue(SVGFence.offersView(language: "svg", isStreaming: false))
+        XCTAssertFalse(SVGFence.offersView(language: "svg", isStreaming: true))
+        XCTAssertFalse(SVGFence.offersView(language: "python", isStreaming: false))
+    }
+
+    func testAnSVGThatCannotDrawOpensTheFailureState() {
+        XCTAssertNotNil(SVGFence.page(for: "\n<?xml version=\"1.0\"?>\n<svg viewBox=\"0 0 10 10\"><rect width=\"10\" height=\"10\"/></svg>\n"))
+        XCTAssertNil(SVGFence.page(for: "<svg viewBox=\"0 0 10 10\"><rect width=\"10\""))
+        XCTAssertNil(SVGFence.page(for: "<html><body>not a drawing</body></html>"))
+    }
+
     func testAFileOverTheInlineLimitStaysACard() async {
         let loader = TranscriptHTMLReportLoader()
         loader.load = { _ in throw BotArtifactFailure.tooLarge }
