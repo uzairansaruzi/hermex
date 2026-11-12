@@ -927,8 +927,10 @@ private struct BotHeroTile: View {
                         .lineLimit(2).multilineTextAlignment(.center)
                 } else {
                     // Holds the status line's place: statuses arrive after the tiles, and a tile
-                    // growing then dropped the whole list under the pinned bots.
-                    Text(verbatim: " ").font(AppFont.footnote(weight: .semibold)).accessibilityHidden(true)
+                    // growing then dropped the whole list under the pinned bots. The longer status,
+                    // hidden, so it takes the lines that one would at this text size.
+                    BotLiveStatusLabel(status: .waiting, font: AppFont.footnote(weight: .semibold), isStale: false)
+                        .lineLimit(2).multilineTextAlignment(.center).hidden().accessibilityHidden(true)
                 }
             }
         }
