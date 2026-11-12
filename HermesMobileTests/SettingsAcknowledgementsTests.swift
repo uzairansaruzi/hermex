@@ -10,7 +10,7 @@ final class SettingsAcknowledgementsTests: XCTestCase {
         XCTAssertEqual(Set(notices.map(\.url.lastPathComponent)), [
             "DMSans-LICENSE.txt", "Highlightr-LICENSE.txt", "KeychainAccess-LICENSE.txt", "LDSwiftEventSource-LICENSE.txt",
             "Lora-LICENSE.txt", "LucideIcons-LICENSE.txt", "MarkdownUI-LICENSE.txt", "NetworkImage-LICENSE.txt", "OpenBotAvatar-LICENSE.txt",
-            "Splash-LICENSE.txt", "SwiftMath-LICENSE.txt", "swift-cmark-COPYING.txt",
+            "Pele-LICENSE.txt", "Splash-LICENSE.txt", "SwiftMath-LICENSE.txt", "swift-cmark-COPYING.txt",
         ])
         XCTAssertEqual(notices.map(\.name), notices.map(\.name).sorted { $0.localizedStandardCompare($1) == .orderedAscending })
         for notice in notices {
