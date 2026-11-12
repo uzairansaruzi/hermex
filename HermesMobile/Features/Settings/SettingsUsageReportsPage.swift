@@ -49,6 +49,7 @@ struct UsageReportPreviewSheet: View {
 /// consent it is this week so far, from the builder the sender uses.
 struct UsageReportPreview: View {
     @AppStorage(UsageReports.Keys.acceptedVersion) private var acceptedVersion: Int?
+    @Environment(\.scenePhase) private var scenePhase
     @State private var report: UsageReport?
 
     private var isExample: Bool { acceptedVersion == nil }
@@ -79,7 +80,11 @@ struct UsageReportPreview: View {
             }
         }
         .settingsPage(String(localized: "What’s Sent"))
-        .task(id: acceptedVersion) { report = await UsageReports.shared.preview() }
+        // A return to the app may be in a new week, which the foreground send has just rolled over.
+        .task(id: PreviewKey(acceptedVersion: acceptedVersion, isActive: scenePhase == .active)) {
+            guard scenePhase == .active else { return }
+            report = await UsageReports.shared.preview()
+        }
     }
 
     @ViewBuilder private func sections(_ report: UsageReport) -> some View {
@@ -144,6 +149,11 @@ struct UsageReportPreview: View {
         } header: {
             header("Cards")
         }
+    }
+
+    private struct PreviewKey: Equatable {
+        let acceptedVersion: Int?
+        let isActive: Bool
     }
 
     /// A row whose value is the report's own text, shown exactly as sent.

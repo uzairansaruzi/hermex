@@ -388,23 +388,27 @@ final class UsageReports {
 
     // MARK: - Reports
 
-    /// Each foreground, before today is recorded: sends the week that just ended, once. The
-    /// attempt is recorded before posting, and a failure is never retried, even after a relaunch.
+    /// Each foreground: counts today, which first sets aside the week that just ended, then
+    /// sends that week once. The attempt is recorded before posting, and a failure is never
+    /// retried, even after a relaunch.
     func appBecameActive(now: Date = Date()) async {
-        await sendEndedWeek(now: now)
         recordActiveDay(now)
+        await sendEndedWeek(now: now)
     }
 
     private func sendEndedWeek(now: Date) async {
         guard isRecording else { return }
         _ = rollOver(now)
+        guard defaults.data(forKey: Keys.endedWeek) != nil else { return }
+        let device = await device()
+        // Read the tallies only after the await, so turning reports off meanwhile, even
+        // if they're turned on again, leaves nothing to send. From here to the request
+        // nothing waits, so consent is checked just before it.
         guard let ended: UsageTallies = load(Keys.endedWeek) else { return }
         defaults.removeObject(forKey: Keys.endedWeek)
         guard lastAttemptedWeek != ended.week else { return }
         let firstOfMonth = isFirstReport(ofMonthOf: ended.week)
         defaults.set(ended.week.monday, forKey: Keys.lastAttemptedWeek)
-        let device = await device()
-        // Consent is checked again just before the request: turning reports off sends nothing.
         guard buildSends, isRecording, let version = consent.acceptedVersion,
               let body = try? build(version: version, tallies: ended, firstOfMonth: firstOfMonth, device: device).encoded()
         else { return }
@@ -422,8 +426,7 @@ final class UsageReports {
         guard let version = consent.acceptedVersion else {
             return build(version: currentVersion, tallies: .sample(week: week), firstOfMonth: true, device: device)
         }
-        let tallies = isRecording ? rollOver(now) : UsageTallies(week: week)
-        return build(version: version, tallies: tallies, firstOfMonth: isFirstReport(ofMonthOf: week), device: device)
+        return build(version: version, tallies: rollOver(now), firstOfMonth: isFirstReport(ofMonthOf: week), device: device)
     }
 
     private func build(version: Int, tallies: UsageTallies, firstOfMonth: Bool, device: UsageDevice) -> UsageReport {

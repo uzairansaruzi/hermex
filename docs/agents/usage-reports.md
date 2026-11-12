@@ -82,9 +82,11 @@ version and doesn't ask again for that one. Only version 1 exists.
 
 ## Sending
 
-On each foreground, before recording that day, `UsageReports.appBecameActive`
-sends last week's tallies if no send was attempted for that week, and discards
-anything older. The attempt is recorded before the post, consent is checked again
+On each foreground, `UsageReports.appBecameActive` counts the day, which first
+sets last week's tallies aside and discards anything older, then sends last
+week's tallies if no send was attempted for that week. They are read only after
+the send's last await before the request, so turning reports off meanwhile sends
+nothing. The attempt is recorded before the post, consent is checked again
 just before it, and a failure is never retried. Debug builds never send. The
 request goes to the fixed collector URL through an ephemeral session with no
 cookies, credentials or custom headers.

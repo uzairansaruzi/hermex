@@ -100,18 +100,20 @@ final class UsageReportsTests: XCTestCase {
         XCTAssertEqual(reports.thisWeek?.week, UsageWeekID(containing: now.addingTimeInterval(2 * week)))
     }
 
-    func testTurningOffWhileTheReportIsBuiltSendsNothingAndErasesTallies() async throws {
+    func testTurningOffWhileTheReportIsBuiltSendsNothingEvenIfTurnedBackOn() async throws {
         let defaults = try makeDefaults()
         var reports: UsageReports?
-        reports = makeReports(defaults: defaults, device: { @MainActor [device] in
+        // Off and straight back on while the report is being built: the erased week stays unsent.
+        reports = makeReports(defaults: defaults, device: { @MainActor [device, now, week] in
             reports?.turnOff()
+            reports?.allow(now: now.addingTimeInterval(week))
             return device
         })
         reports?.allow(now: now)
         reports?.record(.skills, now: now)
         await reports?.appBecameActive(now: now.addingTimeInterval(week))
         XCTAssertTrue(UsageReportFixture.requests.isEmpty)
-        XCTAssertNil(reports?.thisWeek)
+        XCTAssertEqual(reports?.thisWeek?.features, [])
         XCTAssertNil(defaults.data(forKey: UsageReports.Keys.endedWeek))
     }
 

@@ -308,7 +308,6 @@ struct ContentView: View {
     private func drainPendingIntentDeepLink() {
         guard let url = intentRouter.pendingDeepLink else { return }
         intentRouter.pendingDeepLink = nil
-        UsageReports.shared.record(.appIntents)
         handleOpenURL(url)
     }
 
