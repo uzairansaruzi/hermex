@@ -1145,8 +1145,8 @@ extension SharedImportReservation {
 
     /// Moves the share into `chat`'s new-session draft, which the chat opens on: its text after
     /// any unsent text, its files after any staged ones, each as a Hermes send takes it
-    /// (`BotAttachmentUpload.prepare`, Bot Chat's limits). A file Hermes can't take now (its type or
-    /// size, an unreadable image, no room left in the draft) throws its reason and moves nothing, so the
+    /// (`BotAttachmentUpload.prepare`, Bot Chat's limits). A file Hermes can't take now (its size,
+    /// no room left in the draft, or one that can't be read) throws its reason and moves nothing, so the
     /// whole share stays recoverable. Once it returns the draft owns the share, under its occurrence
     /// id, so a retry or replay adds nothing while the same content shared again later is added;
     /// a throw leaves the draft as it was.
@@ -1208,8 +1208,6 @@ struct HermesShareFailure {
         case BotAttachmentFailure.limit, ChatDraftStorageError.attachmentLimit:
             // Counts the files already waiting in the new session's draft too.
             reason = String(localized: "You can attach up to 8 files per message, 25 MB each and 50 MB total. Share fewer or smaller files and try again.")
-        case BotAttachmentFailure.type:
-            reason = String(localized: "One of these file types isn’t supported. Share supported files separately.")
         case BotAttachmentFailure.unreadable:
             reason = String(localized: "One of the files couldn’t be read.")
         default:
