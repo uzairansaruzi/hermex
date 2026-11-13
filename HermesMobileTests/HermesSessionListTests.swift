@@ -753,6 +753,25 @@ import Observation
         XCTAssertFalse(HermesProfilePreference.showsAllProfiles(for: server, in: defaults))
     }
 
+    /// New Session starts in the selected lane's folder, and in the Profile's default with no lane
+    /// or once All Profiles shows, whose list keeps the old lanes (#1671).
+    func testNewSessionStartsInTheSelectedLanesFolderUntilAllProfiles() async {
+        let wire = HermesSessionListWire()
+        wire.projectTree = .object(["projects": .array([.object([
+            "id": .string("p_1"), "label": .string("Launch"), "path": .string("/launch"), "isAuto": .bool(false),
+            "isNoProject": .bool(false), "sessionCount": .number(0), "sessionIds": .array([])
+        ])])])
+        let list = makeList(wire)
+        await list.openHermes()
+
+        XCTAssertEqual(list.hermesNewSessionFolder(lane: "p_1"), "/launch")
+        XCTAssertNil(list.hermesNewSessionFolder(lane: nil))
+
+        await list.showAllHermesProfiles()
+
+        XCTAssertNil(list.hermesNewSessionFolder(lane: "p_1"))
+    }
+
     /// A merged list holds back rows older than the oldest row a Profile with more pages has read,
     /// pinned rows aside, so the next page never lands above rows already shown. "Load more" reads
     /// the next page of each Profile with more, and none of a Profile at its end.
