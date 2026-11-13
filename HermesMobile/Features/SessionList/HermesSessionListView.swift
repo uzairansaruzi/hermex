@@ -544,8 +544,15 @@ struct HermesSessionListView: View {
         } else if covers.showingArchived, let profile {
             ArchivedSessionsView(server: entry.server, hermes: .saved(entry.connection, server: entry.server, profile: profile))
         } else {
-            ContentUnavailableView("Select a Chat", systemImage: "bubble.left.and.bubble.right",
-                                   description: Text("Choose a session from the sidebar or start a new chat."))
+            ContentUnavailableView {
+                Label("Select a Chat", systemImage: "bubble.left.and.bubble.right")
+            } description: {
+                Text("Choose a session from the sidebar or start a new chat.")
+            } actions: {
+                Button("New Chat", action: openNewSession)
+                    .buttonStyle(.appProminent)
+                    .disabled(!canOpenNewSession)
+            }
         }
     }
 
