@@ -33,13 +33,16 @@ struct FileReference: Hashable, Identifiable {
     /// would only hide images the server is happy to hand over.
     ///
     /// `./` and `../` need a workspace root to resolve against; an absolute path or a
-    /// `file:` URL does not. Bare relative paths stay unrecognized, as they do for links.
-    static func absoluteMediaPath(_ destination: String, workspaceRoot: String?) -> String? {
+    /// `file:` URL does not. Bare relative paths stay unrecognized, as they do for links,
+    /// unless `resolvesBarePaths`: a Hermes reply's `out/chart.png` is its folder's (#1679).
+    static func absoluteMediaPath(_ destination: String, workspaceRoot: String?, resolvesBarePaths: Bool = false) -> String? {
         var normalized = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.hasPrefix("<"), normalized.hasSuffix(">"), normalized.count >= 2 {
             normalized = String(normalized.dropFirst().dropLast())
         }
-        guard let target = fileTarget(of: normalized) else { return nil }
+        // A colon marks a URL scheme (`https:`, `data:`), never a bare path.
+        let bare = resolvesBarePaths && !normalized.contains(":") && !normalized.hasPrefix("#")
+        guard let target = fileTarget(of: normalized) ?? (bare ? fileTarget(of: "./" + normalized) : nil) else { return nil }
 
         let rootComponents = pathComponents(ofAbsolutePath: workspaceRoot ?? "") ?? []
         guard target.path.hasPrefix("/") || !rootComponents.isEmpty else { return nil }

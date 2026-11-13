@@ -655,7 +655,8 @@ struct ChatView: View {
             workspaceManagementServer: isHermesSession ? nil : server,
             personalitySuggestions: viewModel.personalitySuggestions,
             skillSuggestions: viewModel.composerSkillSuggestions,
-            hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
+            // A Hermes chat's skills come with the catalog it reads on connect.
+            hasLoadedSkillSuggestions: isHermesSession || viewModel.hasLoadedSkillSlashSuggestions,
             agentCommands: viewModel.composerAgentCommands,
             profileOptions: viewModel.composerProfileOptions,
             isSingleProfileMode: viewModel.composerIsSingleProfileMode,
@@ -2559,7 +2560,8 @@ struct ChatView: View {
         }
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .transcriptLinks(perform: handleTranscriptLink)
-        .environment(\.chatWorkspaceRoot, session.workspace)
+        .environment(\.chatWorkspaceRoot, viewModel.transcriptWorkspaceRoot(listedFolder: hermesRowWorkspace) ?? session.workspace)
+        .environment(\.resolvesBareMediaPaths, isHermesSession)
         .environment(\.previewsHermesDocuments, isHermesSession)
         .transcriptHTMLReports(loadKey: viewModel.attachmentLoadKey, load: isHermesSession ? { [viewModel] reference in
             try await viewModel.transcriptHTMLReportData(for: reference)

@@ -7,8 +7,8 @@ struct SlashCommandScope: Equatable, Sendable {
     var builtins: [SlashCommand]
     /// Host command names and aliases, lowercased, whose arguments the host completes.
     var hostCommands: Set<String> = []
-    /// A Hermes chat's: the panel opens only at the start of the draft, where the host runs
-    /// a command, and an agent command's aliases find it, as the host's `canon` lists them.
+    /// A Hermes chat's: the host completes its commands' arguments, and an agent command's
+    /// aliases find it, as the host's `canon` lists them.
     var isHermes = false
 
     static let webui = SlashCommandScope(builtins: SlashCommandCatalog.allCommands)

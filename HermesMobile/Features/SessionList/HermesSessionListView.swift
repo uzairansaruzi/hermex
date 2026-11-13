@@ -217,7 +217,8 @@ struct HermesSessionListView: View {
             // A search reads the host's whole list, so it pages nothing in.
             if showsLoadMore && !isSearching { loadMoreRow }
             // The cache holds no archived rows to show, and the Archived screen lists one Profile.
-            if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles { archivedRow }
+            // Hidden once the host counts none; shown without a count until it answers (#1679).
+            if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles && viewModel.archivedCount != 0 { archivedRow }
         }
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 0)
@@ -544,8 +545,17 @@ struct HermesSessionListView: View {
         } else if covers.showingArchived, let profile {
             ArchivedSessionsView(server: entry.server, hermes: .saved(entry.connection, server: entry.server, profile: profile))
         } else {
-            ContentUnavailableView("Select a Chat", systemImage: "bubble.left.and.bubble.right",
-                                   description: Text("Choose a session from the sidebar or start a new chat."))
+            ContentUnavailableView {
+                Label("Select a Chat", systemImage: "bubble.left.and.bubble.right")
+            } description: {
+                Text("Choose a session from the sidebar or start a new chat.")
+            } actions: {
+                // Waits for the live list, like a Shortcut's new chat (#1180), so it can't open
+                // a chat while the list is offline or reconnecting.
+                Button("New Chat", action: openNewSession)
+                    .buttonStyle(.appProminent)
+                    .disabled(!canOpenNewSession || !viewModel.isHermesLive)
+            }
         }
     }
 
@@ -716,20 +726,28 @@ struct HermesSessionListView: View {
 
     /// Every Profile's sessions, each row tagged with its Profile (#709), or one Profile's. Picking
     /// a Profile lists it and makes it the server's pick, which the composer's Profile chip shares
-    /// (#1015); All Profiles keeps the pick for New Session.
-    private var profilePicker: some View {
+    /// (#1015); All Profiles keeps the pick for New Session. Checked toggles rather than a
+    /// Picker: a menu Picker shows only an option's first line, dropping the model (#1679).
+    @ViewBuilder private var profilePicker: some View {
         let listed = viewModel.hermesProfiles.isEmpty ? [profile].compactMap(\.self) : viewModel.hermesProfiles
-        return Picker("Profile", selection: Binding<String?>(get: { viewModel.hermesShowsAllProfiles ? nil : profile }, set: { picked in
-            Task {
-                if let picked { await viewModel.selectHermesProfile(picked) } else { await viewModel.showAllHermesProfiles() }
-            }
-        })) {
-            Text("All Profiles").tag(String?.none)
-            ForEach(listed, id: \.self) {
-                Text(verbatim: $0).tag(Optional($0))
+        let picked = viewModel.hermesShowsAllProfiles ? nil : profile
+        Section {
+            Toggle(isOn: Binding(get: { picked == nil }, set: { _ in pickProfile(nil) })) { Text("All Profiles") }
+            // Each Profile's model under its name, shown as written (#1679).
+            ForEach(listed, id: \.self) { name in
+                Toggle(isOn: Binding(get: { picked == name }, set: { _ in pickProfile(name) })) {
+                    Text(verbatim: name)
+                    if let model = viewModel.hermesProfileModels[name] { Text(verbatim: model) }
+                }
             }
         }
         .disabled(profile == nil)
+    }
+
+    private func pickProfile(_ picked: String?) {
+        Task {
+            if let picked { await viewModel.selectHermesProfile(picked) } else { await viewModel.showAllHermesProfiles() }
+        }
     }
 
     /// More pages may hold rows this list shows: any, or the selected lane's that the host
@@ -777,6 +795,13 @@ struct HermesSessionListView: View {
                 Text("Archived Sessions")
                     .font(AppFont.subheadline(weight: .medium))
                     .lineLimit(1)
+                if let archivedCount = viewModel.archivedCount {
+                    Text("\(archivedCount)")
+                        .font(AppFont.footnote(weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(.appMaterial(.thinMaterial), in: Capsule())
+                }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.forward")
                     .font(AppFont.caption(weight: .semibold))

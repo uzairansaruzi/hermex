@@ -131,6 +131,9 @@ enum HermesCall: Equatable, Sendable {
     /// The inbox's live-status read. `current_session_id` only marks a TUI's
     /// focused row, which Hermex never has.
     case sessionActiveList
+    /// A live runtime's unresolved approvals (#1679), which tell the list's Approval badge from
+    /// Input. `sessionID` is the runtime `id` `session.active_list` lists, never a stored key.
+    case approvalPending(sessionID: String)
     /// The Sessions list's one Profile-scoped read after it connects (#1046): naming the
     /// Profile makes the host watch its store for `sessions.changed`, which it does only once
     /// some call names it. A Profile the host no longer has answers 4064.
@@ -539,6 +542,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionEventsSince: return "session.events.since"
         case .sessionDetach: return "session.detach"
         case .sessionActiveList: return "session.active_list"
+        case .approvalPending: return "approval.pending"
         case .sessionMostRecent: return "session.most_recent"
         case .displayStatus: return "display.status"
         case .displayObserve: return "display.observe"
@@ -730,7 +734,8 @@ enum HermesCall: Equatable, Sendable {
         case .sessionSteer(let sessionID, let text, _), .sessionRedirect(let sessionID, let text, _),
              .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text)]
-        case .sessionInterrupt(let sessionID, _), .commandsCatalog(let sessionID), .subagentList(let sessionID):
+        case .sessionInterrupt(let sessionID, _), .commandsCatalog(let sessionID), .subagentList(let sessionID),
+             .approvalPending(let sessionID):
             return ["session_id": .string(sessionID)]
         case .fileAttach(let sessionID, let name, let dataURL):
             return ["session_id": .string(sessionID), "name": .string(name), "data_url": .string(dataURL)]
@@ -893,7 +898,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionCompress(let runtime, let focus, let profile):
             valid = !runtime.isEmpty && !profile.isEmpty && focus?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true
         case .sessionTitle(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID),
-             .sessionClose(let sessionID), .sessionUndo(let sessionID):
+             .sessionClose(let sessionID), .sessionUndo(let sessionID), .approvalPending(let sessionID):
             valid = !sessionID.isEmpty
         case .sessionRename(let runtime, let title):
             valid = !runtime.isEmpty && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

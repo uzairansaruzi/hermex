@@ -455,6 +455,69 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working, "b": .input])
     }
 
+    /// A waiting row whose runtime holds an unresolved approval reads as Approval, one waiting on
+    /// a question as Input, each asked by its runtime id; both lift into Needs you (#1679). The
+    /// rows' states show before the approval reads answer, and a row keeps Approval while any of
+    /// its runtimes' reads failed.
+    func testWaitingRowsTellApprovalFromInput() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page(["approve", "ask", "work"].map { HermesSessionRow(id: $0) })]
+        wire.active = [live("approve", "waiting"), live("ask", "waiting"), live("work", "working")]
+        wire.approvals["runtime-approve"] = [.object(["request_id": .string("r1")])]
+        wire.holdsApprovals = true
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+        XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .input, "ask": .input, "work": .working])
+
+        wire.holdsApprovals = false
+        wire.release()
+        await waitUntil("approvals read") { list.attentionStatesBySessionID["approve"] == .approval }
+        XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .approval, "ask": .input, "work": .working])
+        XCTAssertEqual(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).needsYou.compactMap(\.sessionId),
+                       ["approve", "ask"])
+
+        wire.active = [live("approve", "waiting"), live("approve", "waiting", runtime: "runtime-approve-2"),
+                       live("ask", "waiting"), live("work", "working")]
+        wire.approvals = ["runtime-ask": [.object(["request_id": .string("r2")])]]
+        wire.failingApprovals = ["runtime-approve-2"]
+        wire.emit("sessions.changed")
+        await waitUntil("approvals read again") { list.attentionStatesBySessionID["ask"] == .approval }
+        XCTAssertEqual(list.attentionStatesBySessionID["approve"], .approval)
+    }
+
+    /// The Archived row counts the listed Profile's archived sessions (#1679). A slow count holds
+    /// no later list read back, and a read a Profile switch left behind can't stop the new
+    /// Profile's count; a list of every Profile has no row, so no count.
+    func testTheArchivedRowCountsTheListedProfile() async {
+        let wire = HermesSessionListWire()
+        wire.archivedTotals = ["default": 3, "research": 5]
+        wire.holdsProjects = ["default"]
+        wire.holdsArchivedCount = true
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+
+        let open = Task { await list.openHermes() }
+        await waitUntil("default's lanes held") { wire.calls.contains { $0.method == "projects.tree" } }
+        await list.selectHermesProfile("research")
+        wire.pages["research"] = [0: page([HermesSessionRow(id: "new")])]
+        wire.emit("sessions.changed")
+        await waitUntil("the change read past the held count") { list.sessions.map(\.sessionId) == ["new"] }
+        wire.releaseProjects()
+        await open.value
+        XCTAssertNil(list.archivedCount)
+
+        wire.holdsArchivedCount = false
+        wire.release()
+        await waitUntil("count read") { list.archivedCount != nil }
+        XCTAssertEqual(list.archivedCount, 5)
+
+        await list.showAllHermesProfiles()
+        XCTAssertNil(list.archivedCount)
+    }
+
     /// The rating prompt's idle check reads the host fresh: any running or waiting session, listed
     /// or not, is busy, and a list that isn't live has no answer.
     func testHostIdleCheckReadsTheHostFresh() async {
@@ -597,6 +660,7 @@ import Observation
         list.reconnectNow()
         await waitUntil("rows read") { wire.connects == 2 && !list.isHermesReconnecting }
         XCTAssertTrue(list.attentionStatesAreStale, "rows vouch for no run")
+        wire.holdsActive = false
         wire.release()
         await waitUntil("states read") { !list.attentionStatesAreStale }
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .input])
@@ -1001,8 +1065,8 @@ import Observation
     }
 
     /// One `session.active_list` item in the host's shape (`server.py` `_session_live_item`).
-    private func live(_ key: String, _ status: String) -> BotJSON {
-        .object(["id": .string("runtime-" + key), "session_key": .string(key), "status": .string(status),
+    private func live(_ key: String, _ status: String, runtime: String? = nil) -> BotJSON {
+        .object(["id": .string(runtime ?? "runtime-" + key), "session_key": .string(key), "status": .string(status),
                  "last_active": .number(100), "started_at": .number(90), "message_count": .number(2),
                  "model": .string("m"), "preview": .string(""), "title": .string(""), "current": .bool(false)])
     }
@@ -1336,7 +1400,7 @@ import Observation
 /// A scripted Hermes host for the Sessions list: pages by Profile and offset, read marks and
 /// other changes, `session.active_list`, `profiles.list`, `session.most_recent`,
 /// `session.delete`, `projects.tree` and the search (#1053). A test
-/// can park page reads, read-mark writes or searches, and push gateway events.
+/// can park page reads, lane reads, read-mark writes or searches, and push gateway events.
 @MainActor @Observable final class HermesSessionListWire: BotTransport {
     struct UnreadWrite: Equatable { let key: String; let profile: String; let unread: Bool }
 
@@ -1345,8 +1409,20 @@ import Observation
     var onDisconnect: ((Error) -> Void)?
     var pages: [String: [Int: HermesSessionPage]] = [:]
     var active: [BotJSON] = []
+    /// The Archived screen's total by Profile; a Profile without one refuses the read.
+    var archivedTotals: [String: Int] = [:]
+    /// `approval.pending`'s approvals by runtime id; none for any other.
+    var approvals: [String: [BotJSON]] = [:]
     /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
     var holdsActive = false
+    /// While true, `approval.pending` waits for `release()`.
+    var holdsApprovals = false
+    /// While true, the archived count waits for `release()`.
+    var holdsArchivedCount = false
+    /// Profiles whose `projects.tree` waits for `releaseProjects()`.
+    var holdsProjects: Set<String> = []
+    /// Runtime ids whose `approval.pending` fails.
+    var failingApprovals: Set<String> = []
     var profiles = ["default", "research"]
     var current = "default"
     /// Profiles the host no longer has: 4064 over the socket, 404 over REST.
@@ -1385,6 +1461,7 @@ import Observation
     private(set) var calls: [(method: String, profile: String?)] = []
     @ObservationIgnored private var held: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var heldPages: [UUID: CheckedContinuation<Void, Never>] = [:]
+    @ObservationIgnored private var heldProjects: [CheckedContinuation<Void, Never>] = []
 
     private func parkPage() async throws {
         let id = UUID()
@@ -1417,9 +1494,17 @@ import Observation
         case "session.active_list":
             if holdsActive { await withCheckedContinuation { held.append($0) } }
             return .object(["sessions": .array(active)])
+        case "approval.pending":
+            if holdsApprovals { await withCheckedContinuation { held.append($0) } }
+            let runtime = params["session_id"]?.text ?? ""
+            if failingApprovals.contains(runtime) { throw BotFailure.rejected(500) }
+            return .object(["approvals": .array(approvals[runtime] ?? [])])
         case "profiles.list": return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
         case "session.delete": return .object([:])
         case "projects.tree":
+            if holdsProjects.contains(params["profile"]?.text ?? "") {
+                await withCheckedContinuation { heldProjects.append($0) }
+            }
             guard let projectTree else { throw BotFailure.unsupported }
             return projectTree
         default: throw BotFailure.unsupported
@@ -1444,6 +1529,12 @@ import Observation
         if holdsScheduledPages { try await parkPage() }
         if let failure = pageFailure { pageFailure = nil; throw failure }
         return reply
+    }
+
+    func archivedSessionCount(profile: String) async throws -> Int {
+        if holdsArchivedCount { await withCheckedContinuation { held.append($0) } }
+        guard let total = archivedTotals[profile] else { throw BotFailure.unsupported }
+        return total
     }
 
     func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
@@ -1473,6 +1564,12 @@ import Observation
         for continuation in pages.values { continuation.resume() }
         let waiting = held
         held = []
+        for continuation in waiting { continuation.resume() }
+    }
+
+    func releaseProjects() {
+        let waiting = heldProjects
+        heldProjects = []
         for continuation in waiting { continuation.resume() }
     }
 

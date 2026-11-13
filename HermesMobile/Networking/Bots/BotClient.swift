@@ -191,6 +191,18 @@ import Foundation
         return page
     }
 
+    func archivedSessionCount(profile: String) async throws -> Int {
+        guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
+        let attempt = self.attempt
+        let data = try await http.data(.sessionList(profile: profile, offset: 0, archived: true, limit: 0),
+                                       validateDispatch: { try self.checkOwner(attempt) })
+        try checkOwner(attempt)
+        guard let total = (try? JSONDecoder().decode(HermesSessionPage.self, from: data))?.total else {
+            throw BotFailure.unsupported
+        }
+        return total
+    }
+
     func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt

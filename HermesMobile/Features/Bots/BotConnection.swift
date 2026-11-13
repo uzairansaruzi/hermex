@@ -203,6 +203,8 @@ struct BotProfile: Identifiable, Hashable {
     let title: String?
     let displayName: String?
     let description: String?
+    /// The Profile's model as the host names it, for the Shortcuts picker (#1679).
+    let model: String?
     let preview: String?
     let lastActive: Date?
     /// The canonical chat's root (`canonical_session.id`) and the compression tip
@@ -237,6 +239,7 @@ struct BotProfile: Identifiable, Hashable {
         displayName = Self.firstText(row["display_name"])
         name = Self.firstText(look["title"], row["display_name"]) ?? (profile == "default" ? "Hermes" : profile)
         description = Self.firstText(look["description"], row["description"])
+        model = Self.firstText(row["model"])
         preview = row["canonical_session"]["preview"].text
         lastActive = row["canonical_session"]["last_active"].number.map(Date.init(timeIntervalSince1970:))
         canonicalID = Self.firstText(row["canonical_session"]["id"])

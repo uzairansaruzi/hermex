@@ -112,7 +112,8 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         ]
         let (names, suite, defaults) = makeIsolatedNames()
         defer { defaults.removePersistentDomain(forName: suite) }
-        names.save([.init(profile: "default", title: "Hermes"), .init(profile: "inbox-triage", title: "Inbox Triage")],
+        names.save([.init(profile: "default", title: "Hermes", model: "claude-opus"),
+                    .init(profile: "inbox-triage", title: "Inbox Triage")],
                    for: URL(string: "https://studio.test")!)
 
         let sections = await ProfileEntityProvider.sections(
@@ -124,7 +125,7 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertEqual(sections.map(\.title), ["Studio Mac", String(localized: "Laptop (Web UI)"), "air.test"])
         XCTAssertEqual(sections[0].profiles.map(\.id), ["https://studio.test|default", "https://studio.test|inbox-triage"])
         XCTAssertEqual(sections[0].profiles.map(\.name), ["Hermes", "Inbox Triage"])
-        XCTAssertEqual(sections[0].profiles.map(\.subtitle), ["default", "inbox-triage"])
+        XCTAssertEqual(sections[0].profiles.map(\.subtitle), ["default · claude-opus", "inbox-triage"])
         XCTAssertEqual(sections[1].profiles.map(\.id), ["default"], "A webui Profile keeps its bare id")
         XCTAssertEqual(sections[2].profiles.map(\.id), ["https://air.test|default"],
                        "The same Profile on another server is another choice")

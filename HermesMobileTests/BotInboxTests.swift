@@ -239,12 +239,12 @@ import SwiftUI
 
     /// The Shortcuts picker titles a Hermes server's Profiles by these names (#1180).
     func testEachRosterReadLeavesTheProfilesNamesForShortcuts() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("default"), row("triage", look: ["title": .string("Inbox Triage")])])
+        let wire = BotInboxFixtureWire(roster: [row("default"), row("triage", look: ["title": .string("Inbox Triage")], model: "gpt-6")])
         let inbox = try makeInbox(wires: [wire])
         await inbox.open()
 
         XCTAssertEqual(HermesProfileNameCache(defaults: defaults).names(for: server),
-                       [.init(profile: "default", title: "Hermes"), .init(profile: "triage", title: "Inbox Triage")])
+                       [.init(profile: "default", title: "Hermes"), .init(profile: "triage", title: "Inbox Triage", model: "gpt-6")])
     }
 
     func testMissingMetadataReadsPlainAndPinWritesUnderRevisionZero() async throws {
@@ -1479,7 +1479,7 @@ import SwiftUI
     }
 
     private func row(_ name: String, lastActive: Double? = 100, preview: String = "hi", root: String? = nil, tip: String? = nil,
-                     look: [String: BotJSON]? = nil, revision: Int? = nil) -> BotJSON {
+                     look: [String: BotJSON]? = nil, revision: Int? = nil, model: String? = nil) -> BotJSON {
         var fields: [String: BotJSON] = [
             "name": .string(name), "display_name": .string(""), "description": .string(""), "has_avatar": .bool(false),
             "canonical_session": .object([
@@ -1489,6 +1489,7 @@ import SwiftUI
         ]
         if let look { fields["ui_meta"] = .object(["hermes-bots": .object(look)]) }
         if let revision { fields["ui_meta_revisions"] = .object(["hermes-bots": .number(Double(revision))]) }
+        if let model { fields["model"] = .string(model) }
         return .object(fields)
     }
 

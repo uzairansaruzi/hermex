@@ -211,7 +211,10 @@ struct HermesSlashCompletion: Equatable {
 /// skill through `command.dispatch`, each once.
 @MainActor @Observable final class HermesSlashCommands {
     private(set) var catalog = HermesSlashCatalog() {
-        didSet { scope.hostCommands = catalog.hostArgumentNames }
+        didSet {
+            scope.hostCommands = catalog.hostArgumentNames
+            if catalog.skills != oldValue.skills { onSkills(catalog.skills) }
+        }
     }
     /// What the composer's panel offers: Hermex's own commands first, then the catalog's, both
     /// without what the chat's policy refuses.
@@ -230,6 +233,8 @@ struct HermesSlashCompletion: Equatable {
     @ObservationIgnored private var completionRevision = 0
     /// The host reaped the runtime (4001): reattach to the stored key.
     @ObservationIgnored var onNeedsReattach: () -> Void = {}
+    /// The catalog's skills changed, so the chat can draw sent `/skill` text as chips (#1679).
+    @ObservationIgnored var onSkills: ([SkillSlashSuggestion]) -> Void = { _ in }
     let policy: HermesChatPolicy
     private let engine: HermesConversation
 

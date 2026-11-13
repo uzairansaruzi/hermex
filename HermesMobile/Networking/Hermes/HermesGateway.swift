@@ -605,7 +605,7 @@ private extension HermesCall {
     var isCancellationSafe: Bool {
         switch self {
         case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
-             .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
+             .sessionActiveList, .approvalPending, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
              .commitMessage, .approvalSummary, .displayStatus, .displayObserve, .pluginsList: return true
         default: return false
         }
@@ -617,7 +617,7 @@ private extension HermesCall {
     /// connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
-        case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
+        case .subagentList, .subagentTail, .sessionActiveList, .approvalPending, .sessionMostRecent, .completeSlash, .slashExec,
              .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
              .approvalSummary, .displayStatus, .displayObserve, .displayLeaseAcquire, .displayLeaseRelease,
              .displayStart, .displayStop, .pluginsList, .pluginsToggle, .pluginsInstall, .pluginsRemove, .pluginsUpdate,

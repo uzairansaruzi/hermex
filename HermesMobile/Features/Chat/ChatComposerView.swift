@@ -457,49 +457,10 @@ struct MessageComposerView: View {
     /// The `@` panel wins when both triggers match: a `/` inside a path never
     /// triggers at all (it follows a non-space), but an `@` inside a command's
     /// free-form argument is still a file reference.
-    ///
-    /// A command the user has typed past no longer produces a trigger at all —
-    /// `ComposerSlashTrigger` ends at the space after a command that takes no
-    /// sub-argument — so besides the trigger itself, three things close the
-    /// panel: a settled `/skills` invocation, a settled goal action, and a
-    /// mid-sentence word no loaded skill matches. A Hermes chat's panel opens only at the
-    /// start of the draft, where its host runs a command, and at a host command's argument
-    /// only while the host has suggestions for it (#1036).
     private var slashQuery: String? {
-        guard fileTrigger == nil, let query = slashTrigger?.text else { return nil }
-
-        let parsed = ParsedSlashQuery(query: query, scope: slashScope)
-        if slashScope.isHermes {
-            guard slashTrigger?.startsDraft == true else { return nil }
-            if parsed.isHostArgumentMode,
-               hostSlashCompletion.map({ $0.items.isEmpty || !$0.applies(to: query) }) ?? true { return nil }
-        }
-        if parsed.command?.subArgs == .skills,
-           SlashSkillFormatter.invocation(from: parsed.argQuery, suggestions: skillSuggestions) != nil {
-            return nil
-        }
-
-        if parsed.command?.subArgs == .goalActions,
-           parsed.isSubArgMode,
-           !parsed.argQuery.isEmpty,
-           !SlashCommandCatalog.goalActions.contains(where: {
-               $0.hasPrefix(parsed.argQuery.lowercased())
-           }) {
-            return nil
-        }
-
-        // Mid-sentence the panel's only content is skills, so once the catalog
-        // question is settled — a request has succeeded, even one that found
-        // no skills — and nothing matches the typed word, close rather than
-        // hold an empty box up. Before that, keep the panel open so its load
-        // task can fetch the list and judge the word against real data.
-        if slashTrigger?.startsDraft == false,
-           hasLoadedSkillSuggestions,
-           SlashSkillFormatter.matching(parsed.commandName, in: skillSuggestions).isEmpty {
-            return nil
-        }
-
-        return query
+        guard fileTrigger == nil else { return nil }
+        return slashTrigger?.panelQuery(scope: slashScope, skills: skillSuggestions,
+                                        hasLoadedSkills: hasLoadedSkillSuggestions, hostCompletion: hostSlashCompletion)
     }
 
     private var showsSlashAutocomplete: Bool {

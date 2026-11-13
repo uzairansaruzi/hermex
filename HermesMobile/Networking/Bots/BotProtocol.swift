@@ -353,6 +353,9 @@ extension HermesAttemptRecord.Outcome {
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
     /// One page of `profile`'s scheduled (cron) sessions, read and paged apart from the ordinary list.
     func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
+    /// How many sessions the Archived screen lists for `profile`, for the Sessions list's
+    /// Archived row (#1679): the archived page's `total`, read with no rows.
+    func archivedSessionCount(profile: String) async throws -> Int
     /// `profile`'s scheduled (cron) sessions matching `query`.
     func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult]
     /// One page of every session `profile` lists, for Move to Hermes's scan
@@ -440,6 +443,10 @@ extension BotTransport {
     }
 
     func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+        throw BotFailure.unsupported
+    }
+
+    func archivedSessionCount(profile: String) async throws -> Int {
         throw BotFailure.unsupported
     }
 

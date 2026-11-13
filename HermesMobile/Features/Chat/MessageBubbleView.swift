@@ -19,6 +19,7 @@ struct MessageBubbleView: View {
     /// The skills this chat can draw as chips, published by `ChatView`.
     @Environment(\.composerChipCatalog) private var composerChipCatalog
     @Environment(\.chatWorkspaceRoot) private var chatWorkspaceRoot
+    @Environment(\.resolvesBareMediaPaths) private var resolvesBareMediaPaths
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
 
@@ -213,6 +214,7 @@ struct MessageBubbleView: View {
         let segments = TranscriptMediaSegmentCache.segments(
             in: messageText,
             workspaceRoot: chatWorkspaceRoot,
+            resolvesBarePaths: resolvesBareMediaPaths,
             isStreaming: isStreaming
         )
         // The reply's other media is collected when an image is tapped, not on each pass.
@@ -242,6 +244,7 @@ struct MessageBubbleView: View {
                     identity: messageText,
                     inputs: SettledReplyInputs(
                         workspaceRoot: chatWorkspaceRoot,
+                        resolvesBarePaths: resolvesBareMediaPaths,
                         cacheNamespace: transcriptMediaCacheNamespace,
                         loadsMediaImages: loadTranscriptMediaImage != nil,
                         loadsMediaData: loadTranscriptMediaData != nil,
@@ -1039,6 +1042,7 @@ enum ResponseSpeedFormatter {
 /// changes the rows drawn; the callbacks themselves go through `SettledReplyMedia`.
 private struct SettledReplyInputs: Hashable {
     let workspaceRoot: String?
+    let resolvesBarePaths: Bool
     let cacheNamespace: String
     let loadsMediaImages: Bool
     let loadsMediaData: Bool

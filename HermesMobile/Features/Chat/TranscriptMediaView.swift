@@ -22,6 +22,13 @@ extension EnvironmentValues {
         set { self[ChatWorkspaceRootKey.self] = newValue }
     }
 
+    /// A Hermes session's replies resolve bare relative images (`out/chart.png`) against
+    /// `chatWorkspaceRoot` too (#1679); webui leaves them to the Markdown renderer.
+    var resolvesBareMediaPaths: Bool {
+        get { self[BareMediaPathsKey.self] }
+        set { self[BareMediaPathsKey.self] = newValue }
+    }
+
     /// Hermes sessions opt into document previews without changing the webui
     /// transcript's download-only file rows.
     var previewsHermesDocuments: Bool {
@@ -32,6 +39,10 @@ extension EnvironmentValues {
 
 private struct ChatWorkspaceRootKey: EnvironmentKey {
     static let defaultValue: String? = nil
+}
+
+private struct BareMediaPathsKey: EnvironmentKey {
+    static let defaultValue = false
 }
 
 private struct HermesDocumentPreviewKey: EnvironmentKey {

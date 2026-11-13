@@ -181,6 +181,9 @@ final class SessionListViewModel {
     private(set) var hermesShowsAllProfiles = false
     /// The Hermes host's Profiles, for the Profile menu; empty until `profiles.list` answers.
     private(set) var hermesProfiles: [String] = []
+    /// Each Profile's model as `profiles.list` names it, for the Profile menu (#1679); a Profile
+    /// without one is absent.
+    private(set) var hermesProfileModels: [String: String] = [:]
     /// The Hermes list has read the host's rows on its current connection, so its Profile is the
     /// host's. Closing or dropping the connection clears it until the next read.
     private var hasReadHermes = false
@@ -215,10 +218,13 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesReloadWanted = false
     @ObservationIgnored private var hermesDebounceTask: Task<Void, Never>?
     @ObservationIgnored private var hermesStatusTask: Task<Void, Never>?
+    @ObservationIgnored private var hermesArchivedCountTask: Task<Void, Never>?
     /// The reconnect after a lost socket, on backoff while online and held while offline.
     @ObservationIgnored private let hermesReconnect: BotReconnectSchedule?
     /// False once the host answered `session.active_list` "method not found".
     @ObservationIgnored private var hermesReadsStatus = true
+    /// False once the host answered `approval.pending` "method not found" (#1679).
+    @ObservationIgnored private var hermesReadsApprovals = true
     /// A live-state read failed while a row was busy, so re-reads go on until one succeeds.
     @ObservationIgnored private var hermesRetriesStatus = false
     /// Sessions a chat opened from this list has just closed.
@@ -388,7 +394,7 @@ final class SessionListViewModel {
             totalScheduledCount: automatedVisibility.showsCron
                 ? (hermes != nil && !isViewingCachedData ? hermesScheduledTotal : sessions.filter { $0.isCronSession && $0.archived != true }.count)
                 : 0,
-            needsInput: liftsWaiting ? { self.attentionState(for: $0) == .input } : nil
+            needsInput: liftsWaiting ? { [.input, .approval].contains(self.attentionState(for: $0)) } : nil
         )
     }
 
@@ -1774,6 +1780,7 @@ final class SessionListViewModel {
         let wire = hermes.makeWire(hermes.connection)
         hermesWire = wire
         hermesReadsStatus = true
+        hermesReadsApprovals = true
         if sessions.isEmpty { isLoading = !showCachedHermesSessions(provisional: true) }
         wire.onEvent = { [weak self, weak wire] event in
             guard let self, let wire, self.hermesWire === wire, self.hermesIsListening,
@@ -1828,6 +1835,7 @@ final class SessionListViewModel {
         pauseHermes()
         hermesReconnect?.cancel()
         hermesReloadTask?.cancel(); hermesReloadTask = nil; hermesReloadWanted = false
+        hermesArchivedCountTask?.cancel(); hermesArchivedCountTask = nil
         hermesReadSerial += 1
         isLoading = false; isLoadingMoreSessions = false; isLoadingMoreScheduledSessions = false
         hermesWire?.close(); hermesWire = nil
@@ -1978,7 +1986,12 @@ final class SessionListViewModel {
             if isLoadingMoreSessions { isLoadingMoreSessions = false }
             if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
             startHermesStatusRead(wire)
-            if !hermesShowsAllProfiles { await readHermesProjects(wire, readSerial: serial) }
+            if !hermesShowsAllProfiles {
+                await readHermesProjects(wire, readSerial: serial)
+                startHermesArchivedCountRead(wire, readSerial: serial)
+            } else if archivedCount != nil {
+                archivedCount = nil
+            }
             await runAwaitedHermesSearch()
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
@@ -2194,7 +2207,7 @@ final class SessionListViewModel {
         hermesReadSerial += 1
         sessions = []; hasMoreSessions = false; isLoadingMoreSessions = false; isViewingCachedData = false
         hermesUnreadMarks = [:]; hermesReturnedFrom = []
-        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
+        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false; archivedCount = nil
         clearHermesSearchMatches()
         errorMessage = nil; sessionLoadError = nil
         setHermesStates([:]); setHermesReconnecting(false)
@@ -2218,7 +2231,7 @@ final class SessionListViewModel {
         isLoadingMoreScheduledSessions = false
         sessions = []; hasMoreSessions = false; isViewingCachedData = false
         hermesUnreadMarks = [:]; hermesReturnedFrom = []
-        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
+        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false; archivedCount = nil
         clearHermesSearchMatches()
         setHermesStates([:]); setHermesReconnecting(false)
         isLoading = true
@@ -2239,6 +2252,12 @@ final class SessionListViewModel {
               let rows = reply["profiles"].list else { return nil }
         let names = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty }
         if names != hermesProfiles { hermesProfiles = names }
+        let models = Dictionary(rows.compactMap { row -> (String, String)? in
+            guard let name = row["name"].text, let model = row["model"].text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty, !model.isEmpty else { return nil }
+            return (name, model)
+        }, uniquingKeysWith: { first, _ in first })
+        if models != hermesProfileModels { hermesProfileModels = models }
         // A list of every Profile names only those the host still has, so a pick removed elsewhere
         // shows up here rather than as a refused watch.
         if hermesShowsAllProfiles, let pick = hermesProfile, !names.isEmpty, !names.contains(pick) {
@@ -2338,10 +2357,10 @@ final class SessionListViewModel {
         }
     }
 
-    /// One `session.active_list`, mapped onto the listed rows by session key. A failed read keeps
-    /// the states as the last known ones; a host without the method shows none. While a row is
-    /// busy, or a read failed while one was, it reads again after `statusPollInterval`; once all
-    /// are idle it stops.
+    /// One `session.active_list`, mapped onto the listed rows by session key, then its waiting
+    /// rows told apart by `hermesPendingApprovals`. A failed read keeps the states as the last
+    /// known ones; a host without the method shows none. While a row is busy, or a read failed while
+    /// one was, it reads again after `statusPollInterval`; once all are idle it stops.
     private func readHermesStatuses(_ wire: any BotTransport) async {
         guard let hermes else { return }
         hermesStatusSerial += 1
@@ -2351,8 +2370,21 @@ final class SessionListViewModel {
             let reply = try await wire.call(.sessionActiveList)
             guard current() else { return }
             let listed = Set(sessions.compactMap(\.sessionId))
-            setHermesStates(SessionRowAttentionState.hermesStates(reply["sessions"].list ?? []).filter { listed.contains($0.key) })
+            let items = reply["sessions"].list ?? []
+            var states = SessionRowAttentionState.hermesStates(items).filter { listed.contains($0.key) }
+            let waiting = hermesReadsApprovals ? Self.hermesWaitingRuntimes(items, states: states) : []
+            // The states show at once; a waiting row that last showed Approval keeps it until its
+            // runtimes answer.
+            for (key, _) in waiting where attentionStatesBySessionID[key] == .approval { states[key] = .approval }
+            setHermesStates(states)
             hermesRetriesStatus = false
+            if !waiting.isEmpty {
+                let (pending, unsupported) = await hermesPendingApprovals(waiting, wire: wire)
+                guard current() else { return }
+                if unsupported { hermesReadsApprovals = false }
+                for (key, isPending) in pending { states[key] = isPending ? .approval : .input }
+                setHermesStates(states)
+            }
         } catch {
             guard current() else { return }
             if error as? BotFailure == .rejected(-32601) {
@@ -2365,6 +2397,49 @@ final class SessionListViewModel {
         }
         if attentionStatesBySessionID.isEmpty && !hermesRetriesStatus { hermesStatusTask = nil }
         else { startHermesStatusRead(wire, after: hermes.statusPollInterval) }
+    }
+
+    /// The waiting runtimes behind each Input row of one `session.active_list` reply, by session
+    /// key, for `hermesPendingApprovals`.
+    private static func hermesWaitingRuntimes(_ items: [BotJSON], states: [String: SessionRowAttentionState])
+        -> [(key: String, runtime: String)] {
+        items.compactMap { item in
+            guard let key = item["session_key"].text, states[key] == .input,
+                  BotLiveStatus(wire: item["status"].text) == .waiting,
+                  let runtime = item["id"].text, !runtime.isEmpty else { return nil }
+            return (key, runtime)
+        }
+    }
+
+    /// Whether each waiting row holds an unresolved approval (#1679): one `approval.pending` per
+    /// runtime, by its runtime id, all at once; a row with several is pending when any is. A row
+    /// with no pending answer and a failed read is absent, so it keeps what it showed, as webui's
+    /// probe does.
+    /// `unsupported` when the host answered "method not found", for the caller to apply only if
+    /// its read is still current.
+    private func hermesPendingApprovals(_ waiting: [(key: String, runtime: String)], wire: any BotTransport) async
+        -> (pending: [String: Bool], unsupported: Bool) {
+        await withTaskGroup(of: (key: String, pending: Bool?, unsupported: Bool).self) { group in
+            for (key, runtime) in waiting {
+                group.addTask { @MainActor in
+                    do {
+                        let reply = try await wire.call(.approvalPending(sessionID: runtime))
+                        return (key, !(reply["approvals"].list ?? []).isEmpty, false)
+                    } catch {
+                        return (key, nil, error as? BotFailure == .rejected(-32601))
+                    }
+                }
+            }
+            var result: (pending: [String: Bool], unsupported: Bool) = ([:], false)
+            var failed: Set<String> = []
+            for await answer in group {
+                result.unsupported = result.unsupported || answer.unsupported
+                if let pending = answer.pending { result.pending[answer.key] = result.pending[answer.key] == true || pending }
+                else { failed.insert(answer.key) }
+            }
+            for key in failed where result.pending[key] != true { result.pending[key] = nil }
+            return result
+        }
     }
 
     /// Writes only a real change, so an unchanged re-read never invalidates the rows.
@@ -2779,6 +2854,27 @@ final class SessionListViewModel {
         if projects != tree.projects { projects = tree.projects }
         showHermesPages(hermesPages, animation: nil)
         showHermesSearch(hermesSearchResults)
+    }
+
+    /// The listed Profile's archived session count, for its Archived row (#1679). It includes
+    /// room sessions the Archived screen hides, so it can run slightly high. A failed read keeps
+    /// the last count, nil until one answers. It runs on its own, replacing any read in flight,
+    /// so a slow count never holds the next list read back. Only a list read still current
+    /// replaces it: one a Profile switch or teardown left behind starts nothing.
+    private func startHermesArchivedCountRead(_ wire: any BotTransport, readSerial serial: Int) {
+        guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled, !hermesShowsAllProfiles else { return }
+        hermesArchivedCountTask?.cancel()
+        hermesArchivedCountTask = Task { [weak self] in
+            await self?.readHermesArchivedCount(wire, readSerial: serial)
+        }
+    }
+
+    private func readHermesArchivedCount(_ wire: any BotTransport, readSerial serial: Int) async {
+        guard let profile = hermesProfile,
+              let count = try? await wire.archivedSessionCount(profile: profile), !Task.isCancelled,
+              serial == hermesReadSerial, hermesWire === wire, hermesProfile == profile, !hermesShowsAllProfiles,
+              count != archivedCount else { return }
+        archivedCount = count
     }
 
     private func mutate(
