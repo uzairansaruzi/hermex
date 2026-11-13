@@ -786,13 +786,21 @@ struct ChatView: View {
             onDismissUploadAttachmentError: {
                 viewModel.setUploadAttachmentError(nil)
             },
+            // An unserved Profile or stale runtime is the host's state, not one attempt's.
+            onDismissError: viewModel.errorUnserved != nil || viewModel.sendErrorRuntimeStale != nil
+                ? nil : { viewModel.clearComposerErrors() },
             onSelectFileReference: { path in
                 viewModel.recordFileChipReference(path)
             },
             onFileReferenceCandidatesChange: { draft in
                 await viewModel.loadFileChipReferences(draft: draft)
             },
-            onDraftEdit: persistDraftEdit,
+            // Only typing clears an error: a restored draft (`/retry`, a prefill) keeps the
+            // error that came with it (#1694).
+            onDraftEdit: { text in
+                viewModel.clearComposerErrors()
+                persistDraftEdit(text)
+            },
             recallLastSentText: { viewModel.lastSentText },
             onPasteLargeText: isHermesSession ? { text in
                 viewModel.stagePastedText(text)

@@ -93,6 +93,11 @@ import Observation
         }
     }
 
+    /// Drops a refused or unconfirmed pick's error once the user moves on; a no-op when clear.
+    func clearError() {
+        if errorMessage != nil { errorMessage = nil }
+    }
+
     func disconnect() {
         if let activeAction, consumed.contains(activeAction) {
             errorMessage = BotSettingFailure.unknownOutcome.localizedDescription
