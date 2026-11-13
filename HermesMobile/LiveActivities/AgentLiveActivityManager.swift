@@ -870,6 +870,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 return
             }
             activity = requestedActivity
+            UsageReports.shared.record(.liveActivity)
             observePush(requestedActivity)
             if let latestState = currentState, latestState != state {
                 await requestedActivity.update(

@@ -392,7 +392,7 @@ Review notes and App Privacy answers must match the submitted build:
 
 - Hermex is a native client for a user-configured, self-hosted Hermes server,
   with no in-app account creation or purchase flow.
-- There is no tracking or third-party analytics. Account for what the server
+- There is no tracking; optional first-party usage reports. Account for what the server
   operator can access when providing an owner-hosted server to testers.
 - The composer supports camera capture, selected photos/files, and explicit
   voice input. Check permission descriptions against the app's current Info.plist.

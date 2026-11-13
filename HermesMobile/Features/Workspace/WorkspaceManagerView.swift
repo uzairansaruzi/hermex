@@ -74,6 +74,7 @@ struct WorkspaceManagerView: View {
             }
             .themedPageBackground()
             .navigationTitle("Manage Workspaces")
+            .onAppear { UsageReports.shared.record(.workspace) }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

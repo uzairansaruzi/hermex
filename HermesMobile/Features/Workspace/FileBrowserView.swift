@@ -42,6 +42,7 @@ struct FileBrowserView: View {
         }
         .themedPageBackground()
         .navigationTitle("Files")
+        .onAppear { UsageReports.shared.record(.workspace) }
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openedFile) { node in
             FilePreviewView(

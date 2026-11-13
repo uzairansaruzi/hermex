@@ -162,6 +162,7 @@ per-server:
 - Chat transcript display toggles (`ChatTranscriptDisplaySettings`: thinking/tool cards, attachment paths, timestamps, code-block wrap)
 - Streaming send behavior (`StreamingSendBehavior`)
 - Adaptive Glass preference (`adaptiveGlass.isEnabled`)
+- Usage reports (`UsageReports`, #1662): consent and the week's tallies are device-wide. One report counts every configured server and names none of them; see `usage-reports.md`.
 - **Primary-action tint *toggle*** (`PrimaryActionTintSettings.isEnabledKey`) — the
   on/off behavior is global; only the *color* it applies (Header Logo Color) is
   per-server.
