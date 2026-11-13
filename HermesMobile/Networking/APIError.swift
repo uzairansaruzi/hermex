@@ -44,7 +44,7 @@ enum APIError: LocalizedError {
                 return String(localized: "The server is receiving too many requests. Wait a moment, then try again.")
             case 500:
                 return String(localized: "The Hermes server hit an internal error. Check the server logs, then try again.")
-            case 502, 503, 504:
+            case 502, 503, 504, 520...530:
                 return String(localized: "Could not connect to the server. Check that it is running and your network connection is available.")
             default:
                 if let message = Self.displayableServerMessage(from: body) {

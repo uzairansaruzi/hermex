@@ -1,47 +1,74 @@
 import SwiftUI
 
 /// Every changed file in one scroll: sticky file headers, per-file collapse and viewed
-/// state, word-level highlights, and line selection that feeds the composer. Diffs
-/// load one file at a time (a few in flight) so the first file paints before the rest
-/// arrive; each file's rows build once, off the main thread, as its answer lands.
+/// state, word-level highlights, syntax colour for the rows on screen, optional line
+/// wrap (shared with the source viewer), and line selection that feeds the composer.
+/// Diffs load one file at a time (a few in flight) so the first file paints before the
+/// rest arrive; each file's rows build once, off the main thread, as its answer lands.
+/// Lockfiles, generated output, and huge changes fold once loaded (`ReviewDiffDefaultCollapse`),
+/// except the file the user tapped or a single-file review. Folds and viewed marks last as long as
+/// the chat (`ReviewProgressStore`), so a reopened review picks up where it was left; a file whose
+/// patch changed since it was marked viewed reopens unviewed and unfolded.
+/// With more than one file, a toolbar list (`GitDiffFileJumpList`) jumps to any of them.
 struct GitDiffView: View {
     let onAPIError: (Error) -> Void
-    /// Receives the selected lines as Markdown. Nil hides "Add to prompt", for hosts
-    /// with no composer to add to.
+    /// Appends a comment and its quoted lines to the chat draft, leaving this sheet
+    /// open for the next one. Nil hides Comment…, for hosts with no composer to add to.
     let onAddToPrompt: ((String) -> Void)?
+    /// Closes the Git presentation back to the chat; shown once a comment was added.
+    let onReturnToChat: (() -> Void)?
 
     /// Nil for a webui session without an ID.
     private let git: (any GitDataClient)?
     private let files: [GitFile]
     private let initialFile: GitFile?
+    /// The range `files` were listed in, which each diff reads (#1386).
+    private let scope: GitReviewScope
 
     @State private var rows: [ReviewDiffRow] = []
     @State private var rowsVersion = 0
     @State private var loadGeneration = 0
     @State private var hasLoaded = false
     @State private var isRefreshing = false
-    @State private var collapsedFileIDs: Set<String> = []
-    @State private var viewedFileIDs: Set<String> = []
+    /// Cancelled as the sheet leaves, so a late answer can't reach the chat's review progress.
+    @State private var refreshTask: Task<Void, Never>?
+    @State private var review: ReviewDiffProgress
     @State private var selection = ReviewDiffSelection()
+    @State private var commentComposer = ReviewCommentComposer()
     @State private var scrollTarget: ReviewDiffScrollTarget?
+    @State private var isShowingFileJump = false
+    @State private var highlights = ReviewDiffHighlightModel()
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     private static let maxConcurrentDiffLoads = 4
 
+    /// `scope` is the range `files` were listed in, and `base` the merge-base a branch's list was
+    /// read against, which keys its review progress apart (`GitDataClient.progressScope`).
     init(
         git: (any GitDataClient)?,
         files: [GitFile],
         initialFile: GitFile? = nil,
+        scope: GitReviewScope = .uncommitted,
+        base: String? = nil,
+        progress: ReviewProgressStore,
         onAPIError: @escaping (Error) -> Void,
-        onAddToPrompt: ((String) -> Void)? = nil
+        onAddToPrompt: ((String) -> Void)? = nil,
+        onReturnToChat: (() -> Void)? = nil
     ) {
         self.git = git
         self.files = files
         self.initialFile = initialFile
+        self.scope = scope
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
+        self.onReturnToChat = onReturnToChat
         _scrollTarget = State(initialValue: initialFile.map { ReviewDiffScrollTarget(fileID: $0.id, token: UUID()) })
+        let progressScope = git?.progressScope(scope, base: base)
+        _review = State(initialValue: ReviewDiffProgress(files: files, initialFile: initialFile, store: progress, scope: progressScope))
     }
 
     private var title: String {
@@ -51,24 +78,58 @@ struct GitDiffView: View {
 
     private var selectedRowIDs: Set<String> { selection.selectedRowIDs(in: rows) }
 
+    private var highlightAppearance: ReviewDiffHighlightModel.Appearance {
+        ReviewDiffHighlightModel.Appearance(isDark: colorScheme == .dark, increasedContrast: colorSchemeContrast == .increased)
+    }
+
     var body: some View {
         NavigationStack {
             content
+                .themedPageBackground()
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
+                    if files.count > 1 {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Changed files", systemImage: "list.bullet") { isShowingFileJump = true }
+                        }
+                    }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        diffActionsMenu
+                        Button("Done") { dismiss() }
+                    }
                 }
                 .safeAreaInset(edge: .bottom) {
                     let selected = selectedRowIDs
-                    if !selected.isEmpty { selectionBar(count: selected.count) }
+                    if !selected.isEmpty {
+                        selectionBar(count: selected.count)
+                    } else if commentComposer.addedCount > 0 {
+                        ReviewCommentStatusBar(addedCount: commentComposer.addedCount, onReturnToChat: onReturnToChat)
+                    }
+                }
+                .sheet(item: $commentComposer.context) { context in
+                    ReviewCommentSheet(context: context, onAdd: addComment)
                 }
                 .task {
                     guard !hasLoaded else { return }
                     hasLoaded = true
                     await load()
                 }
+                .sheet(isPresented: $isShowingFileJump) {
+                    GitDiffFileJumpList(files: files, viewedFileIDs: review.viewedFileIDs) { file in
+                        isShowingFileJump = false
+                        scrollTarget = Self.jump(to: file.id, review: &review)
+                    }
+                }
+                .onChange(of: highlightAppearance, initial: true) { highlights.setAppearance(highlightAppearance) }
+                .onChange(of: review.collapsedFileIDs, initial: true) { highlights.setCollapsedFileIDs(review.collapsedFileIDs) }
         }
+        // On the sheet's root, so only dismissal (not a pushed screen) stops colour.
+        .onDisappear {
+            refreshTask?.cancel()
+            highlights.cancel()
+        }
+        .themedPageBackground()
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
     }
@@ -81,58 +142,66 @@ struct GitDiffView: View {
             ReviewDiffSurface(
                 rows: rows,
                 rowsVersion: rowsVersion,
-                collapsedFileIDs: collapsedFileIDs,
-                viewedFileIDs: viewedFileIDs,
+                collapsedFileIDs: review.collapsedFileIDs,
+                viewedFileIDs: review.viewedFileIDs,
                 selectedRowIDs: selectedRowIDs,
                 isRefreshing: isRefreshing,
                 scrollTarget: scrollTarget,
+                wrapsLines: wrapsLines,
+                tokensByRowID: highlights.tokensByRowID,
+                tokensVersion: highlights.tokensVersion,
+                onVisibleRowRangeChange: { highlights.visibleRowRangeChanged($0) },
                 onToggleFile: toggleFile,
                 onToggleViewed: toggleViewed,
                 onLinePress: handleLinePress,
-                onRefresh: { Task { await refresh() } }
+                onRefresh: {
+                    refreshTask?.cancel()
+                    refreshTask = Task { await refresh() }
+                }
             )
         }
+    }
+
+    /// Presentation options for the whole sheet, matching the source viewer's menu.
+    private var diffActionsMenu: some View {
+        Menu {
+            Toggle("Wrap Lines", systemImage: "text.justify.leading", isOn: $wrapsLines)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More")
     }
 
     private func selectionBar(count: Int) -> some View {
         HStack(spacing: 12) {
             Text(count == 1 ? String(localized: "1 line selected") : String(localized: "\(count) lines selected"))
                 .font(AppFont.footnote(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
             Spacer(minLength: 8)
             Button("Clear") { selection.clear() }
                 .font(AppFont.footnote())
             if onAddToPrompt != nil {
-                Button("Add to prompt", action: addToPrompt)
+                Button("Comment…") { commentComposer.context = selection.commentContext(in: rows) }
                     .font(AppFont.footnote(weight: .semibold))
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(.appMaterial(.bar))
         .accessibilityElement(children: .contain)
     }
 
     // MARK: - Interaction
 
     private func toggleFile(_ fileID: String) {
-        if collapsedFileIDs.contains(fileID) {
-            collapsedFileIDs.remove(fileID)
-        } else {
-            collapsedFileIDs.insert(fileID)
-        }
+        review.toggleFile(fileID)
         ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
     }
 
     /// Marking a file viewed also collapses it; un-viewing leaves it collapsed.
     private func toggleViewed(_ fileID: String) {
-        if viewedFileIDs.contains(fileID) {
-            viewedFileIDs.remove(fileID)
-        } else {
-            viewedFileIDs.insert(fileID)
-            collapsedFileIDs.insert(fileID)
-        }
+        review.toggleViewed(fileID)
         ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
     }
 
@@ -144,9 +213,9 @@ struct GitDiffView: View {
         ChatHaptics.diffLineSelected(isEnabled: isHapticsEnabled)
     }
 
-    private func addToPrompt() {
-        guard let snippet = selection.snippet(in: rows) else { return }
-        onAddToPrompt?(snippet)
+    private func addComment(_ comment: String) {
+        guard let markdown = commentComposer.add(comment: comment) else { return }
+        onAddToPrompt?(markdown)
         ChatHaptics.addedToPrompt(isEnabled: isHapticsEnabled)
         selection.clear()
     }
@@ -156,6 +225,7 @@ struct GitDiffView: View {
     private func refresh() async {
         isRefreshing = true
         selection.clear()
+        commentComposer.discard()
         await load()
         isRefreshing = false
     }
@@ -164,16 +234,18 @@ struct GitDiffView: View {
     private func load() async {
         loadGeneration += 1
         let generation = loadGeneration
+        // A refresh can reuse row ids for different text; colour starts over.
+        highlights.reset()
         guard let git else {
             let message = String(localized: "Session ID is missing.")
-            publish(files.flatMap { ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: $0, state: .failed(message))) })
+            publish(files.flatMap { ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: $0, state: .failed(message))) }, patches: [:])
             return
         }
         await ReviewDiffLoader.load(
             files: files,
             firstFile: initialFile,
             maxConcurrent: Self.maxConcurrentDiffLoads,
-            fetch: { file in await Self.fetchDiff(for: file, git: git) },
+            fetch: { [scope] file in await Self.fetchDiff(for: file, in: scope, git: git) },
             // A dismissed sheet or a newer load owns the rest.
             isCurrent: { generation == loadGeneration },
             publish: publish,
@@ -181,15 +253,18 @@ struct GitDiffView: View {
         )
     }
 
-    private func publish(_ built: [ReviewDiffRow]) {
+    private func publish(_ built: [ReviewDiffRow], patches: [String: Int]) {
         rows = built
+        review.apply(built, patches: patches)
         rowsVersion += 1
+        highlights.setRows(built)
     }
 
     /// Nil when the request was cancelled: not a failure to show or report.
-    private static func fetchDiff(for file: GitFile, git: any GitDataClient) async -> ReviewDiffLoader.FileResult? {
+    private static func fetchDiff(for file: GitFile, in scope: GitReviewScope,
+                                  git: any GitDataClient) async -> ReviewDiffLoader.FileResult? {
         do {
-            guard let diff = try await git.diff(for: file) else {
+            guard let diff = try await git.diff(for: file, in: scope) else {
                 return ReviewDiffLoader.FileResult(fileID: file.id, state: .failed(String(localized: "Could Not Load Changes")), error: nil)
             }
             return ReviewDiffLoader.FileResult(fileID: file.id, state: .loaded(diff), error: nil)
@@ -212,10 +287,11 @@ struct GitDiffView: View {
 }
 
 /// Fetches per-file diffs a few at a time (the first file first) and publishes the
-/// flat row list as answers land. Each file's rows build once, next to its fetch and
-/// off the main actor, so a landed answer never re-parses the files before it. The
-/// first answer publishes at once; later ones coalesce to one publish per `interval`
-/// or per `batch` answers, so a large change set lays out a bounded number of times.
+/// flat row list as answers land, with each loaded file's patch fingerprint
+/// (`ReviewDiffProgress.patch(for:state:)`). Each file's rows and fingerprint build once,
+/// next to its fetch and off the main actor, so a landed answer never re-parses the files
+/// before it. The first answer publishes at once; later ones coalesce to one publish per
+/// `interval` or per `batch` answers, so a large change set lays out a bounded number of times.
 enum ReviewDiffLoader {
     struct FileResult {
         let fileID: String
@@ -232,7 +308,7 @@ enum ReviewDiffLoader {
 
     private enum Event {
         /// Nil when the fetch was cancelled.
-        case file(FileResult?, [ReviewDiffRow])
+        case file(FileResult?, [ReviewDiffRow], patch: Int?)
         /// Carries the token it was scheduled with; a publish in between makes it stale.
         case flush(Int)
     }
@@ -248,20 +324,21 @@ enum ReviewDiffLoader {
         fetch: @escaping @Sendable (GitFile) async -> FileResult?,
         buildRows: @escaping @Sendable (ReviewDiffFileInput) -> [ReviewDiffRow] = { ReviewDiffRowBuilder.rows(for: $0) },
         isCurrent: () -> Bool,
-        publish: ([ReviewDiffRow]) -> Void,
+        publish: (_ rows: [ReviewDiffRow], _ patches: [String: Int]) -> Void,
         onError: (Error) -> Void
     ) async {
         var rowsByFileID: [String: [ReviewDiffRow]] = [:]
         for file in files {
             rowsByFileID[file.id] = ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: file, state: .loading))
         }
+        var patchesByFileID: [String: Int] = [:]
         let clock = ContinuousClock()
         var lastPublish: ContinuousClock.Instant?
         var pending = 0
         var scheduledFlush: Int?
         var flushCount = 0
         func publishRows() {
-            publish(files.flatMap { rowsByFileID[$0.id] ?? [] })
+            publish(files.flatMap { rowsByFileID[$0.id] ?? [] }, patchesByFileID)
             pending = 0
             // Answers after this publish get a fresh interval, not the rest of an old one.
             scheduledFlush = nil
@@ -281,8 +358,9 @@ enum ReviewDiffLoader {
                 guard let file = queue.next() else { return }
                 inFlight += 1
                 group.addTask {
-                    guard let result = await fetch(file) else { return .file(nil, []) }
-                    return .file(result, buildRows(ReviewDiffFileInput(file: file, state: result.state)))
+                    guard let result = await fetch(file) else { return .file(nil, [], patch: nil) }
+                    let rows = buildRows(ReviewDiffFileInput(file: file, state: result.state))
+                    return .file(result, rows, patch: ReviewDiffProgress.patch(for: file, state: result.state))
                 }
             }
             for _ in 0..<maxConcurrent { enqueueNext() }
@@ -299,10 +377,11 @@ enum ReviewDiffLoader {
                         publishRows()
                         lastPublish = clock.now
                     }
-                case .file(let result, let rows):
+                case .file(let result, let rows, let patch):
                     inFlight -= 1
                     guard let result else { continue }
                     rowsByFileID[result.fileID] = rows
+                    patchesByFileID[result.fileID] = patch
                     pending += 1
                     if let error = result.error, !reportedError {
                         reportedError = true

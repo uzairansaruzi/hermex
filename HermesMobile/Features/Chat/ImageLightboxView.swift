@@ -55,16 +55,19 @@ enum ImageLightboxGesturePolicy {
 /// keeps the chrome up, because a hidden Done button is not a way out.
 ///
 /// The caller supplies the loaded image and any toolbar actions; use
-/// `ImageLightboxActionButton` for those so an empty action list draws nothing.
+/// `ImageLightboxActionButton` for those so an empty action list draws nothing. Inside
+/// `ImageLightboxPager`, `page` adds the "2 of 4" counter and shares chrome and zoom
+/// with the pager.
 struct ImageLightboxView<Actions: View>: View {
     let content: ImageLightboxContent
     let title: String
     let path: String?
     let imageAccessibilityLabel: String
+    let page: ImageLightboxPage?
     let onRetry: () -> Void
     let actions: Actions
 
-    @State private var showsChrome = true
+    @State private var ownShowsChrome = true
     @State private var isZoomed = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -75,6 +78,7 @@ struct ImageLightboxView<Actions: View>: View {
         title: String,
         path: String?,
         imageAccessibilityLabel: String,
+        page: ImageLightboxPage? = nil,
         onRetry: @escaping () -> Void,
         @ViewBuilder actions: () -> Actions
     ) {
@@ -82,6 +86,7 @@ struct ImageLightboxView<Actions: View>: View {
         self.title = title
         self.path = path
         self.imageAccessibilityLabel = imageAccessibilityLabel
+        self.page = page
         self.onRetry = onRetry
         self.actions = actions()
     }
@@ -97,11 +102,21 @@ struct ImageLightboxView<Actions: View>: View {
         .preferredColorScheme(.dark)
     }
 
+    private var showsChrome: Binding<Bool> {
+        page?.showsChrome ?? $ownShowsChrome
+    }
+
+    /// "2 of 4", only in a gallery of more than one.
+    private var positionText: String? {
+        guard let position = page?.position, position.count > 1 else { return nil }
+        return String(localized: "\(position.index + 1) of \(position.count)")
+    }
+
     /// The chrome hides only once there is an image to look at: while loading or after a
     /// failure the way out has to stay on screen.
     private var isChromeVisible: Bool {
         guard case .image = content, !voiceOverEnabled else { return true }
-        return showsChrome && !isZoomed
+        return showsChrome.wrappedValue && !isZoomed
     }
 
     @ViewBuilder
@@ -112,7 +127,7 @@ struct ImageLightboxView<Actions: View>: View {
                 ProgressView()
                     .tint(.white)
                 Text(message)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .foregroundStyle(.white.opacity(0.6))
             }
 
@@ -120,14 +135,20 @@ struct ImageLightboxView<Actions: View>: View {
             ZoomableImageView(
                 image: image,
                 reduceMotion: reduceMotion,
-                onSingleTap: { showsChrome.toggle() },
-                onZoomChange: { isZoomed = $0 },
+                onSingleTap: { showsChrome.wrappedValue.toggle() },
+                onZoomChange: { zoomed in
+                    guard zoomed != isZoomed else { return }
+                    isZoomed = zoomed
+                    page?.onZoomChange(zoomed)
+                },
                 onDismiss: { dismiss() }
             )
             .ignoresSafeArea()
             .accessibilityElement()
             .accessibilityLabel(imageAccessibilityLabel)
+            .accessibilityValue(positionText ?? "")
             .accessibilityAddTraits(.isImage)
+            .modifier(ImageLightboxStepAction(onStep: positionText == nil ? nil : page?.onStep))
 
         case let .failure(message):
             VStack(spacing: 14) {
@@ -135,7 +156,7 @@ struct ImageLightboxView<Actions: View>: View {
                     .font(.system(size: 30))
                     .foregroundStyle(.white.opacity(0.6))
                 Text(message)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.85))
                 Button("Try Again", action: onRetry)
@@ -163,12 +184,24 @@ struct ImageLightboxView<Actions: View>: View {
 
     private var topBar: some View {
         ZStack {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 88)
+            VStack(spacing: 1) {
+                Text(title)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.white)
+
+                if let positionText {
+                    Text(positionText)
+                        .font(AppFont.caption())
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.6))
+                        .fixedSize()
+                        // The image already reads it as its value.
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 88)
 
             HStack(spacing: 10) {
                 ImageLightboxActionButton(
@@ -189,7 +222,7 @@ struct ImageLightboxView<Actions: View>: View {
     private func caption(path: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(path)
-                .font(.caption2)
+                .font(AppFont.caption2())
                 .fontDesign(.monospaced)
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(2)
@@ -197,7 +230,7 @@ struct ImageLightboxView<Actions: View>: View {
 
             if case let .image(_, detail) = content, let detail {
                 Text(detail)
-                    .font(.caption2)
+                    .font(AppFont.caption2())
                     .foregroundStyle(.white.opacity(0.5))
             }
         }
@@ -221,6 +254,7 @@ extension ImageLightboxView where Actions == EmptyView {
         title: String,
         path: String?,
         imageAccessibilityLabel: String,
+        page: ImageLightboxPage? = nil,
         onRetry: @escaping () -> Void
     ) {
         self.init(
@@ -228,9 +262,30 @@ extension ImageLightboxView where Actions == EmptyView {
             title: title,
             path: path,
             imageAccessibilityLabel: imageAccessibilityLabel,
+            page: page,
             onRetry: onRetry,
             actions: { EmptyView() }
         )
+    }
+}
+
+/// A gallery image is adjustable for VoiceOver: swiping up or down moves to the next or
+/// previous image, and the image reads its new "3 of 4".
+private struct ImageLightboxStepAction: ViewModifier {
+    let onStep: ((Int) -> Void)?
+
+    func body(content: Content) -> some View {
+        if let onStep {
+            content.accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: onStep(1)
+                case .decrement: onStep(-1)
+                @unknown default: break
+                }
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -260,7 +315,7 @@ struct ImageLightboxActionButton: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
-                .background(.ultraThinMaterial, in: Circle())
+                .background(.appMaterial(.ultraThinMaterial), in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)

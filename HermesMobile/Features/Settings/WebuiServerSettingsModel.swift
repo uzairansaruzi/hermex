@@ -1,9 +1,8 @@
-import SwiftData
 import SwiftUI
 
 /// The active webui server's settings state (#1252): its status and version, the in-app update
-/// (#180, #308), its default model and profile, its session visibility (#19), and its offline
-/// cache. `load()` runs each time the server's page appears.
+/// (#180, #308), its default model and profile, and its session visibility (#19). `load()` runs
+/// each time the server's page appears.
 @MainActor @Observable final class WebuiServerSettingsModel {
     let server: URL
     let cliSessionsSync: CliSessionsSyncModel
@@ -26,9 +25,6 @@ import SwiftUI
     var isLoadingDefaultProfile = false
     var showsDefaultModelPicker = false
     var showsDefaultProfilePicker = false
-    var isConfirmingClearCache = false
-    var isClearingCache = false
-    var cacheStatusMessage: String?
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.server = server
@@ -252,25 +248,6 @@ import SwiftUI
             updateApplyPhase = .idle
             updateApplyMessage = nil
         }
-    }
-
-    func clearOfflineCache(in modelContext: ModelContext) async {
-        guard !isClearingCache else {
-            return
-        }
-
-        isClearingCache = true
-        do {
-            // Scoped to the active server only, so clearing one server's cache
-            // never wipes another configured server's offline data (#18).
-            try CacheStore.clearCache(for: server, in: modelContext)
-            try await BotHistoryCache.shared.remove(server: server)
-            await BotRosterCache.shared.remove(server: server)
-            cacheStatusMessage = String(localized: "This server's offline cache was cleared.")
-        } catch {
-            cacheStatusMessage = String(localized: "Could not clear offline cache.")
-        }
-        isClearingCache = false
     }
 }
 

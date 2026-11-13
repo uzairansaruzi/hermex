@@ -14,16 +14,19 @@ struct InsightsView: View {
         self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
     }
 
-    /// The usage `client` reads: on a Hermes host, `profile`'s.
-    init(client: any InsightsDataClient, profile: String? = nil, onAPIError: @escaping (Error) -> Void) {
+    /// The usage `client` reads: on a Hermes host, `profile`'s, whose limits also go to the Limits
+    /// widget under `limitsScope` (#1409).
+    init(client: any InsightsDataClient, profile: String? = nil, limitsScope: ProviderLimitsPublisher.Scope? = nil,
+         onAPIError: @escaping (Error) -> Void) {
         self.onAPIError = onAPIError
         self.profile = profile
-        _viewModel = State(initialValue: InsightsViewModel(client: client))
+        _viewModel = State(initialValue: InsightsViewModel(client: client, publishesLimits: limitsScope))
     }
 
     var body: some View {
         content
             .modifier(UsageTitle(profile: profile))
+            .onAppear { UsageReports.shared.record(.insights) }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -114,7 +117,8 @@ struct InsightsView: View {
                 if viewModel.showsLimits {
                     ProviderLimitsSection(
                         cards: viewModel.limitCards,
-                        isLoading: viewModel.isLoadingLimits
+                        isLoading: viewModel.isLoadingLimits,
+                        refreshFailed: !viewModel.staleLimitIDs.isEmpty
                     )
                 }
 
@@ -137,6 +141,7 @@ struct InsightsView: View {
                     buckets: viewModel.chartBuckets,
                     metric: $viewModel.metric,
                     showsMetricToggle: viewModel.showsMetricToggle,
+                    showsChart: viewModel.loadedTimeframe.showsChart,
                     windowTotal: viewModel.heroFigure,
                     hourlyNote: viewModel.hourlyChartNote,
                     chartAccessibilityLabel: viewModel.chartAccessibilityLabel
@@ -157,7 +162,7 @@ struct InsightsView: View {
 
                 Text(viewModel.sourceDescription)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 16)
@@ -194,12 +199,12 @@ private struct UsageTitle: ViewModifier {
     func body(content: Content) -> some View {
         if let profile {
             if #available(iOS 26, *) {
-                content.navigationTitle("Usage").navigationSubtitle(profile)
+                content.themedPageBackground().navigationTitle("Usage").navigationSubtitle(profile)
             } else {
-                content.navigationTitle(Text(verbatim: "\(String(localized: "Usage")) · \(profile)"))
+                content.themedPageBackground().navigationTitle(Text(verbatim: "\(String(localized: "Usage")) · \(profile)"))
             }
         } else {
-            content.navigationTitle("Usage")
+            content.themedPageBackground().navigationTitle("Usage")
         }
     }
 }

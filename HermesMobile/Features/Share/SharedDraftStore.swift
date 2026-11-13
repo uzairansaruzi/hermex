@@ -7,20 +7,94 @@ struct SharedDraftPayload: Codable, Equatable {
     let draft: String?
     let createdAt: Date?
     let attachments: [SharedAttachmentPayload]?
+    /// Where the record came from: nil for a share, else the `ImportedTextOrigin` of a queued
+    /// chat text (#1402, #1476). A value this build doesn't know never opens anywhere.
+    let source: String?
+    /// A Shortcut's bound destination: its `SharedShortcutDestination.serverKey` and, optionally,
+    /// its Profile.
+    let serverKey: String?
+    /// The server's URL as records written before #1509 stored it. Only read, for those records.
+    let server: String?
+    let profile: String?
+    /// What the share left out (#1401); absent in payloads written before it.
+    let skippedItems: [SharedSkippedItem]?
+    let additionalSkippedCount: Int?
 
     init(
         version: Int? = nil,
         id: String? = nil,
         draft: String,
         createdAt: Date,
-        attachments: [SharedAttachmentPayload] = []
+        attachments: [SharedAttachmentPayload] = [],
+        shortcut: SharedShortcutDestination? = nil,
+        skipped: SharedSkips = SharedSkips()
     ) {
         self.version = version
         self.id = id
         self.draft = draft
         self.createdAt = createdAt
         self.attachments = attachments.isEmpty ? nil : attachments
+        source = shortcut?.origin.rawValue
+        serverKey = shortcut?.serverKey
+        server = nil
+        profile = shortcut?.profile
+        skippedItems = skipped.items.isEmpty ? nil : skipped.items
+        additionalSkippedCount = skipped.additionalCount == 0 ? nil : skipped.additionalCount
     }
+
+    var skipped: SharedSkips {
+        SharedSkips(skippedItems ?? [], additionalCount: max(0, additionalSkippedCount ?? 0))
+    }
+}
+
+/// Where a queued chat text came from: a Shortcut (#1402) or About's Troubleshoot with Hermes
+/// (#1476). Stored as the record's `source` and on the draft it joins, it picks the review
+/// notice's wording; the text opens the same way either way.
+enum ImportedTextOrigin: String, Codable {
+    case shortcut
+    case troubleshooting
+}
+
+/// The server, and optionally the Profile, a queued chat text opens on (#1402). Fixed when the
+/// text is queued, so no later server switch can send it anywhere else.
+struct SharedShortcutDestination: Equatable {
+    /// A digest of the server's URL, so the queued record holds no server URL (#1509). The app
+    /// matches it against the servers it has configured, so a removed server can't be named.
+    let serverKey: String
+    /// Nil opens in the Profile the server's New Session uses.
+    let profile: String?
+    var origin: ImportedTextOrigin = .shortcut
+
+    init(server: URL, profile: String?, origin: ImportedTextOrigin = .shortcut) {
+        self.init(serverKey: Self.key(server), profile: profile, origin: origin)
+    }
+
+    fileprivate init(serverKey: String, profile: String?, origin: ImportedTextOrigin) {
+        self.serverKey = serverKey
+        self.profile = profile
+        self.origin = origin
+    }
+
+    func opens(on server: URL) -> Bool { serverKey == Self.key(server) }
+
+    fileprivate static func key(_ server: URL) -> String {
+        SHA256.hash(data: Data(server.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// Which waiting records a reservation may take: shares, Shortcut texts (#1402), or both.
+struct SharedImportKinds: OptionSet {
+    let rawValue: Int
+    static let shares = SharedImportKinds(rawValue: 1 << 0)
+    static let shortcutTexts = SharedImportKinds(rawValue: 1 << 1)
+    static let all: SharedImportKinds = [.shares, .shortcutTexts]
+}
+
+/// Why a Shortcut's text wasn't queued (#1402). Nothing was written.
+enum SharedShortcutTextError: Error, Equatable {
+    case empty
+    case tooLong
+    case tooManyWaiting
 }
 
 struct SharedAttachmentPayload: Codable, Equatable {
@@ -43,9 +117,64 @@ struct SharedAttachmentImport: Equatable {
     let data: Data
 }
 
+/// A shared item the extension or inbox left out of a share (#1401), and why. A reason a later
+/// version adds decodes as nil, so its share still opens.
+struct SharedSkippedItem: Codable, Equatable {
+    enum Reason: String, Codable {
+        /// Over `HermesShareDraft.maximumSharedAttachmentBytes`.
+        case tooLarge
+        /// Its bytes couldn't be read, or were empty.
+        case unreadable
+        /// A file of a kind Hermex doesn't attach.
+        case unsupported
+        /// Past `HermesShareDraft.maximumSharedAttachmentCount`; such items carry no filename.
+        case overLimit
+    }
+
+    let filename: String?
+    let reason: Reason?
+
+    init(filename: String?, reason: Reason) {
+        self.filename = filename
+        self.reason = reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        filename = try? container.decodeIfPresent(String.self, forKey: .filename)
+        reason = (try? container.decodeIfPresent(String.self, forKey: .reason)).flatMap(Reason.init(rawValue:))
+    }
+}
+
+/// A share's left-out items: the first `maximumItems` in detail, the rest only counted, so a
+/// share of hundreds of files stays a small record.
+struct SharedSkips: Equatable {
+    static let maximumItems = 20
+
+    private(set) var items: [SharedSkippedItem] = []
+    private(set) var additionalCount = 0
+
+    init(_ items: [SharedSkippedItem] = [], additionalCount: Int = 0) {
+        self.items = Array(items.prefix(Self.maximumItems))
+        self.additionalCount = additionalCount + max(0, items.count - Self.maximumItems)
+    }
+
+    var count: Int { items.count + additionalCount }
+    var isEmpty: Bool { count == 0 }
+
+    func adding(_ more: [SharedSkippedItem]) -> SharedSkips {
+        SharedSkips(items + more, additionalCount: additionalCount)
+    }
+}
+
 struct SharedImport: Equatable {
+    /// A share's text, trimmed; a Shortcut's exactly as it ran.
     let draft: String
     let attachments: [SharedAttachmentImport]
+    /// Set for a Shortcut's text, which opens only here.
+    var shortcut: SharedShortcutDestination?
+    /// Not part of the share's content: two shares that differ only here are the same share.
+    var skipped = SharedSkips()
 
     var isEmpty: Bool {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty
@@ -82,6 +211,11 @@ enum HermesShareDraft {
     static let temporaryItemsDirectoryName = "temporary"
     static let reservationLifetime: TimeInterval = 15 * 60
     static let temporaryItemLifetime: TimeInterval = 24 * 60 * 60
+    /// A Shortcut's text left unopened this long is dropped.
+    static let shortcutTextLifetime: TimeInterval = 24 * 60 * 60
+    static let maximumShortcutTextBytes = 100 * 1_024
+    static let maximumWaitingShortcutTexts = 10
+    private static let shortcutItemPrefix = "shortcut-"
 
     private static let currentPayloadVersion = 1
     private static let payloadFileName = "payload.json"
@@ -157,11 +291,12 @@ enum HermesShareDraft {
     static func savePendingImport(
         draft: String,
         attachments: [SharedAttachmentImport],
+        skipped: [SharedSkippedItem] = [],
         in directory: URL,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws {
-        let normalizedImport = normalizedImport(draft: draft, attachments: attachments)
+        let normalizedImport = normalizedImport(draft: draft, attachments: attachments, skipped: SharedSkips(skipped))
         guard !normalizedImport.isEmpty else {
             return
         }
@@ -170,6 +305,46 @@ enum HermesShareDraft {
         try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
         try enqueue(
             normalizedImport,
+            itemID: contentID(for: normalizedImport),
+            createdAt: now,
+            in: directory,
+            fileManager: fileManager
+        )
+    }
+
+    /// Queues a chat text for `destination` exactly as given, from a Shortcut (#1402) or About
+    /// (#1476): each run is its own record, so the same text run twice opens twice, in order.
+    /// Throws, writing nothing, for blank or oversized text, or when too many wait already.
+    static func saveShortcutText(
+        _ text: String,
+        for destination: SharedShortcutDestination,
+        in directory: URL,
+        fileManager: FileManager = .default,
+        now: Date = Date()
+    ) throws {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw SharedShortcutTextError.empty
+        }
+        guard text.utf8.count <= maximumShortcutTextBytes else {
+            throw SharedShortcutTextError.tooLong
+        }
+
+        try prepareInbox(in: directory, fileManager: fileManager)
+        try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
+        let waiting = try (itemDirectoryURLs(at: pendingItemsURL(in: directory), fileManager: fileManager)
+            + itemDirectoryURLs(at: reservedItemsURL(in: directory), fileManager: fileManager))
+            .filter { kind(of: $0) == .shortcutTexts }
+            .filter { url in
+                guard let createdAt = payloadCreatedAt(in: url) else { return false }
+                return now.timeIntervalSince(createdAt) < shortcutTextLifetime
+            }
+        guard waiting.count < maximumWaitingShortcutTexts else {
+            throw SharedShortcutTextError.tooManyWaiting
+        }
+
+        try enqueue(
+            SharedImport(draft: text, attachments: [], shortcut: destination),
+            itemID: shortcutItemPrefix + UUID().uuidString,
             createdAt: now,
             in: directory,
             fileManager: fileManager
@@ -180,7 +355,8 @@ enum HermesShareDraft {
         from directory: URL,
         fileManager: FileManager = .default,
         now: Date = Date(),
-        reservationTimeout: TimeInterval = reservationLifetime
+        reservationTimeout: TimeInterval = reservationLifetime,
+        kinds: SharedImportKinds = .all
     ) throws -> SharedImportReservation? {
         try prepareInbox(in: directory, fileManager: fileManager)
         try migrateLegacyPendingImportIfNeeded(in: directory, fileManager: fileManager, now: now)
@@ -192,7 +368,8 @@ enum HermesShareDraft {
         )
         try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
 
-        for pendingURL in try sortedPendingItemURLs(in: directory, fileManager: fileManager) {
+        for pendingURL in try sortedPendingItemURLs(in: directory, fileManager: fileManager)
+            where kinds.contains(kind(of: pendingURL)) {
             let itemID = pendingURL.lastPathComponent
             let reservedURL = reservedItemURL(for: itemID, in: directory)
 
@@ -222,8 +399,10 @@ enum HermesShareDraft {
                 throw error
             }
 
-            guard let loaded = try? loadImport(from: reservedURL), !loaded.sharedImport.isEmpty else {
-                // A malformed or incomplete record must not block later valid shares.
+            guard let loaded = try? loadImport(from: reservedURL), !loaded.sharedImport.isEmpty,
+                  loaded.sharedImport.shortcut == nil
+                    || now.timeIntervalSince(loaded.createdAt) < shortcutTextLifetime else {
+                // A malformed, incomplete or expired record must not block later valid shares.
                 try? fileManager.removeItem(at: reservedURL)
                 continue
             }
@@ -243,7 +422,8 @@ enum HermesShareDraft {
         in directory: URL,
         fileManager: FileManager = .default,
         now: Date = Date(),
-        reservationTimeout: TimeInterval = reservationLifetime
+        reservationTimeout: TimeInterval = reservationLifetime,
+        kinds: SharedImportKinds = .all
     ) throws -> Bool {
         try prepareInbox(in: directory, fileManager: fileManager)
         try migrateLegacyPendingImportIfNeeded(in: directory, fileManager: fileManager, now: now)
@@ -254,7 +434,12 @@ enum HermesShareDraft {
             reservationTimeout: reservationTimeout
         )
         try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
-        return try !sortedPendingItemURLs(in: directory, fileManager: fileManager).isEmpty
+        return try sortedPendingItemURLs(in: directory, fileManager: fileManager).contains { kinds.contains(kind(of: $0)) }
+    }
+
+    /// A waiting record's kind, from its id: a Shortcut's text has its own prefix (`saveShortcutText`).
+    private static func kind(of itemURL: URL) -> SharedImportKinds {
+        itemURL.lastPathComponent.hasPrefix(shortcutItemPrefix) ? .shortcutTexts : .shares
     }
 
     static func consume(
@@ -335,23 +520,32 @@ enum HermesShareDraft {
         case reservationNoLongerOwned
     }
 
+    /// The share as the inbox stores it, adding to `skipped` each attachment it drops: empty,
+    /// oversized, or past the count limit.
     private static func normalizedImport(
         draft: String,
-        attachments: [SharedAttachmentImport]
+        attachments: [SharedAttachmentImport],
+        skipped: SharedSkips = SharedSkips()
     ) -> SharedImport {
         let trimmedDraft = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let uploadableAttachments = attachments
-            .filter { !$0.data.isEmpty && $0.data.count <= maximumSharedAttachmentBytes }
-            .prefix(maximumSharedAttachmentCount)
-            .map {
-                SharedAttachmentImport(
-                    filename: sanitizedFilename($0.filename),
-                    typeIdentifier: $0.typeIdentifier,
-                    data: $0.data
+        var uploadableAttachments: [SharedAttachmentImport] = []
+        var dropped: [SharedSkippedItem] = []
+        for attachment in attachments {
+            let filename = sanitizedFilename(attachment.filename)
+            if attachment.data.isEmpty {
+                dropped.append(SharedSkippedItem(filename: filename, reason: .unreadable))
+            } else if attachment.data.count > maximumSharedAttachmentBytes {
+                dropped.append(SharedSkippedItem(filename: filename, reason: .tooLarge))
+            } else if uploadableAttachments.count == maximumSharedAttachmentCount {
+                dropped.append(SharedSkippedItem(filename: nil, reason: .overLimit))
+            } else {
+                uploadableAttachments.append(
+                    SharedAttachmentImport(filename: filename, typeIdentifier: attachment.typeIdentifier, data: attachment.data)
                 )
             }
+        }
 
-        return SharedImport(draft: trimmedDraft, attachments: uploadableAttachments)
+        return SharedImport(draft: trimmedDraft, attachments: uploadableAttachments, skipped: skipped.adding(dropped))
     }
 
     private static func prepareInbox(in directory: URL, fileManager: FileManager) throws {
@@ -367,13 +561,15 @@ enum HermesShareDraft {
         }
     }
 
+    /// Writes `sharedImport` as `itemID`. A share's id is its content hash, so a record already
+    /// waiting under it is the same share and nothing is written; a Shortcut's id is its own.
     private static func enqueue(
         _ sharedImport: SharedImport,
+        itemID: String,
         createdAt: Date,
         in directory: URL,
         fileManager: FileManager
     ) throws {
-        let itemID = contentID(for: sharedImport)
         let pendingURL = pendingItemURL(for: itemID, in: directory)
         let reservedURL = reservedItemURL(for: itemID, in: directory)
 
@@ -415,7 +611,9 @@ enum HermesShareDraft {
             id: itemID,
             draft: sharedImport.draft,
             createdAt: createdAt,
-            attachments: attachmentPayloads
+            attachments: attachmentPayloads,
+            shortcut: sharedImport.shortcut,
+            skipped: sharedImport.skipped
         )
         let payloadURL = payloadURL(in: temporaryURL)
         try writeJSON(payload, to: payloadURL)
@@ -456,12 +654,13 @@ enum HermesShareDraft {
             return
         }
         let draft = (payload.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let attachments = loadLegacyAttachments(from: payload, in: directory)
-        let sharedImport = normalizedImport(draft: draft, attachments: attachments)
+        let loaded = loadAttachments(from: payload, in: pendingAttachmentsDirectoryURL(in: directory))
+        let sharedImport = normalizedImport(draft: draft, attachments: loaded.attachments, skipped: loaded.skipped)
 
         if !sharedImport.isEmpty {
             try enqueue(
                 sharedImport,
+                itemID: contentID(for: sharedImport),
                 createdAt: payload.createdAt ?? now,
                 in: directory,
                 fileManager: fileManager
@@ -539,30 +738,54 @@ enum HermesShareDraft {
         }
     }
 
+    /// A share's text is trimmed; a Shortcut's keeps every character. A record from an unknown
+    /// source, or a Shortcut's without a server, throws, so it opens nowhere.
     private static func loadImport(from itemURL: URL) throws -> LoadedSharedImport {
         let payload = try JSONDecoder().decode(
             SharedDraftPayload.self,
             from: Data(contentsOf: payloadURL(in: itemURL))
         )
-        let draft = (payload.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let attachments = loadAttachments(from: payload, in: itemURL)
-        return LoadedSharedImport(
-            createdAt: payload.createdAt ?? .distantPast,
-            sharedImport: SharedImport(draft: draft, attachments: attachments)
-        )
+        let createdAt = payload.createdAt ?? .distantPast
+        switch payload.source {
+        case nil:
+            let draft = (payload.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let loaded = loadAttachments(from: payload, in: attachmentsURL(in: itemURL))
+            return LoadedSharedImport(
+                createdAt: createdAt,
+                sharedImport: SharedImport(draft: draft, attachments: loaded.attachments, skipped: loaded.skipped)
+            )
+        case let source?:
+            guard
+                let origin = ImportedTextOrigin(rawValue: source),
+                let serverKey = payload.serverKey
+                    ?? payload.server.flatMap(URL.init(string:)).map(SharedShortcutDestination.key)
+            else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            let profile = payload.profile.flatMap { $0.isEmpty ? nil : $0 }
+            return LoadedSharedImport(
+                createdAt: createdAt,
+                sharedImport: SharedImport(
+                    draft: payload.draft ?? "",
+                    attachments: [],
+                    shortcut: SharedShortcutDestination(serverKey: serverKey, profile: profile, origin: origin)
+                )
+            )
+        }
     }
 
-    /// Maps each staged attachment rather than reading it, so reserving an
-    /// import on the main actor stays cheap; pages fault in at upload time. The
-    /// mapping stays valid after the reservation is consumed and its files are
-    /// removed, and nothing rewrites a staged file in place.
+    /// Maps each staged attachment in `directory` rather than reading it, so reserving an
+    /// import on the main actor stays cheap; pages fault in at upload time. The mapping stays
+    /// valid after the reservation is consumed and its files are removed, and nothing rewrites
+    /// a staged file in place. A staged file that is gone or empty joins the payload's skips.
     private static func loadAttachments(
         from payload: SharedDraftPayload,
-        in itemURL: URL
-    ) -> [SharedAttachmentImport] {
-        let directory = attachmentsURL(in: itemURL)
-
-        return (payload.attachments ?? []).compactMap { attachment in
+        in directory: URL
+    ) -> (attachments: [SharedAttachmentImport], skipped: SharedSkips) {
+        var attachments: [SharedAttachmentImport] = []
+        var unreadable: [SharedSkippedItem] = []
+        for attachment in payload.attachments ?? [] {
+            let filename = sanitizedFilename(attachment.filename ?? "shared-file")
             guard
                 let storedFileName = attachment.storedFileName,
                 isSafeStoredFileName(storedFileName),
@@ -572,45 +795,14 @@ enum HermesShareDraft {
                 ),
                 !data.isEmpty
             else {
-                return nil
+                unreadable.append(SharedSkippedItem(filename: filename, reason: .unreadable))
+                continue
             }
 
-            return SharedAttachmentImport(
-                filename: sanitizedFilename(attachment.filename ?? "shared-file"),
-                typeIdentifier: attachment.typeIdentifier,
-                data: data
-            )
+            attachments.append(SharedAttachmentImport(filename: filename, typeIdentifier: attachment.typeIdentifier, data: data))
         }
-    }
 
-    private static func loadLegacyAttachments(
-        from payload: SharedDraftPayload,
-        in directory: URL
-    ) -> [SharedAttachmentImport] {
-        let attachmentsDirectory = pendingAttachmentsDirectoryURL(in: directory)
-
-        return (payload.attachments ?? []).compactMap { attachment in
-            guard
-                let storedFileName = attachment.storedFileName,
-                isSafeStoredFileName(storedFileName),
-                let data = try? Data(
-                    contentsOf: attachmentsDirectory.appendingPathComponent(
-                        storedFileName,
-                        isDirectory: false
-                    ),
-                    options: .alwaysMapped
-                ),
-                !data.isEmpty
-            else {
-                return nil
-            }
-
-            return SharedAttachmentImport(
-                filename: sanitizedFilename(attachment.filename ?? "shared-file"),
-                typeIdentifier: attachment.typeIdentifier,
-                data: data
-            )
-        }
+        return (attachments, payload.skipped.adding(unreadable))
     }
 
     private static func validateReservation(

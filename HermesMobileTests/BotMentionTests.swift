@@ -165,7 +165,7 @@ final class BotMentionTests: XCTestCase {
             XCTAssertEqual(BotMentions.displayText(text), "@helper \(mode)")
             XCTAssertNotEqual(text, "@helper \(mode)", "\(mode) carries the note")
         }
-        XCTAssertEqual(chat.turn.queuedPrompt?.contains("[@mentions"), false, "the receipt shows what was typed")
+        XCTAssertEqual(chat.turn.queuedPrompts.first?.text.contains("[@mentions"), false, "the receipt shows what was typed")
     }
 
     /// A restored prompt with an attachment hides its note: the host adds its context footer

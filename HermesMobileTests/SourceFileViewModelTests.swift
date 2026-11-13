@@ -21,6 +21,18 @@ final class SourceFileViewModelTests: XCTestCase {
         XCTAssertEqual(model.rows.count, 3)
     }
 
+    /// A comment opened on the old rows cannot add once a refresh's new rows land.
+    func testNewRowsDropTheSelectionAndOpenComment() async {
+        let model = await loadedModel(lineCount: 3)
+        model.selection.tap(rowID: SourceFileRows.rowID(forLineIndex: 0), fileID: SourceFileRows.fileID)
+        model.commentComposer.context = model.selection.sourceCommentContext(in: model.rows, path: "data.json", language: "json")
+
+        await model.load(content: "{}")
+
+        XCTAssertTrue(model.selection.isEmpty)
+        XCTAssertNil(model.commentComposer.add(comment: "stale"))
+    }
+
     func testUnsupportedFileIsPlainTextAndNeverRequestsHighlighting() async {
         let model = await loadedModel(lineCount: 5, path: "notes.txt")
         XCTAssertTrue(model.isPlainText)

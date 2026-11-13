@@ -635,6 +635,33 @@ import XCTest
         XCTAssertFalse(chat.model.isCachedCopyProvisional)
     }
 
+    /// A chat on a Profile the Webapp doesn't serve says so, with no Try Again, since retrying
+    /// can't help (#1606), and offers its fix and the host's own words for why (#1611); a refused
+    /// upgrade elsewhere keeps its retry. A chat already showing messages offers the fix on its
+    /// composer's error instead.
+    func testAProfileTheWebappDoesntServeOffersNoTryAgain() async throws {
+        let context = try makeContext()
+        let reason = HermesStandaloneReason(hostText: "profile(s) 'dev' (pid 42) still run their own gateway")
+        for (failure, retries) in [(BotFailure.profileNotServed("dev", reason), false), (.upgradeRefused(403), true)] {
+            let wire = HermesOfflineWire(rows: [])
+            wire.connectFailure = failure
+            let chat = makeChat(wire, target: .session(profile: "dev", key: "tip"))
+            await chat.model.reconnectStreamIfNeeded(modelContext: context)
+            chat.model.prepareInitialMessageLoad(modelContext: context)
+            await chat.model.loadMessages(modelContext: context)
+            XCTAssertEqual(chat.model.errorMessage, failure.localizedDescription, "\(failure)")
+            XCTAssertEqual(chat.model.errorMayRetry, retries, "\(failure)")
+            XCTAssertEqual(chat.model.errorUnserved, retries ? nil : HermesUnservedProfile(profile: "dev", hostReason: reason.hostText), "\(failure)")
+        }
+
+        let shown = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .session(profile: "dev", key: "tip"))
+        await shown.model.loadMessages(modelContext: context)
+        let unserved = HermesUnservedProfile(profile: "dev", hostReason: reason.hostText)
+        shown.model.hermesConnectionDidChange(failure: "not served", unserved: unserved, mayRetry: false)
+        XCTAssertEqual(shown.model.sendErrorMessage, "not served")
+        XCTAssertEqual(shown.model.errorUnserved, unserved)
+    }
+
     /// A Bot Chat whose attach connected before the cache could show, but whose history read
     /// failed, keeps its cached copy as the offline state rather than an empty screen (#1144).
     func testABotChatAttachedBeforeItsCacheShowsKeepsItWhenHistoryFails() async throws {
@@ -933,6 +960,343 @@ import XCTest
     }
 }
 
+/// A Hermes chat's plain-text Send that waits for the reconnect (#1407), on the scripted host
+/// above: offline it waits as a pending bubble kept on disk, and goes out once, on the next attach,
+/// with nothing resent after a lost answer. Cancel, expiry and leaving put its text back ahead of
+/// what was typed since, and send nothing; backgrounding only pauses it.
+@MainActor final class HermesWaitingSendTests: XCTestCase {
+    private let server = URL(string: "https://hermes.example")!
+    private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
+                                           username: "user", password: "secret")
+    private var now = Date(timeIntervalSince1970: 1_790_000_000)
+    /// Holds the deadline's sleep until opened, standing for ten minutes passing.
+    private var deadline = Gate()
+    private var returned: [(text: String, reason: HermesWaitingSend.Return)] = []
+
+    /// Offline, Send waits: the bubble shows it, the draft holds it on disk and not as typed text,
+    /// and nothing goes out. The reconnect sends it once, even with more connects while it goes out.
+    func testAnOfflineSendWaitsThenGoesOutOnceOnReconnect() async throws {
+        let (chat, wire, drafts) = try await offlineChat()
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        drafts.setDraft("Ship it", for: key)
+
+        let outcome = await chat.model.send("Ship it", isPlainText: true)
+
+        XCTAssertEqual(outcome, .waiting)
+        XCTAssertEqual(chat.model.waitingSendMessage?.content, "Ship it")
+        let held = await drafts.draft(for: key)
+        XCTAssertEqual(held?.waitingSend?.text, "Ship it")
+        XCTAssertEqual(held?.text, "")
+        XCTAssertEqual(wire.prompts, [])
+
+        wire.connectFailure = nil
+        let reply = Gate()
+        wire.submitGate = reply
+        chat.reconnect.open()
+        await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
+        reply.open()
+        await waitUntil("the host took it") { chat.model.waitingSend == nil }
+
+        XCTAssertEqual(wire.prompts, ["Ship it"])
+        let sent = await drafts.draft(for: key)
+        XCTAssertNil(sent?.waitingSend)
+        XCTAssertEqual(returned.count, 0)
+    }
+
+    /// A Send in a live chat whose socket dropped finds no connection before it goes out: it waits
+    /// instead of failing, and the reconnect sends it.
+    func testASendThatFindsNoConnectionWaitsForTheReconnect() async throws {
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
+        let chat = makeChat(wire)
+        await chat.model.loadMessages(modelContext: try makeContext())
+        wire.onDisconnect?(BotFailure.transport)
+
+        let outcome = await chat.model.send("Ship it", isPlainText: true)
+
+        XCTAssertEqual(outcome, .waiting)
+        XCTAssertNil(chat.model.sendErrorMessage)
+        XCTAssertEqual(wire.prompts, [])
+        chat.reconnect.open()
+        await waitUntil("the host took it") { chat.model.waitingSend == nil }
+        XCTAssertEqual(wire.prompts, ["Ship it"])
+    }
+
+    /// A waiting send whose answer is lost is never sent again: its text goes back to the draft with
+    /// the submission marked unresolved, and Send holds (#508).
+    func testALostAnswerKeepsTheTextAndNeverResends() async throws {
+        let (chat, wire, drafts) = try await offlineChat()
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        _ = await chat.model.send("Ship it", isPlainText: true)
+
+        wire.connectFailure = nil
+        wire.submitFailure = URLError(.networkConnectionLost)
+        let reply = Gate()
+        wire.submitGate = reply
+        chat.reconnect.open()
+        await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
+        // The reattach after the lost answer would clear the mark; it stays out of reach here.
+        wire.connectGate = Gate()
+        reply.open()
+        await waitUntil("it came back") { chat.model.waitingSend == nil }
+
+        XCTAssertEqual(returned.map(\.text), ["Ship it"])
+        XCTAssertTrue(chat.model.isHermesSubmissionUncertain)
+        let kept = await drafts.draft(for: key)
+        XCTAssertEqual(kept?.text, "Ship it")
+        XCTAssertEqual(kept?.botSubmissionUncertain, true)
+        XCTAssertNil(kept?.waitingSend)
+        chat.model.hermesConnectionDidChange(failure: nil, unserved: nil, mayRetry: true)
+        XCTAssertEqual(wire.prompts, ["Ship it"])
+    }
+
+    /// Cancel and the ten-minute deadline put the text back ahead of what was typed since, and a
+    /// reconnect after the deadline passed unseen (the app was suspended) sends nothing.
+    func testCancelAndExpiryReturnTheTextWithoutSending() async throws {
+        let (chat, wire, drafts) = try await offlineChat()
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+
+        _ = await chat.model.send("Ship it", isPlainText: true)
+        drafts.setDraft("And this", for: key)
+        chat.model.cancelWaitingSend()
+        XCTAssertEqual(returned.last?.text, "Ship it\n\nAnd this")
+        XCTAssertEqual(returned.last?.reason, .cancelled)
+        XCTAssertNil(chat.model.waitingSendMessage)
+
+        _ = await chat.model.send("Later", isPlainText: true)
+        deadline.open()
+        await waitUntil("it expired") { chat.model.waitingSend == nil }
+        XCTAssertEqual(returned.last?.reason, .expired)
+        XCTAssertEqual(returned.last?.text, "Later\n\nShip it\n\nAnd this")
+
+        deadline = Gate()
+        _ = await chat.model.send("Much later", isPlainText: true)
+        now += HermesWaitingSend.lifetime
+        wire.connectFailure = nil
+        chat.reconnect.open()
+        await waitUntil("it expired on reconnect") { chat.model.waitingSend == nil }
+
+        XCTAssertEqual(returned.last?.reason, .expired)
+        XCTAssertEqual(wire.prompts, [])
+        let draft = await drafts.draft(for: key)
+        XCTAssertNil(draft?.waitingSend)
+    }
+
+    /// A send whose chat left the screen, as a server switch or sign-out does, never goes out from
+    /// it: its text stays in the draft, and the reconnect sends only one held after the chat came back.
+    func testALeftChatsSendNeverGoesOut() async throws {
+        let (chat, wire, drafts) = try await offlineChat()
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        _ = await chat.model.send("Ship it", isPlainText: true)
+
+        chat.model.leaveWaitingSend()
+        XCTAssertEqual(returned.last?.reason, .left)
+        _ = await chat.model.send("Next", isPlainText: true)
+        wire.connectFailure = nil
+        chat.reconnect.open()
+        await waitUntil("the host took the later one") { chat.model.waitingSend == nil }
+
+        XCTAssertEqual(wire.prompts, ["Next"])
+        let draft = await drafts.draft(for: key)
+        XCTAssertEqual(draft?.text, "Ship it")
+    }
+
+    /// The app going to the background after a delivery is claimed but before it starts stops it
+    /// before it reattaches or writes: nothing goes out from the background, and the foreground's
+    /// reattach sends it once.
+    func testBackgroundingAClaimedDeliveryWaitsForTheForeground() async throws {
+        let disk = HookedDrafts()
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
+        let chat = makeChat(wire, persistence: disk)
+        await chat.model.loadMessages(modelContext: try makeContext())
+        wire.onDisconnect?(BotFailure.transport)
+        // The socket comes back while the held send is written, so holding it claims its delivery.
+        await disk.setBeforeNextWrite { [unowned self] in
+            chat.reconnect.open()
+            await waitUntil("reattached") { chat.engine.connectionState == .connected }
+        }
+
+        let outcome = await chat.model.send("Ship it", isPlainText: true)
+        XCTAssertEqual(outcome, .waiting)
+        XCTAssertEqual(chat.model.waitingSend?.delivery, .sending)
+        chat.model.suspendStreamForBackground()
+        await waitUntil("it waits again") { chat.model.waitingSend?.delivery == nil }
+
+        XCTAssertEqual(wire.prompts, [])
+        XCTAssertEqual(chat.model.waitingSendMessage?.content, "Ship it")
+        await chat.model.reconnectStreamIfNeeded()
+        await waitUntil("the host took it") { chat.model.waitingSend == nil }
+        XCTAssertEqual(wire.prompts, ["Ship it"])
+    }
+
+    /// Leaving while a Send still waits on the attach it needs never makes it a waiting send, so
+    /// nothing sends it on its own: it goes back to the composer ahead of what was typed since.
+    func testLeavingBeforeASendFindsNoConnectionKeepsItInTheComposer() async throws {
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
+        let chat = makeChat(wire)
+        await chat.model.loadMessages(modelContext: try makeContext())
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        let connect = Gate()
+        wire.connectGate = connect
+        wire.connectFailure = URLError(.notConnectedToInternet)
+        chat.model.suspendStreamForBackground()
+        let reattach = Task { await chat.model.reconnectStreamIfNeeded() }
+        chat.drafts.setDraft("Ship it", for: key)
+        let sending = Task { await chat.model.send("Ship it", isPlainText: true) }
+        await waitUntil("it waits on the attach") { chat.model.messages.last?.content == "Ship it" }
+
+        chat.drafts.setDraft("And this", for: key)
+        chat.model.leaveWaitingSend()
+        connect.open()
+        let outcome = await sending.value
+        await reattach.value
+
+        XCTAssertEqual(outcome, .kept)
+        XCTAssertEqual(returned.last?.text, "Ship it\n\nAnd this")
+        let draft = await chat.drafts.draft(for: key)
+        XCTAssertEqual(draft?.text, "Ship it\n\nAnd this")
+        wire.connectFailure = nil
+        chat.reconnect.open()
+        await waitUntil("reattached") { chat.engine.connectionState == .connected }
+        XCTAssertEqual(wire.prompts, [])
+    }
+
+    /// A second Send while the first is still being written stays the composer's, even once the
+    /// chat reconnected meanwhile onto another client's reply and it is a Queue: only the first
+    /// goes out, and the second stays in the draft.
+    func testASecondSendWhileTheFirstIsWrittenLeavesTheFirstWaiting() async throws {
+        let disk = HookedDrafts()
+        let (chat, wire, drafts) = try await offlineChat(persistence: disk)
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        drafts.setDraft("Ship it", for: key)
+        await disk.setBeforeNextWrite { [unowned self] in
+            wire.connectFailure = nil
+            wire.running = true
+            chat.reconnect.open()
+            await waitUntil("reconnected onto the reply") { chat.model.activeStreamID != nil }
+            drafts.setDraft("And this", for: key)
+            // Not awaited: a second write would wait on this one.
+            Task { _ = await chat.model.submitStreamingMessage("And this", behavior: .queue) }
+            await waitUntil("the second Send is refused") { chat.model.sendErrorMessage != nil }
+        }
+
+        let first = await chat.model.send("Ship it", isPlainText: true)
+        await waitUntil("the host took the first") { chat.model.waitingSend == nil }
+
+        XCTAssertEqual(first, .waiting)
+        XCTAssertEqual(wire.prompts, ["Ship it"])
+        let draft = await drafts.draft(for: key)
+        XCTAssertEqual(draft?.text, "And this")
+    }
+
+    /// A delivery whose ten minutes run out before its socket write never goes out: it comes back
+    /// to the composer as expired.
+    func testADeliveryThatExpiresBeforeItsWriteComesBack() async throws {
+        let disk = HookedDrafts()
+        let (chat, wire, _) = try await offlineChat(persistence: disk)
+        _ = await chat.model.send("Ship it", isPlainText: true)
+        // The #508 write just before the prompt goes out outlasts the rest of its ten minutes.
+        await disk.setBeforeNextWrite { [unowned self] in now += HermesWaitingSend.lifetime }
+
+        wire.connectFailure = nil
+        chat.reconnect.open()
+        await waitUntil("it came back") { chat.model.waitingSend == nil }
+
+        XCTAssertEqual(returned.last?.reason, .expired)
+        XCTAssertEqual(wire.prompts, [])
+    }
+
+    /// A send whose hold can't be written to disk stays in the composer instead of waiting, so a
+    /// relaunch can't lose it.
+    func testASendThatCannotBeSavedStaysInTheComposer() async throws {
+        let (chat, _, drafts) = try await offlineChat(persistence: HookedDrafts(failsWrites: true))
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        drafts.setDraft("Ship it", for: key)
+
+        let outcome = await chat.model.send("Ship it", isPlainText: true)
+
+        XCTAssertEqual(outcome, .kept)
+        XCTAssertNil(chat.model.waitingSend)
+        let draft = await drafts.draft(for: key)
+        XCTAssertEqual(draft?.text, "Ship it")
+        XCTAssertNil(draft?.waitingSend)
+    }
+
+    // MARK: Helpers
+
+    /// A session chat showing its cached transcript because its host can't be reached.
+    private func offlineChat(persistence: any ChatDraftPersisting = BotMemoryDrafts()) async throws
+        -> (Chat, HermesOfflineWire, ChatDraftStore) {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
+        await visit.model.loadMessages(modelContext: context)
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")])
+        wire.connectFailure = URLError(.notConnectedToInternet)
+        let chat = makeChat(wire, persistence: persistence)
+        await chat.model.loadMessages(modelContext: context)
+        XCTAssertTrue(chat.model.showsOfflineCache)
+        return (chat, wire, chat.drafts)
+    }
+
+    private struct Chat {
+        let model: ChatViewModel
+        let engine: HermesConversation
+        let drafts: ChatDraftStore
+        /// Holds the engine's reconnect until opened.
+        let reconnect: Gate
+    }
+
+    private func makeChat(_ wire: HermesOfflineWire, persistence: any ChatDraftPersisting = BotMemoryDrafts()) -> Chat {
+        let gate = Gate()
+        let engine = HermesConversation(server: server, connection: connection, target: .session(profile: "default", key: "tip"),
+                                        wire: wire, reconnectDelay: { _ in await gate.wait() })
+        let drafts = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(60))
+        let model = ChatViewModel(
+            session: SessionSummary(profile: "default"), server: server, streamingScrollCoalescingDelayNanoseconds: 0,
+            draftStore: drafts, backend: .hermes(HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })),
+            waitingSendClock: HermesWaitingSendClock(now: { [unowned self] in now }, sleep: { [unowned self] _ in
+                await deadline.wait()
+            })
+        )
+        model.onWaitingSendReturned = { [unowned self] text, reason in returned.append((text, reason)) }
+        return Chat(model: model, engine: engine, drafts: drafts, reconnect: gate)
+    }
+
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                        configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+    }
+
+    private func row(_ id: Int, _ role: String, _ content: String) -> BotJSON {
+        .object(["id": .number(Double(id)), "session_id": .string("tip"), "role": .string(role), "content": .string(content),
+                 "timestamp": .number(1_790_000_000 + Double(id)), "active": .number(1), "compacted": .number(0),
+                 "tool_call_id": .null, "tool_calls": .null, "display_kind": .null, "display_metadata": .null])
+    }
+}
+
+/// Draft storage whose writes fail (`failsWrites`), or run a hook first, once, standing for a slow disk.
+private actor HookedDrafts: ChatDraftPersisting {
+    private let failsWrites: Bool
+    private var values: [ChatDraftKey: ChatDraft] = [:]
+    private var beforeNextWrite: (@MainActor @Sendable () async -> Void)?
+
+    init(failsWrites: Bool = false) { self.failsWrites = failsWrites }
+
+    func setBeforeNextWrite(_ hook: @escaping @MainActor @Sendable () async -> Void) { beforeNextWrite = hook }
+
+    func load() -> [ChatDraftKey: ChatDraft] { values }
+
+    func write(_ drafts: [ChatDraftKey: ChatDraft]) async throws {
+        if let hook = beforeNextWrite {
+            beforeNextWrite = nil
+            await hook()
+        }
+        if failsWrites { throw CocoaError(.fileWriteOutOfSpace) }
+        values = drafts
+    }
+}
+
 /// Holds a wait until `open()`, then lets every wait through.
 @MainActor private final class Gate {
     private var isOpen = false
@@ -956,7 +1320,7 @@ import XCTest
 /// the connect until opened; `replayFailure` stands for a socket lost once the host named the
 /// runtime, `messagesFailure` for a transcript read that fails. `onRead` reports each transcript
 /// read, which `messagesGate` holds until opened. `running` makes its snapshot report a turn. It
-/// accepts every prompt.
+/// accepts every prompt unless `submitFailure` loses its reply.
 @MainActor private final class HermesOfflineWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
@@ -972,6 +1336,11 @@ import XCTest
     var running = false
     var rows: [BotJSON]
     private(set) var methods: [String] = []
+    /// Each `prompt.submit`'s text; `submitGate` holds its reply until opened, and `submitFailure`
+    /// is a reply lost after it went out.
+    private(set) var prompts: [String] = []
+    var submitGate: Gate?
+    var submitFailure: Error?
 
     init(rows: [BotJSON]) { self.rows = rows }
 
@@ -995,6 +1364,9 @@ import XCTest
             if let replayFailure { throw replayFailure }
             return BotFixtureWire.replay(latest: 0)
         case "prompt.submit":
+            prompts.append(try call.params()["text"]?.text ?? "")
+            await submitGate?.wait()
+            if let submitFailure { throw submitFailure }
             return .object(["status": .string("streaming")])
         default: throw BotFailure.unsupported
         }

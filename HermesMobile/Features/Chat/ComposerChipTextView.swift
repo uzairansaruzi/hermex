@@ -37,6 +37,14 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         pendingTransitionFocus = nil
     }
 
+    /// Gives up the keyboard for dictation, sent down the responder chain from the
+    /// mic. A live composition is committed first, or dictation's first write would
+    /// replace the document under it and split its characters (#312).
+    @objc func resignForDictation() {
+        if markedTextRange != nil { unmarkText() }
+        _ = resignFirstResponder()
+    }
+
     override func resignFirstResponder() -> Bool {
         cancelDeferredFocus()
         return super.resignFirstResponder()
@@ -64,6 +72,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     var acceptsAttachments = true
     var keyboardCommands = ComposerKeyboardCommands()
+    /// Settings' Send with Return (#1655): a hardware-keyboard ↩ does what ⌘↩ does,
+    /// and ⇧↩ or ⌥↩ types the newline. UIKit sends key commands only from a
+    /// hardware keyboard, so the on-screen Return key keeps typing newlines.
+    var returnSends = false
     /// The chat's last sent message, which ↑ brings back into an empty editor
     /// on a hardware keyboard. Nil where there is no single author to recall
     /// (Bot rooms), which leaves ↑ to move the caret.
@@ -133,9 +145,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// of appearance or text size has to redraw it even when the draft has not
     /// moved at all.
     private struct ChipRenderStyle: Equatable {
+        let fontName: String
         let fontPointSize: CGFloat
         let userInterfaceStyle: UIUserInterfaceStyle
+        let appearance: AppAppearance
         let accessibilityContrast: UIAccessibilityContrast
+        let displayScale: CGFloat
         let isRightToLeft: Bool
         let quoteMaximumWidth: CGFloat
     }
@@ -146,7 +161,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         addGestureRecognizer(chipTapRecognizer)
 
         registerForTraitChanges(
-            [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self]
+            [UITraitUserInterfaceStyle.self, AppAppearanceTrait.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]
         ) { (view: ComposerChipTextView, _) in
             // Deferred: `adjustsFontForContentSizeCategory` updates `font` from
             // the same trait change, and the chips have to be sized against the
@@ -195,7 +210,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             textAlignment = alignment
         }
 
-        let color: UIColor = isDisabled ? .secondaryLabel : .label
+        let color: UIColor = isDisabled ? .appTextSecondary : .appText
         if textColor != color {
             textColor = color
         }
@@ -344,12 +359,19 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var currentStyle: ChipRenderStyle {
         ChipRenderStyle(
-            fontPointSize: (font ?? .preferredFont(forTextStyle: .body)).pointSize,
+            fontName: (font ?? fallbackFont).fontName,
+            fontPointSize: (font ?? fallbackFont).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
+            appearance: traitCollection[AppAppearanceTrait.self],
             accessibilityContrast: traitCollection.accessibilityContrast,
+            displayScale: traitCollection.displayScale,
             isRightToLeft: isRightToLeft,
             quoteMaximumWidth: max(120, min(260, bounds.width * 0.72))
         )
+    }
+
+    private var fallbackFont: UIFont {
+        .app(forTextStyle: .body, compatibleWith: traitCollection)
     }
 
     private var isRightToLeft: Bool {
@@ -358,7 +380,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var baseAttributes: [NSAttributedString.Key: Any] {
         [
-            .font: font ?? .preferredFont(forTextStyle: .body),
+            .font: font ?? fallbackFont,
             .foregroundColor: textColor ?? .label
         ]
     }
@@ -369,7 +391,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         quotes: [ComposerQuote],
         sourceSelection: NSRange
     ) {
-        let font = self.font ?? .preferredFont(forTextStyle: .body)
+        let font = self.font ?? fallbackFont
         let textColor = self.textColor ?? .label
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
         let metrics = ComposerChipMetrics(editorFont: font)
@@ -461,7 +483,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             traits: traitCollection,
             isRightToLeft: isRightToLeft
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerChipAttachment(
             token: token,
             image: image,
@@ -487,7 +509,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             maximumWidth: currentStyle.quoteMaximumWidth,
             usesAccentIcon: true
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerQuoteAttachment(
             quote: quote,
             image: image,
@@ -591,6 +613,29 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
                 title: send.title, action: #selector(sendFromKeyboard), input: "\r", modifierFlags: .command
             ))
         }
+        // Left out entirely while an IME composition is open, so ↩ confirms the
+        // candidate. Otherwise registered even while Send is unavailable, so ↩ on an
+        // empty or blocked draft does nothing rather than type a newline.
+        if returnSends, acceptsKeyboardCommands {
+            let send = UIKeyCommand(
+                title: keyboardCommands.send?.title ?? String(localized: "Send Message"),
+                action: #selector(returnFromKeyboard), input: "\r", modifierFlags: []
+            )
+            send.wantsPriorityOverSystemBehavior = true
+            commands.append(send)
+            // ⌥↩ works too but stays out of the ⌘-hold overlay, which lists ⇧↩ once.
+            let newlines = [
+                UIKeyCommand(
+                    title: String(localized: "New Line"), action: #selector(newlineFromKeyboard),
+                    input: "\r", modifierFlags: .shift
+                ),
+                UIKeyCommand(input: "\r", modifierFlags: .alternate, action: #selector(newlineFromKeyboard)),
+            ]
+            for newline in newlines {
+                newline.wantsPriorityOverSystemBehavior = true
+                commands.append(newline)
+            }
+        }
         if let alternateSend = keyboardCommands.alternateSend {
             commands.append(UIKeyCommand(
                 title: alternateSend.title, action: #selector(alternateSendFromKeyboard), input: "\r",
@@ -626,6 +671,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(sendFromKeyboard) {
             return acceptsKeyboardCommands && keyboardCommands.send != nil
+        }
+
+        if action == #selector(returnFromKeyboard) || action == #selector(newlineFromKeyboard) {
+            return acceptsKeyboardCommands && returnSends
         }
 
         if action == #selector(alternateSendFromKeyboard) {
@@ -665,6 +714,16 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     @objc private func sendFromKeyboard() {
         guard acceptsKeyboardCommands else { return }
         keyboardCommands.send?.perform()
+    }
+
+    @objc private func returnFromKeyboard() {
+        guard acceptsKeyboardCommands, returnSends else { return }
+        keyboardCommands.send?.perform()
+    }
+
+    @objc private func newlineFromKeyboard() {
+        guard acceptsKeyboardCommands, returnSends else { return }
+        insertText("\n")
     }
 
     @objc private func alternateSendFromKeyboard() {

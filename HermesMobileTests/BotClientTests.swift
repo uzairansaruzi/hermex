@@ -167,7 +167,8 @@ import XCTest
     /// A password host's four sign-in replies. Any other HTTP request fails the test.
     private static let signIn: (URLRequest) -> (Int, BotJSON) = { request in
         switch request.url!.path {
-        case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+        case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                                  "install_id": .string("fixture-install")]))
         case "/auth/password-login": return (200, .object([:]))
         case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
         case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
@@ -798,18 +799,16 @@ import XCTest
         client.close()
     }
 
-    /// A gateway's own listener (#1340) signs in, then fails every chat: its `gateway.ready`
-    /// stops the connect before the handshake sends anything.
-    func testAGatewayListenerFailsTheConnectBeforeTheHandshake() async {
+    /// A gateway's own listener (#1341) connects: its handshake runs as on the dashboard, and
+    /// the client speaks the canonical session protocol on it.
+    func testAGatewayListenerConnectsSpeakingTheCanonicalProtocol() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket(ready: #"{"replay_epoch":"epoch","session_authority":true}"#)
         let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
-        do { try await client.connect(); XCTFail("Expected a gateway listener") }
-        catch { XCTAssertEqual(error as? BotFailure, .gatewayListener) }
-        XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.gatewayListener))
-        XCTAssertEqual(socket.outbound, [])
+        try await client.connect()
+        XCTAssertTrue(client.speaksCanonicalProtocol)
         client.close()
     }
 
@@ -1023,9 +1022,9 @@ private final class BotHTTPFixture: URLProtocol {
 final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private let lock = NSLock()
     private var frames: [URLSessionWebSocketTask.Message]
-    /// `ready` is the `gateway.ready` payload the socket opens with.
-    init(ready: String = #"{"replay_epoch":"epoch"}"#) {
-        frames = [.string(#"{"method":"event","params":{"type":"gateway.ready","payload":\#(ready)}}"#)]
+    /// `ready` is the `gateway.ready` payload the socket opens with; nil never sends one.
+    init(ready: String? = #"{"replay_epoch":"epoch"}"#) {
+        frames = ready.map { [.string(#"{"method":"event","params":{"type":"gateway.ready","payload":\#($0)}}"#)] } ?? []
     }
     private var waiter: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
     private var closed = false

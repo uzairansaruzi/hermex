@@ -3,14 +3,20 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum BotAttachmentFailure: Error, LocalizedError {
-    case limit, type, unreadable
+    case limit, unreadable
     var errorDescription: String? {
         switch self {
         case .limit: return String(localized: "Use up to 8 attachments, 25 MB each and 50 MB total.")
-        case .type: return String(localized: "This attachment type is not supported. Choose an image, PDF, text, audio or document file.")
         case .unreadable: return String(localized: "Could not read this attachment. Remove it and select it again.")
         }
     }
+}
+
+/// An image the host stored (`/api/chat/image-upload`): its absolute host path and type. A
+/// canonical host takes it as one of a prompt's `attachments` (`HermesCall.promptSubmit`).
+struct BotUploadedImage: Equatable {
+    let path: String
+    let mime: String
 }
 
 /// Uploading stores bytes only. The returned reference travels in one prompt;
@@ -20,19 +26,19 @@ enum BotAttachmentUpload {
     static let maximumTotalBytes = 50 * 1024 * 1024
 
     /// A file as Hermes receives it: an image re-encoded as JPEG, or PNG when it has
-    /// transparency, at most 4096 px on its longest edge; a PDF, text, audio or common
-    /// document as it is. Throws for any other type. Slow on large images, so callers
+    /// transparency, at most 4096 px on its longest edge; any other file, including an
+    /// image the encoder can't read (an SVG), as it is, since `file.attach` takes any type.
+    /// Throws `.limit` for a re-encoded image over 25 MB. Slow on large images, so callers
     /// run it off the main actor.
     static func prepare(data: Data, filename: String) throws -> (data: Data, name: String, mime: String, image: Bool) {
         let name = URL(fileURLWithPath: filename).lastPathComponent
-        guard let type = UTType(filenameExtension: URL(fileURLWithPath: name).pathExtension) else { throw BotAttachmentFailure.type }
-        if type.conforms(to: .image) {
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 4096
-                  ] as CFDictionary) else { throw BotAttachmentFailure.unreadable }
+        let type = UTType(filenameExtension: URL(fileURLWithPath: name).pathExtension) ?? .data
+        if type.conforms(to: .image), let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceCreateThumbnailWithTransform: true,
+               kCGImageSourceThumbnailMaxPixelSize: 4096
+           ] as CFDictionary) {
             let alpha = image.alphaInfo
             let hasAlpha = alpha == .first || alpha == .last || alpha == .premultipliedFirst
                 || alpha == .premultipliedLast || alpha == .alphaOnly
@@ -45,10 +51,6 @@ enum BotAttachmentUpload {
             let base = URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent
             return (output as Data, base + (hasAlpha ? ".png" : ".jpg"), hasAlpha ? "image/png" : "image/jpeg", true)
         }
-        let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
-        guard type.conforms(to: .text) || type.conforms(to: .pdf) || type.conforms(to: .audio)
-                || ["json", "yaml", "yml", "csv", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip"].contains(ext)
-        else { throw BotAttachmentFailure.type }
         return (data, name, type.preferredMIMEType ?? "application/octet-stream", false)
     }
 
@@ -56,7 +58,7 @@ enum BotAttachmentUpload {
     /// builds the base64 body off the main actor. `validateDispatch` is as in
     /// `HermesConnection.authorized`.
     static func image(data: Data, filename: String, profile: String, via http: HermesConnection,
-                      validateDispatch: (@MainActor () throws -> Void)? = nil) async throws -> String {
+                      validateDispatch: (@MainActor () throws -> Void)? = nil) async throws -> BotUploadedImage {
         let request = try Self.request(data: data, filename: filename, profile: profile, base: await http.connection.address)
         return try await http.authorized(request, validateDispatch: validateDispatch) { request, session in
             try await Self.send(request, on: session)
@@ -65,13 +67,19 @@ enum BotAttachmentUpload {
 
     static func request(data: Data, filename: String, profile: String, base: URL) throws -> URLRequest {
         guard !data.isEmpty, data.count <= Self.maximumFileBytes else { throw BotAttachmentFailure.limit }
-        let mime = URL(fileURLWithPath: filename).pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg"
         return try HermesREST.uploadImage(profile: profile, filename: filename,
-                                          dataURL: "data:\(mime);base64," + data.base64EncodedString()).request(base: base)
+                                          dataURL: "data:\(encodedMime(filename));base64," + data.base64EncodedString()).request(base: base)
     }
 
-    /// Sends one upload and returns the verified stored path. Redirects are refused.
-    static func send(_ request: URLRequest, on session: URLSession) async throws -> String {
+    /// The type `prepare` encoded an image as, by the extension it named it with: PNG or JPEG.
+    /// The stored file keeps that name, so its path says the same.
+    static func encodedMime(_ filename: String) -> String {
+        URL(fileURLWithPath: filename).pathExtension.lowercased() == "png" ? "image/png" : "image/jpeg"
+    }
+
+    /// Sends one upload and returns the verified stored path, with the type the host read
+    /// (`mime_type`), or the one the phone encoded when the reply leaves it out. Redirects are refused.
+    static func send(_ request: URLRequest, on session: URLSession) async throws -> BotUploadedImage {
         let (bytes, response) = try await session.bytes(for: request, delegate: BotArtifactRedirectGuard())
         defer { bytes.task.cancel() }
         guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }
@@ -83,7 +91,9 @@ enum BotAttachmentUpload {
         }
         let reply = try JSONDecoder().decode(BotJSON.self, from: body)
         guard reply["ok"].flag == true else { throw BotFailure.unsupported }
-        return try verifiedPath(reply["path"].text)
+        let path = try verifiedPath(reply["path"].text)
+        let mime = reply["mime_type"].text.flatMap { $0.isEmpty ? nil : $0 } ?? encodedMime(path)
+        return BotUploadedImage(path: path, mime: mime)
     }
 
     /// Builds `file.attach` off the main actor: base64 of a large file is slow.
@@ -105,7 +115,8 @@ enum BotAttachmentUpload {
         path.hasPrefix("/") || path.prefixMatch(of: /[A-Za-z]:[\\\/]/) != nil
     }
 
-    /// Matches Hermes's text-mode image routing: let the agent call its vision tool. The
+    /// Matches Hermes's text-mode image routing: let the agent call its vision tool. Only a
+    /// dashboard listener's prompt carries it, having no per-prompt images (#1644). The
     /// name is the host's own last path component, after `/` or a Windows host's `\`.
     static func imageReference(path: String) -> String {
         let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path

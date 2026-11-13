@@ -17,6 +17,7 @@ struct MarkdownRenderer: View {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit(.markdownRenderer)
         if isStreaming {
             StreamingMarkdownRenderer(content: content)
         } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -150,7 +151,7 @@ private struct StreamingMarkdownDisplayedContentView: View, Equatable {
 /// to the transcript background. Grouped lists set their row colour; a host
 /// on a translucent fill sets nil, which turns the fade off.
 struct MarkdownTableEdgeFadeColorKey: EnvironmentKey {
-    static let defaultValue: SwiftUI.Color? = SwiftUI.Color(.systemBackground)
+    static let defaultValue: SwiftUI.Color? = SwiftUI.Color(.appCanvas)
 }
 
 extension EnvironmentValues {
@@ -184,7 +185,15 @@ private struct StreamingMarkdownChunkedView: View {
                 )
             }
         }
+        .environment(\.markdownReplyIsStreaming, true)
     }
+}
+
+extension EnvironmentValues {
+    /// True inside a streaming reply, sealed chunks included: they render with
+    /// `isStreaming: false` to highlight, but the reply swaps to its settled view
+    /// when it ends, so a control there (a drawable fence's View) would vanish mid-use.
+    @Entry var markdownReplyIsStreaming = false
 }
 
 private struct ChatMarkdownView: View {
@@ -209,7 +218,7 @@ private struct ChatMarkdownView: View {
                 bodySize: ChatTypography(dynamicTypeSize: dynamicTypeSize).bodySize
             ))
             .markdownTextStyle {
-                ForegroundColor(.primary)
+                ForegroundColor(Color(.appText))
                 BackgroundColor(nil)
             }
             .markdownCodeSyntaxHighlighter(.plainText)
@@ -220,11 +229,13 @@ private struct ChatMarkdownView: View {
 /// math language (`math`/`latex`/`tex`) and the body parses as math; otherwise
 /// renders it as a normal syntax-highlighted code block. A math fence whose
 /// body SwiftMath can't parse falls back to the code block too, so nothing is
-/// lost.
+/// lost. A settled `svg` or `mermaid` fence's code block gains a View button
+/// (`DrawableFence`).
 private struct MathFenceOrCodeBlock: View {
     let language: String?
     let content: String
     let isStreaming: Bool
+    @Environment(\.markdownReplyIsStreaming) private var replyIsStreaming
 
     var body: some View {
         if MathFenceLanguage.matches(language), MathLaTeX.isRenderable(content) {
@@ -233,7 +244,8 @@ private struct MathFenceOrCodeBlock: View {
             ChatCodeBlock(
                 language: language,
                 content: content,
-                isStreaming: isStreaming
+                isStreaming: isStreaming,
+                drawableFence: DrawableFence(language: language, isStreaming: isStreaming || replyIsStreaming)
             )
         }
     }
@@ -243,10 +255,11 @@ private struct ChatCodeBlock: View {
     let language: String?
     let content: String
     let isStreaming: Bool
+    let drawableFence: DrawableFence?
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @State private var highlightedCode: NSAttributedString?
@@ -260,13 +273,17 @@ private struct ChatCodeBlock: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(displayLanguage)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
 
                 if let diff {
                     DiffCountsLabel(additions: diff.additions, deletions: diff.deletions)
                 }
 
                 Spacer()
+
+                if let drawableFence {
+                    DrawableFenceViewButton(fence: drawableFence, source: content)
+                }
 
                 Button {
                     wrapsCodeBlockLines.toggle()
@@ -277,7 +294,7 @@ private struct ChatCodeBlock: View {
                         .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
                 }
                 .buttonStyle(.chatTactile(.icon))
-                .foregroundStyle(SwiftUI.Color.primary)
+                .foregroundStyle(SwiftUI.Color(.appText))
                 .accessibilityLabel(wrapsCodeBlockLines ? "Disable code line wrapping" : "Enable code line wrapping")
 
                 ChatCopyButton(
@@ -290,7 +307,7 @@ private struct ChatCodeBlock: View {
                     UIPasteboard.general.string = content
                     ChatHaptics.copied(isEnabled: isHapticsEnabled)
                 }
-                .foregroundStyle(SwiftUI.Color.primary)
+                .foregroundStyle(SwiftUI.Color(.appText))
             }
             .padding(.leading, 16)
             .padding(.trailing, 10)
@@ -312,7 +329,7 @@ private struct ChatCodeBlock: View {
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(SwiftUI.Color(.separator).opacity(0.35), lineWidth: 1)
+                .stroke(SwiftUI.Color(.appSeparator).opacity(0.35), lineWidth: 1)
         }
         .task(id: highlightRequest) {
             await updateHighlightedCode(for: highlightRequest)
@@ -323,9 +340,7 @@ private struct ChatCodeBlock: View {
     }
 
     private var codeBlockBackground: SwiftUI.Color {
-        colorScheme == .dark
-            ? SwiftUI.Color(red: 0.04, green: 0.05, blue: 0.07)
-            : SwiftUI.Color(.secondarySystemBackground)
+        SwiftUI.Color(.appCode)
     }
 
     /// Falls back to a synchronous cache peek so a block that was already highlighted
@@ -374,7 +389,7 @@ private struct ChatCodeBlock: View {
                     Image(systemName: showsAllDiffLines ? "chevron.up" : "chevron.down")
                         .accessibilityHidden(true)
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(AppFont.subheadline(weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.top, 11)
                 .padding(.bottom, 13)
@@ -477,6 +492,95 @@ private struct ChatCodeBlock: View {
     }
 }
 
+/// A drawable fence's View button (#1649), beside wrap and copy. Its page is built when the
+/// sheet opens, so a transcript row never parses or draws the source.
+private struct DrawableFenceViewButton: View {
+    let fence: DrawableFence
+    let source: String
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented = true
+        } label: {
+            Image(systemName: "eye")
+                .font(.system(size: 18, weight: .semibold))
+                .frame(width: 36, height: 36)
+        }
+        .buttonStyle(.chatTactile(.icon))
+        .foregroundStyle(SwiftUI.Color(.appText))
+        .accessibilityLabel(label)
+        .sheet(isPresented: $isPresented) {
+            NavigationStack {
+                DrawableFenceSheetPage(fence: fence, source: source)
+                    .themedPageBackground()
+                    .navigationTitle(Text(verbatim: title))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { isPresented = false }
+                        }
+                    }
+            }
+            // The code block forces left to right (#259); the sheet follows the app again.
+            .environment(\.layoutDirection,
+                         UIApplication.shared.userInterfaceLayoutDirection == .rightToLeft ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var label: LocalizedStringKey {
+        switch fence {
+        case .svg: "View image"
+        case .mermaid: "View diagram"
+        }
+    }
+
+    private var title: String {
+        switch fence {
+        case .svg: "SVG"
+        case .mermaid: "Mermaid"
+        }
+    }
+}
+
+/// The fence's drawing in the report sheet. Its page is built once the sheet has a width, off the
+/// main actor since a diagram runs its engine; until then the sheet shows only its background.
+private struct DrawableFenceSheetPage: View {
+    private enum Drawing {
+        case pending
+        /// Nil when the source can't draw: the sheet's failure state.
+        case drawn(String?)
+    }
+
+    let fence: DrawableFence
+    let source: String
+    @State private var width: CGFloat = 0
+    @State private var drawing = Drawing.pending
+
+    var body: some View {
+        ZStack {
+            if case let .drawn(html) = drawing {
+                HTMLReportSheetPage(html: html)
+            } else {
+                SwiftUI.Color.clear
+            }
+        }
+        // The first width only: the page doesn't reload, and a diagram still fits a later one.
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
+            if width == 0 { width = newWidth }
+        }
+        .task(id: width) {
+            guard width > 0 else { return }
+            let (fence, source, width) = (fence, source, width)
+            let html = await Task.detached(priority: .userInitiated) {
+                fence.page(for: source, width: width)
+            }.value
+            guard !Task.isCancelled else { return }
+            drawing = .drawn(html)
+        }
+    }
+}
+
 private struct PlainCodeBlockText: View {
     let content: String
     /// When `true`, each line's 500-char segments are concatenated into a single
@@ -485,6 +589,7 @@ private struct PlainCodeBlockText: View {
     var wraps = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     private var lines: [MarkdownPlainCodeLine] {
         MarkdownPlainCodeFormatter.lines(in: content)
@@ -509,8 +614,8 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
-        .foregroundStyle(.primary)
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
+        .foregroundStyle(.appPrimary)
     }
 
     private func combinedText(for line: MarkdownPlainCodeLine) -> Text {
@@ -527,6 +632,7 @@ private struct HighlightedCodeBlockText: View {
     var wraps = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
 
     private var lines: [MarkdownAttributedCodeLine] {
         MarkdownAttributedCodeFormatter.lines(in: content)
@@ -552,7 +658,7 @@ private struct HighlightedCodeBlockText: View {
             }
         }
         // The highlighter strips its absolute fonts, so this sets every token's face and size.
-        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
     }
 
     private func combinedText(for line: MarkdownAttributedCodeLine) -> Text {
@@ -1169,8 +1275,8 @@ private struct PlainMarkdownFallbackView: View {
     var body: some View {
         Text(verbatim: content)
             .responseSelectableText(content)
-            .font(.body)
-            .foregroundStyle(.primary)
+            .font(AppFont.body())
+            .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
             .responseTextSelectionPolicy()
             .onAppear {
@@ -1209,16 +1315,17 @@ struct ChatTypography: Equatable {
         codeSize = scaled(13)
     }
 
-    /// The monospaced font for code block bodies (plain, highlighted, and diff).
-    var codeFont: SwiftUI.Font { .system(size: codeSize, weight: .regular, design: .monospaced) }
+    /// The monospaced font for code block bodies (plain, highlighted, and diff). `customSize`
+    /// is `CodeDisplaySettings.customSizeKey`'s value, which replaces the scaled size when set.
+    func codeFont(customSize: Double?) -> SwiftUI.Font {
+        .system(size: customSize.map { CGFloat($0) } ?? codeSize, weight: .regular, design: .monospaced)
+    }
 }
 
 enum ChatMarkdownInlineStyle {
     static let codeFontScale = 0.85
 
-    static func codeBackground(dark: Bool) -> SwiftUI.Color {
-        dark ? SwiftUI.Color(red: 0.08, green: 0.09, blue: 0.12) : SwiftUI.Color(.tertiarySystemGroupedBackground)
-    }
+    static let codeBackground = SwiftUI.Color(.appInlineCode)
 }
 
 private extension MarkdownUI.Theme {
@@ -1226,9 +1333,13 @@ private extension MarkdownUI.Theme {
     static func chat(colorScheme: ColorScheme, isStreaming: Bool, bodySize: CGFloat) -> MarkdownUI.Theme {
         MarkdownUI.Theme.gitHub
             .text {
-                ForegroundColor(.primary)
+                ForegroundColor(Color(.appText))
                 BackgroundColor(nil)
+                FontFamily(AppFont.markdownFamily)
                 FontSize(bodySize)
+            }
+            .link {
+                ForegroundColor(Color(.appLink))
             }
             .paragraph { configuration in
                 MathMarkdownLabel(content: configuration.content, label: configuration.label)
@@ -1245,7 +1356,7 @@ private extension MarkdownUI.Theme {
             .code {
                 FontFamilyVariant(.monospaced)
                 FontSize(.em(ChatMarkdownInlineStyle.codeFontScale))
-                BackgroundColor(ChatMarkdownInlineStyle.codeBackground(dark: colorScheme == .dark))
+                BackgroundColor(ChatMarkdownInlineStyle.codeBackground)
             }
             .codeBlock { configuration in
                 MathFenceOrCodeBlock(
@@ -1255,6 +1366,7 @@ private extension MarkdownUI.Theme {
                 )
                 .markdownMargin(top: 4, bottom: 12)
             }
+            .blockquote { ChatMarkdownQuote(configuration: $0, colorScheme: colorScheme) }
             .table { configuration in
                 ChatMarkdownTable(
                     label: configuration.label,
@@ -1293,6 +1405,7 @@ private struct ChatMarkdownTable: View {
     let colorScheme: ColorScheme
 
     @Environment(\.markdownTableEdgeFadeColor) private var edgeFadeColor
+    @Environment(\.isAppThemed) private var isThemed
 
     /// A table wider than its column fades the edge that hides columns, so a
     /// cut-off column never reads as the whole table.
@@ -1316,21 +1429,58 @@ private struct ChatMarkdownTable: View {
     }
 
     private var backgroundColor: SwiftUI.Color {
-        colorScheme == .dark
+        if isThemed { return SwiftUI.Color(.appCanvas) }
+        return colorScheme == .dark
             ? SwiftUI.Color(red: 0.094, green: 0.098, blue: 0.114)
             : SwiftUI.Color.white
     }
 
     private var secondaryBackgroundColor: SwiftUI.Color {
-        colorScheme == .dark
+        if isThemed { return SwiftUI.Color(.appSurface) }
+        return colorScheme == .dark
             ? SwiftUI.Color(red: 0.145, green: 0.149, blue: 0.165)
             : SwiftUI.Color(red: 0.969, green: 0.969, blue: 0.976)
     }
 
     private var borderColor: SwiftUI.Color {
-        colorScheme == .dark
+        if isThemed { return SwiftUI.Color(.appSeparator) }
+        return colorScheme == .dark
             ? SwiftUI.Color(red: 0.259, green: 0.267, blue: 0.306)
             : SwiftUI.Color(red: 0.894, green: 0.894, blue: 0.91)
+    }
+}
+
+/// MarkdownUI's GitHub block quote, whose fixed colors a theme replaces.
+private struct ChatMarkdownQuote: View {
+    let configuration: BlockConfiguration
+    let colorScheme: ColorScheme
+
+    @Environment(\.isAppThemed) private var isThemed
+
+    private var barColor: SwiftUI.Color {
+        if isThemed { return SwiftUI.Color(.appSeparator) }
+        return colorScheme == .dark
+            ? SwiftUI.Color(red: 66 / 255, green: 68 / 255, blue: 78 / 255)
+            : SwiftUI.Color(red: 228 / 255, green: 228 / 255, blue: 232 / 255)
+    }
+
+    private var textColor: SwiftUI.Color {
+        if isThemed { return SwiftUI.Color(.appTextSecondary) }
+        return colorScheme == .dark
+            ? SwiftUI.Color(red: 146 / 255, green: 148 / 255, blue: 160 / 255)
+            : SwiftUI.Color(red: 107 / 255, green: 110 / 255, blue: 123 / 255)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(barColor)
+                .relativeFrame(width: .em(0.2))
+            configuration.label
+                .markdownTextStyle { ForegroundColor(textColor) }
+                .relativePadding(.horizontal, length: .em(1))
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -1401,14 +1551,18 @@ private struct SelectableMarkdownHeading: View {
     let level: Int
     let colorScheme: ColorScheme
 
+    @Environment(\.isAppThemed) private var isThemed
+
     private var fontScale: Double { [2, 1.5, 1.25, 1, 0.875, 0.85][level - 1] }
     private var tertiaryColor: SwiftUI.Color {
-        colorScheme == .dark
+        if isThemed { return SwiftUI.Color(.appTextSecondary) }
+        return colorScheme == .dark
             ? SwiftUI.Color(red: 109 / 255, green: 112 / 255, blue: 125 / 255)
             : SwiftUI.Color(red: 107 / 255, green: 110 / 255, blue: 123 / 255)
     }
     private var dividerColor: SwiftUI.Color {
-        colorScheme == .dark
+        if isThemed { return SwiftUI.Color(.appSeparator) }
+        return colorScheme == .dark
             ? SwiftUI.Color(red: 51 / 255, green: 52 / 255, blue: 56 / 255)
             : SwiftUI.Color(red: 208 / 255, green: 208 / 255, blue: 211 / 255)
     }
@@ -1425,7 +1579,7 @@ private struct SelectableMarkdownHeading: View {
     private var label: some View {
         MathMarkdownLabel(content: configuration.content, label: configuration.label,
                           fontScale: fontScale, weight: .semibold, tintImages: level == 6)
-            .foregroundStyle(level == 6 ? tertiaryColor : SwiftUI.Color.primary)
+            .foregroundStyle(level == 6 ? tertiaryColor : SwiftUI.Color(.appText))
             .relativeLineSpacing(.em(0.125))
             .markdownMargin(top: 24, bottom: 16)
             .markdownTextStyle {

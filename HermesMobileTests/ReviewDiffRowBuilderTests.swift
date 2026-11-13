@@ -111,6 +111,7 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         let results = try Dictionary(uniqueKeysWithValues: files.map { ($0.id, try loadedDiff(for: $0)) })
         let counter = BuildCounter()
         var published: [[ReviewDiffRow]] = []
+        var lastPatches: [String: Int] = [:]
 
         await ReviewDiffLoader.load(
             files: files,
@@ -121,7 +122,10 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
             fetch: { results[$0.id] },
             buildRows: { counter.rows(for: $0) },
             isCurrent: { true },
-            publish: { published.append($0) },
+            publish: { rows, patches in
+                published.append(rows)
+                lastPatches = patches
+            },
             onError: { XCTFail("Unexpected error \($0)") }
         )
 
@@ -131,6 +135,7 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         XCTAssertEqual(published.first, ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: .loading) }))
         let expected = ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: results[$0.id]!.state) })
         XCTAssertEqual(published.last, expected, "The final rows match a full build, in display order.")
+        XCTAssertEqual(Set(lastPatches.keys), Set(files.map(\.id)), "Every loaded patch reaches the review's viewed marks.")
     }
 
     @MainActor
@@ -152,7 +157,7 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
                     return results[file.id]
                 },
                 isCurrent: { true },
-                publish: { rows in
+                publish: { rows, _ in
                     let loadingFiles = Set(rows.filter { $0.kind == .notice(String(localized: "Loading…")) }.map(\.fileID))
                     if loadingFiles == ["c.swift"] { bothEarlyFilesShown.fulfill() }
                 },
@@ -215,7 +220,7 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
                     return results[file.id]
                 },
                 isCurrent: { true },
-                publish: { published.append($0) },
+                publish: { rows, _ in published.append(rows) },
                 onError: { XCTFail("Unexpected error \($0)") }
             )
         }
@@ -233,5 +238,43 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         await load.value
         // Loading placeholders, a, the batch at c, and the last answer.
         XCTAssertEqual(published.count, 4)
+    }
+
+    /// A dismissed sheet cancels its load (`GitDiffView` cancels its refresh as it leaves), and an
+    /// answer landing after that publishes no rows or patches, so it can't mark or clear the chat's
+    /// review progress.
+    @MainActor
+    func testACancelledLoadPublishesNothingMore() async throws {
+        let files = try ["a.swift", "b.swift"].map { try file($0) }
+        let results = try Dictionary(uniqueKeysWithValues: files.map { ($0.id, try loadedDiff(for: $0)) })
+        let (gate, openGate) = AsyncStream<Void>.makeStream()
+        let aPainted = expectation(description: "a painted while b loads")
+        var publishedPatches: [[String: Int]] = []
+
+        let load = Task { @MainActor in
+            await ReviewDiffLoader.load(
+                files: files,
+                firstFile: nil,
+                maxConcurrent: 2,
+                coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 4, sleep: { _ in }),
+                fetch: { file in
+                    // b's answer lands whether or not the load was cancelled.
+                    if file.id == "b.swift" { for await _ in gate { break } }
+                    return results[file.id]
+                },
+                isCurrent: { true },
+                publish: { _, patches in
+                    publishedPatches.append(patches)
+                    if patches.keys.contains("a.swift") { aPainted.fulfill() }
+                },
+                onError: { XCTFail("Unexpected error \($0)") }
+            )
+        }
+
+        await fulfillment(of: [aPainted], timeout: 5)
+        load.cancel()
+        openGate.finish()
+        await load.value
+        XCTAssertFalse(publishedPatches.contains { $0.keys.contains("b.swift") })
     }
 }

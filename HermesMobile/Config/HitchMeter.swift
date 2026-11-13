@@ -112,7 +112,7 @@ struct HitchMeterOverlay: View {
 
     var body: some View {
         Text(verbatim: meter.readout)
-            .font(.caption2.monospacedDigit())
+            .font(AppFont.caption2().monospacedDigit())
             .foregroundStyle(.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)

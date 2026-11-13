@@ -19,7 +19,7 @@ struct CronJobSkillsRow: View {
             LabeledContent {
                 HStack(spacing: 6) {
                     Text(title)
-                        .foregroundStyle(selection.isEmpty ? .secondary : .primary)
+                        .foregroundStyle(selection.isEmpty ? .appSecondary : .appPrimary)
                         .multilineTextAlignment(.trailing)
                         .lineLimit(2)
 
@@ -39,13 +39,13 @@ struct CronJobSkillsRow: View {
         if let errorMessage, !isLoading {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(verbatim: errorMessage)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.red)
 
                 Spacer(minLength: 0)
 
                 Button("Try Again", action: onRetry)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
             }
@@ -82,7 +82,7 @@ struct CronJobSkillsPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList(rows: .plain) {
                 if trimmedSearchQuery.isEmpty {
                     clearRow
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
@@ -104,6 +104,7 @@ struct CronJobSkillsPickerSheet: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .themedPageBackground()
             .navigationTitle("Task Skills")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
@@ -163,14 +164,14 @@ struct CronJobSkillsPickerSheet: View {
         } label: {
             HStack(spacing: 12) {
                 Text("None")
-                    .font(.body)
+                    .font(AppFont.body())
                     .lineLimit(2)
 
                 Spacer(minLength: 0)
 
                 if selected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -190,11 +191,11 @@ struct CronJobSkillsPickerSheet: View {
             TextField("Skill name", text: $customSkillName)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .font(.body)
+                .font(AppFont.body())
                 .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
                 .background(
-                    Color(.tertiarySystemFill),
+                    Color(.appFillTertiary),
                     in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
                 )
 
@@ -204,18 +205,18 @@ struct CronJobSkillsPickerSheet: View {
             } label: {
                 HStack {
                     Label("Add skill", systemImage: "plus")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
 
                     Spacer(minLength: 0)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(isArmed ? Color(.systemBackground) : Color(.tertiaryLabel))
+            .foregroundStyle(isArmed ? Color(.appCanvas) : Color(.appTextTertiary))
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
             .background(
-                isArmed ? Color.primary : Color.clear,
+                isArmed ? Color(.appText) : Color.clear,
                 in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
             )
             .disabled(!isArmed)
@@ -268,14 +269,14 @@ struct CronJobSkillsPickerSheet: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: name)
-                        .font(.body)
+                        .font(AppFont.body())
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
                     if let details = Self.details(for: skill) {
                         Text(verbatim: details)
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(
-                                selected ? Color(.systemBackground).opacity(0.7) : Color.secondary
+                                selected ? Color(.appCanvas).opacity(0.7) : Color(.appTextSecondary)
                             )
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                     }
@@ -285,7 +286,7 @@ struct CronJobSkillsPickerSheet: View {
 
                 if selected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }

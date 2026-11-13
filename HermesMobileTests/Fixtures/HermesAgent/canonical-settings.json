@@ -1,0 +1,75 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : {
+    "approval_mode" : {
+      "id" : 57,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "key" : "approvals.mode",
+        "value" : "manual"
+      }
+    },
+    "config_set_model" : {
+      "error" : {
+        "code" : 4001,
+        "data" : {
+          "reason" : "use_session_mutation_model"
+        },
+        "message" : "use_session_mutation_model"
+      },
+      "id" : 52,
+      "jsonrpc" : "2.0"
+    },
+    "fast_normal" : {
+      "id" : 53,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "key" : "fast",
+        "value" : "normal"
+      }
+    },
+    "fast_scoped" : {
+      "error" : {
+        "code" : 4001,
+        "data" : {
+          "reason" : "invalid_params"
+        },
+        "message" : "invalid_params"
+      },
+      "id" : 54,
+      "jsonrpc" : "2.0"
+    },
+    "model" : {
+      "id" : 51,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "execution_generation" : 1,
+        "model" : "fixture-redacted",
+        "operation" : "model",
+        "provider" : "custom",
+        "revision" : 1,
+        "session_id" : "local-4f08377cf492d7db2086770925ca8cf82e06482be2842e37557e8b9f4192b076"
+      }
+    },
+    "personality" : {
+      "id" : 56,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "history_reset" : false,
+        "key" : "personality",
+        "value" : "none"
+      }
+    },
+    "reasoning" : {
+      "id" : 55,
+      "jsonrpc" : "2.0",
+      "result" : {
+        "key" : "reasoning",
+        "scope" : "session",
+        "value" : "high"
+      }
+    }
+  },
+  "version" : "0.23.1"
+}

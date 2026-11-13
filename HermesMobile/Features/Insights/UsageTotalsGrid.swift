@@ -32,7 +32,7 @@ private struct UsageMetricCell: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(cell.label)
                 .font(AppFont.caption())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Text(cell.value)
                 .font(AppFont.title3(weight: .semibold))
@@ -43,7 +43,7 @@ private struct UsageMetricCell: View {
             if let detail = cell.detail {
                 Text(detail)
                     .font(AppFont.caption2())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

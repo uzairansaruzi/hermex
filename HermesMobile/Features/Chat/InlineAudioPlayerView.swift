@@ -30,7 +30,7 @@ struct InlineAudioPlayerView: View {
                 if model.phase == .failed {
                     Text("Couldn't play this audio")
                         .font(AppFont.caption2())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     scrubber
@@ -42,7 +42,7 @@ struct InlineAudioPlayerView: View {
                 Button(action: onOpen) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .frame(width: 32, height: 40)
                         .contentShape(Rectangle())
                 }
@@ -54,11 +54,11 @@ struct InlineAudioPlayerView: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(Color(.appSurface))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.25), lineWidth: 0.5)
         )
         .loadsOnceVisible(id: loadKey) { admittedLoadKey = $0 }
         .task(id: admittedLoadKey) {
@@ -101,10 +101,10 @@ struct InlineAudioPlayerView: View {
 
         case .failed:
             ZStack {
-                Circle().fill(Color(.systemFill))
+                Circle().fill(Color(.appFill))
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .frame(width: 40, height: 40)
             .accessibilityLabel(String(localized: "Audio unavailable"))
@@ -134,7 +134,7 @@ struct InlineAudioPlayerView: View {
             Text(AudioDurationFormatter.string(from: model.duration))
         }
         .font(AppFont.caption2().monospacedDigit())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.appSecondary)
         .accessibilityHidden(true)
     }
 }
@@ -169,8 +169,10 @@ final class ComposerAudioCaptureState {
 
     private init() {}
 
+    /// Every composer recording and dictation starts here, so it also tallies voice input (#1662).
     func setCapturing(_ capturing: Bool) {
         isCapturing = capturing
+        if capturing { UsageReports.shared.record(.voiceInput) }
     }
 }
 

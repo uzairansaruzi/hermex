@@ -76,14 +76,14 @@ import XCTest
         XCTAssertEqual(profiles.count, rows.count)
         // `BotProfile` requires only `name`, so these catch a renamed `canonical_session`
         // or `ui_meta_revisions`, which would otherwise decode to an empty inbox row.
-        let bot = try XCTUnwrap(profiles.first { $0.id == "inbox-triage" })
+        let bot = try XCTUnwrap(profiles.first { $0.id == "hermex-fixtures" })
         XCTAssertNotNil(bot.preview)
         XCTAssertNotNil(bot.lastActive)
         XCTAssertNotNil(bot.lookRevision)
         // The inbox names and hides a bot from `display_name` and Desktop's look.
         XCTAssertNotNil(bot.displayName)
         XCTAssertNotNil(bot.title)
-        let row = try XCTUnwrap(rows.first { $0["name"].text == "inbox-triage" })
+        let row = try XCTUnwrap(rows.first { $0["name"].text == "hermex-fixtures" })
         let hidden = try XCTUnwrap(row["ui_meta"]["hermes-bots"]["hidden"].flag, "The captured look carries `hidden`")
         XCTAssertEqual(bot.hidden, hidden)
     }
@@ -102,7 +102,7 @@ import XCTest
         let engine = HermesConversation(server: URL(string: "https://webui.example")!,
                                         connection: BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                                                   username: "user", password: "fixture"),
-                                        target: .canonicalChat(profile: "inbox-triage"), wire: wire)
+                                        target: .canonicalChat(profile: "hermex-fixtures"), wire: wire)
         await engine.activate()
         defer { engine.suspend() }
         XCTAssertEqual(engine.connectionState, .connected)
@@ -110,6 +110,113 @@ import XCTest
         XCTAssertTrue(engine.isCurrent(snapshot))
         XCTAssertEqual(snapshot["running"].flag, false)
     }
+
+    // MARK: Canonical gateway (#1601), from `scripts/capture-hermes-fixtures --local --gateway`
+
+    /// The recorded Webapp names its install only once signed in (#1606), so sign-in reads its
+    /// status again and checks the saved install before anything loads: another install is
+    /// refused, and a first sign-in keeps the one it found. A browser sign-in's refresh token the
+    /// Webapp didn't issue is refused as expired, which asks for one sign-in.
+    func testAWebappsInstallIsCheckedOnceSignedInAndAForeignRefreshTokenExpires() async throws {
+        let signedOut = try fixture("canonical-status-signed-out")["reply"]
+        let signedIn = try fixture("canonical-status-signed-in")["reply"]
+        let refused = try fixture("canonical-refresh-refused")["reply"]
+        let live = try XCTUnwrap(signedIn["install_id"].text)
+        let record = BotConnection(id: UUID(), name: "Webapp", address: URL(string: "https://webapp.example")!,
+                                   username: "user", password: "secret")
+        defer { HermesHostFixture.reset() }
+        for saved in [String?.none, live, "another-install"] {
+            HermesHostFixture.reset()
+            var statuses = 0
+            let configuration = HermesHostFixture.configuration { request in
+                guard request.url?.path == "/api/status" else { return nil }
+                statuses += 1
+                return .json(200, statuses == 1 ? signedOut : signedIn)
+            }
+            var expected = record
+            expected.installID = saved
+            let http = HermesConnection(connection: expected, configuration: configuration)
+            if saved == "another-install" {
+                do { try await http.signIn(); XCTFail("another install was refused") }
+                catch { XCTAssertEqual(error as? BotFailure, .differentHost) }
+                XCTAssertEqual(HermesHostFixture.requests.map(\.url?.path).last, "/api/status", "nothing loads after")
+            } else {
+                try await http.signIn()
+                XCTAssertEqual(http.connection.installID, live, saved ?? "first sign-in")
+                XCTAssertTrue(http.servesWebapp)
+            }
+        }
+
+        HermesHostFixture.reset()
+        var browser = record
+        browser.oauth = HermesOAuth(provider: "basic", userID: "user", refreshToken: "issued-elsewhere")
+        let http = HermesConnection(connection: browser, configuration: HermesHostFixture.configuration { request in
+            switch request.url?.path {
+            case "/api/status": return .json(200, signedOut)
+            case "/auth/native/refresh": return .json(refused["status"].integer ?? 0, refused["body"])
+            default: return nil
+            }
+        })
+        do { try await http.signIn(); XCTFail("the foreign refresh token was refused") }
+        catch { XCTAssertEqual(error as? BotFailure, .signInExpired) }
+        XCTAssertEqual(HermesHostFixture.count("/auth/native/refresh"), 1, "refused once, never retried")
+    }
+
+    /// The recorded canonical snapshot and replay attach a session over a canonical socket: the
+    /// snapshot is this attach's though it has no `session_key`, and the replay goes under the
+    /// session's own epoch, not `gateway.ready`'s. A reattach the host answers with its recorded
+    /// epoch mismatch or replay gap (`snapshot_required`, no events) rebuilds from the snapshot.
+    func testCanonicalSnapshotAndReplayAttachUnderTheSessionsEpoch() async throws {
+        let ready = try fixture("canonical-ready")["reply"]
+        let snapshot = try fixture("canonical-resume-running")["reply"]
+        let replay = try fixture("canonical-replay")["reply"]
+        XCTAssertEqual(ready["session_authority"].flag, true)
+        let epoch = try XCTUnwrap(snapshot["replay_epoch"].text)
+        XCTAssertNotEqual(ready["replay_epoch"].text, epoch, "a session replays under its own epoch")
+        let session = try XCTUnwrap(snapshot["session_id"].text)
+
+        let host = BotSocketHost()
+        host.always("session.resume", .init(result: snapshot))
+        host.always("session.events.since", .init(result: replay))
+        let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.record,
+                                        target: .session(profile: "default", key: session),
+                                        wire: BotClient(http: host.connection(Self.record, canonical: true)))
+        await engine.activate()
+        defer { engine.suspend(); HermesHostFixture.reset() }
+        XCTAssertEqual(engine.connectionState, .connected)
+        XCTAssertTrue(engine.isCurrent(snapshot))
+        XCTAssertEqual(engine.sequence, replay["latest_seq"].integer)
+        let sent = host.requests.first { $0["method"].text == "session.events.since" }?["params"]
+        XCTAssertEqual(sent?["replay_epoch"].text, epoch)
+        await engine.activate()
+        XCTAssertFalse(engine.replayWasReset, "a reattach under the same epoch continues")
+
+        for refusal in ["canonical-replay-epoch-mismatch", "canonical-replay-gap"] {
+            let reply = try fixture(refusal)["reply"]
+            XCTAssertEqual(reply["snapshot_required"].flag, true, refusal)
+            host.next("session.events.since", .init(result: reply))
+            await engine.activate()
+            XCTAssertEqual(engine.connectionState, .connected, refusal)
+            XCTAssertTrue(engine.replayWasReset, "\(refusal) rebuilds from the snapshot")
+        }
+    }
+
+    /// The recorded canonical session settings (#1604) keep the shapes `HermesChatSettingsTests`
+    /// drives the chat with: the host refuses `config.set model` and a scoped Fast, and
+    /// acknowledges reasoning, personality and approval mode.
+    func testCanonicalSettingsFixtureKeepsReplyShapes() throws {
+        let settings = try fixture("canonical-settings")["reply"]
+        XCTAssertEqual(settings["config_set_model"]["error"]["data"]["reason"].text, "use_session_mutation_model")
+        XCTAssertNotNil(settings["fast_scoped"]["error"]["code"].integer)
+        XCTAssertEqual(settings["model"]["result"]["operation"].text, "model")
+        XCTAssertEqual(settings["fast_normal"]["result"], .object(["key": .string("fast"), "value": .string("normal")]))
+        XCTAssertEqual(settings["reasoning"]["result"]["key"].text, "reasoning")
+        XCTAssertEqual(settings["personality"]["result"]["key"].text, "personality")
+        XCTAssertEqual(settings["approval_mode"]["result"], .object(["key": .string("approvals.mode"), "value": .string("manual")]))
+    }
+
+    private static let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
+                                              username: "user", password: "fixture")
 
     func testTurnFramesAreOneContiguousSettledTurn() throws {
         let frames = try XCTUnwrap(fixture("turn-frames").list)

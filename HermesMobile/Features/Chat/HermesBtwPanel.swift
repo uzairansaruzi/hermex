@@ -23,7 +23,7 @@ struct HermesBtwCard: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(btw.question)
-                        .font(.subheadline.weight(.medium))
+                        .font(AppFont.subheadline(weight: .medium))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .pendingRequestBlockSurface()
@@ -64,12 +64,12 @@ struct HermesBtwBar: View {
                 HStack(spacing: 8) {
                     HermesBtwLabel()
                     Text(btw.question)
-                        .font(.subheadline)
+                        .font(AppFont.subheadline())
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.caption(weight: .semibold))
+                        .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
@@ -106,7 +106,7 @@ struct HermesBtwFullScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(btw.question)
-                        .font(.headline)
+                        .font(AppFont.headline())
                         .fixedSize(horizontal: false, vertical: true)
                     HermesBtwAnswer(state: btw.state, isFullScreen: true)
                 }
@@ -127,11 +127,11 @@ struct HermesBtwFullScreen: View {
                     VStack(spacing: 1) {
                         // The command's name, as the card's label reads it.
                         Text(verbatim: "BTW")
-                            .font(.headline)
+                            .font(AppFont.headline())
                             .accessibilityLabel("Side question")
                         Text(sessionTitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(AppFont.caption())
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(1)
                     }
                     .accessibilityElement(children: .combine)
@@ -167,7 +167,7 @@ private struct HermesBtwHeader: View {
                     .font(.system(size: 12, weight: .semibold))
                     .frame(width: buttonSize, height: buttonSize)
                     .background(.primary.opacity(0.08), in: Circle())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .buttonStyle(.chatTactile(.icon))
             .accessibilityLabel("Expand side question")
@@ -180,8 +180,8 @@ private struct HermesBtwHeader: View {
 private struct HermesBtwLabel: View {
     var body: some View {
         Label { Text(verbatim: "BTW") } icon: { Image(systemName: "text.bubble") }
-            .font(.caption.weight(.bold))
-            .foregroundStyle(.secondary)
+            .font(AppFont.caption(weight: .bold))
+            .foregroundStyle(.appSecondary)
             .accessibilityLabel("Side question")
     }
 }
@@ -197,7 +197,7 @@ private struct HermesBtwCloseButton: View {
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: buttonSize, height: buttonSize)
                 .background(.primary.opacity(0.08), in: Circle())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .buttonStyle(.chatTactile(.icon))
         .accessibilityLabel("Close side question")
@@ -220,20 +220,20 @@ private struct HermesBtwAnswer: View {
                     .accessibilityHidden(true)
                 Text("Answering from a snapshot of this chat")
             }
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(.secondary)
+            .font(AppFont.footnote(weight: .medium))
+            .foregroundStyle(.appSecondary)
         case .answered(let text):
             VStack(alignment: .leading, spacing: 8) {
                 if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("No answer produced.")
-                        .font(isFullScreen ? .body : .subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(isFullScreen ? AppFont.body() : AppFont.subheadline())
+                        .foregroundStyle(.appSecondary)
                 } else {
                     MarkdownRenderer(content: text)
                 }
                 Text("From a snapshot · no tools")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(.appSecondary)
             }
         case .unavailable:
             HStack(alignment: .top, spacing: 9) {
@@ -242,10 +242,10 @@ private struct HermesBtwAnswer: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Answer unavailable")
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppFont.subheadline(weight: .semibold))
                     Text("The stream reconnected without this answer. Ask again with /btw.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.appSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -265,12 +265,12 @@ private struct HermesBtwRunPill: View {
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
             Text(status.label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(.appSecondary)
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 8)
-        .background(.regularMaterial, in: Capsule())
+        .background(.appMaterial(.regularMaterial), in: Capsule())
         .overlay(Capsule().stroke(.primary.opacity(0.08), lineWidth: 0.5))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(status.accessibilityLabel)

@@ -1,26 +1,15 @@
-import SwiftData
 import SwiftUI
 
 /// The active webui server's sections on its page: connection and update, sessions and the
 /// main page's entries, defaults, and offline data. The page's list carries their loads and
-/// dialogs (`webuiServerPresentations`), since a section's own modifiers would run per row.
+/// dialogs (`webuiServerPresentations`), since a section's own modifiers would run per row;
+/// Offline Data carries its alert on its button.
 struct WebuiServerSections: View {
     @Bindable var authManager: AuthManager
     @Bindable var model: WebuiServerSettingsModel
 
-    @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
-    @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
-    @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
     private var showsSubagentSessions = SessionRowDisplaySettings.defaultShowsSubagentSessions
-    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasksSection = true
-    @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanbanSection = true
-    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkillsSection = true
-    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemorySection = true
-    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
-    @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfileSection = true
-    @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
-    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
     private var server: URL { model.server }
 
@@ -69,17 +58,9 @@ struct WebuiServerSections: View {
                 SettingsLabel(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
             }
 
-            Toggle(isOn: $showsSessionMessageCount) {
-                SettingsLabel(title: String(localized: "Message Count"), systemImage: "number")
-            }
+            SessionRowDisplayToggles()
 
-            Toggle(isOn: $showsSessionWorkspace) {
-                SettingsLabel(title: String(localized: "Workspace"), systemImage: "folder")
-            }
-
-            Toggle(isOn: $showsCronSessions) {
-                SettingsLabel(title: String(localized: "Cron Sessions"), systemImage: "clock.arrow.2.circlepath")
-            }
+            CronSessionsToggle()
 
             Toggle(isOn: Binding(
                 get: { model.cliSessionsSync.showsCliSessions },
@@ -101,52 +82,11 @@ struct WebuiServerSections: View {
             }
         } header: {
             Text("Sessions")
-        } footer: {
+        } appFooter: {
             sessionSyncFootnote
         }
 
-        // Main Page configures only a webui server's home.
-        Section {
-            Toggle(isOn: $showsTasksSection) {
-                SettingsLabel(title: String(localized: "Tasks"), systemImage: "calendar.badge.clock")
-            }
-
-            Toggle(isOn: $showsKanbanSection) {
-                SettingsLabel(title: String(localized: "Kanban"), systemImage: "rectangle.split.3x1")
-            }
-
-            Toggle(isOn: $showsSkillsSection) {
-                SettingsLabel(title: String(localized: "Skills"), systemImage: "hammer")
-            }
-
-            Toggle(isOn: $showsMemorySection) {
-                SettingsLabel(title: String(localized: "Memory"), systemImage: "brain")
-            }
-
-            Toggle(isOn: $showsInsightsSection) {
-                SettingsLabel(title: String(localized: "Usage"), systemImage: "chart.bar")
-            }
-
-            Toggle(isOn: $showsActiveProfileSection) {
-                SettingsLabel(title: String(localized: "Active Profile"), systemImage: "person.crop.circle")
-            }
-
-            Toggle(isOn: $showsProjectsSection) {
-                SettingsLabel(title: String(localized: "Projects"), systemImage: "folder.badge.gearshape")
-            }
-
-            Toggle(isOn: $isBotModeEnabled) {
-                SettingsLabel(
-                    title: String(localized: "Bot Mode (beta)"),
-                    systemImage: "cpu",
-                    note: String(localized: "Adds a Bots row to this server's home.")
-                )
-            }
-        } header: {
-            Text("Main Page")
-        } footer: {
-            Text("An entry you turn off comes back only from here.")
-        }
+        MainPageSettingsSection(includesWebuiEntries: true)
 
         Section(String(localized: "Defaults")) {
             Button {
@@ -158,7 +98,7 @@ struct WebuiServerSections: View {
                     SettingsLabel(title: String(localized: "Default Model"), systemImage: "cpu")
                 }
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .accessibilityHint("Opens the default model picker.")
 
             Button {
@@ -170,7 +110,7 @@ struct WebuiServerSections: View {
                     SettingsLabel(title: String(localized: "Default Profile"), systemImage: "person.crop.circle")
                 }
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .accessibilityHint("Opens the default profile picker.")
 
             NavigationLink {
@@ -181,22 +121,7 @@ struct WebuiServerSections: View {
             .accessibilityHint("Opens the provider status screen.")
         }
 
-        Section {
-            Button(role: .destructive) {
-                model.isConfirmingClearCache = true
-            } label: {
-                if model.isClearingCache {
-                    ProgressView()
-                } else {
-                    Text("Clear Offline Cache")
-                }
-            }
-            .disabled(model.isClearingCache)
-        } header: {
-            Text("Offline Data")
-        } footer: {
-            Text(model.cacheStatusMessage ?? String(localized: "Clears this server's cache only."))
-        }
+        OfflineDataSection(server: server)
     }
 
     @ViewBuilder
@@ -296,7 +221,7 @@ struct WebuiServerSections: View {
         if model.serverVersion != nil, let serverUpdateState = model.serverUpdateState {
             switch serverUpdateState {
             case .upToDate:
-                updateNoteRow(systemImage: "checkmark.circle", tint: .secondary, text: String(localized: "Up to date"))
+                updateNoteRow(systemImage: "checkmark.circle", tint: Color(.appTextSecondary), text: String(localized: "Up to date"))
             case let .updateAvailable(behind):
                 updateNoteRow(systemImage: "arrow.up.circle", tint: .blue, text: String(localized: "Update available · \(behind) behind"))
             case .unavailable:
@@ -312,7 +237,7 @@ struct WebuiServerSections: View {
 
             Text(text)
                 .font(AppFont.footnote())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -336,7 +261,7 @@ struct WebuiServerSections: View {
         case .recovering:
             updateProgressRow(String(localized: "Updating & restarting…"))
         case .blocked:
-            updateMessageRow(systemImage: "clock", tint: .secondary)
+            updateMessageRow(systemImage: "clock", tint: Color(.appTextSecondary))
             updateActionButton(title: String(localized: "Retry update"))
         case .failed:
             updateMessageRow(systemImage: "exclamationmark.triangle", tint: .orange)
@@ -360,7 +285,7 @@ struct WebuiServerSections: View {
 
             Text(text)
                 .font(AppFont.footnote())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -372,7 +297,7 @@ struct WebuiServerSections: View {
 
             Text(model.updateApplyMessage ?? String(localized: "The update could not be applied."))
                 .font(AppFont.footnote())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -391,22 +316,11 @@ extension View {
 private struct WebuiServerPresentations: ViewModifier {
     @Bindable var model: WebuiServerSettingsModel
     let onDefaultProfileSelected: (DefaultProfileSelection) -> Void
-    @Environment(\.modelContext) private var modelContext
 
     func body(content: Content) -> some View {
         content
             .task {
                 await model.load()
-            }
-            .alert("Clear this server's cache?", isPresented: $model.isConfirmingClearCache) {
-                Button("Cancel", role: .cancel) {}
-                Button("Clear Cache", role: .destructive) {
-                    Task {
-                        await model.clearOfflineCache(in: modelContext)
-                    }
-                }
-            } message: {
-                Text("This server's cached sessions and messages will be deleted. Other servers and online server data are not affected.")
             }
             .alert("Update server?", isPresented: $model.isConfirmingUpdate) {
                 Button("Cancel", role: .cancel) {}
@@ -507,6 +421,7 @@ private struct CustomHeadersSettingsView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .themedPageBackground()
         .navigationTitle("Connection Headers")
         .navigationBarTitleDisplayMode(.inline)
         // Live-refresh the network clients on every edit (cheap, in-memory only)

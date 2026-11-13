@@ -1,0 +1,184 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : {
+    "authority_epoch" : 1,
+    "execution_generation" : 1,
+    "info" : {
+      "api_mode" : "fixture-redacted",
+      "archived" : false,
+      "branch" : "fixture-redacted",
+      "context_length" : 256000,
+      "credential_hint" : "fixture-redacted",
+      "cwd" : "/fixture/cwd",
+      "desktop_protocol" : "fixture-redacted",
+      "enabled_toolsets" : [
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted"
+      ],
+      "fast" : false,
+      "last_active_at" : 1794282456.259867,
+      "launch_request" : {
+        "source" : "fixture-redacted"
+      },
+      "lazy" : false,
+      "mcp_servers" : [],
+      "model" : "fixture-redacted",
+      "profile_id" : "fixture-redacted",
+      "profile_name" : "default",
+      "project" : null,
+      "provider" : "custom",
+      "reasoning_effort" : "fixture-redacted",
+      "reasoning_effort_wire" : "fixture-redacted",
+      "release_date" : "fixture-redacted",
+      "service_tier" : "fixture-redacted",
+      "skills" : {},
+      "source" : "fixture-redacted",
+      "started_at" : 1794282456.074735,
+      "system_prompt" : "fixture-redacted",
+      "title" : null,
+      "tool_availability" : {
+        "disabled_tools" : [],
+        "lazy_tools" : [
+          "fixture-redacted",
+          "fixture-redacted"
+        ],
+        "unavailable_toolsets" : [
+          {
+            "env_vars" : [],
+            "name" : "fixture-redacted",
+            "tools" : []
+          },
+          {
+            "env_vars" : [],
+            "name" : "fixture-redacted",
+            "tools" : []
+          }
+        ]
+      },
+      "tool_count" : 21,
+      "tools" : {},
+      "update_behind" : null,
+      "update_command" : "fixture-redacted",
+      "usage" : {
+        "active_subagents" : 0,
+        "avg_latency_s" : 0,
+        "calls" : 1,
+        "completion" : 0,
+        "compressions" : 0,
+        "input" : 0,
+        "model" : "fixture-redacted",
+        "output" : 0,
+        "prompt" : 0,
+        "reasoning" : 0,
+        "total" : 0
+      },
+      "version" : "0.23.1",
+      "yolo" : false
+    },
+    "last_sequence" : 12,
+    "message_count" : 2,
+    "messages" : [],
+    "messages_omitted" : true,
+    "open_requests" : [],
+    "pending" : [
+      {
+        "admission_id" : "a520daeb4a354aba959258a3278a6675",
+        "authority_epoch" : 1,
+        "controls" : [],
+        "execution_generation" : 1,
+        "input_id" : "5D7C8F48-A191-4DDF-BF2B-9590C4964434",
+        "outcome" : null,
+        "ref" : {
+          "profile_id" : "fixture-redacted",
+          "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
+        },
+        "sequence" : 2,
+        "status" : "started",
+        "steering" : false,
+        "text" : "Run the quick check."
+      },
+      {
+        "admission_id" : "a9a5879eafd84c01b1b2b635cc881f2e",
+        "authority_epoch" : 1,
+        "controls" : [
+          "fixture-redacted",
+          "fixture-redacted"
+        ],
+        "execution_generation" : null,
+        "input_id" : "4DADB85D-D9B6-459D-A7DD-DF142049CBF5",
+        "outcome" : null,
+        "ref" : {
+          "profile_id" : "fixture-redacted",
+          "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
+        },
+        "sequence" : 3,
+        "status" : "queued",
+        "steering" : false,
+        "text" : "Then the tests"
+      },
+      {
+        "admission_id" : "8c5be98a81d94634adb09bc94943d43d",
+        "authority_epoch" : 1,
+        "controls" : [
+          "fixture-redacted",
+          "fixture-redacted"
+        ],
+        "execution_generation" : null,
+        "input_id" : "4FA570C2-3F19-42B0-B784-7C7B94EAD3A4",
+        "outcome" : null,
+        "ref" : {
+          "profile_id" : "fixture-redacted",
+          "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
+        },
+        "sequence" : 4,
+        "status" : "queued",
+        "steering" : false,
+        "text" : "And the docs"
+      }
+    ],
+    "pending_connection" : null,
+    "prompts" : [
+      {
+        "choices" : [
+          "once",
+          "deny",
+          "session",
+          "always"
+        ],
+        "command" : "python3 -c \"print(1)\"",
+        "description" : "script execution via -e/-c flag",
+        "execution_generation" : 1,
+        "kind" : "approval",
+        "prompt_id" : "e16fc5d310e34854a15740b6385c7056",
+        "timeout_s" : 300
+      }
+    ],
+    "replay_epoch" : "06fafbe229a240bda5ff6b8b8eaeddbe",
+    "revision" : 0,
+    "running" : true,
+    "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493",
+    "stored_session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493",
+    "subscription_id" : "ec6b528f895f411d93610fb55476f1a7",
+    "todo_state" : null
+  },
+  "version" : "0.23.1"
+}

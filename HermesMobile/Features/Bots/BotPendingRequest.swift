@@ -28,12 +28,6 @@ enum BotPendingRequest: Equatable {
         case .connection(let operation): return operation.opID
         }
     }
-
-    /// False only for the kinds whose answer lives in the Desktop renderer.
-    var isAnswerable: Bool {
-        if case .desktopTask = self { return false }
-        return true
-    }
 }
 
 /// A server request, received live or restored from `open_requests`.
@@ -46,6 +40,9 @@ struct BotServerRequest: Equatable {
     let method: String
     let sessionID: String
     let pending: BotPendingRequest?
+    /// A canonical host's approval or clarify prompt's execution generation, which its answer
+    /// carries (`HermesCanonicalPrompts`, #1602); nil for a server request.
+    let promptGeneration: Int?
 
     init?(_ frame: BotJSON) {
         guard let id = frame["id"].text, !id.isEmpty,
@@ -55,6 +52,7 @@ struct BotServerRequest: Equatable {
         self.id = id
         self.method = method
         self.sessionID = sessionID
+        promptGeneration = params["execution_generation"]?.integer
         if method == "approval" {
             pending = BotApprovalRequest(.object(params)).map(BotPendingRequest.approval)
         } else if method == "clarify" {
@@ -85,9 +83,6 @@ struct BotApprovalRequest: Equatable {
     /// The host's wire vocabulary for `approval.respond`'s `choice`.
     enum Choice: String, Equatable, CaseIterable {
         case once, session, always, deny
-
-        /// True for the choice that writes a permanent rule into the host's config.
-        var isPermanent: Bool { self == .always }
     }
 
     let requestID: String

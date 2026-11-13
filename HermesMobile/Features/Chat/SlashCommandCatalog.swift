@@ -7,8 +7,8 @@ struct SlashCommandScope: Equatable, Sendable {
     var builtins: [SlashCommand]
     /// Host command names and aliases, lowercased, whose arguments the host completes.
     var hostCommands: Set<String> = []
-    /// A Hermes chat's: the panel opens only at the start of the draft, where the host runs
-    /// a command, and an agent command's aliases find it, as the host's `canon` lists them.
+    /// A Hermes chat's: the host completes its commands' arguments, and an agent command's
+    /// aliases find it, as the host's `canon` lists them.
     var isHermes = false
 
     static let webui = SlashCommandScope(builtins: SlashCommandCatalog.allCommands)
@@ -219,10 +219,11 @@ enum SlashCommandCatalog {
     /// the session's history as Regenerate does (#1049); `/compress` and `/compact` are
     /// `session.compress`, and `/clear` opens a new chat in this one's place (#1050). `/sessions`
     /// and `/resume` open the Sessions list, or a session by its title (#1053). `/branch` and
-    /// `/fork` are `session.branch`, and open the branch on top (#1051).
-    static let hermesCommands: [SlashCommand] = ["new", "stop", "model", "reasoning", "personality", "title", "goal",
-                                                 "btw", "background", "bg", "retry", "undo", "compress",
-                                                 "compact", "branch", "fork"].compactMap(command(named:)) + [
+    /// `/fork` are `session.branch`, and open the branch on top (#1051). `/workspace` is the folder
+    /// chip's pick, and `/interrupt` is Stop and send (#1673).
+    static let hermesCommands: [SlashCommand] = ["new", "stop", "model", "workspace", "reasoning", "personality", "title",
+                                                 "goal", "btw", "background", "bg", "interrupt", "retry", "undo",
+                                                 "compress", "compact", "branch", "fork"].compactMap(command(named:)) + [
         SlashCommand(
             name: "clear",
             description: String(localized: "Start a new chat with the same model and folder"),

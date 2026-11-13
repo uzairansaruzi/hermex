@@ -21,6 +21,7 @@ struct ContentView: View {
                 // Cold launch: an App Intent may have queued a deep link before this
                 // view appeared (e.g. Action button "New Chat"). Drain it now (#337).
                 drainPendingIntentDeepLink()
+                await UsageReports.shared.appBecameActive()
             }
             .onChange(of: intentRouter.pendingDeepLink) {
                 // Warm launch: the intent set the deep link after the view appeared.
@@ -31,6 +32,27 @@ struct ContentView: View {
                 // changes what it can reach.
                 switchServer(pendingLinks.reroute(state: authManager.state, servers: authManager.servers,
                                                   isBotModeEnabled: isBotModeEnabled))
+                // The home went, and a Shortcut text's chat with it.
+                shares.endReview()
+                switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
+            }
+            // A Shortcut's text opens only on the server it named (#1402), which may not be active.
+            .onChange(of: shares.pending?.reservationID) {
+                switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
+            }
+            .alert((unopenableShortcut?.sharedImport.shortcut?.origin ?? .shortcut).cantOpenTitle,
+                   isPresented: Binding(get: { unopenableShortcut != nil }, set: { isPresented in
+                // Dismissed without a button (Escape, VoiceOver's escape) is Not Now. A button's
+                // action may run after this, so the release waits a turn and skips a settled text.
+                guard !isPresented, let share = unopenableShortcut else { return }
+                Task { @MainActor in
+                    if shares.pending?.reservationID == share.reservationID { releasePendingSharedImport(share) }
+                }
+            }), presenting: unopenableShortcut) { share in
+                Button("Discard", role: .destructive) { consumePendingSharedImport(share) }
+                Button("Not Now", role: .cancel) { releasePendingSharedImport(share) }
+            } message: { _ in
+                Text("The server for this text was removed from Hermex, so it can’t open.")
             }
             .task {
                 // #246: on cold launch, end any Live Activity left "running" by a
@@ -50,6 +72,8 @@ struct ContentView: View {
                 // and the creators on their next Create (#902).
                 if scenePhase == .background { HermesConnections.shared.closeForBackground() }
                 guard scenePhase == .active else { return }
+                // Sends last week's usage report once, when reports are allowed (#1662).
+                Task { await UsageReports.shared.appBecameActive() }
                 importPendingSharedDraftIfAvailable()
                 // #248: the foreground pass stays silent — the in-session run-end
                 // paths own notifications while the app is alive.
@@ -100,10 +124,10 @@ struct ContentView: View {
         case .loggedIn(let server) where authManager.kind(of: server) == .hermes:
             HermesServerHome(authManager: authManager, server: server, pendingBotDestination: $pendingLinks.bot,
                              pendingSessionDestination: $pendingLinks.hermesSession,
-                             pendingNewChat: $pendingLinks.hermesNewChat,
-                             pendingShare: shares.pending, claimShare: { shares.claim($0) },
+                             pendingNewChat: $pendingLinks.hermesNewChat, pendingUsage: $pendingLinks.hermesUsage,
+                             pendingShare: shares.offered(to: server), claimShare: { shares.claim($0) },
                              didRouteShare: consumePendingSharedImport, didDeclineShare: releasePendingSharedImport,
-                             didAbandonShare: { shares.abandon($0) })
+                             didAbandonShare: { shares.abandon($0) }, shortcutReview: shortcutReview)
                 .id(server)
         case .loggedOut(let server):
             OnboardingView(authManager: authManager, savedServer: server)
@@ -111,7 +135,7 @@ struct ContentView: View {
             SessionListView(
                 authManager: authManager,
                 server: server,
-                pendingSharedImport: $shares.pending,
+                pendingSharedImport: Binding(get: { shares.offered(to: server) }, set: { shares.pending = $0 }),
                 didRoutePendingSharedImport: consumePendingSharedImport,
                 hasWaitingSharedImport: shares.hasWaiting,
                 openNextSharedImport: openNextSharedImport,
@@ -134,6 +158,8 @@ struct ContentView: View {
         pendingLinks.webuiPush = nil
         pendingLinks.hermesSession = nil
         pendingLinks.hermesNewChat = nil
+        pendingLinks.hermesUsage = nil
+        pendingLinks.botWidget = nil
         if let destination = WebuiPushDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
@@ -183,6 +209,23 @@ struct ContentView: View {
         if let destination = HermesDeepLink.botDestination(from: url) {
             switchServer(pendingLinks.route(destination, state: authManager.state, servers: authManager.servers,
                                             isBotModeEnabled: isBotModeEnabled))
+            return
+        }
+
+        // A Bot widget names its server by digest and its bot by Profile only (#1643), so it finds
+        // the server's current Bot connection, or waits for a signed-out Hermes server's sign-in.
+        if let destination = BotWidgetDestination(url: url) {
+            UsageReports.shared.record(.homeWidget)
+            switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers,
+                                           isBotModeEnabled: isBotModeEnabled))
+            return
+        }
+
+        // A Limits widget's tap opens Usage only on the signed-in active server and connection its
+        // limits were read through (#1409), never switching servers; anything else opens the app as is.
+        if let usage = HermesUsageDestination(url: url) {
+            UsageReports.shared.record(.homeWidget)
+            if usage.opens(state: authManager.state, servers: authManager.servers) { pendingLinks.hermesUsage = usage }
             return
         }
 
@@ -273,6 +316,8 @@ struct ContentView: View {
     }
 
     private func consumePendingSharedImport(_ reservation: SharedImportReservation) {
+        // A share from the share extension; a Shortcut's queued text has a destination instead.
+        if reservation.sharedImport.shortcut == nil { UsageReports.shared.record(.shareExtension) }
         shares.consume(reservation, in: HermesShareDraft.containerURL(), active: authManager.state.server,
                        servers: authManager.servers)
     }
@@ -280,32 +325,57 @@ struct ContentView: View {
     private func openNextSharedImport() {
         shares.openNext(in: HermesShareDraft.containerURL(), active: authManager.state.server, servers: authManager.servers)
     }
+
+    /// The Shortcut texts behind the one a Hermes chat shows (#1402), for the Sessions list and that
+    /// chat.
+    private var shortcutReview: ShortcutTextReview {
+        ShortcutTextReview(
+            chat: shares.reviewing, hasWaiting: shares.hasWaitingShortcutText,
+            begin: { shares.beginReview(in: $0) },
+            replace: { shares.moveReview(from: $0, to: $1) },
+            end: { shares.endReview(in: $0, directory: HermesShareDraft.containerURL(), active: authManager.state.server,
+                                    servers: authManager.servers) },
+            discardNext: { shares.discardNextShortcutText(in: HermesShareDraft.containerURL()) }
+        )
+    }
+
+    private var unopenableShortcut: SharedImportReservation? {
+        shares.unopenableShortcut(servers: authManager.servers)
+    }
 }
 
 /// The shares waiting in the app group, handed to the active server's home one at a time
 /// (#1181): the one reserved for it or being moved into a Hermes draft, whether more wait, and
-/// whether one was routed since the last Open Next. `ContentView` owns it; a nil directory (no app group) reserves nothing.
+/// whether one was routed since the last Open Next. A Shortcut's text (#1402) waits only while
+/// another one's chat is shown, for that chat's Open Next or Discard or for it to close.
+/// `ContentView` owns it; a nil directory (no app group) reserves nothing.
 struct SharedImportQueue {
     /// The reserved share the active home is opening.
     var pending: SharedImportReservation?
     /// More shares wait behind it, which a webui session list offers in its Open Next banner.
     private(set) var hasWaiting = false
+    /// The Hermes chat showing a Shortcut's text, which later Shortcut texts wait behind.
+    private(set) var reviewing: UUID?
+    /// A Shortcut text waits, which the reviewing chat offers with Open Next and Discard.
+    private(set) var hasWaitingShortcutText = false
     private var hasRouted = false
     /// The share a Hermes list is moving into its draft (`claim`), offered to no home meanwhile.
     private var moving: SharedImportReservation?
 
-    /// Reserves the next waiting share when the active home opens it now (`SharedImportGate`).
+    /// Reserves the next waiting share when the active home opens it now (`SharedImportGate`), or
+    /// Shortcut text while no chat shows one.
     mutating func reserveNext(in directory: URL?, active: URL?, servers: [ServerAccount]) {
         guard pending == nil, moving == nil, let directory else { return }
-        guard SharedImportGate.opensNext(afterRouting: hasRouted, active: active, servers: servers) else {
-            return refreshWaiting(in: directory)
-        }
+        var kinds: SharedImportKinds = reviewing == nil ? .shortcutTexts : []
+        if SharedImportGate.opensNext(afterRouting: hasRouted, active: active, servers: servers) { kinds.insert(.shares) }
+        guard !kinds.isEmpty else { return refreshWaiting(in: directory) }
         do {
-            pending = try HermesShareDraft.reserveNextPendingImport(from: directory)
+            pending = try HermesShareDraft.reserveNextPendingImport(from: directory, kinds: kinds)
             refreshWaiting(in: directory)
         } catch {
             pending = nil
             hasWaiting = false
+            hasWaitingShortcutText = false
         }
     }
 
@@ -362,6 +432,65 @@ struct SharedImportQueue {
         reserveNext(in: directory, active: active, servers: servers)
     }
 
+    /// The Hermes list is moving a Shortcut's text into `chat`, which shows it next: later texts
+    /// wait behind it.
+    mutating func beginReview(in chat: UUID) {
+        reviewing = chat
+    }
+
+    /// `chat` no longer shows its Shortcut's text (it closed, its Open Next, or the text never got
+    /// there), so the next waiting text opens. A chat that isn't the reviewing one changes nothing.
+    mutating func endReview(in chat: UUID, directory: URL?, active: URL?, servers: [ServerAccount]) {
+        guard reviewing == chat else { return }
+        reviewing = nil
+        reserveNext(in: directory, active: active, servers: servers)
+    }
+
+    /// The reviewing `chat` gave way to `replacement` in its place, as a Profile change in an
+    /// empty chat does with its draft: the review goes with it. A chat that isn't the reviewing
+    /// one changes nothing.
+    mutating func moveReview(from chat: UUID, to replacement: UUID) {
+        guard reviewing == chat else { return }
+        reviewing = replacement
+    }
+
+    /// The home that showed the reviewing chat went (a server switch or sign-out). Waiting texts
+    /// open on the next reservation, not at once, so the switch isn't undone for another server's.
+    mutating func endReview() {
+        reviewing = nil
+    }
+
+    /// The reviewing chat's Discard: the next waiting Shortcut text is deleted unopened.
+    mutating func discardNextShortcutText(in directory: URL?) {
+        guard let directory else { return }
+        if let next = try? HermesShareDraft.reserveNextPendingImport(from: directory, kinds: .shortcutTexts) {
+            try? HermesShareDraft.consume(next, from: directory)
+        }
+        refreshWaiting(in: directory)
+    }
+
+    /// The pending reservation for `server`'s home: a share opens on any home, a Shortcut's text
+    /// only on the server it named (#1402).
+    func offered(to server: URL) -> SharedImportReservation? {
+        guard let shortcut = pending?.sharedImport.shortcut else { return pending }
+        return shortcut.opens(on: server) ? pending : nil
+    }
+
+    /// The server to make active for the pending Shortcut text, when it names one that isn't (#1402).
+    @MainActor func shortcutRoute(state: AuthManager.State, servers: [ServerAccount]) -> ServerAccount? {
+        guard let shortcut = pending?.sharedImport.shortcut,
+              case .switchServer(let account) = shortcut.newChat(in: servers)?.route(state: state, servers: servers)
+        else { return nil }
+        return account
+    }
+
+    /// The Shortcut text waiting for a server that is no longer configured (#1402): it opens
+    /// nowhere else unasked, so the user discards it or keeps it for later.
+    func unopenableShortcut(servers: [ServerAccount]) -> SharedImportReservation? {
+        guard let shortcut = pending?.sharedImport.shortcut, shortcut.newChat(in: servers) == nil else { return nil }
+        return pending
+    }
+
     private mutating func settle(_ reservation: SharedImportReservation) {
         if pending?.reservationID == reservation.reservationID { pending = nil }
         if moving?.reservationID == reservation.reservationID { moving = nil }
@@ -369,6 +498,28 @@ struct SharedImportQueue {
 
     private mutating func refreshWaiting(in directory: URL) {
         hasWaiting = (try? HermesShareDraft.hasPendingImport(in: directory)) ?? false
+        hasWaitingShortcutText = hasWaiting
+            && (try? HermesShareDraft.hasPendingImport(in: directory, kinds: .shortcutTexts)) == true
+    }
+}
+
+/// The Shortcut texts waiting behind the one a Hermes chat shows (#1402). The Sessions list
+/// begins a review as it moves a text into its chat, moves it to a chat that replaces that one
+/// in place, and ends it when the chat closes; the chat offers Open Next and Discard while one
+/// waits. `ContentView` makes it from its queue.
+struct ShortcutTextReview {
+    /// The chat showing a Shortcut's text.
+    var chat: UUID?
+    var hasWaiting = false
+    var begin: (UUID) -> Void = { _ in }
+    var replace: (UUID, UUID) -> Void = { _, _ in }
+    var end: (UUID) -> Void = { _ in }
+    var discardNext: () -> Void = {}
+
+    /// What chat `id` offers: nil unless it is the reviewing chat and a text waits behind it.
+    func waiting(in id: UUID) -> WaitingShortcutText? {
+        guard chat == id, hasWaiting else { return nil }
+        return WaitingShortcutText(openNext: { end(id) }, discard: discardNext)
     }
 }
 
@@ -526,16 +677,32 @@ enum SharedImportGate {
 /// servers on a hold, and takes the home's bar (`HermesHomeChrome`). The home keeps both sides'
 /// state, open chat included, so a switch or a size-class change shows the last roster, rows or
 /// chat at once while they refresh. It opens on the side last shown, Sessions at first, and a Bot
-/// link (a push tap, a search hit) turns it to Bots, where the inbox opens it. A session link (#1176), a Shortcut's new session (#1180) or a share
-/// (#1181) turns it to Sessions, where the list opens it.
+/// link (a push tap, a search hit) turns it to Bots, where the inbox opens it. A session link (#1176), a Shortcut's new session (#1180), a share
+/// (#1181) or a Limits widget's Usage link (#1409) turns it to Sessions, where the list opens it.
+/// Settings opens as a sheet beside a split and pushes at compact width. A sheet stays one when the
+/// width changes: pushing it above an open chat (a fold) would clear both.
+enum HermesSettingsPresentation {
+    case sheet, pushed
+
+    init(usesSplit: Bool) {
+        self = usesSplit ? .sheet : .pushed
+    }
+
+    func afterWidthChange(usesSplit: Bool) -> Self {
+        usesSplit ? .sheet : self
+    }
+}
+
 struct HermesServerHome: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Bindable var authManager: AuthManager
     let server: URL
     private let loadConnection: @MainActor (URL) -> BotConnection?
     @Binding var pendingBotDestination: BotDestination?
     @Binding var pendingSessionDestination: HermesSessionDestination?
     @Binding var pendingNewChat: HermesNewChatDestination?
+    @Binding var pendingUsage: HermesUsageDestination?
     /// The share `ContentView` reserved; the list claims it as it starts moving it into its new
     /// session's draft and routes it once the draft holds it, or once the user discards it after
     /// that move failed. The home declines it without a saved connection, and the list when it
@@ -546,63 +713,70 @@ struct HermesServerHome: View {
     let didRouteShare: (SharedImportReservation) -> Void
     let didDeclineShare: (SharedImportReservation) -> Void
     let didAbandonShare: (SharedImportReservation) -> Void
+    let shortcutReview: ShortcutTextReview
     @SceneStorage("hermesHome.tab") private var tab = HermesHomeTab.sessions
     @State private var inbox: BotInbox
     /// The Sessions side's list on the saved Bot connection, read again each time a side shows,
     /// so a sign-in changed in Settings or the inbox gets a fresh list.
     @State private var sessions: HermesSessionsSide?
-    @State private var isShowingSettings = false
+    @State private var settings: HermesSettingsPresentation?
     @State private var isPresentingAddServer = false
 
     init(authManager: AuthManager, server: URL, pendingBotDestination: Binding<BotDestination?>,
          pendingSessionDestination: Binding<HermesSessionDestination?>, pendingNewChat: Binding<HermesNewChatDestination?>,
+         pendingUsage: Binding<HermesUsageDestination?> = .constant(nil),
          pendingShare: SharedImportReservation?, claimShare: @escaping (SharedImportReservation) -> Bool,
          didRouteShare: @escaping (SharedImportReservation) -> Void,
          didDeclineShare: @escaping (SharedImportReservation) -> Void,
          didAbandonShare: @escaping (SharedImportReservation) -> Void,
+         shortcutReview: ShortcutTextReview = ShortcutTextReview(),
          initiallyShowingSettings: Bool = false,
          loadConnection: @escaping @MainActor (URL) -> BotConnection? = { try? BotConnectionStore().load(server: $0) }) {
         self.authManager = authManager
         self.server = server
         self.loadConnection = loadConnection
-        _isShowingSettings = State(initialValue: initiallyShowingSettings)
+        _settings = State(initialValue: initiallyShowingSettings ? .pushed : nil)
         _pendingBotDestination = pendingBotDestination
         _pendingSessionDestination = pendingSessionDestination
         _pendingNewChat = pendingNewChat
+        _pendingUsage = pendingUsage
         self.pendingShare = pendingShare
         self.claimShare = claimShare
         self.didRouteShare = didRouteShare
         self.didDeclineShare = didDeclineShare
         self.didAbandonShare = didAbandonShare
+        self.shortcutReview = shortcutReview
         _inbox = State(initialValue: BotInbox(server: server))
         _sessions = State(initialValue: loadConnection(server).map { HermesSessionsSide(server: server, connection: $0) })
     }
 
     var body: some View {
         let identity = HermesServerIdentity(account: authManager.activeServer, server: server)
-        let home = HermesHome(title: identity.title, avatar: avatar(identity), tab: $tab)
+        let home = HermesHome(title: identity.title, avatar: avatar(identity), tab: $tab, isSidebar: usesSplit)
         Group {
-            if HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass) {
+            if usesSplit {
                 homeContent(home)
-                    .sheet(isPresented: $isShowingSettings, onDismiss: readConnection) {
-                        NavigationStack {
-                            SettingsView(authManager: authManager, server: server)
-                                .toolbar {
-                                    ToolbarItem(placement: .confirmationAction) {
-                                        Button("Done") { isShowingSettings = false }
-                                    }
-                                }
-                        }
-                    }
             } else {
                 NavigationStack {
                     homeContent(home)
-                        .navigationDestination(isPresented: $isShowingSettings) {
+                        .navigationDestination(isPresented: isPresenting(.pushed)) {
                             SettingsView(authManager: authManager, server: server)
                         }
                 }
             }
         }
+        // Outside the branches, so the sheet outlives the switch between them.
+        .sheet(isPresented: isPresenting(.sheet), onDismiss: readConnection) {
+            NavigationStack {
+                SettingsView(authManager: authManager, server: server)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { settings = nil }
+                        }
+                    }
+            }
+        }
+        .onChange(of: usesSplit, initial: true) { settings = settings?.afterWidthChange(usesSplit: usesSplit) }
         // A Hermes chat's Update sign-in (#942) signs the server out to its sign-in form, which
         // keeps the saved values and focuses the password; saving signs it back in.
         .modifier(HermesUpdateSignInModifier { authManager.hermesSignInRejected(server: server) })
@@ -611,13 +785,13 @@ struct HermesServerHome: View {
         // later return doesn't push that side's old chat again.
         .onChange(of: tab) {
             readConnection()
-            guard !HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass) else { return }
+            guard !usesSplit else { return }
             if tab == .sessions { inbox.selection = BotInboxSelection() } else { sessions?.navigation.covers.bringForward() }
         }
         // A bot route lands on the inbox, so Settings (and an Archived screen pushed from it, #1146)
         // closes first, as a Sessions list's pushed screens do when its tab goes.
         .onChange(of: pendingBotDestination, initial: true) {
-            if pendingBotDestination != nil { tab = .bots; isShowingSettings = false }
+            if pendingBotDestination != nil { tab = .bots; settings = nil }
         }
         // A session link lands on the Sessions list the same way, with Add Server closed too, and
         // the list closes what covers its rows; without a saved connection there is no list to
@@ -625,23 +799,37 @@ struct HermesServerHome: View {
         .onChange(of: pendingSessionDestination, initial: true) {
             guard pendingSessionDestination != nil else { return }
             if sessions == nil { pendingSessionDestination = nil; return }
-            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+            tab = .sessions; settings = nil; isPresentingAddServer = false
         }
         // So does a Shortcut's new session (#1180), which the list opens.
         .onChange(of: pendingNewChat, initial: true) {
             guard pendingNewChat != nil else { return }
             if sessions == nil { pendingNewChat = nil; return }
-            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+            tab = .sessions; settings = nil; isPresentingAddServer = false
+        }
+        // So does a Limits widget's Usage link (#1409), only on the connection it was read through.
+        .onChange(of: pendingUsage, initial: true) {
+            guard let pendingUsage else { return }
+            if sessions?.entry.connection.id != pendingUsage.connectionID { self.pendingUsage = nil; return }
+            tab = .sessions; settings = nil; isPresentingAddServer = false
         }
         // And a share (#1181), which stays queued while there is no list to open it.
         .onChange(of: pendingShare?.reservationID, initial: true) {
             guard let pendingShare else { return }
             if sessions == nil { didDeclineShare(pendingShare); return }
-            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+            tab = .sessions; settings = nil; isPresentingAddServer = false
         }
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)
         }
+    }
+
+    private var usesSplit: Bool {
+        HermesHomeLayout.usesSplit(isHome: true, horizontalSizeClass: horizontalSizeClass, verticalSizeClass: verticalSizeClass)
+    }
+
+    private func isPresenting(_ presentation: HermesSettingsPresentation) -> Binding<Bool> {
+        Binding(get: { settings == presentation }, set: { if !$0 { settings = nil } })
     }
 
     @ViewBuilder private func homeContent(_ home: HermesHome) -> some View {
@@ -651,9 +839,11 @@ struct HermesServerHome: View {
                 HermesSessionListView(entry: sessions.entry, model: sessions.model, home: home,
                                       navigation: sessions.navigation,
                                       pendingLink: $pendingSessionDestination, pendingNewChat: $pendingNewChat,
+                                      pendingUsage: $pendingUsage,
                                       pendingShare: pendingShare, claimShare: claimShare,
                                       didRouteShare: didRouteShare, didDeclineShare: didDeclineShare,
-                                      didAbandonShare: didAbandonShare)
+                                      didAbandonShare: didAbandonShare, shortcutReview: shortcutReview,
+                                      isCoveredByHome: { settings != nil || isPresentingAddServer })
                     .id(sessions.entry.id)
             } else {
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home, inbox: inbox)
@@ -663,9 +853,12 @@ struct HermesServerHome: View {
     }
 
     /// A new list only when the saved record changed: a sign-in changed in Settings keeps its UUID.
+    /// The old list's chats go with it, so one reviewing a Shortcut's text (#1402) lets the next open.
     private func readConnection() {
         let saved = loadConnection(server)
-        if saved != sessions?.entry.connection { sessions = saved.map { HermesSessionsSide(server: server, connection: $0) } }
+        guard saved != sessions?.entry.connection else { return }
+        if let reviewing = shortcutReview.chat { shortcutReview.end(reviewing) }
+        sessions = saved.map { HermesSessionsSide(server: server, connection: $0) }
     }
 
     private func avatar(_ identity: HermesServerIdentity) -> SessionsHeader.Avatar {
@@ -674,10 +867,10 @@ struct HermesServerHome: View {
             color: HeaderLogoColor.color(for: identity.colorHex),
             foreground: HeaderLogoColor.prefersDarkForeground(for: identity.colorHex) ? .black : .white,
             servers: AvatarServerSwitcherModel(servers: authManager.servers, activeServerID: authManager.activeServerID),
-            openSettings: { isShowingSettings = true },
+            openSettings: { settings = HermesSettingsPresentation(usesSplit: usesSplit) },
             switchToServer: { authManager.switchActiveServer(to: $0) },
             addServer: { isPresentingAddServer = true },
-            manageServers: { isShowingSettings = true }
+            manageServers: { settings = HermesSettingsPresentation(usesSplit: usesSplit) }
         )
     }
 }
@@ -809,7 +1002,7 @@ private struct HermesServerAvatarButton: View {
             )
         } label: {
             Text(identity.initials)
-                .font(.caption.weight(.semibold))
+                .font(AppFont.caption(weight: .semibold))
                 .foregroundStyle(HeaderLogoColor.prefersDarkForeground(for: identity.colorHex) ? Color.black : Color.white)
                 .frame(width: 32, height: 32)
                 .background(HeaderLogoColor.color(for: identity.colorHex), in: Circle())
@@ -840,6 +1033,12 @@ struct PendingLinks {
     /// The new Hermes session a Shortcut asked for (#1180). The Hermes home turns to Sessions,
     /// whose list opens it.
     var hermesNewChat: HermesNewChatDestination?
+    /// The Usage screen a Limits widget's tap asked for (#1409). The Hermes home turns to Sessions,
+    /// whose list opens it. Never routed to another server: a change of server drops it.
+    var hermesUsage: HermesUsageDestination?
+    /// The bot a Bot widget's tap named on a signed-out Hermes server (#1643), held by server digest
+    /// and Profile until its sign-in saves a new Bot connection, which `reroute` turns into `bot`.
+    var botWidget: BotWidgetDestination?
 
     /// A webui conversation link replaces whatever other link was waiting.
     @MainActor mutating func open(_ destination: WebuiPushDestination, state: AuthManager.State,
@@ -863,6 +1062,27 @@ struct PendingLinks {
         return route(destination, state: state, servers: servers)
     }
 
+    /// So does a Bot widget's tap (#1643). With a saved Bot connection it becomes a bot link, routed
+    /// as one; a signed-out Hermes server is made active so its sign-in form shows, and the link
+    /// waits for it. A digest no configured server has, or a webui server with no Bot connection,
+    /// opens the app as it is.
+    @MainActor mutating func open(
+        _ destination: BotWidgetDestination, state: AuthManager.State, servers: [ServerAccount], isBotModeEnabled: Bool,
+        botConnectionID: @MainActor (URL) -> UUID? = BotDeepLinkRouter.savedConnectionID
+    ) -> ServerAccount? {
+        self = PendingLinks()
+        guard let account = servers.first(where: { URL(string: $0.urlString).map(BotHistoryCache.Scope.key) == destination.serverKey }),
+              let server = URL(string: account.urlString) else { return nil }
+        if let connectionID = botConnectionID(server) {
+            let bot = BotDestination(server: server, connectionID: connectionID, profile: destination.profile)
+            return route(bot, state: state, servers: servers, isBotModeEnabled: isBotModeEnabled,
+                         botConnectionID: botConnectionID)
+        }
+        guard account.kind == .hermes else { return nil }
+        botWidget = destination
+        return state.server == server ? nil : account
+    }
+
     /// Routes every held conversation link again once a sign-in or server switch changes what
     /// it can reach.
     @MainActor mutating func reroute(
@@ -877,7 +1097,26 @@ struct PendingLinks {
         }
         if let hermesSession { account = route(hermesSession, state: state, servers: servers) ?? account }
         if let hermesNewChat { account = route(hermesNewChat, state: state, servers: servers) ?? account }
+        if let hermesUsage, !hermesUsage.opens(state: state, servers: servers) { self.hermesUsage = nil }
+        if let botWidget { account = reroute(botWidget, state: state, servers: servers, isBotModeEnabled: isBotModeEnabled,
+                                             botConnectionID: botConnectionID) ?? account }
         return account
+    }
+
+    /// A held Bot widget tap: routed as a bot link once its server has a Bot connection again, kept
+    /// while that server stays active and signed out, and dropped once another server is active.
+    @MainActor private mutating func reroute(
+        _ destination: BotWidgetDestination, state: AuthManager.State, servers: [ServerAccount], isBotModeEnabled: Bool,
+        botConnectionID: @MainActor (URL) -> UUID?
+    ) -> ServerAccount? {
+        botWidget = nil
+        guard let server = state.server, BotHistoryCache.Scope.key(server) == destination.serverKey else { return nil }
+        guard let connectionID = botConnectionID(server) else {
+            botWidget = destination
+            return nil
+        }
+        return route(BotDestination(server: server, connectionID: connectionID, profile: destination.profile),
+                     state: state, servers: servers, isBotModeEnabled: isBotModeEnabled, botConnectionID: botConnectionID)
     }
 
     /// A new Hermes session: dropped when its server is gone, else held while it signs in or activates.

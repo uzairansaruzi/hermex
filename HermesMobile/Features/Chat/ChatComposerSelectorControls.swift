@@ -25,31 +25,6 @@ struct ComposerWorkspaceSelectorButton: View {
     }
 }
 
-/// The Fast chip: a Hermes session's or a bot chat's priority mode (#1142). A tap asks for the
-/// other mode; the chip changes only once the host answers.
-struct ComposerFastModeButton: View {
-    let isOn: Bool
-    let isDisabled: Bool
-    let color: Color
-    let controlFont: Font
-    let chevronFont: Font
-    let onSelect: (Bool) -> Void
-
-    var body: some View {
-        Button { onSelect(!isOn) } label: {
-            ComposerInlineControlLabel(
-                title: isOn ? String(localized: "Fast") : String(localized: "Normal"),
-                systemImage: "bolt", showsChevron: false, color: color,
-                controlFont: controlFont, chevronFont: chevronFont
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityLabel("Fast")
-        .accessibilityValue(isOn ? String(localized: "On") : String(localized: "Off"))
-    }
-}
-
 struct ComposerProfileSelectorMenu: View {
     let profileOptions: [ProfileSummary]
     let selectedProfileName: String?
@@ -126,152 +101,86 @@ struct ComposerProfileSelectorMenu: View {
     }
 }
 
-struct ComposerModelEffortMenu: View {
-    /// Allows a caller to disable effort while retaining access to the model menu.
-    var allowsEffortChanges = true
+/// The composer's model label, which opens Model settings. Keyboard down it is only the
+/// provider's logo and a chevron; keyboard up the title takes the row's spare width and truncates.
+struct ComposerModelLabelButton: View {
+    let showsTitle: Bool
     let selection: ComposerModelEffortSelection
-    let modelGroups: [ModelCatalogGroup]
-    let favoriteModelKeys: [ModelFavoriteKey]
-    let recentModelKeys: [ModelFavoriteKey]
     let isDisabled: Bool
     let color: Color
     let controlFont: Font
     let chevronFont: Font
-    let onSelectModel: (ModelCatalogOption) -> Void
-    let onSelectEffort: (String) -> Void
-    let onShowAllModels: () -> Void
+    let onTap: () -> Void
 
     var body: some View {
-        // UIKit needs the nested menu's full geometry before presentation. Deferring
-        // this tree makes the first submenu expansion visibly re-anchor.
-        ChatUIKitMenuButton(loadsMenuEagerly: true) {
+        Button(action: onTap) {
             HStack(spacing: 5) {
                 if ProviderGlyphKind.resolve(providerID: selection.modelProviderID) != nil {
                     ProviderGlyph(providerID: selection.modelProviderID)
                         .frame(width: 15, height: 15)
+                } else if !showsTitle {
+                    Image(systemName: "cpu")
+                        .font(controlFont)
                 }
 
-                Text(selection.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .font(controlFont)
-                    .layoutPriority(1)
+                if showsTitle {
+                    Text(selection.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .font(controlFont)
+                        .layoutPriority(1)
+                }
 
                 Image(systemName: "chevron.down")
                     .font(chevronFont)
             }
             .foregroundStyle(color)
-            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, ComposerInlineControlLabel.horizontalPadding)
             .frame(minHeight: ComposerInlineControlLabel.minimumHeight)
             .contentShape(Rectangle())
             .transaction { transaction in
                 transaction.animation = nil
             }
-        } menu: {
-            makeMenu()
         }
-        .tint(color)
+        .buttonStyle(.chatTactile(.compactControl))
         .disabled(isDisabled)
         .accessibilityLabel(Text(verbatim: selection.accessibilityTitle))
+        .accessibilityHint(Text("Model settings"))
+    }
+}
+
+/// What Model settings' Approvals row shows and may change.
+struct ComposerApprovals: Equatable {
+    let isYoloOn: Bool
+    /// A Hermes session's Profile has an approval mode. A webui session has only YOLO.
+    let offersModes: Bool
+    /// The host's `approval_mode`, nil until it reports one.
+    let mode: String?
+    let mayTurnOffYolo: Bool
+    let isChanging: Bool
+    let errorMessage: String?
+
+    /// The state in effect: Off wins, then YOLO, then the mode. Nil when nothing is known.
+    var value: String? {
+        if mode == HermesApprovalMode.off.rawValue { return Self.title(for: .off) }
+        if isYoloOn { return "YOLO" }
+        guard let mode else { return nil }
+        return HermesApprovalMode(rawValue: mode).map(Self.title(for:)) ?? mode.capitalized
     }
 
-    private func makeMenu() -> UIMenu {
-        var children: [UIMenuElement] = [modelMenu]
-        if selection.showsEffortControl {
-            children.append(effortMenu)
+    /// YOLO is on and this chat can't turn it off: the mode or a `--yolo` launch holds it.
+    var isYoloLocked: Bool { isYoloOn && !mayTurnOffYolo }
+
+    /// YOLO is on and this chat can turn it off. This stays open during a run: stopping a bypass
+    /// can't wait for the work it's letting through.
+    var canTurnOffYolo: Bool { isYoloOn && mayTurnOffYolo }
+
+    static func title(for mode: HermesApprovalMode) -> String {
+        switch mode {
+        case .smart: return String(localized: "Smart")
+        case .manual: return String(localized: "Manual")
+        case .off: return String(localized: "Off")
         }
-        return UIMenu(children: children)
-    }
-
-    private var modelMenu: UIMenu {
-        var children: [UIMenuElement] = []
-
-        if !favoriteOptions.isEmpty {
-            children.append(modelSection(title: String(localized: "Favorites"), options: favoriteOptions))
-        }
-        if !recentOptions.isEmpty {
-            children.append(modelSection(title: String(localized: "Recent"), options: recentOptions))
-        }
-        // The active model always has a checked row, even when it is neither a
-        // favorite nor a recent, so the submenu never opens with nothing selected.
-        let listedKeys = Set((favoriteOptions + recentOptions).map(\.favoriteKey))
-        if !listedKeys.contains(selection.model.favoriteKey) {
-            children.append(modelSection(title: "", options: [selection.model]))
-        }
-
-        children.append(UIMenu(
-            options: [.displayInline],
-            children: [
-                UIAction(title: String(localized: "All Models...")) { _ in
-                    Task { @MainActor in
-                        await Task.yield()
-                        onShowAllModels()
-                    }
-                }
-            ]
-        ))
-
-        return UIMenu(
-            title: String(localized: "Model"),
-            subtitle: selection.model.displayName,
-            children: children
-        )
-    }
-
-    private var effortMenu: UIMenu {
-        UIMenu(
-            title: String(localized: "Effort"),
-            subtitle: selection.effortTitle,
-            children: selection.effortOptions.map { option in
-                UIAction(
-                    title: option.title,
-                    attributes: allowsEffortChanges ? [] : [.disabled],
-                    state: selection.committedEffort == option.id ? .on : .off
-                ) { _ in
-                    Task { @MainActor in
-                        onSelectEffort(option.id)
-                    }
-                }
-            }
-        )
-    }
-
-    private func modelSection(title: String, options: [ModelCatalogOption]) -> UIMenu {
-        UIMenu(
-            title: title,
-            options: [.displayInline],
-            children: options.map(modelAction)
-        )
-    }
-
-    private func modelAction(_ option: ModelCatalogOption) -> UIAction {
-        UIAction(
-            title: option.displayName,
-            state: option.matchesSelection(
-                modelID: selection.model.id,
-                providerID: selection.modelProviderID
-            ) ? .on : .off
-        ) { _ in
-            Task { @MainActor in
-                onSelectModel(option)
-            }
-        }
-    }
-
-    private var favoriteOptions: [ModelCatalogOption] {
-        ModelFavoritesStore.visibleFavoriteOptions(
-            in: modelGroups,
-            favoriteKeys: favoriteModelKeys
-        )
-    }
-
-    private var recentOptions: [ModelCatalogOption] {
-        ModelRecentsStore.visibleRecentOptions(
-            in: modelGroups,
-            recentKeys: recentModelKeys,
-            favoriteKeys: favoriteModelKeys
-        )
     }
 }
 
@@ -316,7 +225,8 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     }
 
     var title: String {
-        guard let effortTitle else { return model.displayName }
+        // No level reported yet: a placeholder word would only push the model's name out.
+        guard committedEffort != nil, let effortTitle else { return model.displayName }
         return "\(model.displayName) · \(effortTitle)"
     }
 
@@ -325,6 +235,11 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
         guard let effort = committedEffort, let lowered = loweredEffort else { return title }
         let picked = ReasoningEffortOption.title(for: effort), sent = ReasoningEffortOption.title(for: lowered)
         return String(localized: "\(model.displayName), \(picked) effort, sent as \(sent)")
+    }
+
+    /// The same model with `level` chosen, for a level still on its way to the host.
+    func replacingEffort(with level: String) -> Self {
+        Self(model: model, effort: level, supportedEfforts: supportedEfforts, supportsEffort: supportsEffort)
     }
 
     /// `sentEffort` when it differs from the committed level.
@@ -399,6 +314,15 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
     static func title(for effort: String) -> String {
         titled.first(where: { $0.id == effort })?.title
             ?? effort.capitalized
+    }
+
+    /// `title`, shortened where eight of them share a line under the Thinking control.
+    static func shortTitle(for effort: String) -> String {
+        switch effort {
+        case "minimal": String(localized: "Min")
+        case "medium": String(localized: "Med")
+        default: title(for: effort)
+        }
     }
 
     /// Menu options for a server-provided effort vocabulary (issue #18).

@@ -9,13 +9,13 @@ import XCTest
         if let display { row["display_name"] = .string(display) }
         return BotProfile(.object(row))!
     }
-    private func creator(_ wire: RoomWire, store: BotConnectionStore? = nil,
+    private func creator(_ wire: RoomWire, store: BotConnectionStore? = nil, seatable: Set<String>? = nil,
                          reconciled: @escaping ([BotGroupRoom]) -> Void = { _ in }) throws -> BotRoomCreator {
         let store = store ?? BotConnectionStore(keychain: InMemoryKeychainStore())
         try store.save(connection, server: server)
         return BotRoomCreator(server: server, connection: connection,
             roster: [profile("default", display: "Hermes"), profile("dev"), profile("hidden", hidden: true)] + (1...5).map { profile("bot\($0)") },
-            store: store, makeWire: { _ in wire }, onReconciled: reconciled)
+            seatable: seatable, store: store, makeWire: { _ in wire }, onReconciled: reconciled)
     }
     private func reader(_ wire: RoomWire, changed: @escaping (BotGroupRoom) -> Void = { _ in },
                         disbanded: @escaping () -> Void = {}) -> BotRoomReader {
@@ -36,6 +36,48 @@ import XCTest
         for bot in creator.roster { creator.select(bot) }
         XCTAssertEqual(creator.selected.count, 6)
         creator.remove(creator.selected[0]); XCTAssertEqual(creator.selected.count, 5)
+    }
+
+    /// A canonical host names the Profiles it can seat (#1605). No other bot is listed, can be
+    /// chosen, or is sent, and one the host stopped seating after the sheet opened stops Create.
+    func testOnlyBotsTheHostCanSeatCanJoinAGroup() async throws {
+        let wire = RoomWire()
+        let creator = try creator(wire, seatable: ["default", "dev", "bot1"])
+        XCTAssertEqual(creator.remaining.map(\.id), ["default", "dev", "bot1"])
+        XCTAssertTrue(creator.leavesOutBots)
+        creator.select(creator.roster.first { $0.id == "bot2" }!)
+        XCTAssertTrue(creator.selected.isEmpty)
+        creator.select(creator.roster[0]); creator.select(creator.roster[1])
+        var caps = RoomFixture.capabilities.fields!
+        caps["seatable_profiles"] = .array([.string("default"), .string("bot1")])
+        wire.capabilities = .object(caps)
+        await creator.create()
+        XCTAssertTrue(wire.writes.isEmpty)
+        XCTAssertNil(creator.created)
+        XCTAssertNotNil(creator.message)
+        // The picker follows the host's answer: the refused bot leaves, and one it seats now shows.
+        XCTAssertEqual(creator.selected.map(\.id), ["default"])
+        XCTAssertEqual(creator.remaining.map(\.id), ["bot1"])
+        XCTAssertTrue(try self.creator(RoomWire(), seatable: ["dev"]).tooFewToSeat)
+
+        // The host refuses an unseatable member before it looks for the room, so a Try Again after
+        // a lost reply reads the rooms: the one it made, or an unlocked choice and no resend.
+        for made in [true, false] {
+            let wire = RoomWire(), creator = try self.creator(wire, seatable: ["default", "dev"])
+            creator.select(creator.roster[0]); creator.select(creator.roster[1])
+            wire.loseWrite = true
+            await creator.create()
+            wire.loseWrite = false
+            let sent = try XCTUnwrap(wire.writes.first?.1)
+            var room = RoomFixture.room(latest: 0).fields!
+            room["room_id"] = sent["room_id"]; room["members"] = sent["members"]
+            if made { wire.listedRooms = [.object(room)] }
+            wire.capabilities = .object(caps)
+            await creator.create()
+            XCTAssertEqual(wire.writes.count, 1)
+            XCTAssertEqual(creator.created?.id, made ? sent["room_id"]?.text : nil)
+            XCTAssertEqual(creator.locked, made)
+        }
     }
 
     func testCreatePayloadAndExplicitRetryKeepIdentityAndMissingDisplayName() async throws {

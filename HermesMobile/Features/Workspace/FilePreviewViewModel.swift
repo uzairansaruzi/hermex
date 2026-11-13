@@ -19,6 +19,7 @@ final class FilePreviewViewModel {
     private(set) var exportErrorMessage: String?
     private(set) var lastError: Error?
     private var exportData: Data?
+    private var loadGeneration = 0
 
     /// A text fetch the file tree started on press-down; consumed by the first `load()`.
     private var prefetchedFile: Task<FileResponse, Error>?
@@ -45,6 +46,15 @@ final class FilePreviewViewModel {
         !rasterImageExtensions.contains(pathExtension(of: path)) && BinaryFilePreview(path: path) == nil
     }
 
+    /// The workspace-relative path Copy Path puts on the pasteboard; nil for an empty,
+    /// absolute, home-relative, or `..`-escaping path, so a host path is never copied.
+    var copyablePath: String? {
+        guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !path.hasPrefix("/"), !path.hasPrefix("~"),
+              !path.split(separator: "/").contains("..") else { return nil }
+        return path
+    }
+
     var canExportFile: Bool {
         files != nil && !path.isEmpty
     }
@@ -65,7 +75,10 @@ final class FilePreviewViewModel {
             return
         }
 
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
+        defer { if generation == loadGeneration { isLoading = false } }
         errorMessage = nil
         exportErrorMessage = nil
         lastError = nil
@@ -73,11 +86,14 @@ final class FilePreviewViewModel {
         do {
             if isRasterImagePath {
                 let data = try await files.imagePreviewData(path: path)
-                exportData = data
-                if let previewData = ImagePreviewDownsampler.previewData(
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+                let previewData = await ImagePreviewDownsampler.previewDataAsync(
                     from: data,
                     maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
-                ) {
+                )
+                guard generation == loadGeneration, !Task.isCancelled else { return }
+                exportData = data
+                if let previewData {
                     preview = .image(.init(data: previewData, originalByteCount: data.count))
                 } else {
                     preview = .unavailable(String(localized: "Could not decode this image."))
@@ -87,6 +103,7 @@ final class FilePreviewViewModel {
                 let loaded = try await FilePreviewContent.loadQuickLook(name: exportFilename, knownSize: knownSize) {
                     try await files.rawFilePreviewData(path: path)
                 }
+                guard generation == loadGeneration, !Task.isCancelled else { return }
                 exportData = loaded.data
                 preview = loaded.content
             } else if binaryPreview == .unavailable {
@@ -100,6 +117,7 @@ final class FilePreviewViewModel {
                 } else {
                     file = try await files.file(path: path)
                 }
+                guard generation == loadGeneration, !Task.isCancelled else { return }
                 if file.isBinary {
                     preview = .unavailable(String(localized: "Preview is not available for this file type."))
                 } else {
@@ -112,14 +130,14 @@ final class FilePreviewViewModel {
                 }
             }
         } catch BotArtifactFailure.folder {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             // A symlinked folder a Hermes host lists as a file (#1112): nothing to preview or retry.
             preview = .unavailable(String(localized: "Preview is not available for this file type."))
         } catch {
+            guard generation == loadGeneration, !Task.isCancelled else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }
-
-        isLoading = false
     }
 
     @MainActor

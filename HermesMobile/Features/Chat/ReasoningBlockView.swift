@@ -27,6 +27,7 @@ struct ReasoningBlockView: View {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit(.reasoningBlock)
         if let displayText = ReasoningBlockContent.displayText(from: text) {
             let isLive = liveStreamID != nil
             let detail = isLive
@@ -46,7 +47,7 @@ struct ReasoningBlockView: View {
                 Image("LucideBrain")
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(width: 14, height: 14)
             } status: {
                 EmptyView()
@@ -64,7 +65,7 @@ struct ReasoningBlockView: View {
         } else {
             Text(displayText)
                 .font(AppFont.caption())
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -190,25 +191,15 @@ enum StreamingReasoningTextStorageUpdate: Equatable {
 private struct LiveReasoningTextView: View {
     let text: String
 
-    @State private var state: StreamingReasoningTextState
-
-    init(text: String) {
-        self.text = text
-        _state = State(initialValue: StreamingReasoningTextState(text: text))
-    }
-
     var body: some View {
-        StreamingReasoningTextView(state: state)
+        StreamingReasoningTextView(text: text)
         .frame(maxWidth: .infinity, alignment: .leading)
         .allowsHitTesting(false)
-        .onChange(of: text) { _, newText in
-            state.update(with: newText)
-        }
     }
 }
 
 private struct StreamingReasoningTextView: UIViewRepresentable {
-    let state: StreamingReasoningTextState
+    let text: String
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -230,18 +221,18 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        let font = UIFont.preferredFont(forTextStyle: .caption1)
-        let textColor = UIColor.label
+        let font = UIFont.app(forTextStyle: .caption1, at: context.environment.dynamicTypeSize)
+        let textColor = UIColor.appText
         let layoutDirection = context.environment.layoutDirection
 
         context.coordinator.update(
             textView,
-            to: state,
+            to: text,
             font: font,
             textColor: textColor
         )
         textView.textAlignment = layoutDirection == .rightToLeft ? .right : .left
-        textView.accessibilityLabel = state.sourceText
+        textView.accessibilityLabel = text
     }
 
     /// Reports at most the row body cap. Past it the text view scrolls itself
@@ -287,6 +278,9 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
             "HermexStreamingReasoningChunkID"
         )
 
+        // Retained for this mounted text view, so SwiftUI recreating the wrapper
+        // never chunks the entire reply again before applying its appended suffix.
+        private var state = StreamingReasoningTextState()
         private var renderedText = ""
         private var stableChunkIDs: [Int] = []
         private var stableUTF16Length = 0
@@ -295,10 +289,11 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
 
         func update(
             _ textView: UITextView,
-            to state: StreamingReasoningTextState,
+            to text: String,
             font: UIFont,
             textColor: UIColor
         ) {
+            state.update(with: text)
             let storageUpdate = StreamingReasoningTextStorageUpdate.make(
                 renderedText: renderedText,
                 newText: state.sourceText

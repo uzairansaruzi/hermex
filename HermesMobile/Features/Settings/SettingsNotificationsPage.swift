@@ -32,7 +32,7 @@ struct SettingsNotificationsPage: View {
                 }
             } header: {
                 Text("On this iPhone · All servers")
-            } footer: {
+            } appFooter: {
                 VStack(alignment: .leading, spacing: 4) {
                     if let notificationStatusText {
                         Text(notificationStatusText)

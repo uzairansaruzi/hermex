@@ -239,12 +239,12 @@ import SwiftUI
 
     /// The Shortcuts picker titles a Hermes server's Profiles by these names (#1180).
     func testEachRosterReadLeavesTheProfilesNamesForShortcuts() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("default"), row("triage", look: ["title": .string("Inbox Triage")])])
+        let wire = BotInboxFixtureWire(roster: [row("default"), row("triage", look: ["title": .string("Inbox Triage")], model: "gpt-6")])
         let inbox = try makeInbox(wires: [wire])
         await inbox.open()
 
         XCTAssertEqual(HermesProfileNameCache(defaults: defaults).names(for: server),
-                       [.init(profile: "default", title: "Hermes"), .init(profile: "triage", title: "Inbox Triage")])
+                       [.init(profile: "default", title: "Hermes"), .init(profile: "triage", title: "Inbox Triage", model: "gpt-6")])
     }
 
     func testMissingMetadataReadsPlainAndPinWritesUnderRevisionZero() async throws {
@@ -789,12 +789,13 @@ import SwiftUI
     }
 
     /// An access proxy, a host with browser sign-in only, a refused gateway upgrade, a
-    /// release older than the minimum, a host that is not Hermes or not its dashboard, and
-    /// another install at the saved address each need the user to change something, so
-    /// the inbox says what and stops retrying.
+    /// release older than the minimum, a host that is not Hermes or not its dashboard,
+    /// another install at the saved address, and a gateway's own listener each need the user
+    /// to change something, so the inbox says what and stops retrying. Only the listener
+    /// asks for another address instead of Reconnect (#1598).
     func testSignInFailuresTheUserMustFixShowTheirMessageInsteadOfRetrying() async throws {
         let failures: [BotFailure] = [.blocked, .browserSignIn, .upgradeRefused(403), .outdated("0.21.2"),
-                                      .rejected(404), .notDashboard, .differentHost]
+                                      .rejected(404), .notDashboard, .differentHost, .gatewayListener]
         for failure in failures {
             let wire = BotInboxFixtureWire(roster: [row("triage")])
             wire.connectError = failure
@@ -806,6 +807,7 @@ import SwiftUI
             await inbox.open()
             XCTAssertEqual(inbox.link, .disconnected, "\(failure)")
             XCTAssertNotNil(inbox.errorMessage, "\(failure)")
+            XCTAssertEqual(inbox.needsAddress, failure == .gatewayListener, "\(failure)")
             XCTAssertFalse(inbox.isLoadingRoster, "\(failure)")
             await Task.yield(); await Task.yield()
             XCTAssertEqual(spare, 1, "no automatic retry after \(failure)")
@@ -1477,7 +1479,7 @@ import SwiftUI
     }
 
     private func row(_ name: String, lastActive: Double? = 100, preview: String = "hi", root: String? = nil, tip: String? = nil,
-                     look: [String: BotJSON]? = nil, revision: Int? = nil) -> BotJSON {
+                     look: [String: BotJSON]? = nil, revision: Int? = nil, model: String? = nil) -> BotJSON {
         var fields: [String: BotJSON] = [
             "name": .string(name), "display_name": .string(""), "description": .string(""), "has_avatar": .bool(false),
             "canonical_session": .object([
@@ -1487,6 +1489,7 @@ import SwiftUI
         ]
         if let look { fields["ui_meta"] = .object(["hermes-bots": .object(look)]) }
         if let revision { fields["ui_meta_revisions"] = .object(["hermes-bots": .number(Double(revision))]) }
+        if let model { fields["model"] = .string(model) }
         return .object(fields)
     }
 

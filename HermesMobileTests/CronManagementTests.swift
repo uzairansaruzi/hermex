@@ -1,6 +1,7 @@
 import XCTest
 import AVFoundation
 import ImageIO
+import os
 import SwiftData
 import UIKit
 import UniformTypeIdentifiers
@@ -316,6 +317,45 @@ final class CronManagementViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.job(for: viewModel.recentRuns[2])?.name, "Digest", "Id wins over a stale name.")
         XCTAssertEqual(viewModel.job(for: viewModel.recentRuns[1])?.name, "Backup", "Name is the fallback when the list has no id.")
         XCTAssertNil(viewModel.job(for: viewModel.recentRuns[0]), "A job missing from the list stays display-only.")
+    }
+
+    /// Two refreshes overlap: the read sent last stays on screen, whichever answers first.
+    @MainActor
+    func testTasksViewModelKeepsTheNewestListReadInEitherArrivalOrder() async throws {
+        for olderAnswersFirst in [true, false] {
+            let sent = [expectation(description: "older read out"), expectation(description: "newer read out")]
+            let release = [DispatchSemaphore(value: 0), DispatchSemaphore(value: 0)]
+            let reads = OSAllocatedUnfairLock(initialState: 0)
+            let client = makeClient { request in
+                switch request.url?.path {
+                case "/api/crons":
+                    let read = reads.withLock { count in defer { count += 1 }; return count }
+                    sent[read].fulfill()
+                    release[read].wait()
+                    let name = read == 0 ? "Older" : "Newer"
+                    return apiTestJSONResponse(#"{"jobs": [{"id": "job", "name": "\#(name)"}]}"#, for: request)
+                case "/api/crons/status":
+                    return apiTestJSONResponse(#"{"running": {}}"#, for: request)
+                case "/api/crons/delivery-options":
+                    return apiTestJSONResponse(#"{"platforms": []}"#, for: request)
+                default:
+                    return apiTestJSONResponse(#"{"completions": []}"#, for: request)
+                }
+            }
+            let viewModel = TasksViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+            let older = Task { await viewModel.load() }
+            await fulfillment(of: [sent[0]], timeout: 5)
+            let newer = Task { await viewModel.load() }
+            await fulfillment(of: [sent[1]], timeout: 5)
+            let (first, second) = olderAnswersFirst ? (0, 1) : (1, 0)
+            release[first].signal()
+            await (first == 0 ? older : newer).value
+            release[second].signal()
+            await (second == 0 ? older : newer).value
+
+            XCTAssertEqual(viewModel.jobs.map(\.name), ["Newer"], "older answers first: \(olderAnswersFirst)")
+        }
     }
 
     @MainActor

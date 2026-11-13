@@ -37,8 +37,7 @@ import Foundation
 /// (`/private/var/…` for `/var/…` on a Mac), so it never matches the path that was asked for.
 /// The file, config and soul routes the Memory screen uses (#1073) are read at the same pin and
 /// checked against `scripts/local-hermes`: a missing file reads 404 `{detail: "File not found"}`,
-/// a write to a missing folder is 400 "Parent directory does not exist", and `files/mkdir`
-/// answers the folder's entry.
+/// and `files/read` and `files/upload` carry a file as a base64 `data_url` (#1566, 0.22.5).
 /// The update routes (#1075) are read at the same pin and checked against `scripts/local-hermes`;
 /// `docs/agents/bots.md` § Updating Hermes has their shapes. `POST /api/audio/speak` (#1072) is
 /// read at the same pin and checked against `scripts/local-hermes`: `{text}` only, spoken by the
@@ -140,6 +139,9 @@ enum HermesREST: Equatable, Sendable {
     case profilesActive
     /// Mints the single-use ticket one gateway socket presents.
     case ticket
+    /// A gateway's Webapp's single-use ticket for one gateway socket bound to `profile` (#1606):
+    /// that socket answers a call naming no Profile for `profile`, never the launch Profile.
+    case profileTicket(profile: String)
     /// `DELETE /api/profiles/{name}`, the only Profile removal the host exposes; the
     /// gateway has no `profiles.delete` RPC. `name` is a validated Profile slug.
     case deleteProfile(name: String)
@@ -159,10 +161,31 @@ enum HermesREST: Equatable, Sendable {
     case setEnvironment(key: String, value: String, profile: String?)
     /// Removes one key from `profile`'s `.env`; the body names both.
     case removeEnvironment(key: String, profile: String)
-    /// Installs an agent plugin, reinstalling over an existing copy.
-    case installPlugin(identifier: String)
+    /// Installs an agent plugin, reinstalling over an existing copy. `ref` pins a full commit.
+    case installPlugin(identifier: String, ref: String? = nil)
+    /// Deletes a plugin's folder, and Hermes runs no plugin code first. On 0.22.5 its routes answer
+    /// "Plugin not found" at once.
+    case removePlugin(name: String)
+    /// hermex-screen's mounted routes (#1567). A 404's body says why it's missing
+    /// (`HermexScreenPlugin.State`).
+    case screenCapabilities
+    /// Its driver, permissions, lock state and lease.
+    case screenStatus
+    /// A new viewer id and a single-use ticket for its stream.
+    case screenObserve
+    /// Take Over across every Profile. An id `/observe` didn't mint is 409 `viewer_mismatch`.
+    case screenAcquire(viewerID: String)
+    /// Hand Back. An id releases only itself; nil, with `force`, clears any holder.
+    case screenRelease(viewerID: String?)
     case setPlugin(name: String, enabled: Bool)
-    case restartGateway
+    case restartGateway(profile: String? = nil)
+    /// One Profile's messaging platforms and their state (`{platforms: [{id, name, enabled,
+    /// configured, state, …}]}`). Rows also carry masked credentials, which are never decoded.
+    case messagingPlatforms(profile: String)
+    /// One Profile's memory state: `active` is its provider, empty for the built-in one.
+    case memoryStatus(profile: String)
+    /// `{entries, removed, generated_at}`, about 2.9 MB for 976 entries at 0.22.5. Not per Profile.
+    case pluginCatalog
     case pushPairing
     /// hermex-push's mounted routes (#1235, plugin 0.5.0): no side effects, never 409.
     case pluginCapabilities
@@ -182,8 +205,8 @@ enum HermesREST: Equatable, Sendable {
     /// without archived, empty or machine-run rows, `sessionPageSize` at a time from `offset`.
     /// Each page also brings every pinned row it missed, archived ones included. `archived`
     /// reads the Archived screen's page instead (#1048): only archived rows, hidden Bot Chats
-    /// included, plus the same pinned back-fill.
-    case sessionList(profile: String, offset: Int, archived: Bool = false, scheduled: Bool = false)
+    /// included, plus the same pinned back-fill. `limit` 0 reads only the list's `total` (#1679).
+    case sessionList(profile: String, offset: Int, archived: Bool = false, scheduled: Bool = false, limit: Int? = nil)
     /// One page of every session `profile` lists for Move to Hermes's scan (#1213): archived,
     /// empty and machine-run rows included, newest-created first. A session made or deleted
     /// mid-scan shifts later pages, so a row can repeat or slip past; the scan reads any id it
@@ -254,6 +277,20 @@ enum HermesREST: Equatable, Sendable {
     case gitDiff(repository: String, file: String, staged: Bool)
     /// `{diff}`: one file's whole change against HEAD, staged and worktree edits together.
     case gitFileDiff(repository: String, file: String)
+    /// `{files: [{path, added, removed, status: "M", staged: false}], base}`: what the branch
+    /// committed since its merge-base with the first of origin/HEAD, origin/main, origin/master,
+    /// main and master that has one (#1386), or no files and a null base without one. The host
+    /// picks the base itself and ignores one sent.
+    case gitBranchChanges(repository: String)
+    /// `{diff}`: one file's diff over the branch's range, empty without a base.
+    case gitBranchDiff(repository: String, file: String)
+    /// `{files: [{path, added, removed, status, staged: false}], base}`: every change since the
+    /// commit `base` (#1392), `git diff --numstat <base>`, so commits since it and the tree's tracked
+    /// uncommitted changes, marked `M`, then untracked files, marked `?` with their line counts. No
+    /// files and a null base for a base it can't read.
+    case gitTurnChanges(repository: String, base: String)
+    /// `{diff}`: one file's `git diff <base> -- file`, empty for an untracked file.
+    case gitTurnDiff(repository: String, file: String, base: String)
     // Repository writes (#1115): each answers `{ok}`, or 400 `{detail}` with git's stderr. The
     // host hands `file` to git as a pathspec, where `*` matches other files and `.` or no file the
     // whole tree, so a file goes out literal (`:(literal)file`) and one that isn't a single
@@ -291,11 +328,15 @@ enum HermesREST: Equatable, Sendable {
     case gitFetch(repository: String)
     case gitPull(repository: String)
     case gitCreateBranch(repository: String, name: String)
-    /// Replaces or creates the file at a host path, atomically; `{ok, path, byteSize}`. It never
-    /// creates folders: a missing parent is 400 "Parent directory does not exist".
-    case fsWriteText(path: String, content: String)
-    /// Creates the folder at a host path, with its parents; 409 when a file is in the way.
-    case filesMkdir(path: String)
+    /// `{ghReady, pr: {url, state, number} | null}`: the checked-out branch's pull request from the
+    /// host's `gh pr view` (#1391). `ghReady` is false, and `pr` null, without an authenticated `gh`.
+    case gitShipInfo(repository: String)
+    /// `{data_url, size, …}` for the whole file at a path on the dashboard's own machine; 404
+    /// `{detail}` when there is none. Unlike `/api/fs/*`, the managed files routes never follow a
+    /// Profile's SSH terminal backend to another machine.
+    case filesRead(path: String)
+    /// Replaces or creates the file at a path on the dashboard's own machine, with its parents.
+    case filesUpload(path: String, text: String)
     /// A Profile's whole config, unredacted, credentials included: decode only what is needed.
     case config(profile: String)
     /// Writes `platformNote` as the Profile's `platform_hints.gui.append` (#1278). The host
@@ -358,12 +399,21 @@ enum HermesREST: Equatable, Sendable {
     case updateReceipt
     /// Public process liveness with the running release, read while the dashboard restarts.
     case health
+    /// The preflight for serving every Profile from one gateway (#1611): `{blockers, notices,
+    /// profiles, already_multiplexed, …}`, blockers and notices as prose. Read at the pin and on
+    /// `scripts/local-hermes --gateway`'s Webapp.
+    case migrationPlan
+    /// Starts `hermes gateway migrate --multiplex --yes` detached: 200 `{ok, pid, name}` means it
+    /// started, not that it finished. It restarts the gateway, which re-checks the blockers itself.
+    case migrateGateway
 
     func request(base: URL) throws -> URLRequest {
         switch self {
         case .status: return Self.get(base.appendingPathComponent("api/status"))
         case .dashboardPage: return Self.get(base.appendingPathComponent(""))
         case .health: return Self.get(base.appendingPathComponent("api/health"))
+        case .migrationPlan: return Self.get(base.appendingPathComponent("api/gateway/migrate/plan"))
+        case .migrateGateway: return Self.bare("POST", base.appendingPathComponent("api/gateway/migrate"))
         case .updateCheck(let force):
             guard var parts = URLComponents(url: base.appendingPathComponent("api/hermes/update/check"),
                                             resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
@@ -394,6 +444,12 @@ enum HermesREST: Equatable, Sendable {
         case .identity: return Self.get(base.appendingPathComponent("api/auth/me"))
         case .profilesActive: return Self.get(base.appendingPathComponent("api/profiles/active"))
         case .ticket: return try Self.send("POST", base.appendingPathComponent("api/auth/ws-ticket"), [:])
+        case .profileTicket(let profile):
+            guard var parts = URLComponents(url: base.appendingPathComponent("api/webapp/socket-ticket"),
+                                            resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
+            parts.queryItems = [URLQueryItem(name: "socket", value: "gateway"), URLQueryItem(name: "profile", value: profile)]
+            guard let url = parts.url else { throw BotFailure.invalidAddress }
+            return try Self.send("POST", url, [:])
         case .deleteProfile(let name):
             var request = URLRequest(url: base.appendingPathComponent("api/profiles").appendingPathComponent(name))
             request.httpMethod = "DELETE"
@@ -427,15 +483,31 @@ enum HermesREST: Equatable, Sendable {
             return try Self.send("PUT", base.appendingPathComponent("api/env"), body)
         case .removeEnvironment(let key, let profile):
             return try Self.send("DELETE", base.appendingPathComponent("api/env"), ["key": .string(key), "profile": .string(profile)])
-        case .installPlugin(let identifier):
-            return try Self.send("POST", base.appendingPathComponent("api/dashboard/agent-plugins/install"), [
-                "identifier": .string(identifier), "enable": .bool(true), "force": .bool(true)
-            ])
+        case .installPlugin(let identifier, let ref):
+            var body: [String: BotJSON] = ["identifier": .string(identifier), "enable": .bool(true), "force": .bool(true)]
+            if let ref { body["ref"] = .string(ref) }
+            return try Self.send("POST", base.appendingPathComponent("api/dashboard/agent-plugins/install"), body)
+        case .removePlugin(let name):
+            var request = URLRequest(url: base.appendingPathComponent("api/dashboard/agent-plugins").appendingPathComponent(name))
+            request.httpMethod = "DELETE"
+            return request
+        case .screenCapabilities: return Self.get(Self.screenRoute(base, "capabilities"))
+        case .screenStatus: return Self.get(Self.screenRoute(base, "status"))
+        case .screenObserve: return try Self.send("POST", Self.screenRoute(base, "observe"), [:])
+        case .screenAcquire(let viewerID):
+            return try Self.send("POST", Self.screenRoute(base, "lease/acquire"), ["viewer_id": .string(viewerID)])
+        case .screenRelease(let viewerID):
+            var body: [String: BotJSON] = ["force": .bool(true)]
+            if let viewerID { body["viewer_id"] = .string(viewerID) }
+            return try Self.send("POST", Self.screenRoute(base, "lease/release"), body)
         case .setPlugin(let name, let enabled):
             let url = base.appendingPathComponent("api/dashboard/agent-plugins").appendingPathComponent(name)
                 .appendingPathComponent(enabled ? "enable" : "disable")
             return try Self.send("POST", url, [:])
-        case .restartGateway: return try Self.send("POST", base.appendingPathComponent("api/gateway/restart"), [:])
+        case .restartGateway(let profile): return try Self.send("POST", try Self.url(base, "api/gateway/restart", profile: profile), [:])
+        case .messagingPlatforms(let profile): return Self.get(try Self.url(base, "api/messaging/platforms", profile: profile))
+        case .memoryStatus(let profile): return Self.get(try Self.url(base, "api/memory", profile: profile))
+        case .pluginCatalog: return Self.get(base.appendingPathComponent("api/dashboard/plugins/catalog"))
         case .pushPairing: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/pairing"))
         case .pluginCapabilities: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/capabilities"))
         case .companionProviderQuota(let provider, let profile, let refresh):
@@ -464,7 +536,7 @@ enum HermesREST: Equatable, Sendable {
             }
             guard let url = parts.url else { throw BotFailure.invalidAddress }
             return Self.get(url)
-        case .sessionList(let profile, let offset, let archived, let scheduled):
+        case .sessionList(let profile, let offset, let archived, let scheduled, let limit):
             guard !profile.isEmpty, offset >= 0,
                   var parts = URLComponents(url: base.appendingPathComponent("api/sessions"), resolvingAgainstBaseURL: false)
             else { throw BotFailure.invalidAddress }
@@ -473,7 +545,8 @@ enum HermesREST: Equatable, Sendable {
             parts.queryItems = [
                 URLQueryItem(name: "profile", value: profile), URLQueryItem(name: "order", value: "recent"),
                 URLQueryItem(name: "archived", value: archived ? "only" : "exclude"),
-                URLQueryItem(name: "limit", value: String(Self.sessionPageSize)), URLQueryItem(name: "offset", value: String(offset))
+                URLQueryItem(name: "limit", value: String(limit ?? Self.sessionPageSize)),
+                URLQueryItem(name: "offset", value: String(offset))
             ] + (archived ? [] : [URLQueryItem(name: "min_messages", value: "1")]) + (scheduled ? [
                 URLQueryItem(name: "sources", value: "cron"),
                 URLQueryItem(name: "exclude_sources", value: "kanban,oneshot,subagent,tool")
@@ -587,6 +660,22 @@ enum HermesREST: Equatable, Sendable {
         case .gitFileDiff(let repository, let file):
             return try Self.pathQuery(base, "api/git/file-diff", [URLQueryItem(name: "path", value: repository),
                                                                   URLQueryItem(name: "file", value: file)])
+        case .gitBranchChanges(let repository):
+            return try Self.pathQuery(base, "api/git/review/list", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "scope", value: "branch")])
+        case .gitBranchDiff(let repository, let file):
+            return try Self.pathQuery(base, "api/git/review/diff", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "file", value: file),
+                                                                    URLQueryItem(name: "scope", value: "branch")])
+        case .gitTurnChanges(let repository, let sha):
+            return try Self.pathQuery(base, "api/git/review/list", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "scope", value: "lastTurn"),
+                                                                    URLQueryItem(name: "base", value: sha)])
+        case .gitTurnDiff(let repository, let file, let sha):
+            return try Self.pathQuery(base, "api/git/review/diff", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "file", value: file),
+                                                                    URLQueryItem(name: "scope", value: "lastTurn"),
+                                                                    URLQueryItem(name: "base", value: sha)])
         case .gitStage(let repository, let file):
             return try Self.gitWrite(base, "api/git/review/stage", repository: repository, file: file)
         case .gitUnstage(let repository, let file):
@@ -615,11 +704,15 @@ enum HermesREST: Equatable, Sendable {
         case .gitCreateBranch(let repository, let name):
             guard Self.isBranchName(name) else { throw BotFailure.invalidAddress }
             return try Self.pluginGit(base, "branch", repository: repository, ["name": .string(name)])
-        case .fsWriteText(let path, let content):
-            return try Self.send("POST", base.appendingPathComponent("api/fs/write-text"),
-                                 ["path": .string(path), "content": .string(content)])
-        case .filesMkdir(let path):
-            return try Self.send("POST", base.appendingPathComponent("api/files/mkdir"), ["path": .string(path)])
+        case .gitShipInfo(let repository):
+            return try Self.pathQuery(base, "api/git/review/ship-info", [URLQueryItem(name: "path", value: repository)])
+        case .filesRead(let path):
+            return try Self.pathQuery(base, "api/files/read", [URLQueryItem(name: "path", value: path)])
+        case .filesUpload(let path, let text):
+            return try Self.send("POST", base.appendingPathComponent("api/files/upload"), [
+                "path": .string(path), "overwrite": .bool(true),
+                "data_url": .string("data:text/plain;base64," + Data(text.utf8).base64EncodedString())
+            ])
         case .config(let profile):
             guard !profile.isEmpty else { throw BotFailure.invalidAddress }
             return Self.get(try Self.url(base, "api/config", profile: profile))
@@ -762,6 +855,37 @@ enum HermesREST: Equatable, Sendable {
         return URLRequest(url: url)
     }
 
+    /// A bot screen's stream (#1567): `/api/display/ws` on the `ws`/`wss` URL matching the address's
+    /// scheme. The ticket `display.observe` minted rides as `?display_ticket=`, and it offers no
+    /// subprotocol. A policy refusal is an HTTP 403; a bad ticket is accepted, then closes with 4401.
+    static func screenUpgrade(base: URL, ticket: String) throws -> URLRequest {
+        guard var parts = URLComponents(url: base.appendingPathComponent("api/display/ws"), resolvingAgainstBaseURL: false)
+        else { throw BotFailure.invalidAddress }
+        parts.scheme = base.scheme == "https" ? "wss" : "ws"
+        parts.queryItems = [URLQueryItem(name: "display_ticket", value: ticket)]
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return URLRequest(url: url)
+    }
+
+    /// hermex-screen's stream (#1567): the dashboard's own pass as `?ticket=` or `?token=`, as for
+    /// a Kanban socket, and the plugin's ticket as `?stream_ticket=`, which names the viewer.
+    static func screenPluginUpgrade(base: URL, streamTicket: String, pass: UpgradePass) throws -> URLRequest {
+        guard var parts = URLComponents(url: screenRoute(base, "stream"), resolvingAgainstBaseURL: false)
+        else { throw BotFailure.invalidAddress }
+        parts.scheme = base.scheme == "https" ? "wss" : "ws"
+        let credential = switch pass {
+        case .ticket(let ticket): URLQueryItem(name: "ticket", value: ticket)
+        case .pageToken(let token): URLQueryItem(name: "token", value: token)
+        }
+        parts.queryItems = [credential, URLQueryItem(name: "stream_ticket", value: streamTicket)]
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return URLRequest(url: url)
+    }
+
+    private static func screenRoute(_ base: URL, _ path: String) -> URL {
+        base.appendingPathComponent("api/plugins/\(HermexScreenPlugin.name)/\(path)")
+    }
+
     /// The session token in `dashboardPage`'s body: upstream writes
     /// `window.__HERMES_SESSION_TOKEN__="<token>";`, quoted by hand or by `json.dumps`. Nil for
     /// a page without one, such as a dashboard behind its sign-in, which never injects it.
@@ -822,7 +946,6 @@ enum HermesREST: Equatable, Sendable {
         return try url(base, "api/cron/jobs/\(id)" + (action.map { "/" + $0 } ?? ""), profile: profile)
     }
 
-    /// One path segment of the host's own id characters, so an id never names another route.
     /// Whether `file` names one path inside a repository, as a Git write's `file` must: not blank,
     /// not absolute, no `.` or `..` part, and no empty part but a folder's trailing slash
     /// (`Sources/`, as an untracked folder's row names it).
@@ -857,6 +980,7 @@ enum HermesREST: Equatable, Sendable {
         return try send("POST", base.appendingPathComponent(route), body)
     }
 
+    /// One path segment of the host's own id characters, so an id never names another route.
     private static func isSegment(_ value: String) -> Bool {
         !value.isEmpty && value.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || "_-".unicodeScalars.contains($0) }
     }

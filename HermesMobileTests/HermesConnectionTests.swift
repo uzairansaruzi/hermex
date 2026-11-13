@@ -306,7 +306,8 @@ import XCTest
         ]
         for release in releases {
             let label = release.version ?? "missing"
-            var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+            var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                             "install_id": .string("fixture-install")]
             status["version"] = release.version.map(BotJSON.string)
             HermesHostFixture.reset()
             let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
@@ -817,6 +818,31 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
+    /// A refused password leaves the attempt at what ran (#1395): the status read passed, the
+    /// sign-in failed with its HTTP status, and no later stage claims a check.
+    func testARefusedLoginRecordsOnlyTheStagesItReached() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.path == "/auth/password-login" ? .json(401, .object(["error": .string("invalid_credentials")])) : nil
+        })
+        do { try await http.signIn(); XCTFail("The login was refused") } catch {}
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .failed(.http(401)), .notChecked, .notChecked, .notChecked])
+        XCTAssertEqual(attempt.reportedRelease, "0.21.5")
+    }
+
+    /// An open dashboard proves its page token with a gated read, not `/api/auth/me`, so its
+    /// identity stays unchecked (#1395).
+    func testAnOpenDashboardsSignInLeavesItsIdentityUnchecked() async throws {
+        let http = HermesConnection(connection: openRecord, configuration: openHost { "token-1" })
+        try await http.signIn()
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .passed, .notChecked, .notChecked, .notChecked])
+    }
+
     /// A gateway's own listener (#1340) serves an open dashboard's page without its token. Its
     /// bootstrap tells it apart from a page that isn't a dashboard's.
     func testAnOpenGatewayListenerIsNamedAtSignIn() async {
@@ -833,6 +859,19 @@ import XCTest
             do { try await http.signIn(); XCTFail("Expected \(failure)") }
             catch { XCTAssertEqual(error as? BotFailure, failure) }
         }
+    }
+
+    /// The public status read carries no cookies, so a sign-in cookie left from an earlier attempt
+    /// can't make a gateway's Webapp answer it as signed in and pass for a dashboard (#1606); the
+    /// signed-in read that follows does carry them.
+    func testOnlyTheSignedInStatusReadCarriesCookies() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.path == "/api/status"
+                ? .json(200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])])) : nil
+        })
+        try await http.signIn()
+        let statuses = HermesHostFixture.requests.filter { $0.url?.path == "/api/status" }
+        XCTAssertEqual(statuses.map(\.httpShouldHandleCookies), [false, true])
     }
 
     /// A host restart replaces the token, so the 401 that follows reads the page again and the
@@ -1082,7 +1121,7 @@ final class HermesHostFixture: URLProtocol {
         switch request.url?.path {
         case "/api/status":
             return .json(200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
-                                       "version": .string("0.21.5")]))
+                                       "version": .string("0.21.5"), "install_id": .string("fixture-install")]))
         case "/api/auth/me": return .json(200, .object(["provider": .string("basic")]))
         case "/api/auth/ws-ticket": return .json(200, .object(["ticket": .string("ticket")]))
         case let path? where path.hasPrefix("/api/sessions/") && path.hasSuffix("/mutation-snapshot"):

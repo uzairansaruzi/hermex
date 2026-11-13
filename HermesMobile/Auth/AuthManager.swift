@@ -58,6 +58,8 @@ final class AuthManager {
         // The shared Bot connection signs in with the active server's saved credentials.
         didSet {
             if let old = oldValue.server, old != state.server { hermesConnections.retire(server: old) }
+            // The Limits widget shows only the signed-in active server's Usage (#1409).
+            if case .loggedIn = oldValue, oldValue != state { limitsPublisher.invalidate() }
             dropStaleMoveSheets()
         }
     }
@@ -95,10 +97,14 @@ final class AuthManager {
     private let logoutTimeout: Duration
     let serverRegistry: ServerRegistry
     private let hermesConnections: HermesConnections
-    /// Where a removed server's Profile choice is cleared (`HermesProfilePreference`).
+    /// Where a removed server's Profile choice and model lists are cleared.
     private let preferences: UserDefaults
+    /// Hands back a server's Bot Screen holds. Tests record it.
+    var handBackScreenHolds: (URL) -> Void = { server in Task { await ScreenHolds.handBackAll(server: server) } }
     /// Tears down a server's push pairing when it is signed out of or removed.
     private let forgetPush: @MainActor (URL) async -> Void
+    /// The Limits widget's snapshot, emptied when its server or connection stops being in use.
+    private let limitsPublisher: ProviderLimitsPublisher
 
     init(
         keychain: any KeychainStoring = KeychainStore(),
@@ -111,7 +117,8 @@ final class AuthManager {
         serverRegistry: ServerRegistry = .shared,
         hermesConnections: HermesConnections? = nil,
         preferences: UserDefaults = .standard,
-        forgetPush: @escaping @MainActor (URL) async -> Void = { await PushRegistrar.shared?.forget(for: $0) }
+        forgetPush: @escaping @MainActor (URL) async -> Void = { await PushRegistrar.shared?.forget(for: $0) },
+        limitsPublisher: ProviderLimitsPublisher? = nil
     ) {
         self.keychain = keychain
         self.clientFactory = clientFactory
@@ -122,6 +129,7 @@ final class AuthManager {
         self.hermesConnections = hermesConnections ?? .shared
         self.preferences = preferences
         self.forgetPush = forgetPush
+        self.limitsPublisher = limitsPublisher ?? .shared
         restoreSavedServer()
         refreshServers()
         self.hermesConnections.onSignInRejected = { [weak self] server, failure in
@@ -258,11 +266,13 @@ final class AuthManager {
     }
 
     /// Outcome of `addServer`, so the in-app add-server flow can reveal the
-    /// password field only when the server actually needs one (#17).
+    /// password field only when the server actually needs one (#17). `serverAnswered`
+    /// says the webui answered its status read before the add failed, so the failure
+    /// is the webui's own (#1395).
     enum AddServerOutcome: Equatable {
         case added(URL)
         case needsPassword
-        case failed
+        case failed(serverAnswered: Bool)
     }
 
     /// Adds (and switches to) another server from the in-app add-server flow.
@@ -289,25 +299,27 @@ final class AuthManager {
             serverURL = try Self.normalizedServerURL(from: serverURLString)
         } catch {
             lastErrorMessage = error.localizedDescription
-            return .failed
+            return .failed(serverAnswered: false)
         }
 
         guard !serverRegistry.servers.contains(where: { $0.id == serverURL.absoluteString }) else {
             lastErrorMessage = String(localized: "This server is already configured.")
-            return .failed
+            return .failed(serverAnswered: false)
         }
 
         let newHeaders = customHeaders.sanitizedForStorage()
         // Probe with a client scoped to the NEW server's headers, leaving the live
         // header store (and the active server's in-flight/SSE requests) untouched.
         let client = probeClientFactory(serverURL, newHeaders)
+        var serverAnswered = false
 
         do {
             let authStatus = try await testConnection(client: client)
+            serverAnswered = true
 
             if let message = Self.unsupportedSignInMessage(for: authStatus) {
                 lastErrorMessage = message
-                return .failed
+                return .failed(serverAnswered: true)
             }
 
             if authStatus.authEnabled == true, !authStatus.isAlreadySignedIn {
@@ -319,7 +331,7 @@ final class AuthManager {
                 let loginResponse = try await client.login(password: password)
                 guard loginResponse.ok == true else {
                     lastErrorMessage = APIError.unauthorized.localizedDescription
-                    return .failed
+                    return .failed(serverAnswered: true)
                 }
             }
 
@@ -332,14 +344,17 @@ final class AuthManager {
             // live header store (and the active server) completely untouched.
             try keychain.save(serverURL.absoluteString, forKey: .serverURL)
             headerStore.replace(with: newHeaders)
+            handBackScreens(leavingFor: serverURL)
             serverRegistry.activate(url: serverURL)
             persistCustomHeaders(for: serverURL)
             refreshServers()
+            // As on a switch: the App Intents cache holds the previous server's profiles (#339).
+            ProfileEntityCache.shared.save([])
             state = .loggedIn(server: serverURL)
             return .added(serverURL)
         } catch {
             lastErrorMessage = error.localizedDescription
-            return .failed
+            return .failed(serverAnswered: serverAnswered)
         }
     }
 
@@ -373,6 +388,7 @@ final class AuthManager {
             refreshServers()
             return true
         }
+        handBackScreens(leavingFor: server)
         serverRegistry.activate(url: server, kind: .hermes, serverVersion: connection.hermesVersion)
         refreshServers()
         // The Shortcuts Profile list belonged to the server this replaces as active (#339).
@@ -508,6 +524,7 @@ final class AuthManager {
             return
         }
 
+        await ScreenHolds.handBackAll(server: active)
         if kind(of: active) == .hermes {
             try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
             await ChatDraftStore.shared.discardBotDrafts(server: active)
@@ -516,6 +533,8 @@ final class AuthManager {
             // Only once the record's removal has retired the shared connection: a Bots inbox
             // still on screen can save a roster it reads during the awaits above (#1403).
             await BotRosterCache.shared.remove(server: active)
+            // The awaits above can outlast a switch to another server, which stays on screen.
+            guard state.server == active else { return }
             lastErrorMessage = nil
             state = .loggedOut(server: active)
             return
@@ -532,6 +551,8 @@ final class AuthManager {
         advanceAfterRemoving(activeServer: active)
         // After the Bot record and its connection are gone, as in the Hermes branch above.
         await BotRosterCache.shared.remove(server: active)
+        // This sign-out removed the server, so its Bot widget rows go too (#1643).
+        BotWidgetPublisher.shared.remove(server: active)
     }
 
     /// Removes a configured server. When it's the active one this behaves like
@@ -542,7 +563,9 @@ final class AuthManager {
         guard let serverURL = URL(string: account.urlString) else { return }
         removingServerIDs.insert(account.id)
         defer { removingServerIDs.remove(account.id) }
+        limitsPublisher.invalidate(server: serverURL)
         dropStaleMoveSheets()
+        await ScreenHolds.handBackAll(server: serverURL)
         // A move committed during the awaits below leaves an orphan journal, which `MoveToHermesPending.all` deletes.
         let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
@@ -565,6 +588,9 @@ final class AuthManager {
         }
         // After the Bot record and its connection are gone, as in `signOut`.
         await BotRosterCache.shared.remove(server: serverURL)
+        // Here too, so a roster read during the awaits can't write the rows back. A Hermes sign-out
+        // keeps them, so a Bot widget still opens its bot after the next sign-in (#1643).
+        BotWidgetPublisher.shared.remove(server: serverURL)
         // After the entry is gone, so a running Move finds no record and writes nothing more (#1216).
         MoveToHermesJournal.discard(sources: movedSources, destinationID: account.id)
     }
@@ -578,6 +604,7 @@ final class AuthManager {
         guard account.id != state.server?.absoluteString,
               let serverURL = URL(string: account.urlString) else { return }
 
+        handBackScreens(leavingFor: serverURL)
         serverRegistry.setActive(id: account.id)
         refreshServers()
         try? keychain.save(serverURL.absoluteString, forKey: .serverURL)
@@ -646,11 +673,22 @@ final class AuthManager {
         if kind(of: server) == .webui { clearSessionCookies(for: server) }
     }
 
+    /// Any Bot Screen takeover on the server being left goes back to its bot. It runs on a connection
+    /// of its own, so the logged-in tree's rebuild can't cut it off.
+    private func handBackScreens(leavingFor next: URL) {
+        guard let departing = state.server, departing != next else { return }
+        handBackScreenHolds(departing)
+    }
+
     /// Deletes `server`'s Bot connection record with that connection's cached avatars,
-    /// which also retires its shared sign-in (`BotConnectionStore.remove`), and the Profile
-    /// its New Session remembers (#1015), whether its Sessions list shows every Profile (#709),
-    /// and the Profile that list last read.
+    /// which also retires its shared sign-in (`BotConnectionStore.remove`), the Profile its
+    /// New Session remembers (#1015), whether its Sessions list shows every Profile (#709),
+    /// the Profile that list last read, its favorite and recent models, and its Bot Screen switch.
     private func removeBotConnection(for server: URL) {
+        BotScreenSettings.remove(for: server, in: preferences)
+        ScreenHoldStore(keychain: keychain).removeAll(server: server)
+        ModelFavoritesStore.remove(for: server, in: preferences)
+        ModelRecentsStore.remove(for: server, in: preferences)
         HermesProfilePreference.save(nil, for: server, in: preferences)
         HermesProfilePreference.saveShowsAllProfiles(false, for: server, in: preferences)
         HermesProfilePreference.saveLastListed(nil, for: server, in: preferences)

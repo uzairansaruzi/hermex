@@ -9,6 +9,8 @@ struct HermexSceneActions {
     let openChat: (_ position: Int) -> Void
     /// Opens the chat `offset` rows from the selected one, wrapping at the ends.
     let openAdjacentChat: (_ offset: Int) -> Void
+    /// Opens the selected bot's Screen; nil while there is none to open.
+    var openScreen: (() -> Void)?
 }
 
 private struct HermexSceneActionsKey: FocusedValueKey {
@@ -31,6 +33,15 @@ struct HermexCommands: Commands {
         AppLock.shared.isLocked ? nil : focusedActions
     }
 
+    /// The Screen of the chat on screen (`ScreenShortcut`, #1633), wherever it was pushed from, or
+    /// with no chat on screen the Bots home's selected bot. Off while the app lock is up, as every command is.
+    @MainActor private var openScreen: (() -> Void)? {
+        guard !AppLock.shared.isLocked else { return nil }
+        let shortcut = ScreenShortcut.shared
+        guard shortcut.hasChat else { return focusedActions?.openScreen }
+        return shortcut.opener.map { opener in { opener(takingOver: false) } }
+    }
+
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Chat") {
@@ -46,6 +57,12 @@ struct HermexCommands: Commands {
             }
             .keyboardShortcut("f", modifiers: .command)
             .disabled(actions == nil)
+        }
+
+        CommandGroup(after: .sidebar) {
+            Button("Open Screen") { openScreen?() }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(openScreen == nil)
         }
 
         // View menu, beside Toggle Sidebar. ⌘⇧] and ⌘⇧[ back up ⌃Tab in case
@@ -81,12 +98,16 @@ struct HermesMobileApp: App {
     @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var pushDelegate
     @State private var authManager = AuthManager()
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
+    private let cacheContainer: ModelContainer
 
     init() {
         LaunchSignpost.begin()
+        cacheContainer = CacheContainer.open()
         // Record installation age even before a server has been configured.
         _ = RatingPromptState.shared
         ChatTranscriptDisplaySettings.migrateThinkingAndToolCards()
+        CodeDisplaySettings.migrateWrapSetting()
+        AppBarFont.applyAtLaunch()
         NetworkPathMonitor.shared.start()
     }
 
@@ -95,6 +116,8 @@ struct HermesMobileApp: App {
             #if DEBUG
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                .background(WindowBackgroundPainter())
+                .appRootFont()
                 // Signs in from `HERMEX_DEV_*` launch environment variables
                 // (`scripts/sim-login`); a no-op when they are absent.
                 .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
@@ -107,12 +130,30 @@ struct HermesMobileApp: App {
             #else
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                .background(WindowBackgroundPainter())
+                .appRootFont()
             #endif
         }
-        .modelContainer(for: [CachedSession.self, CachedMessage.self])
+        .modelContainer(cacheContainer)
         .commands {
             HermexCommands()
             SidebarCommands()
         }
     }
+}
+
+/// Paints the window behind SwiftUI's content, which shows in the gap while a rotation outruns the
+/// content's layout (#1528). A window has no background of its own, so that gap flashes black.
+/// Also gives the window the accent, which SwiftUI's default tint and UIKit's controls both read.
+private struct WindowBackgroundPainter: UIViewRepresentable {
+    final class PaintingView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            window?.backgroundColor = .appCanvas
+            window?.tintColor = .appAccent
+        }
+    }
+
+    func makeUIView(context: Context) -> PaintingView { PaintingView() }
+    func updateUIView(_ view: PaintingView, context: Context) {}
 }

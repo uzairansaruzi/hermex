@@ -49,6 +49,12 @@ class StubModelTests(unittest.TestCase):
         self.assertEqual([c["function"]["name"] for c in calls], ["terminal"])
         self.assertEqual(json.loads(calls[0]["function"]["arguments"]), {"command": 'python3 -c "print(1)"'})
 
+    def test_a_prompt_that_mentions_clarify_asks_one_question_instead(self):
+        call = self.answer({"tools": TOOLS, "messages": [{"role": "user", "content": "Please clarify"}]})["message"]["tool_calls"][0]
+        self.assertEqual(call["function"]["name"], "clarify")
+        questions = json.loads(call["function"]["arguments"])["questions"]
+        self.assertEqual([q["question"] for q in questions], ["Which check should I run?"])
+
     def test_a_tool_result_gets_the_closing_text_with_its_first_line(self):
         choice = self.answer({"tools": TOOLS, "messages": [
             {"role": "user", "content": "hi"},
@@ -82,6 +88,22 @@ class HomeTests(unittest.TestCase):
         self.assertEqual(config["model"]["base_url"], "http://127.0.0.1:5123/v1")
         self.assertIs(config["model"]["streaming"], False)
         self.assertEqual(config["approvals"]["mode"], "manual")
+
+    def test_a_gateway_home_serves_the_webapp_behind_sign_in_on_its_loopback_port(self):
+        home = local.make_home(stub_port=5123, webapp_port=9121)
+        self.addCleanup(shutil.rmtree, home)
+        webapp = json.loads((home / "config.yaml").read_text())["webapp"]
+        self.assertEqual(webapp, {"enabled": True, "host": "127.0.0.1", "port": 9121,
+                                  "public_url": "http://hermex-local.invalid"})
+        self.assertNotIn("webapp", json.loads((self.make_home() / "config.yaml").read_text()))
+
+    def test_a_home_behind_a_symlink_is_resolved_so_the_host_can_match_its_plugins_folder(self):
+        real = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, real)
+        (real / "home").mkdir()
+        (real / "link").symlink_to(real, target_is_directory=True)
+        with patch.object(local.tempfile, "mkdtemp", return_value=str(real / "link" / "home")):
+            self.assertEqual(local.make_home(stub_port=5123), real / "home")
 
     def test_every_home_carries_the_same_install_id(self):
         first, second = self.make_home(), self.make_home()
@@ -179,7 +201,7 @@ class InstallTests(unittest.TestCase):
                 patch.object(local.shutil, "which", return_value="/usr/bin/tool"):
             self.assertEqual(local.ensure_install(self.SHA), root / ".venv" / "bin" / "hermes")
             self.assertEqual([made.args[0][:3] for made in run.call_args_list],
-                             [["uv", "venv", "--quiet"], ["uv", "pip", "install"]])
+                             [["uv", "venv", "--quiet"], ["uv", "sync", "--quiet"]])
             run.reset_mock()
             local.ensure_install(self.SHA)
             self.assertEqual(run.call_args_list, [])

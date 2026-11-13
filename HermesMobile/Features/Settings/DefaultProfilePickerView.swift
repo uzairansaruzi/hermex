@@ -28,20 +28,18 @@ struct DefaultProfilePickerView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList(rows: .plain) {
                 if let saveError {
                     Text(verbatim: saveError)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
-                        .listRowSeparator(.hidden)
                 }
 
                 ForEach(filteredProfiles, id: \.self) { profile in
                     profileRow(profile)
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
-                        .listRowSeparator(.hidden)
                 }
 
                 // The server 403s profile creation in single-profile mode,
@@ -49,14 +47,13 @@ struct DefaultProfilePickerView: View {
                 if !isSingleProfileMode {
                     newProfileRow
                         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 12))
-                        .listRowSeparator(.hidden)
                 }
 
                 statusPlaceholder
-                    .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .themedPageBackground()
             .navigationTitle("Default Profile")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
@@ -126,15 +123,15 @@ struct DefaultProfilePickerView: View {
             showsCreateProfile = true
         } label: {
             Label("New Profile", systemImage: "plus")
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.primary)
+        .foregroundStyle(Color(.appText))
         .padding(.horizontal, 12)
         .background(
-            Color(.tertiarySystemFill),
+            Color(.appFillTertiary),
             in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
         )
         .disabled(isLoading || isSaving)
@@ -185,7 +182,7 @@ struct DefaultProfilePickerView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(profile.displayName)
-                            .font(.body)
+                            .font(AppFont.body())
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
                         if selected {
@@ -197,9 +194,9 @@ struct DefaultProfilePickerView: View {
 
                     if let details = profileDetails(profile) {
                         Text(details)
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(
-                                selected ? Color(.systemBackground).opacity(0.7) : Color.secondary
+                                selected ? Color(.appCanvas).opacity(0.7) : Color(.appTextSecondary)
                             )
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
@@ -210,10 +207,10 @@ struct DefaultProfilePickerView: View {
                 if inFlight {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(selected ? Color(.systemBackground) : Color.primary)
+                        .tint(selected ? Color(.appCanvas) : Color(.appText))
                 } else if selected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -238,10 +235,10 @@ struct DefaultProfilePickerView: View {
 
     private func profileAccessibilityValue(for profile: ProfileSummary) -> String {
         if isSelected(profile) {
-            return "Selected"
+            return String(localized: "Selected")
         }
 
-        return profile.isDefault == true ? "Server Default" : ""
+        return profile.isDefault == true ? String(localized: "Server Default") : ""
     }
 
     private func isSelected(_ profile: ProfileSummary) -> Bool {
@@ -366,12 +363,12 @@ private struct CreateProfileSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section {
                     TextField("Profile name", text: $name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                } footer: {
+                } appFooter: {
                     Text("Lowercase letters, numbers, hyphens, and underscores; must start with a letter or number.")
                 }
 
@@ -381,7 +378,7 @@ private struct CreateProfileSheet: View {
 
                 Section {
                     modelPicker
-                } footer: {
+                } appFooter: {
                     Text("Choose from configured providers and models for this new profile.")
                 }
 
@@ -392,7 +389,7 @@ private struct CreateProfileSheet: View {
                         .textInputAutocapitalization(.never)
 
                     SecureField("API key", text: $apiKey)
-                } footer: {
+                } appFooter: {
                     if hasInvalidBaseURL {
                         Text("Base URL must start with http:// or https://.")
                             .foregroundStyle(.red)
@@ -404,12 +401,13 @@ private struct CreateProfileSheet: View {
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(.red)
                     }
                 }
             }
             .disabled(isCreating)
+            .themedPageBackground()
             .navigationTitle("New Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -529,12 +527,12 @@ private struct ProfileStatusBadge: View {
 
     var body: some View {
         Text(title)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(isInverted ? Color(.systemBackground) : Color.accentColor)
+            .font(AppFont.caption2(weight: .semibold))
+            .foregroundStyle(isInverted ? Color(.appCanvas) : Color.accentColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(
-                isInverted ? Color(.systemBackground).opacity(0.22) : Color.accentColor.opacity(0.12),
+                isInverted ? Color(.appCanvas).opacity(0.22) : Color.accentColor.opacity(0.12),
                 in: Capsule(style: .continuous)
             )
     }

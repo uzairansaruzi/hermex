@@ -130,6 +130,17 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    /// A webui read that answers no `git` at all ends as a retryable failure, never a spinner.
+    @MainActor
+    func testAStatusReadWithoutAnAnswerOffersTryAgain() async throws {
+        let client = makeClient { request in apiTestJSONResponse(#"{"git": null}"#, for: request) }
+        let viewModel = GitWorkspaceViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.showsStatusFailure)
+    }
+
     // MARK: - Toolbar availability
 
     @MainActor
@@ -454,6 +465,51 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(DiffHunk.parse(diff?.diff ?? "").map(\.additions), [2])
     }
 
+    /// A `review/list` answer without its file list says nothing about which files are gone, so
+    /// the chat's review progress keeps them; an empty list is a clean tree and forgets them.
+    @MainActor
+    func testAHermesChangeListWithoutItsFilesForgetsNoReviewProgress() async throws {
+        var listed: BotJSON = .null
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request) }
+            return .json(200, .object(["base": .null, "files": listed]))
+        }
+        let progress = ReviewProgressStore()
+        progress.update("A.swift", in: git.reviewScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        await changes.load()
+        XCTAssertEqual(Array(progress.files(in: git.reviewScope).keys), ["A.swift"])
+
+        listed = .array([])
+        await changes.load()
+        XCTAssertEqual(progress.files(in: git.reviewScope), [:])
+    }
+
+    /// A status read whose sheet stopped waiting (it closed, or a newer retry replaced it) answers
+    /// into nothing, so it can't forget choices made in a sheet opened since.
+    @MainActor
+    func testACancelledLoadForgetsNoReviewProgress() async throws {
+        let git = ParkedStatusGitClient()
+        git.parked = expectation(description: "status requested")
+        let progress = ReviewProgressStore()
+        progress.update("A.swift", in: git.reviewScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let clean = try decoder.decode(GitStatus.self, from: Data(#"{"is_git": true, "files": [], "truncated": false}"#.utf8))
+
+        let load = Task { await changes.load() }
+        await fulfillment(of: [git.parked!], timeout: 2)
+        load.cancel()
+        git.answer(clean)
+        await load.value
+
+        XCTAssertEqual(Array(progress.files(in: git.reviewScope).keys), ["A.swift"])
+        XCTAssertNil(changes.status)
+    }
+
     /// Before the first commit `file-diff` (`git diff HEAD`) is empty, so a staged new file past
     /// the cap shows its current content as all additions, worktree edits included, as webui shows
     /// an untracked file; a binary one reads as binary.
@@ -513,7 +569,7 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
             ToolCall(name: "write_file", preview: nil, args: ["path": .string("App.swift")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string("./App.swift")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string(HermesGitHost.repository + "/Sources/Model.swift")])
-        ], status: availability.status, rowPath: git.rowPath(forToolPath:))
+        ], files: availability.status?.files ?? [], rowPath: git.rowPath(forToolPath:))
         let diff = try await git.diff(for: try XCTUnwrap(summary.diffFiles.first))
 
         XCTAssertEqual(summary.changes.map(\.path), ["Sources/App.swift", "Sources/Model.swift"])
@@ -540,7 +596,7 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         let summary = TurnFileChangeAggregator.summarize(toolCalls: [
             ToolCall(name: "write_file", preview: nil, args: ["path": .string("../README.md")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string("Nested/../Model.swift")])
-        ], status: availability.status, rowPath: git.rowPath(forToolPath:))
+        ], files: availability.status?.files ?? [], rowPath: git.rowPath(forToolPath:))
         _ = try await git.diff(for: try XCTUnwrap(summary.diffFiles.first))
 
         XCTAssertEqual(summary.changes.map(\.path), ["README.md", "Sources/Model.swift"])
@@ -568,7 +624,7 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         let summary = TurnFileChangeAggregator.summarize(toolCalls: [
             ToolCall(name: "write_file", preview: nil, args: ["path": .string("App.swift")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string("/tmp/app/Sources/Model.swift")])
-        ], status: availability.status, rowPath: git.rowPath(forToolPath:))
+        ], files: availability.status?.files ?? [], rowPath: git.rowPath(forToolPath:))
         _ = try await git.diff(for: try XCTUnwrap(summary.diffFiles.first))
 
         XCTAssertEqual(summary.changes.map(\.path), ["Sources/App.swift", "Sources/Model.swift"])
@@ -626,6 +682,470 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(statusPaths, [HermesGitHost.repository, other])
         XCTAssertEqual(first.currentBranchName, "main")
         XCTAssertEqual(moved.currentBranchName, "other-main")
+    }
+
+    // MARK: - This Branch (#1386)
+
+    /// `review/list?scope=branch`'s answer: `files` changed since `base`, or none with a null base
+    /// when the host found no base branch.
+    private static func branchReply(base: String?, files: [String] = []) -> HermesHostFixture.Reply {
+        .json(200, .object(["base": base.map(BotJSON.string) ?? .null, "files": .array(files.map {
+            .object(["path": .string($0), "added": .number(1), "removed": .number(0), "status": .string("M"), "staged": .bool(false)])
+        })]))
+    }
+
+    /// Only a Hermes repository offers This Branch: webui has no branch range.
+    @MainActor
+    func testOnlyAHermesRepositoryOffersThisBranch() async throws {
+        let hermes = GitWorkspaceViewModel(git: HermesGitHost.client { HermesGitHost.repositoryReply($0) })
+        let client = makeClient { request in apiTestJSONResponse(Self.statusWithIgnored, for: request) }
+        let webui = GitWorkspaceViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
+
+        await hermes.load()
+        await webui.load()
+
+        XCTAssertTrue(hermes.showsScopePicker)
+        XCTAssertFalse(webui.showsScopePicker)
+    }
+
+    /// A failed read, first or a refresh, stays a retryable failure, never an empty range; an empty
+    /// answer without a base means no base branch was found, and one with a base that nothing was
+    /// committed since.
+    @MainActor
+    func testThisBranchTellsAFailureFromNoBaseAndFromAnEmptyRange() async throws {
+        var list: HermesHostFixture.Reply = .json(500, .object(["detail": .string("boom")]))
+        let git = HermesGitHost.client { request in
+            request.url?.path == "/api/git/review/list" ? list : HermesGitHost.repositoryReply(request)
+        }
+        let changes = GitWorkspaceViewModel(git: git)
+        changes.scope = .branch
+
+        await changes.loadIfNeeded()
+        XCTAssertNil(changes.branchReview)
+        XCTAssertNotNil(changes.branchErrorMessage)
+
+        HermesHostFixture.script { list = Self.branchReply(base: nil) }
+        await changes.loadIfNeeded()
+        let noBase = try XCTUnwrap(changes.branchReview)
+        XCTAssertNil(changes.branchErrorMessage)
+        XCTAssertNil(noBase.base)
+        XCTAssertEqual(noBase.files, [])
+
+        HermesHostFixture.script { list = Self.branchReply(base: "1a2b3c") }
+        await changes.load()
+        XCTAssertEqual(changes.branchReview?.base, "1a2b3c")
+        XCTAssertEqual(changes.branchReview?.files, [])
+
+        HermesHostFixture.script { list = .json(500, .object(["detail": .string("boom")])) }
+        await changes.load()
+        XCTAssertNil(changes.branchReview)
+        XCTAssertNotNil(changes.branchErrorMessage)
+    }
+
+    /// A refresh that answers first wins: the older read's late rows never replace it.
+    @MainActor
+    func testAnOlderBranchReadLandingLateIsDiscarded() async throws {
+        nonisolated(unsafe) var lists = 0
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request) }
+            lists += 1
+            return lists == 1 ? .park : Self.branchReply(base: "1a2b3c", files: ["new.swift"])
+        }
+        let changes = GitWorkspaceViewModel(git: git)
+        changes.scope = .branch
+        let parked = expectation(description: "The first read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let first = Task { await changes.load() }
+        await fulfillment(of: [parked], timeout: 5)
+        await changes.load()
+        HermesHostFixture.releaseParked(Self.branchReply(base: "0f0f0f", files: ["old.swift"]), path: "/api/git/review/list")
+        await first.value
+
+        XCTAssertEqual(changes.branchReview?.files.map(\.displayPath), ["new.swift"])
+    }
+
+    /// Leaving This Branch mid-read cancels it, as the sheet's `.task(id:)` does: it shows no
+    /// error, and coming back reads the branch again.
+    @MainActor
+    func testABranchReadCancelledByAScopeSwitchIsReadAgainOnReturn() async throws {
+        nonisolated(unsafe) var lists = 0
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request) }
+            lists += 1
+            return lists == 1 ? .park : Self.branchReply(base: "1a2b3c", files: ["a.swift"])
+        }
+        let changes = GitWorkspaceViewModel(git: git)
+        changes.scope = .branch
+        let parked = expectation(description: "The first read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let first = Task { await changes.loadIfNeeded() }
+        await fulfillment(of: [parked], timeout: 5)
+        first.cancel()
+        await first.value
+        XCTAssertNil(changes.branchErrorMessage)
+        XCTAssertFalse(changes.isLoadingBranch)
+
+        await changes.loadIfNeeded()
+        XCTAssertEqual(lists, 2)
+        XCTAssertEqual(changes.branchReview?.files.map(\.displayPath), ["a.swift"])
+    }
+
+    /// Branch progress lives under its own key: the working tree's status never prunes it, and a
+    /// branch read forgets only the branch files it no longer lists.
+    @MainActor
+    func testBranchReviewProgressIsKeptApartFromUncommittedProgress() async throws {
+        let git = HermesGitHost.client { request in
+            HermesGitHost.query(request, "scope") == "branch"
+                ? Self.branchReply(base: "1a2b3c", files: ["kept.swift"]) : HermesGitHost.repositoryReply(request)
+        }
+        let progress = ReviewProgressStore()
+        let branchScope = git.progressScope(.branch, base: "1a2b3c")
+        progress.update("kept.swift", in: branchScope) { $0.isCollapsed = true }
+        progress.update("gone.swift", in: branchScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        await changes.load()
+        XCTAssertEqual(Set(progress.files(in: branchScope).keys), ["kept.swift", "gone.swift"])
+
+        changes.scope = .branch
+        await changes.load()
+        XCTAssertEqual(Array(progress.files(in: branchScope).keys), ["kept.swift"])
+    }
+
+    // MARK: - A turn's range (#1392)
+
+    /// The latest turn's card joins its range since the base its send read, so a file the agent
+    /// committed keeps its counts and opens. It waits for that read; an older base's read landing
+    /// late is dropped; a failed read falls back to the uncommitted status and says so.
+    @MainActor
+    func testTheTurnCardJoinsItsRangeForTheLatestBaseAndFallsBackOnFailure() async throws {
+        let workspace = HermesWorkspaceFileClientTests.context(cwd: HermesGitHost.repository)
+        let older = GitTurnBase(sha: "1111", workspace: workspace, turn: 1)
+        let latest = GitTurnBase(sha: "2222", workspace: workspace, turn: 2)
+        let failing = GitTurnBase(sha: "3333", workspace: workspace, turn: 3)
+        let git = HermesGitHost.client { request in
+            guard HermesGitHost.query(request, "scope") == "lastTurn" else {
+                return HermesGitHost.repositoryReply(request, rows: [("Other.swift", 1, 0, "M", false)],
+                                                     flags: [("Other.swift", false, true, false, false)])
+            }
+            switch HermesGitHost.query(request, "base") {
+            case "1111": return .park
+            case "2222": return Self.turnReply(base: "2222", files: [("App.swift", 4, 2)])
+            default: return .json(500, .object(["detail": .string("boom")]))
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        let parked = expectation(description: "The older read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let late = Task { await availability.loadTurnReview(since: older) }
+        await fulfillment(of: [parked], timeout: 5)
+        XCTAssertNil(availability.turnChangeRows(since: older), "the card waits for its range")
+        await availability.loadTurnReview(since: latest)
+        HermesHostFixture.releaseParked(Self.turnReply(base: "1111", files: [("Old.swift", 9, 9)]))
+        await late.value
+
+        let rows = try XCTUnwrap(availability.turnChangeRows(since: latest))
+        let summary = TurnFileChangeAggregator.summarize(
+            toolCalls: [ToolCall(name: "patch", preview: nil, args: ["path": .string("App.swift")])],
+            files: rows.files, scope: rows.scope, rowPath: git.rowPath(forToolPath:))
+        XCTAssertEqual(rows.scope, .since(base: "2222"))
+        XCTAssertEqual(summary.changes.map { [$0.additions, $0.deletions] }, [[4, 2]])
+        XCTAssertEqual(summary.diffFiles.map(\.displayPath), ["App.swift"])
+
+        await availability.loadTurnReview(since: failing)
+        let fallback = try XCTUnwrap(availability.turnChangeRows(since: failing))
+        XCTAssertEqual(fallback.scope, .uncommitted)
+        XCTAssertEqual(fallback.files.map(\.displayPath), ["Other.swift"])
+    }
+
+    /// A branch switch or pull moves the tree the latest turn's range compares with, so the card's
+    /// counts are read again, once per action; a fetch moves nothing and reads nothing.
+    @MainActor
+    func testASwitchOrPullReadsTheTurnRangeAgain() async throws {
+        nonisolated(unsafe) var current = "main"
+        nonisolated(unsafe) var added = 1
+        let git = HermesGitHost.client { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/capabilities": return HermesGitHost.capabilities()
+            case "/api/plugins/hermex-push/git/pull":
+                added = 3
+                return .json(200, .object(["ok": .bool(true), "message": .string("")]))
+            case "/api/git/branch/switch":
+                current = HermesCronFixture.body(request)["branch"].text ?? current
+                added = 2
+                return .json(200, .object(["branch": .string(current)]))
+            case "/api/git/review/list" where HermesGitHost.query(request, "scope") == "lastTurn":
+                return Self.turnReply(base: "2222", files: [("App.swift", added, 0)])
+            default: return Self.branchHost(request, branch: current)
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        let base = GitTurnBase(sha: "2222", workspace: HermesWorkspaceFileClientTests.context(cwd: HermesGitHost.repository),
+                               turn: 1)
+        let shownAdditions = { availability.turnChangeRows(since: base)?.files.map(\.additions) }
+        await availability.loadTurnReview(since: base)
+        let beforeSwitch = shownAdditions()
+
+        _ = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+        let afterSwitch = shownAdditions()
+        _ = await availability.performRemoteAction(.fetch)
+        _ = await availability.performRemoteAction(.pull)
+
+        XCTAssertEqual(beforeSwitch, [1])
+        XCTAssertEqual(afterSwitch, [2])
+        XCTAssertEqual(shownAdditions(), [3])
+        XCTAssertEqual(HermesGitHost.requests.filter { HermesGitHost.query($0, "scope") == "lastTurn" }.count, 3)
+    }
+
+    /// A turn's range keeps its review progress under its own base: the working tree's status never
+    /// prunes it, and another turn's base starts afresh.
+    @MainActor
+    func testATurnRangeKeepsItsReviewProgressApart() async throws {
+        let git = HermesGitHost.client { HermesGitHost.repositoryReply($0) }
+        let progress = ReviewProgressStore()
+        let turnScope = git.progressScope(.since(base: "2222"), base: nil)
+        progress.update("App.swift", in: turnScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        await changes.load()
+
+        XCTAssertEqual(Array(progress.files(in: turnScope).keys), ["App.swift"])
+        XCTAssertEqual(progress.files(in: git.progressScope(.since(base: "3333"), base: nil)), [:])
+    }
+
+    /// `review/list?scope=lastTurn`'s answer: tracked `files` changed since `base`.
+    private static func turnReply(base: String, files: [(path: String, added: Int, removed: Int)]) -> HermesHostFixture.Reply {
+        .json(200, .object(["base": .string(base), "files": .array(files.map {
+            .object(["path": .string($0.path), "added": .number(Double($0.added)), "removed": .number(Double($0.removed)),
+                     "status": .string("M"), "staged": .bool(false)])
+        })]))
+    }
+
+    // MARK: - Pull request (#1391)
+
+    /// The pull-request read runs apart from the status: a host whose `gh` hangs still shows the
+    /// Changes count, and the link appears once the read answers.
+    @MainActor
+    func testASlowPullRequestReadNeverHoldsTheChangesCount() async throws {
+        let git = HermesGitHost.client { request in
+            request.url?.path == "/api/git/review/ship-info" ? .park : Self.threeChanges(request)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        let parked = expectation(description: "pull request read in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        await availability.load()
+        await fulfillment(of: [parked], timeout: 2)
+
+        XCTAssertEqual(availability.status?.changedCount, 3)
+        XCTAssertNil(availability.pullRequest)
+        let read = availability.refreshPullRequest()
+        HermesHostFixture.releaseParked(Self.pullRequest(42, "OPEN"), path: "/api/git/review/ship-info")
+        await read?.value
+        XCTAssertEqual(availability.pullRequest?.number, 42)
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 1)
+    }
+
+    /// The link belongs to the branch it was read on: when a turn leaves the repository on another
+    /// branch, it goes at once, before the new branch's read answers.
+    @MainActor
+    func testAnotherBranchDropsThePullRequestAtOnce() async throws {
+        var branch = "main"
+        let git = HermesGitHost.client { request in
+            if request.url?.path == "/api/git/review/ship-info" { return branch == "main" ? Self.pullRequest(42, "OPEN") : .park }
+            return HermesGitHost.repositoryReply(request, branch: branch)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.number, 42)
+
+        HermesHostFixture.script { branch = "dev" }
+        let parked = expectation(description: "dev's pull request read in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        await availability.refreshAfterExternalMutation()
+        await fulfillment(of: [parked], timeout: 2)
+
+        XCTAssertEqual(availability.currentBranchName, "dev")
+        XCTAssertNil(availability.pullRequest)
+        let read = availability.refreshPullRequest()
+        HermesHostFixture.releaseParked(.json(200, .object(["ghReady": .bool(true), "pr": .null])))
+        await read?.value
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
+    }
+
+    /// A switch drops the previous branch's link once the host confirms it, while the reads after
+    /// it are still out, and shows the new branch's link once they answer.
+    @MainActor
+    func testASwitchDropsThePreviousPullRequestBeforeItsRereads() async throws {
+        nonisolated(unsafe) var branch = "main"
+        nonisolated(unsafe) var statusReadsOnDev = 0
+        let git = HermesGitHost.client { request in
+            switch request.url?.path {
+            case "/api/git/branch/switch":
+                branch = "dev"
+                return .json(200, .object(["branch": .string(branch)]))
+            case "/api/git/review/ship-info":
+                return Self.pullRequest(branch == "main" ? 42 : 43, "OPEN")
+            case "/api/git/status" where branch == "dev":
+                // The switch reads the status itself; the info read after it is the second.
+                statusReadsOnDev += 1
+                if statusReadsOnDev == 2 { return .park }
+                return Self.branchHost(request, branch: branch)
+            default:
+                return Self.branchHost(request, branch: branch)
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.number, 42)
+
+        let parked = expectation(description: "info read after the switch in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let switching = Task { await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local)) }
+        await fulfillment(of: [parked], timeout: 2)
+
+        XCTAssertNil(availability.pullRequest)
+        let status = URLRequest(url: URL(string: "https://hermes.example/api/git/status")!)
+        HermesHostFixture.releaseParked(Self.branchHost(status, branch: "dev"))
+        let outcome = await switching.value
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(availability.pullRequest?.number, 43)
+    }
+
+    /// A read still out when the chat goes off screen never lands, and the menu reads again once
+    /// the chat is back.
+    @MainActor
+    func testLeavingTheChatCancelsThePullRequestRead() async throws {
+        nonisolated(unsafe) var parks = true
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/ship-info" else { return Self.threeChanges(request) }
+            return parks ? .park : Self.pullRequest(43, "OPEN")
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        let parked = expectation(description: "pull request read in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        await availability.load()
+        await fulfillment(of: [parked], timeout: 2)
+        let read = availability.refreshPullRequest()
+
+        availability.suspendPullRequestReads()
+        HermesHostFixture.releaseParked(Self.pullRequest(42, "OPEN"))
+        await read?.value
+        XCTAssertNil(availability.pullRequest)
+
+        HermesHostFixture.script { parks = false }
+        availability.resumePullRequestReads()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.number, 43)
+    }
+
+    /// A switch that finishes after the chat goes off screen reads no pull request until the chat
+    /// is back.
+    @MainActor
+    func testASwitchFinishingOffScreenReadsNoPullRequest() async throws {
+        nonisolated(unsafe) var branch = "main"
+        let git = HermesGitHost.client { request in
+            switch request.url?.path {
+            case "/api/git/branch/switch": return .park
+            case "/api/git/review/ship-info": return Self.pullRequest(42, "OPEN")
+            default: return Self.branchHost(request, branch: branch)
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+        let parked = expectation(description: "switch in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let switching = Task { await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local)) }
+        await fulfillment(of: [parked], timeout: 2)
+
+        availability.suspendPullRequestReads()
+        HermesHostFixture.script { branch = "dev" }
+        HermesHostFixture.releaseParked(.json(200, .object(["branch": .string("dev")])))
+        let outcome = await switching.value
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 1)
+
+        availability.resumePullRequestReads()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
+    }
+
+    /// A read still out when the chat moves to another folder never shows its link there.
+    @MainActor
+    func testAPullRequestAnsweringAfterAFolderChangeShowsNothing() async throws {
+        let git = HermesGitHost.client { request in
+            request.url?.path == "/api/git/review/ship-info" ? .park : Self.threeChanges(request)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        let parked = expectation(description: "pull request read in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        await availability.load()
+        await fulfillment(of: [parked], timeout: 2)
+        let read = availability.refreshPullRequest()
+
+        availability.retire()
+        HermesHostFixture.releaseParked(Self.pullRequest(42, "OPEN"))
+        await read?.value
+
+        XCTAssertNil(availability.pullRequest)
+    }
+
+    /// Opening the menu again within the minute reads nothing new, but a push reads the pull
+    /// request again at once, since pushing can change it.
+    @MainActor
+    func testAPushRereadsTheFreshPullRequest() async throws {
+        var state = "OPEN"
+        let git = HermesGitHost.client { request in
+            request.url?.path == "/api/git/review/ship-info" ? Self.pullRequest(42, state) : Self.threeChanges(request)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+
+        HermesHostFixture.script { state = "MERGED" }
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.state, .open)
+        let pushed = await availability.performRemoteAction(.push)
+        await availability.refreshPullRequest()?.value
+
+        XCTAssertTrue(pushed)
+        XCTAssertEqual(availability.pullRequest?.state, .merged)
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
+    }
+
+    /// A read that fails takes the link away rather than leaving the last one up.
+    @MainActor
+    func testAFailedPullRequestReadDropsTheLink() async throws {
+        var fails = false
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/ship-info" else { return Self.threeChanges(request) }
+            return fails ? .json(500, .null) : Self.pullRequest(42, "OPEN")
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.number, 42)
+
+        HermesHostFixture.script { fails = true }
+        await availability.refreshPullRequest(force: true)?.value
+
+        XCTAssertNil(availability.pullRequest)
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
+    }
+
+    private static func pullRequest(_ number: Int, _ state: String) -> HermesHostFixture.Reply {
+        HermesGitHost.shipInfo(["url": .string("https://github.com/o/r/pull/\(number)"), "state": .string(state),
+                                "number": .number(Double(number))])
     }
 
     // MARK: - Diff parsing
@@ -690,33 +1210,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(hunks.count, 1)
         XCTAssertEqual(hunks[0].lines.map(\.text), ["---actual content", "+++actual content"])
         XCTAssertEqual(hunks[0].lines.map(\.kind), [.deletion, .addition])
-    }
-
-    @MainActor
-    func testToastRapidReplacementDoesNotDismissLatestSuccess() async {
-        let sleeps = HeldToastSleeps()
-        let state = GitActionToastState(sleep: sleeps.sleep)
-        state.showSuccess(GitActionSuccess(title: "First"), autoDismissAfter: .milliseconds(5))
-        let staleDismissal = state.dismissTask
-        state.showSuccess(GitActionSuccess(title: "Second"), autoDismissAfter: .seconds(1))
-        await waitUntil("both dismissals wait") { sleeps.waiting.count == 2 }
-
-        // The first toast's time runs out just after it was replaced.
-        sleeps.end(.milliseconds(5))
-        await staleDismissal?.value
-
-        XCTAssertEqual(state.success?.title, "Second")
-        state.dismissSuccess()
-        sleeps.end(.seconds(1))
-    }
-
-    @MainActor
-    func testToastAnimationSnapsUnderReduceMotion() {
-        XCTAssertNil(GitActionToastState.toastAnimation(reduceMotion: true))
-        XCTAssertEqual(
-            GitActionToastState.toastAnimation(reduceMotion: false),
-            .easeInOut(duration: 0.18)
-        )
     }
 
     // MARK: - Quick commit pipeline (issue #315, Slice C)
@@ -1825,22 +2318,37 @@ extension GitWorkspaceViewModelTests {
     }
 }
 
-/// Stands in for the Git toast's display-time sleep: each sleep waits, even once cancelled,
-/// until the test ends it, so a replaced toast's dismissal can run as if its time just ran out.
-@MainActor @Observable
-private final class HeldToastSleeps {
-    private(set) var waiting: [Duration] = []
-    @ObservationIgnored private var continuations: [Duration: CheckedContinuation<Void, Never>] = [:]
+/// A repository whose status read waits until the test answers it; nothing else is called.
+@MainActor
+private final class ParkedStatusGitClient: GitDataClient {
+    let reviewScope = "repository"
+    var parked: XCTestExpectation?
+    private var reply: CheckedContinuation<GitStatus?, Never>?
 
-    func sleep(_ duration: Duration) async {
-        await withCheckedContinuation { continuation in
-            continuations[duration] = continuation
-            waiting.append(duration)
-        }
+    func status() async throws -> GitStatus? {
+        await withCheckedContinuation { reply = $0; parked?.fulfill() }
     }
 
-    func end(_ duration: Duration) {
-        waiting.removeAll { $0 == duration }
-        continuations.removeValue(forKey: duration)?.resume()
+    func answer(_ status: GitStatus?) {
+        reply?.resume(returning: status)
+        reply = nil
+    }
+
+    func info() async throws -> GitInfo? { nil }
+    func diff(for file: GitFile) async throws -> GitDiff? { nil }
+    func stage(_ files: [GitFile]) async throws -> GitStatus? { nil }
+    func unstage(_ files: [GitFile]) async throws -> GitStatus? { nil }
+    func discard(_ files: [GitFile], deleteUntracked: Bool) async throws -> GitStatus? { nil }
+    func commit(message: String, only files: [GitFile]?) async throws -> GitCommitResponse { throw CancellationError() }
+    func push() async throws -> GitRemoteActionResponse { throw CancellationError() }
+    func supportsSync() async -> Bool { false }
+    func fetch() async throws -> GitRemoteActionResponse { throw CancellationError() }
+    func pull() async throws -> GitRemoteActionResponse { throw CancellationError() }
+    func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse {
+        throw CancellationError()
+    }
+    func branches() async throws -> GitBranches? { nil }
+    func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse {
+        throw CancellationError()
     }
 }

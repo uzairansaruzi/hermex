@@ -35,18 +35,18 @@ import Observation
     }
 
     var body: some View {
-        Form {
+        AppForm {
             if let saved = setup.saved { statusSection(saved) }
             Section {
-                Text("Connect to your dashboard").font(.title3.bold())
-                Text("Use your Hermes dashboard sign-in.").foregroundStyle(.secondary)
+                Text("Connect to your dashboard").font(AppFont.title3().bold())
+                Text("Use your Hermes dashboard sign-in.").foregroundStyle(.appSecondary)
             }
             .listRowBackground(Color.clear)
             Section {
                 if setup.isServerSignIn {
                     // A Hermes server's address is its identity: removing the server is how
                     // it changes, through Settings → Servers.
-                    Text(verbatim: setup.address).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(verbatim: setup.address).foregroundStyle(.appSecondary).textSelection(.enabled)
                         .accessibilityLabel(Text("Hermes address")).accessibilityValue(setup.address)
                         .accessibilityIdentifier("hermes-connection-address")
                 } else {
@@ -54,9 +54,21 @@ import Observation
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("hermes-connection-address")
                 }
+                if setup.offersSignInChoice {
+                    HermesSignInMethodPicker(selection: $setup.signInMethod)
+                }
+                if let rejection = setup.browserHeaderRejection {
+                    Label {
+                        Text(rejection)
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle.fill")
+                    }
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("hermes-connection-headers-rejection")
+                }
                 switch setup.signInMethod {
                 case .browser:
-                    Text("This server signs in through your browser.").foregroundStyle(.secondary)
+                    Text("This server signs in through your browser.").foregroundStyle(.appSecondary)
                 case .open:
                     OpenDashboardWarning()
                 case .password:
@@ -65,7 +77,7 @@ import Observation
                     SecureField("Password", text: $setup.password).textContentType(.password)
                         .focused($passwordFocused)
                 }
-            } footer: {
+            } appFooter: {
                 VStack(alignment: .leading, spacing: 4) {
                     // Under the password, so the focused field's keyboard never covers it.
                     if let error = setup.errorMessage {
@@ -77,6 +89,7 @@ import Observation
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("hermes-connection-error")
                     }
+                    if let attempt = setup.failedAttempt { ConnectionAttemptDetails(attempt: attempt) }
                     if setup.offersStatusRetry {
                         // A signed-out server's status says whether it signs in through the
                         // browser; there is no status section to check it again from.
@@ -115,14 +128,14 @@ import Observation
                     .frame(maxWidth: .infinity)
                     .accessibilityIdentifier("hermes-connection-replace-host")
                 }
-            } footer: {
+            } appFooter: {
                 if setup.offersHostReplacement {
                     Text("Connecting to this host instead clears this connection’s drafts, cached chats and notification pairing on this iPhone.")
                 }
             }
             Section("Need your connection details?") {
                 Text("Copy a prompt for your Hermes agent. It will check your setup and help you find the right address and sign-in details.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(AppFont.subheadline()).foregroundStyle(.appSecondary)
                 Button(copiedPrompt ? String(localized: "Copied") : String(localized: "Copy setup prompt"), systemImage: "doc.on.doc") {
                     UIPasteboard.general.string = BotConnectionSetup.prompt
                     copiedPrompt = true
@@ -146,6 +159,7 @@ import Observation
                 }
             }
         }
+        .themedPageBackground()
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -187,6 +201,7 @@ import Observation
                         .padding(20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .themedPageBackground()
                 .navigationTitle("Connection Headers")
                 .navigationBarTitleDisplayMode(.inline)
             } label: {
@@ -194,9 +209,9 @@ import Observation
                 LabeledContent("Connection Headers", value: count == 0 ? String(localized: "None") : count.formatted())
             }
             .accessibilityIdentifier("hermes-connection-headers")
-        } footer: {
+        } appFooter: {
             VStack(alignment: .leading, spacing: 4) {
-                if let rejection = setup.headerRejection {
+                if let rejection = setup.headerRejection, setup.browserHeaderRejection == nil {
                     Label {
                         Text(rejection)
                     } icon: {
@@ -256,7 +271,7 @@ import Observation
             .disabled(setup.hostStatus == .checking)
         } header: {
             Text("Status")
-        } footer: {
+        } appFooter: {
             if live != nil {
                 Text("The messaging gateway runs scheduled Tasks and messaging platforms. Bot chat notifications still arrive while it is stopped.")
             }
@@ -266,7 +281,7 @@ import Observation
     private func statusRow(_ label: LocalizedStringKey, value: String, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             LabeledContent(label, value: value)
-            if let note { Text(note).font(.footnote).foregroundStyle(.secondary) }
+            if let note { Text(note).font(AppFont.footnote()).foregroundStyle(.appSecondary) }
         }
         .accessibilityElement(children: .combine)
     }
@@ -333,14 +348,17 @@ extension BotHostStatus {
     /// with the server in Settings → Servers.
     let isServerSignIn: Bool
     var name = ""
-    var address = ""
-    var username = ""
-    var password = ""
+    var address = "" { didSet { failedAttempt = nil } }
+    var username = "" { didSet { failedAttempt = nil } }
+    var password = "" { didSet { failedAttempt = nil } }
     /// The Connection Headers being edited. Saved with the connection by `connect()`,
     /// without blank rows.
-    var headers: [CustomHeader] = []
+    var headers: [CustomHeader] = [] { didSet { failedAttempt = nil } }
     private(set) var saved: BotConnection?
-    private(set) var errorMessage: String?
+    private(set) var errorMessage: String? { didSet { failedAttempt = nil } }
+    /// What the failed Connect behind `errorMessage` observed, shown as its Details (#1395). Set
+    /// after the message it explains; a new message or an edit to what Connect sends drops it.
+    private(set) var failedAttempt: HermesAttemptRecord?
     private(set) var isConnecting = false
     /// The address whose host reported a different `install_id` on the last attempt.
     private(set) var differentHostAddress: URL?
@@ -407,21 +425,54 @@ extension BotHostStatus {
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
-    /// How this Hermes server signs in: as its host's status says, or, until the status answers,
-    /// as its saved sign-in did, through the browser (#708) or without credentials (#1314). Only a
-    /// Hermes server's own sign-in; a webui server's Bots connection keeps the password form.
-    var signInMethod: HermesSignInMethod {
-        guard isServerSignIn else { return .password }
-        if case .reachable(let status) = hostStatus { return status.signInMethod }
-        if saved?.oauth != nil { return .browser }
-        return saved?.hasNoCredentials == true ? .open : .password
+    /// How this Hermes server's host offers to sign in, the default first: as its status says,
+    /// or, until the status answers, as its saved sign-in did, through the browser (#708) or
+    /// without credentials (#1314). Only a Hermes server's own sign-in; a webui server's Bots
+    /// connection keeps the password form.
+    var offeredSignInMethods: [HermesSignInMethod] {
+        guard isServerSignIn else { return [.password] }
+        if case .reachable(let status) = hostStatus { return status.signInMethods }
+        if saved?.oauth != nil { return [.browser] }
+        return saved?.hasNoCredentials == true ? [.open] : [.password]
     }
+
+    /// The Password | Browser picker's choice, while the host offers it.
+    private var pickedSignInMethod: HermesSignInMethod?
+
+    /// How Connect signs in: the picked method, else the browser for a saved browser sign-in
+    /// on a host that offers both, else the host's default. Each saves only its own
+    /// credential, so switching leaves no stale one.
+    var signInMethod: HermesSignInMethod {
+        get {
+            let offered = offeredSignInMethods
+            if let picked = pickedSignInMethod, offered.contains(picked) { return picked }
+            if saved?.oauth != nil, offered.contains(.browser) { return .browser }
+            return offered.first ?? .password
+        }
+        set {
+            guard newValue != signInMethod else { return }
+            pickedSignInMethod = newValue
+            errorMessage = nil
+        }
+    }
+
+    /// The Password | Browser picker, for a host that offers both.
+    var offersSignInChoice: Bool { offeredSignInMethods.count > 1 }
 
     /// Why the edited headers can't be sent to Hermes (`HermesHeaders`), shown under the
     /// Connection Headers row; Connect stays off until it is fixed. Nil when they can.
     var headerRejection: String? {
         do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: signInMethod == .browser); return nil }
         catch { return error.localizedDescription }
+    }
+
+    /// The `headerRejection` that only a browser sign-in makes, an `Authorization` row,
+    /// which the form shows under the sign-in method instead.
+    var browserHeaderRejection: String? {
+        guard signInMethod == .browser else { return nil }
+        do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: true); return nil }
+        catch HermesHeaders.Rejection.authorization { return HermesHeaders.Rejection.authorization.localizedDescription }
+        catch { return nil }
     }
 
     /// Shown under the Connection Headers row when only one of Cloudflare Access's two
@@ -487,8 +538,9 @@ extension BotHostStatus {
 
     /// Signs in with the form's headers and saves the connection with them. The UUID, and
     /// with it drafts, cache and push pairing, is kept when the host reports the saved
-    /// `install_id` or when address and username are unchanged, whatever the headers;
-    /// otherwise the old connection's data is discarded. An unchanged address must still
+    /// `install_id`, when address and username are unchanged, or when a saved browser sign-in
+    /// switches to this one at its address, whatever the headers; otherwise the old
+    /// connection's data is discarded. An unchanged address must still
     /// reach the saved install before the password is sent. `replacingHost` is the user's
     /// answer to `.differentHost`: it drops that expectation and always starts a new connection.
     /// A server that signs in through the browser shows its host's page with `browser` instead,
@@ -516,7 +568,9 @@ extension BotHostStatus {
             guard attempt == id, !Task.isCancelled else { return false }
             let live = wire.serverInstallID
             let sameInstall = live != nil && live == saved?.installID
-            let sameAccount = saved?.address == url && saved?.username == account
+            // A switch from the saved browser sign-in is the same connection: `wire.connect()`
+            // has already refused a host whose `install_id` contradicts the saved one.
+            let sameAccount = saved?.address == url && (saved?.oauth != nil || saved?.username == account)
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
                 password: secret, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID, headers: sent)
@@ -531,17 +585,20 @@ extension BotHostStatus {
             // with a `HermesHeaders.Rejection` or a `BotAddressError`.
             errorMessage = attempted.map { BotConnectionAdvice.message(for: error, address: $0) }
                 ?? error.localizedDescription
+            failedAttempt = client?.lastAttempt
             return false
         }
     }
 
     /// A Hermes server's sign-in through its host's browser page (#708), shown by `browser`.
     /// The UUID, and with it drafts, cache and push pairing, is kept when the host reports
-    /// the saved `install_id` or the same account signs in again; otherwise the old
-    /// connection's data is discarded, as in `connect`. Closing the sheet shows no error.
+    /// the saved `install_id`, the same account signs in again, or a saved sign-in without the
+    /// browser switches to it at its address; otherwise the old connection's data is
+    /// discarded, as in `connect`. Closing the sheet shows no error.
     private func connectThroughBrowser(_ browser: HermesBrowserSignIn.Presenter, replacingHost: Bool) async -> Bool {
         let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; attempt = nil } }
+        var browserConnection: HermesConnection?
         do {
             let admitted = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: true).values
             let label = name.isEmpty ? (server.host ?? "Hermes") : name
@@ -549,12 +606,16 @@ extension BotHostStatus {
             let http = HermesConnection(connection: BotConnection(
                 id: UUID(), name: label, address: server, username: "", password: "",
                 installID: expected, headers: admitted.isEmpty ? nil : admitted), configuration: hermesConfiguration())
+            browserConnection = http
             try await HermesBrowserSignIn.signIn(http, presenter: browser)
             guard attempt == id, !Task.isCancelled else { return false }
             let signedIn = http.connection
             let sameInstall = http.serverInstallID != nil && http.serverInstallID == saved?.installID
-            let sameAccount = saved?.address == server && saved?.oauth?.provider == signedIn.oauth?.provider
-                && saved?.oauth?.userID == signedIn.oauth?.userID
+            // A switch to the browser is the same connection: the sign-in has already refused
+            // a host whose `install_id` contradicts the saved one.
+            let sameAccount = saved?.address == server && (saved?.oauth.map {
+                $0.provider == signedIn.oauth?.provider && $0.userID == signedIn.oauth?.userID
+            } ?? true)
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             return await commit(BotConnection(
                 id: kept?.id ?? signedIn.id, name: label, address: server, username: signedIn.username, password: "",
@@ -564,6 +625,7 @@ extension BotHostStatus {
             guard attempt == id, !Task.isCancelled, !(error is CancellationError) else { return false }
             if error as? BotFailure == .differentHost { differentHostAddress = server }
             errorMessage = BotConnectionAdvice.message(for: error, address: server)
+            failedAttempt = browserConnection?.lastAttempt
             return false
         }
     }
@@ -648,15 +710,15 @@ struct BotConnectionWelcomeView: View {
             }
             .accessibilityHidden(true)
             VStack(spacing: 12) {
-                Text("Your bots, together.").font(.title2.bold())
+                Text("Your bots, together.").font(AppFont.title2().bold())
                 Text("Bots live in your Hermes dashboard. WebUI uses a separate connection, so sign in once here to bring them to Hermex.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
             .multilineTextAlignment(.center)
             Button("Connect", action: onConnect)
-                .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
-                .foregroundStyle(Color(uiColor: .systemBackground))
-                .background(Color(uiColor: .label), in: Capsule()).buttonStyle(.plain)
+                .font(AppFont.headline()).frame(maxWidth: .infinity).padding(.vertical, 14)
+                .foregroundStyle(Color(uiColor: .appCanvas))
+                .background(Color(uiColor: .appText), in: Capsule()).buttonStyle(.plain)
         }
         .frame(maxWidth: 360).padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -674,6 +736,20 @@ struct BotConnectionWelcomeView: View {
     }
 }
 
+/// The Password | Browser segment of a sign-in form whose host offers both (#1539).
+struct HermesSignInMethodPicker: View {
+    @Binding var selection: HermesSignInMethod
+
+    var body: some View {
+        Picker("Sign in with", selection: $selection) {
+            Text("Password").tag(HermesSignInMethod.password)
+            Text("Browser").tag(HermesSignInMethod.browser)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("hermes-sign-in-method")
+    }
+}
+
 /// The warning shown wherever a Hermes dashboard with no password is signed in to or saved (#1314).
 struct OpenDashboardWarning: View {
     var body: some View {
@@ -683,5 +759,103 @@ struct OpenDashboardWarning: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         }
         .accessibilityIdentifier("hermes-open-dashboard-warning")
+    }
+}
+
+/// The collapsed Details under a connect form's advice (#1395): each stage of the failed
+/// attempt, then Copy Details (`HermesAttemptRecord.report`). Saved setup, onboarding and Add
+/// Server show it under their error; its text takes the surrounding foreground style.
+struct ConnectionAttemptDetails: View {
+    let attempt: HermesAttemptRecord
+    @State private var isExpanded = false
+    @State private var copied = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Details")
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down").imageScale(.small)
+                }
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(Text("Connection details"))
+            .accessibilityValue(isExpanded ? Text("Expanded") : Text("Collapsed"))
+            .accessibilityIdentifier("hermes-connection-details")
+            if isExpanded {
+                ForEach(HermesAttemptRecord.Stage.allCases, id: \.self) { stage in
+                    row(stage)
+                }
+                Button(copied ? String(localized: "Copied") : String(localized: "Copy Details"), systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = attempt.report()
+                    copied = true
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("hermes-connection-copy-details")
+            }
+        }
+        .font(AppFont.footnote())
+        // A newer attempt's record starts collapsed and uncopied.
+        .onChange(of: attempt) { isExpanded = false; copied = false }
+    }
+
+    private func row(_ stage: HermesAttemptRecord.Stage) -> some View {
+        let outcome = attempt[stage]
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 8))
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: outcome.symbol).foregroundStyle(outcome.tint).accessibilityHidden(true)
+            layout {
+                Text(stage.title)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+                Text(outcome.title).foregroundStyle(.appSecondary).textSelection(.enabled)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private extension HermesAttemptRecord.Stage {
+    var title: String {
+        switch self {
+        case .status: return String(localized: "Status")
+        case .signIn: return String(localized: "Sign-in")
+        case .identity: return String(localized: "Identity")
+        case .liveAuthorization: return String(localized: "Live authorization")
+        case .liveHandshake: return String(localized: "Live handshake")
+        }
+    }
+}
+
+private extension HermesAttemptRecord.Outcome {
+    var title: String {
+        switch self {
+        case .notChecked: return String(localized: "Not checked")
+        case .passed: return String(localized: "Passed")
+        case .failed(.http(let code)): return String(localized: "Failed · HTTP \(code)")
+        case .failed(.timedOut): return String(localized: "Failed · timed out")
+        case .failed(.unreachable): return String(localized: "Failed · couldn’t connect")
+        case .failed(.certificate): return String(localized: "Failed · certificate")
+        case .failed(.other): return String(localized: "Failed")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .notChecked: return "minus.circle"
+        case .passed: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        }
+    }
+
+    var tint: AnyShapeStyle {
+        switch self {
+        case .notChecked: return AnyShapeStyle(.appTertiary)
+        case .passed: return AnyShapeStyle(.green)
+        case .failed: return AnyShapeStyle(.red)
+        }
     }
 }

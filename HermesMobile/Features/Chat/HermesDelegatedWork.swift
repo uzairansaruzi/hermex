@@ -195,14 +195,12 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
         isRefreshing = true
         do {
             let next = try await fetchWorkers(owner)
-            guard owns(owner), listRequestID == requestID else { return }
+            guard finishRefresh(requestID, for: owner) else { return }
             install(next)
             availability = .supported
             errorMessage = nil
-            isRefreshing = false
         } catch {
-            guard owns(owner), listRequestID == requestID, !Task.isCancelled else { return }
-            isRefreshing = false
+            guard finishRefresh(requestID, for: owner) else { return }
             if Self.isUnsupported(error) {
                 availability = .unsupported
                 workers = []
@@ -232,7 +230,8 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
                     do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
                 }
             }
-            self.eventRefreshTask = nil
+            // A cancelled task was already replaced or dropped by whoever cancelled it.
+            if !Task.isCancelled { self.eventRefreshTask = nil }
         }
     }
 
@@ -348,6 +347,14 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
 
     private func owns(_ owner: Context) -> Bool {
         context == owner && !Task.isCancelled
+    }
+
+    /// Ends the newest refresh, and says whether its result may be applied. A cancelled
+    /// refresh still ends, or the list would read as refreshing until the next one.
+    private func finishRefresh(_ requestID: UUID, for owner: Context) -> Bool {
+        guard context == owner, listRequestID == requestID else { return false }
+        isRefreshing = false
+        return !Task.isCancelled
     }
 
     private static func hierarchyOrder(_ workers: [HermesDelegatedWorker]) -> [HermesDelegatedWorker] {

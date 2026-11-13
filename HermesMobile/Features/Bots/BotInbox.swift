@@ -173,6 +173,9 @@ import UIKit
     /// The inbox offers the sign-in form instead of Reconnect, and `open()` never sends
     /// that record again until it changes or the form saves a sign-in (#884).
     private(set) var needsSignIn = false
+    /// True after the address turned out to be a gateway's own listener (`.gatewayListener`),
+    /// which no reconnect fixes: the inbox offers a way to a new address instead (#1598).
+    private(set) var needsAddress = false
     /// What to check once an empty inbox has failed to reach the host
     /// `routeFailuresBeforeAdvice` times in a row. The quiet retry goes on behind it,
     /// and `open()` leaves it alone so it holds steady between attempts.
@@ -242,6 +245,8 @@ import UIKit
     private let rosterCache: BotRosterCache
     /// Where each roster read leaves the Profiles' names for the Shortcuts picker (#1180).
     private let profileNames: HermesProfileNameCache
+    /// Where each roster read leaves the bots for the Bot widget's picker (#1643).
+    private let widgets: BotWidgetPublisher
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
     /// Drops this phone's drafts for one deleted bot.
     private let purgeLocalState: @MainActor (UUID, String) async -> Void
@@ -260,7 +265,8 @@ import UIKit
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
          avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, rosterCache: BotRosterCache = .shared,
-         profileNames: HermesProfileNameCache = .shared, reloadSpacing: Duration = .seconds(1),
+         profileNames: HermesProfileNameCache = .shared, widgets: BotWidgetPublisher? = nil,
+         reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          statusPollInterval: Duration = .seconds(5),
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
@@ -272,6 +278,7 @@ import UIKit
         reconnect = BotReconnectSchedule(delays: reconnectDelays, isNetworkAvailable: isNetworkAvailable)
         self.isNetworkAvailable = isNetworkAvailable
         self.historyCache = historyCache; self.rosterCache = rosterCache; self.profileNames = profileNames
+        self.widgets = widgets ?? .shared
         self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
@@ -366,7 +373,7 @@ import UIKit
             if connection?.id != saved?.id || connection?.address != saved?.address {
                 routeFailures = 0; routeAdvice = nil
             }
-            if connection != saved { needsSignIn = false }
+            if connection != saved { needsSignIn = false; needsAddress = false }
             connection = saved
             guard var saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
@@ -433,6 +440,7 @@ import UIKit
                 // still a visible failure with the Reconnect path, not a stale roster.
                 link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription
                 needsSignIn = error as? BotFailure == .rejected(401)
+                needsAddress = error as? BotFailure == .gatewayListener
                 setLiveStatuses([:]); setReconnecting(false)
             }
         }
@@ -470,7 +478,7 @@ import UIKit
         close(); setLiveStatuses([:]); link = .disconnected
         routeFailures = 0; routeAdvice = nil
         errorMessage = BotConnectionAdvice.message(for: BotFailure.rejected(401), address: rejected.address)
-        needsSignIn = true
+        needsSignIn = true; needsAddress = false
     }
 
     /// The device's network path changed (#1372): a quiet reconnect waiting on its backoff runs
@@ -653,9 +661,10 @@ import UIKit
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
             profiles = Self.roster(rows)
             setReconnecting(false)
-            if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
+            if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name, model: $0.model) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
             }
+            if let connection { widgets.publish(profiles, server: server, connectionID: connection.id) }
             var changed = false
             for profile in profiles {
                 guard let lastActive = profile.lastActive?.timeIntervalSince1970,
@@ -931,13 +940,17 @@ import UIKit
         await avatarStore.refresh(profiles, connectionID: connection.id, using: client) {
             if wire === client { avatars = avatarStore.images(connectionID: connection.id) }
         }
+        // After the photos, so a configured Bot widget gets its bot's photo rather than its face.
+        guard wire === client, !Task.isCancelled else { return }
+        await widgets.renderAvatars(profiles, server: server, connectionID: connection.id, photos: avatars)
     }
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for as long as
     /// the inbox stays open, and held while the device is offline; the roster and its last known
     /// statuses stay on screen meanwhile, and `isReconnecting` says so. Only a refusal the user
     /// has to act on (`BotConnectionAdvice.isRetryable`) clears the statuses and shows a message
-    /// and the Reconnect button (Update sign-in for a rejected password). An empty inbox shows
+    /// and the Reconnect button (Update sign-in for a rejected password, a new address for a
+    /// gateway's own listener). An empty inbox shows
     /// `routeAdvice` if the host stays unreachable.
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
@@ -951,6 +964,7 @@ import UIKit
             errorMessage = address.map { BotConnectionAdvice.message(for: error, address: $0) }
                 ?? (error as? BotFailure ?? .transport).localizedDescription
             needsSignIn = error as? BotFailure == .rejected(401)
+            needsAddress = error as? BotFailure == .gatewayListener
             return
         }
         if Self.isRouteFailure(error) { routeFailures += 1 } else { routeFailures = 0; routeAdvice = nil }

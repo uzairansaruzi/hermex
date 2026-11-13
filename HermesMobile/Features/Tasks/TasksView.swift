@@ -10,6 +10,8 @@ struct TasksView: View {
 
     @State private var viewModel: TasksViewModel
     @State private var isPresentingCreateTask = false
+    /// A failed list action's notice (#1410); Delete and Run Now still confirm with alerts.
+    @State private var toast = ActionToastState()
     @State private var jobPendingDeletion: CronJob?
     /// A paused Task whose Run Now would also resume it, while the user is asked.
     @State private var jobPendingRunConfirmation: CronJob?
@@ -40,7 +42,9 @@ struct TasksView: View {
 
     var body: some View {
         content
+            .themedPageBackground()
             .navigationTitle("Tasks")
+            .onAppear { UsageReports.shared.record(.tasks) }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -64,8 +68,8 @@ struct TasksView: View {
                 }
             }
             .sheet(isPresented: $isPresentingCreateTask, onDismiss: {
-                // A failed create leaves its message behind; without this the
-                // list's own alert would fire the moment the sheet closes.
+                // A failed create leaves its message behind for the sheet;
+                // it goes with the sheet.
                 viewModel.clearActionError()
             }) {
                 CronJobEditorSheet(
@@ -99,10 +103,17 @@ struct TasksView: View {
             } message: { _ in
                 Text("This also resumes the Task.")
             }
-            .alert("Could Not Update Task", isPresented: actionErrorBinding) {
-                Button("OK", role: .cancel) { viewModel.clearActionError() }
-            } message: {
-                Text(viewModel.actionErrorMessage ?? "")
+            .overlay(alignment: .bottom) {
+                ActionToastView(state: toast)
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 22)
+            }
+            // The create sheet shows its own failure inline, and clears it when it closes.
+            .onChange(of: viewModel.actionErrorMessage) { _, message in
+                guard let message, !isPresentingCreateTask else { return }
+                toast.show(.failure(message))
+                viewModel.clearActionError()
             }
             .alert("Saved", isPresented: saveWarningBinding) {
                 Button("OK", role: .cancel) { viewModel.clearSaveWarning() }
@@ -113,6 +124,7 @@ struct TasksView: View {
                 await loadTasks()
             }
             .onDisappear {
+                toast.dismiss()
                 runNowTasks.values.forEach { $0.cancel() }
                 runNowTasks = [:]
             }
@@ -155,7 +167,7 @@ struct TasksView: View {
             } else {
                 // The list stays mounted while the feed has rows, so switching
                 // to a filter with no tasks does not take "Ran Recently" away.
-                List {
+                AppList {
                     schedulerNotice
                     recentRunsSection
 
@@ -201,7 +213,7 @@ struct TasksView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(.appMaterial(.bar))
     }
 
     /// One line when a Hermes host's scheduler has stopped ticking (#1040), above
@@ -218,7 +230,7 @@ struct TasksView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 }
-                .font(.footnote)
+                .font(AppFont.footnote())
             }
         }
     }
@@ -252,7 +264,7 @@ struct TasksView: View {
                         isShowingAllRecentRuns.toggle()
                     } label: {
                         Text(isTruncated ? "Show All (\(recentRuns.count))" : "Show Less")
-                            .font(.subheadline)
+                            .font(AppFont.subheadline())
                     }
                 }
             }
@@ -365,13 +377,6 @@ struct TasksView: View {
         )
     }
 
-    private var actionErrorBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.actionErrorMessage != nil && !isPresentingCreateTask },
-            set: { if !$0 { viewModel.clearActionError() } }
-        )
-    }
-
     /// Shown once the create sheet has closed on the Task it saved.
     private var saveWarningBinding: Binding<Bool> {
         Binding(
@@ -403,7 +408,7 @@ struct StatusBadge: View {
 
     var body: some View {
         Text(text)
-            .font(.caption2)
+            .font(AppFont.caption2())
             .fontWeight(.semibold)
             .foregroundStyle(color)
             .padding(.horizontal, 8)

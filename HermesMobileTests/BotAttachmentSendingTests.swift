@@ -32,16 +32,16 @@ import UIKit
         XCTAssertEqual(jpeg.mime, "image/jpeg")
     }
 
-    func testOnlySupportedTypesArePrepared() throws {
-        let text = try BotAttachmentUpload.prepare(data: Data("notes".utf8), filename: "notes.md")
-        XCTAssertEqual(text.data, Data("notes".utf8), "a document goes as it is")
-        XCTAssertFalse(text.image)
-        XCTAssertThrowsError(try BotAttachmentUpload.prepare(data: Data([1]), filename: "tool.exe")) {
-            XCTAssertEqual($0 as? BotAttachmentFailure, .type)
-        }
-        XCTAssertThrowsError(try BotAttachmentUpload.prepare(data: Data([1, 2, 3]), filename: "broken.png")) {
-            XCTAssertEqual($0 as? BotAttachmentFailure, .unreadable)
-        }
+    /// Any file the encoder doesn't re-encode goes as it is, as `file.attach` takes any type (#1676).
+    func testAnyFileTypeIsPreparedAsItIs() throws {
+        let tool = try BotAttachmentUpload.prepare(data: Data([1]), filename: "tool.exe")
+        XCTAssertEqual(tool.data, Data([1]))
+        XCTAssertFalse(tool.image)
+        let bare = try BotAttachmentUpload.prepare(data: Data([2]), filename: "Makefile-output")
+        XCTAssertEqual(bare.mime, "application/octet-stream")
+        let broken = try BotAttachmentUpload.prepare(data: Data([1, 2, 3]), filename: "broken.png")
+        XCTAssertEqual(broken.data, Data([1, 2, 3]), "an image the encoder can't read goes as a plain file")
+        XCTAssertFalse(broken.image)
     }
 
     func testPNGImageHTTPUploadUsesPNGDataURL() async throws {
@@ -57,10 +57,11 @@ import UIKit
             XCTAssertTrue(payload?["data_url"]?.hasPrefix("data:image/png;base64,") == true)
             return (200, [:], Data(#"{"ok":true,"path":"/profile/images/overlay.png"}"#.utf8))
         }
-        let path = try await BotAttachmentUpload.send(try BotAttachmentUpload.request(
+        let stored = try await BotAttachmentUpload.send(try BotAttachmentUpload.request(
             data: transparentPhoto, filename: "overlay.png", profile: "inbox-triage", base: URL(string: "https://bot.example")!
         ), on: session)
-        XCTAssertEqual(path, "/profile/images/overlay.png")
+        XCTAssertEqual(stored, BotUploadedImage(path: "/profile/images/overlay.png", mime: "image/png"),
+                       "a reply without `mime_type` keeps the type the phone encoded")
     }
 
     func testImageHTTPUploadUsesProfileAndReturnedPathAndRejectsMissingAcknowledgment() async throws {
@@ -77,8 +78,8 @@ import UIKit
         }
         let request = try BotAttachmentUpload.request(data: photo, filename: "photo.jpg", profile: "inbox-triage",
                                                       base: URL(string: "https://bot.example")!)
-        let path = try await BotAttachmentUpload.send(request, on: session)
-        XCTAssertEqual(path, "/profile/images/photo.jpg")
+        let stored = try await BotAttachmentUpload.send(request, on: session)
+        XCTAssertEqual(stored.path, "/profile/images/photo.jpg")
         for body in [#"{"path":"/images/photo.jpg"}"#, #"{"ok":true,"path":"https://other.example/photo.jpg"}"#] {
             BotArtifactHTTPFixture.handler = { _ in (200, [:], Data(body.utf8)) }
             do {

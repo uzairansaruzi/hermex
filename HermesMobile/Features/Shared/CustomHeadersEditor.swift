@@ -1,38 +1,10 @@
 import SwiftUI
 
-/// Add/remove editor for custom request headers, shared by the onboarding connect
-/// screen (dark theme) and Settings (standard theme). Binds directly to the header
-/// list; the owner decides when to persist. See issue #255.
+/// Add/remove editor for custom request headers, shared by Add Server's Connection Options,
+/// a webui server's settings and a Hermes connection. Binds directly to the header list; the
+/// owner decides when to persist. See issue #255.
 struct CustomHeadersEditor: View {
     @Binding var headers: [CustomHeader]
-    var style: Style = .standard
-
-    struct Style {
-        var primaryText: Color
-        var secondaryText: Color
-        var fieldBackground: Color
-        var fieldStroke: Color
-        var accent: Color
-        var removeTint: Color
-
-        static let standard = Style(
-            primaryText: .primary,
-            secondaryText: .secondary,
-            fieldBackground: Color(.secondarySystemBackground),
-            fieldStroke: Color(.separator),
-            accent: .accentColor,
-            removeTint: .red
-        )
-
-        static let onboarding = Style(
-            primaryText: .white,
-            secondaryText: .white.opacity(0.5),
-            fieldBackground: .white.opacity(0.08),
-            fieldStroke: .white.opacity(0.14),
-            accent: Color(red: 1.0, green: 0.74, blue: 0.10),
-            removeTint: Color(red: 1.0, green: 0.5, blue: 0.4)
-        )
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -44,15 +16,15 @@ struct CustomHeadersEditor: View {
                 headers.append(CustomHeader())
             } label: {
                 Label("Add Header", systemImage: "plus.circle.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(style.accent)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Add header")
 
             Text("Sent with every request to your server, including media and live streams. Use for a reverse proxy (e.g. Authentik) or token auth, such as an Authorization header.")
-                .font(.caption)
-                .foregroundStyle(style.secondaryText)
+                .font(AppFont.caption())
+                .foregroundStyle(.appSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -64,7 +36,7 @@ struct CustomHeadersEditor: View {
                     TextField("Header name", text: header.name)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .foregroundStyle(style.primaryText)
+                        .foregroundStyle(.appPrimary)
                         .accessibilityLabel("Header name")
                 }
 
@@ -72,8 +44,8 @@ struct CustomHeadersEditor: View {
                     remove(header.wrappedValue)
                 } label: {
                     Image(systemName: "minus.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(style.removeTint)
+                        .font(AppFont.title3())
+                        .foregroundStyle(.red)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove header")
@@ -81,7 +53,7 @@ struct CustomHeadersEditor: View {
 
             field {
                 SecureField("Value", text: header.value)
-                    .foregroundStyle(style.primaryText)
+                    .foregroundStyle(.appPrimary)
                     .accessibilityLabel("Header value")
             }
         }
@@ -89,13 +61,13 @@ struct CustomHeadersEditor: View {
 
     private func field<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .font(.subheadline)
+            .font(AppFont.subheadline())
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(style.fieldBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(Color(.appSurface), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(style.fieldStroke, lineWidth: 1)
+                    .strokeBorder(Color(.appSeparator), lineWidth: 1)
             )
     }
 

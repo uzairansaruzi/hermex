@@ -26,7 +26,7 @@ struct OnboardingAgentPromptPage: View {
                     Button(shownPrompt.switchTitle) {
                         shownPrompt = shownPrompt.alternative
                     }
-                    .font(.footnote.weight(.medium))
+                    .font(AppFont.footnote(weight: .medium))
                     .foregroundStyle(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
                     .buttonStyle(.plain)

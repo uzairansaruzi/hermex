@@ -114,6 +114,12 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         return BinaryFilePreview(path: path) == .quickLook
     }
 
+    /// An `.html` or `.htm` file, which a Hermes reply renders in place (#1623). A remote URL
+    /// is classified by its path, never its query.
+    var isHTMLReportCandidate: Bool {
+        mediaKind == .unsupported && ["html", "htm"].contains(pathExtension)
+    }
+
     private var pathExtension: String {
         switch source {
         case let .remoteURL(url):
@@ -159,22 +165,26 @@ enum TranscriptMediaSegmentCache {
     private final class Key: NSObject {
         let markdown: String
         let workspaceRoot: String?
+        let resolvesBarePaths: Bool
 
-        init(markdown: String, workspaceRoot: String?) {
+        init(markdown: String, workspaceRoot: String?, resolvesBarePaths: Bool) {
             self.markdown = markdown
             self.workspaceRoot = workspaceRoot
+            self.resolvesBarePaths = resolvesBarePaths
         }
 
         override var hash: Int {
             var hasher = Hasher()
             hasher.combine(markdown)
             hasher.combine(workspaceRoot)
+            hasher.combine(resolvesBarePaths)
             return hasher.finalize()
         }
 
         override func isEqual(_ object: Any?) -> Bool {
             guard let other = object as? Key else { return false }
             return markdown == other.markdown && workspaceRoot == other.workspaceRoot
+                && resolvesBarePaths == other.resolvesBarePaths
         }
     }
 
@@ -186,17 +196,19 @@ enum TranscriptMediaSegmentCache {
     /// The transcript row's segments. Streaming text changes on nearly every
     /// token, so it is parsed without touching the cache; storing it would
     /// only evict the settled rows the cache exists for.
-    static func segments(in markdown: String, workspaceRoot: String?, isStreaming: Bool) -> [TranscriptMediaSegment] {
+    static func segments(in markdown: String, workspaceRoot: String?, resolvesBarePaths: Bool = false,
+                         isStreaming: Bool) -> [TranscriptMediaSegment] {
         guard !isStreaming else {
-            return TranscriptMediaParser.segments(in: markdown, workspaceRoot: workspaceRoot)
+            return TranscriptMediaParser.segments(in: markdown, workspaceRoot: workspaceRoot, resolvesBarePaths: resolvesBarePaths)
         }
 
-        let key = Key(markdown: markdown, workspaceRoot: workspaceRoot)
+        let key = Key(markdown: markdown, workspaceRoot: workspaceRoot, resolvesBarePaths: resolvesBarePaths)
         if let cached = storage.object(forKey: key) {
             return cached.segments
         }
 
-        let segments = TranscriptMediaParser.segments(in: markdown, workspaceRoot: workspaceRoot)
+        let segments = TranscriptMediaParser.segments(in: markdown, workspaceRoot: workspaceRoot,
+                                                      resolvesBarePaths: resolvesBarePaths)
         storage.setObject(Box(segments), forKey: key)
         return segments
     }
@@ -208,15 +220,17 @@ enum TranscriptMediaSegmentCache {
 
     /// Test seam: whether this content and root currently have a memoized entry.
     static func hasCachedSegments(in markdown: String, workspaceRoot: String?) -> Bool {
-        storage.object(forKey: Key(markdown: markdown, workspaceRoot: workspaceRoot)) != nil
+        storage.object(forKey: Key(markdown: markdown, workspaceRoot: workspaceRoot, resolvesBarePaths: false)) != nil
     }
 }
 
 enum TranscriptMediaParser {
     /// Splits an assistant message into text and media. `workspaceRoot` only resolves the
-    /// relative forms of `![alt](path)`; an absolute path or a `file:` URL needs no root,
-    /// and the server's `/api/media` allow-list decides what is actually served.
-    static func segments(in markdown: String, workspaceRoot: String? = nil) -> [TranscriptMediaSegment] {
+    /// relative forms of `![alt](path)`, bare ones too with `resolvesBarePaths` (#1679); an
+    /// absolute path or a `file:` URL needs no root, and the server's `/api/media` allow-list
+    /// decides what is actually served.
+    static func segments(in markdown: String, workspaceRoot: String? = nil,
+                         resolvesBarePaths: Bool = false) -> [TranscriptMediaSegment] {
         guard !markdown.isEmpty else { return [] }
         // Most replies name no media at all, and most lines of those that do
         // name none either; a byte scan settles that before the
@@ -245,7 +259,7 @@ enum TranscriptMediaParser {
                 isInFence = true
                 fenceCharacter = marker
             } else if mayContainMedia(line) {
-                appendMediaSegments(in: line, to: &segments, workspaceRoot: workspaceRoot)
+                appendMediaSegments(in: line, to: &segments, workspaceRoot: workspaceRoot, resolvesBarePaths: resolvesBarePaths)
             } else {
                 segments.appendText(line)
             }
@@ -259,7 +273,8 @@ enum TranscriptMediaParser {
     private static func appendMediaSegments(
         in line: String,
         to segments: inout SegmentBuilder,
-        workspaceRoot: String?
+        workspaceRoot: String?,
+        resolvesBarePaths: Bool
     ) {
         var cursor = line.startIndex
         var textStart = cursor
@@ -269,7 +284,8 @@ enum TranscriptMediaParser {
             if line[cursor...].hasPrefix(markdownImageMarker),
                !inlineCodeRanges.contains(where: { $0.contains(cursor) }),
                let image = markdownImage(in: line, from: cursor),
-               let reference = markdownImageReference(for: image, workspaceRoot: workspaceRoot) {
+               let reference = markdownImageReference(for: image, workspaceRoot: workspaceRoot,
+                                                      resolvesBarePaths: resolvesBarePaths) {
                 segments.appendText(line[textStart..<cursor])
                 segments.appendMedia(reference)
 
@@ -278,7 +294,19 @@ enum TranscriptMediaParser {
                 continue
             }
 
+            if line[cursor] == "`",
+               let span = inlineCodeRanges.first(where: { $0.lowerBound == cursor }),
+               let rawReference = codeWrappedMediaReference(in: line[span]) {
+                segments.appendText(line[textStart..<cursor])
+                segments.appendMedia(TranscriptMediaReference(rawReference: rawReference))
+
+                cursor = span.upperBound
+                textStart = cursor
+                continue
+            }
+
             if line[cursor...].hasPrefix("MEDIA:"),
+               !inlineCodeRanges.contains(where: { $0.contains(cursor) }),
                let referenceRange = referenceRange(
                    in: line,
                    markerStart: cursor,
@@ -442,11 +470,13 @@ enum TranscriptMediaParser {
     /// already does with them.
     private static func markdownImageReference(
         for image: MarkdownImage,
-        workspaceRoot: String?
+        workspaceRoot: String?,
+        resolvesBarePaths: Bool
     ) -> TranscriptMediaReference? {
         guard let path = FileReference.absoluteMediaPath(
             image.destination,
-            workspaceRoot: workspaceRoot
+            workspaceRoot: workspaceRoot,
+            resolvesBarePaths: resolvesBarePaths
         ) else { return nil }
 
         let reference = TranscriptMediaReference(
@@ -634,6 +664,25 @@ enum TranscriptMediaParser {
         }
 
         return ranges
+    }
+
+    /// The reference in a single-backtick code span holding nothing but a `MEDIA:` tag.
+    /// Models format files they mean to send this way, and the gateway and webui deliver it.
+    /// The gateway can also check that the file exists; this client can't, so only a value
+    /// shaped like a path or URL counts. `MEDIA:` and `MEDIA:<path>` stay code.
+    private static func codeWrappedMediaReference(in span: Substring) -> String? {
+        let content = span.dropFirst().dropLast()
+        guard content.hasPrefix("MEDIA:") else { return nil }
+
+        let reference = content.dropFirst("MEDIA:".count)
+        guard !reference.contains(where: \.isWhitespace) else { return nil }
+
+        let isWindowsPath = reference.first?.isLetter == true
+            && (reference.dropFirst().hasPrefix(":/") || reference.dropFirst().hasPrefix(":\\"))
+        guard isWindowsPath || ["/", "~/", "http://", "https://"].contains(where: reference.hasPrefix)
+        else { return nil }
+
+        return String(reference)
     }
 
     private static func backtickRunEnd(in line: String, from start: String.Index) -> String.Index {

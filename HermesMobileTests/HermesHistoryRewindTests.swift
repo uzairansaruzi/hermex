@@ -200,6 +200,77 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
 
+    // MARK: Canonical hosts (#1603)
+
+    /// On a canonical host an edit is two steps (#1341, decision 5): a fenced `rewind` of the
+    /// prompt's row, then the edited text as a plain send. When the host refuses the send after the
+    /// cut, the later rows are gone, the chat says so plainly, and the edited text waits for the
+    /// composer.
+    func testACanonicalEditRewindsThenSendsAndARefusedSendKeepsTheText() async throws {
+        let rewound = try canonicalMutation("rewind")["result"]
+        let chat = await openChat(threeTurns, canonical: true)
+        chat.host.always("session.mutate", .init(result: rewound))
+        chat.host.always("prompt.submit", .init(error: 4001, message: "invalid_params", data: .object(["reason": .string("invalid_params")])))
+
+        let edited = await chat.model.editMessage(try context(chat, at: 2), newText: "Second, edited")
+
+        XCTAssertFalse(edited)
+        let mutation = try XCTUnwrap(chat.writes("session.mutate").first)
+        XCTAssertEqual(mutation["operation"], .string("rewind"))
+        XCTAssertEqual(mutation["payload"], .object(["target_message_id": .number(3)]))
+        XCTAssertEqual(mutation["expected_revision"], .number(2))
+        XCTAssertEqual(mutation["expected_generation"], .number(1))
+        XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("Second, edited")])
+        XCTAssertNil(chat.writes("prompt.submit").first?["truncate_before_row_id"], "the host refuses the legacy cut keys")
+        XCTAssertEqual(chat.model.messageActionErrorMessage,
+                       "The later messages were removed, but your edited message wasn’t sent. It’s in the message box: send it again.")
+        XCTAssertEqual(chat.model.takeUnsentHermesEdit(), "Second, edited")
+        XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2])
+    }
+
+    /// While an Edit is under way, a Regenerate or `/retry` sends nothing: on a canonical host each
+    /// is a rewind and a send of its own, so a second one could share the first one's rewind and
+    /// run the agent twice.
+    func testASecondHistoryActionWaitsForTheOneUnderWay() async throws {
+        let chat = await openChat(threeTurns, canonical: true)
+        let rewinding = expectation(description: "the edit's rewind is on the wire")
+        chat.host.expect(rewinding, onNext: "session.mutate")
+        chat.host.withhold("session.mutate")
+        let edit = Task { await chat.model.editMessage(try context(chat, at: 2), newText: "Second, edited") }
+        await fulfillment(of: [rewinding], timeout: 2)
+
+        let regenerated = await chat.model.regenerateAssistantResponse(try context(chat, at: 3))
+
+        XCTAssertFalse(regenerated)
+        XCTAssertEqual(chat.writes("session.mutate").count, 1)
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        edit.cancel()
+    }
+
+    /// A canonical `/undo` rewinds the last saved prompt. One the host refuses because the session
+    /// moved on (recorded `stale_generation`) changes nothing here, and the next try carries the
+    /// fences the refusal named.
+    func testACanonicalUndoRewindsTheLastPromptAndAStaleOneChangesNothing() async throws {
+        let stale = try canonicalMutation("stale_generation")["error"]
+        let chat = await openChat(threeTurns, canonical: true)
+        chat.host.next("session.mutate", .init(error: stale["code"].integer, message: stale["message"].text ?? "", data: stale["data"]))
+        chat.host.next("session.mutate", .init(result: .object(["rewound_count": .number(2), "revision": .number(9)])))
+
+        let refused = await chat.model.runHermesSlashCommand("/undo")
+        XCTAssertNotEqual(refused, .executed(message: nil))
+        XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4, 5, 6], "nothing changed")
+
+        chat.transcript.rows = Array(threeTurns.prefix(4))
+        let undone = await chat.model.runHermesSlashCommand("/undo")
+        XCTAssertEqual(undone, .executed(message: nil))
+        let tries = chat.writes("session.mutate")
+        XCTAssertEqual(tries.map { $0["payload"] }, Array(repeating: .object(["target_message_id": .number(5)]), count: 2))
+        XCTAssertEqual(tries.last?["expected_revision"], stale["data"]["revision"])
+        XCTAssertEqual(tries.last?["expected_generation"], stale["data"]["execution_generation"])
+        XCTAssertNotEqual(tries.first?["request_id"], tries.last?["request_id"], "a refused edit is a new one when tried again")
+        XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4])
+    }
+
     /// `/undo` is `session.undo` on the runtime; the newest page re-read drops the exchange.
     func testUndoRemovesTheLastExchange() async {
         let chat = await openChat(threeTurns)
@@ -422,6 +493,8 @@ import Observation
 
     // MARK: Fixture
 
+    private static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .appendingPathComponent("Fixtures/HermesAgent")
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
 
@@ -470,16 +543,23 @@ import Observation
 
     /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are `rows`
     /// and whose host lists one skill, `demo-skill`.
-    private func openChat(_ rows: [BotJSON]) async -> Chat {
+    /// `canonical` attaches over a canonical socket (#1603) to session `tip`, whose id is its
+    /// runtime, at revision 2 and generation 1.
+    private func openChat(_ rows: [BotJSON], canonical: Bool = false) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        host.always("session.resume", .init(result: .object([
+        host.always("session.resume", .init(result: canonical ? .object([
+            "session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
+            "subscription_id": .string("sub-1"), "revision": .number(2), "execution_generation": .number(1),
+            "running": .bool(false), "messages": .array([]), "pending": .array([]), "prompts": .array([]),
+            "info": .object(["profile_name": .string("default")])
+        ]) : .object([
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ])))
         host.always("commands.catalog", .init(result: .object(["skills": .object(["/demo-skill": .object(["origin": .string("local")])])])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
-        let client = BotClient(http: host.connection(Self.connection))
+        let client = BotClient(http: host.connection(Self.connection, canonical: canonical))
         let transcript = Transcript(rows)
         _ = HermesHostFixture.configuration { request in
             guard request.url?.path == "/api/sessions/tip/messages" else { return nil }
@@ -539,6 +619,13 @@ import Observation
         chat.receive(event(3, "session.info", ["running": .bool(false)]))
         await waitUntil("Retry offered") { chat.model.hermesActivity?.retryTarget != nil }
         XCTAssertTrue(chat.model.mayRetryHermesTurn)
+    }
+
+    /// One of the recorded canonical edits (`scripts/capture-hermes-fixtures --local --gateway`).
+    private func canonicalMutation(_ name: String) throws -> BotJSON {
+        let file = Self.fixtures.appendingPathComponent("canonical-mutations.json")
+        guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
+        return try JSONDecoder().decode(BotJSON.self, from: data)["reply"][name]
     }
 
     private func context(_ chat: Chat, at index: Int) throws -> MessageActionContext {

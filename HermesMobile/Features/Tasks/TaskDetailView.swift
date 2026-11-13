@@ -78,11 +78,13 @@ struct TaskDetailView: View {
             }
             .padding()
         }
+        .themedPageBackground()
         .navigationTitle(viewModel.job.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await loadDetail() }
         .toolbar { toolbarContent }
-        .sheet(isPresented: $isPresentingEditTask) {
+        // A failed save leaves its message for the sheet; it goes with the sheet.
+        .sheet(isPresented: $isPresentingEditTask, onDismiss: viewModel.clearActionError) {
             CronJobEditorSheet(
                 title: String(localized: "Edit Task"),
                 server: server,
@@ -139,12 +141,12 @@ struct TaskDetailView: View {
             HStack(spacing: 8) {
                 ProgressView()
                 Text("Updating task...")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
             }
         } else if let actionErrorMessage = viewModel.actionErrorMessage {
             Text(actionErrorMessage)
-                .font(.footnote)
+                .font(AppFont.footnote())
                 .foregroundStyle(.red)
         }
     }
@@ -154,7 +156,7 @@ struct TaskDetailView: View {
         if let prompt = viewModel.job.prompt, !prompt.isEmpty {
             SectionCard(title: String(localized: "Prompt")) {
                 Text(prompt)
-                    .font(.callout)
+                    .font(AppFont.callout())
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -218,27 +220,27 @@ struct TaskDetailView: View {
                     }
                 }
             }
-            .font(.footnote)
+            .font(AppFont.footnote())
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func configurationLabel(_ field: TaskConfigurationField) -> some View {
         Text(field.title)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .fixedSize(horizontal: true, vertical: false)
     }
 
     private func configurationValue(_ field: TaskConfigurationField) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(field.value)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 3)
 
             if let detail = field.detail {
                 Text(detail)
                     .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.appTertiary)
                     .lineLimit(1)
             }
         }

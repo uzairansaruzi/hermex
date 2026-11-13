@@ -4,9 +4,8 @@ How Hermex reaches a Hermes host: the sign-in, the one shared connection and its
 socket, the reconnect contract, feature detection and the compatibility pin. Every Hermes
 surface goes through this, a webui server's optional Bots connection included.
 `bots.md` owns what the screens do on top of it (chats, the inbox, rooms, Tasks,
-Workspace, push provisioning); `hermes-feature-index.md` tracks which upstream methods and
-gaps Hermex covers. AGENTS.md (Working with the server) owns the contract-verification
-order and how to advance the pin.
+Workspace, push provisioning). AGENTS.md (Working with the server) owns the
+contract-verification order and how to advance the pin.
 
 ## Sign-in and host identity
 
@@ -20,7 +19,12 @@ record stores it the first time the host reports one (trust on first use; the in
 backfills older records). A sign-in whose live id differs from the stored one
 fails with `.differentHost` before the login POST, in `HermesConnection.signIn()`,
 which every Bot surface and push provisioning goes through, so they all refuse
-without sending the password. A missing stored or live id skips the check, and an
+without sending the password. A gateway's Webapp names its install only to a caller signed
+in (`hermes_cli/web_routers/status.py`), so when the public read had no id, sign-in reads
+`/api/status` again signed in and runs the same check there, before anything loads (#1606).
+There the password has already gone to the address: the check stops a changed host from
+loading anything, not from receiving the password.
+That second read is also how Hermex knows it reached a Webapp (`servesWebapp`). A missing stored or live id skips the check, and an
 omitted id never clears a stored one. In the connection form, a new address or
 username keeps the UUID when the host reports the stored `install_id`; otherwise a
 different endpoint or username gets a new UUID. Password/name edits retain the
@@ -61,8 +65,9 @@ back in. A webui server's own connection keeps #884's per-screen flag instead. A
 Hermes server sends no webui request: Settings skips its webui loads and hides their
 rows, a webui 401 never signs it out, and webui's serverless session links (`session?id=`) and
 bare-Profile New Chat in Profile links switch to the first webui server, or open nothing without
-one. New chats (#1180) and shares (#1181) stay on it. It has no push pairing until #706,
-so removing it never calls the relay. Its connection form is reached through Settings
+one. New chats (#1180) and shares (#1181) stay on it. Removing it or signing it out
+drops its push pairing and asks the relay to delete this device's registration, unless
+another configured server shares it; the relay call is best-effort (`push.md`). Its connection form is reached through Settings
 → Servers → the server → Hermes connection, and saving it signs the server back in. The
 active Hermes server's page has both Sign Out of This Server, which keeps the server and
 shows its sign-in form, and Remove Server. Moving a webui server's connection into a Hermes
@@ -70,17 +75,21 @@ server is #707's; a copy gets a fresh UUID.
 
 ## Connect form
 
-Onboarding's Connect page and Settings → Add Server are one connect form
-(`OnboardingViewModel`, #900). Its first Connect for an address reads the public
+First launch and Settings → Add Server open one sheet, `AddServerView` over
+`OnboardingViewModel` (#900, #1540): onboarding is a welcome page whose "Add your server"
+opens it (the setup prompt and private-network pages sit behind "I don't have one yet"),
+and a webui server signing in again opens it with its address filled in. The address comes
+first: its first tap, Continue, reads the public
 `/api/status` there, parsed by `BotConnection.address(_:)` and sent with the form's
 headers on a `HermesConnection` of its own. A JSON object carrying the `auth_required` flag is a
-Hermes dashboard, and `HermesSignInMethod` reads how it signs in: a password, the browser
-(below) or none (below). For a password, username and password appear, and the next Connect signs in once
+Hermes dashboard, and `HermesSignInMethod.offered(by:)` reads how it offers to sign in: a
+password, the browser (below), both, or none (below). For a password, username and password appear, and the next Connect signs in once
 (`HermesConnection.signIn()`, so the version gate, install check and #880's copy apply),
-then calls `addHermesServer`. Hermes' own Host-header 400 and `.blocked` show their
-advice and stop, and a mode switch keeps that advice. Anything else, including an
+then calls `addHermesServer`; the status line under the address shows "Hermes <version>".
+Hermes' own Host-header 400 and `.blocked` show their advice and stop. Anything else, including an
 address or headers only the webui path accepts, goes on to the webui path unchanged:
-onboarding's `configure`, Add Server's `addServer`. Once a webui answered, the "Will
+onboarding's `configure`, Add Server's `addServer`, each showing the password field only
+once the webui asks for one. Once a webui answered, the "Will
 connect to" line shows `AuthManager.normalizedServerURL`'s URL instead of the Hermes
 parser's. Header rows without a value are never sent or saved. When a webui server's own
 Hermes connection uses exactly the same parsed address, the form offers "Use the sign-in
@@ -88,17 +97,20 @@ saved on <server>": it fills username, password and headers, and the sign-in sti
 expects that record's `install_id`. The copies stay until the address parses to another
 URL, even one differing only in scheme, or a webui answers there; then the unedited
 username and password and every header row still carrying a copied value leave the form.
-It is never matched by `install_id`, which any host can report. The connection mode
-(Same Wi-Fi, Private network, Cloudflare Tunnel) changes only the placeholder, the help
-and, for Cloudflare Tunnel, two empty `CF-Access-Client-*` rows; it is not saved.
+It is never matched by `install_id`, which any host can report. Connection Options holds
+Cloudflare Access's Client ID and Secret (the `CF-Access-Client-*` rows, edited as two
+fields), the other header rows, and the server's name, initials and color.
 
 ### Browser sign-in (#708)
 
 A host whose status offers browser sign-in (`auth_flows ∋ native_pkce`) and no `basic`
-password provider (`HermesBrowserSignIn.isRequired(by:)`) asks for no username or
-password: the connect form and a Hermes server's own sign-in form (`BotConnectionSetup`,
-which reads the server's status even when signed out) show "Sign In with Browser"
-instead. It binds a loopback listener on `127.0.0.1` at an ephemeral port, opens the
+password provider asks for no username or password: the connect form and a Hermes
+server's own sign-in form (`BotConnectionSetup`, which reads the server's status even
+when signed out) show "Sign In with Browser" instead. A host that offers both shows a
+Password | Browser picker (#1539), Password first, except that a saved browser sign-in's
+form opens on Browser. Each method saves only its own credential: a password sign-in saves
+no `oauth`, a browser sign-in no password. An `Authorization` connection header can't go
+with a browser sign-in, so its refusal shows under the picker and Connect stays off. It binds a loopback listener on `127.0.0.1` at an ephemeral port, opens the
 host's `/auth/native/authorize` (S256 PKCE, `state`, every query value percent-encoded,
 no `provider`: the host picks its only interactive provider itself and renders its own
 chooser for several) in an ephemeral `ASWebAuthenticationSession`, and keeps the first
@@ -133,8 +145,9 @@ browser sign-in (`BotConnection.hasNoCredentials`). Its sign-in reads the dashbo
 (`/api/profiles/active`): at the 0.21.5 pin `/api/auth/me` refuses this mode, since only
 the password gate sets a session. The token is held in memory only and sent as
 `X-Hermes-Session-Token`, never `Authorization: Bearer`, which a proxy's basic auth may
-hold, and a cross-origin redirect drops it. A gateway's own listener (`hermes gateway
-run`, 0.22.1+) serves the same page without the token; its
+hold, and a cross-origin redirect drops it. A gateway's open Webapp (`hermes gateway
+run`, 0.22.1+) serves the same page without the token, since it hands out credentials only
+through one-use launch links (`gateway/run_api.py`), so Hermex doesn't support it; its
 `__HERMES_AUTH_REQUIRED__=false` bootstrap tells it apart from a page that isn't a
 dashboard's (`.gatewayListener`). `POST /api/auth/ws-ticket` is refused here, so both
 socket upgrades present the token as `?token=` with no subprotocol
@@ -146,11 +159,6 @@ can't say why. A record saved without credentials meeting the host with its sign
 or one saved with credentials meeting it without, fails with `.signInChanged`, which signs
 the active Hermes server out to its sign-in form, as a refused password does. The form saves
 what the host now asks for, so only a record without credentials shows the open warning.
-
-Debug and Hermex Branch builds have Settings → Testing → "Browser sign-in on password
-hosts" (`HermesBrowserSignIn.isForcedForTesting`): a host that also offers `basic` then
-signs in through the browser too, its `/login` form inside the sheet, which exercises
-the whole path against a password host. It applies the next time a form reads the status.
 
 The same connection form serves Bots, Settings and push setup. A schemeless
 address defaults to HTTPS, except recognizable private/local IPs (including
@@ -172,11 +180,13 @@ A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable ho
 a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
 status, an access proxy's own sign-in (`.blocked`: a redirect to another host or a
 non-JSON 401 on `/api/status`), a host with no sign-in Hermex can use (`.browserSignIn`),
-a refused gateway upgrade (`.upgradeRefused`), and a gateway's own listener, whose
-`gateway.ready` sets `session_authority` (`.gatewayListener`; its protocol is #1341). The
-inbox and chat use the same copy for the messages they show, and none of these retries on
-its own. Adding a server signs in over HTTP only, so a listener with a password is saved
-and refused at its first gateway connect.
+a refused gateway upgrade (`.upgradeRefused`), and an open gateway Webapp
+(`.gatewayListener`). The inbox and chat use the same copy for the messages they show, and
+none of these retries on its own. Adding a server opens the gateway socket once after the
+sign-in, so a refused upgrade or a handshake Hermex can't read stops the form and nothing is
+saved. For an open Webapp the inbox and the Sessions list offer Add Server (a Bot
+connection on a webui server, its connection form) in place of Reconnect or Retry, since
+its address can't change.
 A rejected password (`.rejected(401)`) offers "Update sign-in" in place of
 Reconnect in the inbox, a chat and a room: it opens the connection form with the
 password focused, from the inbox, because a chat's or room's client is bound to
@@ -264,7 +274,8 @@ its own sign-in inside the browser sheet.
 ## The gateway socket
 
 Each `HermesConnection` also owns the one gateway WebSocket its Bot screens share,
-`HermesGateway`. Every screen holds its own `BotClient` handle on it: the inbox, each
+`HermesGateway`; on a gateway's Webapp each Profile's chats use a socket of their own
+instead (`HermesConnection.gateway(profile:)`, § The canonical session protocol). Every screen holds its own `BotClient` handle on it: the inbox, each
 open chat (its controls and delegated work use the chat's), a room, the creator and
 the editor. The socket opens when the first screen connects and closes when the last
 one leaves, so it lives while any Bot screen is connected. Each screen leaves on
@@ -309,6 +320,27 @@ session or runtime id, Profile name, title, message text, ticket, replay epoch o
 install id. Events, deltas and keepalive pongs are never logged. `HermesConversation` logs
 through the same logger, counts and codes only: each reattach (automatic retries before
 it, and frames held, applied and dropped) and each `session.resume` refusal it retries.
+
+### Connection attempt details (#1395)
+
+Each `HermesConnection` keeps one in-memory `HermesAttemptRecord`, its `lastAttempt`:
+Status (with the release and install checks), Sign-in (login, page token, browser token
+exchange or refresh), Identity, Live authorization (a usable gateway ticket or page token)
+and Live handshake (only once `HermesGateway` finished its handshake). A sign-in,
+a browser token exchange or `status()` starts a new one; a stage that never ran stays Not
+checked, so an open dashboard's Identity and a form's live stages stay unchecked. A ticket's
+401 whose sign-in is refused is a Sign-in failure. Retiring the connection drops the record.
+Saved setup (`BotConnectionSetup`, through `BotTransport.lastAttempt`), onboarding and Add
+Server keep a failed attempt's record beside their error and show it as a collapsed Details
+under the advice (`ConnectionAttemptDetails`); a new message, an edit to what Connect sends,
+or a webui answering at the address drops it. Copy Details exports `report()`: app build,
+iOS, server kind, reported and tested release, the attempt's UTC time and each stage, with a
+failure's typed category (HTTP status, timed out, couldn't connect, certificate) and never
+an error description, host, username, header, token or install id. Nothing is persisted
+and no raw log lines are copied. About's support details (#1396) add the record of the
+active server's current shared connection (`HermesConnections.lastAttempt(server:)`): its
+time and each stage, never in Report a Problem's link. The lookup never makes a connection,
+and setup's own connections never reach it.
 
 ## Typed requests
 
@@ -377,11 +409,59 @@ ping stuck in its send, drops the socket for every screen, which reconnect onto 
 replacement. One deadline for every route; record slow-tunnel false positives before
 adding per-route policy. The probe never opens a socket.
 
+## The canonical session protocol
+
+A gateway's own listener, such as the Webapp 0.23.0 serves behind its sign-in (port 9120),
+says `session_authority` in `gateway.ready` (#1341). Its sockets speak the canonical session
+protocol, which upstream Desktop adapts in `apps/desktop/src/api/canonical-protocol.ts`;
+Hermex's adapter is `HermesCanonicalProtocol.swift`, where `HermesGateway.send` turns a
+`HermesCall` into a frame. The parent issue's decisions are the rules:
+
+- A session is attached with `session.resume` and replays under its own snapshot's
+  `replay_epoch`. Screens on one socket share its subscription; the last to leave detaches it.
+- Sends carry a `submission_id`; controls and approval and clarify answers carry the session's
+  `execution_generation`. A stale fence is `HermesFenceRefusal` and nothing is resent. A sudo or
+  secret answer is a bare JSON-RPC response frame (`id` and `result`) with no generation.
+- Session edits are one fenced `session.mutate`, the model included (#1603, #1604).
+- A send's photos go as its own `attachments: [{path, mime}]` (#1644), so the host stores them
+  with the prompt and every client shows them. `pending` rows list text only, and the resume
+  snapshot has no `inflight`, so a queued photo's chip lives in the chat's memory until its turn
+  starts (`HermesChatTurnCoordinator.queuedImages`).
+- Rooms fence Retry and Discard by member and generation, and seat only
+  `seatable_profiles` (#1605).
+- Each Profile's chats get a socket of their own on a Webapp (`HermesConnection.gateway(profile:)`):
+  session ids repeat across Profiles and a canonical session's events don't name theirs.
+  Screens that aren't one session's (the inbox, rooms, Settings reads) keep the shared socket.
+- A Profile whose socket the Webapp refuses, while the shared one opens, is `.profileNotServed`:
+  the gateway serves only one Profile because its multiplex preflight found a blocker. The
+  signed-in `/api/status` gives the host's reason as prose in `multiplex_standalone_reason`
+  (the signed-out one leaves it out). `HermesStandaloneReason` summarizes it when every blocker
+  is a duplicate bot token and otherwise shows the host's words alone. The chat error and the
+  server's Settings page show both, and open Serve Every Profile (#1611): it reads
+  `GET /api/gateway/migrate/plan`, removes a duplicate bot's `.env` keys from the Profile the
+  user says shouldn't keep it (`DELETE /api/env`), then after one confirmation starts
+  `POST /api/gateway/migrate`, whose `ok` means only that it started. The gateway restarts, so
+  the screen waits on `HermesRestartWait` until the plan says `already_multiplexed` and its `live_served` names more than one Profile
+  (the flag alone turns true before the restart), then opens
+  the Profile's socket. Never gate on the plan's `eligible` (the `hermes update` bar), and
+  never write `gateway.multiplex_profiles: true` directly: an explicit `true` skips the preflight.
+  A blocker it doesn't recognize, or a duplicate whose removal didn't clear it (a token set in
+  `config.yaml`, not the `.env`), offers a recovery chat opened explicitly on `default`, the
+  Profile a standalone gateway serves (New Session's may be unserved). Its text names the
+  unserved Profile and the host's words, asks the agent to walk through
+  `hermes gateway migrate --multiplex --dry-run`, and keeps the triage playbook's guardrails:
+  propose commands, never read `.env`, never restart the gateway.
+- A password sign-in's cookies work there. A bearer token works only if this listener issued
+  it to a native sign-in (`hermes_cli/webapp_sign_in.py`); a browser sign-in made elsewhere is
+  refused at refresh as `.signInExpired`, which asks for one sign-in and never retries.
+- hermex-push's restart re-execs the gateway without its drain there
+  (uzairansaruzi/hermex-push#33), so it isn't offered on a Webapp.
+
 ## Pin and minimum release
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
-counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.5 (`ca678285`); sections
+counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.23.1 (`3b421578`); sections
 of these docs that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
 and the connection screen stores it on the `BotConnection` record.
 `HermesCompatibility` holds the tested release and the minimum, 0.21.3: 0.21.2
@@ -401,11 +481,21 @@ Each RPC validates the contract just in time. Advancing the pin is described in 
 frames into `HermesMobileTests/Fixtures/HermesAgent/`, and
 `HermesAgentFixtureTests` feeds them through the real parsers, so a renamed or
 dropped field fails a test instead of blanking a screen. The capture keeps only
-the `inbox-triage` Profile, replaces every string outside an allow-list of ids,
+the `hermex-fixtures` Profile, replaces every string outside an allow-list of ids,
 event and status vocabulary, the release and the canned turn's text, and writes
 nothing if the output still holds the host, the account, the socket ticket, a
 home path, the install id or another Profile's name. `--keep-raw` and
-`--from-raw` re-sanitize one capture without another live session.
+`--from-raw` re-sanitize one capture without another live session. `--local --gateway` records
+the canonical session protocol (#1341) from `scripts/local-hermes --gateway` into
+`canonical-*.json`: `gateway.ready`, a create, idle, repeated and running resumes, a
+replay under the session's own epoch, its epoch mismatch and gap, a detach and its stale
+repeat, a session on a second Profile, and a turn's admission receipts, two queued
+sends, a withdrawn one's `message.complete`, a `stale_generation` stop, the next
+turn's start under the next generation, a clarify prompt's lifecycle, and the
+`session.mutate` edits (rename, a revision conflict, a stale-generation rewind, a
+branch, a rewind, a compaction, a busy and a settled delete, a titled create), and the
+session settings (a `model` edit, Fast, reasoning, personality and approval mode, and the
+`config.set model` and scoped Fast refusals).
 
 ## Reconnect contract
 
@@ -437,6 +527,22 @@ are not retried. Leaving the screen or backgrounding
 cancels recovery. Foreground/recovery reloads canonical identity, history and
 current state before enabling commands. Authentication, identity and unsupported
 host errors still surface actionable messages; commands are never retried.
+
+One composer Send may wait for the reconnect (#1407), because `prompt.submit` has no
+idempotency key: only plain text (no quotes, files, `/` command, Steer, Queue or Stop & send),
+sent while the chat shows its offline cache or failing with `NotSent` for lack of a connection
+(`.transport`, a `URLError`) before it reached the socket. It shows as a dimmed bubble with
+"Waiting for connection" and Cancel, outside `messages`, and is kept in the draft
+(`ChatDraft.waitingSend`), one at a time, and no other Send goes during that write; it waits only once that write succeeds and the chat
+it was typed in is still on screen, and otherwise goes back ahead of anything typed since. The first attach after it, once the host's rows replace the cache,
+sends it once, with no files, under the draft key it was held in; the #508 mark is on disk
+before it goes, and the socket write checks the chat, the foreground and the deadline again.
+The host's answer removes it; a lost answer puts the text back with the #508
+hold; another missing connection waits for a distinct attach; anything else puts it back.
+Cancel, ten minutes (checked again on reconnect and at the write), leaving the chat and a
+replaced Bot Chat put the text back ahead of anything typed since. A relaunch puts it back too
+and never sends it. Backgrounding only pauses it, even mid-delivery: iOS gives no delivery
+while suspended, and the foreground's reattach sends it.
 
 The inbox, the Hermes session list and a room on screen reconnect after a lost socket
 through `BotReconnectSchedule`: the same delays on backoff while online, no attempts
@@ -500,6 +606,7 @@ describe RPC, and `gateway.ready` lists no methods.
 | `groups.capabilities` | a capability missing | Rooms hide, or their writes turn off (`bots.md` § Group rooms). |
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "Plugin not found"}` | The plugin is off or not installed (`HermexPushPlugin.missingRoute`, Kanban). |
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "No such API endpoint: …"}` | The dashboard never mounted the plugin's routes: it is new on disk and the host needs a restart, or the host lacks it (`kanban.md`, Absent plugin). |
+| `GET /api/plugins/hermex-screen/capabilities` | 200 / 404 `Plugin not found` / a catch-all 404 / 404 `Not Found` | Whether a host with no stock Bot Screen can show its real desktop, and what to offer if not (`HermexScreenPlugin.State`, `docs/agents/screen.md`). |
 | `GET /api/plugins/hermex-push/capabilities` | `{plugin_version, routes}` / any 404 | The companion routes the loaded plugin mounts / none, so the feature doesn't show (`bots.md` § Push provisioning). |
 | `GET /api/sessions/{id}/mutation-snapshot` | 200 / a catch-all 404 (`No such API endpoint`, or `serve`'s `Headless backend`) | The host fences session writes / it is older and takes them bare (§ Session write fence). |
 
@@ -519,15 +626,110 @@ older hosts ignore the extra fields on an import. A 409 (`revision_conflict`, `s
 never resent: the row action rolls back and reloads, and Move to Hermes leaves the batch uncertain
 for its next run.
 
-## Plugin routes need a host restart
+## Managing plugins
 
-The dashboard mounts plugin routers once, when its process starts
-(`_mount_plugin_api_routes` in `hermes_cli/web_server.py`); a plugin disabled while it runs
-keeps its router until then, behind a per-request gate. `POST /api/gateway/restart`
-restarts only the messaging gateway, so a new or updated plugin's routes appear only
-after `hermes dashboard` restarts. hermex-push 0.4.0 and newer mounts its own restart
-route (#934); anything older costs the user one restart on the host. A plugin adds REST
-routes, hooks, tools and its own sockets, but no RPC method and no `/api/ws` event, so a
-gap the companion plugin fills is always a REST route, and each new route costs a
-restart: ship them in batches, and gate each feature on `/capabilities`, never on a
-version number.
+The Plugins screen (Settings → Server → Plugins, #1582) manages one Profile's plugins over
+`plugins.manage`, because the dashboard's REST mutations can't name a Profile and act on the one
+the dashboard runs as. A row's identity is its `key`: names collide across category folders
+(`image_gen/fal`, `video_gen/fal`).
+
+- A toggle can sync the Profile's Python packages first in either direction, which took 30 s on a
+  fresh host, so it waits three minutes. A refusal is 5026 with the host's message, which can be a
+  long `uv` error. Losing the connection or the deadline leaves the outcome unknown: the screen says
+  so, reads the list again and never resends.
+- `restart_required` is true on any disable, and on an enable when no gateway answered. An enable's
+  `activation.deferred` is what waits for the next session; a disable's `activation` can be an
+  earlier load's summary, so it is ignored.
+- `POST /api/gateway/restart?profile=` answers once the restart has started, not once it has
+  finished. On a multiplexed host it restarts the one gateway every Profile shares. Only a
+  confirmed action sends it.
+- An install takes minutes: it clones, scans, syncs packages and loads the plugin, and a small one
+  took 55 s. A catalog install sends only `catalog_name`, so the host resolves the repo and pin and
+  enforces its removal list; a name it doesn't list is never retried as a repository. Every refusal
+  is a bare 5026, so the sentence `… already exists …` is the only sign that Replace applies.
+- The install's `force` means two things: replace the existing copy, and accept a caution scan on a
+  repo source. A dangerous scan stays blocked, and a catalog install at its pin is trusted. Replace's
+  confirmation says so, because at this pin the findings can't be shown. A forced replacement of an
+  enabled plugin with dependencies can still be refused for lack of a terminal; the host's message
+  shows as is.
+- A catalog entry's Disclosure is the text after `Disclosure:` or `Disclosure —` in its `description`,
+  the marker upstream reads. A required key saved from the install's `missing_env` is written to the
+  Profile's `.env`, but `GET /api/env` doesn't list a key its catalog doesn't know.
+- Discover reads `GET /api/dashboard/plugins/catalog`, about 2.9 MB and 1.8 s through a tunnel, once
+  per screen and only in memory. The screen's Installed badges come from `plugins.manage list` on the
+  selected Profile, because this route's own `installed` field reads only the dashboard's Profile.
+  `removed` in the same reply is the only source of why Nous took a plugin out, so the catalog is also
+  read when a Profile has a user install.
+- Catalog images load directly from GitHub, on a session that refuses Low Data Mode: HTTPS on
+  `github.com`, `githubusercontent.com` or a subdomain, as upstream's Desktop allows. SVGs are skipped
+  and a GIF shows its first frame.
+- `update` re-pins a catalog install or pulls a git one, one plugin at a time. A re-pin that widens
+  the plugin answers `consent_required` with `delta_lines`, and a blocked scan answers `scan_blocked`
+  with its findings; neither changes anything. Only a caution verdict can be overridden. A git update
+  doesn't hit the dependency consent that a forced reinstall does, even when its dependencies change.
+  A catalog copy installed at a `ref` other than the catalog's pin counts as pinned off-catalog, and
+  the host refuses to update it.
+- A settings form's types on the wire are `string`, `number`, `boolean`, `enum`, `json` and `secret`.
+  `settings` refuses secrets: they go to `PUT /api/env` under the field's `env`, then an empty
+  `settings` call tells the host to reconnect the plugin's MCP servers on the new value. Only changed
+  fields are sent.
+- Which toggles ask first comes from `GET /api/memory?profile=` (`active`) and
+  `GET /api/messaging/platforms?profile=` (`enabled` and `configured`). Until those answer, or if
+  they fail, a toggle they might cover asks. The host doesn't list bundled memory providers, so only
+  a user install can be the active one.
+
+## Connected Apps
+
+The Connected Apps screen (Settings → Server → Connected Apps, #1629) manages the apps one
+Profile's Nous account reaches, over `connectors.*` with `owner: {type: "account"}`. The list is
+`connectors.catalog` joined with `connectors.accounts`; `connectors.list` adds only `enabled`, the
+account's policy. Nothing is cached. Verified on a live 0.23.1 host.
+
+- **Dead ends are error codes.** -32601 is a host without the methods, 4031
+  `CONNECTORS_UNAVAILABLE` a host with them turned off or an account without them, 4032
+  `NEEDS_NOUS_AUTH` a Profile with no usable Nous sign-in. On a host with no Nous account the
+  first connect creates a free guest identity unless `nous.guest` is false.
+- **The browser return is the desktop's.** The host asks the portal to return every account
+  sign-in to `hermes://connections/done?status=…&op=…`, and a client cannot name its own. Hermex
+  doesn't register `hermes://`; the official Hermes app does. So the link opens in a non-ephemeral
+  `ASWebAuthenticationSession` with `callback: .customScheme("hermes")`, which catches the return
+  and closes itself. An `SFSafariViewController` or Safari offers to open the official app instead.
+  A chat's session-owned sign-in gets no return at all, because only a `desktop` session asks for one.
+- **When the browser closes**, however it closed, send `connectors.operation.wake` and read the
+  list again. The accounts are read from the portal, so the answer is current without waiting for
+  the host's `connection.update`.
+- **A sign-in outlives its account.** The link lasts about ten minutes (`deadline_at`). Removing a
+  pending account leaves its operation open, and `connectors.connect` hands that operation and its
+  dead link back until the deadline; the portal answers the link with 404. So after a connect,
+  an operation whose `connection_id` is missing from `connectors.accounts` is settled with
+  `connection.respond` (`result: {settled_by: "continue"}`) and connect is sent once more.
+- **Connect on an app that is already connected** answers `state: connected`, `settled: true` and
+  no `connect_url`.
+- **Logos are bundled.** The catalog's `logo_url`s are SVG only, which UIKit can't decode, so the
+  logos ship in `Assets.xcassets/ConnectedApps/<slug>` and an app without one shows its initial.
+  Refresh them from the catalog's `logo_url`s when the pin advances.
+
+## Plugin routes and host restarts
+
+The dashboard mounts the routers of enabled plugins when its process starts
+(`_mount_plugin_api_routes` in `hermes_cli/web_server_dashboard.py`). At the pin, a plugin
+installed or enabled later mounts without a restart: its first unmatched HTTP request under
+`/api/plugins/<name>/` mounts its router and is answered by it (`_try_hot_mount_plugin_api`).
+The decision is the dashboard's own Profile's, so a plugin enabled only on another Profile
+mounts this way only if it's bundled. Older hosts don't do this (it isn't in the 0.21 commit
+`ca678285`), so a missing route can still mean a restart (`HermexScreenPlugin.State`,
+`HermexPushProvisioner`).
+
+A router that's already mounted is never replaced. A plugin disabled while the dashboard runs
+keeps its router behind a per-request gate, and an updated plugin keeps its old HTTP handlers.
+So a new or changed route on a mounted plugin appears only after `hermes dashboard` restarts.
+`POST /api/gateway/restart` restarts only the messaging gateway and doesn't help. The host's
+`restart_required` is about the gateway too, so the Plugins screen's "updated and live now"
+doesn't cover a plugin's own HTTP routes. hermex-push 0.4.0 and newer mounts its own restart
+route (#934); anything older costs the user one restart on the host, and so does a gateway's
+Webapp, whose drain that route skips (#1606).
+
+A plugin adds REST routes, hooks, tools and its own sockets, but no RPC method and no `/api/ws`
+event, so a gap the companion plugin fills is always a REST route, and each new route on an
+installed hermex-push costs a restart: ship them in batches, and gate each feature on
+`/capabilities`, never on a version number.

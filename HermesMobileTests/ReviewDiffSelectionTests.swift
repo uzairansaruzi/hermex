@@ -42,12 +42,13 @@ final class ReviewDiffSelectionTests: XCTestCase {
         XCTAssertFalse(selection.isAwaitingRangeEnd)
     }
 
-    func testSnippetIsPathLineRangeAndFencedDiff() {
+    /// A comment left empty lands exactly as the old "Add to prompt" snippet did (#399).
+    func testUncommentedSnippetIsPathLineRangeAndFencedDiff() {
         var selection = ReviewDiffSelection()
         selection.longPress(rowID: "f:line:0", fileID: "f")
         selection.tap(rowID: "f:line:3", fileID: "f")
         XCTAssertEqual(
-            selection.snippet(in: rows),
+            selection.commentContext(in: rows)?.markdown(comment: " \n"),
             """
             Sources/App.swift L10-L12
             ```diff
@@ -60,9 +61,9 @@ final class ReviewDiffSelectionTests: XCTestCase {
         )
 
         selection.tap(rowID: "g:line:0", fileID: "g")
-        XCTAssertEqual(selection.snippet(in: rows), "Other.swift L1\n```diff\n+x\n```")
+        XCTAssertEqual(selection.commentContext(in: rows)?.markdown(), "Other.swift L1\n```diff\n+x\n```")
         selection.clear()
-        XCTAssertNil(selection.snippet(in: rows))
+        XCTAssertNil(selection.commentContext(in: rows))
     }
 
     func testFenceOutgrowsBackticksInsideTheSelection() {
@@ -74,6 +75,51 @@ final class ReviewDiffSelectionTests: XCTestCase {
         var selection = ReviewDiffSelection()
         selection.longPress(rowID: "m:line:0", fileID: "m")
         selection.tap(rowID: "m:line:1", fileID: "m")
-        XCTAssertEqual(selection.snippet(in: markdown), "README.md L4-L5\n````diff\n+```swift\n+let x = `y`\n````")
+        XCTAssertEqual(selection.commentContext(in: markdown)?.markdown(), "README.md L4-L5\n````diff\n+```swift\n+let x = `y`\n````")
+    }
+
+    func testSourceSelectionQuotesUnprefixedLinesInALanguageFence() {
+        let source = SourceFileRows.rows(for: ["/// Use `x`:", "/// ```", "let x = 1"])
+        var selection = ReviewDiffSelection()
+        selection.longPress(rowID: SourceFileRows.rowID(forLineIndex: 0), fileID: SourceFileRows.fileID)
+        selection.tap(rowID: SourceFileRows.rowID(forLineIndex: 2), fileID: SourceFileRows.fileID)
+        XCTAssertEqual(
+            selection.sourceCommentContext(in: source, path: "Sources/X.swift", language: "swift")?.markdown(comment: "rename x"),
+            "Sources/X.swift L1-L3: rename x\n````swift\n/// Use `x`:\n/// ```\nlet x = 1\n````"
+        )
+    }
+
+    /// Comments from two files land after what the user typed, in the order added,
+    /// each a paragraph of its own, and the bar counts them.
+    func testCommentsAppendToTheDraftInOrder() throws {
+        var composer = ReviewCommentComposer()
+        var draft = "Can you tighten these up?"
+        var selection = ReviewDiffSelection()
+        for (rowID, fileID, comment) in [("f:line:1", "f", "why remove this?"), ("g:line:0", "g", ""), ("f:line:2", "f", "and this")] {
+            selection.tap(rowID: rowID, fileID: fileID)
+            composer.context = selection.commentContext(in: rows)
+            draft = ReviewCommentComposer.appending(try XCTUnwrap(composer.add(comment: comment)), to: draft)
+        }
+        XCTAssertEqual(draft, """
+            Can you tighten these up?
+
+            Sources/App.swift L11: why remove this?
+            ```diff
+            -old()
+            ```
+
+            Other.swift L1
+            ```diff
+            +x
+            ```
+
+            Sources/App.swift L11: and this
+            ```diff
+            +new()
+            ```
+
+            """)
+        XCTAssertEqual(composer.addedCount, 3)
+        XCTAssertNil(composer.context, "Add closes the comment sheet.")
     }
 }

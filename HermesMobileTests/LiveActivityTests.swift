@@ -192,6 +192,32 @@ final class LiveActivityTests: XCTestCase {
         }
     }
 
+    func testCompactIslandQuietsWorkAndKeepsAsksAndOutcomesThroughStaleness() {
+        let expected: [(AgentRunActivityStatus, fresh: AgentRunCompactPresentation, stale: AgentRunCompactPresentation)] = [
+            (.starting, .working, .staleWork),
+            (.thinking, .working, .staleWork),
+            (.usingTool, .working, .staleWork),
+            (.searchingFiles, .working, .staleWork),
+            (.readingFiles, .working, .staleWork),
+            (.runningCommand, .working, .staleWork),
+            (.responding, .working, .staleWork),
+            (.waiting, .waiting, .waiting),
+            (.waitingForApproval, .approval, .approval),
+            (.waitingForClarification, .clarification, .clarification),
+            (.complete, .complete, .complete),
+            (.failed, .failed, .failed),
+            (.cancelled, .cancelled, .cancelled),
+        ]
+        let base = AgentRunActivityStateReducer.initialState(sessionID: "session", sessionTitle: "Run")
+        for (status, fresh, stale) in expected {
+            var state = base
+            state.status = status
+            XCTAssertEqual(AgentRunCompactPresentation(state: state), fresh, "\(status)")
+            state.isStale = true
+            XCTAssertEqual(AgentRunCompactPresentation(state: state), stale, "stale \(status)")
+        }
+    }
+
     func testSessionDeepLinkURLPercentEncodesSessionID() throws {
         let sessionID = "session & /?=✓"
         let url = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: sessionID))

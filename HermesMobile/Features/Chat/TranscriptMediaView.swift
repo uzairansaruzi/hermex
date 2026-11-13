@@ -22,6 +22,13 @@ extension EnvironmentValues {
         set { self[ChatWorkspaceRootKey.self] = newValue }
     }
 
+    /// A Hermes session's replies resolve bare relative images (`out/chart.png`) against
+    /// `chatWorkspaceRoot` too (#1679); webui leaves them to the Markdown renderer.
+    var resolvesBareMediaPaths: Bool {
+        get { self[BareMediaPathsKey.self] }
+        set { self[BareMediaPathsKey.self] = newValue }
+    }
+
     /// Hermes sessions opt into document previews without changing the webui
     /// transcript's download-only file rows.
     var previewsHermesDocuments: Bool {
@@ -32,6 +39,10 @@ extension EnvironmentValues {
 
 private struct ChatWorkspaceRootKey: EnvironmentKey {
     static let defaultValue: String? = nil
+}
+
+private struct BareMediaPathsKey: EnvironmentKey {
+    static let defaultValue = false
 }
 
 private struct HermesDocumentPreviewKey: EnvironmentKey {
@@ -77,12 +88,14 @@ struct TranscriptMediaContentView: View {
                         cacheNamespace: cacheNamespace,
                         loadMediaImage: loadMediaImage,
                         loadMediaData: loadMediaData,
-                        onPreviewMedia: onPreviewMedia
+                        onPreviewMedia: onPreviewMedia,
+                        isStreaming: isStreaming
                     )
                     // Pin other media LTR so it keeps its leading-edge anchor inside an RTL
                     // message (#259); the text segments above still follow the chat
                     // direction, and so does a Hermes document's preview row.
-                    if previewsHermesDocuments && reference.isHermesDocumentCandidate
+                    if previewsHermesDocuments
+                        && (reference.isHermesDocumentCandidate || reference.isHTMLReportCandidate)
                         && onPreviewMedia != nil && loadMediaData != nil {
                         thumbnail
                     } else {
@@ -100,7 +113,9 @@ private struct TranscriptMediaThumbnailView: View {
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
+    let isStreaming: Bool
     @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
+    @Environment(\.transcriptHTMLReportLoader) private var htmlReportLoader
 
     @State private var image: UIImage?
     @State private var didAttemptLoad = false
@@ -168,14 +183,28 @@ private struct TranscriptMediaThumbnailView: View {
 
         case .unsupported where loadMediaData != nil:
             if let loadMediaData {
-                TranscriptMediaFileExportView(
+                let fileCard = TranscriptMediaFileExportView(
                     reference: reference,
                     loadMediaData: {
                         await loadMediaData(reference)
                     },
-                    onPreview: previewsHermesDocuments && reference.isHermesDocumentCandidate
+                    onPreview: previewsHermesDocuments
+                        && (reference.isHermesDocumentCandidate || reference.isHTMLReportCandidate)
                         ? onPreviewMedia.map { preview in { preview(reference) } } : nil
                 )
+                // A streaming reply keeps the card; the report renders once the reply settles.
+                if HTMLReport.rendersInline(reference, loader: htmlReportLoader, isStreaming: isStreaming),
+                   let htmlReportLoader, let onPreviewMedia {
+                    TranscriptHTMLReportView(
+                        reference: reference,
+                        cacheNamespace: cacheNamespace,
+                        loader: htmlReportLoader,
+                        onExpand: { onPreviewMedia(reference) },
+                        fileCard: { fileCard }
+                    )
+                } else {
+                    fileCard
+                }
             } else {
                 TranscriptMediaUnavailableChip(reference: reference)
             }
@@ -208,7 +237,7 @@ private struct TranscriptMediaThumbnailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                        .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
                 )
         } else if didAttemptLoad {
             if reference.isExtensionlessRemoteMediaCandidate {
@@ -218,11 +247,11 @@ private struct TranscriptMediaThumbnailView: View {
             }
         } else {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(.systemFill))
+                .fill(Color(.appFill))
                 .frame(width: thumbnailWidth, height: thumbnailHeight)
                 .overlay {
                     ProgressView()
-                        .tint(Color(.tertiaryLabel))
+                        .tint(Color(.appTextTertiary))
                 }
         }
     }
@@ -269,11 +298,11 @@ private struct TranscriptMediaResolvedRemoteView: View {
 
             case nil:
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(.systemFill))
+                    .fill(Color(.appFill))
                     .frame(width: 210, height: 132)
                     .overlay {
                         ProgressView()
-                            .tint(Color(.tertiaryLabel))
+                            .tint(Color(.appTextTertiary))
                     }
             }
         }
@@ -301,7 +330,7 @@ private struct TranscriptMediaResolvedRemoteView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                    .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
             )
     }
 
@@ -460,7 +489,7 @@ private struct TranscriptMediaFileExportView: View {
                         fileLabel
                         Image(systemName: "chevron.forward")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color(.secondaryLabel))
+                            .foregroundStyle(Color(.appTextSecondary))
                     }
                     .contentShape(Rectangle())
                 }
@@ -483,11 +512,11 @@ private struct TranscriptMediaFileExportView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
+        .background(Color(.appSurface))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
         )
         .accessibilityElement(children: .contain)
         .fileExporter(
@@ -523,20 +552,20 @@ private struct TranscriptMediaFileExportView: View {
         HStack(spacing: 8) {
             Image(systemName: "doc")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(.secondaryLabel))
+                .foregroundStyle(Color(.appTextSecondary))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(.label))
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(Color(.appText))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Text(isExporting
                      ? String(localized: "Loading…")
                      : onPreview == nil ? String(localized: "Tap to download") : String(localized: "Tap to preview"))
-                    .font(.caption2)
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .font(AppFont.caption2())
+                    .foregroundStyle(Color(.appTextSecondary))
                     .lineLimit(1)
             }
 
@@ -580,11 +609,11 @@ private struct TranscriptMediaVideoTile: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(Color(.appSurface))
                 .frame(width: 210, height: 132)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                        .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
                 )
 
             VStack(spacing: 8) {
@@ -593,15 +622,15 @@ private struct TranscriptMediaVideoTile: View {
                     .foregroundStyle(Color.accentColor)
 
                 Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(.label))
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(Color(.appText))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: 172)
 
                 Text("Video")
-                    .font(.caption2)
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .font(AppFont.caption2())
+                    .foregroundStyle(Color(.appTextSecondary))
             }
             .padding(.horizontal, 14)
         }
@@ -615,29 +644,29 @@ private struct TranscriptMediaUnavailableChip: View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(.secondaryLabel))
+                .foregroundStyle(Color(.appTextSecondary))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(reference.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(.label))
+                    .font(AppFont.caption(weight: .semibold))
+                    .foregroundStyle(Color(.appText))
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Text("Media unavailable")
-                    .font(.caption2)
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .font(AppFont.caption2())
+                    .foregroundStyle(Color(.appTextSecondary))
                     .lineLimit(1)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
+        .background(Color(.appSurface))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Media unavailable \(reference.displayName)"))
@@ -723,7 +752,7 @@ struct TranscriptMediaPreviewView: View {
                             Task { await loadMedia(force: true) }
                         }
                     }
-                } else if let data = viewModel.previewData, let image = UIImage(data: data) {
+                } else if let image = viewModel.previewImage {
                     imageContent(image)
                 } else if let audioData = viewModel.audioData {
                     audioContent(audioData)
@@ -733,6 +762,7 @@ struct TranscriptMediaPreviewView: View {
                     unavailableContent(String(localized: "Preview is not available for this media."))
                 }
             }
+            .themedPageBackground()
             .navigationTitle(item.reference.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -834,7 +864,7 @@ struct TranscriptMediaPreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private func audioContent(_ data: Data) -> some View {
@@ -848,7 +878,7 @@ struct TranscriptMediaPreviewView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private func videoContent(_ url: URL) -> some View {
@@ -861,12 +891,12 @@ struct TranscriptMediaPreviewView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+                        .stroke(Color(.appSeparator).opacity(0.35), lineWidth: 0.5)
                 )
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
     }
 
     private func unavailableContent(_ message: String) -> some View {
@@ -876,9 +906,9 @@ struct TranscriptMediaPreviewView: View {
             VStack(spacing: 8) {
                 Text(message)
                 Text(item.reference.rawReference)
-                    .font(.footnote)
+                    .font(AppFont.footnote())
                     .fontDesign(.monospaced)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .textSelection(.enabled)
             }
         }
@@ -900,15 +930,15 @@ struct TranscriptMediaPreviewView: View {
     private var mediaHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(item.reference.rawReference)
-                .font(.caption)
+                .font(AppFont.caption())
                 .fontDesign(.monospaced)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .textSelection(.enabled)
 
             if let originalByteCount = viewModel.originalByteCount {
                 Text(ByteCountFormatter.string(fromByteCount: Int64(originalByteCount), countStyle: .file))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
             }
         }
     }

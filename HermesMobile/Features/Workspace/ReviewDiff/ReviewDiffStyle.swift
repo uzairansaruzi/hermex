@@ -3,13 +3,13 @@ import UIKit
 /// Semantic colours for the surface. Every colour is dynamic, so a draw pass resolves
 /// light or dark from the current trait collection with no theme plumbing.
 struct ReviewDiffTheme {
-    let background = UIColor.systemBackground
-    let text = UIColor.label
-    let mutedText = UIColor.secondaryLabel
-    let headerBackground = UIColor.secondarySystemBackground
-    let border = UIColor.separator
-    let accent = UIColor.systemBlue
-    let hunkBackground = UIColor.systemBlue.withAlphaComponent(0.10)
+    let background = UIColor.appCanvas
+    let text = UIColor.appText
+    let mutedText = UIColor.appTextSecondary
+    let headerBackground = UIColor.appSurface
+    let border = UIColor.appSeparator
+    let accent = UIColor.appAccent
+    let hunkBackground = UIColor.appAccent.withAlphaComponent(0.10)
     let addBackground = UIColor.systemGreen.withAlphaComponent(0.14)
     let deleteBackground = UIColor.systemRed.withAlphaComponent(0.14)
     let addTint = UIColor.systemGreen
@@ -62,10 +62,19 @@ struct ReviewDiffStyle {
     var stickyWidth: CGFloat { changeBarWidth + gutterWidth }
     var codeStartX: CGFloat { stickyWidth + codePadding }
 
-    static func resolve(for traits: UITraitCollection, presentation: ReviewDiffPresentation = .diff) -> ReviewDiffStyle {
+    /// `customCodeSize` is `CodeDisplaySettings.customSizeKey`'s value. When set, it replaces
+    /// the scaled code size, and line numbers and hunk labels keep their proportion to it.
+    static func resolve(
+        for traits: UITraitCollection,
+        presentation: ReviewDiffPresentation = .diff,
+        customCodeSize: CGFloat? = nil
+    ) -> ReviewDiffStyle {
         let metrics = UIFontMetrics(forTextStyle: .body)
         func mono(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
-            metrics.scaledFont(
+            if let customCodeSize {
+                return .monospacedSystemFont(ofSize: customCodeSize * size / 12, weight: weight)
+            }
+            return metrics.scaledFont(
                 for: .monospacedSystemFont(ofSize: size, weight: weight),
                 maximumPointSize: size * 2.2,
                 compatibleWith: traits
@@ -73,8 +82,8 @@ struct ReviewDiffStyle {
         }
         let codeFont = mono(12, .regular)
         let lineNumberFont = mono(11, .regular)
-        let fileHeaderFont = UIFont.preferredFont(forTextStyle: .subheadline, compatibleWith: traits).withWeight(.semibold)
-        let noticeFont = UIFont.preferredFont(forTextStyle: .footnote, compatibleWith: traits)
+        let fileHeaderFont = UIFont.app(forTextStyle: .subheadline, compatibleWith: traits).withWeight(.semibold)
+        let noticeFont = UIFont.app(forTextStyle: .footnote, compatibleWith: traits)
 
         let sample = String(repeating: "M", count: 64)
         let characterWidth = (sample as NSString).size(withAttributes: [.font: codeFont, .ligature: 0]).width / 64

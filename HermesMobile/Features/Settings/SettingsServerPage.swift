@@ -22,6 +22,8 @@ struct SettingsServerPage: View {
     /// The active Hermes server's saved connection, read on appear (#899): its username shows
     /// on the connection row, and Archived Sessions reads through it (#1048).
     @State private var hermesConnection: BotConnection?
+    /// What a Webapp says about the Profiles it serves (#1611), read on appear after the connection.
+    @State private var profileServing: HermesProfileServing?
     @State private var moveRequest: MoveToHermesRequest?
 
     init(
@@ -48,7 +50,7 @@ struct SettingsServerPage: View {
     private var activeHermesServer: URL? { isActive && account.kind == .hermes ? server : nil }
 
     var body: some View {
-        let page = List {
+        let page = AppList {
             Section(String(localized: "Identity")) {
                 ServerIdentityEditor(
                     displayName: $displayName,
@@ -89,6 +91,14 @@ struct SettingsServerPage: View {
             }
             await updates.appear()
         }
+        // Its own task, so a slow host never holds up the update check, and a read that ends after
+        // the page leaves changes nothing.
+        .task(id: hermesConnection?.id) {
+            guard let server = activeHermesServer, let hermesConnection else { return }
+            let read = await ProfileServingSection.read(connection: hermesConnection, server: server)
+            guard !Task.isCancelled else { return }
+            profileServing = read
+        }
         .onDisappear {
             if let server = activeHermesServer { HermesUpdateModel.for(server: server).leaveSettings() }
         }
@@ -126,7 +136,9 @@ struct SettingsServerPage: View {
     }
 
     /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
-    /// and the host's update standing (#1075), then its archived sessions and API keys (#1318).
+    /// and the host's update standing (#1075), a Webapp's unserved Profiles (#1611), then its archived
+    /// sessions and which sessions it lists (#1674), the home's Main Page switches (#1585), a Profile's
+    /// default model (#1670), API keys (#1318) and plugins (#1582), and its offline data.
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
         Section {
@@ -151,28 +163,62 @@ struct SettingsServerPage: View {
             HermesUpdateCallout(model: HermesUpdateModel.for(server: server), version: account.serverVersion)
         } header: {
             Text("Server")
-        } footer: {
+        } appFooter: {
             if hermesConnection?.hasNoCredentials == true {
                 OpenDashboardWarning()
             }
         }
 
+        BotScreenToggleSection(server: server)
+
         if let hermesConnection {
+            ProfileServingSection(serving: profileServing, connection: hermesConnection, server: server) {
+                profileServing = nil
+            }
+
             Section(String(localized: "Sessions")) {
                 NavigationLink {
                     ArchivedSessionsView(server: server, hermes: .saved(hermesConnection, server: server, profile: nil))
                 } label: {
                     SettingsLabel(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
                 }
-            }
 
+                SessionRowDisplayToggles()
+                CronSessionsToggle()
+                HermesCliSessionsToggle(server: server)
+            }
+        }
+
+        MainPageSettingsSection(includesWebuiEntries: false)
+
+        if let hermesConnection {
             Section {
+                NavigationLink {
+                    HermesDefaultModelView(connection: hermesConnection, server: server)
+                } label: {
+                    SettingsLabel(title: String(localized: "Default Model"), systemImage: "cpu")
+                }
+
                 NavigationLink {
                     APIKeysView(connection: hermesConnection, server: server)
                 } label: {
                     SettingsLabel(title: String(localized: "API Keys"), systemImage: "key")
                 }
+
+                NavigationLink {
+                    PluginsView(connection: hermesConnection, server: server)
+                } label: {
+                    SettingsLabel(title: String(localized: "Plugins"), systemImage: "puzzlepiece.extension")
+                }
+
+                NavigationLink {
+                    ConnectedAppsView(connection: hermesConnection, server: server)
+                } label: {
+                    SettingsLabel(title: String(localized: "Connected Apps"), systemImage: "app.connected.to.app.below.fill")
+                }
             }
+
+            OfflineDataSection(server: server)
         }
     }
 
@@ -224,7 +270,7 @@ struct SettingsServerPage: View {
                 Button(String(localized: "Sign Out of This Server"), role: .destructive) {
                     isConfirmingSignOut = true
                 }
-            } footer: {
+            } appFooter: {
                 Text("Deletes the saved sign-in; the server stays.")
             }
         }
@@ -240,7 +286,7 @@ struct SettingsServerPage: View {
                 }
             }
             .disabled(isRemoving)
-        } footer: {
+        } appFooter: {
             Text(removeFootnote)
         }
     }
@@ -346,7 +392,7 @@ private struct MoveToHermesSection: View {
             }
         } header: {
             Text("Move to Hermes")
-        } footer: {
+        } appFooter: {
             footer
         }
     }
@@ -404,4 +450,29 @@ private struct MoveToHermesSection: View {
 private struct MoveToHermesRequest: Identifiable {
     let entry: MoveToHermesEntry
     var id: String { "\(entry)" }
+}
+
+/// The per-server "Bot Screen (beta)" switch (#1567), off by default.
+private struct BotScreenToggleSection: View {
+    @AppStorage private var isEnabled: Bool
+    private let server: URL
+
+    init(server: URL) {
+        self.server = server
+        _isEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
+    }
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $isEnabled) {
+                SettingsLabel(title: String(localized: "Bot Screen (beta)"), systemImage: "display")
+            }
+        } appFooter: {
+            Text("Watch and control this host's screen. Anyone with this server's login could do the same.")
+        }
+        // Turning it off also hands back any control, since nothing would show that it's held.
+        .onChange(of: isEnabled) {
+            if !isEnabled { Task { await ScreenHolds.handBackAll(server: server) } }
+        }
+    }
 }

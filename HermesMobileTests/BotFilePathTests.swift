@@ -123,7 +123,7 @@ final class ComposerFilePathSearchLoadTests: XCTestCase {
 /// Holds one query's closure open until the test says otherwise, so a late
 /// reply can be raced against a newer one deterministically.
 @MainActor
-private final class QueryGate {
+final class QueryGate {
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var isOpen = false
 

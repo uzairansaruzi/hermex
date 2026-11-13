@@ -24,10 +24,15 @@ enum BotFilePathSearch {
     /// `/`, a single character and the bare trigger keep the one-folder listing, so
     /// `@src/` lists `src` and `@s` still offers the root's folders.
     static func panelWord(for query: String) -> String {
-        guard !query.contains("/"), query.trimmingCharacters(in: .whitespaces).count >= 2 else {
-            return listingWord(for: query)
-        }
+        guard searchesEveryFolder(query) else { return listingWord(for: query) }
         return "@file:" + query
+    }
+
+    /// Whether `panelWord` asks the whole-folder search for `query`: a name of two or more
+    /// characters with no `/` or line break; spaces are fine. Files' workspace search (#1389)
+    /// asks the host only then.
+    static func searchesEveryFolder(_ query: String) -> Bool {
+        !query.contains("/") && !query.contains(where: \.isNewline) && query.trimmingCharacters(in: .whitespaces).count >= 2
     }
 
     /// A one-folder listing's word: the folder the query names, filtered to entries
@@ -41,8 +46,9 @@ enum BotFilePathSearch {
     ///
     /// A listing word answers plain relative paths; the panel's fuzzy word answers
     /// the same root-relative paths spelled `@file:` and `@folder:`. Directories end
-    /// in `/` and carry `meta: "dir"`.
-    static func matches(from reply: BotJSON) -> [ComposerFilePathSearch.Match] {
+    /// in `/` and carry `meta: "dir"`. `browsing` keeps a path with whitespace, which
+    /// Files opens rather than inserts as a reference (#1389).
+    static func matches(from reply: BotJSON, browsing: Bool = false) -> [ComposerFilePathSearch.Match] {
         guard let items = reply["items"].list else { return [] }
 
         return items.compactMap { item in
@@ -57,7 +63,7 @@ enum BotFilePathSearch {
             while path.hasSuffix("/") { path.removeLast() }
 
             guard !path.isEmpty, !path.hasPrefix("/"),
-                  !path.contains(where: \.isWhitespace),
+                  browsing || !path.contains(where: \.isWhitespace),
                   !path.split(separator: "/").contains("..")
             else { return nil }
 

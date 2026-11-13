@@ -15,7 +15,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             XCTFail("A gone composer must not upload")
             throw URLError(.cancelled)
         }.dictationTranscriber
-        let tap = controller.scheduleToggle(currentDraft: "Original") { _ in XCTFail("Stale draft update") }
+        let tap = controller.scheduleToggle(draft: DictationTestDraft("Original") { _ in XCTFail("Stale draft update") })
         controller.stopBeforeSubmittingDraft()
         await tap.value
         XCTAssertEqual(recorder.starts, 0)
@@ -42,10 +42,10 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             XCTAssertTrue(body.contains(recorder.url.lastPathComponent))
             return apiTestJSONResponse(#"{"ok":true,"transcript":"retained words"}"#, for: request)
         }.dictationTranscriber
-        await controller.toggle(currentDraft: "Please") {
+        await controller.toggle(draft: DictationTestDraft("Please") {
             drafts.append($0)
             updated.fulfill()
-        }
+        })
         XCTAssertEqual(controller.state, .serverListening)
         XCTAssertTrue(recorder.isRecording)
         XCTAssertTrue(UIApplication.shared.isIdleTimerDisabled)
@@ -80,7 +80,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             throw URLError(.cancelled)
         }.dictationTranscriber
         var draft = "Original"
-        await controller.toggle(currentDraft: draft) { draft = $0 }
+        await controller.toggle(draft: DictationTestDraft(draft) { draft = $0 })
         controller.suspend()
         XCTAssertTrue(FileManager.default.fileExists(atPath: recorder.url.path))
         controller.stopBeforeSubmittingDraft()
@@ -108,10 +108,10 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             }, serverRecorder: recorder, mayRecord: { true }
         )
         controller.transcribe = makeClient { _ in throw URLError(.cancelled) }.dictationTranscriber
-        let first = Task { await controller.toggle(currentDraft: "Old") { _ in XCTFail("Stale update") } }
+        let first = Task { await controller.toggle(draft: DictationTestDraft("Old") { _ in XCTFail("Stale update") }) }
         await fulfillment(of: [firstAsked], timeout: 2)
         controller.suspend()
-        let second = Task { await controller.toggle(currentDraft: "New") { _ in XCTFail("Not transcribed") } }
+        let second = Task { await controller.toggle(draft: DictationTestDraft("New") { _ in XCTFail("Not transcribed") }) }
         await fulfillment(of: [secondAsked], timeout: 2)
         XCTAssertEqual(controller.state, .requestingPermission)
         XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled, "Permission must not hold an awake lease")
@@ -142,9 +142,9 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         }
         old.transcribe = client.dictationTranscriber
         replacement.transcribe = client.dictationTranscriber
-        await old.toggle(currentDraft: "Old") { _ in XCTFail("Old composer must not update") }
+        await old.toggle(draft: DictationTestDraft("Old") { _ in XCTFail("Old composer must not update") })
         old.suspend()
-        await replacement.toggle(currentDraft: "New") { _ in XCTFail("Not transcribed") }
+        await replacement.toggle(draft: DictationTestDraft("New") { _ in XCTFail("Not transcribed") })
         old.resume()
         XCTAssertEqual(old.state, .idle)
         XCTAssertFalse(FileManager.default.fileExists(atPath: oldRecorder.url.path))
@@ -167,7 +167,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         }.dictationTranscriber
         let updated = expectation(description: "One final transcript")
         var drafts: [String] = []
-        await controller.toggle(currentDraft: "") { drafts.append($0); updated.fulfill() }
+        await controller.toggle(draft: DictationTestDraft("") { drafts.append($0); updated.fulfill() })
         let finish = recorder.onFinish
         finish?()
         finish?()
@@ -179,12 +179,28 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
+    /// The stale-result rule end to end: a transcript landing after an edit leaves the
+    /// edit alone and says why.
+    func testServerTranscriptAfterAnEditLeavesTheDraftAndExplains() async {
+        let recorder = DictationTestRecorder()
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
+            serverRecorder: recorder, mayRecord: { true })
+        controller.transcribe = { _, _ in TranscribeResponse(ok: true, transcript: "late words", error: nil) }
+        let draft = DictationTestDraft("Before") { _ in XCTFail("A stale result must not write") }
+        await controller.toggle(draft: draft)
+        draft.type("Before and my edit")
+        await finishRecording(controller)
+        XCTAssertEqual(draft.text, "Before and my edit")
+        XCTAssertEqual(controller.errorMessage, "Dictation stopped because the draft changed.")
+    }
+
     func testWithoutATranscriberNothingRecordsForTheServer() async {
         let recorder = DictationTestRecorder()
         let controller = ComposerVoiceInputController(
             speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
             serverRecorder: recorder, mayRecord: { true })
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await controller.toggle(draft: DictationTestDraft("Draft") { _ in XCTFail("Nothing transcribed") })
         XCTAssertEqual(recorder.starts, 0)
         XCTAssertEqual(controller.errorMessage, "Speech-to-text is not available right now.")
     }
@@ -201,7 +217,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             return TranscribeResponse(ok: true, transcript: "", error: nil)
         }
         var drafts: [String] = []
-        await controller.toggle(currentDraft: "Keep this") { drafts.append($0) }
+        await controller.toggle(draft: DictationTestDraft("Keep this") { drafts.append($0) })
         await finishRecording(controller)
         XCTAssertEqual(uploads.map(\.0), [Data("interrupted-clip".utf8)])
         XCTAssertEqual(uploads.map(\.1), [recorder.url.lastPathComponent])
@@ -220,7 +236,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         controller.transcribe = makeClient { request in
             apiTestJSONResponse(#"{"ok":true,"transcript":"  "}"#, for: request)
         }.dictationTranscriber
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await controller.toggle(draft: DictationTestDraft("Draft") { _ in XCTFail("Nothing transcribed") })
         await finishRecording(controller)
         XCTAssertEqual(controller.errorMessage, "Transcription returned no text.")
     }
@@ -233,7 +249,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             speechAuthorization: { XCTFail("No on-device fallback"); return .denied },
             serverRecorder: recorder, mayRecord: { true })
         controller.transcribe = { _, _ in TranscribeResponse(ok: false, transcript: nil, error: "STT is disabled") }
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await controller.toggle(draft: DictationTestDraft("Draft") { _ in XCTFail("Nothing transcribed") })
         await finishRecording(controller)
         XCTAssertEqual(controller.errorMessage, "STT is disabled")
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
@@ -251,7 +267,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             serverRecorder: recorder, mayRecord: { true })
         controller.providerPreference = .serverFirst
         controller.transcribe = { _, _ in TranscribeResponse(ok: false, transcript: nil, error: "STT is disabled") }
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await controller.toggle(draft: DictationTestDraft("Draft") { _ in XCTFail("Nothing transcribed") })
         XCTAssertEqual(controller.state, .serverListening)
         await finishRecording(controller)
         XCTAssertEqual(authorizations, 1)
@@ -371,4 +387,49 @@ private final class DictationTestRecorder: ComposerServerRecording {
         return url
     }
     func stop() { isRecording = false }
+    var decibels: Float? { nil }
+}
+
+/// The composer's side of dictation: a live draft the controller reads and writes,
+/// with the caret at the end unless a test says otherwise.
+@MainActor
+private final class DictationTestDraft {
+    var text: String
+    var selection: ComposerSelection
+    private let onWrite: (String) -> Void
+
+    init(_ text: String, onWrite: @escaping (String) -> Void) {
+        self.text = text
+        selection = ComposerSelection(range: NSRange(location: (text as NSString).length, length: 0))
+        self.onWrite = onWrite
+    }
+
+    func write(_ update: ComposerVoiceDraftUpdate) {
+        text = update.text
+        selection = selection.moved(to: update.caret)
+        onWrite(update.text)
+    }
+
+    /// A keystroke as the editor publishes one: new text and a new generation.
+    func type(_ text: String) {
+        self.text = text
+        selection.publishGeneration += 1
+    }
+}
+
+@MainActor
+private extension ComposerVoiceInputController {
+    func toggle(draft: DictationTestDraft) async {
+        await toggle(
+            draftState: { ComposerVoiceDraftState(text: draft.text, selection: draft.selection) },
+            updateDraft: draft.write
+        )
+    }
+
+    func scheduleToggle(draft: DictationTestDraft) -> Task<Void, Never> {
+        scheduleToggle(
+            draftState: { ComposerVoiceDraftState(text: draft.text, selection: draft.selection) },
+            updateDraft: draft.write
+        )
+    }
 }

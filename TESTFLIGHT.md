@@ -361,6 +361,22 @@ it over the existing TestFlight or App Store install on the owner's iPhone.
 Record the tested build and outcome in the release's GitHub issue. A failed RC
 is fixed on `master` and replaced by a new upload; never promote it.
 
+### Diagnostics (MetricKit)
+
+About → Diagnostics keeps the crash, hang, CPU and disk-write reports MetricKit
+hands the main app (#1397), sanitized, at most 10 for 14 days, on the device
+only. iOS decides when and whether to deliver one, so an empty list does not
+mean the app never crashed; the share extension, widget and notification
+service are not covered. Nothing is uploaded: a tester copies a report into a
+bug report, and its frame UUIDs and offsets are symbolicated off the device
+against the build's dSYMs.
+
+Simulators never receive payloads. To check the page, or to capture a real
+payload as a test fixture, run a signed Debug build on a physical iPhone from
+Xcode, choose Debug → Simulate MetricKit Payloads, then open About →
+Diagnostics. A captured payload can replace the documented-format sample in
+`DiagnosticsLogTests` once its real device values are swapped for placeholders.
+
 ## Review information and privacy
 
 In App Store Connect, verify the beta description, What to Test, feedback email,
@@ -376,12 +392,20 @@ Review notes and App Privacy answers must match the submitted build:
 
 - Hermex is a native client for a user-configured, self-hosted Hermes server,
   with no in-app account creation or purchase flow.
-- There is no tracking or third-party analytics. Account for what the server
+- There is no tracking; optional first-party usage reports. Account for what the server
   operator can access when providing an owner-hosted server to testers.
 - The composer supports camera capture, selected photos/files, and explicit
   voice input. Check permission descriptions against the app's current Info.plist.
 - Shared content is staged in the App Group and selected attachments are uploaded
   to the configured server. The user still taps Send to send the message.
+- Bot Screen is a generic mirror of the user's own host (guideline 4.2.7): it shows and
+  controls that host's desktop, over the user's own connection, with no Hermex service
+  in between. It's off until the user turns it on per server. Keep a demo server ready
+  in case Apple asks.
+- The Plugins screen manages plugins on the user's own server: they install and run there,
+  and no plugin code is downloaded to or runs on the device. The catalog comes from that
+  server, its images load directly from GitHub, and Hermex doesn't sell or host plugins.
+  It appears only for a Hermes server. Keep a demo server ready in case Apple asks.
 
 The share extension's automatic app-opening workaround is an accepted review
 risk. It attempts to open `hermes-agent://share` through dynamic URL-opening

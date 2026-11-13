@@ -149,6 +149,65 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.displayKind), ["skill_invocation", nil, "skill_invocation", "skill_invocation"])
     }
 
+    /// A scheduled task's run opens on the host's cron hint (#1413), which its card hides: it
+    /// reads the job's own text after the hint and the skill a skill job loaded, whether the
+    /// history rewrote the expanded skill to `/skill <hint> <task>` or a missing-skills notice
+    /// left the row as stored. The rows are the pinned `cron/scheduler_prompt.py` builder's.
+    func testACronRunPromptReadsAsItsSkillAndTask() throws {
+        let skill = "[IMPORTANT: The user has invoked the \"unslop\" skill, indicating they want you to follow its "
+            + "instructions. The full skill content is loaded below.]\n\n---\nname: unslop\n---\nCut filler.\n\n"
+            + "The user has provided the following instruction alongside the skill invocation: "
+        let notice = "[IMPORTANT: The following skill(s) were listed for this job but could not be found and were "
+            + "skipped: gone. Start your response with a brief notice so the user is aware, e.g.: "
+            + "'⚠️ Skill(s) not found and skipped: gone']"
+        let messages = HermesTranscriptProjection.project([
+            row(1, "user", Self.cronHint + "Triage new mail.\nLabel billing."),
+            row(2, "user", skill + Self.cronHint + "Rewrite the changelog.\nKeep links."),
+            row(3, "user", notice + "\n\nThe user has provided the following instruction alongside the skill invocation: "
+                + Self.cronHint + "Triage."),
+            row(4, "user", notice + "\n" + skill + Self.cronHint + "Rewrite.\nKeep links.")
+        ], root: "cron_job_20261031_090000").messages
+
+        let prompts = try messages.map { try XCTUnwrap(CronRunPrompt($0), $0.content ?? "") }
+        XCTAssertEqual(prompts.map(\.skills), [[], ["unslop"], [], ["unslop"]])
+        XCTAssertEqual(prompts.map(\.body), ["Triage new mail.\nLabel billing.", "Rewrite the changelog. Keep links.",
+                                             "Triage.", "Rewrite.\nKeep links."])
+    }
+
+    /// Any other row keeps its bubble: an ordinary prompt (or a host's clean `display_content`),
+    /// a hint that never closes, and a hint quoted mid-prompt.
+    func testOnlyARowOpeningOnAClosedCronHintIsACronRunPrompt() {
+        let texts = ["Triage new mail.", String(Self.cronHint.dropLast(3)) + " Triage.", "Run this: " + Self.cronHint + "Triage."]
+        for text in texts {
+            XCTAssertNil(CronRunPrompt(ChatMessage(role: "user", content: text, timestamp: nil, messageId: "m")), text)
+        }
+    }
+
+    /// Only a stored `cron_` session, or a compressed run's tip under a `cron_` root, is a
+    /// scheduled task's run; its chat's `SessionSummary` is a placeholder that cannot say so.
+    func testOnlyACronSessionOrLineageIsACronRun() {
+        func chat(_ key: String, root: String? = nil) -> HermesSessionChat {
+            HermesSessionChat(server: Self.connection.address, connection: Self.connection,
+                              target: .session(profile: "default", key: key), lineageRoot: root)
+        }
+        XCTAssertTrue(chat("cron_8f2c_20261031_090000").isCronRun)
+        XCTAssertTrue(chat("20261031_093000_a1b2", root: "cron_8f2c_20261031_090000").isCronRun)
+        XCTAssertFalse(chat("20261031_093000_a1b2", root: "20261031_090000_8f2c").isCronRun)
+    }
+
+    /// The pinned host's `_CRON_HINT`, with its nested `[SILENT]` and `[CRON_FAILURE]` tokens.
+    private static let cronHint = "[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response "
+        + "will be automatically delivered to the user — do NOT use send_message or try to deliver the output yourself. "
+        + "Just produce your report/output as your final response and the system handles the rest. SILENT: If there is "
+        + "genuinely nothing new to report, respond with exactly \"[SILENT]\" (nothing else) to suppress delivery. "
+        + "[SILENT] is a literal ASCII control token — never translate or rephrase it, whatever language the rest of "
+        + "your answer uses. Never combine [SILENT] with content — either report your findings normally, or say [SILENT] "
+        + "and nothing more. FAILURE: If a delegated child fails and this cron run must be recorded as failed, put "
+        + "[CRON_FAILURE] on the first line by itself, then explain the child failure on following lines. RECURSION: "
+        + "This is a run of an EXISTING scheduled job — execute the task now. NEVER create or update a cron job because "
+        + "of recurring or future-schedule language in the task prompt below; treat phrasing like \"each Monday\" or "
+        + "\"every day at 9\" as context for this run, not as a request to schedule another job.]\n\n"
+
     /// A compacted session shows its compacted turns, then the "Context compaction · Reference
     /// only" card with the summary, then the turns after it. Ids are not in display order: the
     /// compaction re-inserted the first turn under a new id.
@@ -337,6 +396,93 @@ import Observation
         XCTAssertFalse(chat.model.hasOlderMessages)
     }
 
+    /// A hole while a turn runs a tool (#1531): the rows it saved end in its reasoning and tool
+    /// rows, with no reply text yet. Their cards anchor to the running reply's row, not after
+    /// every row, and the turn's later tool and text frames join that same row.
+    func testAGapMidToolAnchorsTheSavedCardsToTheRunningReply() async throws {
+        let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
+        await rebuildMidTool(chat)
+        let reply = try XCTUnwrap(chat.model.streamingAssistantMessageID)
+        XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), [reply])
+        XCTAssertEqual(chat.model.completedReasoningGroups.map(\.anchorMessageID), [reply])
+        XCTAssertTrue(chat.model.displayedTranscriptMessages.contains { $0.message.messageId == reply },
+                      "the empty reply row shows, holding the cards")
+
+        chat.receive(event(7, "tool.start", ["tool_id": .string("tool-2"), "name": .string("terminal")]))
+        chat.receive(event(8, "message.delta", ["text": .string("Done.")]))
+        chat.model.flushPendingStreamingContent()
+        XCTAssertEqual(chat.model.toolCallAnchorMessageID, reply)
+        XCTAssertEqual(chat.model.messages.last?.messageId, reply)
+        XCTAssertEqual(chat.model.messages.last?.content, "Done.")
+    }
+
+    /// A steered turn rebuilt mid-turn never gets a full receipt (the host's has one user row
+    /// per turn), so its end re-reads the newest rows anyway (#1531): its rows take their saved
+    /// ids and its cards sit above the steer, as a fresh open lays them out.
+    func testARebuiltTurnWithoutAFullReceiptReReadsItsRowsAtItsEnd() async {
+        let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
+        await rebuildMidTool(chat)
+        let settled = midToolRows + [
+            row(6, "user", "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\nUse tabs\n[/OUT-OF-BAND USER MESSAGE]",
+                ["display_kind": .string("steer")]),
+            row(7, "assistant", "Done.")
+        ]
+        chat.pages.set(0, settled)
+        chat.receive(event(7, "message.complete", ["status": .string("complete"), "text": .string("Done."),
+                                                   "persisted_turn": .object([
+                                                       "row_ids": .array((3...7).map { .number(Double($0)) }),
+                                                       "complete": .bool(false), "user_row_id": .number(3),
+                                                       "final_assistant_row_id": .number(7)
+                                                   ])]))
+        chat.receive(event(8, "session.info", ["running": .bool(false)]))
+        await waitUntil("saved rows") { chat.model.messages.last?.rowID == 7 }
+        XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 6, 7])
+        XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), ["tip/row-6"], "above the steer")
+        XCTAssertEqual(chat.model.completedReasoningGroups.map(\.anchorMessageID), ["tip/row-6"])
+    }
+
+    /// A rebuilt turn stopped mid-tool saves no row after its tool, so its re-read would leave the
+    /// cards with nothing to anchor to and is not taken (#1531). The next turn's end re-reads
+    /// again, without a full receipt either, and the stopped turn's cards settle above its prompt.
+    func testARebuiltTurnStoppedMidToolSettlesAtTheNextTurnsEnd() async {
+        let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
+        await rebuildMidTool(chat)
+        chat.receive(event(7, "message.complete", ["status": .string("interrupted")]))
+        chat.receive(event(8, "session.info", ["running": .bool(false)]))
+
+        chat.receive(event(9, "session.info", ["running": .bool(true), "turn_started_at": .number(1_790_000_006)]))
+        chat.receive(event(10, "message.start"))
+        chat.pages.set(0, midToolRows + [row(6, "user", "Again"), row(7, "assistant", "Done.")])
+        chat.receive(event(11, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(12, "session.info", ["running": .bool(false)]))
+        await waitUntil("saved rows") { chat.model.messages.last?.rowID == 7 }
+        XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), ["tip/row-6"])
+    }
+
+    /// The running turn's saved rows when a hole reattaches it mid-tool: its prompt, an
+    /// assistant row with reasoning and a call but no text, and the call's tool row.
+    private var midToolRows: [BotJSON] {
+        [row(1, "user", "Hi"), row(2, "assistant", "Hello."), row(3, "user", "Next"),
+         row(4, "assistant", "", ["reasoning": .string("Look first."),
+                                  "tool_calls": .array([call("call_4", "terminal", "{\"command\": \"sleep 180\"}")])]),
+         row(5, "tool", "{\"output\": \"\"}", ["tool_call_id": .string("call_4"), "tool_name": .string("terminal")])]
+    }
+
+    /// Starts a turn, then loses a frame while it runs a tool: the reattach rebuilds from
+    /// `midToolRows` and a snapshot whose reply has no text yet.
+    private func rebuildMidTool(_ chat: Chat) async {
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "tool.start", ["tool_id": .string("call_4"), "name": .string("terminal")]))
+        chat.pages.set(0, midToolRows)
+        // Dated at its prompt's row, after the rows before it.
+        let snapshot = resume(running: true, inflight: ["user": .string("Next")], startedAt: 1_790_000_003)
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 6)))
+        chat.host.next("session.resume", .init(result: snapshot))
+        chat.host.next("session.resume", .init(result: snapshot))
+        chat.receive(event(5, "tool.complete", ["tool_id": .string("call_4"), "name": .string("terminal")]))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
+    }
+
     /// A page that fails keeps what the chat shows and says why; the chat's retry reads it again.
     func testAFailedReadShowsTheLoadErrorAndTheRetryReadsAgain() async {
         let chat = await openChat(pages: [:])
@@ -452,14 +598,15 @@ import Observation
                  "payload": .object(payload)])
     }
 
-    private func resume(running: Bool, inflight: [String: BotJSON]? = nil) -> BotJSON {
+    /// The host's snapshot; a running turn began at `startedAt`.
+    private func resume(running: Bool, inflight: [String: BotJSON]? = nil, startedAt: Double = 1_790_000_000) -> BotJSON {
         var reply: [String: BotJSON] = [
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(running),
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ]
-        if running { reply["turn_started_at"] = .number(1_790_000_000) }
+        if running { reply["turn_started_at"] = .number(startedAt) }
         if var inflight {
-            inflight["started_at"] = .number(1_790_000_000)
+            inflight["started_at"] = .number(startedAt)
             reply["inflight"] = .object(inflight)
         }
         return .object(reply)

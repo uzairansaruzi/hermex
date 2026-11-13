@@ -5,16 +5,6 @@ enum AdaptiveReadableContentWidth {
     static let workspace: CGFloat = 1_000
 }
 
-private struct AdaptiveReadableContentModifier: ViewModifier {
-    let maxWidth: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .frame(maxWidth: maxWidth)
-            .frame(maxWidth: .infinity)
-    }
-}
-
 private struct AdaptiveReadableScrollContentModifier: ViewModifier {
     let maxWidth: CGFloat
     @State private var width: CGFloat = 0
@@ -39,20 +29,16 @@ private struct AdaptiveReadableScrollContentModifier: ViewModifier {
 }
 
 extension View {
-    func adaptiveReadableContent(maxWidth: CGFloat) -> some View {
-        modifier(AdaptiveReadableContentModifier(maxWidth: maxWidth))
-    }
-
     func adaptiveReadableScrollContent(maxWidth: CGFloat) -> some View {
         modifier(AdaptiveReadableScrollContentModifier(maxWidth: maxWidth))
     }
 
     func adaptiveFormPresentation() -> some View {
-        presentationSizing(.form)
+        themedPageBackground().presentationSizing(.form)
     }
 
     func adaptivePagePresentation() -> some View {
-        presentationSizing(.page)
+        themedPageBackground().presentationSizing(.page)
     }
 
     func adaptiveSecondaryNavigationTitle() -> some View {
@@ -78,14 +64,6 @@ enum GlassPreference {
         }
 
         return false
-    }
-
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.object(forKey: isEnabledKey) != nil else {
-            return defaultIsEnabled
-        }
-
-        return defaults.bool(forKey: isEnabledKey)
     }
 }
 
@@ -213,7 +191,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 
     private func opaqueContent(_ content: Content) -> some View {
         content
-            .background(Color(.secondarySystemBackground), in: shape)
+            .background(Color(.appSurface), in: shape)
             .adaptiveGlassAccessibilityStroke(
                 shape: shape,
                 isVisible: true,
@@ -274,7 +252,7 @@ private extension View {
         if isVisible {
             overlay(
                 shape
-                    .stroke(Color.primary.opacity(opacity), lineWidth: 1)
+                    .stroke(Color(.appText).opacity(opacity), lineWidth: 1)
                     .allowsHitTesting(false)
             )
         } else {

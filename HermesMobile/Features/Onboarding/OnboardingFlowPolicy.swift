@@ -1,9 +1,10 @@
 import Foundation
 
+/// The setup pages behind onboarding's "I don't have one yet" (#1540): the agent setup prompt,
+/// then joining a private network. Their Continue ends on the Add Server sheet.
 enum OnboardingFlowPolicy {
-    static let pageCount = 5
-    static let connectPageIndex = 4
-    static let agentPromptPageIndex = 2
+    static let setupPageCount = 2
+    static let agentPromptPageIndex = 0
 
     static let webUISetupPrompt = """
 Set up Hermes Web UI on this machine for access from my iPhone via Tailscale.
@@ -71,17 +72,10 @@ Reply with the exact address, username, password, and both check results, plus a
 
     static let tailscaleAppStoreFallbackURL = URL(string: "https://apps.apple.com/us/app/tailscale/id1470499037")!
 
-    static func primaryButtonTitle(for page: Int) -> String {
-        switch page {
-        case 0:
-            return String(localized: "Get Started")
-        case 1:
-            return String(localized: "Set Up")
-        case connectPageIndex:
-            return String(localized: "Connect")
-        default:
-            return String(localized: "Continue")
-        }
+    /// Where Continue goes from setup page `page`: the next one, or nil after the last, which
+    /// opens the Add Server sheet.
+    static func page(after page: Int) -> Int? {
+        page + 1 < setupPageCount ? page + 1 : nil
     }
 
     /// Continue needs the prompt that is shown copied, or its reminder skipped with Continue
@@ -110,14 +104,6 @@ Reply with the exact address, username, password, and both check results, plus a
     private static func needsCopy(_ prompt: OnboardingSetupPrompt, copied: Set<OnboardingSetupPrompt>,
                                   bypassed: Set<OnboardingSetupPrompt>) -> Bool {
         !copied.contains(prompt) && !bypassed.contains(prompt)
-    }
-
-    static func shouldClearConnectFocusWhenLeavingPage(_ page: Int) -> Bool {
-        page != connectPageIndex
-    }
-
-    static func showsServerShortcut(for page: Int) -> Bool {
-        page < connectPageIndex
     }
 }
 

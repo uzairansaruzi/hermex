@@ -7,7 +7,7 @@ struct HeroBadge: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.caption.weight(.medium))
+            .font(AppFont.caption(weight: .medium))
             .foregroundStyle(.white.opacity(0.68))
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -16,163 +16,10 @@ struct HeroBadge: View {
     }
 }
 
-struct SetupStepRow: View {
-    let number: String
-    let title: String
-    let subtitle: String
-    var command: String?
-    var commandPrefix: String? = "$"
-    var copyValue: String?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text(number)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.black)
-                .frame(width: 23, height: 23)
-                .background(Color(red: 1.0, green: 0.74, blue: 0.10), in: Circle())
-                .padding(.top, 1)
-
-            VStack(alignment: .leading, spacing: 7) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-
-                Text(subtitle)
-                    .font(.footnote)
-                    .foregroundStyle(.white.opacity(0.5))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let command {
-                    OnboardingCommandPill(text: command, prefix: commandPrefix, copyValue: copyValue)
-                }
-            }
-        }
-    }
-}
-
-struct OnboardingCommandPill: View {
-    let text: String
-    var prefix: String? = "$"
-    var copyValue: String?
-    @State private var didCopy = false
-    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
-
-    var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 0) {
-                if let prefix {
-                    Text("\(prefix) ")
-                        .foregroundStyle(.white.opacity(0.28))
-                }
-
-                Text(text)
-                    .foregroundStyle(.white.opacity(0.78))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if let copyValue {
-                Button {
-                    UIPasteboard.general.string = copyValue
-                    didCopy = true
-                    ChatHaptics.copied(isEnabled: isHapticsEnabled)
-                } label: {
-                    Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(didCopy ? Color(red: 0.45, green: 0.92, blue: 0.56) : .white.opacity(0.76))
-                        .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(didCopy ? String(localized: "Copied Web UI repository link") : String(localized: "Copy Web UI repository link"))
-            }
-        }
-        .font(.system(.caption, design: .monospaced, weight: .medium))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.white.opacity(0.055))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-    }
-}
-
-struct OnboardingField<Content: View>: View {
-    let systemImage: String
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color(red: 1.0, green: 0.74, blue: 0.10))
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.5))
-
-                content
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.white)
-            }
-        }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 12)
-        .background(Color.black.opacity(0.24), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-    }
-}
-
-struct OnboardingStatusBanner: View {
-    let text: String
-    let systemImage: String
-    let tint: Color
-    var showsProgress = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            if showsProgress {
-                ProgressView()
-                    .tint(tint)
-                    .padding(.top, 1)
-            } else {
-                Image(systemName: systemImage)
-                    .foregroundStyle(tint)
-                    .padding(.top, 1)
-            }
-
-            Text(text)
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(.white.opacity(0.76))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(tint.opacity(0.18), lineWidth: 1)
-        )
-    }
-}
-
 struct OnboardingPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.subheadline(weight: .semibold))
             .foregroundStyle(.black)
             .lineLimit(1)
             .minimumScaleFactor(0.78)
@@ -210,18 +57,18 @@ struct OnboardingStepHeader: View {
 
             VStack(spacing: 10) {
                 Text("STEP \(stepNumber)")
-                    .font(.caption2.weight(.bold))
+                    .font(AppFont.caption2(weight: .bold))
                     .foregroundStyle(accent.opacity(0.8))
                     .kerning(1.5)
 
                 Text(title)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(AppFont.fixed(size: 28, weight: .bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(description)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(.white.opacity(0.45))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -236,6 +83,7 @@ struct OnboardingAgentPromptCard: View {
     let isCopied: Bool
     let onCopy: () -> Void
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -251,12 +99,12 @@ struct OnboardingAgentPromptCard: View {
             Button {
                 UIPasteboard.general.string = prompt
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                     onCopy()
                 }
             } label: {
                 Label(isCopied ? String(localized: "Copied") : String(localized: "Copy prompt"), systemImage: isCopied ? "checkmark" : "doc.on.doc")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(OnboardingPrimaryButtonStyle())
@@ -291,72 +139,5 @@ struct OnboardingPageIndicator: View {
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8), value: currentPage)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Page \(currentPage + 1) of \(pageCount)"))
-    }
-}
-
-struct OnboardingSecondaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.84))
-            .lineLimit(1)
-            .minimumScaleFactor(0.78)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 15)
-            .background(Color.white.opacity(0.065), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
-            .opacity(configuration.isPressed ? 0.72 : 1)
-    }
-}
-
-/// The connect form's connection modes as three choice rows, shared by onboarding and
-/// Add Server (#900). Each row says what its mode means and wraps at any text size; the
-/// selected one has a checkmark. Choosing changes only the form's help, placeholder and
-/// header rows.
-struct ConnectionModePicker: View {
-    @Binding var selection: OnboardingViewModel.ConnectionMode
-    var style: CustomHeadersEditor.Style = .standard
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(OnboardingViewModel.ConnectionMode.allCases) { mode in
-                if mode != OnboardingViewModel.ConnectionMode.allCases.first {
-                    Rectangle().fill(style.fieldStroke).frame(height: 0.5)
-                }
-                Button { selection = mode } label: { row(mode) }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selection == mode ? .isSelected : [])
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("Network"))
-    }
-
-    private func row(_ mode: OnboardingViewModel.ConnectionMode) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(mode.title)
-                    .font(AppFont.subheadline(weight: .semibold))
-                    .foregroundStyle(style.primaryText)
-                Text(mode.subtitle)
-                    .font(AppFont.caption())
-                    .foregroundStyle(style.secondaryText)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
-
-            Image(systemName: "checkmark")
-                .font(AppFont.subheadline(weight: .semibold))
-                .foregroundStyle(style.accent)
-                .opacity(selection == mode ? 1 : 0)
-                .accessibilityHidden(true)
-        }
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
     }
 }

@@ -242,7 +242,7 @@ struct SessionRowView: View {
         Text(state.title)
             .font(AppFont.caption(weight: .semibold))
             .monospacedDigit()
-            .foregroundStyle(isAttentionStale && attentionState != nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(state.tint))
+            .foregroundStyle(isAttentionStale && attentionState != nil ? AnyShapeStyle(.appSecondary) : AnyShapeStyle(state.tint))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityHidden(true)
@@ -252,7 +252,7 @@ struct SessionRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(displayTitle)
                 .font(AppFont.headline(weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .lineLimit(titleLineLimit)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
@@ -270,7 +270,7 @@ struct SessionRowView: View {
     private func relativeDateText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityHidden(true)
@@ -281,7 +281,7 @@ struct SessionRowView: View {
     private func excerptText(_ excerpt: SessionSearchExcerpt) -> some View {
         Text(excerpt.highlighted)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(excerptLineLimit)
             .truncationMode(.tail)
             .fixedSize(horizontal: false, vertical: true)
@@ -346,7 +346,7 @@ struct SessionRowView: View {
     private func metadataText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(metadataLineLimit)
             .truncationMode(.middle)
             .fixedSize(horizontal: false, vertical: true)
@@ -564,11 +564,11 @@ private struct SessionProfileTag: View {
     var body: some View {
         Text(verbatim: profile)
             .font(AppFont.caption2(weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .background(Color(.appTextSecondary).opacity(0.12), in: Capsule())
             .accessibilityHidden(true)
     }
 }
@@ -650,14 +650,6 @@ enum SessionRowDisplaySettings {
     ) -> Bool {
         defaults.object(forKey: showClaudeCodeSessionsKey(for: server)) as? Bool ?? true
     }
-
-    static func showsSubagentSessions(in defaults: UserDefaults = .standard) -> Bool {
-        guard let stored = defaults.object(forKey: showSubagentSessionsKey) as? Bool else {
-            return defaultShowsSubagentSessions
-        }
-
-        return stored
-    }
 }
 
 enum SessionSidebarDisclosureSettings {
@@ -667,30 +659,6 @@ enum SessionSidebarDisclosureSettings {
     static let defaultProfilesAreExpanded = false
     static let defaultProjectsAreExpanded = false
     static let defaultScheduledSessionsAreExpanded = false
-
-    static func profilesAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: profilesAreExpandedKey) as? Bool else {
-            return defaultProfilesAreExpanded
-        }
-
-        return value
-    }
-
-    static func projectsAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: projectsAreExpandedKey) as? Bool else {
-            return defaultProjectsAreExpanded
-        }
-
-        return value
-    }
-
-    static func scheduledSessionsAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: scheduledSessionsAreExpandedKey) as? Bool else {
-            return defaultScheduledSessionsAreExpanded
-        }
-
-        return value
-    }
 }
 
 enum SessionIdentitySettings {

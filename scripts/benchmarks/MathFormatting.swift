@@ -19,7 +19,7 @@ struct MathFormattingBenchmark {
     static func main() throws {
         let formula = #"x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}"#
         let inline = #"Result: $\alpha + \beta \leq \theta$ and $x^2 + y_0$. "#
-        let workloads: [(String, String, (String) -> String)] = [
+        var workloads: [(String, String, (String) -> String)] = [
             ("plain transcript", String(repeating: "A normal response with no math. ", count: 100), layoutText),
             ("inline math transcript", String(repeating: inline, count: 20), layoutText),
             ("protected code and currency", String(repeating: "Code `$x^2$` stays literal. It costs $5 today.\n", count: 20), layoutText),
@@ -27,6 +27,16 @@ struct MathFormattingBenchmark {
             ("nested formula", formula, MarkdownMathFormatter.renderedText),
             ("command replacements", #"\leftarrow \left x \right \Rightarrow \top \to \theta \times \leq \le \neq \ne \varepsilon \epsilon"#, MarkdownMathFormatter.replacingKnownCommands)
         ]
+        for count in [64, 128, 256, 512] {
+            let partial = String(repeating: #"\[alpha "#, count: count)
+            workloads.append(("unclosed display openers \(count)", partial, layoutText))
+            workloads.append(("completed display openers \(count)", partial + #"\]"#, layoutText))
+        }
+        for count in [64, 256, 512] {
+            let partial = String(repeating: #"\(alpha "#, count: count)
+            workloads.append(("unclosed inline openers \(count)", partial, layoutText))
+            workloads.append(("inline recovery after newline \(count)", partial + "\n" + #"\(x^2\)"#, layoutText))
+        }
         var results: [[String: Any]] = []
         for (name, input, render) in workloads {
             let expected = render(input)

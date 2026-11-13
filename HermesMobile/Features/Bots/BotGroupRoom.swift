@@ -13,9 +13,13 @@ struct BotRoomCapabilities: Equatable {
     let authority: String?
     let pageLimit: Int
     let methods: Set<String>
+    /// The Profiles a canonical host's `groups.create` will seat for this connection (#1605); nil
+    /// from a dashboard, which names none and seats whoever its roster lists.
+    let seatableProfiles: Set<String>?
     init(_ value: BotJSON) {
         let methods = Set(value["methods"].list?.compactMap(\.text) ?? [])
         self.methods = methods
+        seatableProfiles = value["seatable_profiles"].list.map { Set($0.compactMap(\.text)) }
         enabled = value["driver"].flag == true && Set(["groups.list", "groups.state", "groups.log"]).isSubset(of: methods)
         authority = value["authority_gateway_id"].text
         pageLimit = min(200, max(1, value["max_log_limit"].integer ?? 200))
@@ -64,7 +68,6 @@ struct BotRoomStatus: Equatable {
     let stopping: Int
     let stoppable: Int
     let actions: [BotRoomAction]
-    var pending: Bool { !actions.isEmpty }
     init(_ value: BotJSON) {
         working = value["working"].flag == true
         blocked = value["blocked"].flag == true
@@ -202,6 +205,8 @@ struct BotRoomFailure: Error, LocalizedError {
     var errorDescription: String? {
         if expired { return String(localized: "This room’s history is no longer available.") }
         if code == 4123 { return String(localized: "Restart the Hermes gateway on your Mac, then reconnect.") }
+        // A canonical host refused a retry or discard because the task moved on (#1605).
+        if reason == "stale_generation" { return String(localized: "This chat changed on the server. Reopen it and try again.") }
         return BotFailure.rejected(code).localizedDescription
     }
 }

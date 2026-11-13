@@ -31,7 +31,7 @@ enum ComposerChipIcon: Equatable {
             let look = BotProfileAppearance(profile: reference.profile)
             return ["kind": "bot", "profile": reference.profile.id,
                     "shape": look.shape ?? "", "color": look.color ?? "", "custom": look.custom,
-                    "expression": look.expression ?? "", "image": (reference.avatar as NSObject?) ?? NSNull()] as NSDictionary
+                    "expression": look.expression ?? "", "generated": look.generated.map { String(describing: $0) } ?? "", "image": (reference.avatar as NSObject?) ?? NSNull()] as NSDictionary
         }
     }
 }

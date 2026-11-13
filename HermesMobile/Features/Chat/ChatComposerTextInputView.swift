@@ -4,17 +4,31 @@ import UniformTypeIdentifiers
 
 /// The card editor's height, shared by the Sessions, Bot Chat and Bot room
 /// composers. It grows with the text from `expandedMinimum` up to the text
-/// view's 160 pt measure cap. In compact height (iPhone landscape) it stays at
-/// the minimum and scrolls inside, so with the keyboard up the transcript stays
-/// visible. A nil size class counts as regular.
+/// view's 160 pt measure cap. Where height is limited (iPhone landscape, or a
+/// short viewport above the keyboard) it holds a fixed minimum and scrolls inside,
+/// so the transcript or the composer's own controls stay visible. A nil size
+/// class counts as regular.
 enum ComposerTextInputHeight {
     /// At least 72 pt of real text view, so a tap anywhere in the card lands
     /// on the editor rather than dead space; about three lines at default size.
     static let expandedMinimum: CGFloat = 72
 
-    static func expanded(measured: CGFloat, verticalSizeClass: UserInterfaceSizeClass?) -> CGFloat {
-        verticalSizeClass == .compact ? expandedMinimum : max(expandedMinimum, measured)
+    /// The chat viewport below which a full composer can overflow behind the keyboard: iPhone
+    /// Duo's displays leave about 300 pt, where a size class still says regular.
+    static let shortViewportHeight: CGFloat = 360
+    /// About two lines, which keeps Send above the keyboard with an attachment in the card.
+    static let shortViewportMinimum: CGFloat = 48
+
+    static func expanded(measured: CGFloat, verticalSizeClass: UserInterfaceSizeClass?, isViewportShort: Bool) -> CGFloat {
+        if isViewportShort { return shortViewportMinimum }
+        return verticalSizeClass == .compact ? expandedMinimum : max(expandedMinimum, measured)
     }
+}
+
+extension EnvironmentValues {
+    /// The chat viewport is below `ComposerTextInputHeight.shortViewportHeight`, so the composer
+    /// keeps to what it needs for sending.
+    @Entry var composerViewportIsShort = false
 }
 
 struct ComposerTextInputView: View {
@@ -24,8 +38,10 @@ struct ComposerTextInputView: View {
     @Binding var inputHeight: CGFloat
     @Binding var measuredHeight: CGFloat
 
-    /// Compact in iPhone landscape, where the card editor stops growing.
+    /// Compact in iPhone landscape, where the card editor stops growing, as it does in a short viewport.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.composerViewportIsShort) private var viewportIsShort
+    @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = false
 
     /// The chips the editor has drawn. The collapsed pill draws this same set
     /// rather than deriving its own, because a trailing chip whose space was
@@ -62,9 +78,11 @@ struct ComposerTextInputView: View {
     /// every paste inline and leaves Paste as Text out.
     var onPasteLargeText: ((String) -> Void)? = nil
 
-    var placeholder = String(localized: "Ask anything... /commands")
+    var placeholder = String(localized: "Ask anything...")
     /// Text-only clients reject file/image paste and drop before invoking callbacks.
     var acceptsAttachments = true
+    /// The collapsed draft's side padding; a composer with controls beside the draft narrows it.
+    var collapsedHorizontalPadding: CGFloat = 16
     private let collapsedLineHeight: CGFloat = 22
 
     var body: some View {
@@ -75,6 +93,7 @@ struct ComposerTextInputView: View {
                 isFocused: $isFocused,
                 isDisabled: isDisabled,
                 keyboardCommands: keyboardCommands,
+                returnSends: returnSends,
                 chipSkills: chipSkills,
                 chipFilePaths: chipFilePaths,
                 chipBots: chipBots,
@@ -94,10 +113,11 @@ struct ComposerTextInputView: View {
                 accessibilityLabel: placeholder
             )
             // The card editor runs 72–160 pt with the text, and stays at 72 pt
-            // in iPhone landscape, where the text scrolls inside it.
+            // where height is limited, and the text scrolls inside it.
             .frame(height: isCollapsed
                 ? collapsedLineHeight
-                : ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass))
+                : ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass,
+                                                   isViewportShort: viewportIsShort))
             .padding(.vertical, isCollapsed ? 0 : verticalPadding)
             .padding(.horizontal, 16)
             .opacity(isCollapsed ? 0 : 1)
@@ -110,7 +130,7 @@ struct ComposerTextInputView: View {
                     chips: renderedChips,
                     placeholder: placeholder
                 )
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, collapsedHorizontalPadding)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -120,7 +140,7 @@ struct ComposerTextInputView: View {
                     .accessibilityHint(Text("Edit message"))
             } else if text.isEmpty && quotes.isEmpty {
                 Text(placeholder)
-                    .foregroundStyle(Color(.placeholderText))
+                    .foregroundStyle(Color(.appPlaceholder))
                     .padding(.horizontal, 16)
                     .padding(.vertical, verticalPadding)
                     .allowsHitTesting(false)
@@ -154,15 +174,17 @@ private struct ComposerCollapsedDraft: View {
     let placeholder: String
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appAppearance) private var appearance
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         line
             .lineLimit(1)
             .truncationMode(.tail)
-            .foregroundStyle(draft.isEmpty ? Color(.placeholderText) : Color(.label))
+            .foregroundStyle(draft.isEmpty ? Color(.appPlaceholder) : Color(.appText))
             .accessibilityLabel(Text(spokenDraft))
     }
 
@@ -191,7 +213,9 @@ private struct ComposerCollapsedDraft: View {
             colorScheme: colorScheme,
             contrast: colorSchemeContrast,
             layoutDirection: layoutDirection,
-            dynamicTypeSize: dynamicTypeSize
+            dynamicTypeSize: dynamicTypeSize,
+            displayScale: displayScale,
+            appearance: appearance
         )
     }
 }
@@ -202,6 +226,7 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     let isDisabled: Bool
     let keyboardCommands: ComposerKeyboardCommands
+    let returnSends: Bool
     let chipSkills: [SkillSlashSuggestion]
     let chipFilePaths: Set<String>
     let chipBots: [String: ComposerBotReference]
@@ -237,7 +262,8 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.textDropDelegate = context.coordinator
         textView.wantsDeferredFocus = { [weak coordinator = context.coordinator] in coordinator?.isFocused == true }
         textView.backgroundColor = .clear
-        textView.font = .preferredFont(forTextStyle: .body)
+        textView.font = .app(forTextStyle: .body, at: context.environment.dynamicTypeSize)
+        context.coordinator.fontFamily = AppFontSettings.shared.family
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = true
         textView.textContainerInset = .zero
@@ -248,6 +274,7 @@ private struct ComposerTextView: UIViewRepresentable {
         // which would reach the server as an object-replacement character.
         textView.allowsEditingTextAttributes = false
         textView.keyboardCommands = keyboardCommands
+        textView.returnSends = returnSends
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
@@ -263,6 +290,12 @@ private struct ComposerTextView: UIViewRepresentable {
 
     func updateUIView(_ textView: ComposerChipTextView, context: Context) {
         context.coordinator.onHeightChange = onHeightChange
+        if context.coordinator.fontFamily != AppFontSettings.shared.family {
+            context.coordinator.fontFamily = AppFontSettings.shared.family
+            textView.font = .app(forTextStyle: .body, at: context.environment.dynamicTypeSize)
+            textView.refreshChipsIfNeeded()
+            context.coordinator.reportHeight(for: textView)
+        }
         // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
         // layoutDirection environment does not propagate into a wrapped UITextView,
         // so set the base direction directly so the cursor/empty-field rests on the
@@ -281,6 +314,7 @@ private struct ComposerTextView: UIViewRepresentable {
         context.coordinator.acceptsAttachments = acceptsAttachments
         context.coordinator.syncEditing(for: textView, isDisabled: isDisabled)
         textView.keyboardCommands = keyboardCommands
+        textView.returnSends = returnSends
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
@@ -314,6 +348,7 @@ private struct ComposerTextView: UIViewRepresentable {
         @Binding var renderedChips: [ComposerChipToken]
         var onHeightChange: (CGFloat) -> Void
         var acceptsAttachments = true
+        var fontFamily = AppFontFamily.sanFrancisco
         var onDropFileProviders: ([NSItemProvider]) -> Void = { _ in }
         var onDropImageProviders: ([NSItemProvider]) -> Void = { _ in }
         private var pendingFocusTarget: Bool?
@@ -431,6 +466,9 @@ private struct ComposerTextView: UIViewRepresentable {
                 if textView.sourceSelection != clamped {
                     applyingBoundValue { textView.sourceSelection = clamped }
                 }
+                // A resigned editor does not follow its own caret, and dictation
+                // writes into one the user can't scroll.
+                textView.scrollRangeToVisible(textView.selectedRange)
                 return
             }
 
@@ -719,6 +757,14 @@ enum ComposerLargePaste {
             candidate = "pasted-text-\(index).txt"
         }
         return candidate
+    }
+
+    /// Whether a staged attachment opens in `StagedPasteSheet` (#1456). A draft records
+    /// nothing else about where a file came from, so a local file the user named this way
+    /// opens there too; only its app-owned copy can change.
+    static func isStagedPaste(_ attachment: PendingAttachment) -> Bool {
+        attachment.path.isEmpty && attachment.draftFileName != nil && !attachment.isImage
+            && attachment.name.wholeMatch(of: /pasted-text(-\d+)?\.txt/) != nil
     }
 }
 

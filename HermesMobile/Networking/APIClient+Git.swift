@@ -12,6 +12,20 @@ protocol GitDataClient: Sendable {
     func status() async throws -> GitStatus?
     /// One changed file's diff, of the kind `GitFile.preferredDiffKind` names where it is known.
     func diff(for file: GitFile) async throws -> GitDiff?
+    /// The branch's committed changes against its base (#1386); nil outside a repository. Only a
+    /// Hermes host has them: webui throws `GitReviewScopeUnsupported`.
+    func branchReview() async throws -> GitBranchReview?
+    /// Every change since `base` (#1392): what was committed since, and the working tree's tracked
+    /// and untracked changes. Nil outside a repository, or when the host has no range for `base`.
+    /// Only a Hermes host has them: webui throws `GitReviewScopeUnsupported`.
+    func changes(since base: String) async throws -> [GitFile]?
+    /// One file's diff in `scope`: `diff(for:)` for uncommitted changes, the scope's range for a
+    /// branch or turn row.
+    func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff?
+    /// The repository a chat's review progress is kept under (`ReviewProgressStore`): the session
+    /// on webui; the server, Profile, session and folder on a Hermes host. Never shown, logged or
+    /// persisted.
+    var reviewScope: String { get }
     /// The row path a turn's tool names a file by, for the turn-changes card's join.
     @MainActor func rowPath(forToolPath path: String) -> String
     /// A Hermes host's repository (#1115), whose writes answer only `{ok}`: a failed write reads
@@ -46,6 +60,10 @@ protocol GitDataClient: Sendable {
     /// stashes uncommitted changes first; a Hermes host refuses a switch with any (#1116), but
     /// creates a branch carrying them (#1236).
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse
+
+    /// The checked-out branch's pull request, for the Git menu's link (#1391); nil when there is
+    /// none or the server can't look one up. webui never can.
+    func pullRequest() async throws -> GitPullRequest?
 }
 
 extension GitDataClient {
@@ -55,7 +73,33 @@ extension GitDataClient {
     var isHermes: Bool { false }
 
     @MainActor var writeLock: GitWriteLock? { nil }
+
+    func branchReview() async throws -> GitBranchReview? { throw GitReviewScopeUnsupported() }
+
+    func changes(since base: String) async throws -> [GitFile]? { throw GitReviewScopeUnsupported() }
+
+    func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff? {
+        guard scope == .uncommitted else { throw GitReviewScopeUnsupported() }
+        return try await diff(for: file)
+    }
+
+    /// The `ReviewProgressStore` key for a review in `scope`: `reviewScope` for uncommitted changes;
+    /// for a branch, that key with the merge-base its rows were read against; for a turn's range,
+    /// that key with its base (#1392). So no range's progress or pruning reaches another's, and a
+    /// moved base starts afresh.
+    func progressScope(_ scope: GitReviewScope, base: String?) -> String {
+        switch scope {
+        case .uncommitted: reviewScope
+        case .branch: "\(reviewScope)|branch|\(base ?? "")"
+        case .since(let base): "\(reviewScope)|since|\(base)"
+        }
+    }
+
+    func pullRequest() async throws -> GitPullRequest? { nil }
 }
+
+/// A review scope this repository's server can't read: webui has no branch or turn range.
+struct GitReviewScopeUnsupported: Error {}
 
 /// One Hermes repository's write in flight (#1115). The Git menu's quick commit and push, the
 /// composer's branch switch (#1116) and the commit sheet's stage, unstage, discard and commit each
@@ -87,6 +131,8 @@ struct WebUIGitClient: GitDataClient {
         self.apiClient = apiClient
         self.sessionID = sessionID
     }
+
+    var reviewScope: String { "webui|\(sessionID)" }
 
     func info() async throws -> GitInfo? {
         try await apiClient.gitInfo(sessionID: sessionID).git

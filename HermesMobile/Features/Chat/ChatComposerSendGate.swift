@@ -25,28 +25,79 @@ enum ChatComposerSendGate {
 
 /// How the chat's state limits its composer. A read-only session locks the draft and
 /// every control. A chat showing its offline cache (#1375) keeps the draft editable and
-/// holds Send and every control that reaches the host until it reconnects.
+/// holds Send and every control that reaches the host until it reconnects, except a Hermes
+/// chat's plain-text Send, which waits as the transcript's waiting send (#1407).
 struct ChatComposerAccess: Equatable {
     /// The status line's "Read-only"; it locks the editor.
     let readOnlyMessage: String?
     /// The chat shows its offline cache, so Send waits for the reconnect.
     let isOffline: Bool
+    /// Offline, a plain-text Send waits for the reconnect instead of being held.
+    let offersWaitingSend: Bool
+    /// A Send waits for the reconnect, so every other Send is held until it goes or comes back.
+    let hasWaitingSend: Bool
 
-    init(session: SessionSummary, isViewingCachedData: Bool) {
+    init(session: SessionSummary, isViewingCachedData: Bool, offersWaitingSend: Bool = false, hasWaitingSend: Bool = false) {
         readOnlyMessage = session.isSessionReadOnly ? String(localized: "Read-only") : nil
         isOffline = isViewingCachedData
+        self.offersWaitingSend = offersWaitingSend && readOnlyMessage == nil
+        self.hasWaitingSend = hasWaitingSend
     }
 
     var allowsEditing: Bool { readOnlyMessage == nil }
+
+    /// Whether being offline holds Send for this draft: everything but plain text (no quotes, files
+    /// or `/` command) where a waiting send is offered.
+    func holdsSendOffline(isPlainText: Bool) -> Bool {
+        isOffline && !(offersWaitingSend && isPlainText)
+    }
 
     /// File and host-argument searches, dictation, voice notes, attachments, and
     /// configuration, branch, and workspace changes all reach the host.
     var allowsHostControls: Bool { allowsEditing && !isOffline }
 }
 
+/// Whether a chat still counts as new, with its settings above the composer rather than in
+/// the header. The server's count keeps the row from flashing while an existing chat loads.
+enum ChatComposerNewChatPolicy {
+    static func showsControls(hasMessages: Bool, serverMessageCount: Int?, isStreaming: Bool) -> Bool {
+        !hasMessages && (serverMessageCount ?? 0) == 0 && !isStreaming
+    }
+}
+
+/// Which composer controls respond while work is in progress.
+struct ChatComposerControlGate {
+    let access: ChatComposerAccess
+    let isSending: Bool
+    let isCompressingSession: Bool
+    let isWaitingForStream: Bool
+    let isUpdatingConfiguration: Bool
+
+    /// `+` only opens the picker, and a pick waits in the draft like a paste, so no
+    /// work in progress holds it (#1436).
+    var allowsAttaching: Bool { access.allowsHostControls }
+
+    /// Model, workspace, and Profile changes wait for the chat to settle.
+    var allowsConfiguration: Bool {
+        allowsConfigurationIgnoringUpdates && !isUpdatingConfiguration
+    }
+
+    /// The same, for Model settings, whose rows hold off during a change without dimming.
+    var allowsConfigurationIgnoringUpdates: Bool {
+        access.allowsHostControls && !isSending && !isCompressingSession && !isWaitingForStream
+    }
+
+    /// Whether the model label opens Model settings. During a run it still opens to turn YOLO off,
+    /// with every other row held.
+    func allowsModelSettings(approvals: ComposerApprovals?) -> Bool {
+        allowsConfiguration || (access.allowsHostControls && approvals?.canTurnOffYolo == true)
+    }
+}
+
 /// Work in progress that holds Send even with a draft to send. VoiceOver reads it
 /// as a dimmed Send's value, so the user knows what they are waiting for.
 enum ChatComposerSendBlock: Equatable {
+    case waitingForConnection
     case offline
     case sending
     case compressingSession
@@ -54,9 +105,11 @@ enum ChatComposerSendBlock: Equatable {
     case updatingConfiguration
 
     /// The first condition that holds Send, or nil when none does.
-    init?(isOffline: Bool, isSending: Bool, isCompressingSession: Bool, isUploadingAttachment: Bool,
-          isUpdatingConfiguration: Bool) {
-        if isOffline {
+    init?(isWaitingForConnection: Bool = false, isOffline: Bool, isSending: Bool, isCompressingSession: Bool,
+          isUploadingAttachment: Bool, isUpdatingConfiguration: Bool) {
+        if isWaitingForConnection {
+            self = .waitingForConnection
+        } else if isOffline {
             self = .offline
         } else if isSending {
             self = .sending
@@ -74,6 +127,7 @@ enum ChatComposerSendBlock: Equatable {
     /// The composer status line's wording for the same state.
     var accessibilityValue: String {
         switch self {
+        case .waitingForConnection: String(localized: "Waiting for connection")
         case .offline: String(localized: "Reconnect to send messages.")
         case .sending: String(localized: "Sending…")
         case .compressingSession: String(localized: "Compressing context...")
@@ -176,6 +230,8 @@ struct ChatComposerSendHold {
 /// Device-local presentation choices shared by Sessions servers, never Bot Chat.
 enum SessionChatPreferences {
     static let dismissKeyboardKey = "sessionChat.dismissKeyboardAfterSend"
+    /// Settings' Send with Return (#1655), read by every composer editor. Off by default.
+    static let returnSendsKey = "sessionChat.returnSends"
     static let completionPositionKey = "sessionChat.completionPosition"
 
     enum CompletionPosition: String, CaseIterable {

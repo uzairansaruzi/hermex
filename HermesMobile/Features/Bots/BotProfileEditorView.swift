@@ -8,6 +8,7 @@ import SwiftUI
     @State private var photoItem: PhotosPickerItem?
     @State private var showsPhotoPicker = false
     @State private var showsExpressions = false
+    @State private var showsDescribe = false
     @State private var imageError: String?
     /// What the face should do about the last edit; see `BotCreateView`.
     @State private var cue: BotFaceCue?
@@ -40,6 +41,7 @@ import SwiftUI
                 editorBody
             }
         }
+        .themedPageBackground()
         .navigationTitle(editor.profile.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -65,6 +67,11 @@ import SwiftUI
         .sheet(item: $capabilitySheet) { field in capabilityPicker(field) }
         .sheet(isPresented: $showsModels) { modelPicker }
         .navigationDestination(isPresented: $showsExpressions) { BotExpressionPickerView(editor: editor) }
+        .sheet(isPresented: $showsDescribe) {
+            BotAvatarDescribeSheet(send: { [editor] prompt in try await editor.sendAvatarPrompt(prompt) }) { generated in
+                editor.setGenerated(generated); cue = BotFaceCue(.hop)
+            }
+        }
         .photosPicker(isPresented: $showsPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { _, item in loadPhoto(item) }
         .alert("Could not decode this image.", isPresented: Binding(
@@ -98,14 +105,13 @@ import SwiftUI
                 sectionLabel("Description")
                 card {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Description").font(.caption).foregroundStyle(.secondary)
+                        Text("Description").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         TextField("Description", text: Binding(get: { editor.draft.description }, set: { editor.setDescription($0) }), axis: .vertical)
                             .lineLimit(2...4)
                     }
                     .padding(16)
-                    Divider().padding(.leading, 16)
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Instructions").font(.caption).foregroundStyle(.secondary)
+                        Text("Instructions").font(AppFont.caption()).foregroundStyle(.appSecondary)
                         TextEditor(text: Binding(get: { editor.draft.instructions }, set: { editor.setInstructions($0) }))
                             .frame(minHeight: 130)
                             .scrollContentBackground(.hidden)
@@ -113,7 +119,7 @@ import SwiftUI
                     .padding(16)
                 }
                 Text("Saving replaces this Profile’s complete instructions.")
-                    .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.top, 7)
+                    .font(AppFont.caption2()).foregroundStyle(.appTertiary).padding(.horizontal, 12).padding(.top, 7)
 
                 sectionLabel("Model")
                 card { navigationRow(String(localized: "Default Model"), subtitle: editor.draft.model?.providerID,
@@ -123,19 +129,17 @@ import SwiftUI
                 sectionLabel("Capabilities")
                 card {
                     capabilityRow(.skills, systemImage: "sparkles")
-                    Divider().padding(.leading, 52)
                     capabilityRow(.toolsets, systemImage: "wrench.and.screwdriver")
-                    Divider().padding(.leading, 52)
                     capabilityRow(.mcpServers, systemImage: "server.rack")
                 }
                 sectionLabel("Server")
                 card {
                     HStack(spacing: 12) {
-                        Image(systemName: "circle.fill").font(.caption).foregroundStyle(.green)
+                        Image(systemName: "circle.fill").font(AppFont.caption()).foregroundStyle(.green)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(editor.connection.name)
                             Text(editor.connection.address.host ?? editor.connection.address.absoluteString)
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(AppFont.caption()).foregroundStyle(.appSecondary)
                         }
                         Spacer()
                     }
@@ -145,10 +149,10 @@ import SwiftUI
             .padding(.horizontal, 16)
             .padding(.bottom, 36)
         }
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .appCanvas))
         .scrollDismissesKeyboard(.interactively)
         .disabled(editor.isSaving)
-        .overlay { if editor.isSaving { ProgressView().padding(18).background(.regularMaterial, in: Circle()) } }
+        .overlay { if editor.isSaving { ProgressView().padding(18).background(.appMaterial(.regularMaterial), in: Circle()) } }
     }
 
     private var identityHeader: some View {
@@ -167,13 +171,13 @@ import SwiftUI
             }
             VStack(spacing: 10) {
                 Text(editor.draft.appearance.title.isEmpty ? editor.profile.name : editor.draft.appearance.title)
-                    .font(.title2.weight(.bold)).multilineTextAlignment(.center)
+                    .font(AppFont.title2(weight: .bold)).multilineTextAlignment(.center)
                 if !editor.draft.description.isEmpty {
-                    Text(editor.draft.description).font(.subheadline).foregroundStyle(.secondary)
+                    Text(editor.draft.description).font(AppFont.subheadline()).foregroundStyle(.appSecondary)
                         .multilineTextAlignment(.center).lineLimit(3)
                 }
                 Text(verbatim: "\(editor.profile.id) · \(editor.connection.name)")
-                    .font(.caption).foregroundStyle(.tertiary)
+                    .font(AppFont.caption()).foregroundStyle(.appTertiary)
             }
             .accessibilityElement(children: .combine)
         }
@@ -191,10 +195,10 @@ import SwiftUI
         } label: {
             Image(systemName: "camera.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .frame(width: 30, height: 30)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: Circle())
-                .overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 3))
+                .background(Color(uiColor: .appGroupedSurface), in: Circle())
+                .overlay(Circle().stroke(Color(uiColor: .appCanvas), lineWidth: 3))
         }
         .offset(x: 6, y: 6)
         .accessibilityLabel("Change Photo")
@@ -202,23 +206,9 @@ import SwiftUI
 
     private var characterCard: some View {
         card {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 14) {
-                ForEach(BotAvatarShape.allCases) { shape in
-                    Button { editor.setShape(shape); cue = BotFaceCue(.hop) } label: {
-                        BotAvatarMarkView(name: editor.profile.id, appearance: appearance(for: shape), size: 42)
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .overlay {
-                                if editor.draft.appearance.shape == shape.rawValue {
-                                    RoundedRectangle(cornerRadius: 12).stroke(.secondary, lineWidth: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(shape.localizedName)
-                    .accessibilityAddTraits(editor.draft.appearance.shape == shape.rawValue ? .isSelected : [])
-                }
+            BotAvatarShapePicker(name: editor.profile.id, appearance: editor.draft.appearance) { shape in
+                editor.setShape(shape); cue = BotFaceCue(.hop)
             }
-            .padding(16)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 15) {
                 ForEach(colors) { color in
                     Button { editor.setColor(color.hex); cue = BotFaceCue(.wobble) } label: {
@@ -232,7 +222,8 @@ import SwiftUI
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 10)
-            Divider().padding(.leading, 16)
+            navigationRow(String(localized: "Describe It"), subtitle: nil, value: "", systemImage: "sparkles") { showsDescribe = true }
+                .disabled(!editor.holdsConnection)
             navigationRow(String(localized: "Expression"), subtitle: nil,
                           value: BotAvatarExpression.resolve(editor.draft.appearance.expression).localizedName,
                           systemImage: "face.smiling") { showsExpressions = true }
@@ -247,22 +238,22 @@ import SwiftUI
         VStack(alignment: .leading, spacing: 10) {
             Text(editor.outcomes.values.contains(where: { if case .saved = $0 { return false }; return true })
                  ? String(localized: "Needs Attention") : String(localized: "Saved"))
-                .font(.headline)
+                .font(AppFont.headline())
             ForEach(BotProfileEditor.Field.allCases.filter { editor.outcomes[$0] != nil }) { field in
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: resultIcon(editor.outcomes[field]!))
                         .foregroundStyle(resultColor(editor.outcomes[field]!)).frame(width: 20)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(field.title).font(.subheadline.weight(.semibold))
-                        Text(resultText(editor.outcomes[field]!)).font(.caption).foregroundStyle(.secondary)
+                        Text(field.title).font(AppFont.subheadline(weight: .semibold))
+                        Text(resultText(editor.outcomes[field]!)).font(AppFont.caption()).foregroundStyle(.appSecondary)
                         if editor.outcomes[field] == .conflict {
-                            Button("Reload") { Task { await editor.reloadAppearance() } }.font(.caption.weight(.semibold))
+                            Button("Reload") { Task { await editor.reloadAppearance() } }.font(AppFont.caption(weight: .semibold))
                         }
                     }
                 }
             }
         }
-        .padding(16).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        .padding(16).background(Color(uiColor: .appGroupedSurface), in: RoundedRectangle(cornerRadius: 18))
         .padding(.top, 10)
     }
 
@@ -276,15 +267,18 @@ import SwiftUI
 
     private func capabilityPicker(_ field: BotProfileEditor.Field) -> some View {
         NavigationStack {
-            List(capabilities(field)) { item in
-                Toggle(isOn: Binding(get: { capability(field, id: item.id)?.enabled == true },
-                                     set: { editor.setEnabled($0, field: field, id: item.id) })) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.name)
-                        if let detail = item.detail, !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary) }
+            AppList {
+                ForEach(capabilities(field)) { item in
+                    Toggle(isOn: Binding(get: { capability(field, id: item.id)?.enabled == true },
+                                         set: { editor.setEnabled($0, field: field, id: item.id) })) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name)
+                            if let detail = item.detail, !detail.isEmpty { Text(detail).font(AppFont.caption()).foregroundStyle(.appSecondary) }
+                        }
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle(field.title).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { capabilitySheet = nil } } }
         }
@@ -307,17 +301,17 @@ import SwiftUI
     }
 
     private func sectionLabel(_ title: LocalizedStringKey) -> some View {
-        Text(title).font(.subheadline).foregroundStyle(.tertiary).padding(.leading, 10).padding(.top, 24).padding(.bottom, 8)
+        Text(title).font(AppFont.subheadline()).foregroundStyle(.appTertiary).padding(.leading, 10).padding(.top, 24).padding(.bottom, 8)
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 0, content: content)
-            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(Color(uiColor: .appGroupedSurface), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func editorField(_ title: LocalizedStringKey, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(AppFont.caption()).foregroundStyle(.appSecondary)
             TextField(title, text: text, axis: .vertical).lineLimit(1...3)
         }
         .padding(16)
@@ -327,24 +321,18 @@ import SwiftUI
                                action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: systemImage).foregroundStyle(.secondary).frame(width: 24)
+                Image(systemName: systemImage).foregroundStyle(.appSecondary).frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(.primary)
-                    if let subtitle, !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    Text(title).foregroundStyle(.appPrimary)
+                    if let subtitle, !subtitle.isEmpty { Text(subtitle).font(AppFont.caption()).foregroundStyle(.appSecondary).lineLimit(1) }
                 }
                 Spacer(minLength: 8)
-                Text(value).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                Image(systemName: "chevron.forward").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                Text(value).font(AppFont.subheadline()).foregroundStyle(.appSecondary).lineLimit(1)
+                Image(systemName: "chevron.forward").font(AppFont.caption(weight: .semibold)).foregroundStyle(.appTertiary)
             }
             .padding(16).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func appearance(for shape: BotAvatarShape) -> BotProfileAppearance {
-        var appearance = editor.draft.appearance
-        appearance.shape = shape.rawValue; appearance.custom = true; appearance.imageKind = "shape"
-        return appearance
     }
 
     private func capabilities(_ field: BotProfileEditor.Field) -> [BotProfileCapability] {

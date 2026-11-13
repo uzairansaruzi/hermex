@@ -72,7 +72,7 @@ struct ComposerChipMetrics: Equatable {
     let horizontalPadding: CGFloat
 
     init(editorFont: UIFont) {
-        let labelFont = UIFont.systemFont(ofSize: max(12, editorFont.pointSize - 2), weight: .medium)
+        let labelFont = UIFont.app(size: max(12, editorFont.pointSize - 2), weight: .medium)
         let height = ceil(labelFont.lineHeight + 6)
         let scale = height / 24
 
@@ -123,10 +123,13 @@ struct ComposerChipMetrics: Equatable {
         let values: [NSObject] = [
             label as NSString,
             icon.cacheKey,
+            metrics.labelFont.fontName as NSString,
             String(describing: metrics.labelFont.pointSize) as NSString,
             String(describing: metrics.height) as NSString,
             String(traits.userInterfaceStyle.rawValue) as NSString,
+            traits[AppAppearanceTrait.self].cacheKey as NSString,
             String(traits.accessibilityContrast.rawValue) as NSString,
+            NSNumber(value: Double(traits.displayScale)),
             (isRightToLeft ? "rtl" : "ltr") as NSString,
             (maximumWidth.map(String.init(describing:)) ?? "unbounded") as NSString,
             (usesAccentIcon ? "accent" : "secondary") as NSString
@@ -161,8 +164,8 @@ struct ComposerChipMetrics: Equatable {
         switch icon {
         case let .symbol(name):
             let tint = usesAccentIcon
-                ? UIColor.systemBlue.resolvedColor(with: traits)
-                : UIColor.secondaryLabel.resolvedColor(with: traits)
+                ? UIColor.appAccent.resolvedColor(with: traits)
+                : UIColor.appTextSecondary.resolvedColor(with: traits)
             return UIImage(
                 systemName: name,
                 withConfiguration: UIImage.SymbolConfiguration(
@@ -176,7 +179,8 @@ struct ComposerChipMetrics: Equatable {
             let view = BotAvatarView(profile: reference.profile, avatar: reference.avatar, size: metrics.iconSize, motion: .still)
                 .environment(\.colorScheme, traits.userInterfaceStyle == .dark ? .dark : .light)
             let renderer = ImageRenderer(content: view)
-            renderer.scale = traits.displayScale > 0 ? traits.displayScale : UIScreen.main.scale
+            // Traits report 0 before the view reaches a window; the real scale is a new cache key.
+            renderer.scale = max(traits.displayScale, 1)
             return renderer.uiImage
         }
     }
@@ -190,9 +194,9 @@ struct ComposerChipMetrics: Equatable {
         maximumWidth: CGFloat?,
         usesAccentIcon: Bool
     ) -> UIImage {
-        let background = UIColor.secondarySystemFill.resolvedColor(with: traits)
-        let border = UIColor.separator.resolvedColor(with: traits)
-        let textColor = UIColor.label.resolvedColor(with: traits)
+        let background = UIColor.appFillSecondary.resolvedColor(with: traits)
+        let border = UIColor.appSeparator.resolvedColor(with: traits)
+        let textColor = UIColor.appText.resolvedColor(with: traits)
 
         let icon = iconImage(
             iconStyle,
@@ -214,7 +218,7 @@ struct ComposerChipMetrics: Equatable {
         let width = maximumWidth.map { min(naturalWidth, max(metrics.height * 2, $0)) } ?? naturalWidth
         let textWidth = max(0, width - metrics.horizontalPadding * 2 - iconWidth)
 
-        let format = UIGraphicsImageRendererFormat.preferred()
+        let format = UIGraphicsImageRendererFormat(for: traits)
         format.opaque = false
         let renderer = UIGraphicsImageRenderer(
             size: CGSize(width: width, height: metrics.height),
@@ -278,13 +282,15 @@ struct ComposerChipTextStyle {
         colorScheme: ColorScheme,
         contrast: ColorSchemeContrast,
         layoutDirection: LayoutDirection,
-        dynamicTypeSize: DynamicTypeSize
+        dynamicTypeSize: DynamicTypeSize,
+        displayScale: CGFloat,
+        appearance: AppAppearance
     ) {
-        // Reading the size is what ties this value to Dynamic Type; the font
-        // itself comes from the same body style the editor uses.
-        _ = dynamicTypeSize
-        metrics = ComposerChipMetrics(editorFont: .preferredFont(forTextStyle: .body))
+        // The same body style the editor uses, at this view's text size.
+        metrics = ComposerChipMetrics(editorFont: .app(forTextStyle: .body, at: dynamicTypeSize))
         traits = UITraitCollection { traits in
+            traits[AppAppearanceTrait.self] = appearance
+            traits.displayScale = displayScale
             traits.userInterfaceStyle = colorScheme == .dark ? .dark : .light
             traits.accessibilityContrast = contrast == .increased ? .high : .normal
         }

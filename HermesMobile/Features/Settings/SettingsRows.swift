@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import UIKit
 
@@ -7,6 +8,29 @@ extension View {
         listStyle(.insetGrouped)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The Profile a server page lists and writes to, a menu of the others when the host has more than one.
+struct ServerProfileRow: View {
+    let profiles: [String]
+    let selection: String
+    var footer: LocalizedStringKey?
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        Section {
+            if profiles.count > 1 {
+                Picker("Profile", selection: Binding(get: { selection }, set: onSelect)) {
+                    ForEach(profiles, id: \.self) { Text(verbatim: $0).tag($0) }
+                }
+                .pickerStyle(.menu)
+            } else {
+                LabeledContent("Profile") { Text(verbatim: selection) }
+            }
+        } appFooter: {
+            if let footer { Text(footer) }
+        }
     }
 }
 
@@ -23,15 +47,15 @@ struct SettingsLabel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                     Text(note)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.appSecondary)
                 }
             } else {
                 Text(title)
             }
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }
@@ -47,13 +71,13 @@ struct SettingsExternalLink: View {
         Link(destination: destination) {
             LabeledContent {
                 Image(systemName: "arrow.up.forward")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .font(AppFont.footnote(weight: .semibold))
+                    .foregroundStyle(.appTertiary)
             } label: {
                 SettingsLabel(title: title, systemImage: systemImage)
             }
         }
-        .foregroundStyle(.primary)
+        .foregroundStyle(.appPrimary)
         .accessibilityLabel(accessibilityLabel ?? title)
     }
 }
@@ -77,7 +101,7 @@ struct ServerAvatarBadge: View {
 
 struct SettingsStatusPill: View {
     let label: String
-    var tint: Color = .secondary
+    var tint: Color = Color(.appTextSecondary)
 
     var body: some View {
         Text(label)
@@ -164,15 +188,15 @@ struct HeaderLogoColorSettings: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Text("Header Logo Color")
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
 
                 Spacer(minLength: 12)
 
                 Text(selectedColorName)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption(weight: .medium))
+                    .foregroundStyle(.appSecondary)
             }
-            .font(.subheadline)
+            .font(AppFont.subheadline())
 
             HermesHeaderLogo(selectedColor: HeaderLogoColor.color(for: selectedHex))
                 .frame(maxWidth: .infinity)
@@ -198,7 +222,7 @@ struct HeaderLogoColorSettings: View {
             }
 
             ColorPicker("Custom", selection: customColor, supportsOpacity: false)
-                .font(.subheadline)
+                .font(AppFont.subheadline())
         }
     }
 }
@@ -213,11 +237,11 @@ private struct HeaderLogoColorPresetButton: View {
             ZStack {
                 Circle()
                     .fill(preset.color)
-                    .overlay(Circle().stroke(Color.primary.opacity(0.18), lineWidth: 1))
+                    .overlay(Circle().stroke(Color(.appText).opacity(0.18), lineWidth: 1))
 
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
+                        .font(AppFont.caption(weight: .bold))
                         .foregroundStyle(preset.hex == "#FFFFFF" ? .black : .white)
                         .accessibilityHidden(true)
                 }
@@ -230,5 +254,179 @@ private struct HeaderLogoColorPresetButton: View {
         .accessibilityLabel(String(localized: "\(preset.name) header logo color"))
         .accessibilityValue(isSelected ? "Selected" : "")
         .accessibilityHint("Updates the Sessions header logo color.")
+    }
+}
+
+/// A server page's Main Page switches (#190): which entries the home lists above its sessions.
+/// The switches are app-wide, so a webui page and a Hermes page (#1585) show the same ones;
+/// `includesWebuiEntries` adds the two only a webui home has, Active Profile and Bot Mode.
+struct MainPageSettingsSection: View {
+    let includesWebuiEntries: Bool
+
+    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasks = true
+    @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanban = true
+    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkills = true
+    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemory = true
+    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsights = true
+    @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfile = true
+    @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjects = true
+    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $showsTasks) {
+                SettingsLabel(title: String(localized: "Tasks"), systemImage: "calendar.badge.clock")
+            }
+
+            Toggle(isOn: $showsKanban) {
+                SettingsLabel(title: String(localized: "Kanban"), systemImage: "rectangle.split.3x1")
+            }
+
+            Toggle(isOn: $showsSkills) {
+                SettingsLabel(title: String(localized: "Skills"), systemImage: "hammer")
+            }
+
+            Toggle(isOn: $showsMemory) {
+                SettingsLabel(title: String(localized: "Memory"), systemImage: "brain")
+            }
+
+            Toggle(isOn: $showsInsights) {
+                SettingsLabel(title: String(localized: "Usage"), systemImage: "chart.bar")
+            }
+
+            if includesWebuiEntries {
+                Toggle(isOn: $showsActiveProfile) {
+                    SettingsLabel(title: String(localized: "Active Profile"), systemImage: "person.crop.circle")
+                }
+            }
+
+            Toggle(isOn: $showsProjects) {
+                SettingsLabel(title: String(localized: "Projects"), systemImage: "folder.badge.gearshape")
+            }
+
+            if includesWebuiEntries {
+                Toggle(isOn: $isBotModeEnabled) {
+                    SettingsLabel(
+                        title: String(localized: "Bot Mode (beta)"),
+                        systemImage: "cpu",
+                        note: String(localized: "Adds a Bots row to this server's home.")
+                    )
+                }
+            }
+        } header: {
+            Text("Main Page")
+        } appFooter: {
+            Text("An entry you turn off comes back only from here.")
+        }
+    }
+}
+
+/// A Hermes server's CLI and Messaging Sessions switch (#1674), on until turned off. It hides
+/// every row with a source chip from that server's list; the host keeps them.
+struct HermesCliSessionsToggle: View {
+    @AppStorage private var showsCliSessions: Bool
+
+    init(server: URL) {
+        _showsCliSessions = AppStorage(wrappedValue: true, SessionRowDisplaySettings.showCliSessionsKey(for: server))
+    }
+
+    var body: some View {
+        Toggle(isOn: $showsCliSessions) {
+            SettingsLabel(title: String(localized: "CLI and Messaging Sessions"), systemImage: "terminal")
+        }
+    }
+}
+
+/// The Cron Sessions switch on a server page's Sessions section: off, a home lists no cron
+/// session, Scheduled included. App-wide, like the Main Page switches.
+struct CronSessionsToggle: View {
+    @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
+
+    var body: some View {
+        Toggle(isOn: $showsCronSessions) {
+            SettingsLabel(title: String(localized: "Cron Sessions"), systemImage: "clock.arrow.2.circlepath")
+        }
+    }
+}
+
+/// The Message Count and Workspace switches on a server page's Sessions section: whether a
+/// session row shows them. App-wide, like the Main Page switches.
+struct SessionRowDisplayToggles: View {
+    @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
+    @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
+
+    var body: some View {
+        Toggle(isOn: $showsSessionMessageCount) {
+            SettingsLabel(title: String(localized: "Message Count"), systemImage: "number")
+        }
+
+        Toggle(isOn: $showsSessionWorkspace) {
+            SettingsLabel(title: String(localized: "Workspace"), systemImage: "folder")
+        }
+    }
+}
+
+/// The active server page's Offline Data section: Clear Offline Cache deletes this server's
+/// offline data (`clear`), never another server's, its drafts, or its push pairing. The alert
+/// sits on the button, since a Section's own modifiers run once per row (#1255).
+struct OfflineDataSection: View {
+    let server: URL
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var isConfirming = false
+    @State private var isClearing = false
+    @State private var statusMessage: String?
+
+    var body: some View {
+        Section {
+            Button(role: .destructive) {
+                isConfirming = true
+            } label: {
+                if isClearing {
+                    ProgressView()
+                } else {
+                    Text("Clear Offline Cache")
+                }
+            }
+            .disabled(isClearing)
+            .alert("Clear this server's cache?", isPresented: $isConfirming) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear Cache", role: .destructive) {
+                    Task { await clearTapped() }
+                }
+            } message: {
+                Text("This server's cached sessions and messages will be deleted. Other servers and online server data are not affected.")
+            }
+        } header: {
+            Text("Offline Data")
+        } appFooter: {
+            Text(statusMessage ?? String(localized: "Clears this server's cache only."))
+        }
+    }
+
+    private func clearTapped() async {
+        guard !isClearing else { return }
+        isClearing = true
+        do {
+            try await Self.clear(server: server, in: modelContext)
+            statusMessage = String(localized: "This server's offline cache was cleared.")
+        } catch {
+            statusMessage = String(localized: "Could not clear offline cache.")
+        }
+        isClearing = false
+    }
+
+    /// Deletes `server`'s cached sessions and messages, Bot room history, and Bot roster, leaving
+    /// every other server's (#18). Each refills on the server's next online load.
+    @MainActor
+    static func clear(
+        server: URL,
+        in context: ModelContext,
+        history: BotHistoryCache = .shared,
+        roster: BotRosterCache = .shared
+    ) async throws {
+        try CacheStore.clearCache(for: server, in: context)
+        try await history.remove(server: server)
+        await roster.remove(server: server)
     }
 }

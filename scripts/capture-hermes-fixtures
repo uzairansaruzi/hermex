@@ -7,7 +7,7 @@
 #
 # It signs in to the hermex-bot Keychain host, reads /api/status and profiles.list,
 # runs one canned turn ("Reply with exactly: ok.") in a disposable hidden session on
-# the inbox-triage bot, resumes it, then closes and deletes that session. The turn
+# the hermex-fixtures Profile, resumes it, then closes and deletes that session. The turn
 # is one real model call, and a paired phone may get its reply push. Output is
 # sanitized with an allow-list and checked for the host, account, ticket, home paths
 # and other Profile names before anything is written. Credentials come from the
@@ -20,8 +20,14 @@
 # are written. It makes no model call and never touches the real host. It reads
 # 127.0.0.1:9199, or the port in HERMEX_LOCAL_HERMES_PORT for `local-hermes --port`.
 #
-# Usage: scripts/capture-hermes-fixtures [--local] [--keep-raw <file>]
-#        scripts/capture-hermes-fixtures [--local] --from-raw <file>
+# --local --gateway records the canonical session protocol (#1341) from
+# `scripts/local-hermes --gateway` instead, on 127.0.0.1:9121 unless
+# HERMEX_LOCAL_HERMES_PORT says otherwise: attach, replay and detach replies and one
+# approved turn, as HermesMobileTests/Fixtures/HermesAgent/canonical-*.json. Only those
+# files are written.
+#
+# Usage: scripts/capture-hermes-fixtures [--local [--gateway]] [--keep-raw <file>]
+#        scripts/capture-hermes-fixtures [--local [--gateway]] --from-raw <file>
 # --keep-raw also saves the unsanitized capture (mode 600) outside the repo;
 # --from-raw re-sanitizes such a file without calling the host.
 set -euo pipefail
@@ -35,11 +41,13 @@ attribute() {
 
 if (( ${argv[(Ie)--local]} )); then
   # scripts/local-hermes's fixed loopback address and dev credentials.
-  export HERMEX_CAPTURE_ADDRESS="http://127.0.0.1:${HERMEX_LOCAL_HERMES_PORT:-9199}"
+  default_port=9199 server="scripts/local-hermes"
+  (( ${argv[(Ie)--gateway]} )) && default_port=9121 server="scripts/local-hermes --gateway"
+  export HERMEX_CAPTURE_ADDRESS="http://127.0.0.1:${HERMEX_LOCAL_HERMES_PORT:-$default_port}"
   export HERMEX_CAPTURE_USERNAME="hermex"
   export HERMEX_CAPTURE_PASSWORD="hermex-local"
   if (( ! ${argv[(Ie)--from-raw]} )) && ! curl -fsS --max-time 5 "$HERMEX_CAPTURE_ADDRESS/api/status" >/dev/null 2>&1; then
-    echo "Nothing answers $HERMEX_CAPTURE_ADDRESS/api/status; start scripts/local-hermes first." >&2; exit 1
+    echo "Nothing answers $HERMEX_CAPTURE_ADDRESS/api/status; start $server first." >&2; exit 1
   fi
 else
   export HERMEX_CAPTURE_USERNAME="$(attribute hermex-bot acct)"

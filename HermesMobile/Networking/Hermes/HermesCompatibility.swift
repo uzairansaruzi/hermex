@@ -8,7 +8,7 @@ enum HermesCompatibility {
     static let minimumVersion = "0.21.3"
     /// The release Hermex was validated against. Mirrors line 2 of
     /// `HERMES_AGENT_TESTED_SHA`; `BotConnectionVersionTests` fails when they drift.
-    static let testedVersion = "0.21.5"
+    static let testedVersion = "0.23.1"
 
     /// Whether a host reporting `version` may sign in. A missing or unreadable version
     /// counts as supported: the pin always reports one, so its absence means a proxy or

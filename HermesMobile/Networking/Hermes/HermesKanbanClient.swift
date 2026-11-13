@@ -9,7 +9,8 @@ import Foundation
 ///   `default_workdir`, an archived Board's `new_path`, `worker_pid`, `claim_lock`) are dropped
 ///   before decoding, so no view or log can show them;
 /// - every reply reads `read_only: false`, because the host has no read-only mode;
-/// - the Assigned Profile filter runs here, because the host's `/board` takes none;
+/// - the Assigned Profile filter and Only Mine run here, because the host's `/board` takes
+///   neither; Only Mine is `mine`, the Profile the Sessions side lists (#1677);
 /// - block and unblock are Status changes, a prerequisite reply is filled with the request's
 ///   ids, because the host echoes none, and a 400 or 409 throws `KanbanWriteRefusal` with
 ///   the host's `detail`.
@@ -20,8 +21,12 @@ import Foundation
 /// a `since` request reads as unchanged while the Board's `latest_event_id` still equals it.
 struct HermesKanbanClient: KanbanDataClient {
     let http: HermesConnection
+    /// The Profile Only Mine shows: the one the Sessions side lists and New Session opens in.
+    /// Nil when none is known, and then Only Mine is not offered.
+    var mine: String? = nil
 
     var backend: KanbanBackend { .hermes }
+    var offersOnlyMine: Bool { mine != nil }
 
     @MainActor func makeEventStream(server: URL) -> any KanbanEventStreamingClient {
         KanbanWebSocketEventClient(http: http)
@@ -48,7 +53,7 @@ struct HermesKanbanClient: KanbanDataClient {
         // The host's `/board` takes no `since`, so the reply's `latest_event_id` answers it the
         // way webui's `changed` does: a poll or a foreground check keeps an unchanged Board.
         let changed = request.since.map { $0 != snapshot.latestEventID } ?? snapshot.changed
-        let assignee = request.assignee.flatMap { $0.isEmpty ? nil : $0 }
+        let assignee = (request.onlyMine ? mine : request.assignee).flatMap { $0.isEmpty ? nil : $0 }
         guard assignee != nil || changed != snapshot.changed else { return snapshot }
         return KanbanBoardSnapshot(
             columns: assignee.map { assignee in
@@ -125,8 +130,9 @@ struct HermesKanbanClient: KanbanDataClient {
         guard request.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "running" else {
             throw KanbanRequestError.runningStatusRequiresDispatcher
         }
-        return try await write(.kanbanUpdateTask(id: request.cardID, board: request.board,
-                                                 body: ["status": .string(request.status)]))
+        var body: [String: BotJSON] = ["status": .string(request.status)]
+        body["result"] = request.result.map(BotJSON.string)
+        return try await write(.kanbanUpdateTask(id: request.cardID, board: request.board, body: body))
     }
 
     /// Blocked is a Status here, which the host may turn into Triage after repeat blocks.
@@ -160,6 +166,9 @@ struct HermesKanbanClient: KanbanDataClient {
         var body: [String: BotJSON] = ["ids": .array(request.cardIDs.map(BotJSON.string))]
         switch request.action {
         case .changeStatus(let status): body["status"] = .string(status)
+        case .complete(let result):
+            body["status"] = .string("done")
+            body["result"] = .string(result)
         case .assignProfile(let profile): body["assignee"] = .string(profile ?? "")
         case .setPriority(let priority): body["priority"] = .number(Double(priority))
         case .archiveCards: body["archive"] = .bool(true)

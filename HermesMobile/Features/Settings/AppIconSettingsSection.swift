@@ -3,6 +3,7 @@ import UIKit
 
 struct AppIconSettingsSection: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedAppIcon = AppIconChoice.system
     @State private var updatingAppIcon: AppIconChoice?
     @State private var appIconErrorMessage: String?
@@ -38,11 +39,7 @@ struct AppIconSettingsSection: View {
 
     private var appIconChoices: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(AppIconChoice.allCases.enumerated()), id: \.element.id) { index, icon in
-                if index > 0 {
-                    appIconDivider
-                }
-
+            ForEach(AppIconChoice.allCases, id: \.id) { icon in
                 HapticButton(feedbackStyle: .light) {
                     updateAppIcon(to: icon)
                 } label: {
@@ -58,11 +55,6 @@ struct AppIconSettingsSection: View {
         }
     }
 
-    private var appIconDivider: some View {
-        Divider()
-            .padding(.leading, 2)
-            .opacity(0.72)
-    }
 
     private func refreshSelectedAppIcon() {
         selectedAppIcon = AppIconChoice.current
@@ -78,7 +70,7 @@ struct AppIconSettingsSection: View {
 
         UIApplication.shared.setAlternateIconName(appIcon.alternateIconName) { error in
             Task { @MainActor in
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .default) {
                     updatingAppIcon = nil
 
                     if let error {
@@ -105,11 +97,11 @@ private struct AppIconDisclosureLabel: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("App Icon")
                     .font(AppFont.body(weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
 
                 Text(selectedAppIcon.title)
                     .font(AppFont.footnote())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             Spacer(minLength: 8)
@@ -132,11 +124,11 @@ private struct AppIconChoiceRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(icon.title)
                     .font(AppFont.body(weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
 
                 Text(icon.subtitle)
                     .font(AppFont.footnote())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             Spacer(minLength: 8)
@@ -199,7 +191,7 @@ private struct AppIconPreviewImage: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    .strokeBorder(Color(.appText).opacity(0.08), lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
             .accessibilityHidden(true)

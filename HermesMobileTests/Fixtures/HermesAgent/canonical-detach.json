@@ -1,0 +1,17 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : [
+    {
+      "detached" : true,
+      "session_id" : "local-4438fe0803e1083c2d3ebf518546d1e75760a1fa6dc157c950649891ace2f416",
+      "subscription_id" : "948758be282b4bcc9178a09f96353f21"
+    },
+    {
+      "detached" : false,
+      "session_id" : "local-4438fe0803e1083c2d3ebf518546d1e75760a1fa6dc157c950649891ace2f416",
+      "subscription_id" : "948758be282b4bcc9178a09f96353f21"
+    }
+  ],
+  "version" : "0.23.1"
+}

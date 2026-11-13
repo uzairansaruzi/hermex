@@ -38,6 +38,9 @@ struct HermesSessionPage: Decodable, Equatable {
 struct HermesSessionRow: Decodable, Equatable {
     let id: String
     let source: String?
+    /// The client that made a `local` row (`cli`, `tui`, `acp`, or `desktop` for Hermex's own),
+    /// which `source` alone doesn't tell (#1674).
+    let createdSource: String?
     /// Changed in place by a rename this phone made (#1048), as are `pinned` and `archived`.
     var title: String?
     /// The first prompt, flattened onto one line and cut at 60 characters with `...`.
@@ -80,6 +83,7 @@ struct HermesSessionRow: Decodable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, preview, pinned, archived, unread, hidden, model, cwd, profile, source
+        case createdSource = "created_source"
         case lastActive = "last_active", startedAt = "started_at", messageCount = "message_count"
         case parentSessionID = "parent_session_id", lineageRootID = "_lineage_root_id"
     }
@@ -87,12 +91,13 @@ struct HermesSessionRow: Decodable, Equatable {
     init(id: String, title: String? = nil, preview: String? = nil, lastActive: Double? = nil, startedAt: Double? = nil,
          pinned: Bool? = nil, archived: Bool? = nil, unread: Bool? = nil, hidden: Bool? = nil, model: String? = nil,
          cwd: String? = nil, messageCount: Int? = nil, profile: String? = nil, parentSessionID: String? = nil,
-         lineageRootID: String? = nil, source: String? = nil) {
+         lineageRootID: String? = nil, source: String? = nil, createdSource: String? = nil) {
         self.id = id; self.title = title; self.preview = preview; self.lastActive = lastActive; self.startedAt = startedAt
         self.pinned = pinned; self.archived = archived; self.unread = unread; self.hidden = hidden; self.model = model
         self.cwd = cwd; self.messageCount = messageCount; self.profile = profile; self.parentSessionID = parentSessionID
         self.lineageRootID = lineageRootID
         self.source = source
+        self.createdSource = createdSource
     }
 
     init(from decoder: Decoder) throws {
@@ -111,7 +116,8 @@ struct HermesSessionRow: Decodable, Equatable {
             model: row.decodeLossyStringIfPresent(forKey: .model), cwd: row.decodeLossyStringIfPresent(forKey: .cwd),
             messageCount: row.decodeLossyIntIfPresent(forKey: .messageCount), profile: row.decodeLossyStringIfPresent(forKey: .profile),
             parentSessionID: row.decodeLossyStringIfPresent(forKey: .parentSessionID),
-            lineageRootID: root?.isEmpty == false ? root : nil, source: row.decodeLossyStringIfPresent(forKey: .source)
+            lineageRootID: root?.isEmpty == false ? root : nil, source: row.decodeLossyStringIfPresent(forKey: .source),
+            createdSource: row.decodeLossyStringIfPresent(forKey: .createdSource)
         )
     }
 
@@ -119,13 +125,15 @@ struct HermesSessionRow: Decodable, Equatable {
     /// title and preview drop the reference lines a Hermex send appends
     /// (`MessageAttachment.hermesTitle`); the host keeps its own text. A Bot Chat names its bot's
     /// Profile, as "Bot Chat · <Profile>", since every bot's has the same title. `project` is the
-    /// project lane that claims it (`HermesProjectTree`, #1052).
+    /// project lane that claims it (`HermesProjectTree`, #1052). Its `sessionSource` names who
+    /// made it, a `local` row's creator in place of `local` (#1674).
     func summary(in profile: String, project: String? = nil) -> SessionSummary {
         let profile = self.profile.flatMap { $0.isEmpty ? nil : $0 } ?? profile
+        let origin = source == "local" ? createdSource.flatMap { $0.isEmpty ? nil : $0 } ?? source : source
         return SessionSummary(
             sessionId: id, title: isBotChat ? String(localized: "Bot Chat · \(profile)") : MessageAttachment.hermesTitle(title),
             workspace: cwd, model: model, messageCount: messageCount, createdAt: startedAt, lastMessageAt: lastActive,
-            pinned: pinned, archived: archived, projectId: project, profile: profile, sessionSource: source, parentSessionId: parentSessionID,
+            pinned: pinned, archived: archived, projectId: project, profile: profile, sessionSource: origin, parentSessionId: parentSessionID,
             hermes: SessionSummary.Hermes(lineageRoot: identity, unread: unread == true,
                                           preview: MessageAttachment.hermesTitle(preview), isBotChat: isBotChat,
                                           botChatRoot: botChatRoot)
@@ -336,7 +344,8 @@ struct HermesProfilePages: Equatable {
 extension SessionRowAttentionState {
     /// A Hermes list's row states from one `session.active_list` reply (#1046), by the stored
     /// session each runtime runs (`session_key`). `waiting` (an open approval, question or other
-    /// request) reads as Input, since the item can't say which; `starting`, `working` and
+    /// request) reads as Input, since the item can't say which, until the list's
+    /// `approval.pending` read finds an approval (#1679); `starting`, `working` and
     /// `streaming` as Working; idle, `resuming` and unknown states as nothing. Of several runtimes
     /// on one session, Input wins. The list's `is_active` is a 300-second guess and is never read.
     static func hermesStates(_ items: [BotJSON]) -> [String: SessionRowAttentionState] {

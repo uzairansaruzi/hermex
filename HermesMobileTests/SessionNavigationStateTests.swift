@@ -526,6 +526,22 @@ final class SessionNavigationStateTests: XCTestCase {
         )
     }
 
+    func testFailureToastShowsOnTheSessionScreenInFront() {
+        var route = SessionListArchiveToastRoute()
+
+        // iPhone: the first failure on Scheduled, before any archive.
+        route.noticeShown(destination: .utility(.scheduled))
+        XCTAssertEqual(route.host, .scheduled)
+
+        // iPhone: archived on Scheduled, tapped Back, then an action failed on the list.
+        let scheduledArchive = route.archiveStarted()
+        _ = route.archiveConfirmed(
+            scheduledArchive, swipedOn: .scheduled, destination: .utility(.scheduled), isRegularWidth: false
+        )
+        route.noticeShown(destination: nil)
+        XCTAssertEqual(route.host, .list)
+    }
+
     func testChatShortcutPositionPicksNthChatOrNothing() {
         let chats = ["a", "b", "c"].map { SessionSummary(sessionId: $0) }
 
@@ -620,15 +636,33 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         XCTAssertEqual(log.detail, 2, "A root selection must reset the detail stack")
     }
 
-    /// Pins the visibility policy the split view applies on a root selection. The
-    /// portrait close is not hosted: UISplitViewController's display-mode change did
-    /// not settle reliably on CI's parallel test clones, and a collapsed sidebar can't
-    /// be told apart from `.automatic` in an iPhone-idiom host anyway.
-    func testRootSelectionHidesAnOpenedSidebarButKeepsACollapsedOne() {
-        XCTAssertEqual(NavigationSplitViewVisibility.all.afterRootSelection, .automatic)
-        XCTAssertEqual(NavigationSplitViewVisibility.doubleColumn.afterRootSelection, .automatic)
-        XCTAssertEqual(NavigationSplitViewVisibility.automatic.afterRootSelection, .automatic)
-        XCTAssertEqual(NavigationSplitViewVisibility.detailOnly.afterRootSelection, .detailOnly)
+    /// Pins the visibility policy the split view applies on a root selection or width change. The
+    /// portrait close is not hosted: UISplitViewController's display-mode change did not settle
+    /// reliably on CI's parallel test clones, and a collapsed sidebar can't be told apart from
+    /// `.automatic` in an iPhone-idiom host anyway.
+    func testRoomySplitKeepsItsSidebarOutUnlessTheUserCollapsedIt() {
+        typealias Visibility = NavigationSplitViewVisibility
+        XCTAssertEqual(Visibility.settled(isRoomy: true, isCollapsedByUser: false), .doubleColumn)
+        XCTAssertEqual(Visibility.settled(isRoomy: false, isCollapsedByUser: false), .automatic)
+        XCTAssertEqual(Visibility.settled(isRoomy: true, isCollapsedByUser: true), .detailOnly)
+    }
+
+    func testOnlyHidingAnOpenSidebarCountsAsTheUserCollapsingIt() {
+        typealias Visibility = NavigationSplitViewVisibility
+        XCTAssertTrue(Visibility.detailOnly.isCollapsedByUser(after: .doubleColumn, was: false))
+        XCTAssertFalse(Visibility.detailOnly.isCollapsedByUser(after: .automatic, was: false),
+                       "The system writes .detailOnly for a sidebar .automatic hid")
+        XCTAssertTrue(Visibility.automatic.isCollapsedByUser(after: .detailOnly, was: true),
+                      "A collapse survives a selection or width change")
+        XCTAssertFalse(Visibility.doubleColumn.isCollapsedByUser(after: .detailOnly, was: true))
+    }
+
+    /// A push above an open chat clears both, so a fold keeps a Settings sheet a sheet. Unfolding
+    /// has nowhere to push, so a pushed Settings becomes one.
+    func testSettingsPresentationSurvivesAWidthChange() {
+        XCTAssertEqual(HermesSettingsPresentation.sheet.afterWidthChange(usesSplit: false), .sheet)
+        XCTAssertEqual(HermesSettingsPresentation.pushed.afterWidthChange(usesSplit: true), .sheet)
+        XCTAssertEqual(HermesSettingsPresentation.pushed.afterWidthChange(usesSplit: false), .pushed)
     }
 
     /// Settings subpages (`NavigationLink`) and file or fork screens
@@ -774,11 +808,15 @@ final class SessionSplitViewIdentityTests: XCTestCase {
 final class HermesHomeSplitRoutingTests: XCTestCase {
     private let server = URL(string: "http://127.0.0.1:9")!
 
+    /// The edited sign-in replaces the Sessions side, so a chat reviewing a Shortcut's text (#1402)
+    /// goes with it and releases the texts waiting behind it.
     func testDismissingRegularSettingsReadsTheEditedConnection() async throws {
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
                                        username: "fixture", password: "fixture-only")
         var saved = connection
         var readsAfterEditing = 0
+        let reviewing = UUID()
+        var endedReviews: [UUID] = []
         let reread = expectation(description: "Home reads the connection after Settings closes")
         let shown = expectation(description: "Settings sheet presented")
         let auth = AuthManager(keychain: InMemoryKeychainStore(), serverRegistry: .inMemory(),
@@ -787,6 +825,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
             pendingBotDestination: .constant(nil), pendingSessionDestination: .constant(nil),
             pendingNewChat: .constant(nil), pendingShare: nil, claimShare: { _ in false },
             didRouteShare: { _ in }, didDeclineShare: { _ in }, didAbandonShare: { _ in },
+            shortcutReview: ShortcutTextReview(chat: reviewing, end: { endedReviews.append($0) }),
             initiallyShowingSettings: true, loadConnection: { requested in
                 XCTAssertEqual(requested, self.server)
                 if saved.password != connection.password {
@@ -813,10 +852,16 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
         }
         await fulfillment(of: [reread], timeout: 2)
         XCTAssertGreaterThan(readsAfterEditing, 0)
+        XCTAssertEqual(endedReviews, [reviewing])
     }
 
     func testRegularHermesSessionsOwnsASplit() throws {
         try assertSplit(in: sessions(), sizeClass: .regular, expected: true)
+    }
+
+    /// A Plus/Max iPhone in landscape: a split here would rebuild the chat on every rotation (#1528).
+    func testRegularWidthCompactHeightHermesSessionsKeepsItsStack() throws {
+        try assertSplit(in: NavigationStack { sessions() }, sizeClass: .regular, verticalSizeClass: .compact, expected: false)
     }
 
     func testCompactHermesSessionsStillPushesInItsCallerStack() throws {
@@ -1085,6 +1130,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     }
 
     private func assertSplit<V: View>(in view: V, sizeClass: UserInterfaceSizeClass,
+                                      verticalSizeClass: UserInterfaceSizeClass = .regular,
                                       expected: Bool) throws {
         let container = try ModelContainer(for: CachedSession.self, CachedMessage.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
@@ -1092,7 +1138,8 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
                                hermesConnections: HermesConnections(keychain: InMemoryKeychainStore()))
         let host = UIHostingController(rootView: view.modelContainer(container)
             .environment(auth)
-            .environment(\.horizontalSizeClass, sizeClass))
+            .environment(\.horizontalSizeClass, sizeClass)
+            .environment(\.verticalSizeClass, verticalSizeClass))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.traitOverrides.horizontalSizeClass = sizeClass == .regular ? .regular : .compact
@@ -1108,13 +1155,15 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     }
 }
 
+/// Reports the sheet SwiftUI presents. It presents without animation: an animated transition's
+/// completion waits on the simulator's render clock, which a busy CI host can stall for a minute.
 @MainActor
 private final class SettingsPresentationHost<Content: View>: UIHostingController<Content> {
     var didPresent: () -> Void = {}
 
     override func present(_ viewControllerToPresent: UIViewController, animated flag: Bool,
                           completion: (() -> Void)? = nil) {
-        super.present(viewControllerToPresent, animated: flag) {
+        super.present(viewControllerToPresent, animated: false) {
             completion?()
             self.didPresent()
         }

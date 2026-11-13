@@ -30,10 +30,10 @@ final class RatingPromptTests: XCTestCase {
         XCTAssertFalse(policy(count: 40, lastRequestAge: -1, previousCount: 10).isEligible(at: now))
     }
 
-    func testTipCardWaitsSevenDaysAfterRatingRequest() {
-        XCTAssertTrue(policy().allowsTipCard(at: now))
-        XCTAssertFalse(policy(lastRequestAge: 6.99).allowsTipCard(at: now))
-        XCTAssertTrue(policy(lastRequestAge: 7).allowsTipCard(at: now))
+    func testSessionListCardsWaitSevenDaysAfterRatingRequest() {
+        XCTAssertTrue(policy().allowsSessionListCard(at: now))
+        XCTAssertFalse(policy(lastRequestAge: 6.99).allowsSessionListCard(at: now))
+        XCTAssertTrue(policy(lastRequestAge: 7).allowsSessionListCard(at: now))
     }
 
     @MainActor
@@ -67,9 +67,9 @@ final class RatingPromptTests: XCTestCase {
     }
 
     @MainActor
-    func testTipShownInThisLaunchSuppressesRatingEvenAfterDismissal() throws {
+    func testCardShownInThisLaunchSuppressesRatingEvenAfterDismissal() throws {
         let state = try makeEligibleState()
-        state.recordTipCardShown()
+        state.recordCardShown(.tip)
         XCTAssertFalse(state.canRequest())
     }
 

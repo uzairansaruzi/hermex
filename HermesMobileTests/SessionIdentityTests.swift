@@ -98,6 +98,23 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertEqual(legacyCLI.sourceDisplayLabel, "CLI")
     }
 
+    /// A Hermes row's chip names who made it (#1674): a local row by its `created_source`, any
+    /// other by its `source`. Hermex's own chats, current (`gui` → `desktop`) and older
+    /// (`hermex`), show none.
+    func testHermesRowSourceChipNamesItsCreator() throws {
+        let page = try JSONDecoder().decode(HermesSessionPage.self, from: Data("""
+        {"sessions": [
+          {"id": "cli", "source": "local", "created_source": "cli"},
+          {"id": "telegram", "source": "telegram", "created_source": "telegram"},
+          {"id": "hermex", "source": "local", "created_source": "desktop"},
+          {"id": "older-hermex", "source": "hermex", "created_source": "hermex"}
+        ]}
+        """.utf8))
+        let labels = page.rows.map { $0.summary(in: "default").sourceDisplayLabel }
+
+        XCTAssertEqual(labels, ["CLI", "Telegram", nil, nil])
+    }
+
     func testWebUISourceOverridesStaleCLIFlag() {
         let imported = SessionSummary(
             sessionId: "imported",

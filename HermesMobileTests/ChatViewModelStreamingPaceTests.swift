@@ -213,12 +213,103 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         )
     }
 
+    /// #1417: a text-only tick patches the reply's row instead of re-deriving the transcript,
+    /// and the transcript still matches a from-scratch derivation, through cancellation too.
+    @MainActor
+    func testTextOnlyTicksPatchTheReplyWithoutReDerivingTheTranscript() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let ticks = ManualRevealTicks()
+        let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick, history: Self.settledTurns(3))
+        await viewModel.loadMessages()
+
+        let didStart = await viewModel.sendMessage("Stream a reply")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.token("alpha "))
+        await waitForTickRequest(ticks, 1)
+        ticks.fire()
+        _ = await nextAssistantContent(of: viewModel)
+        let revision = viewModel.transcriptStructureRevision
+
+        for (offset, word) in ["beta ", "gamma ", "delta "].enumerated() {
+            streamClient.emit(.token(word))
+            await waitForTickRequest(ticks, offset + 2)
+            ticks.fire()
+            _ = await nextAssistantContent(of: viewModel) { $0.hasSuffix(word) }
+            assertTranscriptMatchesFromScratch(viewModel)
+        }
+        XCTAssertEqual(viewModel.transcriptStructureRevision, revision, "A text-only tick must not re-derive the transcript")
+
+        streamClient.emit(.token("epsil"))
+        await waitForTickRequest(ticks, 5)
+        streamClient.emit(.cancelled)
+        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gamma delta epsil")
+        assertTranscriptMatchesFromScratch(viewModel)
+    }
+
+    /// #1417: reasoning reads the reply's text, so a tick that completes an in-text
+    /// `<think>` block re-derives the transcript and shows the reasoning card.
+    @MainActor
+    func testATickThatCompletesInTextReasoningReDerivesTheTranscript() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let ticks = ManualRevealTicks()
+        let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick, history: Self.settledTurns(2))
+        await viewModel.loadMessages()
+
+        let didStart = await viewModel.sendMessage("Stream a reply")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.token("<think>Plan "))
+        await waitForTickRequest(ticks, 1)
+        ticks.fire()
+        _ = await nextAssistantContent(of: viewModel)
+        XCTAssertTrue(viewModel.displayedReasoningGroups.isEmpty, "An open block is not reasoning yet")
+
+        streamClient.emit(.token("the answer.</think> Hello "))
+        await waitForTickRequest(ticks, 2)
+        ticks.fire()
+        _ = await nextAssistantContent(of: viewModel) { $0.hasSuffix("Hello ") }
+        XCTAssertEqual(viewModel.displayedReasoningGroups.map(\.text), ["Plan the answer."])
+        assertTranscriptMatchesFromScratch(viewModel)
+    }
+
     // MARK: - Helpers
+
+    /// `count` settled prompt/reply turns, as a webui session's `messages` JSON.
+    private static func settledTurns(_ count: Int) -> String {
+        let turns = (0..<count).map { index in
+            #"{"role": "user", "content": "Question \#(index)", "timestamp": \#(1_770_000_000 + index * 10), "message_id": "user-\#(index)"}, "#
+                + #"{"role": "assistant", "content": "Answer \#(index)", "timestamp": \#(1_770_000_005 + index * 10), "message_id": "assistant-\#(index)"}"#
+        }
+        return "[" + turns.joined(separator: ", ") + "]"
+    }
+
+    /// The presented rows and reasoning cards equal a from-scratch derivation of `messages`.
+    @MainActor
+    private func assertTranscriptMatchesFromScratch(
+        _ viewModel: ChatViewModel,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let reasoningGroups = ChatViewModel.reasoningDisplayGroups(
+            messages: viewModel.messages,
+            messageOffset: viewModel.messagesOffset,
+            archivedGroups: viewModel.completedReasoningGroups
+        )
+        XCTAssertEqual(viewModel.displayedReasoningGroups, reasoningGroups, file: file, line: line)
+        let transcript = ChatViewModel.transcriptMessages(
+            from: viewModel.messages,
+            messageOffset: viewModel.messagesOffset,
+            preservingEmptyAssistantID: viewModel.streamingAssistantMessageID,
+            renderedActivityAnchorIDs: Set(reasoningGroups.compactMap(\.anchorMessageID))
+                .union(viewModel.completedToolCallGroups.compactMap(\.anchorMessageID))
+        )
+        XCTAssertEqual(viewModel.displayedTranscriptMessages, transcript, file: file, line: line)
+    }
 
     @MainActor
     private func makeViewModel(
         streamClient: PacingSpySSEStreamingClient,
-        revealTick: @escaping @Sendable () async throws -> Void
+        revealTick: @escaping @Sendable () async throws -> Void,
+        history: String = "[]"
     ) throws -> ChatViewModel {
         MockURLProtocol.requestHandler = { request in
             switch request.url?.path {
@@ -229,7 +320,7 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
                 )
             default:
                 return apiTestJSONResponse(
-                    #"{"session": {"session_id": "session-abc", "title": "Pacing", "messages": []}}"#,
+                    #"{"session": {"session_id": "session-abc", "title": "Pacing", "messages": "# + history + "}}",
                     for: request
                 )
             }
@@ -320,7 +411,7 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
 /// `release(_:)`. The tick is main-actor isolated, so the view model's code
 /// after it runs in the same main-actor job that marks the tick returned.
 @MainActor
-private final class ManualRevealTicks {
+final class ManualRevealTicks {
     private var inFlight: [Int: CheckedContinuation<Void, Never>] = [:]
     private var requestExpectations: [Int: XCTestExpectation] = [:]
     private var returnExpectations: [Int: XCTestExpectation] = [:]
@@ -375,7 +466,7 @@ private final class ManualRevealTicks {
     }
 }
 
-private final class PacingSpySSEStreamingClient: SSEStreamingClient {
+final class PacingSpySSEStreamingClient: SSEStreamingClient {
     private(set) var lastEventID: String?
     private var onEvent: (@MainActor (SSEEvent) -> Void)?
 
