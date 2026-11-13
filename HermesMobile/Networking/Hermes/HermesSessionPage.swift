@@ -336,7 +336,8 @@ struct HermesProfilePages: Equatable {
 extension SessionRowAttentionState {
     /// A Hermes list's row states from one `session.active_list` reply (#1046), by the stored
     /// session each runtime runs (`session_key`). `waiting` (an open approval, question or other
-    /// request) reads as Input, since the item can't say which; `starting`, `working` and
+    /// request) reads as Input, since the item can't say which, until the list's
+    /// `approval.pending` read finds an approval (#1679); `starting`, `working` and
     /// `streaming` as Working; idle, `resuming` and unknown states as nothing. Of several runtimes
     /// on one session, Input wins. The list's `is_active` is a 300-second guess and is never read.
     static func hermesStates(_ items: [BotJSON]) -> [String: SessionRowAttentionState] {

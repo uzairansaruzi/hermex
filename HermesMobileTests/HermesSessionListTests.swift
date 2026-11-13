@@ -455,6 +455,24 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working, "b": .input])
     }
 
+    /// A waiting row whose runtime holds an unresolved approval reads as Approval, one waiting on
+    /// a question as Input, each asked by its runtime id; both lift into Needs you (#1679).
+    func testWaitingRowsTellApprovalFromInput() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page(["approve", "ask"].map { HermesSessionRow(id: $0) })]
+        wire.active = [live("approve", "waiting"), live("ask", "waiting")]
+        wire.approvals["runtime-approve"] = [.object(["request_id": .string("r1")])]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+
+        XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .approval, "ask": .input])
+        XCTAssertEqual(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).needsYou.compactMap(\.sessionId),
+                       ["approve", "ask"])
+    }
+
     /// The rating prompt's idle check reads the host fresh: any running or waiting session, listed
     /// or not, is busy, and a list that isn't live has no answer.
     func testHostIdleCheckReadsTheHostFresh() async {
@@ -1345,6 +1363,8 @@ import Observation
     var onDisconnect: ((Error) -> Void)?
     var pages: [String: [Int: HermesSessionPage]] = [:]
     var active: [BotJSON] = []
+    /// `approval.pending`'s approvals by runtime id; none for any other.
+    var approvals: [String: [BotJSON]] = [:]
     /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
     var holdsActive = false
     var profiles = ["default", "research"]
@@ -1417,6 +1437,7 @@ import Observation
         case "session.active_list":
             if holdsActive { await withCheckedContinuation { held.append($0) } }
             return .object(["sessions": .array(active)])
+        case "approval.pending": return .object(["approvals": .array(approvals[params["session_id"]?.text ?? ""] ?? [])])
         case "profiles.list": return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
         case "session.delete": return .object([:])
         case "projects.tree":

@@ -219,6 +219,8 @@ final class SessionListViewModel {
     @ObservationIgnored private let hermesReconnect: BotReconnectSchedule?
     /// False once the host answered `session.active_list` "method not found".
     @ObservationIgnored private var hermesReadsStatus = true
+    /// False once the host answered `approval.pending` "method not found" (#1679).
+    @ObservationIgnored private var hermesReadsApprovals = true
     /// A live-state read failed while a row was busy, so re-reads go on until one succeeds.
     @ObservationIgnored private var hermesRetriesStatus = false
     /// Sessions a chat opened from this list has just closed.
@@ -388,7 +390,7 @@ final class SessionListViewModel {
             totalScheduledCount: automatedVisibility.showsCron
                 ? (hermes != nil && !isViewingCachedData ? hermesScheduledTotal : sessions.filter { $0.isCronSession && $0.archived != true }.count)
                 : 0,
-            needsInput: liftsWaiting ? { self.attentionState(for: $0) == .input } : nil
+            needsInput: liftsWaiting ? { [.input, .approval].contains(self.attentionState(for: $0)) } : nil
         )
     }
 
@@ -1774,6 +1776,7 @@ final class SessionListViewModel {
         let wire = hermes.makeWire(hermes.connection)
         hermesWire = wire
         hermesReadsStatus = true
+        hermesReadsApprovals = true
         if sessions.isEmpty { isLoading = !showCachedHermesSessions(provisional: true) }
         wire.onEvent = { [weak self, weak wire] event in
             guard let self, let wire, self.hermesWire === wire, self.hermesIsListening,
@@ -2338,10 +2341,10 @@ final class SessionListViewModel {
         }
     }
 
-    /// One `session.active_list`, mapped onto the listed rows by session key. A failed read keeps
-    /// the states as the last known ones; a host without the method shows none. While a row is
-    /// busy, or a read failed while one was, it reads again after `statusPollInterval`; once all
-    /// are idle it stops.
+    /// One `session.active_list`, mapped onto the listed rows by session key, its waiting rows
+    /// told apart by `hermesApprovalStates`. A failed read keeps the states as the last known
+    /// ones; a host without the method shows none. While a row is busy, or a read failed while
+    /// one was, it reads again after `statusPollInterval`; once all are idle it stops.
     private func readHermesStatuses(_ wire: any BotTransport) async {
         guard let hermes else { return }
         hermesStatusSerial += 1
@@ -2351,7 +2354,11 @@ final class SessionListViewModel {
             let reply = try await wire.call(.sessionActiveList)
             guard current() else { return }
             let listed = Set(sessions.compactMap(\.sessionId))
-            setHermesStates(SessionRowAttentionState.hermesStates(reply["sessions"].list ?? []).filter { listed.contains($0.key) })
+            let items = reply["sessions"].list ?? []
+            let states = SessionRowAttentionState.hermesStates(items).filter { listed.contains($0.key) }
+            let told = await hermesApprovalStates(states, items: items, wire: wire)
+            guard current() else { return }
+            setHermesStates(told)
             hermesRetriesStatus = false
         } catch {
             guard current() else { return }
@@ -2365,6 +2372,41 @@ final class SessionListViewModel {
         }
         if attentionStatesBySessionID.isEmpty && !hermesRetriesStatus { hermesStatusTask = nil }
         else { startHermesStatusRead(wire, after: hermes.statusPollInterval) }
+    }
+
+    /// `states` with each waiting row's Input made Approval when one of its runtimes holds an
+    /// unresolved approval (#1679): one `approval.pending` per waiting runtime, by its runtime id,
+    /// all at once. A failed read keeps Approval for a row that last showed it, as webui's probe
+    /// does; a host without the method is not asked again on this connection.
+    private func hermesApprovalStates(_ states: [String: SessionRowAttentionState], items: [BotJSON],
+                                      wire: any BotTransport) async -> [String: SessionRowAttentionState] {
+        guard hermesReadsApprovals else { return states }
+        let waiting: [(key: String, runtime: String)] = items.compactMap { item in
+            guard let key = item["session_key"].text, states[key] == .input,
+                  BotLiveStatus(wire: item["status"].text) == .waiting,
+                  let runtime = item["id"].text, !runtime.isEmpty else { return nil }
+            return (key, runtime)
+        }
+        guard !waiting.isEmpty else { return states }
+        let answers = await withTaskGroup(of: (key: String, pending: Bool?, unsupported: Bool).self) { group in
+            for (key, runtime) in waiting {
+                group.addTask { @MainActor in
+                    do {
+                        let reply = try await wire.call(.approvalPending(sessionID: runtime))
+                        return (key, !(reply["approvals"].list ?? []).isEmpty, false)
+                    } catch {
+                        return (key, nil, error as? BotFailure == .rejected(-32601))
+                    }
+                }
+            }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        if answers.contains(where: \.unsupported) { hermesReadsApprovals = false }
+        var told = states
+        for answer in answers where answer.pending ?? (attentionStatesBySessionID[answer.key] == .approval) {
+            told[answer.key] = .approval
+        }
+        return told
     }
 
     /// Writes only a real change, so an unchanged re-read never invalidates the rows.
