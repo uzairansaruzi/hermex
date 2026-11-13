@@ -2,7 +2,8 @@ import Charts
 import SwiftUI
 
 /// The Usage screen's headline card: the window figure, the metric toggle, the
-/// bar chart, and the edge labels beneath it.
+/// bar chart, and the edge labels beneath it. Without `showsChart` it is the
+/// figure and toggle alone.
 ///
 /// Dragging across the chart replaces the hero with the touched bucket's own
 /// figures and restores the window total on release, which is what lets the old
@@ -11,6 +12,7 @@ struct UsageChartCard: View {
     let buckets: [UsageBucket]
     @Binding var metric: UsageMetric
     let showsMetricToggle: Bool
+    let showsChart: Bool
     let windowTotal: UsageHeroFigure
     let hourlyNote: String?
     let chartAccessibilityLabel: String
@@ -25,8 +27,11 @@ struct UsageChartCard: View {
         SectionCard {
             VStack(alignment: .leading, spacing: 14) {
                 header
-                chart
-                footer
+
+                if showsChart {
+                    chart
+                    footer
+                }
 
                 if let hourlyNote {
                     Text(hourlyNote)

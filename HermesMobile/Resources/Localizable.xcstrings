@@ -27967,6 +27967,112 @@
     "1 succeeded" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"1 erfolgreich"}},"es":{"stringUnit":{"state":"needs_review","value":"1 correcto"}},"fr":{"stringUnit":{"state":"needs_review","value":"1 réussi"}},"it":{"stringUnit":{"state":"needs_review","value":"1 riuscito"}},"pl":{"stringUnit":{"state":"needs_review","value":"1 zakończony powodzeniem"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"1 bem-sucedido"}},"nl":{"stringUnit":{"state":"needs_review","value":"1 geslaagd"}},"tr":{"stringUnit":{"state":"needs_review","value":"1 başarılı"}},"ru":{"stringUnit":{"state":"needs_review","value":"1 успешно"}},"ja":{"stringUnit":{"state":"needs_review","value":"1 件成功"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"1 个成功"}},"ko":{"stringUnit":{"state":"needs_review","value":"1개 성공"}},"ar":{"stringUnit":{"state":"needs_review","value":"نجحت 1"}},"he":{"stringUnit":{"state":"needs_review","value":"1 הצליח"}},"ur":{"stringUnit":{"state":"needs_review","value":"1 کامیاب"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"1 個成功"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"1 個成功"}}}},
     "1 worker completed" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"1 Worker abgeschlossen"}},"es":{"stringUnit":{"state":"needs_review","value":"1 worker completado"}},"fr":{"stringUnit":{"state":"needs_review","value":"1 worker achevé"}},"it":{"stringUnit":{"state":"needs_review","value":"1 worker completato"}},"pl":{"stringUnit":{"state":"needs_review","value":"1 proces ukończony"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"1 worker concluído"}},"nl":{"stringUnit":{"state":"needs_review","value":"1 worker voltooid"}},"tr":{"stringUnit":{"state":"needs_review","value":"1 worker tamamlandı"}},"ru":{"stringUnit":{"state":"needs_review","value":"1 воркер выполнил задачу"}},"ja":{"stringUnit":{"state":"needs_review","value":"1 件のワーカーが完了"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"1 个工作进程已完成"}},"ko":{"stringUnit":{"state":"needs_review","value":"워커 1개 완료됨"}},"ar":{"stringUnit":{"state":"needs_review","value":"اكتملت عملية عاملة واحدة"}},"he":{"stringUnit":{"state":"needs_review","value":"תהליך עבודה אחד הושלם"}},"ur":{"stringUnit":{"state":"needs_review","value":"1 ورکر مکمل ہوا"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"1 個工作程序已完成"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"1 個工作程序已完成"}}}},
     "1 worker finished" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"1 Worker beendet"}},"es":{"stringUnit":{"state":"needs_review","value":"1 worker finalizó"}},"fr":{"stringUnit":{"state":"needs_review","value":"1 worker terminé"}},"it":{"stringUnit":{"state":"needs_review","value":"1 worker terminato"}},"pl":{"stringUnit":{"state":"needs_review","value":"1 proces zakończony"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"1 worker finalizado"}},"nl":{"stringUnit":{"state":"needs_review","value":"1 worker beëindigd"}},"tr":{"stringUnit":{"state":"needs_review","value":"1 worker sona erdi"}},"ru":{"stringUnit":{"state":"needs_review","value":"1 воркер завершил работу"}},"ja":{"stringUnit":{"state":"needs_review","value":"1 件のワーカーが終了"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"1 个工作进程已结束"}},"ko":{"stringUnit":{"state":"needs_review","value":"워커 1개 종료됨"}},"ar":{"stringUnit":{"state":"needs_review","value":"انتهت عملية عاملة واحدة"}},"he":{"stringUnit":{"state":"needs_review","value":"תהליך עבודה אחד הסתיים"}},"ur":{"stringUnit":{"state":"needs_review","value":"1 ورکر ختم ہوا"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"1 個工作程序已結束"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"1 個工作程序已結束"}}}},
+    "24 hours" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 ساعة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 Stunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 horas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 heures"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 שעות"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 ore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24時間"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24시간"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 uur"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 godziny"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 horas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 часа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 saat"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24 گھنٹے"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24小時"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24小时"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "24小時"
+          }
+        }
+      }
+    },
     "30 days" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -142917,6 +143023,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "來源：最近 %lld 天的伺服器分析。"
+          }
+        }
+      }
+    },
+    "Source: server insights from the last 24 hours." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "المصدر: إحصاءات الخادم من آخر 24 ساعة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Quelle: Server-Insights der letzten 24 Stunden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Fuente: estadísticas del servidor de las últimas 24 horas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Source : statistiques du serveur des dernières 24 heures."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מקור: תובנות שרת מ-24 השעות האחרונות."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sorgente: statistiche server delle ultime 24 ore."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ソース：過去 24 時間のサーバのインサイト。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "출처: 최근 24시간의 서버 인사이트."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bron: serverstatistieken van de afgelopen 24 uur."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Źródło: statystyki serwera z ostatnich 24 godzin."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Fonte: estatísticas do servidor das últimas 24 horas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Источник: статистика сервера за последние 24 часа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kaynak: son 24 saatin sunucu istatistikleri."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ماخذ: گزشتہ 24 گھنٹوں کی سرور بصیرتیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "來源：最近 24 小時的伺服器分析。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "来源：最近 24 小时的服务器分析。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "來源：最近 24 小時的伺服器分析。"
           }
         }
       }

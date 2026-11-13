@@ -141,6 +141,7 @@ struct InsightsView: View {
                     buckets: viewModel.chartBuckets,
                     metric: $viewModel.metric,
                     showsMetricToggle: viewModel.showsMetricToggle,
+                    showsChart: viewModel.loadedTimeframe.showsChart,
                     windowTotal: viewModel.heroFigure,
                     hourlyNote: viewModel.hourlyChartNote,
                     chartAccessibilityLabel: viewModel.chartAccessibilityLabel
