@@ -293,10 +293,7 @@ final class ArchivedSessionsViewModel {
             hermesProfile = profile
             return profile
         }
-        let rows = (try? await wire.call(.profilesList(includeSessions: false)))?["profiles"].list ?? []
-        let current = try await wire.currentProfile()
-        let profile = HermesProfilePreference.resolve(for: server, listed: rows.compactMap { $0["name"].text },
-                                                      current: current, in: hermes.preferences)
+        let profile = try await HermesProfilePreference.starting(for: server, on: wire, in: hermes.preferences).profile
         hermesProfile = profile
         return profile
     }

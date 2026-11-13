@@ -121,6 +121,8 @@ final class HermesRequestTests: XCTestCase {
              ["session_id": .string("runtime"), "profile": .string("triage")]),
             (.configuredModelOptions, "model.options", ["include_unconfigured": .bool(false)]),
             (.profileModelOptions(profile: "research"), "model.options", ["profile": .string("research")]),
+            (.profileModelOptions(profile: "research", refresh: true), "model.options",
+             ["profile": .string("research"), "refresh": .bool(true)]),
             (.configSet(sessionID: "runtime", profile: "triage", setting: .model(value: "gpt-6 --provider openai --session", confirmExpensive: false)),
              "config.set", ["session_id": .string("runtime"), "profile": .string("triage"), "scope": .string("session"),
                             "key": .string("model"), "value": .string("gpt-6 --provider openai --session"),

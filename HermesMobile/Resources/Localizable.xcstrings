@@ -99514,6 +99514,112 @@
         }
       }
     },
+    "New sessions in this Profile start on this model." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تبدأ الجلسات الجديدة في ملف التعريف هذا بهذا النموذج."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Neue Sitzungen in diesem Profil starten mit diesem Modell."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Las sesiones nuevas de este perfil empiezan con este modelo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les nouvelles sessions de ce profil démarrent avec ce modèle."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מפגשים חדשים בפרופיל הזה מתחילים עם המודל הזה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le nuove sessioni di questo profilo iniziano con questo modello."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このプロファイルの新規セッションはこのモデルで開始します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 프로필의 새 세션은 이 모델로 시작합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nieuwe sessies in dit profiel starten met dit model."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nowe sesje w tym profilu zaczynają się z tym modelem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Novas sessões neste perfil começam com este modelo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Новые сессии в этом профиле начинаются с этой модели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu profildeki yeni oturumlar bu modelle başlar."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس پروفائل میں نئے سیشن اسی ماڈل سے شروع ہوتے ہیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此設定檔的新工作階段會使用此模型開始。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此配置文件中的新会话将使用此模型开始。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此設定檔的新工作階段會使用此模型開始。"
+          }
+        }
+      }
+    },
     "New Task" : {
       "localizations" : {
         "ar" : {
