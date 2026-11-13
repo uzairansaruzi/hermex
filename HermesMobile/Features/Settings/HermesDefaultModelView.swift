@@ -37,8 +37,9 @@ import SwiftUI
     /// This page's client on the socket and its connect, held from the start so `close()` can end
     /// a client that is still connecting.
     @ObservationIgnored private var wire: (client: any BotTransport, ready: Task<Void, Error>)?
-    /// Bumped by each read and by `close()`, so only the latest read or save applies.
-    @ObservationIgnored private var serial = 0
+    /// Bumped by each read and by `close()`, so only the latest read or save applies. A pick passes
+    /// the value it saw to `save(_:owner:confirmed:)`.
+    @ObservationIgnored private(set) var serial = 0
 
     init(connection: BotConnection, server: URL, preferences: UserDefaults = .standard,
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil) {
@@ -51,7 +52,7 @@ import SwiftUI
     func load() async {
         serial += 1
         let owner = serial
-        if case .failed = state { state = .loading }
+        state = .loading
         do {
             let start = try await HermesProfilePreference.starting(for: server, on: try await connectedWire(), in: preferences)
             guard owner == serial else { return }
@@ -71,10 +72,11 @@ import SwiftUI
 
     /// Pins `option` as the shown Profile's model. True once the host applied it; a model the host
     /// wants confirmed sets `confirmation` instead and writes nothing, until it is saved again
-    /// `confirmed`. Refused while the page reads, whose older reply would then hide the change.
-    func save(_ option: ModelCatalogOption, confirmed: Bool = false) async -> Bool {
-        guard state == .loaded, let name = profile, let provider = option.providerID, saving == nil else { return false }
-        let owner = serial
+    /// `confirmed`. `owner` is `serial` when the pick was made, so a pick a later read or `close()`
+    /// overtook writes nothing. Refused while the page reads, whose older reply would hide the change.
+    func save(_ option: ModelCatalogOption, owner: Int, confirmed: Bool = false) async -> Bool {
+        guard owner == serial, state == .loaded, let name = profile, let provider = option.providerID,
+              saving == nil else { return false }
         saving = option; saveError = nil; confirmation = nil
         var changes = HermesCall.ProfileChanges(name: name)
         changes.model = HermesCall.Model(id: option.id, provider: provider)
@@ -117,7 +119,8 @@ import SwiftUI
     }
 
     /// The Profile's model, then its cached model list, shown at once; the providers' live lists
-    /// replace the cached one when they answer.
+    /// replace the cached one when they answer. Without a cached list the page waits on the live
+    /// one, and fails with it.
     private func read(_ name: String, owner: Int) async {
         profile = name; current = nil; modelGroups = []; saving = nil; saveError = nil; confirmation = nil
         state = .loading
@@ -127,11 +130,15 @@ import SwiftUI
             let cached = try? await wire.call(.profileModelOptions(profile: name))
             guard owner == serial else { return }
             current = details.model
-            modelGroups = cached.map { HermesModelCatalog($0).groups } ?? []
-            state = .loaded
-            guard let live = try? await wire.call(.profileModelOptions(profile: name, refresh: true)),
+            if let cached {
+                modelGroups = HermesModelCatalog(cached).groups
+                state = .loaded
+            }
+            let refresh = HermesCall.profileModelOptions(profile: name, refresh: true)
+            guard let live = cached == nil ? try await wire.call(refresh) : try? await wire.call(refresh),
                   owner == serial else { return }
             modelGroups = HermesModelCatalog(live).groups
+            state = .loaded
         } catch {
             fail(error, owner: owner)
         }
@@ -296,6 +303,7 @@ struct HermesDefaultModelView: View {
     private func save(_ option: ModelCatalogOption, confirmed: Bool = false, custom: Bool = false) {
         // A confirmed resend is the same pick, from the same entry.
         if !confirmed { savingCustom = custom }
-        Task { if await model.save(option, confirmed: confirmed) { showsPicker = false } }
+        let owner = model.serial
+        Task { if await model.save(option, owner: owner, confirmed: confirmed) { showsPicker = false } }
     }
 }

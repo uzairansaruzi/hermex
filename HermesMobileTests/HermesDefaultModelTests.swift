@@ -26,7 +26,7 @@ import XCTest
         XCTAssertEqual(page.profile, "work")
         XCTAssertEqual(page.current?.id, "work-model")
 
-        let saved = await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai"))
+        let saved = await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai"), owner: page.serial)
 
         XCTAssertTrue(saved)
         XCTAssertEqual(page.current?.id, "new-model")
@@ -41,13 +41,13 @@ import XCTest
         await page.load()
         let guarded = ModelCatalogOption(id: "guarded", displayName: "guarded", providerID: "openai")
 
-        let first = await page.save(guarded)
+        let first = await page.save(guarded, owner: page.serial)
         XCTAssertFalse(first)
         XCTAssertEqual(page.confirmation?.message, "Costs more")
         page.decline()
         XCTAssertEqual(page.current?.id, "work-model", "Cancel leaves the old model")
 
-        let confirmed = await page.save(guarded, confirmed: true)
+        let confirmed = await page.save(guarded, owner: page.serial, confirmed: true)
         XCTAssertTrue(confirmed)
         XCTAssertEqual(page.current?.id, "guarded")
         XCTAssertEqual(wire.configures.last?["confirm_expensive_model"], .bool(true))
@@ -77,7 +77,7 @@ import XCTest
         let connecting = expectation(description: "reconnecting")
         wire.hold = ("connect", { connecting.fulfill() })
 
-        let save = Task { await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai")) }
+        let save = Task { await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai"), owner: page.serial) }
         await fulfillment(of: [connecting])
         page.close()
         wire.release()
@@ -90,17 +90,38 @@ import XCTest
     func testASaveDuringAReloadIsRefusedSoTheOlderReadCannotHideIt() async {
         let (page, wire) = makePage()
         await page.load()
-        let reading = expectation(description: "reading cached models")
-        wire.hold = ("model.options", { reading.fulfill() })
+        let reading = expectation(description: "reading Profiles")
+        wire.hold = ("profiles.list", { reading.fulfill() })
 
         let reload = Task { await page.load() }
         await fulfillment(of: [reading])
-        let saved = await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai"))
+        let saved = await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai"), owner: page.serial)
         wire.release()
         await reload.value
 
         XCTAssertFalse(saved)
         XCTAssertTrue(wire.configures.isEmpty)
+    }
+
+    func testAPickWhoseSaveStartsAfterThePageClosedSendsNoWrite() async {
+        let (page, wire) = makePage()
+        await page.load()
+
+        let owner = page.serial
+        page.close()
+        let saved = await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai"), owner: owner)
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(wire.configures.isEmpty)
+    }
+
+    func testModelListsThatBothFailShowALoadError() async {
+        let (page, wire) = makePage()
+        wire.failsModelOptions = true
+
+        await page.load()
+
+        guard case .failed = page.state else { return XCTFail("Expected a load error, got \(page.state)") }
     }
 
     private func makePage() -> (HermesDefaultModel, DefaultModelWire) {
@@ -121,6 +142,8 @@ import XCTest
     /// waits for `release()`.
     var hold: (method: String, reached: () -> Void)?
     private var held: CheckedContinuation<Void, Never>?
+    /// When set, both model lists fail.
+    var failsModelOptions = false
 
     func connect() async throws { await wait(at: "connect") }
     func release() { held?.resume(); held = nil }
@@ -145,6 +168,7 @@ import XCTest
             return .object(["name": .string(name),
                             "model": .object(["default": .string("\(name)-model"), "provider": .string("openai")])])
         case "model.options":
+            if failsModelOptions { throw BotFailure.unsupported }
             let model = params["refresh"] == .bool(true) ? "live-model" : "cached-model"
             return .object(["providers": .array([.object(["slug": .string("openai"), "name": .string("OpenAI"),
                                                           "models": .array([.string(model)])])])])
