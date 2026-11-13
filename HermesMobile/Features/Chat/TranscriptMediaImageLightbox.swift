@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import UniformTypeIdentifiers
 
 extension TranscriptMediaReference {
     /// Known to be a picture before anything is fetched. An extensionless remote URL may
@@ -32,11 +31,9 @@ struct TranscriptMediaImageLightbox: View {
     private let item: TranscriptMediaPreviewItem
     private let page: ImageLightboxPage
     @State private var viewModel: TranscriptMediaPreviewViewModel
-    @State private var exportDocument = ExportedFileDocument(data: Data())
-    @State private var exportContentType = UTType.data
-    @State private var exportFilename = String(localized: "Hermes Media")
-    @State private var isFileExporterPresented = false
-    @State private var isExportingMedia = false
+    /// The file the share sheet is offering. Clearing it when the sheet closes deletes it.
+    @State private var sharedFile: QuickLookTemporaryFile?
+    @State private var isPreparingShare = false
     @State private var isSavingToPhotos = false
     @State private var saveConfirmationMessage: String?
     @State private var errorMessage: String?
@@ -81,24 +78,19 @@ struct TranscriptMediaImageLightbox: View {
             if viewModel.canExportMedia {
                 ImageLightboxActionButton(
                     systemImage: "square.and.arrow.up",
-                    accessibilityLabel: String(localized: "Export media"),
+                    accessibilityLabel: String(localized: "Share \(item.reference.displayName)"),
                     isDisabled: exportActionsAreDisabled,
-                    action: { Task { await exportMedia() } }
+                    action: { Task { await shareMedia() } }
                 )
             }
         }
         .task {
             await loadMedia()
         }
-        .fileExporter(
-            isPresented: $isFileExporterPresented,
-            document: exportDocument,
-            contentType: exportContentType,
-            defaultFilename: exportFilename
-        ) { result in
-            if case let .failure(error) = result {
-                errorMessage = error.localizedDescription
-            }
+        .sheet(item: $sharedFile) { file in
+            FileShareSheet(fileURL: file.url)
+                .presentationDetents([.medium, .large])
+                .ignoresSafeArea()
         }
         .alert(
             "Saved",
@@ -160,7 +152,7 @@ struct TranscriptMediaImageLightbox: View {
     }
 
     private var exportActionsAreDisabled: Bool {
-        viewModel.isLoading || isSavingToPhotos || isExportingMedia
+        viewModel.isLoading || isSavingToPhotos || isPreparingShare
     }
 
     private func loadMedia(force: Bool = false) async {
@@ -170,16 +162,15 @@ struct TranscriptMediaImageLightbox: View {
         }
     }
 
-    private func exportMedia() async {
-        isExportingMedia = true
-        defer { isExportingMedia = false }
+    /// Writes the full-size media under its own filename and offers it to the share
+    /// sheet, which also covers Save to Files.
+    private func shareMedia() async {
+        isPreparingShare = true
+        defer { isPreparingShare = false }
 
         do {
             let payload = try await viewModel.exportPayload()
-            exportDocument = ExportedFileDocument(data: payload.data)
-            exportContentType = payload.contentType
-            exportFilename = payload.filename
-            isFileExporterPresented = true
+            sharedFile = try await QuickLookTemporaryFile.write(data: payload.data, name: payload.filename)
         } catch {
             errorMessage = error.localizedDescription
             onAPIError(error)

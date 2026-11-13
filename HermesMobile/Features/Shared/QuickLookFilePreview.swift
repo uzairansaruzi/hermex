@@ -36,6 +36,9 @@ final class QuickLookTemporaryFile: Sendable {
     }
 }
 
+/// Identity is the instance, so a `.sheet(item:)` can hold one file and release it on close.
+extension QuickLookTemporaryFile: Identifiable {}
+
 extension FilePreviewContent {
     /// Loads a `BinaryFilePreview.quickLook` file. A `knownSize` over the 25 MB cap
     /// returns the too-large state without calling `download`, as does a download
