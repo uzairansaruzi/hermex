@@ -162,7 +162,7 @@ final class SessionListViewModel {
 
     private let client: APIClient
     private let sessionMutator: SessionMutator
-    private let server: URL
+    let server: URL
     private let unreadStore: SessionUnreadStore
     private var viewingSessionID: String?
     private var returnedFromSessionIDs: Set<String> = []
