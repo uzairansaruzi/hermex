@@ -576,6 +576,29 @@ import Observation
                        ["pinned-waiting", "pinned-idle", "working", "waiting", "idle"])
     }
 
+    /// CLI and Messaging Sessions off (#1674) drops every row with a source chip, a waiting
+    /// one's Needs-you lift included, and keeps Hermex's own chats.
+    func testHidingCliAndMessagingSessionsDropsChippedRows() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([
+            HermesSessionRow(id: "cli", title: "Row", lastActive: 3, source: "cli"),
+            HermesSessionRow(id: "telegram", title: "Row", lastActive: 2, source: "telegram"),
+            HermesSessionRow(id: "hermex", title: "Row", lastActive: 1, source: "gui")
+        ])]
+        wire.active = [live("telegram", "waiting")]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+        var hidden = AutomatedSessionVisibility.showAll
+        hidden.showsCli = false
+
+        let groups = list.scheduledSessionGroups(searchText: "", selectedProjectID: nil, automatedVisibility: hidden)
+
+        XCTAssertEqual(groups.needsYou, [])
+        XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["hermex"])
+    }
+
     // MARK: Refresh
 
     /// A burst of `sessions.changed` reads once; events while that read is out ask for one more

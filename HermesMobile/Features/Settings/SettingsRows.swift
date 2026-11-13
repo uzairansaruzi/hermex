@@ -321,6 +321,22 @@ struct MainPageSettingsSection: View {
     }
 }
 
+/// A Hermes server's CLI and Messaging Sessions switch (#1674), on until turned off. It hides
+/// every row with a source chip from that server's list; the host keeps them.
+struct HermesCliSessionsToggle: View {
+    @AppStorage private var showsCliSessions: Bool
+
+    init(server: URL) {
+        _showsCliSessions = AppStorage(wrappedValue: true, SessionRowDisplaySettings.showCliSessionsKey(for: server))
+    }
+
+    var body: some View {
+        Toggle(isOn: $showsCliSessions) {
+            SettingsLabel(title: String(localized: "CLI and Messaging Sessions"), systemImage: "terminal")
+        }
+    }
+}
+
 /// The Cron Sessions switch on a server page's Sessions section: off, a home lists no cron
 /// session, Scheduled included. App-wide, like the Main Page switches.
 struct CronSessionsToggle: View {

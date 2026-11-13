@@ -43,6 +43,8 @@ struct HermesSessionListView: View {
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
+    /// CLI and Messaging Sessions, this server's own switch (#1674).
+    @AppStorage private var showsCliSessions: Bool
     @AppStorage(SessionSidebarDisclosureSettings.scheduledSessionsAreExpandedKey)
     private var scheduledSessionsAreExpanded = SessionSidebarDisclosureSettings.defaultScheduledSessionsAreExpanded
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -126,6 +128,7 @@ struct HermesSessionListView: View {
         self.shortcutReview = shortcutReview
         self.isCoveredByHome = isCoveredByHome
         _viewModel = State(initialValue: model)
+        _showsCliSessions = AppStorage(wrappedValue: true, SessionRowDisplaySettings.showCliSessionsKey(for: entry.server))
     }
 
     private var covers: HermesSessionListCovers {
@@ -677,10 +680,12 @@ struct HermesSessionListView: View {
     }
 
     /// The rows the list shows, in its sections. Cron sessions drop out everywhere, Scheduled
-    /// included, when Settings hides them (#1585), as on a webui list.
+    /// included, when Settings hides them (#1585), as on a webui list, and so do rows with a
+    /// source chip when this server hides CLI and messaging sessions (#1674).
     private var scheduledSessionGroups: ScheduledSessionGroups {
         var automated = AutomatedSessionVisibility.showAll
         automated.showsCron = showsCronSessions
+        automated.showsCli = showsCliSessions
         return viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID,
                                                 automatedVisibility: automated)
     }
