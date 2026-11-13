@@ -540,8 +540,10 @@ struct HermesSessionListView: View {
             InsightsView(client: entry.client, profile: entry.client.profile, limitsScope: entry.limitsScope,
                          onAPIError: { _ in }).id(entry.id)
         } else if covers.showingKanban {
+            // Keyed by the Profile, so picking another in the sidebar moves Only Mine with it.
             KanbanView(server: entry.server, hermes: HermesConnections.shared.connection(for: entry.connection, server: entry.server),
                        mine: profile)
+                .id(profile)
         } else if covers.showingScheduled {
             scheduledSessions
         } else if covers.showingArchived, let profile {
