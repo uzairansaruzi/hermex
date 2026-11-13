@@ -661,7 +661,7 @@ import UIKit
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
             profiles = Self.roster(rows)
             setReconnecting(false)
-            if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
+            if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name, model: $0.model) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
             }
             if let connection { widgets.publish(profiles, server: server, connectionID: connection.id) }

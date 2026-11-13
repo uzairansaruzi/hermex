@@ -733,8 +733,13 @@ struct HermesSessionListView: View {
             }
         })) {
             Text("All Profiles").tag(String?.none)
-            ForEach(listed, id: \.self) {
-                Text(verbatim: $0).tag(Optional($0))
+            // Each Profile's model under its name, shown as written (#1679).
+            ForEach(listed, id: \.self) { name in
+                VStack {
+                    Text(verbatim: name)
+                    if let model = viewModel.hermesProfileModels[name] { Text(verbatim: model) }
+                }
+                .tag(Optional(name))
             }
         }
         .disabled(profile == nil)

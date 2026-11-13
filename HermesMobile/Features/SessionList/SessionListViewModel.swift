@@ -181,6 +181,9 @@ final class SessionListViewModel {
     private(set) var hermesShowsAllProfiles = false
     /// The Hermes host's Profiles, for the Profile menu; empty until `profiles.list` answers.
     private(set) var hermesProfiles: [String] = []
+    /// Each Profile's model as `profiles.list` names it, for the Profile menu (#1679); a Profile
+    /// without one is absent.
+    private(set) var hermesProfileModels: [String: String] = [:]
     /// The Hermes list has read the host's rows on its current connection, so its Profile is the
     /// host's. Closing or dropping the connection clears it until the next read.
     private var hasReadHermes = false
@@ -2247,6 +2250,12 @@ final class SessionListViewModel {
               let rows = reply["profiles"].list else { return nil }
         let names = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty }
         if names != hermesProfiles { hermesProfiles = names }
+        let models = Dictionary(rows.compactMap { row -> (String, String)? in
+            guard let name = row["name"].text, let model = row["model"].text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty, !model.isEmpty else { return nil }
+            return (name, model)
+        }, uniquingKeysWith: { first, _ in first })
+        if models != hermesProfileModels { hermesProfileModels = models }
         // A list of every Profile names only those the host still has, so a pick removed elsewhere
         // shows up here rather than as a refused watch.
         if hermesShowsAllProfiles, let pick = hermesProfile, !names.isEmpty, !names.contains(pick) {
