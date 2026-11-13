@@ -18,7 +18,12 @@ enum SessionListCard: CaseIterable {
     /// so reading them subscribes its view and an answer hides a card at once.
     @MainActor
     static func current(completedResponses: Int, tipDismissedRelease: String?, starDismissedRelease: String?,
-                        usageReportConsent: UsageReportConsent, hasSharedImport: Bool) -> SessionListCard? {
+                        usageReportConsent: UsageReportConsent, forcesUsageReportsCard: Bool = false,
+                        hasSharedImport: Bool) -> SessionListCard? {
+        #if DEBUG
+        // Settings › Developer: skip every guard while the question is unanswered.
+        if forcesUsageReportsCard, usageReportConsent.question() != nil { return .usageReports }
+        #endif
         let ratingPolicy = RatingPromptState.shared.policy
         func isEligible(_ card: SessionListCard, dismissedRelease: String?) -> Bool {
             let state = SessionListCardState(card: card, defaults: .standard)
@@ -45,6 +50,7 @@ enum SessionListCard: CaseIterable {
                        tipDismissedRelease: defaults.string(forKey: TipJar.dismissedReleaseKey),
                        starDismissedRelease: defaults.string(forKey: GitHubStar.dismissedReleaseKey),
                        usageReportConsent: UsageReports.shared.consent,
+                       forcesUsageReportsCard: defaults.bool(forKey: UsageReports.Keys.debugForcesCard),
                        hasSharedImport: hasSharedImport)
     }
 

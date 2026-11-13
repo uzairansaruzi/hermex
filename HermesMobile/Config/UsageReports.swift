@@ -282,6 +282,8 @@ final class UsageReports {
         /// Last week's tallies, waiting for the next foreground to send them.
         static let endedWeek = "usageReports.endedWeek"
         static let lastAttemptedWeek = "usageReports.lastAttemptedWeek"
+        /// Debug builds: Settings › Developer shows the card past its guards until answered.
+        static let debugForcesCard = "usageReports.debugForcesCard"
     }
 
     private let defaults: UserDefaults
@@ -336,6 +338,15 @@ final class UsageReports {
         defaults.removeObject(forKey: Keys.week)
         defaults.removeObject(forKey: Keys.endedWeek)
     }
+
+    #if DEBUG
+    /// Settings › Developer's toggle: forgets the answer and the week so the card asks again.
+    func forgetAnswerForTesting() {
+        for key in [Keys.acceptedVersion, Keys.declinedVersion, Keys.week, Keys.endedWeek] {
+            defaults.removeObject(forKey: key)
+        }
+    }
+    #endif
 
     // MARK: - Tallies
 

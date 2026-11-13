@@ -203,11 +203,21 @@ private struct SupportDetailsSheet: View {
 #if DEBUG
 /// Maintainer tools for Debug builds. Not localized.
 struct SettingsDeveloperPage: View {
+    @AppStorage(UsageReports.Keys.debugForcesCard) private var forcesUsageReportsCard = false
+
     var body: some View {
         AppList {
             Section {
                 Button(String(localized: "Reset rating prompt state")) {
                     RatingPromptState.shared.reset()
+                }
+
+                // Turning it on forgets the usage reports answer, so the card asks again.
+                Toggle(isOn: Binding(get: { forcesUsageReportsCard }, set: { isOn in
+                    if isOn { UsageReports.shared.forgetAnswerForTesting() }
+                    forcesUsageReportsCard = isOn
+                })) {
+                    Text(verbatim: "Force usage reports card")
                 }
 
                 NavigationLink {

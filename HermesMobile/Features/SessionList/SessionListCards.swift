@@ -8,12 +8,13 @@ struct SessionListCardSlot: View {
     @AppStorage(GitHubStar.dismissedReleaseKey) private var starDismissedRelease: String?
     @AppStorage(UsageReports.Keys.acceptedVersion) private var acceptedUsageVersion: Int?
     @AppStorage(UsageReports.Keys.declinedVersion) private var declinedUsageVersion: Int?
+    @AppStorage(UsageReports.Keys.debugForcesCard) private var forcesUsageReportsCard = false
 
     var body: some View {
         let consent = UsageReportConsent(acceptedVersion: acceptedUsageVersion, declinedVersion: declinedUsageVersion)
         switch SessionListCard.current(completedResponses: completedResponses, tipDismissedRelease: tipDismissedRelease,
                                        starDismissedRelease: starDismissedRelease, usageReportConsent: consent,
-                                       hasSharedImport: hasSharedImport) {
+                                       forcesUsageReportsCard: forcesUsageReportsCard, hasSharedImport: hasSharedImport) {
         case .usageReports:
             if let question = consent.question() {
                 UsageReportsCard(question: question)
