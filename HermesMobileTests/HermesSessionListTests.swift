@@ -488,15 +488,23 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID["approve"], .approval)
     }
 
-    /// The Archived row counts the listed Profile's archived sessions (#1679); a list of every
-    /// Profile has no row, so no count.
+    /// The Archived row counts the listed Profile's archived sessions (#1679), and a slow count
+    /// holds no later list read back; a list of every Profile has no row, so no count.
     func testTheArchivedRowCountsTheListedProfile() async {
         let wire = HermesSessionListWire()
         wire.archivedTotals = ["default": 3, "research": 5]
+        wire.holdsArchivedCount = true
         let list = makeList(wire)
         defer { list.closeHermes() }
 
         await list.openHermes()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "new")])]
+        wire.emit("sessions.changed")
+        await waitUntil("the change read past the held count") { list.sessions.map(\.sessionId) == ["new"] }
+        XCTAssertNil(list.archivedCount)
+
+        wire.holdsArchivedCount = false
+        wire.release()
         await waitUntil("count read") { list.archivedCount != nil }
         XCTAssertEqual(list.archivedCount, 3)
 
@@ -1403,6 +1411,8 @@ import Observation
     var holdsActive = false
     /// While true, `approval.pending` waits for `release()`.
     var holdsApprovals = false
+    /// While true, the archived count waits for `release()`.
+    var holdsArchivedCount = false
     /// Runtime ids whose `approval.pending` fails.
     var failingApprovals: Set<String> = []
     var profiles = ["default", "research"]
@@ -1510,6 +1520,7 @@ import Observation
     }
 
     func archivedSessionCount(profile: String) async throws -> Int {
+        if holdsArchivedCount { await withCheckedContinuation { held.append($0) } }
         guard let total = archivedTotals[profile] else { throw BotFailure.unsupported }
         return total
     }

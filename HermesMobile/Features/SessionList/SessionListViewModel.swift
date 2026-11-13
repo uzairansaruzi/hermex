@@ -218,6 +218,7 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesReloadWanted = false
     @ObservationIgnored private var hermesDebounceTask: Task<Void, Never>?
     @ObservationIgnored private var hermesStatusTask: Task<Void, Never>?
+    @ObservationIgnored private var hermesArchivedCountTask: Task<Void, Never>?
     /// The reconnect after a lost socket, on backoff while online and held while offline.
     @ObservationIgnored private let hermesReconnect: BotReconnectSchedule?
     /// False once the host answered `session.active_list` "method not found".
@@ -1834,6 +1835,7 @@ final class SessionListViewModel {
         pauseHermes()
         hermesReconnect?.cancel()
         hermesReloadTask?.cancel(); hermesReloadTask = nil; hermesReloadWanted = false
+        hermesArchivedCountTask?.cancel(); hermesArchivedCountTask = nil
         hermesReadSerial += 1
         isLoading = false; isLoadingMoreSessions = false; isLoadingMoreScheduledSessions = false
         hermesWire?.close(); hermesWire = nil
@@ -1986,7 +1988,7 @@ final class SessionListViewModel {
             startHermesStatusRead(wire)
             if !hermesShowsAllProfiles {
                 await readHermesProjects(wire, readSerial: serial)
-                await readHermesArchivedCount(wire, readSerial: serial)
+                startHermesArchivedCountRead(wire, readSerial: serial)
             } else if archivedCount != nil {
                 archivedCount = nil
             }
@@ -2856,10 +2858,18 @@ final class SessionListViewModel {
 
     /// The listed Profile's archived session count, for its Archived row (#1679). It includes
     /// room sessions the Archived screen hides, so it can run slightly high. A failed read keeps
-    /// the last count, nil until one answers.
+    /// the last count, nil until one answers. It runs on its own, replacing any read in flight,
+    /// so a slow count never holds the next list read back.
+    private func startHermesArchivedCountRead(_ wire: any BotTransport, readSerial serial: Int) {
+        hermesArchivedCountTask?.cancel()
+        hermesArchivedCountTask = Task { [weak self] in
+            await self?.readHermesArchivedCount(wire, readSerial: serial)
+        }
+    }
+
     private func readHermesArchivedCount(_ wire: any BotTransport, readSerial serial: Int) async {
         guard let profile = hermesProfile,
-              let count = try? await wire.archivedSessionCount(profile: profile),
+              let count = try? await wire.archivedSessionCount(profile: profile), !Task.isCancelled,
               serial == hermesReadSerial, hermesWire === wire, hermesProfile == profile, !hermesShowsAllProfiles,
               count != archivedCount else { return }
         archivedCount = count
