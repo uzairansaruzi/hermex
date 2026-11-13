@@ -1680,21 +1680,6 @@ struct SessionExportShareItem: Identifiable {
     var id: String { fileURL.absoluteString }
 }
 
-/// Minimal `UIActivityViewController` wrapper — the app has no other share
-/// surface and `ShareLink` can't be presented programmatically after an async
-/// download finishes. Cleanup of the temp file happens in the sheet's
-/// `onDismiss`, which runs after the activity UI is gone in both the
-/// completed and cancelled paths.
-struct SessionExportShareSheet: UIViewControllerRepresentable {
-    let fileURL: URL
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
 private func hasServerSessionID(_ session: SessionSummary) -> Bool {
     guard let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines) else {
         return false

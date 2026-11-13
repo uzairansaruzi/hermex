@@ -259,7 +259,7 @@ struct SessionListView: View {
                 }
             }
             .sheet(item: $sessionExportShareItem) { item in
-                SessionExportShareSheet(fileURL: item.fileURL)
+                FileShareSheet(fileURL: item.fileURL)
                     .themedPageBackground()
                     .presentationDetents([.medium, .large])
                     .adaptiveFormPresentation()

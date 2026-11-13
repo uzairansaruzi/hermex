@@ -265,7 +265,7 @@ struct HermesSessionListView: View {
             .presentationDetents([.medium])
         }
         .sheet(item: $navigation.covers.exported) { item in
-            SessionExportShareSheet(fileURL: item.fileURL)
+            FileShareSheet(fileURL: item.fileURL)
                 .themedPageBackground()
                 .presentationDetents([.medium, .large])
                 .ignoresSafeArea()

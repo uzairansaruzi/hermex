@@ -201,7 +201,8 @@ struct ImageLightboxView<Actions: View>: View {
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, 88)
+            // Clears two trailing buttons and their spacing, so the title stays centered.
+            .padding(.horizontal, 104)
 
             HStack(spacing: 10) {
                 ImageLightboxActionButton(
@@ -289,8 +290,9 @@ private struct ImageLightboxStepAction: ViewModifier {
     }
 }
 
-/// A round glass button for the lightbox's floating chrome. Each action carries its own
-/// background, so a surface with no actions adds nothing to the bar.
+/// A round glass button for the lightbox's floating chrome, sized like the chat toolbar's
+/// 44pt buttons. Each action carries its own background, so a surface with no actions adds
+/// nothing to the bar.
 struct ImageLightboxActionButton: View {
     let systemImage: String
     let accessibilityLabel: String
@@ -312,10 +314,11 @@ struct ImageLightboxActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(AppFont.body(weight: .medium))
                 .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(.appMaterial(.ultraThinMaterial), in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+                .adaptiveGlass(isInteractive: true, fallbackMaterial: .ultraThinMaterial, in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)

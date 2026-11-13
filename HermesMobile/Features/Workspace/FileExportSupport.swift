@@ -21,6 +21,20 @@ struct ExportedFileDocument: FileDocument {
     }
 }
 
+/// The system share sheet for one local file, presented in a `.sheet`. `ShareLink` can't
+/// be presented programmatically after an async download finishes. The caller owns the
+/// file and deletes it once the sheet is gone, which is after the activity UI finishes
+/// in both the completed and cancelled paths.
+struct FileShareSheet: UIViewControllerRepresentable {
+    let fileURL: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 enum PhotoLibrarySaver {
     static func saveImageData(_ data: Data) async throws {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
