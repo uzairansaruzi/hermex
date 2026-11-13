@@ -652,7 +652,8 @@ import Observation
         chat.receive(event(2, "message.start"))
         let refused = await chat.model.runHermesSlashCommand("/workspace /Users/me/launch")
         XCTAssertEqual(refused, .notDelivered)
-        XCTAssertEqual(chat.model.sendErrorMessage, "Wait for the current response to finish before changing workspace.")
+        XCTAssertNotNil(chat.model.composerConfigurationErrorMessage)
+        XCTAssertEqual(chat.model.sendErrorMessage, chat.model.composerConfigurationErrorMessage)
         XCTAssertNil(chat.model.pendingHermesFolder)
         XCTAssertEqual(chat.writes("session.workspace.move"), [])
     }
