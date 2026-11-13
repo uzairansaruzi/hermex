@@ -13,7 +13,7 @@ enum AppConfig {
     /// The playbook a user's Hermes agent follows to triage a Hermex problem (#1477). Read from
     /// `master` by the agent, so triage improves without an app release.
     static let triagePlaybookURL = URL(staticString: "https://raw.githubusercontent.com/uzairansaruzi/hermex/master/.github/triage/PLAYBOOK.md")
-    static let privacyPolicyURL = URL(staticString: "https://www.uzairansar.com/hermes-mobile/privacy")
+    static let privacyPolicyURL = URL(staticString: "https://hermexapp.com/privacy")
     static let supportURL = URL(staticString: "https://www.uzairansar.com/hermes-mobile")
 }
 
