@@ -70,6 +70,23 @@ import XCTest
         XCTAssertEqual(page.modelGroups.flatMap(\.models).map(\.id), ["live-model"])
     }
 
+    func testLeavingThePageWhileItReconnectsSendsNoWrite() async {
+        let (page, wire) = makePage()
+        await page.load()
+        wire.onDisconnect?(BotFailure.transport)
+        let connecting = expectation(description: "reconnecting")
+        wire.holdConnect = { connecting.fulfill() }
+
+        let save = Task { await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai")) }
+        await fulfillment(of: [connecting])
+        page.close()
+        wire.releaseConnect()
+        let saved = await save.value
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(wire.configures.isEmpty)
+    }
+
     private func makePage() -> (HermesDefaultModel, DefaultModelWire) {
         let wire = DefaultModelWire()
         let connection = BotConnection(id: UUID(), name: "Mac", address: server, username: "u", password: "p", hermesVersion: nil)
@@ -84,8 +101,17 @@ import XCTest
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     private(set) var configures: [[String: BotJSON]] = []
+    /// When set, the next `connect()` calls it and waits for `releaseConnect()`.
+    var holdConnect: (() -> Void)?
+    private var heldConnect: CheckedContinuation<Void, Never>?
 
-    func connect() async throws {}
+    func connect() async throws {
+        guard let hold = holdConnect else { return }
+        holdConnect = nil
+        await withCheckedContinuation { heldConnect = $0; hold() }
+    }
+
+    func releaseConnect() { heldConnect?.resume(); heldConnect = nil }
     func close() {}
     func currentProfile() async throws -> String { "default" }
 
@@ -103,6 +129,7 @@ import XCTest
             return .object(["providers": .array([.object(["slug": .string("openai"), "name": .string("OpenAI"),
                                                           "models": .array([.string(model)])])])])
         case "profiles.configure":
+            try validateDispatch?()
             configures.append(params)
             if params["model"] == .string("guarded"), params["confirm_expensive_model"] != .bool(true) {
                 return .object(["ok": .bool(true), "applied": .object([:]),

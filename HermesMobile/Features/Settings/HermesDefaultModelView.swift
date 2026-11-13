@@ -34,7 +34,9 @@ import SwiftUI
     private let connection: BotConnection
     private let preferences: UserDefaults
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
-    @ObservationIgnored private var wire: (any BotTransport)?
+    /// This page's client on the socket and its connect, held from the start so `close()` can end
+    /// a client that is still connecting.
+    @ObservationIgnored private var wire: (client: any BotTransport, ready: Task<Void, Error>)?
     /// Bumped by each read and by `close()`, so only the latest read or save applies.
     @ObservationIgnored private var serial = 0
 
@@ -78,7 +80,7 @@ import SwiftUI
         changes.model = HermesCall.Model(id: option.id, provider: provider)
         changes.confirmExpensiveModel = confirmed
         do {
-            let reply = try await connectedWire().call(.profilesConfigure(changes))
+            let reply = try await connectedWire().call(.profilesConfigure(changes), validateDispatch: validate(owner))
             guard owner == serial else { return false }
             saving = nil
             if reply["applied"]["model"].flag == true {
@@ -102,10 +104,15 @@ import SwiftUI
     /// Leaves the Profile on its current model.
     func decline() { confirmation = nil }
 
-    /// Ends this page's calls; the shared socket stays for the server's other screens.
+    /// True while the page holds a client: from its first call until `close()` or a lost socket.
+    var holdsConnection: Bool { wire != nil }
+
+    /// Ends this page's calls, a write not yet sent included; the shared socket stays for the
+    /// server's other screens. Also called on backgrounding, where the app ends the socket
+    /// without telling its screens.
     func close() {
         serial += 1
-        wire?.close(); wire = nil
+        wire?.client.close(); wire = nil
         saving = nil; confirmation = nil
     }
 
@@ -140,31 +147,48 @@ import SwiftUI
     /// A client the socket dropped is replaced on the next call.
     private func dropLostWire(_ error: Error) {
         guard let failure = error as? BotFailure, [.stale, .transport].contains(failure) else { return }
-        wire?.close(); wire = nil
+        wire?.client.close(); wire = nil
     }
 
-    /// This page's client on the socket, connecting it first. A client another call connected
-    /// meanwhile wins.
+    /// Refuses a call at the socket write once a later read, `close()` or backgrounding owns the page.
+    private func validate(_ owner: Int) -> () throws -> Void {
+        { [weak self] in guard self?.serial == owner else { throw BotFailure.stale } }
+    }
+
+    /// This page's client on the socket, once connected; calls made while it connects share one
+    /// connect. Throws `.stale` when `close()` ended it meanwhile.
     private func connectedWire() async throws -> any BotTransport {
-        if let wire { return wire }
+        let wire = self.wire ?? openWire()
+        do {
+            try await wire.ready.value
+        } catch {
+            if self.wire?.client === wire.client { self.wire = nil }
+            wire.client.close()
+            throw error
+        }
+        guard self.wire?.client === wire.client else {
+            wire.client.close()
+            throw BotFailure.stale
+        }
+        return wire.client
+    }
+
+    private func openWire() -> (client: any BotTransport, ready: Task<Void, Error>) {
         let client = makeWire(connection)
         client.onDisconnect = { [weak self, weak client] _ in
-            guard let self, let client, self.wire === client else { return }
+            guard let self, let client, self.wire?.client === client else { return }
             self.wire = nil
         }
-        try await client.connect()
-        if let wire {
-            client.close()
-            return wire
-        }
-        wire = client
-        return client
+        let wire = (client: client, ready: Task { try await client.connect() })
+        self.wire = wire
+        return wire
     }
 }
 
 /// A Hermes server's Default Model page (#1670), opened from its Settings page: one Profile's
 /// model, the one new sessions in that Profile start on, with a menu of the host's other Profiles.
 struct HermesDefaultModelView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var model: HermesDefaultModel
     @State private var showsPicker = false
     /// Whether the pick out at the host came from the custom entry, whose button shows the spinner.
@@ -187,6 +211,16 @@ struct HermesDefaultModelView: View {
         .task { await model.load() }
         .refreshable { await model.load() }
         .onDisappear { model.close() }
+        .onChange(of: scenePhase) {
+            // The app ends the socket in the background without telling this page, so drop its
+            // client there and read again on return. Control Center and banners (`.inactive`)
+            // keep it. A write out when the app left is not resent; the read shows what landed.
+            if scenePhase == .background {
+                model.close()
+            } else if scenePhase == .active, !model.holdsConnection {
+                Task { await model.load() }
+            }
+        }
         .sheet(isPresented: $showsPicker) { picker }
     }
 
