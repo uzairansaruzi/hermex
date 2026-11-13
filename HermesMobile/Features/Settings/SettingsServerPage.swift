@@ -136,8 +136,9 @@ struct SettingsServerPage: View {
     }
 
     /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
-    /// and the host's update standing (#1075), a Webapp's unserved Profiles (#1611), then its archived sessions, the home's Main Page
-    /// switches (#1585), a Profile's default model (#1670), API keys (#1318) and plugins (#1582), and its offline data.
+    /// and the host's update standing (#1075), a Webapp's unserved Profiles (#1611), then its archived
+    /// sessions and which sessions it lists (#1674), the home's Main Page switches (#1585), a Profile's
+    /// default model (#1670), API keys (#1318) and plugins (#1582), and its offline data.
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
         Section {
@@ -184,6 +185,7 @@ struct SettingsServerPage: View {
 
                 SessionRowDisplayToggles()
                 CronSessionsToggle()
+                HermesCliSessionsToggle(server: server)
             }
         }
 
