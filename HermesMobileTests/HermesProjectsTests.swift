@@ -366,10 +366,12 @@ import Observation
         }
     }
 
+    /// The offsets of the list's own page reads: not its scheduled pages or its Archived count.
     private func pageOffsets() -> [Int] {
         HermesHostFixture.requests.filter { $0.url?.path == "/api/sessions" && HermesHostFixture.emptyScheduledPage($0) == nil }.compactMap { request in
-            request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems?
-                .first { $0.name == "offset" }?.value.flatMap(Int.init)
+            let items = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems
+            guard items?.contains(URLQueryItem(name: "archived", value: "only")) != true else { return nil }
+            return items?.first { $0.name == "offset" }?.value.flatMap(Int.init)
         }
     }
 
