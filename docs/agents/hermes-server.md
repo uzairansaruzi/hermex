@@ -4,9 +4,8 @@ How Hermex reaches a Hermes host: the sign-in, the one shared connection and its
 socket, the reconnect contract, feature detection and the compatibility pin. Every Hermes
 surface goes through this, a webui server's optional Bots connection included.
 `bots.md` owns what the screens do on top of it (chats, the inbox, rooms, Tasks,
-Workspace, push provisioning); `hermes-feature-index.md` tracks which upstream methods and
-gaps Hermex covers. AGENTS.md (Working with the server) owns the contract-verification
-order and how to advance the pin.
+Workspace, push provisioning). AGENTS.md (Working with the server) owns the
+contract-verification order and how to advance the pin.
 
 ## Sign-in and host identity
 
