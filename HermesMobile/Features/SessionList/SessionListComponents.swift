@@ -181,8 +181,8 @@ struct SessionListRowActions {
 }
 
 /// Which row actions a session offers. A Hermes server's row (#1046, #1048) offers pin,
-/// rename, archive, delete, Export as JSON, Move to Project (#1052) and Duplicate (#1051); the
-/// host has no HTML export.
+/// rename, archive, delete, Export as JSON, Copy Deeplink (#1675), Move to Project (#1052) and
+/// Duplicate (#1051); the host has no HTML export.
 enum SessionRowActionPolicy {
     /// Pin, rename, move, archive and delete. A bot's Bot Chat, which a Hermes search lists
     /// (#1053), belongs to its bot: pinning would also unhide it, and renaming orphans it.
@@ -230,19 +230,24 @@ enum SessionRowActionPolicy {
         !isViewingCachedData && hasServerSessionID(session)
     }
 
+    /// Copy Deeplink's link. A Hermes row's names `server` and its Profile, so it opens there,
+    /// switching servers first (#1675); a webui row's is the legacy `session?id=`. None for a
+    /// Bot Chat, whose row opens its bot.
     static func deepLinkURL(
         for session: SessionSummary,
+        server: URL,
         isViewingCachedData: Bool,
         isMutating: Bool
     ) -> URL? {
-        guard !isMutating, session.hermes == nil,
+        guard !isMutating, session.hermes?.isBotChat != true,
               canExport(session, isViewingCachedData: isViewingCachedData),
               let sessionID = session.sessionId
         else {
             return nil
         }
 
-        return HermesDeepLink.sessionURL(sessionID: sessionID)
+        guard session.hermes != nil else { return HermesDeepLink.sessionURL(sessionID: sessionID) }
+        return HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: session.profile, key: sessionID))
     }
 
 }
@@ -1081,6 +1086,7 @@ struct SessionInteractiveRow: View {
         .contextMenu {
             SessionRowContextMenu(
                 session: session,
+                server: viewModel.server,
                 projects: viewModel.projects,
                 isViewingCachedData: viewModel.isViewingCachedData,
                 isRenamingSession: viewModel.isRenamingSession,
@@ -1347,6 +1353,8 @@ struct SessionRowContextMenu: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     let session: SessionSummary
+    /// The list's server, which a Hermes row's Copy Deeplink names.
+    let server: URL
     let projects: [ProjectSummary]
     let isViewingCachedData: Bool
     let isRenamingSession: Bool
@@ -1464,6 +1472,7 @@ struct SessionRowContextMenu: View {
 
             if let deepLinkURL = SessionRowActionPolicy.deepLinkURL(
                 for: session,
+                server: server,
                 isViewingCachedData: isViewingCachedData,
                 isMutating: isMutating
             ) {

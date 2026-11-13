@@ -2816,21 +2816,28 @@ final class SessionListMutationTests: XCTestCase {
     /// A Hermes row (#1048) offers pin, rename, archive, delete, Export as JSON, Move to Project
     /// (#1052) and Duplicate (#1051), but a bot's Bot Chat no Duplicate; the host has no HTML
     /// export, and Hermes deep links are #706.
-    func testAHermesRowOffersItsActionsButNotHTMLOrDeeplink() {
+    /// A Hermes row's Copy Deeplink names its server and Profile, so the link opens that session
+    /// there (#1675). A Bot Chat gets none: its row opens its bot.
+    func testAHermesRowOffersItsActionsAndAServerDeeplinkButNotHTML() throws {
+        let server = try XCTUnwrap(URL(string: "https://hermes.example.com"))
         let row = HermesSessionRow(id: "20261005_101500_a1b2c3").summary(in: "default")
+        let botChat = HermesSessionRow(id: "bot", title: HermesCall.botChatTitle, hidden: true).summary(in: "default")
 
         XCTAssertTrue(SessionRowActionPolicy.offersMutationActions(for: row))
         XCTAssertTrue(SessionRowActionPolicy.canDuplicate(row))
-        XCTAssertFalse(SessionRowActionPolicy.canDuplicate(
-            HermesSessionRow(id: "bot", title: HermesCall.botChatTitle, hidden: true).summary(in: "default")))
+        XCTAssertFalse(SessionRowActionPolicy.canDuplicate(botChat))
         XCTAssertTrue(SessionRowActionPolicy.offersProjectMove(for: row))
         XCTAssertEqual(SessionRowActionPolicy.exportFormats(for: row), [.json])
-        XCTAssertNil(SessionRowActionPolicy.deepLinkURL(for: row, isViewingCachedData: false, isMutating: false))
+        let link = try XCTUnwrap(SessionRowActionPolicy.deepLinkURL(
+            for: row, server: server, isViewingCachedData: false, isMutating: false))
+        XCTAssertEqual(HermesSessionDestination(url: link),
+                       HermesSessionDestination(server: server, profile: "default", key: "20261005_101500_a1b2c3"))
+        XCTAssertNil(SessionRowActionPolicy.deepLinkURL(
+            for: botChat, server: server, isViewingCachedData: false, isMutating: false))
 
         let webui = SessionSummary(sessionId: "webui")
         XCTAssertTrue(SessionRowActionPolicy.offersProjectMove(for: webui))
         XCTAssertEqual(SessionRowActionPolicy.exportFormats(for: webui), [.html, .json])
-        XCTAssertNotNil(SessionRowActionPolicy.deepLinkURL(for: webui, isViewingCachedData: false, isMutating: false))
     }
 
     /// A Hermes session always works in some folder, so its Move menu has no "No project", and
@@ -2858,11 +2865,13 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     func testCopyDeepLinkUsesExportAvailabilityRules() throws {
+        let server = try XCTUnwrap(URL(string: "https://webui.example.com"))
         let session = SessionSummary(sessionId: "session & /?=✓", readOnly: true)
 
         let url = try XCTUnwrap(
             SessionRowActionPolicy.deepLinkURL(
                 for: session,
+                server: server,
                 isViewingCachedData: false,
                 isMutating: false
             )
@@ -2871,6 +2880,7 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertNil(
             SessionRowActionPolicy.deepLinkURL(
                 for: session,
+                server: server,
                 isViewingCachedData: true,
                 isMutating: false
             )
@@ -2878,6 +2888,7 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertNil(
             SessionRowActionPolicy.deepLinkURL(
                 for: session,
+                server: server,
                 isViewingCachedData: false,
                 isMutating: true
             )
@@ -2885,6 +2896,7 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertNil(
             SessionRowActionPolicy.deepLinkURL(
                 for: SessionSummary(sessionId: nil),
+                server: server,
                 isViewingCachedData: false,
                 isMutating: false
             )
