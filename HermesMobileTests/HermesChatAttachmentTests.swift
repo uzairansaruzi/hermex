@@ -801,6 +801,30 @@ import UIKit
                                URLQueryItem(name: "profile", value: "default")])
     }
 
+    /// A reply's relative Markdown image (#1679) resolves against the chat's folder: its session
+    /// row's until `session.info` names the live one, whose file the thumbnail then downloads on
+    /// the session.
+    func testARelativeImageLoadsFromTheChatsFolder() async throws {
+        let chat = await openChat()
+        XCTAssertEqual(chat.model.transcriptWorkspaceRoot(listedFolder: "/work/listed"), "/work/listed")
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        var query: [URLQueryItem]?
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/fs/download" else { return nil }
+            query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
+            return .json(200, .string("png"))
+        }
+
+        let segments = TranscriptMediaParser.segments(
+            in: "![chart](out/chart.png)", workspaceRoot: chat.model.transcriptWorkspaceRoot(listedFolder: "/work/listed"),
+            resolvesBarePaths: true)
+        guard case let .media(reference)? = segments.first else { return XCTFail("no inline image: \(segments)") }
+        _ = await chat.model.transcriptMediaThumbnailData(for: reference)
+
+        XCTAssertEqual(query?.first { $0.name == "path" }?.value, "/work/app/out/chart.png")
+        XCTAssertEqual(query?.first { $0.name == "session_id" }?.value, "tip")
+    }
+
     /// The chat owns its repository's Git writes (#1115): none goes out while a turn runs, and a
     /// client made for a folder the chat has since left writes nothing at all.
     func testGitWritesWaitForTheTurnAndStopAtAFolderMove() async throws {

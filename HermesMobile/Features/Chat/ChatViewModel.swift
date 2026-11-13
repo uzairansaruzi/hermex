@@ -1963,6 +1963,14 @@ final class ChatViewModel {
     /// names it.
     var hermesWorkspace: HermesWorkspaceContext? { hermesTurn?.workspace }
 
+    /// The folder a Hermes reply's relative Markdown image paths resolve against (#1679): its live
+    /// folder, else `listedFolder`, its session row's, so a cached transcript renders before the
+    /// host names one. Nil on webui, whose chat resolves them against its session's workspace.
+    func transcriptWorkspaceRoot(listedFolder: String?) -> String? {
+        guard let hermesTurn else { return nil }
+        return hermesTurn.workspace?.cwd ?? listedFolder
+    }
+
     /// The HEAD a Hermes chat's latest turn's direct send read before its prompt went out (#1392),
     /// which its File changes card reads its range since; nil on webui and for any other turn.
     var hermesTurnBase: GitTurnBase? { hermesTurn?.latestTurnBase }

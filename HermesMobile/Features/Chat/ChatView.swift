@@ -2560,7 +2560,8 @@ struct ChatView: View {
         }
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .transcriptLinks(perform: handleTranscriptLink)
-        .environment(\.chatWorkspaceRoot, session.workspace)
+        .environment(\.chatWorkspaceRoot, viewModel.transcriptWorkspaceRoot(listedFolder: hermesRowWorkspace) ?? session.workspace)
+        .environment(\.resolvesBareMediaPaths, isHermesSession)
         .environment(\.previewsHermesDocuments, isHermesSession)
         .transcriptHTMLReports(loadKey: viewModel.attachmentLoadKey, load: isHermesSession ? { [viewModel] reference in
             try await viewModel.transcriptHTMLReportData(for: reference)
