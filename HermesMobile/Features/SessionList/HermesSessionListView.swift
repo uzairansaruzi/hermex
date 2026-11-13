@@ -550,9 +550,11 @@ struct HermesSessionListView: View {
             } description: {
                 Text("Choose a session from the sidebar or start a new chat.")
             } actions: {
+                // Waits for the live list, like a Shortcut's new chat (#1180), so it can't open
+                // a chat while the list is offline or reconnecting.
                 Button("New Chat", action: openNewSession)
                     .buttonStyle(.appProminent)
-                    .disabled(!canOpenNewSession)
+                    .disabled(!canOpenNewSession || !viewModel.isHermesLive)
             }
         }
     }
