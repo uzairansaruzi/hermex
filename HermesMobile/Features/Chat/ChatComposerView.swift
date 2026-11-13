@@ -612,141 +612,144 @@ struct MessageComposerView: View {
         }
     }
 
+    // No `GlassEffectContainer` around the composer: on device, after the card collapsed
+    // with the send, it kept taking taps where the card had been, above the pill, and the
+    // scroll-to-bottom arrow there stopped working.
     private var composerWithLifecycle: some View {
-        AdaptiveGlassContainer(spacing: 6) {
-            VStack(spacing: 6) {
-                if voiceNoteRecorder.isRecording {
-                    ComposerVoiceRecordingBar(
-                        elapsed: voiceNoteRecorder.elapsed,
-                        isCancelArmed: voiceNoteCancelArmed,
-                        isHeld: voiceNoteIsHeld,
-                        onStop: { finishVoiceNote(translationHeight: 0) },
-                        onCancel: cancelVoiceNote
+        VStack(spacing: 6) {
+            if voiceNoteRecorder.isRecording {
+                ComposerVoiceRecordingBar(
+                    elapsed: voiceNoteRecorder.elapsed,
+                    isCancelArmed: voiceNoteCancelArmed,
+                    isHeld: voiceNoteIsHeld,
+                    onStop: { finishVoiceNote(translationHeight: 0) },
+                    onCancel: cancelVoiceNote
+                )
+                .padding(.horizontal, 16)
+            } else if let voiceNoteStatus {
+                ComposerVoiceStatusView(status: voiceNoteStatus)
+            } else if let voiceStatus {
+                ComposerVoiceStatusView(status: voiceStatus, onDismiss: voiceInput.dismissError)
+            } else if let composerStatus {
+                ComposerStatusView(
+                    text: composerStatus.text,
+                    isError: composerStatus.isError,
+                    isDismissible: composerStatus.isDismissible,
+                    onRetry: composerStatus.onRetry,
+                    fixPrompt: composerStatus.fixPrompt,
+                    onCancel: composerStatus.onCancel,
+                    onFix: composerStatus.onFix,
+                    onDismiss: onDismissUploadAttachmentError
+                )
+            }
+
+            Group {
+                if let fileTrigger, let botMentions {
+                    botAutocomplete(fileTrigger, mentions: botMentions)
+                } else if let fileTrigger, let searchFilePaths {
+                    FilePathAutocompleteView(
+                        query: fileTrigger.query,
+                        search: filePathSearch,
+                        load: searchFilePaths,
+                        onSelect: applyFileCompletion
                     )
-                    .padding(.horizontal, 16)
-                } else if let voiceNoteStatus {
-                    ComposerVoiceStatusView(status: voiceNoteStatus)
-                } else if let voiceStatus {
-                    ComposerVoiceStatusView(status: voiceStatus, onDismiss: voiceInput.dismissError)
-                } else if let composerStatus {
-                    ComposerStatusView(
-                        text: composerStatus.text,
-                        isError: composerStatus.isError,
-                        isDismissible: composerStatus.isDismissible,
-                        onRetry: composerStatus.onRetry,
-                        fixPrompt: composerStatus.fixPrompt,
-                        onCancel: composerStatus.onCancel,
-                        onFix: composerStatus.onFix,
-                        onDismiss: onDismissUploadAttachmentError
-                    )
-                }
-
-                Group {
-                    if let fileTrigger, let botMentions {
-                        botAutocomplete(fileTrigger, mentions: botMentions)
-                    } else if let fileTrigger, let searchFilePaths {
-                        FilePathAutocompleteView(
-                            query: fileTrigger.query,
-                            search: filePathSearch,
-                            load: searchFilePaths,
-                            onSelect: applyFileCompletion
-                        )
-                        .padding(.horizontal)
-                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-                    } else if let slashQuery {
-                        SlashCommandAutocompleteView(
-                            query: slashQuery,
-                            selectedModelID: selectedModelID,
-                            modelGroups: modelGroups,
-                            workspaceRoots: workspaceRoots,
-                            workspaceSuggestions: workspaceSuggestions,
-                            personalitySuggestions: personalitySuggestions,
-                            skillSuggestions: skillSuggestions,
-                            agentCommands: agentCommands,
-                            skillsOnly: showsSlashAutocompleteSkillsOnly,
-                            selectedReasoningEffort: selectedReasoningEffort,
-                            scope: slashScope,
-                            reasoningLevels: slashScope.isHermes
-                                ? supportedReasoningEfforts ?? [] : SlashCommandCatalog.reasoningLevels,
-                            hostCompletion: hostSlashCompletion,
-                            onSelectCommand: { command in
-                                pickCompletion("/\(command.name) ")
-                            },
-                            onSelectSkillCommand: { skill in
-                                pickCompletion("/\(skill.slashName) ")
-                            },
-                            onSelectAgentCommand: { command in
-                                pickCompletion("/\(command.name) ")
-                            },
-                            onSelectSkillSubArg: { skill in
-                                pickCompletion("/skills \(skill.slashName) ")
-                            },
-                            onSelectSubArg: { subArg in
-                                pickCompletion("/\(parsedSlashQuery.commandName) \(subArg)")
-                            },
-                            onSelectHostArgument: { item in
-                                if let completion = hostSlashCompletion, let trigger = slashTrigger,
-                                   completion.applies(to: trigger.text) {
-                                    pickCompletion(completion.applying(item))
-                                }
-                            }
-                        )
-                        .padding(.horizontal)
-                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-                    }
-                }
-                .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
-                .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
-                // The panel takes only the room the composer leaves (`composerPanelHeight`).
-                .layoutPriority(-1)
-
-                // Back when the keyboard goes and the viewport has room again.
-                if showsNewChatControls, showsConfigurationControls, !viewportIsShort {
-                    newChatControlsRow
-                        .padding(.horizontal)
-                        .transition(.opacity)
-                }
-
-                composerSurface
                     .padding(.horizontal)
-
-                if isExpanded {
-                    Group {
-                        if isDictating {
-                            dictationRow.transition(.opacity)
-                        } else {
-                            // Waits for the card to rise past where the row lands.
-                            toolbarRow.transition(.asymmetric(
-                                insertion: .opacity.animation(reduceMotion ? nil : .easeIn(duration: 0.12).delay(0.14)),
-                                removal: .opacity
-                            ))
+                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                } else if let slashQuery {
+                    SlashCommandAutocompleteView(
+                        query: slashQuery,
+                        selectedModelID: selectedModelID,
+                        modelGroups: modelGroups,
+                        workspaceRoots: workspaceRoots,
+                        workspaceSuggestions: workspaceSuggestions,
+                        personalitySuggestions: personalitySuggestions,
+                        skillSuggestions: skillSuggestions,
+                        agentCommands: agentCommands,
+                        skillsOnly: showsSlashAutocompleteSkillsOnly,
+                        selectedReasoningEffort: selectedReasoningEffort,
+                        scope: slashScope,
+                        reasoningLevels: slashScope.isHermes
+                            ? supportedReasoningEfforts ?? [] : SlashCommandCatalog.reasoningLevels,
+                        hostCompletion: hostSlashCompletion,
+                        onSelectCommand: { command in
+                            pickCompletion("/\(command.name) ")
+                        },
+                        onSelectSkillCommand: { skill in
+                            pickCompletion("/\(skill.slashName) ")
+                        },
+                        onSelectAgentCommand: { command in
+                            pickCompletion("/\(command.name) ")
+                        },
+                        onSelectSkillSubArg: { skill in
+                            pickCompletion("/skills \(skill.slashName) ")
+                        },
+                        onSelectSubArg: { subArg in
+                            pickCompletion("/\(parsedSlashQuery.commandName) \(subArg)")
+                        },
+                        onSelectHostArgument: { item in
+                            if let completion = hostSlashCompletion, let trigger = slashTrigger,
+                               completion.applies(to: trigger.text) {
+                                pickCompletion(completion.applying(item))
+                            }
                         }
-                    }
-                        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isDictating)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                        .frame(maxWidth: .infinity)
-                        // Solid chat background behind the controls: the card
-                        // above is glass on purpose, but transcript text
-                        // scrolling under the row made the pills unreadable.
-                        // Bleeds up into the gap under the card and down past
-                        // the keyboard gap and the bottom safe area, so no strip
-                        // of transcript shows around the row.
-                        .background(
-                            Color(.appCanvas)
-                                .padding(.top, -10)
-                                .padding(.bottom, -12)
-                                .ignoresSafeArea(edges: .bottom)
-                        )
-                        .transition(.opacity)
+                    )
+                    .padding(.horizontal)
+                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
             }
-            // Focus flips arrive from UIKit outside any withAnimation, so the
-            // morph and the row's insertion take their animation from here: the
-            // keyboard's curve going up, so they move as one.
-            .animation(isExpanded ? ChatMotion.keyboard(reduceMotion: reduceMotion)
-                : ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
+            // The panel takes only the room the composer leaves (`composerPanelHeight`).
+            .layoutPriority(-1)
+
+            // Back when the keyboard goes and the viewport has room again.
+            if showsNewChatControls, showsConfigurationControls, !viewportIsShort {
+                newChatControlsRow
+                    .padding(.horizontal)
+                    .transition(.opacity)
+            }
+
+            composerSurface
+                .padding(.horizontal)
+                // Above the toolbar row, whose solid background bleeds up under the card.
+                .zIndex(1)
+
+            if isExpanded {
+                Group {
+                    if isDictating {
+                        dictationRow.transition(.opacity)
+                    } else {
+                        // Waits for the card to rise past where the row lands.
+                        toolbarRow.transition(.asymmetric(
+                            insertion: .opacity.animation(reduceMotion ? nil : .easeIn(duration: 0.12).delay(0.14)),
+                            removal: .opacity
+                        ))
+                    }
+                }
+                    .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isDictating)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    .frame(maxWidth: .infinity)
+                    // Solid chat background behind the controls: the card
+                    // above is glass on purpose, but transcript text
+                    // scrolling under the row made the pills unreadable.
+                    // Bleeds up into the gap under the card and down past
+                    // the keyboard gap and the bottom safe area, so no strip
+                    // of transcript shows around the row.
+                    .background(
+                        Color(.appCanvas)
+                            .padding(.top, -10)
+                            .padding(.bottom, -12)
+                            .ignoresSafeArea(edges: .bottom)
+                    )
+                    .transition(.opacity)
+            }
         }
+        // Focus flips arrive from UIKit outside any withAnimation, so the
+        // morph and the row's insertion take their animation from here: the
+        // keyboard's curve going up, so they move as one.
+        .animation(isExpanded ? ChatMotion.keyboard(reduceMotion: reduceMotion)
+            : ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
         .background(
             GeometryReader { proxy in
                 Color.clear

@@ -289,7 +289,10 @@ struct ChatTranscriptView: View {
                         ChatScrollToBottomButton(
                             bottomPadding: scrollToBottomButtonBottomPadding,
                             onTap: {
-                                releasingHold { onScrollToBottom(proxy) }
+                                releasingHold {
+                                    scrollPositionController.stopMomentum()
+                                    onScrollToBottom(proxy)
+                                }
                             }
                         )
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))

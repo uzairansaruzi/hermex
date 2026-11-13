@@ -739,6 +739,12 @@ final class ChatScrollPositionController {
         cancelPreservation()
     }
 
+    /// Ends a fling still coasting, so a deliberate jump (the scroll-to-bottom
+    /// arrow) is not overridden by leftover momentum.
+    func stopMomentum() {
+        scrollView?.stopScrollingAndZooming()
+    }
+
     private func scheduleQuietRelease() {
         quietReleaseTask?.cancel()
         quietReleaseTask = Task { @MainActor [weak self] in
