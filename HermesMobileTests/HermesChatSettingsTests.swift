@@ -121,7 +121,7 @@ import Observation
         chat.host.next("session.mutate", .init(result: .object(["session_id": .string("tip"), "operation": .string("model"),
                                                                 "status": .string("deferred"), "revision": .number(2)])))
         _ = await chat.model.selectComposerModel(Self.opus)
-        XCTAssertEqual(chat.model.composerConfigurationNotice, "Switches to claude-opus after this response.")
+        XCTAssertEqual(chat.model.composerConfigurationNotice, "Switches to Opus after this response.")
         XCTAssertNil(controls.confirmation)
 
         chat.turn.settings.disconnect()
@@ -187,7 +187,7 @@ import Observation
 
         _ = await chat.model.selectComposerModel(Self.opus)
         XCTAssertEqual(chat.model.selectedModelID, "claude-opus")
-        XCTAssertEqual(chat.model.composerConfigurationNotice, "Switches to claude-opus after this response.")
+        XCTAssertEqual(chat.model.composerConfigurationNotice, "Switches to Opus after this response.")
 
         chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
         chat.receive(event(1, "session.info", ["running": .bool(false), "model": .string("claude-opus")]))

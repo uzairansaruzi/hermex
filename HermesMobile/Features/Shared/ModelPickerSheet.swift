@@ -465,13 +465,14 @@ struct ModelPickerSheet: View {
     private func modelOptionRowContent(_ option: ModelCatalogOption) -> some View {
         let selected = isSelected(option)
         let inFlight = Self.isInFlight(option, inFlightKey: inFlightKey)
+        let displayLabel = ModelDisplayNames.displayLabel(for: option.displayName)
 
         return HStack(spacing: 12) {
             Button {
                 commit(option)
             } label: {
                 HStack(spacing: 12) {
-                    Text(option.displayName)
+                    Text(verbatim: displayLabel)
                         .font(AppFont.body())
                         .lineLimit(2)
 
@@ -492,15 +493,15 @@ struct ModelPickerSheet: View {
             }
             .buttonStyle(.plain)
             .disabled(isSelectionDisabled)
-            .accessibilityLabel(Text(verbatim: option.displayName))
+            .accessibilityLabel(Text(verbatim: displayLabel))
             .accessibilityAddTraits(selected ? .isSelected : [])
 
             if configuration.showsModelFavoriteStars {
                 favoriteStar(
                     isFavorite: isFavorite(option),
                     isInverted: selected,
-                    removeLabel: Text("Remove \(option.displayName) from favorites"),
-                    addLabel: Text("Add \(option.displayName) to favorites")
+                    removeLabel: Text("Remove \(displayLabel) from favorites"),
+                    addLabel: Text("Add \(displayLabel) to favorites")
                 ) {
                     onToggleFavorite(option)
                 }
