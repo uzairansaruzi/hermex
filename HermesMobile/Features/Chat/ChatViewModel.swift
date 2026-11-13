@@ -949,6 +949,7 @@ final class ChatViewModel {
         turn.attach(delegate: self)
         self.pendingActionCoordinator.delegate = self
         self.attachmentCoordinator.delegate = self
+        hermesTurn?.slashCommands.onSkills = { [weak self] in self?.applySkillSlashSuggestions($0) }
     }
 
     deinit {

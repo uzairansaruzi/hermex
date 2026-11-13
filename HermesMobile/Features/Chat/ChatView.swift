@@ -655,7 +655,8 @@ struct ChatView: View {
             workspaceManagementServer: isHermesSession ? nil : server,
             personalitySuggestions: viewModel.personalitySuggestions,
             skillSuggestions: viewModel.composerSkillSuggestions,
-            hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
+            // A Hermes chat's skills come with the catalog it reads on connect.
+            hasLoadedSkillSuggestions: isHermesSession || viewModel.hasLoadedSkillSlashSuggestions,
             agentCommands: viewModel.composerAgentCommands,
             profileOptions: viewModel.composerProfileOptions,
             isSingleProfileMode: viewModel.composerIsSingleProfileMode,
