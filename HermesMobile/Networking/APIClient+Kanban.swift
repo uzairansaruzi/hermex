@@ -12,6 +12,9 @@ enum KanbanBackend: Sendable {
 /// `HermesKanbanClient` a Hermes host (#1043, #1044); a write a client does not implement throws.
 protocol KanbanDataClient: Sendable {
     var backend: KanbanBackend { get }
+    /// Whether the Filters offer Only Mine: webui filters by its active chat Profile, and a
+    /// Hermes host by the Profile the Sessions side lists, when one is known (#1677).
+    var offersOnlyMine: Bool { get }
     /// The server's live-update channel: webui's SSE stream, or a Hermes host's Kanban socket.
     @MainActor func makeEventStream(server: URL) -> any KanbanEventStreamingClient
     func kanbanConfiguration() async throws -> KanbanConfiguration
@@ -40,6 +43,7 @@ protocol KanbanDataClient: Sendable {
 
 extension KanbanDataClient {
     var backend: KanbanBackend { .webui }
+    var offersOnlyMine: Bool { true }
 
     @MainActor func makeEventStream(server: URL) -> any KanbanEventStreamingClient {
         KanbanEventStreamClient(server: server)
@@ -372,6 +376,9 @@ private struct KanbanBulkActionBody: Encodable {
         switch request.action {
         case let .changeStatus(status):
             try container.encode(status, forKey: .status)
+        // Never built for webui, which completes any Card without a note.
+        case .complete:
+            try container.encode("done", forKey: .status)
         case let .assignProfile(profile):
             try container.encode(profile ?? "", forKey: .assignee)
         case let .setPriority(priority):

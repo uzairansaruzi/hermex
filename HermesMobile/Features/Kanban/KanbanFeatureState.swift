@@ -205,6 +205,8 @@ enum KanbanCardMutationPhase: Equatable, Sendable {
 
 enum KanbanCardMutationKind: Equatable, Sendable {
     case status(String)
+    /// Done, with the note a Hermes host needs outside Review (#1677).
+    case complete(String?)
     case block(String?)
     case unblock
     case addPrerequisite(String)
@@ -658,9 +660,9 @@ final class KanbanFeatureState {
         return result
     }
 
-    /// Only Mine filters by the webui's active chat Profile. A Hermes host's Kanban has no
-    /// such Profile, so it does not offer the filter.
-    var offersOnlyMine: Bool { backend == .webui }
+    /// Only Mine filters by webui's active chat Profile, or on a Hermes host by the Profile
+    /// the Sessions side lists, offered only when one is known (#1677).
+    var offersOnlyMine: Bool { client.offersOnlyMine }
 
     var profileOptions: [String] {
         sortedUnique(
@@ -727,7 +729,7 @@ final class KanbanFeatureState {
     }
 
     /// The ordinary Statuses a Card can move to: Triage, To Do and Ready, or on a Hermes host
-    /// Triage and Ready (#1044). Scheduled and Review are never destinations.
+    /// Triage and Ready (#1044). Only a Bulk Action moves Cards into Scheduled or Review.
     func moveDestinations(for card: KanbanCard) -> [String] {
         guard canMutateCard(card) else { return [] }
         return (configuration?.columns ?? [])
@@ -739,15 +741,31 @@ final class KanbanFeatureState {
         canMutateCard(card) && backend.offersBlock(from: card.status?.rawValue)
     }
 
-    /// Whether `card` offers Complete: a Hermes host completes only a Card in Review (#1044).
+    /// Whether `card` offers Complete: a Hermes host completes a Ready, Running, Blocked or
+    /// Review Card (#1677).
     func canComplete(_ card: KanbanCard) -> Bool {
         canMutateCard(card) && backend.offersComplete(from: card.status?.rawValue)
     }
 
+    /// Whether completing `card` needs a note of what was done: on a Hermes host, any Card
+    /// outside Review (#1677).
+    func completionNeedsResult(_ card: KanbanCard) -> Bool {
+        backend.completionNeedsResult(from: card.status?.rawValue)
+    }
+
     /// The Statuses a Bulk Action can move Cards to: every Column but Running, and on a Hermes
-    /// host none of To Do, Scheduled and Review either (#1044).
+    /// host not To Do either (#1044, #1677).
     var bulkStatusOptions: [String] {
         (configuration?.columns ?? []).filter { !backend.unofferedStatuses.contains($0) }
+    }
+
+    /// The Bulk Action that moves the selected Cards to `status`: Done carries `result` when a
+    /// selected Card, where it is on the Board now, needs a note to complete (#1677).
+    func bulkStatusAction(_ status: String, result: String) -> KanbanBulkAction {
+        let needsResult = selectedCardIDs.contains { cardID in
+            backend.completionNeedsResult(from: (cardInSnapshot(cardID) ?? selectedCardsByID[cardID])?.status?.rawValue)
+        }
+        return status == "done" && needsResult ? .complete(result: result) : .changeStatus(status)
     }
 
     /// Where `cardID` is on the Board now, which after a Hermes write can differ from where it
@@ -793,14 +811,23 @@ final class KanbanFeatureState {
         )
     }
 
-    func completeCard(_ card: KanbanCard, confirmingRunningExit: Bool = false) async {
-        guard backend.offersComplete(from: card.status?.rawValue) else { return }
+    /// Completes `card`, sending `result` as what was done. A Card that needs a note
+    /// (`completionNeedsResult`) is not completed without one.
+    func completeCard(_ card: KanbanCard, result: String? = nil, confirmingRunningExit: Bool = false) async {
+        let result = normalized(result)
+        guard backend.offersComplete(from: card.status?.rawValue),
+              result != nil || !completionNeedsResult(card) else { return }
         await performStatusMutation(
             card,
             status: "done",
-            kind: .status("done"),
+            kind: .complete(result),
             confirmingRunningExit: confirmingRunningExit
-        )
+        ) { [client, selectedBoardSlug] cardID in
+            guard let board = selectedBoardSlug else { throw CancellationError() }
+            return try await client.setKanbanCardStatus(
+                KanbanCardStatusRequest(cardID: cardID, board: board, status: "done", result: result)
+            )
+        }
     }
 
     func archiveCard(_ card: KanbanCard, confirmingRunningExit: Bool = false) async {
@@ -909,6 +936,8 @@ final class KanbanFeatureState {
         switch mutation.kind {
         case let .status(status):
             await performStatusMutation(card, status: status, kind: mutation.kind)
+        case let .complete(result):
+            await completeCard(card, result: result)
         case let .block(reason):
             await blockCard(card, reason: reason)
         case .unblock:
@@ -948,6 +977,8 @@ final class KanbanFeatureState {
             switch mutation.kind {
             case let .status(status), let .undoArchive(status):
                 succeeded = backend.accepts(landed, requested: status, from: previous)
+            case .complete:
+                succeeded = backend.accepts(landed, requested: "done", from: previous)
             case .block:
                 succeeded = backend.accepts(landed, requested: "blocked", from: previous)
             case .unblock:
@@ -1800,6 +1831,8 @@ final class KanbanFeatureState {
         case let .changeStatus(status):
             guard let normalizedStatus = normalized(status) else { return false }
             return bulkStatusOptions.contains(normalizedStatus)
+        case let .complete(result):
+            return bulkStatusOptions.contains("done") && normalized(result) != nil
         case let .assignProfile(profile):
             guard let profile = normalized(profile) else { return profile == nil }
             return profileOptions.contains(profile)
@@ -1815,6 +1848,8 @@ final class KanbanFeatureState {
         case let .changeStatus(status):
             guard let status = normalized(status) else { return false }
             return backend.accepts(card.status?.rawValue, requested: status, from: original?.status?.rawValue)
+        case .complete:
+            return backend.accepts(card.status?.rawValue, requested: "done", from: original?.status?.rawValue)
         case let .assignProfile(profile):
             return normalized(card.assignee) == normalized(profile)
         case let .setPriority(priority):

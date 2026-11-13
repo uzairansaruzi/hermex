@@ -33,6 +33,7 @@ private struct KanbanCardDetailContent: View {
     @State private var showsOperationalHistory = false
     @State private var cardEditor: KanbanCardEditorState?
     @State private var pendingRunningAction: KanbanPendingCardAction?
+    @State private var pendingCompletion: KanbanCard?
     @State private var selectedPrerequisiteID: String?
     @FocusState private var commentFieldIsFocused: Bool
 
@@ -110,6 +111,9 @@ private struct KanbanCardDetailContent: View {
             }
         } message: { _ in
             Text("Leaving Running may clear the Card's claim and worker state.")
+        }
+        .kanbanCompletionPrompt(card: $pendingCompletion) { card, note in
+            perform(.complete(result: note), for: card, confirmingRunningExit: true)
         }
     }
 
@@ -417,7 +421,7 @@ private struct KanbanCardDetailContent: View {
                 Button("Block") { request(.block, for: card) }
             }
             if featureModel.canComplete(card) {
-                Button("Complete") { request(.complete, for: card) }
+                Button("Complete") { request(.complete(result: nil), for: card) }
             }
             if card.status?.rawValue != "archived" {
                 Button("Archive", role: .destructive) { request(.archive, for: card) }
@@ -430,7 +434,9 @@ private struct KanbanCardDetailContent: View {
     }
 
     private func request(_ action: KanbanCardAction, for card: KanbanCard) {
-        if card.status?.rawValue == "running" {
+        if action == .complete(result: nil), featureModel.completionNeedsResult(card) {
+            pendingCompletion = card
+        } else if card.status?.rawValue == "running" {
             pendingRunningAction = KanbanPendingCardAction(card: card, action: action)
         } else {
             perform(action, for: card)
@@ -449,8 +455,8 @@ private struct KanbanCardDetailContent: View {
             case .block:
                 await featureModel.blockCard(card, reason: nil, confirmingRunningExit: confirmingRunningExit)
             case .unblock: await featureModel.unblockCard(card)
-            case .complete:
-                await featureModel.completeCard(card, confirmingRunningExit: confirmingRunningExit)
+            case let .complete(result):
+                await featureModel.completeCard(card, result: result, confirmingRunningExit: confirmingRunningExit)
             case .archive:
                 await featureModel.archiveCard(card, confirmingRunningExit: confirmingRunningExit)
             }
@@ -465,7 +471,8 @@ private struct KanbanCardDetailContent: View {
             return
         }
         switch mutation.kind {
-        case let .status(status): request(status == "done" ? .complete : .move(status), for: card)
+        case let .status(status): request(.move(status), for: card)
+        case let .complete(result): request(.complete(result: result), for: card)
         case .block: request(.block, for: card)
         case .archive: request(.archive, for: card)
         default: Task { await featureModel.retryMutation(for: card) }
