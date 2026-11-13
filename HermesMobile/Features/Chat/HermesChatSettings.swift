@@ -59,6 +59,18 @@ enum HermesProfilePreference {
         save(nil, for: server, in: defaults)
         return current
     }
+
+    /// The Profile a server's screen opened without one starts on (`resolve`), read from the host
+    /// on `wire`, with the Profiles it lists: Archived Sessions (#1048) and Default Model (#1670).
+    /// A failed list read proves nothing, so it keeps the pick; only `current` must answer.
+    @MainActor
+    static func starting(for server: URL, on wire: any BotTransport,
+                         in defaults: UserDefaults = .standard) async throws -> (profile: String, listed: [String]) {
+        let rows = (try? await wire.call(.profilesList(includeSessions: false)))?["profiles"].list ?? []
+        let listed = rows.compactMap { $0["name"].text }
+        let current = try await wire.currentProfile()
+        return (resolve(for: server, listed: listed, current: current, in: defaults), listed)
+    }
 }
 
 /// A Hermes session's model, effort, Fast and Profile chips in the main chat's composer (#1015,

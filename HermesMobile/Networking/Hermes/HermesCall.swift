@@ -240,8 +240,10 @@ enum HermesCall: Equatable, Sendable {
     case modelOptions(sessionID: String, profile: String)
     /// The configured-provider inventory the Profile editors pick from.
     case configuredModelOptions
-    /// One Profile's models, outside any session: the Task editor's picker (#1040).
-    case profileModelOptions(profile: String)
+    /// One Profile's models, outside any session: the Task editor's picker (#1040) and a
+    /// Profile's Default Model page (#1670). `refresh` asks the host to read its providers' live
+    /// lists rather than its cache.
+    case profileModelOptions(profile: String, refresh: Bool = false)
     case configSet(sessionID: String, profile: String, setting: SessionSetting)
     case sessionCwdSet(sessionID: String, profile: String, cwd: String)
     case sessionControlRead(sessionID: String, profile: String)
@@ -755,7 +757,8 @@ enum HermesCall: Equatable, Sendable {
         case .modelOptions(let sessionID, let profile), .sessionControlRead(let sessionID, let profile):
             return ["session_id": .string(sessionID), "profile": .string(profile)]
         case .configuredModelOptions: return ["include_unconfigured": .bool(false)]
-        case .profileModelOptions(let profile): return ["profile": .string(profile)]
+        case .profileModelOptions(let profile, let refresh):
+            return refresh ? ["profile": .string(profile), "refresh": .bool(true)] : ["profile": .string(profile)]
         case .configSet(let sessionID, let profile, let setting):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "profile": .string(profile)]
             switch setting {
@@ -954,7 +957,7 @@ enum HermesCall: Equatable, Sendable {
             // The host refuses empty text (4012).
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .groupsList(let offset): valid = offset >= 0
-        case .profileModelOptions(let profile): valid = !profile.isEmpty
+        case .profileModelOptions(let profile, _): valid = !profile.isEmpty
         case .insightsGet(let days, let profile): valid = (1...365).contains(days) && !profile.isEmpty
         case .approvalSummary(let input, _, let sessionID, let profile):
             valid = !Self.isBlank(input) && sessionID?.isEmpty != true && !profile.isEmpty

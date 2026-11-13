@@ -33,6 +33,8 @@
 		E1318000000000000000A007 /* APIKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A008 /* APIKeysView.swift */; };
 		E1629000000000000000A005 /* ConnectedAppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1629000000000000000A006 /* ConnectedAppsView.swift */; };
 		E1318000000000000000A005 /* APIKeysModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A006 /* APIKeysModel.swift */; };
+		E1670000000000000000A001 /* HermesDefaultModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1670000000000000000A002 /* HermesDefaultModelView.swift */; };
+		E1670000000000000000A003 /* HermesDefaultModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1670000000000000000A004 /* HermesDefaultModelTests.swift */; };
 		E1629000000000000000A003 /* ConnectedAppsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1629000000000000000A004 /* ConnectedAppsModel.swift */; };
 		E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */; };
 		E1611000000000000000A007 /* ServeEveryProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1611000000000000000A008 /* ServeEveryProfileTests.swift */; };
@@ -802,6 +804,8 @@
 		E1318000000000000000A008 /* APIKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysView.swift; sourceTree = "<group>"; };
 		E1629000000000000000A006 /* ConnectedAppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAppsView.swift; sourceTree = "<group>"; };
 		E1318000000000000000A006 /* APIKeysModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysModel.swift; sourceTree = "<group>"; };
+		E1670000000000000000A002 /* HermesDefaultModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesDefaultModelView.swift; sourceTree = "<group>"; };
+		E1670000000000000000A004 /* HermesDefaultModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesDefaultModelTests.swift; sourceTree = "<group>"; };
 		E1629000000000000000A004 /* ConnectedAppsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedAppsModel.swift; sourceTree = "<group>"; };
 		E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesEnvironmentClientTests.swift; sourceTree = "<group>"; };
 		E1611000000000000000A008 /* ServeEveryProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServeEveryProfileTests.swift; sourceTree = "<group>"; };
@@ -1625,6 +1629,7 @@
 				642EA013D5ADD8D1B4FA3936 /* RFBDecoderTests.swift */,
 				B235F2E82C1F89AFDC0447FD /* BotAvatarLibraryTests.swift */,
 				B48200000000000000000007 /* BotProfileEditorTests.swift */,
+				E1670000000000000000A004 /* HermesDefaultModelTests.swift */,
 				B48200000000000000000035 /* BotLifecycleTests.swift */,
 				B48200000000000000000023 /* BotFaceMotionTests.swift */,
 				26C849A9CE6B47E79695E069 /* BotChatPresentationTests.swift */,
@@ -2363,6 +2368,7 @@
 				E1318000000000000000A008 /* APIKeysView.swift */,
 				E1629000000000000000A006 /* ConnectedAppsView.swift */,
 				E1318000000000000000A006 /* APIKeysModel.swift */,
+				E1670000000000000000A002 /* HermesDefaultModelView.swift */,
 				E1629000000000000000A004 /* ConnectedAppsModel.swift */,
 				E1582000000000000000A004 /* PluginsModel.swift */,
 				E1582000000000000000A006 /* PluginsView.swift */,
@@ -2997,6 +3003,7 @@
 				E1318000000000000000A007 /* APIKeysView.swift in Sources */,
 				E1629000000000000000A005 /* ConnectedAppsView.swift in Sources */,
 				E1318000000000000000A005 /* APIKeysModel.swift in Sources */,
+				E1670000000000000000A001 /* HermesDefaultModelView.swift in Sources */,
 				E1629000000000000000A003 /* ConnectedAppsModel.swift in Sources */,
 				E1582000000000000000A003 /* PluginsModel.swift in Sources */,
 				E1582000000000000000A005 /* PluginsView.swift in Sources */,
@@ -3220,6 +3227,7 @@
 				3C47C99D373EDF30CDEAAED1 /* RFBDecoderTests.swift in Sources */,
 				A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */,
 				B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */,
+				E1670000000000000000A003 /* HermesDefaultModelTests.swift in Sources */,
 				B48200000000000000000036 /* BotLifecycleTests.swift in Sources */,
 				B48200000000000000000024 /* BotFaceMotionTests.swift in Sources */,
 				A4C0A37288B742B9B284A67E /* BotChatPresentationTests.swift in Sources */,

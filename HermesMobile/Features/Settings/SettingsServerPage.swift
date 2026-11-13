@@ -137,7 +137,7 @@ struct SettingsServerPage: View {
 
     /// The active Hermes server's sign-in, with its headers, the release saved at that sign-in,
     /// and the host's update standing (#1075), a Webapp's unserved Profiles (#1611), then its archived sessions, the home's Main Page
-    /// switches (#1585), API keys (#1318) and plugins (#1582).
+    /// switches (#1585), a Profile's default model (#1670), API keys (#1318) and plugins (#1582).
     @ViewBuilder
     private func hermesSections(server: URL) -> some View {
         Section {
@@ -190,6 +190,12 @@ struct SettingsServerPage: View {
 
         if let hermesConnection {
             Section {
+                NavigationLink {
+                    HermesDefaultModelView(connection: hermesConnection, server: server)
+                } label: {
+                    SettingsLabel(title: String(localized: "Default Model"), systemImage: "cpu")
+                }
+
                 NavigationLink {
                     APIKeysView(connection: hermesConnection, server: server)
                 } label: {
