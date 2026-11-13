@@ -646,6 +646,7 @@ import Observation
         list.reconnectNow()
         await waitUntil("rows read") { wire.connects == 2 && !list.isHermesReconnecting }
         XCTAssertTrue(list.attentionStatesAreStale, "rows vouch for no run")
+        wire.holdsActive = false
         wire.release()
         await waitUntil("states read") { !list.attentionStatesAreStale }
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .input])
