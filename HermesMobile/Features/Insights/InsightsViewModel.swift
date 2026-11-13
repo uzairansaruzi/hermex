@@ -19,7 +19,8 @@ extension APIClient: InsightsDataClient {
 
 /// What one server's insights can report.
 struct InsightsFeatures: Equatable, Sendable {
-    /// The windows the picker offers. Today is the only hourly one.
+    /// The windows the picker offers. Today is the only hourly one; 24 hours is the only one
+    /// without a chart.
     let timeframes: [AnalyticsTimeframe]
     /// Message counts cover only part of the window, so the totals mark them "≈".
     let approximatesMessages: Bool
@@ -27,12 +28,14 @@ struct InsightsFeatures: Equatable, Sendable {
     /// top sessions. Without it, the failure is the screen's error.
     let fallsBackToSessions: Bool
 
-    static let webui = InsightsFeatures(timeframes: AnalyticsTimeframe.allCases, approximatesMessages: false,
+    static let webui = InsightsFeatures(timeframes: [.today, .last7Days, .last30Days, .last90Days],
+                                        approximatesMessages: false,
                                         fallsBackToSessions: true)
     /// A Hermes host (#1074) reports no hours, counts messages over at most its newest 500 visible
-    /// sessions (`insights.get`), and has no sessions list here.
-    static let hermes = InsightsFeatures(timeframes: [.last7Days, .last30Days, .last90Days], approximatesMessages: true,
-                                         fallsBackToSessions: false)
+    /// sessions (`insights.get`), and has no sessions list here. Its `days=1` is a rolling
+    /// 24 hours, not midnight to now, so it gets 24 hours instead of Today (#1678).
+    static let hermes = InsightsFeatures(timeframes: [.last24Hours, .last7Days, .last30Days, .last90Days],
+                                         approximatesMessages: true, fallsBackToSessions: false)
 }
 
 /// The windows the Usage screen offers. Each maps to a `days` value the insights
@@ -40,6 +43,7 @@ struct InsightsFeatures: Equatable, Sendable {
 /// metadata fallback.
 enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
     case today
+    case last24Hours
     case last7Days
     case last30Days
     case last90Days
@@ -52,6 +56,8 @@ enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
             // "Today", not "24h": the handler's days=1 means midnight-to-now,
             // and the local fallback filters on the same calendar day to match.
             String(localized: "Today")
+        case .last24Hours:
+            String(localized: "24 hours")
         case .last7Days:
             String(localized: "7 days")
         case .last30Days:
@@ -63,7 +69,7 @@ enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
 
     var serverDays: Int {
         switch self {
-        case .today:
+        case .today, .last24Hours:
             1
         case .last7Days:
             7
@@ -80,6 +86,12 @@ enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
         self == .today
     }
 
+    /// False for the rolling 24 hours: the host's daily rows are calendar dates, so the window
+    /// would split into one or two bars at a midnight that means nothing to it.
+    var showsChart: Bool {
+        self != .last24Hours
+    }
+
     func contains(_ session: SessionSummary, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         guard let timestamp = session.analyticsTimestamp else {
             return false
@@ -90,7 +102,7 @@ enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
         switch self {
         case .today:
             return calendar.isDate(sessionDate, inSameDayAs: now)
-        case .last7Days, .last30Days, .last90Days:
+        case .last24Hours, .last7Days, .last30Days, .last90Days:
             let earliest = calendar.date(byAdding: .day, value: -serverDays, to: now) ?? now
             return sessionDate >= earliest && sessionDate <= now
         }
@@ -416,6 +428,8 @@ final class InsightsViewModel {
 
     var sourceDescription: String {
         switch dataSource {
+        case .server where loadedTimeframe == .last24Hours:
+            return String(localized: "Source: server insights from the last 24 hours.")
         case .server:
             return String(localized: "Source: server insights from the last \(periodDays) days.")
         case .localFallback:
@@ -624,7 +638,9 @@ final class InsightsViewModel {
         return cells
     }
 
+    /// Nil on the 24-hour window, which is at most one day by definition.
     private var perActiveDayDetail: String? {
+        guard loadedTimeframe != .last24Hours else { return nil }
         let activeDays = activeDayCount
         guard activeDays > 0 else { return nil }
         return String(localized: "\(usageFormattedTokens(totalTokens / activeDays)) per active day")
