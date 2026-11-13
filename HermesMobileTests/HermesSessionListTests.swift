@@ -488,25 +488,31 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID["approve"], .approval)
     }
 
-    /// The Archived row counts the listed Profile's archived sessions (#1679), and a slow count
-    /// holds no later list read back; a list of every Profile has no row, so no count.
+    /// The Archived row counts the listed Profile's archived sessions (#1679). A slow count holds
+    /// no later list read back, and a read a Profile switch left behind can't stop the new
+    /// Profile's count; a list of every Profile has no row, so no count.
     func testTheArchivedRowCountsTheListedProfile() async {
         let wire = HermesSessionListWire()
         wire.archivedTotals = ["default": 3, "research": 5]
+        wire.holdsProjects = ["default"]
         wire.holdsArchivedCount = true
         let list = makeList(wire)
         defer { list.closeHermes() }
 
-        await list.openHermes()
-        wire.pages["default"] = [0: page([HermesSessionRow(id: "new")])]
+        let open = Task { await list.openHermes() }
+        await waitUntil("default's lanes held") { wire.calls.contains { $0.method == "projects.tree" } }
+        await list.selectHermesProfile("research")
+        wire.pages["research"] = [0: page([HermesSessionRow(id: "new")])]
         wire.emit("sessions.changed")
         await waitUntil("the change read past the held count") { list.sessions.map(\.sessionId) == ["new"] }
+        wire.releaseProjects()
+        await open.value
         XCTAssertNil(list.archivedCount)
 
         wire.holdsArchivedCount = false
         wire.release()
         await waitUntil("count read") { list.archivedCount != nil }
-        XCTAssertEqual(list.archivedCount, 3)
+        XCTAssertEqual(list.archivedCount, 5)
 
         await list.showAllHermesProfiles()
         XCTAssertNil(list.archivedCount)
@@ -1394,7 +1400,7 @@ import Observation
 /// A scripted Hermes host for the Sessions list: pages by Profile and offset, read marks and
 /// other changes, `session.active_list`, `profiles.list`, `session.most_recent`,
 /// `session.delete`, `projects.tree` and the search (#1053). A test
-/// can park page reads, read-mark writes or searches, and push gateway events.
+/// can park page reads, lane reads, read-mark writes or searches, and push gateway events.
 @MainActor @Observable final class HermesSessionListWire: BotTransport {
     struct UnreadWrite: Equatable { let key: String; let profile: String; let unread: Bool }
 
@@ -1413,6 +1419,8 @@ import Observation
     var holdsApprovals = false
     /// While true, the archived count waits for `release()`.
     var holdsArchivedCount = false
+    /// Profiles whose `projects.tree` waits for `releaseProjects()`.
+    var holdsProjects: Set<String> = []
     /// Runtime ids whose `approval.pending` fails.
     var failingApprovals: Set<String> = []
     var profiles = ["default", "research"]
@@ -1453,6 +1461,7 @@ import Observation
     private(set) var calls: [(method: String, profile: String?)] = []
     @ObservationIgnored private var held: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored private var heldPages: [UUID: CheckedContinuation<Void, Never>] = [:]
+    @ObservationIgnored private var heldProjects: [CheckedContinuation<Void, Never>] = []
 
     private func parkPage() async throws {
         let id = UUID()
@@ -1493,6 +1502,9 @@ import Observation
         case "profiles.list": return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
         case "session.delete": return .object([:])
         case "projects.tree":
+            if holdsProjects.contains(params["profile"]?.text ?? "") {
+                await withCheckedContinuation { heldProjects.append($0) }
+            }
             guard let projectTree else { throw BotFailure.unsupported }
             return projectTree
         default: throw BotFailure.unsupported
@@ -1552,6 +1564,12 @@ import Observation
         for continuation in pages.values { continuation.resume() }
         let waiting = held
         held = []
+        for continuation in waiting { continuation.resume() }
+    }
+
+    func releaseProjects() {
+        let waiting = heldProjects
+        heldProjects = []
         for continuation in waiting { continuation.resume() }
     }
 

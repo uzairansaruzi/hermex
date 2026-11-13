@@ -2859,8 +2859,10 @@ final class SessionListViewModel {
     /// The listed Profile's archived session count, for its Archived row (#1679). It includes
     /// room sessions the Archived screen hides, so it can run slightly high. A failed read keeps
     /// the last count, nil until one answers. It runs on its own, replacing any read in flight,
-    /// so a slow count never holds the next list read back.
+    /// so a slow count never holds the next list read back. Only a list read still current
+    /// replaces it: one a Profile switch or teardown left behind starts nothing.
     private func startHermesArchivedCountRead(_ wire: any BotTransport, readSerial serial: Int) {
+        guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled, !hermesShowsAllProfiles else { return }
         hermesArchivedCountTask?.cancel()
         hermesArchivedCountTask = Task { [weak self] in
             await self?.readHermesArchivedCount(wire, readSerial: serial)
