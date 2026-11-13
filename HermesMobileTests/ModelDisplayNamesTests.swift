@@ -52,13 +52,92 @@ final class ModelDisplayNamesTests: XCTestCase {
     func testGGUFQuantBecomesTheTagInEitherOrderWithTheVariant() {
         XCTAssertEqual(
             ModelDisplayNames.parts(for: "mistral/mistral-large-3-Q4_K_XL:local"),
-            ModelDisplayNames.Parts(name: "Mistral Large 3", tag: "Q4")
+            ModelDisplayNames.Parts(name: "Mistral Large 3", tag: "Q4_K_XL")
         )
 
         let variantFirst = ModelDisplayNames.parts(for: "mistral-large-3-flash-Q4_K_XL:local")
         let quantFirst = ModelDisplayNames.parts(for: "mistral-large-3-Q4_K_XL-flash:local")
         XCTAssertEqual(variantFirst, quantFirst)
-        XCTAssertEqual(variantFirst.tag, "Flash Q4")
+        XCTAssertEqual(variantFirst.tag, "Flash Q4_K_XL")
+    }
+
+    func testQuantTagsKeepTheFullComponentSoLookAlikeBuildsStayDistinct() {
+        // The picker renders no raw id beside the label, so `…-Q4_K_M` and
+        // `…-Q4_K_S` must not both read `Q4` — the sub-variant is the only
+        // thing telling the two files apart.
+        let kM = ModelDisplayNames.parts(for: "mistral/mistral-large-3-Q4_K_M:local")
+        let kS = ModelDisplayNames.parts(for: "mistral/mistral-large-3-Q4_K_S:local")
+        XCTAssertEqual(kM.name, "Mistral Large 3")
+        XCTAssertEqual(kM.tag, "Q4_K_M")
+        XCTAssertEqual(kS.tag, "Q4_K_S")
+        XCTAssertNotEqual(kM, kS)
+        XCTAssertNotEqual(
+            ModelDisplayNames.displayLabel(for: "mistral/mistral-large-3-Q4_K_M:local"),
+            ModelDisplayNames.displayLabel(for: "mistral/mistral-large-3-Q4_K_S:local")
+        )
+
+        XCTAssertEqual(
+            ModelDisplayNames.parts(for: "qwen/qwen3.6-35b-UD-Q4_K_XL:local").tag,
+            "UD-Q4_K_XL"
+        )
+        XCTAssertEqual(
+            ModelDisplayNames.parts(for: "llama/llama-3.1-8b-IQ3_XS:local").tag,
+            "IQ3_XS"
+        )
+        XCTAssertEqual(
+            ModelDisplayNames.parts(for: "mistral/mistral-large-3-F16:local").tag,
+            "F16"
+        )
+        XCTAssertEqual(
+            ModelDisplayNames.parts(for: "mistral/mistral-large-3-BF16:local").tag,
+            "BF16"
+        )
+    }
+
+    func testServerProvidedNameRendersVerbatim() {
+        // The webui transport's `name`/`label` is the server's own string;
+        // prettifying it would rename the model behind the server's back.
+        XCTAssertEqual(
+            ModelDisplayNames.parts(for: "team/production", displayName: "Team / Production"),
+            ModelDisplayNames.Parts(name: "Team / Production", tag: "")
+        )
+        XCTAssertEqual(
+            ModelDisplayNames.displayLabel(for: "team/production", displayName: "Team / Production"),
+            "Team / Production"
+        )
+        XCTAssertEqual(
+            ModelDisplayNames.displayLabel(for: "qwen/qwen-max", displayName: "Qwen-Max"),
+            "Qwen-Max"
+        )
+    }
+
+    func testRawIDFallbackDisplayNameStillPrettifies() {
+        // The catalog fills `displayName` with the raw id when the server
+        // provided no name; that fallback is what the prettifier exists for.
+        XCTAssertEqual(
+            ModelDisplayNames.parts(
+                for: "zai/glm-5.3-flash:local",
+                displayName: "zai/glm-5.3-flash:local"
+            ),
+            ModelDisplayNames.Parts(name: "GLM 5.3", tag: "Flash")
+        )
+        XCTAssertEqual(
+            ModelDisplayNames.displayLabel(
+                for: "zai/glm-5.3-flash:local",
+                displayName: "zai/glm-5.3-flash:local"
+            ),
+            "GLM 5.3 · Flash"
+        )
+        // A blank `displayName` is no name either; fall back to the id.
+        XCTAssertEqual(
+            ModelDisplayNames.displayLabel(for: "deepseek-v4.1-flash", displayName: "   "),
+            "DeepSeek V4.1 · Flash"
+        )
+        // The comparison is insensitive to the id's casing.
+        XCTAssertEqual(
+            ModelDisplayNames.displayLabel(for: "zai/glm-5.3-flash:local", displayName: "ZAI/GLM-5.3-FLASH:LOCAL"),
+            "GLM 5.3 · Flash"
+        )
     }
 
     func testContextWindowSuffixAndDatePinLeaveTheName() {

@@ -57,6 +57,51 @@ final class ModelPickerSheetTests: XCTestCase {
         XCTAssertEqual(filtered.first?.allModels.map(\.id), ["o3"])
     }
 
+    private var gatewayGroup: ModelCatalogGroup {
+        ModelCatalogGroup(
+            id: "zai",
+            name: "ZAI",
+            providerID: "zai",
+            models: [option("zai/glm-5.3-flash:local", provider: "zai")]
+        )
+    }
+
+    func testSearchingAPrettifiedLabelFindsTheGatewayModel() {
+        // The row reads "GLM 5.3 · Flash" while the id is
+        // `zai/glm-5.3-flash:local`, so matching ids and displayNames alone
+        // would hide the model the user can see on screen.
+        let filtered = ModelPickerSheet.filteredGroups([gatewayGroup], query: "GLM 5.3")
+
+        XCTAssertEqual(filtered.first?.allModels.map(\.id), ["zai/glm-5.3-flash:local"])
+        // The tag alone finds it too, through the prettified label.
+        XCTAssertTrue(
+            ModelPickerSheet.matches(option("zai/glm-5.3-flash:local", provider: "zai"), query: "Flash")
+        )
+    }
+
+    func testSearchingARawIDFragmentStillFindsTheGatewayModel() {
+        XCTAssertTrue(
+            ModelPickerSheet.matches(option("zai/glm-5.3-flash:local", provider: "zai"), query: "glm-5.3")
+        )
+        XCTAssertTrue(
+            ModelPickerSheet.matches(option("zai/glm-5.3-flash:local", provider: "zai"), query: "5.3")
+        )
+        XCTAssertEqual(ModelPickerSheet.filteredGroups([gatewayGroup], query: "5.3-flash").count, 1)
+    }
+
+    func testSearchingAServerProvidedNameFindsTheModelItLabels() {
+        let teamModel = ModelCatalogOption(
+            id: "team/production",
+            displayName: "Team / Production",
+            providerID: "team"
+        )
+        XCTAssertTrue(ModelPickerSheet.matches(teamModel, query: "Team / Production"))
+        XCTAssertTrue(ModelPickerSheet.matches(teamModel, query: "production"))
+
+        let group = ModelCatalogGroup(id: "team", name: "Team", providerID: "team", models: [teamModel])
+        XCTAssertEqual(ModelPickerSheet.filteredGroups([group], query: "Team / Production").count, 1)
+    }
+
     // MARK: Custom entry
 
     func testServerDefaultCommitsABareModelIDWithNoProvider() {

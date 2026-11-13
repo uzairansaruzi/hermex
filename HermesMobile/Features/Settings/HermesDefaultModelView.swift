@@ -256,7 +256,7 @@ struct HermesDefaultModelView: View {
                     showsPicker = true
                 } label: {
                     LabeledContent {
-                        Text(verbatim: model.current.map { ModelDisplayNames.displayLabel(for: $0.displayName) } ?? "—")
+                        Text(verbatim: model.current.map { ModelDisplayNames.displayLabel(for: $0.id, displayName: $0.displayName) } ?? "—")
                     } label: {
                         SettingsLabel(title: String(localized: "Default Model"), systemImage: "cpu",
                                       note: model.current?.providerID)

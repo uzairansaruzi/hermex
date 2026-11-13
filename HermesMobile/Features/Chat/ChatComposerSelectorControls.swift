@@ -225,7 +225,7 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     }
 
     var title: String {
-        let modelLabel = ModelDisplayNames.displayLabel(for: model.displayName)
+        let modelLabel = ModelDisplayNames.displayLabel(for: model.id, displayName: model.displayName)
         // No level reported yet: a placeholder word would only push the model's name out.
         guard committedEffort != nil, let effortTitle else { return modelLabel }
         return "\(modelLabel) · \(effortTitle)"
@@ -235,7 +235,7 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     var accessibilityTitle: String {
         guard let effort = committedEffort, let lowered = loweredEffort else { return title }
         let picked = ReasoningEffortOption.title(for: effort), sent = ReasoningEffortOption.title(for: lowered)
-        return String(localized: "\(ModelDisplayNames.displayLabel(for: model.displayName)), \(picked) effort, sent as \(sent)")
+        return String(localized: "\(ModelDisplayNames.displayLabel(for: model.id, displayName: model.displayName)), \(picked) effort, sent as \(sent)")
     }
 
     /// The same model with `level` chosen, for a level still on its way to the host.

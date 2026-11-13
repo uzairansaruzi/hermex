@@ -71,12 +71,12 @@ struct CronJobModelRow: View {
     }
 
     private var title: String {
-        selection.map { ModelDisplayNames.displayLabel(for: $0.displayName) } ?? String(localized: "Server default")
+        selection.map { ModelDisplayNames.displayLabel(for: $0.id, displayName: $0.displayName) } ?? String(localized: "Server default")
     }
 
     private var accessibilityValue: Text {
         guard let selection else { return Text("Server default") }
-        let modelLabel = ModelDisplayNames.displayLabel(for: selection.displayName)
+        let modelLabel = ModelDisplayNames.displayLabel(for: selection.id, displayName: selection.displayName)
         guard let providerID = selection.providerID else { return Text(verbatim: modelLabel) }
         return Text(verbatim: "\(modelLabel), \(providerID)")
     }

@@ -27,7 +27,7 @@ enum ModelDisplayNames {
         ("-latest", "Latest")
     ]
 
-    private static let quantRegex = regex(#"-(?:UD-)?(Q\d(?:_[A-Z0-9]+)*|IQ\d(?:_[A-Z0-9]+)*|F16|BF16)$"#, caseInsensitive: true)
+    private static let quantRegex = regex(#"-(UD-Q\d(?:_[A-Z0-9]+)*|Q\d(?:_[A-Z0-9]+)*|IQ\d(?:_[A-Z0-9]+)*|F16|BF16)$"#, caseInsensitive: true)
     private static let instructChatRegex = regex(#"-(?:Instruct|Chat)(?:-\d{4})?$"#, caseInsensitive: true)
     private static let contextWindowRegex = regex(#"\[(\d+[mk])\]$"#, caseInsensitive: true)
     private static let datePinRegex = regex(#"-\d{8}$"#)
@@ -59,6 +59,32 @@ enum ModelDisplayNames {
     static func displayLabel(for modelID: String) -> String {
         let parts = parts(for: modelID)
         return parts.tag.isEmpty ? parts.name : "\(parts.name) · \(parts.tag)"
+    }
+
+    /// Origin-aware entry point for `ModelCatalogOption`. The catalog's
+    /// `displayName` is the server-provided `name`/`label` when the webui
+    /// transport carried one, and falls back to the raw id otherwise, so
+    /// equality with the id is the signal that nothing was provided: only
+    /// that fallback is prettified. A server name renders verbatim — the
+    /// server owns that string, and "Team / Production" prettified to
+    /// "Production" (or "Qwen-Max" to "Qwen Max") would rename someone
+    /// else's model. Display only: matching by id, favorites, and the
+    /// `--session` string never see this.
+    static func displayLabel(for modelID: String, displayName: String) -> String {
+        let parts = parts(for: modelID, displayName: displayName)
+        return parts.tag.isEmpty ? parts.name : "\(parts.name) · \(parts.tag)"
+    }
+
+    /// `displayLabel(for:displayName:)` split into name and tag. A
+    /// server-provided name carries no tag; the id fallback keeps the
+    /// prettifier's whole pipeline.
+    static func parts(for modelID: String, displayName: String) -> Parts {
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedID = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, trimmedName.caseInsensitiveCompare(trimmedID) != .orderedSame else {
+            return parts(for: modelID)
+        }
+        return Parts(name: displayName, tag: "")
     }
 
     /// Splits a model id into a clean display name plus an optional tag, so
@@ -122,8 +148,12 @@ enum ModelDisplayNames {
             }
 
             if quant.isEmpty, let match = firstMatch(quantRegex, in: base) {
-                // The quant keeps only its family on the tag: `Q4_K_XL` reads `Q4`.
-                quant = capture(match, 1, in: base).split(separator: "_").first.map { $0.uppercased() } ?? ""
+                // The tag keeps the quant's FULL component: `Q4_K_M` and
+                // `Q4_K_S` are different files the picker shows side by side
+                // with no raw id beside the label, so truncating to the
+                // family would render both as `Q4`. The `UD-` uploader
+                // prefix stays too — it names a distinct build.
+                quant = capture(match, 1, in: base).uppercased()
                 base = before(match, in: base)
                 // Instruct/chat markers are noise once the quant confirmed a local build.
                 if let marker = firstMatch(instructChatRegex, in: base) {

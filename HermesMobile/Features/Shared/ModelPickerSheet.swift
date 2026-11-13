@@ -465,7 +465,7 @@ struct ModelPickerSheet: View {
     private func modelOptionRowContent(_ option: ModelCatalogOption) -> some View {
         let selected = isSelected(option)
         let inFlight = Self.isInFlight(option, inFlightKey: inFlightKey)
-        let displayLabel = ModelDisplayNames.displayLabel(for: option.displayName)
+        let displayLabel = ModelDisplayNames.displayLabel(for: option.id, displayName: option.displayName)
 
         return HStack(spacing: 12) {
             Button {
@@ -764,6 +764,12 @@ struct ModelPickerSheet: View {
         option.displayName.localizedCaseInsensitiveContains(query)
             || option.id.localizedCaseInsensitiveContains(query)
             || (option.providerID?.localizedCaseInsensitiveContains(query) ?? false)
+            // The row renders the prettified label, so the query the user
+            // sees on screen has to find the model too: searching "GLM 5.3"
+            // must match `zai/glm-5.3-flash:local`, not only its raw id.
+            || ModelDisplayNames
+                .displayLabel(for: option.id, displayName: option.displayName)
+                .localizedCaseInsensitiveContains(query)
     }
 }
 
