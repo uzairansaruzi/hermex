@@ -64,10 +64,11 @@ enum ModelDisplayNames {
     /// Origin-aware entry point for `ModelCatalogOption`. The catalog's
     /// `displayName` is the server-provided `name`/`label` when the webui
     /// transport carried one, and falls back to the raw id otherwise, so
-    /// equality with the id is the signal that nothing was provided: only
-    /// that fallback is prettified. A server name renders verbatim — the
-    /// server owns that string, and "Team / Production" prettified to
-    /// "Production" (or "Qwen-Max" to "Qwen Max") would rename someone
+    /// exact (case-sensitive) equality with the id is the signal that
+    /// nothing was provided: only that fallback is prettified. A server
+    /// name renders verbatim — the server owns that string, and "Team /
+    /// Production" prettified to "Production" (or "Qwen-Max", differing
+    /// from the id in case alone, to "Qwen Max") would rename someone
     /// else's model. Display only: matching by id, favorites, and the
     /// `--session` string never see this.
     static func displayLabel(for modelID: String, displayName: String) -> String {
@@ -81,7 +82,10 @@ enum ModelDisplayNames {
     static func parts(for modelID: String, displayName: String) -> Parts {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedID = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty, trimmedName.caseInsensitiveCompare(trimmedID) != .orderedSame else {
+        // Case-sensitive: a server name that differs from the id only by
+        // case ("Qwen-Max" vs `qwen-max`) is still the server's own string,
+        // not an id fallback, so it must pass through unprettified.
+        guard !trimmedName.isEmpty, trimmedName != trimmedID else {
             return parts(for: modelID)
         }
         return Parts(name: displayName, tag: "")

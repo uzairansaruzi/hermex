@@ -109,6 +109,11 @@ final class ModelDisplayNamesTests: XCTestCase {
             ModelDisplayNames.displayLabel(for: "qwen/qwen-max", displayName: "Qwen-Max"),
             "Qwen-Max"
         )
+        // Differing from the id in case alone is still a server name.
+        XCTAssertEqual(
+            ModelDisplayNames.displayLabel(for: "qwen-max", displayName: "Qwen-Max"),
+            "Qwen-Max"
+        )
     }
 
     func testRawIDFallbackDisplayNameStillPrettifies() {
@@ -133,10 +138,11 @@ final class ModelDisplayNamesTests: XCTestCase {
             ModelDisplayNames.displayLabel(for: "deepseek-v4.1-flash", displayName: "   "),
             "DeepSeek V4.1 · Flash"
         )
-        // The comparison is insensitive to the id's casing.
+        // A displayName differing from the id only by case is a server name,
+        // not an id fallback — it renders verbatim, unprettified.
         XCTAssertEqual(
             ModelDisplayNames.displayLabel(for: "zai/glm-5.3-flash:local", displayName: "ZAI/GLM-5.3-FLASH:LOCAL"),
-            "GLM 5.3 · Flash"
+            "ZAI/GLM-5.3-FLASH:LOCAL"
         )
     }
 
