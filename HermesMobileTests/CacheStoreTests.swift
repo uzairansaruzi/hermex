@@ -754,6 +754,37 @@ final class CacheStoreTests: XCTestCase {
         )
     }
 
+    func testClearOfflineDataRemovesOnlyTheGivenServersBotHistoryAndRoster() async throws {
+        let context = try makeContext()
+        let serverA = URL(string: "https://a.example.test")!
+        let serverB = URL(string: "https://b.example.test")!
+        let connectionID = UUID()
+        let rosterDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: rosterDirectory) }
+        let history = BotHistoryCache(), roster = BotRosterCache(directory: rosterDirectory)
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 1)))
+        let page = RoomFixture.page([RoomFixture.event(1)], cursor: 1)
+
+        for server in [serverA, serverB] {
+            let key = BotRoomKey(server: server, connectionID: connectionID, roomID: room.id)
+            try await history.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: Date().addingTimeInterval(-1))
+            await roster.save([.object(["name": .string("chief")])], scope: .init(server: server, connectionID: connectionID), readAt: .now)
+        }
+
+        try await OfflineDataSection.clear(server: serverA, in: context, history: history, roster: roster)
+
+        let keyA = BotRoomKey(server: serverA, connectionID: connectionID, roomID: room.id)
+        let keyB = BotRoomKey(server: serverB, connectionID: connectionID, roomID: room.id)
+        let historyA = try await history.roomHistory(keyA)
+        let historyB = try await history.roomHistory(keyB)
+        let rosterA = await roster.load(.init(server: serverA, connectionID: connectionID))
+        let rosterB = await roster.load(.init(server: serverB, connectionID: connectionID))
+        XCTAssertNil(historyA)
+        XCTAssertNil(rosterA)
+        XCTAssertEqual(historyB?.messages.map(\.text), ["Message 1"])
+        XCTAssertEqual(rosterB?.count, 1)
+    }
+
     func testCachedSessionByIDFindsAnExpiredRowForALabel() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
