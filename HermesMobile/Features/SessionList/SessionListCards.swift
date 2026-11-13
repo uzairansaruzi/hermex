@@ -48,7 +48,7 @@ struct UsageReportsCard: View {
             VStack(spacing: 4) {
                 HStack(spacing: 10) {
                     SessionListCardAnswerButton(title: "No thanks") { UsageReports.shared.decline() }
-                    SessionListCardAnswerButton(title: "Allow") { UsageReports.shared.allow() }
+                    SessionListCardAnswerButton(title: "Allow", isProminent: true) { UsageReports.shared.allow() }
                 }
                 Button {
                     isShowingPreview = true
@@ -156,24 +156,30 @@ private struct SessionListCardButton: View {
         .buttonStyle(.appProminent)
         .buttonBorderShape(.capsule)
         .controlSize(.large)
-        .tint(Color(red: 1, green: 224 / 255, blue: 0))
+        .tint(.sessionListCardYellow)
     }
 }
 
-/// The usage reports card's two answers: gray capsules of equal weight, so neither reads as the default.
+private extension Color {
+    /// The cards' face (`#ffe000`) and their lead button, on every theme.
+    static let sessionListCardYellow = Color(red: 1, green: 224 / 255, blue: 0)
+}
+
+/// The usage reports card's two answers, the same size: Allow in the face's yellow, No thanks in gray.
 private struct SessionListCardAnswerButton: View {
     let title: LocalizedStringKey
+    var isProminent = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(AppFont.subheadline(weight: .semibold))
-                .foregroundStyle(.appPrimary)
+                .foregroundStyle(isProminent ? AnyShapeStyle(Color.black) : AnyShapeStyle(.appPrimary))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 8)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(Color(.secondarySystemFill), in: Capsule())
+                .background(isProminent ? Color.sessionListCardYellow : Color(.secondarySystemFill), in: Capsule())
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
