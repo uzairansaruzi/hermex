@@ -2411,7 +2411,8 @@ final class SessionListViewModel {
 
     /// Whether each waiting row holds an unresolved approval (#1679): one `approval.pending` per
     /// runtime, by its runtime id, all at once; a row with several is pending when any is. A row
-    /// whose reads all failed is absent, so it keeps what it showed, as webui's probe does.
+    /// with no pending answer and a failed read is absent, so it keeps what it showed, as webui's
+    /// probe does.
     /// `unsupported` when the host answered "method not found", for the caller to apply only if
     /// its read is still current.
     private func hermesPendingApprovals(_ waiting: [(key: String, runtime: String)], wire: any BotTransport) async
@@ -2427,10 +2428,15 @@ final class SessionListViewModel {
                     }
                 }
             }
-            return await group.reduce(into: ([:], false)) { result, answer in
-                if let pending = answer.pending, result.pending[answer.key] != true { result.pending[answer.key] = pending }
+            var result: (pending: [String: Bool], unsupported: Bool) = ([:], false)
+            var failed: Set<String> = []
+            for await answer in group {
                 result.unsupported = result.unsupported || answer.unsupported
+                if let pending = answer.pending { result.pending[answer.key] = result.pending[answer.key] == true || pending }
+                else { failed.insert(answer.key) }
             }
+            for key in failed where result.pending[key] != true { result.pending[key] = nil }
+            return result
         }
     }
 

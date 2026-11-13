@@ -457,7 +457,8 @@ import Observation
 
     /// A waiting row whose runtime holds an unresolved approval reads as Approval, one waiting on
     /// a question as Input, each asked by its runtime id; both lift into Needs you (#1679). The
-    /// rows' states show before the approval reads answer.
+    /// rows' states show before the approval reads answer, and a row keeps Approval while any of
+    /// its runtimes' reads failed.
     func testWaitingRowsTellApprovalFromInput() async {
         let wire = HermesSessionListWire()
         wire.pages["default"] = [0: page(["approve", "ask", "work"].map { HermesSessionRow(id: $0) })]
@@ -471,11 +472,20 @@ import Observation
         await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
         XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .input, "ask": .input, "work": .working])
 
+        wire.holdsApprovals = false
         wire.release()
         await waitUntil("approvals read") { list.attentionStatesBySessionID["approve"] == .approval }
         XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .approval, "ask": .input, "work": .working])
         XCTAssertEqual(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).needsYou.compactMap(\.sessionId),
                        ["approve", "ask"])
+
+        wire.active = [live("approve", "waiting"), live("approve", "waiting", runtime: "runtime-approve-2"),
+                       live("ask", "waiting"), live("work", "working")]
+        wire.approvals = ["runtime-ask": [.object(["request_id": .string("r2")])]]
+        wire.failingApprovals = ["runtime-approve-2"]
+        wire.emit("sessions.changed")
+        await waitUntil("approvals read again") { list.attentionStatesBySessionID["ask"] == .approval }
+        XCTAssertEqual(list.attentionStatesBySessionID["approve"], .approval)
     }
 
     /// The Archived row counts the listed Profile's archived sessions (#1679); a list of every
@@ -1040,8 +1050,8 @@ import Observation
     }
 
     /// One `session.active_list` item in the host's shape (`server.py` `_session_live_item`).
-    private func live(_ key: String, _ status: String) -> BotJSON {
-        .object(["id": .string("runtime-" + key), "session_key": .string(key), "status": .string(status),
+    private func live(_ key: String, _ status: String, runtime: String? = nil) -> BotJSON {
+        .object(["id": .string(runtime ?? "runtime-" + key), "session_key": .string(key), "status": .string(status),
                  "last_active": .number(100), "started_at": .number(90), "message_count": .number(2),
                  "model": .string("m"), "preview": .string(""), "title": .string(""), "current": .bool(false)])
     }
@@ -1392,6 +1402,8 @@ import Observation
     var holdsActive = false
     /// While true, `approval.pending` waits for `release()`.
     var holdsApprovals = false
+    /// Runtime ids whose `approval.pending` fails.
+    var failingApprovals: Set<String> = []
     var profiles = ["default", "research"]
     var current = "default"
     /// Profiles the host no longer has: 4064 over the socket, 404 over REST.
@@ -1464,7 +1476,9 @@ import Observation
             return .object(["sessions": .array(active)])
         case "approval.pending":
             if holdsApprovals { await withCheckedContinuation { held.append($0) } }
-            return .object(["approvals": .array(approvals[params["session_id"]?.text ?? ""] ?? [])])
+            let runtime = params["session_id"]?.text ?? ""
+            if failingApprovals.contains(runtime) { throw BotFailure.rejected(500) }
+            return .object(["approvals": .array(approvals[runtime] ?? [])])
         case "profiles.list": return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
         case "session.delete": return .object([:])
         case "projects.tree":
