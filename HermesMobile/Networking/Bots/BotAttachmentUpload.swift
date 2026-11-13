@@ -3,11 +3,10 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum BotAttachmentFailure: Error, LocalizedError {
-    case limit, type, unreadable
+    case limit, unreadable
     var errorDescription: String? {
         switch self {
         case .limit: return String(localized: "Use up to 8 attachments, 25 MB each and 50 MB total.")
-        case .type: return String(localized: "This attachment type is not supported. Choose an image, PDF, text, audio or document file.")
         case .unreadable: return String(localized: "Could not read this attachment. Remove it and select it again.")
         }
     }
@@ -27,19 +26,19 @@ enum BotAttachmentUpload {
     static let maximumTotalBytes = 50 * 1024 * 1024
 
     /// A file as Hermes receives it: an image re-encoded as JPEG, or PNG when it has
-    /// transparency, at most 4096 px on its longest edge; a PDF, text, audio or common
-    /// document as it is. Throws for any other type. Slow on large images, so callers
+    /// transparency, at most 4096 px on its longest edge; any other file, including an
+    /// image the encoder can't read (an SVG), as it is, since `file.attach` takes any type.
+    /// Throws `.limit` for a re-encoded image over 25 MB. Slow on large images, so callers
     /// run it off the main actor.
     static func prepare(data: Data, filename: String) throws -> (data: Data, name: String, mime: String, image: Bool) {
         let name = URL(fileURLWithPath: filename).lastPathComponent
-        guard let type = UTType(filenameExtension: URL(fileURLWithPath: name).pathExtension) else { throw BotAttachmentFailure.type }
-        if type.conforms(to: .image) {
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 4096
-                  ] as CFDictionary) else { throw BotAttachmentFailure.unreadable }
+        let type = UTType(filenameExtension: URL(fileURLWithPath: name).pathExtension) ?? .data
+        if type.conforms(to: .image), let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceCreateThumbnailWithTransform: true,
+               kCGImageSourceThumbnailMaxPixelSize: 4096
+           ] as CFDictionary) {
             let alpha = image.alphaInfo
             let hasAlpha = alpha == .first || alpha == .last || alpha == .premultipliedFirst
                 || alpha == .premultipliedLast || alpha == .alphaOnly
@@ -52,10 +51,6 @@ enum BotAttachmentUpload {
             let base = URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent
             return (output as Data, base + (hasAlpha ? ".png" : ".jpg"), hasAlpha ? "image/png" : "image/jpeg", true)
         }
-        let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
-        guard type.conforms(to: .text) || type.conforms(to: .pdf) || type.conforms(to: .audio)
-                || ["json", "yaml", "yml", "csv", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip"].contains(ext)
-        else { throw BotAttachmentFailure.type }
         return (data, name, type.preferredMIMEType ?? "application/octet-stream", false)
     }
 

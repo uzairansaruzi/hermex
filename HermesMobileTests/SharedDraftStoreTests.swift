@@ -800,13 +800,15 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(kept, 0)
     }
 
-    /// An inbox on a Hermes home whose oldest share has a file Hermes can't take, then a text share,
+    /// An inbox on a Hermes home whose oldest share has more files than Hermes's 8, then a text share,
     /// with the first reserved and claimed for its move, as `ContentView` and the list do (#1196).
     @MainActor
     private func blockedInbox() throws -> (inbox: URL, shares: QueueBox, failed: SharedImportReservation) {
         let inbox = try temporaryDirectory()
-        let disk = SharedAttachmentImport(filename: "setup.dmg", typeIdentifier: "com.apple.disk-image-udif", data: Data([7]))
-        try HermesShareDraft.savePendingImport(draft: "", attachments: [disk], in: inbox,
+        let nine = (1...9).map {
+            SharedAttachmentImport(filename: "\($0).pdf", typeIdentifier: "com.adobe.pdf", data: Data([UInt8($0)]))
+        }
+        try HermesShareDraft.savePendingImport(draft: "", attachments: nine, in: inbox,
                                                now: Date(timeIntervalSince1970: 1_800_000_010))
         try HermesShareDraft.savePendingDraft("Later", in: inbox, now: Date(timeIntervalSince1970: 1_800_000_020))
         let shares = QueueBox()
@@ -827,9 +829,9 @@ final class SharedDraftStoreTests: XCTestCase {
 
         do {
             try await failed.transfer(into: chat, drafts: store, route: { _ in XCTFail("It is never let go") })
-            XCTFail("A file type Hermes can't take is not moved")
+            XCTFail("A file Hermes can't take is not moved")
         } catch {
-            XCTAssertEqual(error as? BotAttachmentFailure, .type)
+            XCTAssertEqual(error as? BotAttachmentFailure, .limit)
         }
         shares.queue.reserveNext(in: inbox, active: hermes, servers: servers)
         XCTAssertNil(shares.queue.pending, "Nothing else opens while the alert is up")
@@ -856,7 +858,7 @@ final class SharedDraftStoreTests: XCTestCase {
         shares.queue.reserveNext(in: inbox, active: hermes, servers: [account(hermes, .hermes)])
         let again = try XCTUnwrap(shares.queue.pending)
         XCTAssertEqual(again.itemID, failed.itemID)
-        XCTAssertEqual(again.sharedImport.attachments.map(\.data), [Data([7])])
+        XCTAssertEqual(again.sharedImport.attachments.count, 9)
     }
 
     @MainActor
