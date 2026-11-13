@@ -149,6 +149,7 @@ final class SessionListViewModel {
     private(set) var seenMessageTimes: [String: Double]
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
+    private var remoteArchivedSearchSessions: [String: SessionSummary] = [:]
     /// `match_preview` per content-matched session from the last search, so a
     /// row can show why it matched. Empty against servers that omit the field.
     private(set) var remoteContentSearchExcerpts: [String: String] = [:]
@@ -370,7 +371,10 @@ final class SessionListViewModel {
         )
         let remoteMatches = remoteContentSearchSessionIDs.compactMap { sessionID -> SessionSummary? in
             guard !localMatchIDs.contains(sessionID) else { return nil }
-            return sessionsByID[sessionID]
+            if let session = sessionsByID[sessionID] { return session }
+            guard let archived = remoteArchivedSearchSessions[sessionID], automatedVisibility.shows(archived),
+                  selectedProjectID == nil || archived.projectId == selectedProjectID else { return nil }
+            return archived
         }
 
         return sortedLocalMatches + Self.sortedSessions(remoteMatches)
@@ -581,6 +585,7 @@ final class SessionListViewModel {
         activeRemoteSearchQuery = query
         remoteContentSearchSessionIDs = []
         remoteContentSearchExcerpts = [:]
+        remoteArchivedSearchSessions = [:]
         if !repeatsHermesSearch { clearHermesSearchMatches() }
         searchErrorMessage = nil
 
@@ -609,6 +614,7 @@ final class SessionListViewModel {
                 let matches = contentMatches(from: response.sessions ?? [])
                 remoteContentSearchSessionIDs = matches.sessionIDs
                 remoteContentSearchExcerpts = matches.excerpts
+                remoteArchivedSearchSessions = matches.archived
             }
             isSearchingRemoteSessions = false
         } catch {
@@ -620,6 +626,7 @@ final class SessionListViewModel {
 
             remoteContentSearchSessionIDs = []
             remoteContentSearchExcerpts = [:]
+            remoteArchivedSearchSessions = [:]
             searchErrorMessage = error.localizedDescription
             lastError = error
         }
@@ -654,6 +661,7 @@ final class SessionListViewModel {
         activeRemoteSearchQuery = nil
         remoteContentSearchSessionIDs = []
         remoteContentSearchExcerpts = [:]
+        remoteArchivedSearchSessions = [:]
         clearHermesSearchMatches()
         searchErrorMessage = nil
         isSearchingRemoteSessions = false
@@ -1657,11 +1665,12 @@ final class SessionListViewModel {
         pruneAttentionStates()
     }
 
-    /// Content-match rows narrowed to sessions the list can actually show, in
-    /// server order, plus each row's excerpt when the server sent one.
+    /// Content-match rows narrowed to sessions the list can actually show, plus
+    /// every archived match the list never loads, in server order, with each
+    /// row's excerpt when the server sent one.
     private func contentMatches(
         from sessions: [SessionSummary]
-    ) -> (sessionIDs: [String], excerpts: [String: String]) {
+    ) -> (sessionIDs: [String], excerpts: [String: String], archived: [String: SessionSummary]) {
         let locallyVisibleSessionIDs = Set(self.sessions.compactMap { session -> String? in
             guard session.archived != true, let sessionID = session.sessionId, !sessionID.isEmpty else {
                 return nil
@@ -1672,18 +1681,20 @@ final class SessionListViewModel {
         var seenSessionIDs = Set<String>()
         var sessionIDs: [String] = []
         var excerpts: [String: String] = [:]
+        var archived: [String: SessionSummary] = [:]
 
         for session in sessions {
-            guard session.matchType?.lowercased() == "content",
-                  let sessionID = session.sessionId,
-                  locallyVisibleSessionIDs.contains(sessionID),
-                  !seenSessionIDs.contains(sessionID)
+            guard let sessionID = Self.nonEmpty(session.sessionId), !seenSessionIDs.contains(sessionID) else { continue }
+            let isArchivedMatch = session.archived == true && session.shouldAppearInSessionList
+            guard isArchivedMatch
+                    || (session.matchType?.lowercased() == "content" && locallyVisibleSessionIDs.contains(sessionID))
             else {
                 continue
             }
 
             seenSessionIDs.insert(sessionID)
             sessionIDs.append(sessionID)
+            if isArchivedMatch { archived[sessionID] = session }
 
             if let preview = session.matchPreview?.trimmingCharacters(in: .whitespacesAndNewlines),
                !preview.isEmpty {
@@ -1691,7 +1702,7 @@ final class SessionListViewModel {
             }
         }
 
-        return (sessionIDs, excerpts)
+        return (sessionIDs, excerpts, archived)
     }
 
     private func beginSessionMutation(_ sessionId: String) -> Bool {
