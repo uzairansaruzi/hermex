@@ -205,8 +205,8 @@ enum HermesREST: Equatable, Sendable {
     /// without archived, empty or machine-run rows, `sessionPageSize` at a time from `offset`.
     /// Each page also brings every pinned row it missed, archived ones included. `archived`
     /// reads the Archived screen's page instead (#1048): only archived rows, hidden Bot Chats
-    /// included, plus the same pinned back-fill.
-    case sessionList(profile: String, offset: Int, archived: Bool = false, scheduled: Bool = false)
+    /// included, plus the same pinned back-fill. `limit` 0 reads only the list's `total` (#1679).
+    case sessionList(profile: String, offset: Int, archived: Bool = false, scheduled: Bool = false, limit: Int? = nil)
     /// One page of every session `profile` lists for Move to Hermes's scan (#1213): archived,
     /// empty and machine-run rows included, newest-created first. A session made or deleted
     /// mid-scan shifts later pages, so a row can repeat or slip past; the scan reads any id it
@@ -536,7 +536,7 @@ enum HermesREST: Equatable, Sendable {
             }
             guard let url = parts.url else { throw BotFailure.invalidAddress }
             return Self.get(url)
-        case .sessionList(let profile, let offset, let archived, let scheduled):
+        case .sessionList(let profile, let offset, let archived, let scheduled, let limit):
             guard !profile.isEmpty, offset >= 0,
                   var parts = URLComponents(url: base.appendingPathComponent("api/sessions"), resolvingAgainstBaseURL: false)
             else { throw BotFailure.invalidAddress }
@@ -545,7 +545,8 @@ enum HermesREST: Equatable, Sendable {
             parts.queryItems = [
                 URLQueryItem(name: "profile", value: profile), URLQueryItem(name: "order", value: "recent"),
                 URLQueryItem(name: "archived", value: archived ? "only" : "exclude"),
-                URLQueryItem(name: "limit", value: String(Self.sessionPageSize)), URLQueryItem(name: "offset", value: String(offset))
+                URLQueryItem(name: "limit", value: String(limit ?? Self.sessionPageSize)),
+                URLQueryItem(name: "offset", value: String(offset))
             ] + (archived ? [] : [URLQueryItem(name: "min_messages", value: "1")]) + (scheduled ? [
                 URLQueryItem(name: "sources", value: "cron"),
                 URLQueryItem(name: "exclude_sources", value: "kanban,oneshot,subagent,tool")

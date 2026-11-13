@@ -1981,7 +1981,12 @@ final class SessionListViewModel {
             if isLoadingMoreSessions { isLoadingMoreSessions = false }
             if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
             startHermesStatusRead(wire)
-            if !hermesShowsAllProfiles { await readHermesProjects(wire, readSerial: serial) }
+            if !hermesShowsAllProfiles {
+                await readHermesProjects(wire, readSerial: serial)
+                await readHermesArchivedCount(wire, readSerial: serial)
+            } else if archivedCount != nil {
+                archivedCount = nil
+            }
             await runAwaitedHermesSearch()
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
@@ -2197,7 +2202,7 @@ final class SessionListViewModel {
         hermesReadSerial += 1
         sessions = []; hasMoreSessions = false; isLoadingMoreSessions = false; isViewingCachedData = false
         hermesUnreadMarks = [:]; hermesReturnedFrom = []
-        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
+        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false; archivedCount = nil
         clearHermesSearchMatches()
         errorMessage = nil; sessionLoadError = nil
         setHermesStates([:]); setHermesReconnecting(false)
@@ -2221,7 +2226,7 @@ final class SessionListViewModel {
         isLoadingMoreScheduledSessions = false
         sessions = []; hasMoreSessions = false; isViewingCachedData = false
         hermesUnreadMarks = [:]; hermesReturnedFrom = []
-        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
+        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false; archivedCount = nil
         clearHermesSearchMatches()
         setHermesStates([:]); setHermesReconnecting(false)
         isLoading = true
@@ -2821,6 +2826,17 @@ final class SessionListViewModel {
         if projects != tree.projects { projects = tree.projects }
         showHermesPages(hermesPages, animation: nil)
         showHermesSearch(hermesSearchResults)
+    }
+
+    /// The listed Profile's archived session count, for its Archived row (#1679). It includes
+    /// room sessions the Archived screen hides, so it can run slightly high. A failed read keeps
+    /// the last count, nil until one answers.
+    private func readHermesArchivedCount(_ wire: any BotTransport, readSerial serial: Int) async {
+        guard let profile = hermesProfile,
+              let count = try? await wire.archivedSessionCount(profile: profile),
+              serial == hermesReadSerial, hermesWire === wire, hermesProfile == profile, !hermesShowsAllProfiles,
+              count != archivedCount else { return }
+        archivedCount = count
     }
 
     private func mutate(

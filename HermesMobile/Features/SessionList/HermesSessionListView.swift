@@ -217,7 +217,8 @@ struct HermesSessionListView: View {
             // A search reads the host's whole list, so it pages nothing in.
             if showsLoadMore && !isSearching { loadMoreRow }
             // The cache holds no archived rows to show, and the Archived screen lists one Profile.
-            if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles { archivedRow }
+            // Hidden once the host counts none; shown without a count until it answers (#1679).
+            if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles && viewModel.archivedCount != 0 { archivedRow }
         }
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 0)
@@ -784,6 +785,13 @@ struct HermesSessionListView: View {
                 Text("Archived Sessions")
                     .font(AppFont.subheadline(weight: .medium))
                     .lineLimit(1)
+                if let archivedCount = viewModel.archivedCount {
+                    Text("\(archivedCount)")
+                        .font(AppFont.footnote(weight: .semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(.appMaterial(.thinMaterial), in: Capsule())
+                }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.forward")
                     .font(AppFont.caption(weight: .semibold))

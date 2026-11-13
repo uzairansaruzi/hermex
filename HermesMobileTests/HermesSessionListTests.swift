@@ -473,6 +473,22 @@ import Observation
                        ["approve", "ask"])
     }
 
+    /// The Archived row counts the listed Profile's archived sessions (#1679); a list of every
+    /// Profile has no row, so no count.
+    func testTheArchivedRowCountsTheListedProfile() async {
+        let wire = HermesSessionListWire()
+        wire.archivedTotals = ["default": 3, "research": 5]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+
+        await list.openHermes()
+        await waitUntil("count read") { list.archivedCount != nil }
+        XCTAssertEqual(list.archivedCount, 3)
+
+        await list.showAllHermesProfiles()
+        XCTAssertNil(list.archivedCount)
+    }
+
     /// The rating prompt's idle check reads the host fresh: any running or waiting session, listed
     /// or not, is busy, and a list that isn't live has no answer.
     func testHostIdleCheckReadsTheHostFresh() async {
@@ -1363,6 +1379,8 @@ import Observation
     var onDisconnect: ((Error) -> Void)?
     var pages: [String: [Int: HermesSessionPage]] = [:]
     var active: [BotJSON] = []
+    /// The Archived screen's total by Profile; a Profile without one refuses the read.
+    var archivedTotals: [String: Int] = [:]
     /// `approval.pending`'s approvals by runtime id; none for any other.
     var approvals: [String: [BotJSON]] = [:]
     /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
@@ -1465,6 +1483,11 @@ import Observation
         if holdsScheduledPages { try await parkPage() }
         if let failure = pageFailure { pageFailure = nil; throw failure }
         return reply
+    }
+
+    func archivedSessionCount(profile: String) async throws -> Int {
+        guard let total = archivedTotals[profile] else { throw BotFailure.unsupported }
+        return total
     }
 
     func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
