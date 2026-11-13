@@ -57,6 +57,8 @@ import Observation
         XCTAssertEqual(slash.route("resume").appOwnedName, "resume", "#1053")
         XCTAssertEqual(slash.route("branch"), .appOwned(SlashCommandCatalog.command(named: "branch")!), "#1051")
         XCTAssertEqual(slash.route("fork"), .appOwned(SlashCommandCatalog.command(named: "fork")!), "#1051")
+        XCTAssertEqual(slash.route("workspace"), .appOwned(SlashCommandCatalog.command(named: "workspace")!), "#1673")
+        XCTAssertEqual(slash.route("interrupt"), .appOwned(SlashCommandCatalog.command(named: "interrupt")!), "#1673")
         XCTAssertEqual(slash.route("demo-skill").isSkill, true)
         XCTAssertEqual(slash.route("context"), .host)
         XCTAssertEqual(slash.route("ctx"), .host)

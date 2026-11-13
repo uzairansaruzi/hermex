@@ -637,6 +637,27 @@ import Observation
         XCTAssertEqual(chat.model.selectedWorkspacePath, "/Users/me/notes")
     }
 
+    /// `/workspace` is the folder chip's pick (#1673): a chat that has run asks first, and the
+    /// command is done. Mid-run it says to wait and keeps the draft.
+    func testWorkspaceCommandPicksTheFolder() async {
+        let chat = await openChat(target: .session(profile: "work", key: "tip"))
+        chat.receive(event(1, "session.info", ["cwd": .string("/Users/me/notes")]))
+        await waitUntil("folder") { chat.model.selectedWorkspacePath == "/Users/me/notes" }
+
+        let asked = await chat.model.runHermesSlashCommand("/workspace /Users/me/launch")
+        XCTAssertEqual(asked, .executed(message: nil))
+        XCTAssertEqual(chat.model.pendingHermesFolder, "/Users/me/launch")
+        chat.model.cancelHermesFolderMove()
+
+        chat.receive(event(2, "message.start"))
+        let refused = await chat.model.runHermesSlashCommand("/workspace /Users/me/launch")
+        XCTAssertEqual(refused, .notDelivered)
+        XCTAssertNotNil(chat.model.composerConfigurationErrorMessage)
+        XCTAssertEqual(chat.model.sendErrorMessage, chat.model.composerConfigurationErrorMessage)
+        XCTAssertNil(chat.model.pendingHermesFolder)
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+    }
+
     /// A turn that starts (from another client, say) after the chat checked it was idle stops
     /// the move at the socket: the host never gets it, and the chat says to wait.
     func testAFolderMoveStopsAtDispatchWhenATurnStarts() async {
