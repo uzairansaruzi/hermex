@@ -625,11 +625,14 @@ struct HermesSessionListView: View {
     /// New Session needs the live list and a Profile to open in.
     private var canOpenNewSession: Bool { !viewModel.isViewingCachedData && profile != nil }
 
-    /// New Session and ⌘N. Guarded again here, so a stale menu can't pass the disabled button.
+    /// New Session and ⌘N, started in the selected project lane's folder (#1671). Guarded again
+    /// here, so a stale menu can't pass the disabled button. Shortcuts, shares and App Intents open
+    /// their own chats and never inherit the lane, as on webui.
     private func openNewSession() {
         guard canOpenNewSession, let profile else { return }
+        let cwd = viewModel.hermesNewSessionFolder(lane: showsProjects ? selectedProjectID : nil)
         prepareRootSelection()
-        covers.chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile))
+        covers.chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile, cwd: cwd))
     }
 
     /// The hardware-keyboard commands (`HermexCommands`) for this list, the home's Sessions side or

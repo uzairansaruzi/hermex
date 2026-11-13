@@ -2633,6 +2633,14 @@ final class SessionListViewModel {
         return sessions.lazy.filter { $0.projectId == projectID }.count < claimed
     }
 
+    /// The host folder New Session starts in for the selected lane `lane`, as webui's New Chat
+    /// does (#1671); nil, the Profile's default folder, with no lane or while All Profiles shows,
+    /// whose list keeps the last Profile's lanes without showing them.
+    func hermesNewSessionFolder(lane: String?) -> String? {
+        guard let lane, !hermesShowsAllProfiles else { return nil }
+        return projects.first { $0.projectId == lane }?.hermes?.folder
+    }
+
     /// Reads pages until the lane `projectID` holds every session the host named for it, or the
     /// list ends. A failed or replaced read stops, and "Load more" tries again.
     func fillHermesLane(_ projectID: String) async {
