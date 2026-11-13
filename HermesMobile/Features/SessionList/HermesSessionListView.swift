@@ -726,25 +726,28 @@ struct HermesSessionListView: View {
 
     /// Every Profile's sessions, each row tagged with its Profile (#709), or one Profile's. Picking
     /// a Profile lists it and makes it the server's pick, which the composer's Profile chip shares
-    /// (#1015); All Profiles keeps the pick for New Session.
-    private var profilePicker: some View {
+    /// (#1015); All Profiles keeps the pick for New Session. Checked toggles rather than a
+    /// Picker: a menu Picker shows only an option's first line, dropping the model (#1679).
+    @ViewBuilder private var profilePicker: some View {
         let listed = viewModel.hermesProfiles.isEmpty ? [profile].compactMap(\.self) : viewModel.hermesProfiles
-        return Picker("Profile", selection: Binding<String?>(get: { viewModel.hermesShowsAllProfiles ? nil : profile }, set: { picked in
-            Task {
-                if let picked { await viewModel.selectHermesProfile(picked) } else { await viewModel.showAllHermesProfiles() }
-            }
-        })) {
-            Text("All Profiles").tag(String?.none)
+        let picked = viewModel.hermesShowsAllProfiles ? nil : profile
+        Section {
+            Toggle(isOn: Binding(get: { picked == nil }, set: { _ in pickProfile(nil) })) { Text("All Profiles") }
             // Each Profile's model under its name, shown as written (#1679).
             ForEach(listed, id: \.self) { name in
-                VStack {
+                Toggle(isOn: Binding(get: { picked == name }, set: { _ in pickProfile(name) })) {
                     Text(verbatim: name)
                     if let model = viewModel.hermesProfileModels[name] { Text(verbatim: model) }
                 }
-                .tag(Optional(name))
             }
         }
         .disabled(profile == nil)
+    }
+
+    private func pickProfile(_ picked: String?) {
+        Task {
+            if let picked { await viewModel.selectHermesProfile(picked) } else { await viewModel.showAllHermesProfiles() }
+        }
     }
 
     /// More pages may hold rows this list shows: any, or the selected lane's that the host
