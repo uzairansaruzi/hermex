@@ -760,10 +760,10 @@ final class KanbanFeatureState {
     }
 
     /// The Bulk Action that moves the selected Cards to `status`: Done carries `result` when a
-    /// selected Card needs a note to complete (#1677).
+    /// selected Card, where it is on the Board now, needs a note to complete (#1677).
     func bulkStatusAction(_ status: String, result: String) -> KanbanBulkAction {
         let needsResult = selectedCardIDs.contains { cardID in
-            backend.completionNeedsResult(from: (selectedCardsByID[cardID] ?? cardInSnapshot(cardID))?.status?.rawValue)
+            backend.completionNeedsResult(from: (cardInSnapshot(cardID) ?? selectedCardsByID[cardID])?.status?.rawValue)
         }
         return status == "done" && needsResult ? .complete(result: result) : .changeStatus(status)
     }

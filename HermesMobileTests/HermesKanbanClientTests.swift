@@ -494,6 +494,22 @@ import XCTest
                                                        "result": .string("Shipped")]), count: 2))
     }
 
+    /// A selected Review Card that another client reopens asks for the note once the Board shows it.
+    func testBulkDoneNeedsTheNoteWhenASelectedCardLeavesReview() async throws {
+        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
+            "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWith("t_2ad0ddc5", in: "review")))
+        ], after: [
+            "/api/plugins/kanban/board": ["/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard))]
+        ])))
+        await state.load()
+        state.beginSelectingCards()
+        state.toggleCardSelection(try XCTUnwrap(state.allCards.first { $0.cardID == "t_2ad0ddc5" }))
+
+        await state.refresh()
+
+        XCTAssertEqual(state.bulkStatusAction("done", result: "Shipped"), .complete(result: "Shipped"))
+    }
+
     /// Preview Dispatch shows today's summary from the host's `DispatchResult`.
     func testPreviewDispatchShowsTodaysSummary() async {
         let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
