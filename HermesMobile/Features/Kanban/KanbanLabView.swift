@@ -5,7 +5,8 @@ enum KanbanCardAction: Equatable {
     case move(String)
     case block
     case unblock
-    case complete
+    /// Done, with what was done when the server needs it; nil asks for it when it does.
+    case complete(result: String?)
     case archive
 }
 
@@ -30,6 +31,46 @@ struct KanbanPendingCardAction: Identifiable, Equatable {
 
     static func == (lhs: KanbanPendingCardAction, rhs: KanbanPendingCardAction) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+extension View {
+    /// Asks what was done before a Hermes host completes `card` outside Review (#1677), and
+    /// stands in for "Leave Running?" on a Running Card: Complete confirms both.
+    func kanbanCompletionPrompt(
+        card: Binding<KanbanCard?>,
+        onComplete: @escaping (KanbanCard, String) -> Void
+    ) -> some View {
+        modifier(KanbanCompletionPrompt(card: card, onComplete: onComplete))
+    }
+}
+
+private struct KanbanCompletionPrompt: ViewModifier {
+    @Binding var card: KanbanCard?
+    let onComplete: (KanbanCard, String) -> Void
+    @State private var note = ""
+
+    func body(content: Content) -> some View {
+        content
+            .alert(
+                "Complete Card?",
+                isPresented: Binding(get: { card != nil }, set: { if !$0 { card = nil } }),
+                presenting: card
+            ) { card in
+                TextField("What was done?", text: $note)
+                Button("Cancel", role: .cancel) {}
+                Button("Complete") { onComplete(card, note) }
+                    .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } message: { card in
+                let running = card.status?.rawValue == "running"
+                Text(verbatim: [
+                    String(localized: "Hermes saves this as the Card's result."),
+                    running ? String(localized: "Leaving Running may clear the Card's claim and worker state.") : nil
+                ].compactMap { $0 }.joined(separator: " "))
+            }
+            .onChange(of: card?.cardID) { _, cardID in
+                if cardID != nil { note = "" }
+            }
     }
 }
 
@@ -142,6 +183,7 @@ struct KanbanStatusFocusView: View {
     @State private var visibleModel: KanbanFeatureState?
     @State private var cardEditor: KanbanCardEditorState?
     @State private var pendingRunningAction: KanbanPendingCardAction?
+    @State private var pendingCompletion: KanbanCard?
     @State private var showsBulkActions = false
     @State private var confirmsBulkArchive = false
     @State private var confirmsRunDispatcher = false
@@ -300,6 +342,9 @@ struct KanbanStatusFocusView: View {
             }
         } message: { _ in
             Text("Leaving Running may clear the Card's claim and worker state.")
+        }
+        .kanbanCompletionPrompt(card: $pendingCompletion) { card, note in
+            perform(.complete(result: note), for: card, confirmingRunningExit: true)
         }
         .alert("Archive Cards", isPresented: $confirmsBulkArchive) {
             Button("Cancel", role: .cancel) {
@@ -1252,7 +1297,7 @@ struct KanbanStatusFocusView: View {
                 Button("Block") { request(.block, for: card) }
             }
             if model.canComplete(card) {
-                Button("Complete") { request(.complete, for: card) }
+                Button("Complete") { request(.complete(result: nil), for: card) }
             }
             if card.status?.rawValue != "archived" {
                 Button("Archive", role: .destructive) { request(.archive, for: card) }
@@ -1305,7 +1350,9 @@ struct KanbanStatusFocusView: View {
     }
 
     private func request(_ action: KanbanCardAction, for card: KanbanCard) {
-        if card.status?.rawValue == "running" {
+        if action == .complete(result: nil), model.completionNeedsResult(card) {
+            pendingCompletion = card
+        } else if card.status?.rawValue == "running" {
             pendingRunningAction = KanbanPendingCardAction(card: card, action: action)
         } else {
             perform(action, for: card)
@@ -1341,8 +1388,8 @@ struct KanbanStatusFocusView: View {
                     await Task.yield()
                     focusedCardID = card.cardID
                 }
-            case .complete:
-                await model.completeCard(card, confirmingRunningExit: confirmingRunningExit)
+            case let .complete(result):
+                await model.completeCard(card, result: result, confirmingRunningExit: confirmingRunningExit)
                 if model.mutationState(for: card.cardID)?.phase == .succeeded {
                     model.selectedStatus = "done"
                     await Task.yield()
@@ -1364,7 +1411,8 @@ struct KanbanStatusFocusView: View {
             return
         }
         switch mutation.kind {
-        case let .status(status): request(status == "done" ? .complete : .move(status), for: card)
+        case let .status(status): request(.move(status), for: card)
+        case let .complete(result): request(.complete(result: result), for: card)
         case .block: request(.block, for: card)
         case .archive: request(.archive, for: card)
         default: Task { await model.retryMutation(for: card) }
@@ -1967,6 +2015,8 @@ private struct KanbanBulkActionsView: View {
     let onArchive: () -> Void
     let onFinished: () -> Void
     @State private var status: String
+    /// What was done, for Done on Cards a Hermes host completes only with a note (#1677).
+    @State private var result = ""
     @State private var profile: String?
     @State private var priority = 0
 
@@ -1993,10 +2043,13 @@ private struct KanbanBulkActionsView: View {
                             Text(KanbanStatusPresentation(value).title).tag(value)
                         }
                     }
-                    Button("Change Status") {
-                        submit(.changeStatus(status))
+                    if case .complete = statusAction {
+                        TextField("What was done?", text: $result, axis: .vertical)
                     }
-                    .disabled(!model.canSubmitBulkAction(.changeStatus(status)))
+                    Button("Change Status") {
+                        submit(statusAction)
+                    }
+                    .disabled(!model.canSubmitBulkAction(statusAction))
                     .frame(minHeight: 44)
                 }
 
@@ -2051,6 +2104,10 @@ private struct KanbanBulkActionsView: View {
 
     private var statusOptions: [String] {
         model.bulkStatusOptions
+    }
+
+    private var statusAction: KanbanBulkAction {
+        model.bulkStatusAction(status, result: result.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func submit(_ action: KanbanBulkAction) {
@@ -2441,11 +2498,12 @@ struct KanbanView: View {
     /// Kanban on a Hermes server, read through its saved connection's shared sign-in and kept
     /// live over its Kanban socket. A refused sign-in signs the server out through that
     /// connection, not `onAPIError`.
-    init(server: URL, hermes connection: HermesConnection) {
+    /// `mine` is the Profile Only Mine shows: the one the Sessions side lists, as Kanban opens.
+    init(server: URL, hermes connection: HermesConnection, mine: String?) {
         _model = State(
             initialValue: KanbanFeatureState(
                 server: server,
-                client: HermesKanbanClient(http: connection)
+                client: HermesKanbanClient(http: connection, mine: mine)
             )
         )
     }

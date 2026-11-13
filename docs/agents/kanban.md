@@ -95,10 +95,10 @@ route takes `?board=<slug>`; an unknown Board or Card is 404.
 | `/stats`, `/assignees` | `{by_status, by_assignee: {name: {status: n}}, …}` and `{assignees: [{name, on_disk, counts}]}`. |
 | `/events?board=&since=&ticket=` (WebSocket) | `{events: [{id, task_id, run_id, kind, payload, created_at}], cursor}`, only when events after `since` exist, at most 200 a frame. No hello, no heartbeat, and client messages are ignored. A used, expired or missing ticket is HTTP 403 on the upgrade. |
 | `POST /tasks` | `{title, body?, assignee, tenant?, priority?, workspace_kind?, parents?, triage, idempotency_key, max_runtime_seconds?, skills?}` → `{task, warning?}`. No `status`: Triage is `triage: true`, otherwise the host starts the Card in To Do while a parent is open and Ready otherwise. `assignee: ""` is a 400, so none is null. `warning` is a Ready, assigned Card with no dispatcher running. |
-| `PATCH /tasks/{id}` | `{title, body, priority, assignee?, status?, block_reason?}` → `{task}`. No tenant field. `assignee: ""` unassigns, and any `assignee` on a running, claimed Card is 409, so it is sent only when it changed. Block, unblock, Done, Archive and moves are all `status`. |
+| `PATCH /tasks/{id}` | `{title, body, priority, assignee?, status?, block_reason?, result?}` → `{task}`. No tenant field. `assignee: ""` unassigns, and any `assignee` on a running, claimed Card is 409, so it is sent only when it changed. Block, unblock, Done, Archive and moves are all `status`. Done outside Review needs a non-blank `result`, or it is a 400; Done with an open parent is a 409. |
 | `POST /tasks/{id}/comments` | `{body}` → `{ok: true}`, without the comment. |
 | `POST /links`, `DELETE /links?parent_id=&child_id=` | `{parent_id, child_id}` → `{ok, gated}`, and `{ok}` (200 `false` when there was no link). Neither echoes an id. A self-link, unknown id, running child or cycle is 400. |
-| `POST /tasks/bulk` | `{ids, status? \| assignee? \| priority? \| archive}` → `{results: [{id, ok, error?}]}`, 200 with per-Card failures. |
+| `POST /tasks/bulk` | `{ids, status? \| assignee? \| priority? \| archive, result?}` → `{results: [{id, ok, error?}]}`, 200 with per-Card failures. `review` moves only a Ready or Running Card whose parents are done; `scheduled` a To Do, Ready, Running or Blocked one. |
 | `POST /dispatch?board=&dry_run=&max=8` | The `DispatchResult` webui's keys match. A dry run starts no worker but does promote To Do Cards whose parents are done. |
 | `POST /boards`, `PATCH /boards/{slug}`, `DELETE /boards/{slug}?delete=false`, `POST /boards/{slug}/switch` | `{slug, name, description, icon, color}` → `{board, current}`; `{board}`; `{result, current}`; `{current}`. Never `default_workdir` or `project_id`. The default Board can't be archived (400). |
 
@@ -111,19 +111,22 @@ How Hermex adapts it:
   the Board needs no `changed`. A Card Status outside those Columns still flags.
 - **Writable.** Every reply is marked `read_only: false`: the host has no read-only mode.
 - **No To Do.** The host promotes a To Do Card whose parents are done to Ready on its next
-  dispatcher tick, so To Do never sticks. New Cards start in Triage or Ready, and Move, the
-  Bulk Actions and Undo Archive offer Triage and Ready only; the host itself puts a Card in
-  To Do while a prerequisite is open, and the Board shows it there. Scheduled and Review are
-  never destinations, but a Card in either moves out: Ready from Scheduled unblocks it, and
-  any move from Review reopens it. Undo Archive returns a Triage Card to Triage and any
+  dispatcher tick, so To Do never sticks. New Cards start in Triage or Ready, and Move and
+  Undo Archive offer Triage and Ready only; the host itself puts a Card in To Do while a
+  prerequisite is open, and the Board shows it there. Only the Bulk Actions also offer
+  Scheduled and Review, as webui does (#1677); a Running Card moved there loses its claim
+  without a per-Card warning, as Blocked does. A Card in either moves out: Ready from
+  Scheduled unblocks it, and any move from Review reopens it. Undo Archive returns a Triage Card to Triage and any
   other to Ready, except Done, which offers no Undo: the host refuses Done from Archived.
 - **Where a Card lands.** Block is offered only on Ready and Running Cards, the only ones the
   host blocks, and a repeat block can land the Card in Triage. Unblock (Ready from Blocked)
   lands in Ready, To Do or Review. A write succeeds wherever the reply puts the Card short of
   where it started (`KanbanBackend.accepts`), and the Card shows there.
-- **Complete.** Offered only on a Card in Review: the host completes any other Card only
-  with a result, which Hermex doesn't send, and refuses it with a 400. The Bulk Action to
-  Done stays, for approving Review Cards, and shows any other Card as failed.
+- **Complete.** Offered on Ready, Running, Blocked and Review Cards (#1677). Outside Review
+  the host completes a Card only with a `result`, so Complete asks "What was done?" first,
+  in place of the Leave Running prompt on a Running Card; Review completes without one. The
+  Bulk Action to Done asks for the same note when any selected Card is outside Review, and
+  Retry sends it again.
 - **Editor.** Tenant is set on create and read-only after; an edit never sends it. The
   workspace kind starts at the Board's `default_workspace_kind` and is sent unless it is a
   Scratch nobody picked. An omitted kind is Scratch on a Board without a project, even one
@@ -133,8 +136,9 @@ How Hermex adapts it:
   again (a gated or promoted dependent moves too); a comment reads the Card again. A 400 or
   409 `{detail}` shows the host's own words where the failure shows, and the Card stays
   where the host has it. A create `warning` shows as a dismissible notice on the Board.
-- **Filters.** The Assigned Profile filter runs on the client; Only Mine is not offered,
-  because the host's Kanban has no active chat Profile.
+- **Filters.** The Assigned Profile filter and Only Mine run on the client. Only Mine is the
+  Profile the Sessions side lists when Kanban opens, the one New Session opens in, and is
+  not offered when none is known (#1677).
 - **Host data never kept.** `workspace_path`, `stored_path`, a log's `path`, `db_path`,
   `default_workdir`, an archived Board's `new_path`, `worker_pid` and `claim_lock` (on Cards
   and on runs) are dropped from every reply before it is decoded, so no view or log can show them.
