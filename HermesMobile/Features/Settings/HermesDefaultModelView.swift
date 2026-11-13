@@ -71,9 +71,9 @@ import SwiftUI
 
     /// Pins `option` as the shown Profile's model. True once the host applied it; a model the host
     /// wants confirmed sets `confirmation` instead and writes nothing, until it is saved again
-    /// `confirmed`.
+    /// `confirmed`. Refused while the page reads, whose older reply would then hide the change.
     func save(_ option: ModelCatalogOption, confirmed: Bool = false) async -> Bool {
-        guard let name = profile, let provider = option.providerID, saving == nil else { return false }
+        guard state == .loaded, let name = profile, let provider = option.providerID, saving == nil else { return false }
         let owner = serial
         saving = option; saveError = nil; confirmation = nil
         var changes = HermesCall.ProfileChanges(name: name)
@@ -275,7 +275,8 @@ struct HermesDefaultModelView: View {
             },
             inFlightKey: savingCustom ? nil : model.saving?.favoriteKey,
             isCommittingCustom: savingCustom && model.saving != nil,
-            isSelectionDisabled: model.saving != nil,
+            // A foreground reload can run under the open picker; it takes no pick until it ends.
+            isSelectionDisabled: model.saving != nil || model.state != .loaded,
             errorMessage: model.saveError,
             onSelect: { option in save(option) },
             onCommitCustom: { option in save(option, custom: true) }

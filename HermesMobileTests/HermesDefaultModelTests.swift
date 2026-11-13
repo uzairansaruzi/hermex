@@ -75,13 +75,29 @@ import XCTest
         await page.load()
         wire.onDisconnect?(BotFailure.transport)
         let connecting = expectation(description: "reconnecting")
-        wire.holdConnect = { connecting.fulfill() }
+        wire.hold = ("connect", { connecting.fulfill() })
 
         let save = Task { await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai")) }
         await fulfillment(of: [connecting])
         page.close()
-        wire.releaseConnect()
+        wire.release()
         let saved = await save.value
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(wire.configures.isEmpty)
+    }
+
+    func testASaveDuringAReloadIsRefusedSoTheOlderReadCannotHideIt() async {
+        let (page, wire) = makePage()
+        await page.load()
+        let reading = expectation(description: "reading cached models")
+        wire.hold = ("model.options", { reading.fulfill() })
+
+        let reload = Task { await page.load() }
+        await fulfillment(of: [reading])
+        let saved = await page.save(ModelCatalogOption(id: "new-model", displayName: "new-model", providerID: "openai"))
+        wire.release()
+        await reload.value
 
         XCTAssertFalse(saved)
         XCTAssertTrue(wire.configures.isEmpty)
@@ -101,22 +117,26 @@ import XCTest
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     private(set) var configures: [[String: BotJSON]] = []
-    /// When set, the next `connect()` calls it and waits for `releaseConnect()`.
-    var holdConnect: (() -> Void)?
-    private var heldConnect: CheckedContinuation<Void, Never>?
+    /// When set, the next `connect()` (method "connect") or call of `method` runs `reached` and
+    /// waits for `release()`.
+    var hold: (method: String, reached: () -> Void)?
+    private var held: CheckedContinuation<Void, Never>?
 
-    func connect() async throws {
-        guard let hold = holdConnect else { return }
-        holdConnect = nil
-        await withCheckedContinuation { heldConnect = $0; hold() }
+    func connect() async throws { await wait(at: "connect") }
+    func release() { held?.resume(); held = nil }
+
+    private func wait(at method: String) async {
+        guard let hold, hold.method == method else { return }
+        self.hold = nil
+        await withCheckedContinuation { held = $0; hold.reached() }
     }
 
-    func releaseConnect() { heldConnect?.resume(); heldConnect = nil }
     func close() {}
     func currentProfile() async throws -> String { "default" }
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let params = try call.params()
+        await wait(at: call.method)
         switch call.method {
         case "profiles.list":
             return .object(["profiles": .array(["default", "work", "research"].map { .object(["name": .string($0)]) })])
