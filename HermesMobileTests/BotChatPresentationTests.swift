@@ -785,7 +785,7 @@ private struct SessionChatPresentationFixture: View {
             onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _, _ in },
             onPhotoMediaSelected: { _ in }, onFileURLsSelected: { _ in }, onPasteFileProviders: { _ in },
             onPasteFileURLs: { _ in }, onPasteImageProviders: { _ in }, onPasteImages: { _ in },
-            onRemoveAttachment: { _ in }, onPreviewAttachment: { _ in }, onDismissUploadAttachmentError: {},
+            onRemoveAttachment: { _ in }, onPreviewAttachment: { _ in }, onDismissUploadAttachmentError: {}, onDismissError: nil,
             onSelectFileReference: { _ in }, onFileReferenceCandidatesChange: { probe.scannedDrafts.append($0) },
             onDraftEdit: { probe.editedDrafts.append($0) },
             onOpenFileReference: { _ in }, onSelectGitBranch: { _ in },

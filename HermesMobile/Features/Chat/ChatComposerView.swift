@@ -11,7 +11,6 @@ private struct ComposerStatusView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let text: String
     let isError: Bool
-    let isDismissible: Bool
     let onRetry: (() -> Void)?
     /// Offers Copy fix prompt, which puts this text on the pasteboard (#955).
     let fixPrompt: String?
@@ -19,7 +18,8 @@ private struct ComposerStatusView: View {
     let onCancel: (() -> Void)?
     /// Offers Fix on This Phone, which opens Serve Every Profile (#1611).
     let onFix: (() -> Void)?
-    let onDismiss: () -> Void
+    /// Offers ✕, for an error that goes once read.
+    let onDismiss: (() -> Void)?
     @State private var didCopyFixPrompt = false
 
     var body: some View {
@@ -58,7 +58,7 @@ private struct ComposerStatusView: View {
                 fixPromptButton(fixPrompt)
             }
 
-            if isDismissible {
+            if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .font(AppFont.caption(weight: .bold))
@@ -66,7 +66,7 @@ private struct ComposerStatusView: View {
                         .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss attachment error")
+                .accessibilityLabel("Dismiss")
             }
         }
         .padding(.horizontal, 10)
@@ -276,6 +276,8 @@ struct MessageComposerView: View {
     let onRemoveAttachment: (UUID) -> Void
     let onPreviewAttachment: (PendingAttachment) -> Void
     let onDismissUploadAttachmentError: () -> Void
+    /// Clears `errorMessage` and `configurationErrorMessage` from their banner's ✕; nil hides it.
+    let onDismissError: (() -> Void)?
     /// A workspace file the user just picked, for the chip catalog.
     let onSelectFileReference: (String) -> Void
     /// The draft, each time its finished `@…` references change (and once on
@@ -595,12 +597,11 @@ struct MessageComposerView: View {
                 ComposerStatusView(
                     text: composerStatus.text,
                     isError: composerStatus.isError,
-                    isDismissible: composerStatus.isDismissible,
                     onRetry: composerStatus.onRetry,
                     fixPrompt: composerStatus.fixPrompt,
                     onCancel: composerStatus.onCancel,
                     onFix: composerStatus.onFix,
-                    onDismiss: onDismissUploadAttachmentError
+                    onDismiss: composerStatus.onDismiss
                 )
             }
 
@@ -1519,36 +1520,36 @@ struct MessageComposerView: View {
         onSelectModel(option)
     }
 
-    private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?, fixPrompt: String?,
-                                 onCancel: (() -> Void)?, onFix: (() -> Void)?)? {
+    private var composerStatus: (text: String, isError: Bool, onRetry: (() -> Void)?, fixPrompt: String?,
+                                 onCancel: (() -> Void)?, onFix: (() -> Void)?, onDismiss: (() -> Void)?)? {
         if let readOnlyMessage = access.readOnlyMessage {
-            return (readOnlyMessage, false, false, nil, nil, nil, nil)
+            return (readOnlyMessage, false, nil, nil, nil, nil, nil)
         } else if let errorMessage, let onFixError {
             // A Profile the Webapp doesn't serve leaves the chat on its cached copy, so it would
             // read as offline; say why, with the fix (#1611). Send stays held by `access`.
-            return (errorMessage, true, false, nil, nil, nil, onFixError)
+            return (errorMessage, true, nil, nil, nil, onFixError, nil)
         } else if access.isOffline {
-            return (ChatComposerSendBlock.offline.accessibilityValue, false, false, nil, nil, nil, nil)
+            return (ChatComposerSendBlock.offline.accessibilityValue, false, nil, nil, nil, nil, nil)
         } else if isWaitingForStream && isCancellingStream {
-            return (String(localized: "Stopping response..."), false, false, nil, nil, nil, nil)
+            return (String(localized: "Stopping response..."), false, nil, nil, nil, nil, nil)
         } else if isCompressingSession {
-            return (String(localized: "Compressing context..."), false, false, nil, nil, nil, nil)
+            return (String(localized: "Compressing context..."), false, nil, nil, nil, nil, nil)
         } else if let uploadAttachmentErrorMessage {
-            return (uploadAttachmentErrorMessage, true, true, nil, nil, nil, nil)
+            return (uploadAttachmentErrorMessage, true, nil, nil, nil, nil, onDismissUploadAttachmentError)
         } else if isSendingVoiceNote {
-            return (String(localized: "Sending voice note..."), false, false, nil, nil, nil, nil)
+            return (String(localized: "Sending voice note..."), false, nil, nil, nil, nil, nil)
         } else if isUploadingAttachment {
-            return (String(localized: "Uploading attachment..."), false, false, nil, nil, onCancelAttachmentUpload, nil)
+            return (String(localized: "Uploading attachment..."), false, nil, nil, onCancelAttachmentUpload, nil, nil)
         } else if let steerFailure {
-            return (steerFailure.message, true, false, steerFailure.onRetry, nil, nil, nil)
+            return (steerFailure.message, true, steerFailure.onRetry, nil, nil, nil, nil)
         } else if let errorMessage {
-            return (errorMessage, true, false, nil, errorFixPrompt, nil, nil)
+            return (errorMessage, true, nil, errorFixPrompt, nil, nil, onDismissError)
         } else if let configurationErrorMessage {
-            return (configurationErrorMessage, true, false, nil, nil, nil, nil)
+            return (configurationErrorMessage, true, nil, nil, nil, nil, onDismissError)
         } else if let configurationNotice {
-            return (configurationNotice, false, false, nil, nil, nil, nil)
+            return (configurationNotice, false, nil, nil, nil, nil, nil)
         } else if isUpdatingConfiguration, !isModelSettingsPresented.wrappedValue {
-            return (String(localized: "Updating composer settings..."), false, false, nil, nil, nil, nil)
+            return (String(localized: "Updating composer settings..."), false, nil, nil, nil, nil, nil)
         }
 
         return nil

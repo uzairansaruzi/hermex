@@ -4347,6 +4347,16 @@ final class ChatViewModel {
         steerFailureMessage = nil
     }
 
+    /// Clears the composer's one-off errors (a refused send, slash command, or setting change)
+    /// once the user edits the draft or taps Dismiss (#1694). An unserved Profile's and a stale
+    /// runtime's errors stay: they describe the host, not one attempt.
+    func clearComposerErrors() {
+        // Guarded like `clearSteerFailure()`: draft edits call this on every keystroke.
+        if sendErrorMessage != nil, errorUnserved == nil, sendErrorRuntimeStale == nil { sendErrorMessage = nil }
+        if composerConfigurationErrorMessage != nil { composerConfigurationErrorMessage = nil }
+        hermesSettings?.controls.clearError()
+    }
+
     /// Appends the local echo of an accepted steer immediately, so the hint is
     /// visible before the server persists it. The `local-steer-` id marks it as
     /// optimistic: when the persisted row arrives in `.done` or a reload, the
@@ -4798,7 +4808,10 @@ final class ChatViewModel {
     private func switchHermesFolderFromSlashCommand(_ path: String) async -> SlashCommandExecutionResult {
         composerConfigurationErrorMessage = nil
         if await selectWorkspacePath(path) || pendingHermesFolder != nil { return .executed(message: nil) }
-        return composerConfigurationErrorMessage.map(notDelivered) ?? .executed(message: nil)
+        // The refusal moves to the send error, so one Dismiss or edit clears it (#1694).
+        guard let refusal = composerConfigurationErrorMessage else { return .executed(message: nil) }
+        composerConfigurationErrorMessage = nil
+        return notDelivered(refusal)
     }
 
     private func switchReasoningFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
