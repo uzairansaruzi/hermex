@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import UIKit
 
@@ -329,5 +330,87 @@ struct CronSessionsToggle: View {
         Toggle(isOn: $showsCronSessions) {
             SettingsLabel(title: String(localized: "Cron Sessions"), systemImage: "clock.arrow.2.circlepath")
         }
+    }
+}
+
+/// The Message Count and Workspace switches on a server page's Sessions section: whether a
+/// session row shows them. App-wide, like the Main Page switches.
+struct SessionRowDisplayToggles: View {
+    @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
+    @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
+
+    var body: some View {
+        Toggle(isOn: $showsSessionMessageCount) {
+            SettingsLabel(title: String(localized: "Message Count"), systemImage: "number")
+        }
+
+        Toggle(isOn: $showsSessionWorkspace) {
+            SettingsLabel(title: String(localized: "Workspace"), systemImage: "folder")
+        }
+    }
+}
+
+/// The active server page's Offline Data section: Clear Offline Cache deletes this server's
+/// offline data (`clear`), never another server's, its drafts, or its push pairing. The alert
+/// sits on the button, since a Section's own modifiers run once per row (#1255).
+struct OfflineDataSection: View {
+    let server: URL
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var isConfirming = false
+    @State private var isClearing = false
+    @State private var statusMessage: String?
+
+    var body: some View {
+        Section {
+            Button(role: .destructive) {
+                isConfirming = true
+            } label: {
+                if isClearing {
+                    ProgressView()
+                } else {
+                    Text("Clear Offline Cache")
+                }
+            }
+            .disabled(isClearing)
+            .alert("Clear this server's cache?", isPresented: $isConfirming) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear Cache", role: .destructive) {
+                    Task { await clearTapped() }
+                }
+            } message: {
+                Text("This server's cached sessions and messages will be deleted. Other servers and online server data are not affected.")
+            }
+        } header: {
+            Text("Offline Data")
+        } appFooter: {
+            Text(statusMessage ?? String(localized: "Clears this server's cache only."))
+        }
+    }
+
+    private func clearTapped() async {
+        guard !isClearing else { return }
+        isClearing = true
+        do {
+            try await Self.clear(server: server, in: modelContext)
+            statusMessage = String(localized: "This server's offline cache was cleared.")
+        } catch {
+            statusMessage = String(localized: "Could not clear offline cache.")
+        }
+        isClearing = false
+    }
+
+    /// Deletes `server`'s cached sessions and messages, Bot room history, and Bot roster, leaving
+    /// every other server's (#18). Each refills on the server's next online load.
+    @MainActor
+    static func clear(
+        server: URL,
+        in context: ModelContext,
+        history: BotHistoryCache = .shared,
+        roster: BotRosterCache = .shared
+    ) async throws {
+        try CacheStore.clearCache(for: server, in: context)
+        try await history.remove(server: server)
+        await roster.remove(server: server)
     }
 }

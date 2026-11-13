@@ -1,15 +1,13 @@
-import SwiftData
 import SwiftUI
 
 /// The active webui server's sections on its page: connection and update, sessions and the
 /// main page's entries, defaults, and offline data. The page's list carries their loads and
-/// dialogs (`webuiServerPresentations`), since a section's own modifiers would run per row.
+/// dialogs (`webuiServerPresentations`), since a section's own modifiers would run per row;
+/// Offline Data carries its alert on its button.
 struct WebuiServerSections: View {
     @Bindable var authManager: AuthManager
     @Bindable var model: WebuiServerSettingsModel
 
-    @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
-    @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
     private var showsSubagentSessions = SessionRowDisplaySettings.defaultShowsSubagentSessions
 
@@ -60,13 +58,7 @@ struct WebuiServerSections: View {
                 SettingsLabel(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
             }
 
-            Toggle(isOn: $showsSessionMessageCount) {
-                SettingsLabel(title: String(localized: "Message Count"), systemImage: "number")
-            }
-
-            Toggle(isOn: $showsSessionWorkspace) {
-                SettingsLabel(title: String(localized: "Workspace"), systemImage: "folder")
-            }
+            SessionRowDisplayToggles()
 
             CronSessionsToggle()
 
@@ -129,22 +121,7 @@ struct WebuiServerSections: View {
             .accessibilityHint("Opens the provider status screen.")
         }
 
-        Section {
-            Button(role: .destructive) {
-                model.isConfirmingClearCache = true
-            } label: {
-                if model.isClearingCache {
-                    ProgressView()
-                } else {
-                    Text("Clear Offline Cache")
-                }
-            }
-            .disabled(model.isClearingCache)
-        } header: {
-            Text("Offline Data")
-        } appFooter: {
-            Text(model.cacheStatusMessage ?? String(localized: "Clears this server's cache only."))
-        }
+        OfflineDataSection(server: server)
     }
 
     @ViewBuilder
@@ -339,22 +316,11 @@ extension View {
 private struct WebuiServerPresentations: ViewModifier {
     @Bindable var model: WebuiServerSettingsModel
     let onDefaultProfileSelected: (DefaultProfileSelection) -> Void
-    @Environment(\.modelContext) private var modelContext
 
     func body(content: Content) -> some View {
         content
             .task {
                 await model.load()
-            }
-            .alert("Clear this server's cache?", isPresented: $model.isConfirmingClearCache) {
-                Button("Cancel", role: .cancel) {}
-                Button("Clear Cache", role: .destructive) {
-                    Task {
-                        await model.clearOfflineCache(in: modelContext)
-                    }
-                }
-            } message: {
-                Text("This server's cached sessions and messages will be deleted. Other servers and online server data are not affected.")
             }
             .alert("Update server?", isPresented: $model.isConfirmingUpdate) {
                 Button("Cancel", role: .cancel) {}
