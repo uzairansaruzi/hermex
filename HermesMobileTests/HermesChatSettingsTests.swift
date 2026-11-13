@@ -654,12 +654,12 @@ import Observation
         let refused = await chat.model.runHermesSlashCommand("/workspace /Users/me/launch")
         XCTAssertEqual(refused, .notDelivered)
         XCTAssertEqual(chat.model.sendErrorMessage, "Wait for the current response to finish before changing workspace.")
+        XCTAssertNil(chat.model.composerConfigurationErrorMessage)
         XCTAssertNil(chat.model.pendingHermesFolder)
         XCTAssertEqual(chat.writes("session.workspace.move"), [])
 
         chat.model.clearComposerErrors()
         XCTAssertNil(chat.model.sendErrorMessage)
-        XCTAssertNil(chat.model.composerConfigurationErrorMessage)
     }
 
     /// A turn that starts (from another client, say) after the chat checked it was idle stops
