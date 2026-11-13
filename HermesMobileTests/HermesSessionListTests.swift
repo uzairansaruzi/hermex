@@ -456,19 +456,24 @@ import Observation
     }
 
     /// A waiting row whose runtime holds an unresolved approval reads as Approval, one waiting on
-    /// a question as Input, each asked by its runtime id; both lift into Needs you (#1679).
+    /// a question as Input, each asked by its runtime id; both lift into Needs you (#1679). The
+    /// rows' states show before the approval reads answer.
     func testWaitingRowsTellApprovalFromInput() async {
         let wire = HermesSessionListWire()
-        wire.pages["default"] = [0: page(["approve", "ask"].map { HermesSessionRow(id: $0) })]
-        wire.active = [live("approve", "waiting"), live("ask", "waiting")]
+        wire.pages["default"] = [0: page(["approve", "ask", "work"].map { HermesSessionRow(id: $0) })]
+        wire.active = [live("approve", "waiting"), live("ask", "waiting"), live("work", "working")]
         wire.approvals["runtime-approve"] = [.object(["request_id": .string("r1")])]
+        wire.holdsApprovals = true
         let list = makeList(wire)
         defer { list.closeHermes() }
 
         await list.openHermes()
         await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+        XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .input, "ask": .input, "work": .working])
 
-        XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .approval, "ask": .input])
+        wire.release()
+        await waitUntil("approvals read") { list.attentionStatesBySessionID["approve"] == .approval }
+        XCTAssertEqual(list.attentionStatesBySessionID, ["approve": .approval, "ask": .input, "work": .working])
         XCTAssertEqual(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).needsYou.compactMap(\.sessionId),
                        ["approve", "ask"])
     }
@@ -1385,6 +1390,8 @@ import Observation
     var approvals: [String: [BotJSON]] = [:]
     /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
     var holdsActive = false
+    /// While true, `approval.pending` waits for `release()`.
+    var holdsApprovals = false
     var profiles = ["default", "research"]
     var current = "default"
     /// Profiles the host no longer has: 4064 over the socket, 404 over REST.
@@ -1455,7 +1462,9 @@ import Observation
         case "session.active_list":
             if holdsActive { await withCheckedContinuation { held.append($0) } }
             return .object(["sessions": .array(active)])
-        case "approval.pending": return .object(["approvals": .array(approvals[params["session_id"]?.text ?? ""] ?? [])])
+        case "approval.pending":
+            if holdsApprovals { await withCheckedContinuation { held.append($0) } }
+            return .object(["approvals": .array(approvals[params["session_id"]?.text ?? ""] ?? [])])
         case "profiles.list": return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
         case "session.delete": return .object([:])
         case "projects.tree":
