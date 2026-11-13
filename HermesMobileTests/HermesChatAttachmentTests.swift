@@ -281,6 +281,21 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["more.txt"])
     }
 
+    /// `/interrupt` mid-run is Stop and send (#1673): `session.redirect` with its text, and the
+    /// staged file stays staged.
+    func testInterruptCommandMidRunStopsAndSends() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.host.always("session.redirect", .init(result: .object(["status": .string("redirected")])))
+        await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+
+        let result = await chat.model.runHermesSlashCommand("/interrupt Stop and look")
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.writes("session.redirect").map { $0["text"] }, [.string("Stop and look")])
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["notes.txt"])
+    }
+
     /// Bot Chat's limits: eight files. The ninth is refused with the Bot message.
     func testStagingStopsAtEightFiles() async {
         let chat = await openChat()

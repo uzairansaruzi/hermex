@@ -4357,6 +4357,9 @@ final class ChatViewModel {
         guard !message.isEmpty else {
             return .unsupported(friendlyMessage: String(localized: "Usage: /interrupt <message>"))
         }
+        if let hermesTurn {
+            return await submitHermesStreamingMessage(message, behavior: .interrupt, to: hermesTurn)
+        }
 
         guard activeStreamID != nil else {
             let sent = await sendMessage(message)
@@ -4743,6 +4746,7 @@ final class ChatViewModel {
         guard !requestedWorkspace.isEmpty else {
             return .unsupported(friendlyMessage: String(localized: "Usage: /workspace <path>"))
         }
+        if hermesTurn != nil { return await switchHermesFolderFromSlashCommand(requestedWorkspace) }
 
         guard let sessionID else {
             return .unsupported(friendlyMessage: String(localized: "The server did not provide a session ID."))
@@ -4778,6 +4782,14 @@ final class ChatViewModel {
             composerConfigurationErrorMessage = error.localizedDescription
             return .unsupported(friendlyMessage: error.localizedDescription)
         }
+    }
+
+    /// `/workspace` in a Hermes chat (#1673): the folder chip's pick. A move, the same folder,
+    /// or the move confirm it raises is done; a refusal keeps the draft and says why.
+    private func switchHermesFolderFromSlashCommand(_ path: String) async -> SlashCommandExecutionResult {
+        composerConfigurationErrorMessage = nil
+        if await selectWorkspacePath(path) || pendingHermesFolder != nil { return .executed(message: nil) }
+        return composerConfigurationErrorMessage.map(notDelivered) ?? .executed(message: nil)
     }
 
     private func switchReasoningFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
