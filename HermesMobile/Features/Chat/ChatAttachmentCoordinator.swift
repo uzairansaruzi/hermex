@@ -270,7 +270,8 @@ final class ChatAttachmentCoordinator {
             previewData: draftAttachment.isImage ? data : nil,
             draftFileName: draftAttachment.file,
             draftAttachmentID: draftAttachment.id,
-            reportsErrors: false
+            reportsErrors: false,
+            isClipboardPaste: draftAttachment.isClipboardPaste
         ) else {
             return nil
         }

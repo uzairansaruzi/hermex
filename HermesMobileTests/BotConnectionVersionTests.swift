@@ -40,7 +40,8 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertFalse(HermesCompatibility.supportsTitlePreview("0.21.5"))
         XCTAssertTrue(HermesCompatibility.supportsTitlePreview("0.21.6"))
         XCTAssertTrue(HermesCompatibility.supportsTitlePreview("0.23.1"))
-        XCTAssertTrue(HermesCompatibility.supportsTitlePreview(nil), "missing version defaults to the tested pin")
+        XCTAssertFalse(HermesCompatibility.supportsTitlePreview(nil), "unknown hosts must not receive optional fields")
+        XCTAssertFalse(HermesCompatibility.supportsTitlePreview("dev"), "unreadable versions are unknown")
     }
 
     func testRecordsSavedBeforeThePinDecodeWithoutAVersion() throws {

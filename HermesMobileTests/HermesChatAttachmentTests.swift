@@ -85,7 +85,9 @@ import UIKit
             "ref_text": .string(ref), "uploaded": .bool(true)
         ])))
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
-        await chat.model.uploadAttachment(data: Data("selected notes".utf8), filename: "pasted-text.txt")
+        let selectedFile = Data(String(repeating: "x", count: 3_001).utf8)
+        let staged = await chat.model.uploadAttachment(data: selectedFile, filename: "pasted-text.txt")
+        XCTAssertFalse(staged?.isClipboardPaste ?? true, "a matching filename does not imply clipboard origin")
         XCTAssertEqual(chat.writes("file.attach"), [], "staging keeps a local copy only")
 
         let sent = await chat.model.sendMessage("Summarize it")
@@ -97,6 +99,36 @@ import UIKit
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("Summarize it\n\n" + ref)])
         XCTAssertNil(chat.writes("prompt.submit").first?["title_preview"], "user-selected files are not title previews")
         XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["pasted-text.txt"])
+    }
+
+    func testShortenedClipboardAttachmentKeepsPreviewAsTitleMetadataOnly() async throws {
+        let chat = await openChat()
+        let original = String(repeating: "a", count: 3_001)
+        let stagedResult = await chat.model.stagePastedText(original).value
+        let staged = try XCTUnwrap(stagedResult)
+        let editError = await chat.model.saveStagedPaste(staged, text: "trimmed title source")
+        XCTAssertNil(editError)
+        let editedAttachment = try XCTUnwrap(chat.model.pendingAttachments.first)
+        let edited = try await chat.copies.data(named: try XCTUnwrap(editedAttachment.draftFileName))
+        XCTAssertEqual(edited, Data("trimmed title source".utf8))
+        XCTAssertTrue(editedAttachment.isClipboardPaste)
+
+        let ref = "@file:/home/u/.hermes/attachments/pasted-text.txt"
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/pasted-text.txt"),
+            "ref_text": .string(ref)
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+
+        let sent = await chat.model.sendMessage("")
+        XCTAssertTrue(sent)
+        let attach = try XCTUnwrap(chat.writes("file.attach").first)
+        XCTAssertTrue(attach["data_url"]?.text?.hasSuffix(Data("trimmed title source".utf8).base64EncodedString()) == true)
+        let submit = try XCTUnwrap(chat.writes("prompt.submit").first)
+        XCTAssertEqual(submit["text"]?.text, ref)
+        XCTAssertEqual(submit["title_preview"]?.text, "trimmed title source")
+        XCTAssertFalse(submit["text"]?.text?.contains("trimmed title source") == true,
+                       "edited clipboard text remains attachment content and title metadata, not prompt text")
     }
 
     /// A Windows host (#1312) stores both files under drive-letter paths. The send goes

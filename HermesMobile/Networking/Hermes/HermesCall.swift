@@ -717,8 +717,10 @@ enum HermesCall: Equatable, Sendable {
         case .sessionActiveList, .groupsCapabilities: return [:]
         case .promptSubmit(let sessionID, let text, _, let images, let titlePreview):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
-            if let titlePreview, HermesCompatibility.supportsTitlePreview(hostVersion) {
-                params["title_preview"] = .string(String(titlePreview.prefix(1_000)))
+            if let titlePreview,
+               let bounded = HermesCompatibility.boundedTitlePreview(titlePreview),
+               HermesCompatibility.supportsTitlePreview(hostVersion) {
+                params["title_preview"] = .string(bounded)
             }
             // Exactly `path` and `mime`: the host refuses any other key (4001).
             if !images.isEmpty {

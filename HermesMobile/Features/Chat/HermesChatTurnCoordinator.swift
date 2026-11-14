@@ -699,7 +699,7 @@ struct HermesLostTurn: Equatable {
                 try engine.check(attempt)
                 let data = try await attachment.data()
                 if titlePreview == nil, attachment.isClipboardPaste {
-                    titlePreview = ComposerLargePaste.titlePreview(for: data)
+                    titlePreview = ComposerLargePaste.titlePreview(forClipboardAttachment: data)
                 }
                 try engine.check(attempt)
                 if attachment.isImage {

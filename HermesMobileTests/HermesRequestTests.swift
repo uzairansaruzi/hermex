@@ -9,9 +9,10 @@ final class HermesRequestTests: XCTestCase {
         let call = HermesCall.promptSubmit(sessionID: "runtime", text: "@file:pasted-text.txt", titlePreview: preview)
         let params = try call.params(hostVersion: "0.23.1")
         XCTAssertEqual(params["text"]?.text, "@file:pasted-text.txt")
-        XCTAssertEqual(params["title_preview"]?.text?.count, 1_000)
-        XCTAssertEqual(params["title_preview"]?.text, String(repeating: "😀", count: 1_000))
+        XCTAssertEqual(params["title_preview"]?.text?.utf16.count, HermesCompatibility.titlePreviewLimit)
+        XCTAssertEqual(params["title_preview"]?.text, String(repeating: "😀", count: 500))
         XCTAssertNil(try call.params(hostVersion: "0.21.5")["title_preview"])
+        XCTAssertNil(try call.params(hostVersion: nil)["title_preview"], "unknown server versions must omit the optional field")
         XCTAssertNil(try HermesCall.promptSubmit(sessionID: "runtime", text: "hi").params()["title_preview"])
     }
 
