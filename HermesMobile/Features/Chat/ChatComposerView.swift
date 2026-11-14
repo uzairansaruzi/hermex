@@ -1515,11 +1515,12 @@ struct MessageComposerView: View {
         // the webui transport's `name`/`label` is a server name; anything the
         // client derives must keep `displayName == id` to stay prettifiable.
         // Display only: `matchesSelection` and the group lookup below match
-        // on id/provider, never on this string.
+        // on id/provider, never on this string. A blank id has nothing to
+        // prettify, so it keeps the placeholder title ("Model").
         let fallbackID = selectedModelID ?? selectedModelTitle
         return ModelCatalogOption(
             id: fallbackID,
-            displayName: fallbackID,
+            displayName: fallbackID.isEmpty ? selectedModelTitle : fallbackID,
             providerID: selectedModelProviderID
         )
     }
