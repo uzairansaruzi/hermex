@@ -12,6 +12,7 @@ struct ChatDraftAttachment: Equatable, Sendable {
     let size: Int?
     let isImage: Bool
     let file: String?
+    var isClipboardPaste = false
 }
 
 /// Effective composer choices snapshotted for a draft context. Restored for
@@ -112,7 +113,8 @@ extension ChatDraftAttachment {
             mime: pending.mime,
             size: pending.size,
             isImage: pending.isImage,
-            file: pending.draftFileName
+            file: pending.draftFileName,
+            isClipboardPaste: pending.isClipboardPaste
         )
     }
 }
@@ -323,6 +325,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         let size: Int?
         let isImage: Bool?
         let file: String?
+        let isClipboardPaste: Bool?
 
         init(_ attachment: ChatDraftAttachment) {
             id = attachment.id.uuidString
@@ -331,6 +334,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             size = attachment.size
             isImage = attachment.isImage
             file = attachment.file
+            isClipboardPaste = attachment.isClipboardPaste
         }
 
         var attachment: ChatDraftAttachment? {
@@ -366,7 +370,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 mime: mime,
                 size: size,
                 isImage: isImage ?? false,
-                file: sanitizedFile
+                file: sanitizedFile,
+                isClipboardPaste: isClipboardPaste ?? false
             )
         }
 

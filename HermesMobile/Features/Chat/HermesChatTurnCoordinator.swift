@@ -544,12 +544,14 @@ struct HermesLostTurn: Equatable {
         let name: String
         let mime: String
         let isImage: Bool
+        /// A long paste the composer turned into a file, which also titles the session.
+        let isClipboardPaste: Bool
         let data: () async throws -> Data
     }
 
     /// A send is uploading its files; `cancelAttachmentUpload()` stops it.
     private(set) var isUploadingAttachments = false
-    @ObservationIgnored private var attachmentUpload: Task<(references: [String], images: [UploadedImage]), Error>?
+    @ObservationIgnored private var attachmentUpload: Task<(references: [String], images: [UploadedImage], titlePreview: String?), Error>?
 
     /// Sends `text` in `mode` on the attached runtime, attaching first if the chat has not.
     /// `attachments` (Send and Queue only) upload first on that attach and runtime, and
@@ -571,9 +573,9 @@ struct HermesLostTurn: Equatable {
         // Only a fresh turn takes files (`docs/agents/bots.md`); the chat never offers more.
         guard attachments.isEmpty || mode.startsTurn else { throw NotSent(underlying: BotFailure.unsupported) }
         let attempt = engine.generation
-        let references: [String], images: [UploadedImage]
+        let references: [String], images: [UploadedImage], titlePreview: String?
         do {
-            (references, images) = try await upload(attachments, runtime: runtime, attempt: attempt, canonical: isCanonical)
+            (references, images, titlePreview) = try await upload(attachments, runtime: runtime, attempt: attempt, canonical: isCanonical)
         } catch {
             throw NotSent(underlying: error, duringUpload: true)
         }
@@ -614,7 +616,7 @@ struct HermesLostTurn: Equatable {
         let reply: BotJSON
         do {
             reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote, fence: engine.fence,
-                                                     images: images.map(\.stored)),
+                                                     images: images.map(\.stored), titlePreview: titlePreview),
                                            attempt: attempt, runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
         } catch {
             if let stale = error as? HermesFenceRefusal { engine.adoptGeneration(stale.generation) }
@@ -684,18 +686,23 @@ struct HermesLostTurn: Equatable {
     /// image-upload, which on a `canonical` host travels as the prompt's own attachment
     /// (#1644) and on any other as the vision-tool line pair among the references. The
     /// first failure, a cancel or a reattach ends it, so a partial set is never submitted.
-    /// Files already stored stay on the host.
+    /// Files already stored stay on the host. `titlePreview` is the first pasted text's start.
     private func upload(_ attachments: [OutgoingAttachment], runtime: String, attempt: Int,
-                        canonical: Bool) async throws -> (references: [String], images: [UploadedImage]) {
-        guard !attachments.isEmpty else { return ([], []) }
+                        canonical: Bool) async throws -> (references: [String], images: [UploadedImage], titlePreview: String?) {
+        guard !attachments.isEmpty else { return ([], [], nil) }
         guard let key = engine.storedKey else { throw BotFailure.stale }
         let context = BotArtifactContext(connectionID: engine.connection.id, profile: engine.target.profile,
                                          sessionID: key, generation: attempt)
         let task = Task { [engine] in
             var references: [String] = [], images: [UploadedImage] = []
+            var titlePreview: String?
             for attachment in attachments {
                 try engine.check(attempt)
                 let data = try await attachment.data()
+                // The first pasted text titles the session; four bytes per UTF-16 unit covers the cap.
+                if titlePreview == nil, attachment.isClipboardPaste {
+                    titlePreview = String(decoding: data.prefix(HermesCompatibility.titlePreviewLimit * 4), as: UTF8.self)
+                }
                 try engine.check(attempt)
                 if attachment.isImage {
                     let stored = try await engine.wire.uploadImage(data: data, filename: attachment.name, context: context)
@@ -717,7 +724,7 @@ struct HermesLostTurn: Equatable {
                 }
             }
             try engine.check(attempt)
-            return (references: references, images: images)
+            return (references: references, images: images, titlePreview: titlePreview)
         }
         attachmentUpload = task
         isUploadingAttachments = true

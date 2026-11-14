@@ -67,7 +67,31 @@ import UIKit
         XCTAssertTrue(attach["name"]?.text?.hasSuffix("-Q3 report.pdf") == true)
         XCTAssertTrue(attach["data_url"]?.text?.hasPrefix("data:application/pdf;base64,") == true)
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("Summarize it\n\n" + ref)])
+        XCTAssertNil(chat.writes("prompt.submit").first?["title_preview"], "a picked file never titles the session")
         XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["Q3 report.pdf"])
+    }
+
+    /// A long paste titles a new session (#1701) through `title_preview` alone, even once edited
+    /// below the paste threshold; the prompt carries only the file's reference.
+    func testAnEditedLongPasteTitlesTheSessionOutsideThePrompt() async throws {
+        let chat = await openChat(version: HermesCompatibility.titlePreviewVersion)
+        let staged = await chat.model.stagePastedText(String(repeating: "a", count: 3_001)).value
+        let paste = try XCTUnwrap(staged)
+        let editError = await chat.model.saveStagedPaste(paste, text: "Quarterly revenue notes")
+        XCTAssertNil(editError)
+        let ref = "@file:/home/u/.hermes/attachments/pasted-text.txt"
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/pasted-text.txt"),
+            "ref_text": .string(ref)
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+
+        let sent = await chat.model.sendMessage("")
+
+        XCTAssertTrue(sent)
+        let submit = try XCTUnwrap(chat.writes("prompt.submit").first)
+        XCTAssertEqual(submit["text"]?.text, ref)
+        XCTAssertEqual(submit["title_preview"]?.text, "Quarterly revenue notes")
     }
 
     /// A Windows host (#1312) stores both files under drive-letter paths. The send goes
@@ -419,8 +443,9 @@ import UIKit
         XCTAssertEqual(coordinator.pendingAttachments, [paste])
         let bytes = try await copies.data(named: try XCTUnwrap(paste.draftFileName))
         XCTAssertEqual(bytes, Data(original.utf8))
-        let record = await drafts.draft(for: key)?.attachments.first?.file
-        XCTAssertEqual(record, paste.draftFileName)
+        let record = await drafts.draft(for: key)?.attachments.first
+        XCTAssertEqual(record?.file, paste.draftFileName)
+        XCTAssertEqual(record?.isClipboardPaste, true)
 
         await saved.setFails(false)
         let retry = await coordinator.replaceStagedPaste(paste, with: "trimmed")
@@ -1048,8 +1073,9 @@ import UIKit
 
     /// `previewLimit` is the chat's preview cap, which a test lowers to stay small. `canonical`
     /// opens it on a gateway's canonical listener (#1341), where the session's runtime is its key.
+    /// `version` replaces the fixture host's 0.21.5 in `/api/status`.
     private func openChat(history: [BotJSON] = [], previewLimit: Int = BotArtifactBuffer.maximumBytes,
-                          canonical: Bool = false) async -> Chat {
+                          canonical: Bool = false, version: String? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: canonical ? .object([
@@ -1066,7 +1092,14 @@ import UIKit
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60))
         let client = BotClient(http: host.connection(Self.connection, canonical: canonical))
         _ = HermesHostFixture.configuration { request in
-            request.url?.path == "/api/sessions/tip/messages" ? .json(200, .object(["messages": .array(history)])) : nil
+            switch request.url?.path {
+            case "/api/sessions/tip/messages": return .json(200, .object(["messages": .array(history)]))
+            case "/api/status":
+                guard let version else { return nil }
+                return .json(200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                           "version": .string(version), "install_id": .string("fixture-install")]))
+            default: return nil
+            }
         }
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "default", key: "tip"), wire: client)

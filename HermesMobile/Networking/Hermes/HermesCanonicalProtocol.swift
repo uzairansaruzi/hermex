@@ -21,7 +21,7 @@ extension HermesCall {
             params["profile"] = .string(profile)
             if let replayEpoch { params["replay_epoch"] = .string(replayEpoch) }
         // The host admits identified input only; each send is one deliberate send, never resent.
-        case .promptSubmit(_, _, let fence, _):
+        case .promptSubmit(_, _, let fence, _, _):
             params["submission_id"] = .string(UUID().uuidString)
             if let fence { params["profile"] = .string(fence.profile) }
         case .sessionSteer(_, _, let fence?), .sessionRedirect(_, _, let fence?), .sessionInterrupt(_, let fence?):

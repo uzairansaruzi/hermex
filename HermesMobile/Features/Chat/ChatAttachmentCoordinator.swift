@@ -93,8 +93,9 @@ final class ChatAttachmentCoordinator {
     /// so every attachment shown in the composer is restorable from its draft.
     /// A Hermes session only stages the copy (`stageForSend`).
     @discardableResult
-    func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async -> PendingAttachment? {
-        if uploadsOnSend { return await stageForSend(data: data, filename: filename) }
+    func uploadAttachment(data: Data, filename: String, previewData: Data? = nil,
+                          isClipboardPaste: Bool = false) async -> PendingAttachment? {
+        if uploadsOnSend { return await stageForSend(data: data, filename: filename, isClipboardPaste: isClipboardPaste) }
         guard data.count <= PendingAttachment.maximumUploadBytes else {
             uploadAttachmentErrorMessage = PendingAttachment.uploadTooLargeMessage(filename: filename)
             return nil
@@ -120,7 +121,8 @@ final class ChatAttachmentCoordinator {
             previewData: previewData,
             draftFileName: draftFileName,
             draftAttachmentID: stagingID,
-            reportsErrors: true
+            reportsErrors: true,
+            isClipboardPaste: isClipboardPaste
         ) else {
             attachmentLease?.filesByAttachmentID[stagingID] = nil
             await deleteUnreferencedCopy(draftFileName)
@@ -158,7 +160,7 @@ final class ChatAttachmentCoordinator {
                     : PendingAttachment.uploadTooLargeMessage(filename: filename)
                 return nil
             }
-            return await uploadAttachment(data: data, filename: filename)
+            return await uploadAttachment(data: data, filename: filename, isClipboardPaste: true)
         }
         pasteTasks[id] = task
         return task
@@ -217,7 +219,8 @@ final class ChatAttachmentCoordinator {
         let original = pendingAttachments[index]
         let edited = PendingAttachment(
             id: original.id, name: original.name, path: original.path, mime: original.mime,
-            size: data.count, isImage: original.isImage, draftFileName: file
+            size: data.count, isImage: original.isImage, draftFileName: file,
+            isClipboardPaste: original.isClipboardPaste
         )
         pendingAttachments[index] = edited
         let key = attachmentLease?.key
@@ -254,7 +257,8 @@ final class ChatAttachmentCoordinator {
                 id: draftAttachment.id, name: draftAttachment.name, path: "", mime: draftAttachment.mime,
                 size: draftAttachment.size, isImage: draftAttachment.isImage,
                 thumbnailData: draftAttachment.isImage ? await Self.thumbnail(of: data) : nil,
-                draftFileName: draftAttachment.file
+                draftFileName: draftAttachment.file,
+                isClipboardPaste: draftAttachment.isClipboardPaste
             )
             pendingAttachments.append(attachment)
             refreshAttachmentSlots()
@@ -266,7 +270,8 @@ final class ChatAttachmentCoordinator {
             previewData: draftAttachment.isImage ? data : nil,
             draftFileName: draftAttachment.file,
             draftAttachmentID: draftAttachment.id,
-            reportsErrors: false
+            reportsErrors: false,
+            isClipboardPaste: draftAttachment.isClipboardPaste
         ) else {
             return nil
         }
@@ -279,7 +284,7 @@ final class ChatAttachmentCoordinator {
     /// eight files, 25 MB each and 50 MB in all; images re-encoded as JPEG, or PNG with
     /// transparency (`BotAttachmentUpload.prepare`). Counts as an upload while it runs, so
     /// the composer waits for it as it waits for a webui upload.
-    private func stageForSend(data: Data, filename: String) async -> PendingAttachment? {
+    private func stageForSend(data: Data, filename: String, isClipboardPaste: Bool) async -> PendingAttachment? {
         let stagingID = UUID()
         stagingIDs.insert(stagingID)
         activeUploadCount += 1
@@ -315,7 +320,7 @@ final class ChatAttachmentCoordinator {
         let attachment = PendingAttachment(
             id: stagingID, name: prepared.name, path: "", mime: prepared.mime, size: prepared.data.count,
             isImage: prepared.image, thumbnailData: prepared.image ? await Self.thumbnail(of: prepared.data) : nil,
-            draftFileName: file
+            draftFileName: file, isClipboardPaste: isClipboardPaste
         )
         pendingAttachments.append(attachment)
         refreshAttachmentSlots()
@@ -361,7 +366,8 @@ final class ChatAttachmentCoordinator {
     func outgoingAttachments(_ attachments: [PendingAttachment]) -> [HermesChatTurnCoordinator.OutgoingAttachment] {
         attachments.map { attachment in
             HermesChatTurnCoordinator.OutgoingAttachment(
-                name: attachment.name, mime: attachment.mime, isImage: attachment.isImage
+                name: attachment.name, mime: attachment.mime, isImage: attachment.isImage,
+                isClipboardPaste: attachment.isClipboardPaste
             ) { [draftAttachmentStore] in
                 guard let file = attachment.draftFileName else { throw BotAttachmentFailure.unreadable }
                 let data = try await draftAttachmentStore.data(named: file)
@@ -409,7 +415,8 @@ final class ChatAttachmentCoordinator {
         previewData: Data?,
         draftFileName: String?,
         draftAttachmentID: UUID?,
-        reportsErrors: Bool
+        reportsErrors: Bool,
+        isClipboardPaste: Bool = false
     ) async -> PendingAttachment? {
         guard delegate?.attachmentIsViewingCachedData != true else {
             if reportsErrors {
@@ -470,7 +477,8 @@ final class ChatAttachmentCoordinator {
                 size: response.size,
                 isImage: response.isImage ?? false,
                 thumbnailData: await Self.thumbnailData(for: response, originalData: data, previewData: previewData),
-                draftFileName: draftFileName
+                draftFileName: draftFileName,
+                isClipboardPaste: isClipboardPaste
             )
         } catch {
             if reportsErrors {
