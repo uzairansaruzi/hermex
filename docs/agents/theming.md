@@ -65,12 +65,14 @@ A Hermes reply's `.html` file renders in place in the chat and in a full-height 
 | `--background` | canvas |
 | `--foreground` | text |
 | `--card` | surface |
+| `--muted` | fill (tracks, chips, quiet backgrounds) |
 | `--muted-foreground` | secondary text |
 | `--border` | separator |
 | `--primary` | accent |
+| `--primary-foreground` | text on the accent (onAccent) |
 | `--font-sans` | the Font setting; DM Sans falls back to the system sans and Lora to Georgia, because the page's web process can't see bundled fonts |
 | `--font-mono` | the system monospaced font |
 
 A user can paste this to their agent:
 
-> When you make an HTML report for me, send it as a single `.html` file. Style it with the CSS variables `--background`, `--foreground`, `--card`, `--muted-foreground`, `--border`, `--primary`, `--font-sans` and `--font-mono` instead of fixed colors and fonts, so it matches my app's theme in light and dark. Inline images, styles and data; a relative link to another file won't load.
+> When you make an HTML report for me, send it as a single `.html` file. Style it with the CSS variables `--background`, `--foreground`, `--card`, `--muted`, `--muted-foreground`, `--border`, `--primary`, `--primary-foreground`, `--font-sans` and `--font-mono` instead of fixed colors and fonts, so it matches my app's theme in light and dark. Inline images, styles and data; a relative link to another file won't load.
