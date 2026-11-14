@@ -1325,13 +1325,15 @@ struct ChatView: View {
                 if #available(iOS 27.1, *), hasVerticalBar {
                     chatActionRailItems
                 } else {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        ChatToolbarActionCluster {
-                            if showsBotChatSettingsButton { ChatToolbarActionSlot { botChatSettingsButton } }
-                            if viewModel.showsGoalControls { ChatToolbarActionSlot { goalControlMenu } }
-                            if showsFilesLink { ChatToolbarActionSlot { filesLink } }
-                            if showsGitMenu { ChatToolbarActionSlot { gitActionsMenu } }
-                            if let screenShortcut { ChatToolbarActionSlot { screenButton(screenShortcut) } }
+                    if showsTrailingActions {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            ChatToolbarActionCluster {
+                                if showsBotChatSettingsButton { ChatToolbarActionSlot { botChatSettingsButton } }
+                                if viewModel.showsGoalControls { ChatToolbarActionSlot { goalControlMenu } }
+                                if showsFilesLink { ChatToolbarActionSlot { filesLink } }
+                                if showsGitMenu { ChatToolbarActionSlot { gitActionsMenu } }
+                                if let screenShortcut { ChatToolbarActionSlot { screenButton(screenShortcut) } }
+                            }
                         }
                     }
                     delegatedWorkToolbarItem
@@ -2288,6 +2290,13 @@ struct ChatView: View {
     }
 
     private var showsGitMenu: Bool { showsGitControls && gitAvailabilityViewModel.hasRepository }
+
+    /// iOS 26 wraps the trailing item in a glass pill even when the cluster holds nothing, which
+    /// left an empty, dead button in chats with none of these actions (a cron delivery, say).
+    private var showsTrailingActions: Bool {
+        showsBotChatSettingsButton || viewModel.showsGoalControls || showsFilesLink || showsGitMenu
+            || screenShortcut != nil
+    }
 
     private var botChatSettingsButton: some View {
         Button { showsChatSettings = true } label: {
