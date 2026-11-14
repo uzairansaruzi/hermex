@@ -739,11 +739,33 @@ struct ComposerDropRoute {
 enum ComposerLargePaste {
     /// Desktop's limit, counted in UTF-16 units as JavaScript counts a string.
     static let threshold = 3_000
+    static let titlePreviewLimit = 1_000
     static let bypassTitle = String(localized: "Paste as Text")
 
     /// Walks at most `threshold + 1` units, so a huge paste costs what a short one does.
     static func converts(_ text: String) -> Bool {
         !text.utf16.dropFirst(threshold).isEmpty
+    }
+
+    /// Returns a title-only prefix for a converted clipboard paste, capped at a
+    /// Unicode-safe UTF-16 boundary. Ordinary/manual attachments never call this.
+    static func titlePreview(for text: String) -> String? {
+        guard converts(text) else { return nil }
+        var end = text.startIndex
+        var units = 0
+        for character in text {
+            let length = String(character).utf16.count
+            guard units + length <= titlePreviewLimit else { break }
+            units += length
+            end = text.index(after: end)
+        }
+        return units == 0 ? nil : String(text[..<end])
+    }
+
+    /// Decode only enough UTF-8 to prove the paste crosses the UTF-16 conversion threshold.
+    static func titlePreview(for data: Data) -> String? {
+        let prefix = String(decoding: data.prefix((threshold + 1) * 3), as: UTF8.self)
+        return titlePreview(for: prefix)
     }
 
     /// `pasted-text.txt`, then `pasted-text-2.txt` and on: the first name `taken`

@@ -188,7 +188,7 @@ enum HermesCall: Equatable, Sendable {
     /// `images` go only to a canonical host too (#1644), as the prompt's own `attachments`, so
     /// the host stores them with it and every client shows them; a dashboard listener has no such
     /// field, and its prompt names its images in the text (`BotAttachmentUpload.imageReference`).
-    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [])
+    case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [], titlePreview: String? = nil)
     /// Cuts the transcript at one durable prompt row and starts the turn again with
     /// `text`, in one call under the host's history lock. Never `queued`: the host
     /// refuses a cut while busy (4009) instead of queueing or steering it. A Hermes
@@ -715,8 +715,11 @@ enum HermesCall: Equatable, Sendable {
         case .sessionDetach(let profile, let sessionID, let subscriptionID):
             return ["profile": .string(profile), "session_id": .string(sessionID), "subscription_id": .string(subscriptionID)]
         case .sessionActiveList, .groupsCapabilities: return [:]
-        case .promptSubmit(let sessionID, let text, _, let images):
+        case .promptSubmit(let sessionID, let text, _, let images, let titlePreview):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
+            if let titlePreview, HermesCompatibility.supportsTitlePreview(hostVersion) {
+                params["title_preview"] = .string(String(titlePreview.prefix(1_000)))
+            }
             // Exactly `path` and `mime`: the host refuses any other key (4001).
             if !images.isEmpty {
                 params["attachments"] = .array(images.map { .object(["path": .string($0.path), "mime": .string($0.mime)]) })

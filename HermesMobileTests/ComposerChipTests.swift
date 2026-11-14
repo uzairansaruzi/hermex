@@ -1092,6 +1092,20 @@ final class ComposerUndoTests: XCTestCase {
 /// inline. Each test reads a private pasteboard, never the clipboard shared with the Mac.
 @MainActor
 final class ComposerLargePasteTests: XCTestCase {
+    func testTitlePreviewIsOnlyForConvertedPastesAndHonorsUnicodeUTF16Limit() throws {
+        XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "x", count: 3_000)))
+        XCTAssertTrue(ComposerLargePaste.converts(String(repeating: "x", count: 3_001)))
+        XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "😀", count: 1_500)))
+        let emoji = String(repeating: "😀", count: 1_501)
+        XCTAssertTrue(ComposerLargePaste.converts(emoji))
+        let preview = try XCTUnwrap(ComposerLargePaste.titlePreview(for: emoji))
+        XCTAssertEqual(preview.utf16.count, ComposerLargePaste.titlePreviewLimit)
+        XCTAssertEqual(preview, String(repeating: "😀", count: 500))
+        XCTAssertEqual(ComposerLargePaste.titlePreview(for: Data(emoji.utf8)), preview)
+        XCTAssertNil(ComposerLargePaste.titlePreview(for: Data(String(repeating: "x", count: 3_000).utf8)))
+        XCTAssertNil(ComposerLargePaste.titlePreview(for: ""))
+    }
+
     /// The limit counts UTF-16 units: 1,501 emoji are 3,002 units but 1,501 characters, so a
     /// character count would have left them inline. What was typed stays as it was.
     func testAPastePastTheLimitStagesAFileAndLeavesTheEditorAlone() {

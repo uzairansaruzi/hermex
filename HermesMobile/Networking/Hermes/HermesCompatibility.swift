@@ -9,6 +9,14 @@ enum HermesCompatibility {
     /// The release Hermex was validated against. Mirrors line 2 of
     /// `HERMES_AGENT_TESTED_SHA`; `BotConnectionVersionTests` fails when they drift.
     static let testedVersion = "0.23.1"
+    /// `prompt.submit.title_preview` was added after the minimum supported release.
+    static let titlePreviewVersion = "0.21.6"
+
+    /// Whether a reported host implements `prompt.submit.title_preview`.
+    static func supportsTitlePreview(_ version: String?) -> Bool {
+        guard let reported = release(version ?? testedVersion), let minimum = release(titlePreviewVersion) else { return false }
+        return !reported.lexicographicallyPrecedes(minimum)
+    }
 
     /// Whether a host reporting `version` may sign in. A missing or unreadable version
     /// counts as supported: the pin always reports one, so its absence means a proxy or

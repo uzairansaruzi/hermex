@@ -46,28 +46,57 @@ import UIKit
         XCTAssertEqual(copies, 0, "the accepted send deletes the local copy")
     }
 
+    /// The first message may be only a clipboard paste: keep all file bytes for the model,
+    /// but send the bounded source prefix separately for automatic session naming.
+    func testAttachmentOnlyClipboardPasteSendsFullFileAndTitlePreview() async throws {
+        let chat = await openChat()
+        let source = String(repeating: "Investigate this synthetic task. ", count: 120)
+        let staged = await chat.model.stagePastedText(source).value
+        let paste = try XCTUnwrap(staged)
+        XCTAssertTrue(paste.isClipboardPaste)
+        let ref = "@file:/home/u/.hermes/attachments/pasted-text.txt"
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/pasted-text.txt"),
+            "ref_text": .string(ref)
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+
+        let sent = await chat.model.sendMessage("")
+        XCTAssertTrue(sent)
+
+        let attach = try XCTUnwrap(chat.writes("file.attach").first)
+        XCTAssertTrue(attach["data_url"]?.text?.hasSuffix(Data(source.utf8).base64EncodedString()) == true)
+        let submit = try XCTUnwrap(chat.writes("prompt.submit").first)
+        XCTAssertEqual(submit["text"]?.text, ref)
+        XCTAssertEqual(submit["title_preview"]?.text, ComposerLargePaste.titlePreview(for: source))
+        XCTAssertLessThanOrEqual(submit["title_preview"]?.text?.utf16.count ?? .max,
+                                 ComposerLargePaste.titlePreviewLimit)
+        XCTAssertFalse(submit["text"]?.text?.contains(source) == true, "the full paste remains only in the attachment")
+    }
+
     /// A document goes through `file.attach` on the attached runtime, and its `ref_text`
     /// goes into the prompt exactly as the host wrote it.
     func testFileAttachRefTextGoesIntoThePromptVerbatim() async throws {
         let chat = await openChat()
-        let ref = "@file:`/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf`"
+        let ref = "@file:`/home/u/.hermes/attachments/\(Self.uuid)-pasted-text.txt`"
         chat.host.always("file.attach", .init(result: .object([
-            "attached": .bool(true), "name": .string("\(Self.uuid)-Q3 report.pdf"),
-            "path": .string("/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf"),
+            "attached": .bool(true), "name": .string("\(Self.uuid)-pasted-text.txt"),
+            "path": .string("/home/u/.hermes/attachments/\(Self.uuid)-pasted-text.txt"),
             "ref_text": .string(ref), "uploaded": .bool(true)
         ])))
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
-        await chat.model.uploadAttachment(data: Data("%PDF-1.4 test".utf8), filename: "Q3 report.pdf")
+        await chat.model.uploadAttachment(data: Data("selected notes".utf8), filename: "pasted-text.txt")
         XCTAssertEqual(chat.writes("file.attach"), [], "staging keeps a local copy only")
 
         let sent = await chat.model.sendMessage("Summarize it")
         XCTAssertTrue(sent)
         let attach = try XCTUnwrap(chat.writes("file.attach").first)
         XCTAssertEqual(attach["session_id"], .string("runtime"))
-        XCTAssertTrue(attach["name"]?.text?.hasSuffix("-Q3 report.pdf") == true)
-        XCTAssertTrue(attach["data_url"]?.text?.hasPrefix("data:application/pdf;base64,") == true)
+        XCTAssertTrue(attach["name"]?.text?.hasSuffix("-pasted-text.txt") == true)
+        XCTAssertTrue(attach["data_url"]?.text?.hasPrefix("data:text/plain;base64,") == true)
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("Summarize it\n\n" + ref)])
-        XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["Q3 report.pdf"])
+        XCTAssertNil(chat.writes("prompt.submit").first?["title_preview"], "user-selected files are not title previews")
+        XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["pasted-text.txt"])
     }
 
     /// A Windows host (#1312) stores both files under drive-letter paths. The send goes
@@ -409,6 +438,7 @@ import UIKit
         let original = String(repeating: "a", count: 3_001)
         let stage = await coordinator.stagePastedText(original).value
         let paste = try XCTUnwrap(stage)
+        XCTAssertTrue(paste.isClipboardPaste)
         drafts.setAttachments([ChatDraftAttachment(pending: paste)], for: key)
         try await drafts.flush()
 
@@ -419,8 +449,9 @@ import UIKit
         XCTAssertEqual(coordinator.pendingAttachments, [paste])
         let bytes = try await copies.data(named: try XCTUnwrap(paste.draftFileName))
         XCTAssertEqual(bytes, Data(original.utf8))
-        let record = await drafts.draft(for: key)?.attachments.first?.file
-        XCTAssertEqual(record, paste.draftFileName)
+        let record = await drafts.draft(for: key)?.attachments.first
+        XCTAssertEqual(record?.file, paste.draftFileName)
+        XCTAssertEqual(record?.isClipboardPaste, true)
 
         await saved.setFails(false)
         let retry = await coordinator.replaceStagedPaste(paste, with: "trimmed")

@@ -36,6 +36,13 @@ final class BotConnectionVersionTests: XCTestCase {
         }
     }
 
+    func testTitlePreviewProtocolIsVersionGated() {
+        XCTAssertFalse(HermesCompatibility.supportsTitlePreview("0.21.5"))
+        XCTAssertTrue(HermesCompatibility.supportsTitlePreview("0.21.6"))
+        XCTAssertTrue(HermesCompatibility.supportsTitlePreview("0.23.1"))
+        XCTAssertTrue(HermesCompatibility.supportsTitlePreview(nil), "missing version defaults to the tested pin")
+    }
+
     func testRecordsSavedBeforeThePinDecodeWithoutAVersion() throws {
         let stored = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","name":"Host","address":"http://hermes.local","username":"user","password":"secret"}"#
         let connection = try JSONDecoder().decode(BotConnection.self, from: Data(stored.utf8))
