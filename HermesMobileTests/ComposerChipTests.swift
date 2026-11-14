@@ -1092,6 +1092,93 @@ final class ComposerUndoTests: XCTestCase {
 /// inline. Each test reads a private pasteboard, never the clipboard shared with the Mac.
 @MainActor
 final class ComposerLargePasteTests: XCTestCase {
+    func testTitlePreviewIsOnlyForConvertedPastesAndHonorsUnicodeUTF16Limit() throws {
+        XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "x", count: 2_999)))
+        XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "x", count: 3_000)))
+        XCTAssertTrue(ComposerLargePaste.converts(String(repeating: "x", count: 3_001)))
+        XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "😀", count: 1_500)))
+        let emoji = String(repeating: "😀", count: 1_501)
+        XCTAssertTrue(ComposerLargePaste.converts(emoji))
+        let preview = try XCTUnwrap(ComposerLargePaste.titlePreview(for: emoji))
+        XCTAssertEqual(preview.utf16.count, ComposerLargePaste.titlePreviewLimit)
+        XCTAssertEqual(preview, String(repeating: "😀", count: 500))
+        XCTAssertEqual(ComposerLargePaste.titlePreview(for: Data(emoji.utf8)), preview)
+        XCTAssertNil(ComposerLargePaste.titlePreview(for: Data(String(repeating: "x", count: 3_000).utf8)))
+        XCTAssertNil(ComposerLargePaste.titlePreview(for: ""))
+    }
+
+    func testShortPlainTextPastesInline() {
+        let (textView, pasteboard) = makeEditor()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer { window.endEditing(true); window.isHidden = true }
+        XCTAssertTrue(textView.becomeFirstResponder())
+        pasteboard.string = "A short prompt"
+
+        textView.paste(nil)
+
+        XCTAssertEqual(textView.sourceText, "A short prompt")
+    }
+
+    func testPlainTextWithHTMLAndRTFRepresentationsPastesAsText() {
+        let (textView, pasteboard) = makeEditor()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer { window.endEditing(true); window.isHidden = true }
+        XCTAssertTrue(textView.becomeFirstResponder())
+        let text = "A rich-text prompt"
+        pasteboard.items = [[
+            "public.utf8-plain-text": text,
+            "public.html": Data("<p>\(text)</p>".utf8),
+            "public.rtf": Data("{\\rtf1 \(text)}".utf8)
+        ]]
+        textView.onPasteFileProviders = { _ in XCTFail("Text representations are not files") }
+        textView.onPasteFileURLs = { _ in XCTFail("Text representations are not files") }
+        textView.onPasteImageProviders = { _ in XCTFail("Text representations are not images") }
+        textView.onPasteImages = { _ in XCTFail("Text representations are not images") }
+
+        textView.paste(nil)
+
+        XCTAssertEqual(textView.sourceText, text)
+    }
+
+    func testFileURLAndTextRepresentationRemainAFilePaste() throws {
+        let (textView, pasteboard) = makeEditor()
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).txt")
+        try Data("notes".utf8).write(to: fileURL)
+        addTeardownBlock { try? FileManager.default.removeItem(at: fileURL) }
+        pasteboard.items = [[
+            "public.file-url": fileURL,
+            "public.utf8-plain-text": "document label"
+        ]]
+        var fileCount = 0
+        textView.onPasteFileProviders = { fileCount += $0.count }
+        textView.onPasteFileURLs = { fileCount += $0.count }
+        textView.onPasteLargeText = { _ in XCTFail("A file representation must remain a file") }
+
+        textView.paste(nil)
+
+        XCTAssertEqual(fileCount, 1)
+        XCTAssertEqual(textView.sourceText, "")
+    }
+
+    func testImagePasteRoutesToAnImageHandler() {
+        let (textView, pasteboard) = makeEditor()
+        pasteboard.images = [UIImage(systemName: "star") ?? UIImage()]
+        var imageCount = 0
+        textView.onPasteImageProviders = { imageCount += $0.count }
+        textView.onPasteImages = { imageCount += $0.count }
+        textView.onPasteLargeText = { _ in XCTFail("An image paste must remain an image") }
+
+        textView.paste(nil)
+
+        XCTAssertEqual(imageCount, 1)
+        XCTAssertEqual(textView.sourceText, "")
+    }
+
     /// The limit counts UTF-16 units: 1,501 emoji are 3,002 units but 1,501 characters, so a
     /// character count would have left them inline. What was typed stays as it was.
     func testAPastePastTheLimitStagesAFileAndLeavesTheEditorAlone() {
