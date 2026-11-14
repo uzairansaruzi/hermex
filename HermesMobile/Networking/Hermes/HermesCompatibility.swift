@@ -9,27 +9,27 @@ enum HermesCompatibility {
     /// The release Hermex was validated against. Mirrors line 2 of
     /// `HERMES_AGENT_TESTED_SHA`; `BotConnectionVersionTests` fails when they drift.
     static let testedVersion = "0.23.1"
-    /// `prompt.submit.title_preview` was added after the minimum supported release.
+    /// The first release whose `prompt.submit` takes `title_preview`; older hosts refuse it.
     static let titlePreviewVersion = "0.21.6"
+    /// Desktop's preview length, in UTF-16 units.
     static let titlePreviewLimit = 1_000
 
-    /// Whether a reported host implements `prompt.submit.title_preview`.
+    /// Whether a host reporting `version` takes `title_preview`. Unlike sign-in, a missing or
+    /// unreadable version fails closed: an older host refuses the whole prompt.
     static func supportsTitlePreview(_ version: String?) -> Bool {
         guard let reported = release(version), let minimum = release(titlePreviewVersion) else { return false }
         return !reported.lexicographicallyPrecedes(minimum)
     }
 
-    /// Caps metadata without splitting a Swift character or exceeding the wire limit.
+    /// The first `titlePreviewLimit` UTF-16 units of `text`, never splitting a character;
+    /// nil when nothing fits.
     static func boundedTitlePreview(_ text: String) -> String? {
-        var end = text.startIndex
         var units = 0
-        for character in text {
-            let length = String(character).utf16.count
-            guard units + length <= titlePreviewLimit else { break }
-            units += length
-            end = text.index(after: end)
-        }
-        return units == 0 ? nil : String(text[..<end])
+        let end = text.firstIndex { character in
+            units += character.utf16.count
+            return units > titlePreviewLimit
+        } ?? text.endIndex
+        return end == text.startIndex ? nil : String(text[..<end])
     }
 
     /// Whether a host reporting `version` may sign in. A missing or unreadable version

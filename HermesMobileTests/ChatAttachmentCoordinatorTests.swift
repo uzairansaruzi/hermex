@@ -355,8 +355,7 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
             mime: "text/plain",
             size: 5,
             isImage: false,
-            file: "abc-notes.txt",
-            isClipboardPaste: true
+            file: "abc-notes.txt"
         )
         let client = makeClient { request in
             let filename = try Self.multipartFilename(from: request)
@@ -383,7 +382,6 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(restored?.id, record.id)
         XCTAssertEqual(restored?.draftFileName, "abc-notes.txt")
         XCTAssertEqual(restored?.path, "/tmp/workspace/notes.txt")
-        XCTAssertTrue(restored?.isClipboardPaste == true, "re-uploaded drafts retain clipboard provenance")
         XCTAssertNil(coordinator.uploadAttachmentErrorMessage)
         XCTAssertEqual(coordinator.pendingAttachments.map(\.id), [record.id])
     }

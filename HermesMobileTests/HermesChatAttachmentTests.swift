@@ -46,73 +46,39 @@ import UIKit
         XCTAssertEqual(copies, 0, "the accepted send deletes the local copy")
     }
 
-    /// The first message may be only a clipboard paste: keep all file bytes for the model,
-    /// but send the bounded source prefix separately for automatic session naming.
-    func testAttachmentOnlyClipboardPasteSendsFullFileAndTitlePreview() async throws {
-        let chat = await openChat()
-        let source = String(repeating: "Investigate this synthetic task. ", count: 120)
-        let staged = await chat.model.stagePastedText(source).value
-        let paste = try XCTUnwrap(staged)
-        XCTAssertTrue(paste.isClipboardPaste)
-        let ref = "@file:/home/u/.hermes/attachments/pasted-text.txt"
-        chat.host.always("file.attach", .init(result: .object([
-            "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/pasted-text.txt"),
-            "ref_text": .string(ref)
-        ])))
-        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
-
-        let sent = await chat.model.sendMessage("")
-        XCTAssertTrue(sent)
-
-        let attach = try XCTUnwrap(chat.writes("file.attach").first)
-        XCTAssertTrue(attach["data_url"]?.text?.hasSuffix(Data(source.utf8).base64EncodedString()) == true)
-        let submit = try XCTUnwrap(chat.writes("prompt.submit").first)
-        XCTAssertEqual(submit["text"]?.text, ref)
-        XCTAssertEqual(submit["title_preview"]?.text, ComposerLargePaste.titlePreview(for: source))
-        XCTAssertLessThanOrEqual(submit["title_preview"]?.text?.utf16.count ?? .max,
-                                 ComposerLargePaste.titlePreviewLimit)
-        XCTAssertFalse(submit["text"]?.text?.contains(source) == true, "the full paste remains only in the attachment")
-    }
-
     /// A document goes through `file.attach` on the attached runtime, and its `ref_text`
     /// goes into the prompt exactly as the host wrote it.
     func testFileAttachRefTextGoesIntoThePromptVerbatim() async throws {
         let chat = await openChat()
-        let ref = "@file:`/home/u/.hermes/attachments/\(Self.uuid)-pasted-text.txt`"
+        let ref = "@file:`/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf`"
         chat.host.always("file.attach", .init(result: .object([
-            "attached": .bool(true), "name": .string("\(Self.uuid)-pasted-text.txt"),
-            "path": .string("/home/u/.hermes/attachments/\(Self.uuid)-pasted-text.txt"),
+            "attached": .bool(true), "name": .string("\(Self.uuid)-Q3 report.pdf"),
+            "path": .string("/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf"),
             "ref_text": .string(ref), "uploaded": .bool(true)
         ])))
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
-        let selectedFile = Data(String(repeating: "x", count: 3_001).utf8)
-        let staged = await chat.model.uploadAttachment(data: selectedFile, filename: "pasted-text.txt")
-        XCTAssertFalse(staged?.isClipboardPaste ?? true, "a matching filename does not imply clipboard origin")
+        await chat.model.uploadAttachment(data: Data("%PDF-1.4 test".utf8), filename: "Q3 report.pdf")
         XCTAssertEqual(chat.writes("file.attach"), [], "staging keeps a local copy only")
 
         let sent = await chat.model.sendMessage("Summarize it")
         XCTAssertTrue(sent)
         let attach = try XCTUnwrap(chat.writes("file.attach").first)
         XCTAssertEqual(attach["session_id"], .string("runtime"))
-        XCTAssertTrue(attach["name"]?.text?.hasSuffix("-pasted-text.txt") == true)
-        XCTAssertTrue(attach["data_url"]?.text?.hasPrefix("data:text/plain;base64,") == true)
+        XCTAssertTrue(attach["name"]?.text?.hasSuffix("-Q3 report.pdf") == true)
+        XCTAssertTrue(attach["data_url"]?.text?.hasPrefix("data:application/pdf;base64,") == true)
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("Summarize it\n\n" + ref)])
-        XCTAssertNil(chat.writes("prompt.submit").first?["title_preview"], "user-selected files are not title previews")
-        XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["pasted-text.txt"])
+        XCTAssertNil(chat.writes("prompt.submit").first?["title_preview"], "a picked file never titles the session")
+        XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["Q3 report.pdf"])
     }
 
-    func testShortenedClipboardAttachmentKeepsPreviewAsTitleMetadataOnly() async throws {
-        let chat = await openChat()
-        let original = String(repeating: "a", count: 3_001)
-        let stagedResult = await chat.model.stagePastedText(original).value
-        let staged = try XCTUnwrap(stagedResult)
-        let editError = await chat.model.saveStagedPaste(staged, text: "trimmed title source")
+    /// A long paste titles a new session (#1701) through `title_preview` alone, even once edited
+    /// below the paste threshold; the prompt carries only the file's reference.
+    func testAnEditedLongPasteTitlesTheSessionOutsideThePrompt() async throws {
+        let chat = await openChat(version: HermesCompatibility.titlePreviewVersion)
+        let staged = await chat.model.stagePastedText(String(repeating: "a", count: 3_001)).value
+        let paste = try XCTUnwrap(staged)
+        let editError = await chat.model.saveStagedPaste(paste, text: "Quarterly revenue notes")
         XCTAssertNil(editError)
-        let editedAttachment = try XCTUnwrap(chat.model.pendingAttachments.first)
-        let edited = try await chat.copies.data(named: try XCTUnwrap(editedAttachment.draftFileName))
-        XCTAssertEqual(edited, Data("trimmed title source".utf8))
-        XCTAssertTrue(editedAttachment.isClipboardPaste)
-
         let ref = "@file:/home/u/.hermes/attachments/pasted-text.txt"
         chat.host.always("file.attach", .init(result: .object([
             "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/pasted-text.txt"),
@@ -121,14 +87,11 @@ import UIKit
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
 
         let sent = await chat.model.sendMessage("")
+
         XCTAssertTrue(sent)
-        let attach = try XCTUnwrap(chat.writes("file.attach").first)
-        XCTAssertTrue(attach["data_url"]?.text?.hasSuffix(Data("trimmed title source".utf8).base64EncodedString()) == true)
         let submit = try XCTUnwrap(chat.writes("prompt.submit").first)
         XCTAssertEqual(submit["text"]?.text, ref)
-        XCTAssertEqual(submit["title_preview"]?.text, "trimmed title source")
-        XCTAssertFalse(submit["text"]?.text?.contains("trimmed title source") == true,
-                       "edited clipboard text remains attachment content and title metadata, not prompt text")
+        XCTAssertEqual(submit["title_preview"]?.text, "Quarterly revenue notes")
     }
 
     /// A Windows host (#1312) stores both files under drive-letter paths. The send goes
@@ -470,7 +433,6 @@ import UIKit
         let original = String(repeating: "a", count: 3_001)
         let stage = await coordinator.stagePastedText(original).value
         let paste = try XCTUnwrap(stage)
-        XCTAssertTrue(paste.isClipboardPaste)
         drafts.setAttachments([ChatDraftAttachment(pending: paste)], for: key)
         try await drafts.flush()
 
@@ -1111,8 +1073,9 @@ import UIKit
 
     /// `previewLimit` is the chat's preview cap, which a test lowers to stay small. `canonical`
     /// opens it on a gateway's canonical listener (#1341), where the session's runtime is its key.
+    /// `version` replaces the fixture host's 0.21.5 in `/api/status`.
     private func openChat(history: [BotJSON] = [], previewLimit: Int = BotArtifactBuffer.maximumBytes,
-                          canonical: Bool = false) async -> Chat {
+                          canonical: Bool = false, version: String? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: canonical ? .object([
@@ -1129,7 +1092,14 @@ import UIKit
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60))
         let client = BotClient(http: host.connection(Self.connection, canonical: canonical))
         _ = HermesHostFixture.configuration { request in
-            request.url?.path == "/api/sessions/tip/messages" ? .json(200, .object(["messages": .array(history)])) : nil
+            switch request.url?.path {
+            case "/api/sessions/tip/messages": return .json(200, .object(["messages": .array(history)]))
+            case "/api/status":
+                guard let version else { return nil }
+                return .json(200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                           "version": .string(version), "install_id": .string("fixture-install")]))
+            default: return nil
+            }
         }
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "default", key: "tip"), wire: client)

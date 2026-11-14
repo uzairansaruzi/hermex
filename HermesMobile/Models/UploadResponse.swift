@@ -22,6 +22,8 @@ struct PendingAttachment: Identifiable, Equatable {
     /// Fresh composer attachments always have one; standalone sends such as voice
     /// notes do not participate in draft persistence and leave it nil.
     let draftFileName: String?
+    /// A long paste the composer staged as `pasted-text.txt` (#1381), never a picked file
+    /// of the same name. Its text becomes the prompt's `title_preview` (#1701).
     let isClipboardPaste: Bool
 
     init(

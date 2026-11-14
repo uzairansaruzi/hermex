@@ -188,6 +188,8 @@ enum HermesCall: Equatable, Sendable {
     /// `images` go only to a canonical host too (#1644), as the prompt's own `attachments`, so
     /// the host stores them with it and every client shows them; a dashboard listener has no such
     /// field, and its prompt names its images in the text (`BotAttachmentUpload.imageReference`).
+    /// `titlePreview` is the start of a pasted-text attachment, for the session titler only
+    /// (#1701); it goes out bounded, and only to a host that takes it.
     case promptSubmit(sessionID: String, text: String, fence: Fence? = nil, images: [BotUploadedImage] = [], titlePreview: String? = nil)
     /// Cuts the transcript at one durable prompt row and starts the turn again with
     /// `text`, in one call under the host's history lock. Never `queued`: the host

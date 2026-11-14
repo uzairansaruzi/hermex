@@ -544,6 +544,7 @@ struct HermesLostTurn: Equatable {
         let name: String
         let mime: String
         let isImage: Bool
+        /// A long paste the composer turned into a file, which also titles the session.
         let isClipboardPaste: Bool
         let data: () async throws -> Data
     }
@@ -685,7 +686,7 @@ struct HermesLostTurn: Equatable {
     /// image-upload, which on a `canonical` host travels as the prompt's own attachment
     /// (#1644) and on any other as the vision-tool line pair among the references. The
     /// first failure, a cancel or a reattach ends it, so a partial set is never submitted.
-    /// Files already stored stay on the host.
+    /// Files already stored stay on the host. `titlePreview` is the first pasted text's start.
     private func upload(_ attachments: [OutgoingAttachment], runtime: String, attempt: Int,
                         canonical: Bool) async throws -> (references: [String], images: [UploadedImage], titlePreview: String?) {
         guard !attachments.isEmpty else { return ([], [], nil) }
@@ -698,8 +699,9 @@ struct HermesLostTurn: Equatable {
             for attachment in attachments {
                 try engine.check(attempt)
                 let data = try await attachment.data()
+                // The first pasted text titles the session; four bytes per UTF-16 unit covers the cap.
                 if titlePreview == nil, attachment.isClipboardPaste {
-                    titlePreview = ComposerLargePaste.titlePreview(forClipboardAttachment: data)
+                    titlePreview = String(decoding: data.prefix(HermesCompatibility.titlePreviewLimit * 4), as: UTF8.self)
                 }
                 try engine.check(attempt)
                 if attachment.isImage {

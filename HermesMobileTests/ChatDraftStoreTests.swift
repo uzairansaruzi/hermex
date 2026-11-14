@@ -837,7 +837,9 @@ final class ChatDraftStoreTests: XCTestCase {
             ],
             attachments: [
                 Self.sampleAttachment(),
-                Self.sampleAttachment(file: nil)
+                Self.sampleAttachment(file: nil),
+                ChatDraftAttachment(id: UUID(), name: "pasted-text.txt", mime: "text/plain", size: 5,
+                                    isImage: false, file: "a-pasted-text.txt", isClipboardPaste: true)
             ],
             settings: ChatDraftSettings(
                 modelID: "model-x",
