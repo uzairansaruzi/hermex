@@ -466,15 +466,27 @@ struct ModelPickerSheet: View {
         let selected = isSelected(option)
         let inFlight = Self.isInFlight(option, inFlightKey: inFlightKey)
         let displayLabel = ModelDisplayNames.displayLabel(for: option.id, displayName: option.displayName)
+        // Two ids can share a readable name (`…-flash` and `…-flash:local`), so
+        // the id stays visible, and spoken, beside it.
+        let showsID = displayLabel.caseInsensitiveCompare(option.id) != .orderedSame
 
         return HStack(spacing: 12) {
             Button {
                 commit(option)
             } label: {
                 HStack(spacing: 12) {
-                    Text(verbatim: displayLabel)
-                        .font(AppFont.body())
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: displayLabel)
+                            .font(AppFont.body())
+                            .lineLimit(2)
+                        if showsID {
+                            Text(verbatim: option.id)
+                                .font(AppFont.caption())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
 
                     Spacer(minLength: 0)
 
@@ -494,6 +506,7 @@ struct ModelPickerSheet: View {
             .buttonStyle(.plain)
             .disabled(isSelectionDisabled)
             .accessibilityLabel(Text(verbatim: displayLabel))
+            .accessibilityValue(Text(verbatim: showsID ? option.id : ""))
             .accessibilityAddTraits(selected ? .isSelected : [])
 
             if configuration.showsModelFavoriteStars {

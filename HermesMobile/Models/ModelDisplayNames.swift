@@ -4,7 +4,10 @@ import Foundation
 /// app's `apps/desktop/src/lib/model-status-label.ts`. The gateway's
 /// `model.options` payload serves `providers[].models` as plain id strings
 /// (#1698), so the picker and recents would render `zai/glm-5.3-flash:local`
-/// verbatim; this turns it into `GLM 5.3` plus a `Flash` tag.
+/// verbatim; this turns it into `GLM 5.3` plus a `Flash Local` tag.
+///
+/// Two ids can still share a label (a vendor prefix or a date pin is dropped),
+/// so a list that offers several models shows the raw id beside it.
 ///
 /// Display only: `ModelCatalogOption.displayName` keeps the raw id, so
 /// favorite keys, selection matching, search, and the `id --provider …
@@ -53,7 +56,7 @@ enum ModelDisplayNames {
     ]
 
     /// One-line picker label: the name with its tag joined by a middle dot,
-    /// the way the desktop pill renders it ("GLM 5.3 · Flash"). The tag is
+    /// the way the desktop pill renders it ("GLM 5.3 · Flash Local"). The tag is
     /// part of the model's naming — `…-flash` and `…-thinking` must never
     /// collapse to one label.
     static func displayLabel(for modelID: String) -> String {
@@ -98,8 +101,13 @@ enum ModelDisplayNames {
 
         // The vendor prefix (`zai/…`) is routing, not naming.
         var base = modelBaseID(trimmed)
-        // Hermes local builds carry a `:local` suffix after the model id.
-        base = stripLocalSuffix(from: base)
+        // A colon suffix (`:local`, `:latest`, `:30b`, `:free`) names a build
+        // or route of the model, so it becomes a tag rather than part of the name.
+        var colonTag = ""
+        if let colon = base.lastIndex(of: ":"), colon != base.startIndex {
+            colonTag = applyVendorCasing(titleCase(String(base[base.index(after: colon)...])))
+            base = String(base[..<colon])
+        }
 
         let split = splitTrailingTags(from: base)
         base = split.base
@@ -115,22 +123,16 @@ enum ModelDisplayNames {
         // A trailing date pin (`…-20251101`) is snapshot noise, not a name.
         base = replacingMatches(datePinRegex, in: base) { _ in "" }
 
-        var name = prettifyBase(base)
-        if name.isEmpty { name = trimmed }
-        // Desktop's last resort keeps a fully empty id from rendering as "".
-        if name.isEmpty { name = "No model" }
-        return Parts(name: name, tag: tags.joined(separator: " "))
+        if !colonTag.isEmpty { tags.append(colonTag) }
+
+        let name = prettifyBase(base)
+        return Parts(name: name.isEmpty ? trimmed : name, tag: tags.joined(separator: " "))
     }
 
     /// The model id without the `provider/` prefix (only for display).
     private static func modelBaseID(_ modelID: String) -> String {
         guard let slash = modelID.lastIndex(of: "/") else { return modelID }
         return String(modelID[modelID.index(after: slash)...])
-    }
-
-    private static func stripLocalSuffix(from base: String) -> String {
-        guard base.lowercased().hasSuffix(":local") else { return base }
-        return String(base.dropLast(":local".count))
     }
 
     /// Splits the trailing suffixes a local id can carry — one variant tag
