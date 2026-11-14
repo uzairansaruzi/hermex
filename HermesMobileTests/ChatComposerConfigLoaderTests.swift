@@ -326,11 +326,11 @@ final class ReasoningEffortGatingTests: XCTestCase {
                 effort: "xhigh", supportedEfforts: HermesModelCatalog.effortLevels, supportsEffort: true, sentEffort: sent
             )
         }
-        XCTAssertEqual(selection(sent: "high").title, "gpt-6 · XHigh · sent as High")
-        XCTAssertEqual(selection(sent: "high").accessibilityTitle, "gpt-6, XHigh effort, sent as High")
+        XCTAssertEqual(selection(sent: "high").title, "GPT-6 · XHigh · sent as High")
+        XCTAssertEqual(selection(sent: "high").accessibilityTitle, "GPT-6, XHigh effort, sent as High")
         for sent in [nil, "", "xhigh"] {
-            XCTAssertEqual(selection(sent: sent).title, "gpt-6 · XHigh")
-            XCTAssertEqual(selection(sent: sent).accessibilityTitle, "gpt-6 · XHigh")
+            XCTAssertEqual(selection(sent: sent).title, "GPT-6 · XHigh")
+            XCTAssertEqual(selection(sent: sent).accessibilityTitle, "GPT-6 · XHigh")
         }
     }
 }

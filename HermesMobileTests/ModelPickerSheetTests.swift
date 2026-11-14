@@ -57,6 +57,14 @@ final class ModelPickerSheetTests: XCTestCase {
         XCTAssertEqual(filtered.first?.allModels.map(\.id), ["o3"])
     }
 
+    func testSearchFindsAModelByTheNameItsRowShows() {
+        let model = option("zai/glm-5.3-flash:local", provider: "zai")
+        let group = ModelCatalogGroup(id: "zai", name: "ZAI", providerID: "zai", models: [model])
+
+        XCTAssertEqual(ModelPickerSheet.filteredGroups([group], query: "GLM 5.3").first?.allModels, [model])
+        XCTAssertTrue(ModelPickerSheet.matches(model, query: "glm-5.3-flash"))
+    }
+
     // MARK: Custom entry
 
     func testServerDefaultCommitsABareModelIDWithNoProvider() {

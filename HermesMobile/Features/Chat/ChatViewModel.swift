@@ -1024,7 +1024,7 @@ final class ChatViewModel {
     /// A Hermes model pick the host applies after the running response (#1015).
     var composerConfigurationNotice: String? {
         guard let pending = hermesSettings?.controls.pendingModel else { return nil }
-        return String(localized: "Switches to \(pending.displayName) after this response.")
+        return String(localized: "Switches to \(ModelDisplayNames.displayLabel(for: pending.id, displayName: pending.displayName)) after this response.")
     }
 
     /// A Hermes session's model and Profile controls (#1015). Nil on a webui session.

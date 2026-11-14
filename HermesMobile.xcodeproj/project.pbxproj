@@ -478,7 +478,9 @@
 		1A2B3C4D5E6F70000000131 /* ContextWindowIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000121 /* ContextWindowIndicatorView.swift */; };
 		1A2B3C4D5E6F70000000132 /* ContextWindowIndicatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000122 /* ContextWindowIndicatorTests.swift */; };
 		1A2B3C4D5E6F70000000140 /* ModelFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000142 /* ModelFavoritesStore.swift */; };
+		C16A0000000000000000A001 /* ModelDisplayNames.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16A0000000000000000B001 /* ModelDisplayNames.swift */; };
 		1A2B3C4D5E6F70000000141 /* ModelFavoritesStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000143 /* ModelFavoritesStoreTests.swift */; };
+		C16A0000000000000000A002 /* ModelDisplayNamesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16A0000000000000000B002 /* ModelDisplayNamesTests.swift */; };
 		1A2B3C4D5E6F70000000150 /* UploadResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000151 /* UploadResponse.swift */; };
 		1A2B3C4D5E6F70000000152 /* MessageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000153 /* MessageAttachment.swift */; };
 		1A2B3C4D5E6F70000000200 /* Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000201 /* Memory.swift */; };
@@ -1237,7 +1239,9 @@
 		1A2B3C4D5E6F70000000121 /* ContextWindowIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextWindowIndicatorView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000122 /* ContextWindowIndicatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextWindowIndicatorTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000142 /* ModelFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFavoritesStore.swift; sourceTree = "<group>"; };
+		C16A0000000000000000B001 /* ModelDisplayNames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDisplayNames.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000143 /* ModelFavoritesStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFavoritesStoreTests.swift; sourceTree = "<group>"; };
+		C16A0000000000000000B002 /* ModelDisplayNamesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDisplayNamesTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000151 /* UploadResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadResponse.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000153 /* MessageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachment.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000201 /* Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Memory.swift; sourceTree = "<group>"; };
@@ -1828,6 +1832,7 @@
 				C09500000000000000000004 /* AdaptiveGlassTests.swift */,
 				1A2B3C4D5E6F70000000122 /* ContextWindowIndicatorTests.swift */,
 				1A2B3C4D5E6F70000000143 /* ModelFavoritesStoreTests.swift */,
+				C16A0000000000000000B002 /* ModelDisplayNamesTests.swift */,
 				105050000000000000000004 /* ComposerModelPickerSectionExpansionStateTests.swift */,
 				1050500000000000000000A2 /* ComposerModelPickerSelectionClassificationTests.swift */,
 				C0366000000000000000006 /* ModelPickerSheetTests.swift */,
@@ -1970,6 +1975,7 @@
 				C03120000000000000F001 /* GitWorkspace.swift */,
 				1A2B3C4D5E6F7000000000BE /* ServerCatalog.swift */,
 				1A2B3C4D5E6F70000000142 /* ModelFavoritesStore.swift */,
+				C16A0000000000000000B001 /* ModelDisplayNames.swift */,
 				1A2B3C4D5E6F700000000301 /* ServerAccount.swift */,
 				1A2B3C4D5E6F7000000000DF /* ToolCall.swift */,
 				C0AA13780000000000000F01 /* ClarifyResult.swift */,
@@ -2965,6 +2971,7 @@
 				1A2B3C4D5E6F7000000000AD /* Workspace.swift in Sources */,
 				1A2B3C4D5E6F7000000000AE /* ServerCatalog.swift in Sources */,
 				1A2B3C4D5E6F70000000140 /* ModelFavoritesStore.swift in Sources */,
+				C16A0000000000000000A001 /* ModelDisplayNames.swift in Sources */,
 				1A2B3C4D5E6F7000000000DE /* ToolCall.swift in Sources */,
 				C0AA13780000000000000B01 /* ClarifyResult.swift in Sources */,
 				1A2B3C4D5E6F7000000000A9 /* JSONValue.swift in Sources */,
@@ -3424,6 +3431,7 @@
 				C09500000000000000000003 /* AdaptiveGlassTests.swift in Sources */,
 					1A2B3C4D5E6F70000000132 /* ContextWindowIndicatorTests.swift in Sources */,
 					1A2B3C4D5E6F70000000141 /* ModelFavoritesStoreTests.swift in Sources */,
+					C16A0000000000000000A002 /* ModelDisplayNamesTests.swift in Sources */,
 					105050000000000000000003 /* ComposerModelPickerSectionExpansionStateTests.swift in Sources */,
 					1050500000000000000000A1 /* ComposerModelPickerSelectionClassificationTests.swift in Sources */,
 					C0366000000000000000005 /* ModelPickerSheetTests.swift in Sources */,

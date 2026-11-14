@@ -1508,9 +1508,19 @@ struct MessageComposerView: View {
             return match
         }
 
+        // No catalog match: carry the RAW id as `displayName` too. A locally
+        // shortened title here ("claude-haiku-4-5") would differ from the id
+        // and so read to `ModelDisplayNames` as a server-provided name — it
+        // would render verbatim instead of prettifying to "Haiku 4.5". Only
+        // the webui transport's `name`/`label` is a server name; anything the
+        // client derives must keep `displayName == id` to stay prettifiable.
+        // Display only: `matchesSelection` and the group lookup below match
+        // on id/provider, never on this string. A blank id has nothing to
+        // prettify, so it keeps the placeholder title ("Model").
+        let fallbackID = selectedModelID ?? selectedModelTitle
         return ModelCatalogOption(
-            id: selectedModelID ?? selectedModelTitle,
-            displayName: selectedModelTitle,
+            id: fallbackID,
+            displayName: fallbackID.isEmpty ? selectedModelTitle : fallbackID,
             providerID: selectedModelProviderID
         )
     }

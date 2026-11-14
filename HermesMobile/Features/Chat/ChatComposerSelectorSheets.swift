@@ -179,7 +179,10 @@ struct ModelSettingsSheet<AllModels: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 10) {
                     glyph(for: shownSelection.model)
-                    Text(verbatim: shownSelection.model.displayName)
+                    Text(verbatim: ModelDisplayNames.displayLabel(
+                        for: shownSelection.model.id,
+                        displayName: shownSelection.model.displayName
+                    ))
                         .foregroundStyle(.appPrimary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
@@ -278,7 +281,7 @@ struct ModelSettingsSheet<AllModels: View>: View {
             HStack(spacing: 10) {
                 glyph(for: option)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: option.displayName)
+                    Text(verbatim: ModelDisplayNames.displayLabel(for: option.id, displayName: option.displayName))
                         .foregroundStyle(.appPrimary)
                         .lineLimit(1)
                     Text(verbatim: option.id)

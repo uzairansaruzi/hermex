@@ -465,15 +465,28 @@ struct ModelPickerSheet: View {
     private func modelOptionRowContent(_ option: ModelCatalogOption) -> some View {
         let selected = isSelected(option)
         let inFlight = Self.isInFlight(option, inFlightKey: inFlightKey)
+        let displayLabel = ModelDisplayNames.displayLabel(for: option.id, displayName: option.displayName)
+        // Two ids can share a readable name (`…-flash` and `…-flash:local`), so
+        // the id stays visible, and spoken, beside it.
+        let showsID = displayLabel.caseInsensitiveCompare(option.id) != .orderedSame
 
         return HStack(spacing: 12) {
             Button {
                 commit(option)
             } label: {
                 HStack(spacing: 12) {
-                    Text(option.displayName)
-                        .font(AppFont.body())
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: displayLabel)
+                            .font(AppFont.body())
+                            .lineLimit(2)
+                        if showsID {
+                            Text(verbatim: option.id)
+                                .font(AppFont.caption())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
 
                     Spacer(minLength: 0)
 
@@ -492,15 +505,16 @@ struct ModelPickerSheet: View {
             }
             .buttonStyle(.plain)
             .disabled(isSelectionDisabled)
-            .accessibilityLabel(Text(verbatim: option.displayName))
+            .accessibilityLabel(Text(verbatim: displayLabel))
+            .accessibilityValue(Text(verbatim: showsID ? option.id : ""))
             .accessibilityAddTraits(selected ? .isSelected : [])
 
             if configuration.showsModelFavoriteStars {
                 favoriteStar(
                     isFavorite: isFavorite(option),
                     isInverted: selected,
-                    removeLabel: Text("Remove \(option.displayName) from favorites"),
-                    addLabel: Text("Add \(option.displayName) to favorites")
+                    removeLabel: Text("Remove \(displayLabel) from favorites"),
+                    addLabel: Text("Add \(displayLabel) to favorites")
                 ) {
                     onToggleFavorite(option)
                 }
@@ -763,6 +777,12 @@ struct ModelPickerSheet: View {
         option.displayName.localizedCaseInsensitiveContains(query)
             || option.id.localizedCaseInsensitiveContains(query)
             || (option.providerID?.localizedCaseInsensitiveContains(query) ?? false)
+            // The row renders the prettified label, so the query the user
+            // sees on screen has to find the model too: searching "GLM 5.3"
+            // must match `zai/glm-5.3-flash:local`, not only its raw id.
+            || ModelDisplayNames
+                .displayLabel(for: option.id, displayName: option.displayName)
+                .localizedCaseInsensitiveContains(query)
     }
 }
 
