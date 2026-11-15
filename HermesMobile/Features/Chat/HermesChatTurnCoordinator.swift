@@ -1657,9 +1657,9 @@ struct HermesLostTurn: Equatable {
     private func savedPromptRowID(startedAt: Double?, in rows: HermesTranscriptHistory) -> Int? {
         guard let startedAt else { return nil }
         let messages = HermesTranscriptProjection.project(rows.rows, root: engine.storedKey ?? "").messages
-        guard let last = messages.lastIndex(where: HermesTranscriptProjection.isTurnBoundary),
+        guard let last = messages.lastIndex(where: TranscriptTurnClassifier.isTurnBoundary),
               let stamp = messages[last].timestamp, stamp >= startedAt else { return nil }
-        if let previous = messages[..<last].last(where: HermesTranscriptProjection.isTurnBoundary),
+        if let previous = messages[..<last].last(where: TranscriptTurnClassifier.isTurnBoundary),
            previous.timestamp.map({ $0 < startedAt }) != true { return nil }
         return messages[last].rowID
     }
@@ -2057,7 +2057,7 @@ struct HermesLostTurn: Equatable {
     /// Whether the snapshot's saved rows already hold the in-flight prompt: the last turn
     /// boundary is dated at or after the turn began, or, undated, shows the same.
     private static func holdsPrompt(_ prompt: ChatMessage, in messages: [ChatMessage], startedAt: Double?) -> Bool {
-        guard let settled = messages.last(where: HermesTranscriptProjection.isTurnBoundary) else { return false }
+        guard let settled = messages.last(where: TranscriptTurnClassifier.isTurnBoundary) else { return false }
         guard let startedAt, let stamp = settled.timestamp else {
             return settled.content == prompt.content && settled.attachments == prompt.attachments
         }

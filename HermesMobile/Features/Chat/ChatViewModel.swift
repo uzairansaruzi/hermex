@@ -2760,7 +2760,7 @@ final class ChatViewModel {
         // one, so a trailing echo must not move the assistant search range past
         // the streaming assistant: that would skip content reconciliation and
         // append a duplicate assistant row.
-        let latestUserIndex = mergedMessages.lastIndex(where: TranscriptTurnClassifier.isUserTurnBoundary)
+        let latestUserIndex = mergedMessages.lastIndex(where: TranscriptTurnClassifier.isTurnBoundary)
         let assistantSearchRange: Range<Int>
         if let latestUserIndex {
             assistantSearchRange = mergedMessages.index(after: latestUserIndex)..<mergedMessages.endIndex
@@ -2863,7 +2863,7 @@ final class ChatViewModel {
         }
 
         guard let latestUserTimestamp = messages
-            .last(where: TranscriptTurnClassifier.isUserTurnBoundary)?
+            .last(where: TranscriptTurnClassifier.isTurnBoundary)?
             .timestamp,
             latestUserTimestamp > 0
         else {
@@ -2879,7 +2879,7 @@ final class ChatViewModel {
         let searchRange: Range<Int>
         // Steer echoes are not user-turn boundaries; a trailing echo must not
         // hide an in-flight assistant response from the stream coordinator.
-        if let latestUserIndex = messages.lastIndex(where: TranscriptTurnClassifier.isUserTurnBoundary) {
+        if let latestUserIndex = messages.lastIndex(where: TranscriptTurnClassifier.isTurnBoundary) {
             searchRange = messages.index(after: latestUserIndex)..<messages.endIndex
         } else {
             searchRange = messages.startIndex..<messages.endIndex
