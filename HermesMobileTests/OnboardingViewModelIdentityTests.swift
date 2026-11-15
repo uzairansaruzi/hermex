@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import HermesMobile
 
 /// Regression matrix for the #285 review: connection-identity binding,
@@ -750,6 +751,25 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         let status = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/api/status" })
         XCTAssertEqual(status.value(forHTTPHeaderField: "CF-Access-Client-Id"), "id.access")
         XCTAssertEqual(status.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "secret.access")
+    }
+
+    /// A header editor row renamed to a Cloudflare Access header leaves the editor for the
+    /// Access field; the field SwiftUI still holds for it reads without crashing and writes
+    /// nothing (#1705).
+    func testRenamingAHeaderRowToCloudflareAccessMovesItWithoutCrashing() {
+        let form = makeHermesForm(entry: .addServer)
+        form.customHeaders = [CustomHeader(name: "CF-Access-Client-I", value: "id.access")]
+        let headers = Binding(get: { form.otherHeaders }, set: { form.otherHeaders = $0 })
+        let row = headers.row(form.otherHeaders[0])
+
+        row.name.wrappedValue = "CF-Access-Client-Id"
+
+        XCTAssertEqual(row.name.wrappedValue, "CF-Access-Client-I", "A row gone from the editor reads its last snapshot")
+        XCTAssertTrue(form.otherHeaders.isEmpty)
+        XCTAssertEqual(form.accessClientID, "id.access")
+
+        row.value.wrappedValue = "late"
+        XCTAssertEqual(form.accessClientID, "id.access", "A late write from the gone row is dropped")
     }
 
     /// Onboarding and Add Server open on the address alone; a webui that needs a password asks
