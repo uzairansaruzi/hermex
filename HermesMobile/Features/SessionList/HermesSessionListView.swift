@@ -1450,7 +1450,7 @@ struct HermesSessionListCovers {
     /// its live view. A late callback from a chat that has since closed cannot select it again.
     mutating func identifyChat(_ id: UUID, draftKey: ChatDraftKey) {
         guard let chat, chat.id == id, draftKey.serverID == chat.server.absoluteString,
-              case .hermesSession(let connectionID, let profile, .some) = draftKey.context,
+              case .hermesSession(let connectionID, let profile, .some, _) = draftKey.context,
               connectionID == chat.connection.id, profile == chat.target.profile else { return }
         chatDraftKey = draftKey
     }
@@ -1460,7 +1460,7 @@ struct HermesSessionListCovers {
     /// another, and New Chat with Voice doesn't dictate again. A live chat's view keeps its model.
     func building(_ chat: HermesSessionChat) -> HermesSessionChat {
         guard chat.id == self.chat?.id, case .new(let profile, _, _) = chat.target,
-              case .hermesSession(_, _, let key?)? = chatDraftKey?.context else { return chat }
+              case .hermesSession(_, _, let key?, _)? = chatDraftKey?.context else { return chat }
         var named = chat
         named.target = .session(profile: profile, key: key)
         named.autoStartsVoiceInput = false
@@ -1468,7 +1468,7 @@ struct HermesSessionListCovers {
     }
 
     private var selectedSessionKey: String? {
-        if case .hermesSession(_, _, let key)? = chatDraftKey?.context { return key }
+        if case .hermesSession(_, _, let key, _)? = chatDraftKey?.context { return key }
         if case .session(_, let key)? = chat?.target { return key }
         return nil
     }

@@ -184,8 +184,10 @@ struct ChatDraftKey: Hashable, Sendable {
         case session(String)
         case bot(connectionID: UUID, profile: String)
         /// A Hermes session on a Hermes connection, by its stored key; nil for a new
-        /// session not created yet (`ConversationTarget`).
-        case hermesSession(connectionID: UUID, profile: String, key: String?)
+        /// session not created yet (`ConversationTarget`). A new session also keys by the
+        /// working folder it starts in (#1683), so New Session in one project doesn't show
+        /// another's draft; nil for the Profile's default folder, and for every stored key.
+        case hermesSession(connectionID: UUID, profile: String, key: String?, cwd: String?)
         case newChat
     }
 
@@ -200,8 +202,15 @@ struct ChatDraftKey: Hashable, Sendable {
         Self(serverID: server.absoluteString, context: .bot(connectionID: connectionID, profile: profile))
     }
 
-    static func hermesSession(server: URL, connectionID: UUID, profile: String, key: String?) -> Self {
-        Self(serverID: server.absoluteString, context: .hermesSession(connectionID: connectionID, profile: profile, key: key))
+    /// `cwd` counts only for a new session (`key` nil); an empty one is the default folder.
+    static func hermesSession(server: URL, connectionID: UUID, profile: String, key: String?, cwd: String? = nil) -> Self {
+        hermesSession(serverID: server.absoluteString, connectionID: connectionID, profile: profile, key: key, cwd: cwd)
+    }
+
+    fileprivate static func hermesSession(serverID: String, connectionID: UUID, profile: String, key: String?,
+                                          cwd: String?) -> Self {
+        Self(serverID: serverID, context: .hermesSession(
+            connectionID: connectionID, profile: profile, key: key, cwd: key == nil && cwd?.isEmpty == false ? cwd : nil))
     }
 
     static func newChat(server: URL) -> Self {
@@ -418,6 +427,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         let settings: SettingsRecord?
         var connectionID: UUID?
         var profile: String?
+        /// A new Hermes session's working folder (#1683). Absent for the default folder, so
+        /// drafts saved before it keep their identity.
+        var cwd: String?
         var botSubmissionUncertain: Bool?
         var sharedImportIDs: [String]?
         /// Written before #1476, which records `textOrigin` instead; true reads as a Shortcut's.
@@ -435,7 +447,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case text
             case quotes
             case attachments
-            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut, textOrigin
+            case settings, connectionID, profile, cwd, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut, textOrigin
             case waitingSendText, waitingSendCreatedAt
         }
 
@@ -450,11 +462,12 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 sessionID = nil
                 self.connectionID = connectionID
                 self.profile = profile
-            case .hermesSession(let connectionID, let profile, let key):
+            case .hermesSession(let connectionID, let profile, let key, let cwd):
                 context = "hermesSession"
                 sessionID = key
                 self.connectionID = connectionID
                 self.profile = profile
+                self.cwd = cwd
             case .newChat:
                 context = "newChat"
                 sessionID = nil
@@ -481,6 +494,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             sessionID = (try? container.decodeIfPresent(String.self, forKey: .sessionID)) ?? nil
             connectionID = try? container.decodeIfPresent(UUID.self, forKey: .connectionID)
             profile = try? container.decodeIfPresent(String.self, forKey: .profile)
+            cwd = (try? container.decodeIfPresent(String.self, forKey: .cwd)) ?? nil
             // A malformed uncertainty field fails closed for Bot and Hermes session records.
             botSubmissionUncertain = (try? container.decodeIfPresent(Bool.self, forKey: .botSubmissionUncertain))
                 ?? (["bot", "hermesSession"].contains(context) && container.contains(.botSubmissionUncertain))
@@ -520,8 +534,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case "hermesSession":
                 guard let connectionID, let profile, !profile.isEmpty else { return nil }
                 let session = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
-                key = ChatDraftKey(serverID: serverID, context: .hermesSession(
-                    connectionID: connectionID, profile: profile, key: session?.isEmpty == false ? session : nil))
+                key = .hermesSession(serverID: serverID, connectionID: connectionID, profile: profile,
+                                     key: session?.isEmpty == false ? session : nil, cwd: cwd)
             case "newChat":
                 key = ChatDraftKey(serverID: serverID, context: .newChat)
             default:
@@ -726,7 +740,7 @@ final class ChatDraftStore {
             guard key.serverID == server.absoluteString else { return false }
             let id: UUID, name: String
             switch key.context {
-            case .bot(let keyConnection, let keyProfile), .hermesSession(let keyConnection, let keyProfile, _):
+            case .bot(let keyConnection, let keyProfile), .hermesSession(let keyConnection, let keyProfile, _, _):
                 (id, name) = (keyConnection, keyProfile)
             case .session, .newChat: return false
             }

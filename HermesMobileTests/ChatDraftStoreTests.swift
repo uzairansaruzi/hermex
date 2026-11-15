@@ -735,6 +735,35 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(cleared?.text, "From Troubleshooting")
     }
 
+    /// New Session keeps one draft per working folder across a relaunch (#1683), so a prompt left
+    /// in one project doesn't send in another's folder; a draft saved before then is the default
+    /// folder's.
+    func testNewSessionDraftsStayWithTheirWorkingFolder() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let folder = directory.appendingPathComponent("ChatDrafts")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let connectionID = UUID()
+        let json = #"{"version":4,"drafts":[{"serverID":"https://hermes.example","context":"hermesSession","connectionID":"\#(connectionID.uuidString)","profile":"default","text":"Saved before"}]}"#
+        try Data(json.utf8).write(to: folder.appendingPathComponent("drafts.json"))
+        let server = URL(string: "https://hermes.example")!
+        func key(_ cwd: String?) -> ChatDraftKey {
+            ConversationTarget.new(profile: "default", cwd: cwd).draftKey(server: server, connectionID: connectionID)
+        }
+
+        let store = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
+        _ = await store.draft(for: key(nil))
+        store.setDraft("For A", for: key("/work/a"))
+        store.setDraft("For B", for: key("/work/b"))
+        try await store.flush()
+
+        let relaunched = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
+        for (cwd, text) in [(nil, "Saved before"), ("/work/a", "For A"), ("/work/b", "For B")] {
+            let restored = await relaunched.draft(for: key(cwd))
+            XCTAssertEqual(restored?.text, text, cwd ?? "default folder")
+        }
+    }
+
     /// A Hermes Send waiting for the reconnect (#1407) is on disk apart from the typed text, so a
     /// relaunch finds it, and returning it puts it ahead of what was typed since, once.
     func testAWaitingSendSurvivesARelaunchAndReturnsAheadOfNewerText() async throws {
