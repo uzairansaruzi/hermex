@@ -7,6 +7,112 @@ Security sections per release.
 
 ## [Unreleased]
 
+## [2.2.0] - Unreleased
+
+Agents can now show you what they made. An HTML report renders right in a
+Hermes chat, in your theme, and `svg` and `mermaid` code blocks open as
+pictures and diagrams. ([#1645], [#1649], [#1703])
+
+### Added
+- Connected Apps: connect apps like Notion and Slack to your Hermes agent from
+  a server's Settings. ([#1631])
+- A Home Screen widget opens a bot's chat in one tap. ([#1647])
+- Bot Screen: a card shows in the chat while the agent uses its screen, in Bot
+  Chats and sessions, and the chat header has a Screen button. ([#1634],
+  [#1639], [#1641])
+- Readable model names in place of raw ids. ([#1699])
+- Hermes servers gain what webui had. In Settings: a Profile's default model,
+  Message Count, Workspace and Clear Offline Cache. In Usage: a 24-hour window.
+  In sessions: where a session came from, a switch to hide CLI and messaging
+  sessions, a count on Archived, and Copy Deeplink. In chat: attach any file
+  type, skills offered mid-sentence, and relative images in a reply. In
+  Kanban: Only Mine, bulk Scheduled and Review, and Complete outside Review.
+  ([#1682], [#1685], [#1686], [#1687], [#1688], [#1689], [#1690], [#1691])
+- Send with Return on a hardware keyboard, off until you turn it on. ([#1656])
+- Persian (فارسی). ([#1474])
+- Optional weekly usage reports, off until you allow them: versions, feature
+  use and counts, never message text, server addresses, credentials or file
+  names. See exactly what is sent before you decide. ([#1659])
+- A "Star Hermex on GitHub" card in the session list and a row in About.
+  ([#1658])
+
+### Changed
+- Links like Gmail threads open in their app, not the in-app browser. ([#1642])
+- The app icon supports the Clear and Tinted Home Screen looks. ([#1648])
+- Faster: a Hermes session list reads its pages at the same time, and chat
+  does less repeated work while a reply streams and as you type. ([#1626],
+  [#1627], [#1628])
+- On a Hermes chat the mic is a plain tap. ([#1626])
+- Works with hermes-agent 0.23.1. ([#1630])
+
+### Fixed
+- Add Server no longer crashes on a Cloudflare Access header name. ([#1707])
+- A reply stays visible when a delegation result follows it. ([#1708])
+- New Session on a Hermes server starts in the selected project's folder, and
+  each project keeps its own unsent draft. ([#1681], [#1709])
+- `/workspace` and `/interrupt` run in a Hermes chat instead of being sent as
+  text. ([#1684])
+- A long paste sent with a typed line gives the session a title drawn from the
+  paste. ([#1702])
+- Photos sent from Hermex show as pictures in Hermes Desktop. ([#1646])
+- The scroll-to-bottom arrow works after a send and mid-fling. ([#1680])
+- Screens no longer jump just after they open, and the gap above the chat
+  header on a folded iPhone Duo is gone. ([#1621], [#1653])
+- A composer error can be dismissed, and clears when you type. ([#1695])
+- The image lightbox's Share button opens the share sheet. ([#1697])
+- Bot Screen says why when the host's desktop can't be captured, instead of
+  reconnecting forever. ([#1636], [#1637])
+- The Privacy Policy link opens the policy. ([#1667])
+- webui: a `+` in a file path or search is no longer sent as a space, and a
+  server behind a down Cloudflare tunnel falls back to the offline cache.
+  ([#1626])
+- Smaller fixes: a Task's paused state survives a late list read, a Hermes
+  sign-out no longer returns to the old server's sign-in form after a switch,
+  and three more animations respect Reduce Motion. ([#1626])
+
+[#1474]: https://github.com/uzairansaruzi/hermex/pull/1474
+[#1621]: https://github.com/uzairansaruzi/hermex/pull/1621
+[#1626]: https://github.com/uzairansaruzi/hermex/pull/1626
+[#1627]: https://github.com/uzairansaruzi/hermex/pull/1627
+[#1628]: https://github.com/uzairansaruzi/hermex/pull/1628
+[#1630]: https://github.com/uzairansaruzi/hermex/pull/1630
+[#1631]: https://github.com/uzairansaruzi/hermex/pull/1631
+[#1634]: https://github.com/uzairansaruzi/hermex/pull/1634
+[#1636]: https://github.com/uzairansaruzi/hermex/pull/1636
+[#1637]: https://github.com/uzairansaruzi/hermex/pull/1637
+[#1639]: https://github.com/uzairansaruzi/hermex/pull/1639
+[#1641]: https://github.com/uzairansaruzi/hermex/pull/1641
+[#1642]: https://github.com/uzairansaruzi/hermex/pull/1642
+[#1645]: https://github.com/uzairansaruzi/hermex/pull/1645
+[#1646]: https://github.com/uzairansaruzi/hermex/pull/1646
+[#1647]: https://github.com/uzairansaruzi/hermex/pull/1647
+[#1648]: https://github.com/uzairansaruzi/hermex/pull/1648
+[#1649]: https://github.com/uzairansaruzi/hermex/issues/1649
+[#1653]: https://github.com/uzairansaruzi/hermex/pull/1653
+[#1656]: https://github.com/uzairansaruzi/hermex/pull/1656
+[#1658]: https://github.com/uzairansaruzi/hermex/pull/1658
+[#1659]: https://github.com/uzairansaruzi/hermex/issues/1659
+[#1667]: https://github.com/uzairansaruzi/hermex/pull/1667
+[#1680]: https://github.com/uzairansaruzi/hermex/pull/1680
+[#1681]: https://github.com/uzairansaruzi/hermex/pull/1681
+[#1682]: https://github.com/uzairansaruzi/hermex/pull/1682
+[#1684]: https://github.com/uzairansaruzi/hermex/pull/1684
+[#1685]: https://github.com/uzairansaruzi/hermex/pull/1685
+[#1686]: https://github.com/uzairansaruzi/hermex/pull/1686
+[#1687]: https://github.com/uzairansaruzi/hermex/pull/1687
+[#1688]: https://github.com/uzairansaruzi/hermex/pull/1688
+[#1689]: https://github.com/uzairansaruzi/hermex/pull/1689
+[#1690]: https://github.com/uzairansaruzi/hermex/pull/1690
+[#1691]: https://github.com/uzairansaruzi/hermex/pull/1691
+[#1695]: https://github.com/uzairansaruzi/hermex/pull/1695
+[#1697]: https://github.com/uzairansaruzi/hermex/pull/1697
+[#1699]: https://github.com/uzairansaruzi/hermex/pull/1699
+[#1702]: https://github.com/uzairansaruzi/hermex/pull/1702
+[#1703]: https://github.com/uzairansaruzi/hermex/pull/1703
+[#1707]: https://github.com/uzairansaruzi/hermex/pull/1707
+[#1708]: https://github.com/uzairansaruzi/hermex/pull/1708
+[#1709]: https://github.com/uzairansaruzi/hermex/pull/1709
+
 ## [2.1.0] - 2026-11-09
 
 Hermex now works with a Hermes Webapp ([#1341]). Add a host that serves its
