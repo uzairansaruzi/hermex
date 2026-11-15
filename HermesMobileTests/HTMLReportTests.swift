@@ -163,6 +163,9 @@ final class HTMLReportTests: XCTestCase {
 
         XCTAssertTrue(css.contains("--background:rgb(31 30 28 / 1.00)"), css)
         XCTAssertTrue(css.contains("--primary:rgb(224 162 94 / 1.00)"), css)
+        // Pages built on shadcn-style tokens (e.g. ephemeral-ui cards) also need these two (#1700).
+        XCTAssertTrue(css.contains("--primary-foreground:rgb("), css)
+        XCTAssertTrue(css.contains("--muted:rgb("), css)
         XCTAssertTrue(css.contains("color-scheme:dark"), css)
         // Every rule is zero-specificity, so any rule of the page's own wins.
         let selectors = css.split(separator: "\n").map { $0.prefix(while: { $0 != "{" }) }

@@ -126,9 +126,11 @@ struct HTMLReportTheme: Equatable {
             "--background:\(css(palette.canvas))",
             "--foreground:\(css(palette.text))",
             "--card:\(css(palette.surface))",
+            "--muted:\(css(palette.fill))",
             "--muted-foreground:\(css(palette.textSecondary))",
             "--border:\(css(palette.separator))",
             "--primary:\(css(palette.accent))",
+            "--primary-foreground:\(css(palette.onAccent))",
             "--font-sans:\(family.cssStack)",
             "--font-mono:\(Self.monoStack)"
         ].joined(separator: ";")
