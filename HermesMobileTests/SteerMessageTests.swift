@@ -93,9 +93,9 @@ final class SteerMessageTests: XCTestCase {
         )
         let assistant = ChatMessage(role: "assistant", content: "On it.", timestamp: nil, messageId: "a1")
 
-        XCTAssertTrue(TranscriptTurnClassifier.isUserTurnBoundary(user))
-        XCTAssertFalse(TranscriptTurnClassifier.isUserTurnBoundary(steer))
-        XCTAssertFalse(TranscriptTurnClassifier.isUserTurnBoundary(assistant))
+        XCTAssertTrue(TranscriptTurnClassifier.isTurnBoundary(user))
+        XCTAssertFalse(TranscriptTurnClassifier.isTurnBoundary(steer))
+        XCTAssertFalse(TranscriptTurnClassifier.isTurnBoundary(assistant))
 
         let messages = [user, steer, assistant]
         XCTAssertEqual(TranscriptTurnClassifier.latestTurnKey(in: messages), "turn:user:0")
@@ -177,7 +177,7 @@ final class SteerMessageTests: XCTestCase {
                                 displayKind: ChatMessage.steerDisplayKind)
         let delivery = ChatMessage(role: "delegation_completion", content: "Report", timestamp: nil, messageId: "3")
         let reply = ChatMessage(role: "assistant", content: "Done", timestamp: nil, messageId: "4")
-        XCTAssertEqual([prompt, steer, delivery, reply].map(HermesTranscriptProjection.isTurnBoundary), [true, false, true, false])
+        XCTAssertEqual([prompt, steer, delivery, reply].map(TranscriptTurnClassifier.isTurnBoundary), [true, false, true, false])
     }
 
     // MARK: - Regenerate

@@ -102,7 +102,7 @@ struct TranscriptTurnFolds: Equatable {
 
         var startTimestampByTurnKey: [String: Double] = [:]
         for (index, message) in messages.enumerated()
-        where TranscriptTurnClassifier.isUserTurnBoundary(message) {
+        where TranscriptTurnClassifier.isTurnBoundary(message) {
             startTimestampByTurnKey[TranscriptTurnClassifier.userTurnKey(absoluteIndex: offset + index)] = message.timestamp
         }
 

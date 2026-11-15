@@ -298,11 +298,14 @@ enum TranscriptTurnClassifier {
         return "raw:\(max(0, messageOffset ?? 0) + index)"
     }
 
-    static func isUserTurnBoundary(_ message: ChatMessage) -> Bool {
-        // Steering hints ride along inside the active turn; they never open a
-        // new one.
+    /// Whether a row opens a turn: a prompt with visible content, or a Hermes
+    /// async-delegation delivery, which the host runs as a turn of its own (#1706).
+    /// Steering hints ride along inside the active turn and never open one.
+    static func isTurnBoundary(_ message: ChatMessage) -> Bool {
+        if message.role == "delegation_completion" {
+            return message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
         guard !message.isSteerMessage else { return false }
-        guard message.role == "user" else { return false }
         return hasVisibleUserContent(message)
     }
 
@@ -322,7 +325,7 @@ enum TranscriptTurnClassifier {
 
     /// Key of the latest turn: the last user boundary's, or `initialTurnKey`.
     static func latestTurnKey(in messages: [ChatMessage], messageOffset: Int? = nil) -> String {
-        guard let index = messages.lastIndex(where: isUserTurnBoundary) else { return initialTurnKey }
+        guard let index = messages.lastIndex(where: isTurnBoundary) else { return initialTurnKey }
         return userTurnKey(absoluteIndex: max(0, messageOffset ?? 0) + index)
     }
 
@@ -331,7 +334,7 @@ enum TranscriptTurnClassifier {
         var currentTurnKey = initialTurnKey
 
         for (messageIndex, message) in messages.enumerated() {
-            if isUserTurnBoundary(message) {
+            if isTurnBoundary(message) {
                 currentTurnKey = userTurnKey(absoluteIndex: max(0, messageOffset ?? 0) + messageIndex)
             }
 
@@ -372,7 +375,7 @@ enum TranscriptTurnClassifier {
     }
 
     static func currentTurnAssistantAnchorIDs(in messages: [ChatMessage], messageOffset: Int? = nil) -> [String] {
-        let latestUserIndex = messages.lastIndex { isUserTurnBoundary($0) }
+        let latestUserIndex = messages.lastIndex { isTurnBoundary($0) }
         let startIndex = latestUserIndex.map { messages.index(after: $0) } ?? messages.startIndex
         guard startIndex < messages.endIndex else { return [] }
 
@@ -385,7 +388,7 @@ enum TranscriptTurnClassifier {
     private static func previousUserBoundaryIndex(before rawIndex: Int, in messages: [ChatMessage]) -> Int? {
         guard rawIndex > messages.startIndex else { return nil }
 
-        for index in stride(from: rawIndex - 1, through: messages.startIndex, by: -1) where isUserTurnBoundary(messages[index]) {
+        for index in stride(from: rawIndex - 1, through: messages.startIndex, by: -1) where isTurnBoundary(messages[index]) {
             return index
         }
 
@@ -396,7 +399,7 @@ enum TranscriptTurnClassifier {
         let nextIndex = messages.index(after: rawIndex)
         guard nextIndex < messages.endIndex else { return nil }
 
-        return messages[nextIndex...].firstIndex { isUserTurnBoundary($0) }
+        return messages[nextIndex...].firstIndex { isTurnBoundary($0) }
     }
 
     private static func hasVisibleUserContent(_ message: ChatMessage) -> Bool {

@@ -222,6 +222,22 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertEqual(folds.rowState(for: "transcript:3", expandedTurnKeys: [])?.hidesBubble, false)
     }
 
+    /// The host answers a delegation delivery as its own turn, so the prompt's
+    /// final reply stays visible instead of folding as an interim one (#1706).
+    func testDelegationDeliveryEndsThePromptsTurn() {
+        let messages = [
+            user("u1", timestamp: 100),
+            assistant("a1", text: "Checking.", timestamp: 105),
+            assistant("a2", text: "The full guide.", timestamp: 120),
+            ChatMessage(role: "delegation_completion", content: "Report", timestamp: 200, messageId: "d1"),
+            assistant("a3", text: "One clarification.", timestamp: 210)
+        ]
+
+        let folds = derive(messages, activityAnchorIDs: [])
+
+        XCTAssertNotEqual(folds.rowState(for: "transcript:2", expandedTurnKeys: [])?.hidesBubble, true)
+    }
+
     func testTurnKeysUseAbsoluteIndicesAcrossPagedOffsets() {
         let messages = [
             user("u1", timestamp: 100),

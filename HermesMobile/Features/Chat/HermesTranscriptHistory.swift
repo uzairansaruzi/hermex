@@ -187,14 +187,6 @@ enum HermesTranscriptProjection {
         var compaction: HermesCompaction?
     }
 
-    /// Whether a row opens a turn: a prompt (steers ride inside a turn) or a delegation
-    /// delivery, which the host runs as a turn of its own and whose time starts that turn.
-    static func isTurnBoundary(_ message: ChatMessage) -> Bool {
-        guard message.role == "delegation_completion" else { return TranscriptTurnClassifier.isUserTurnBoundary(message) }
-        return TranscriptTurnClassifier.isUserTurnBoundary(
-            ChatMessage(role: "user", content: message.content, timestamp: message.timestamp, messageId: message.messageId))
-    }
-
     static func project(_ rows: [BotJSON], root: String) -> Result {
         var result = Result()
         var tools: [ToolCall] = []
