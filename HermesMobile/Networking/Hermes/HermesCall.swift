@@ -459,16 +459,19 @@ enum HermesCall: Equatable, Sendable {
     }
 
     /// `request.answer`'s result: a `value` for sudo, secret and Desktop prompts,
-    /// an `answer` for an unkeyed clarify.
+    /// an `answer` for an unkeyed clarify, `said` for a `theme.pick` the phone has no card for.
     enum RequestAnswer: Equatable, Sendable {
         case value(String)
         case answer(String)
+        case said(String)
 
-        /// The server request's result: `{value}` for sudo and secret, `{answer}` for a question.
+        /// The server request's result: `{value}` for sudo and secret, `{answer}` for a question,
+        /// `{said}` for a picker.
         var json: BotJSON {
             switch self {
             case .value(let value): return .object(["value": .string(value)])
             case .answer(let answer): return .object(["answer": .string(answer)])
+            case .said(let said): return .object(["said": .string(said)])
             }
         }
     }

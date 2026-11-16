@@ -431,8 +431,8 @@ pin in `gateway/wake.py`, `hermes_state_messages.py` and
 A blocking request is whatever has parked the bot. The gateway sends JSON-RPC
 server requests with string ids; at the pin the methods are `clarify`,
 `approval`, `sudo`, `secret`, `vault.unlock_prompt`, `vault.save_login`,
-`vault.code`, `terminal.read`, `window.read`, `preview.read`, `preview.act` and
-`tour` (`tui_gateway/contracts/server_requests.py`). `BotClient` forwards those
+`vault.code`, `terminal.read`, `window.read`, `preview.read`, `preview.act`,
+`tour`, `theme.apply` and `theme.pick` (`tui_gateway/contracts/server_requests.py`). `BotClient` forwards those
 envelopes separately from sequenced events and integer-id RPC replies. Both
 `session.resume` (including `omit_messages`) and `session.events.since` restore
 `open_requests: [{id, method, params}]`. Requests belong to the current runtime.
@@ -440,8 +440,8 @@ Replay always includes the array; resume omits it when empty, so an empty or
 omitted array clears the requests. A newer live request or cancellation cannot be
 overwritten by an older in-flight snapshot. Unknown request methods remain
 needs-attention without an answerable card, and so are the password-vault prompts,
-which the phone no longer answers (#1148). The phone never replies to a
-request frame, not even with -32601 for a kind it cannot handle: the host treats
+which the phone no longer answers (#1148). Apart from the theme requests below, the
+phone never replies to a request frame without a tap, not even with -32601 for a kind it cannot handle: the host treats
 that reply as the answer and would withdraw the request before Desktop could
 answer it. Request payloads and credential values are never cached. A Hermes session in
 the main chat shares this model and the answer dispatch (see `HermesChatRequests` above).
@@ -553,7 +553,24 @@ The old per-kind answer methods (`sudo.respond`, `secret.respond`,
 Desktop renderer data the phone cannot supply. Their cards report the wait and
 retain Stop.
 
-Nothing is sent without a tap. Generation, runtime and request id are captured
+`theme.apply` and `theme.pick` come from `set_theme`, in the `desktop_ui` toolset a
+`gui` session gets on a gateway Webapp (#1727; `hermes-server.md` § The agent's surface note). They get no card and never join the open requests: a Hermes
+chat answers each one at once, without a tap, once per envelope id, live or restored
+from `open_requests` (`HermesThemeRequest`), through the same answer path as a credential:
+a gateway Webapp takes only the response frame (its `request.answer` says `expired`) and then
+sends `request.cancel` with `resolved`. `theme.apply {accent?, mode?, layout?}`
+sets the app-wide light/dark mode and accent as Settings > Appearance does, then answers
+`{value}` with JSON text: `{success: true, applied: {mode?, accent?}}`, where `accent` is
+the swatch id sent, `custom:#RRGGBB` for a hex, or null for `nous` and `theme` (the theme's
+own accent, as on Desktop). Desktop's swatches land on Hermex's: green, cyan (Teal) and
+violet (Indigo), pink, red and orange. `mono`, an unknown value, or any `layout` refuses the
+whole request with `{success: false, error, available}` and changes nothing. `theme.pick
+{picker}` is answered with `{said}`, telling the agent to ask in the chat (Hermex has no
+picker card), never `{cancelled}`, which reads as the user dismissing a card. The texts are
+for the agent, in English and outside the String Catalog. Only an attached chat on screen
+receives them; a Desktop window attached to the same session may answer first.
+
+Nothing but a theme answer is sent without a tap. Generation, runtime and request id are captured
 on tap and revalidated at socket dispatch. `ok` means accepted; `expired` means
 already answered or withdrawn. A JSON-RPC rejection leaves the connection usable.
 A lost reply has an uncertain outcome and is never automatically resent.

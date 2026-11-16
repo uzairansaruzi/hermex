@@ -34,7 +34,8 @@ enum BotPendingRequest: Equatable {
 /// Keep the envelope id separate from approval's underlying queue request id.
 /// An unknown method keeps `pending` nil: the bot is still blocked, and the phone
 /// never answers it, not even with -32601, because a reply from here would
-/// pre-empt the Hermes Desktop window that can.
+/// pre-empt the Hermes Desktop window that can. `theme.apply` and `theme.pick` keep it nil
+/// too: a Hermes chat answers them itself, before they join its requests (`HermesThemeRequest`).
 struct BotServerRequest: Equatable {
     let id: String
     let method: String
