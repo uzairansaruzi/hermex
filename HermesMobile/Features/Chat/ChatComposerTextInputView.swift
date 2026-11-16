@@ -41,7 +41,11 @@ struct ComposerTextInputView: View {
     /// Compact in iPhone landscape, where the card editor stops growing, as it does in a short viewport.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.composerViewportIsShort) private var viewportIsShort
+    #if targetEnvironment(macCatalyst)
+    @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = true
+    #else
     @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = false
+    #endif
 
     /// The chips the editor has drawn. The collapsed pill draws this same set
     /// rather than deriving its own, because a trailing chip whose space was
@@ -116,8 +120,7 @@ struct ComposerTextInputView: View {
             // where height is limited, and the text scrolls inside it.
             .frame(height: isCollapsed
                 ? collapsedLineHeight
-                : ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass,
-                                                   isViewportShort: viewportIsShort))
+                : expandedEditorHeight)
             .padding(.vertical, isCollapsed ? 0 : verticalPadding)
             .padding(.horizontal, 16)
             .opacity(isCollapsed ? 0 : 1)
@@ -147,6 +150,15 @@ struct ComposerTextInputView: View {
             }
         }
         .frame(minHeight: isCollapsed ? 44 : nil, alignment: isCollapsed ? .leading : .topLeading)
+    }
+
+    private var expandedEditorHeight: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        min(128, max(36, inputHeight))
+        #else
+        ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass,
+                                         isViewportShort: viewportIsShort)
+        #endif
     }
 
     private func updateMeasuredHeight(_ newHeight: CGFloat) {

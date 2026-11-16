@@ -20,6 +20,9 @@ import UIKit
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene, session.role == .windowApplication else { return }
+        #if targetEnvironment(macCatalyst)
+        windowScene.sizeRestrictions?.minimumSize = CGSize(width: 800, height: 600)
+        #endif
         AppTextSize.applyStoredSize(to: windowScene)
         AppAppearanceSettings.applyStored(to: windowScene)
         let window = UIWindow(windowScene: windowScene)

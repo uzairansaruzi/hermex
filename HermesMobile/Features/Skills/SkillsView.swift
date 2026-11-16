@@ -43,7 +43,7 @@ struct SkillsView: View {
             .task {
                 await loadSkills()
             }
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search skills...")
+            .macReadableSearchable(text: $searchText, prompt: Text("Search skills..."))
             .overlay(alignment: .bottom) {
                 ActionToastView(state: toast)
                     .frame(maxWidth: 420)

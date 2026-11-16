@@ -13,14 +13,19 @@ import UIKit
 enum SafariView {
     @MainActor
     static func present(_ url: URL) {
+        #if targetEnvironment(macCatalyst)
+        UIApplication.shared.open(url)
+        #else
         // The sheet never hands a link to its app, and it has none of Safari's
         // sign-ins. UIKit calls back on the main thread.
         UIApplication.shared.open(url, options: [.universalLinksOnly: true]) { opened in
             guard !opened else { return }
             MainActor.assumeIsolated { presentSheet(url) }
         }
+        #endif
     }
 
+    #if !targetEnvironment(macCatalyst)
     @MainActor
     private static func presentSheet(_ url: URL) {
         guard let presenter = topViewController() else {
@@ -43,4 +48,5 @@ enum SafariView {
         }
         return top
     }
+    #endif
 }

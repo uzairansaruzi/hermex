@@ -1,7 +1,9 @@
+#if !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 import Foundation
 
-struct AgentRunActivityAttributes: ActivityAttributes {
+struct AgentRunActivityAttributes {
     struct ContentState: Codable, Hashable {
         var sessionID: String
         var sessionTitle: String
@@ -681,3 +683,7 @@ enum AgentRunStaleBotPresentation {
         presentation(state: state, isBot: isBot)?.isPendingInput == true
     }
 }
+
+#if !targetEnvironment(macCatalyst)
+extension AgentRunActivityAttributes: ActivityAttributes {}
+#endif

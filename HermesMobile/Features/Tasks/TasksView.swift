@@ -186,6 +186,10 @@ struct TasksView: View {
                         }
                     }
                 }
+                #if targetEnvironment(macCatalyst)
+                .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+                .background(Color(.appGroupedCanvas))
+                #endif
                 .refreshable {
                     await loadTasks()
                 }
@@ -213,6 +217,7 @@ struct TasksView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         .background(.appMaterial(.bar))
     }
 

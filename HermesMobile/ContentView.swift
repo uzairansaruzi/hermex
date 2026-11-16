@@ -775,6 +775,9 @@ struct HermesServerHome: View {
                         }
                     }
             }
+            #if targetEnvironment(macCatalyst)
+            .adaptiveFormPresentation(preferredMacSize: CGSize(width: 680, height: 640))
+            #endif
         }
         .onChange(of: usesSplit, initial: true) { settings = settings?.afterWidthChange(usesSplit: usesSplit) }
         // A Hermes chat's Update sign-in (#942) signs the server out to its sign-in form, which
@@ -955,6 +958,9 @@ struct HermesServerSignIn: View {
                         ToolbarItem(placement: .confirmationAction) { Button("Done") { isShowingSettings = false } }
                     }
             }
+            #if targetEnvironment(macCatalyst)
+            .adaptiveFormPresentation(preferredMacSize: CGSize(width: 680, height: 640))
+            #endif
         }
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)

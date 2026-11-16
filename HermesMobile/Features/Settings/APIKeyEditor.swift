@@ -55,6 +55,9 @@ struct APIKeyForm: View {
                 }
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .macReadableForm()
+        #endif
         .disabled(isWriting)
         .interactiveDismissDisabled(isWriting)
         .themedPageBackground()

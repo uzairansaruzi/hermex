@@ -141,7 +141,12 @@ import SwiftUI
                 onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                 .id(key)
                 .onAppear { UsageReports.shared.record(.bots) }
-        } else { ContentUnavailableView("Select a Bot", systemImage: "bubble.left.and.bubble.right") }
+        } else {
+            ContentUnavailableView("Select a Bot", systemImage: "bubble.left.and.bubble.right")
+                #if targetEnvironment(macCatalyst)
+                .navigationTitle(home?.title ?? server.host ?? server.absoluteString)
+                #endif
+        }
     }
 
     private var compactList: some View {
@@ -288,6 +293,10 @@ import SwiftUI
                            connection: inbox.homeConnection, reconnectNow: inbox.reconnectNow,
                            openSearch: { showingSearch = true })
                 .sessionsTopChromeListRow()
+            #if targetEnvironment(macCatalyst)
+            HermesHomeDesktopControls(home: home, filter: { filterMenu }, newChat: { newChatMenu })
+                .sessionsScreenListRow()
+            #endif
         }
     }
 

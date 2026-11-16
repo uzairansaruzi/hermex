@@ -169,6 +169,10 @@ struct HermesSessionListView: View {
                 )
                 .sessionsTopChromeListRow()
                 .id(HomeHeaderScroll.headerID)
+                #if targetEnvironment(macCatalyst)
+                HermesHomeDesktopControls(home: home, filter: { profileFilter }, newChat: { newSessionButton })
+                    .sessionsScreenListRow()
+                #endif
                 SessionListCardSlot(hasSharedImport: pendingShare != nil)
                 MoveToHermesBanner(serverID: entry.server.absoluteString)
             }
@@ -228,6 +232,7 @@ struct HermesSessionListView: View {
         // A split view's sidebar paints gray behind a plain List; only its rows cover it.
         .scrollContentBackground(.hidden)
         .background(Color(.appCanvas))
+        .macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         .modifier(chrome)
         .modifier(HomeHeaderScroll(requests: searchRequests))
     }
@@ -563,6 +568,9 @@ struct HermesSessionListView: View {
                     .buttonStyle(.appProminent)
                     .disabled(!canOpenNewSession || !viewModel.isHermesLive)
             }
+            #if targetEnvironment(macCatalyst)
+            .navigationTitle(home?.title ?? entry.server.host ?? entry.server.absoluteString)
+            #endif
         }
     }
 

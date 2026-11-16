@@ -20,6 +20,7 @@ struct OnboardingWelcomePage: View {
         GeometryReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 content
+                    .macReadableContent()
                     .frame(minHeight: proxy.size.height)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -27,6 +28,14 @@ struct OnboardingWelcomePage: View {
         .background(Color.black.ignoresSafeArea())
         // The buttons stay in reach while large text scrolls the page.
         .safeAreaInset(edge: .bottom, spacing: 0) { actions }
+    }
+
+    private var headline: Text {
+        #if targetEnvironment(macCatalyst)
+        Text("Control your Hermes agent from your Mac.")
+        #else
+        Text("Control your Hermes agent from iPhone or iPad.")
+        #endif
     }
 
     private var actions: some View {
@@ -49,6 +58,7 @@ struct OnboardingWelcomePage: View {
         .padding(.horizontal, 24)
         .padding(.top, 12)
         .padding(.bottom, 4)
+        .macReadableContent()
         .background(Color.black)
     }
 
@@ -109,7 +119,7 @@ struct OnboardingWelcomePage: View {
                 Spacer(minLength: 32)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Control your Hermes agent from iPhone or iPad.")
+                    headline
                         .font(AppFont.fixed(size: dynamicTypeSize.isAccessibilitySize ? 27 : 31, weight: .bold))
                         .foregroundStyle(.white)
                         .lineLimit(3)

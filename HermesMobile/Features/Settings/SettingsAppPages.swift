@@ -6,7 +6,11 @@ import SwiftUI
 struct SettingsComposerPage: View {
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(SessionChatPreferences.dismissKeyboardKey) private var dismissKeyboardAfterSend = false
+    #if targetEnvironment(macCatalyst)
+    @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = true
+    #else
     @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = false
+    #endif
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
@@ -26,9 +30,12 @@ struct SettingsComposerPage: View {
                     )
                 }
 
+                #if !targetEnvironment(macCatalyst)
                 Toggle(isOn: $dismissKeyboardAfterSend) {
                     SettingsLabel(title: String(localized: "Dismiss keyboard after sending"), systemImage: "keyboard.chevron.compact.down")
                 }
+
+                #endif
 
                 Toggle(isOn: $returnSends) {
                     SettingsLabel(
@@ -146,6 +153,7 @@ struct SettingsGeneralPage: View {
 
     var body: some View {
         AppList {
+            #if !targetEnvironment(macCatalyst)
             Section {
                 Toggle(isOn: $isHapticsEnabled) {
                     SettingsLabel(title: String(localized: "Haptic Feedback"), systemImage: "iphone.radiowaves.left.and.right")
@@ -161,6 +169,8 @@ struct SettingsGeneralPage: View {
                     }
                 }
             }
+
+            #endif
 
             AppLockSection()
         }

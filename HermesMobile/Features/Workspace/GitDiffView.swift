@@ -94,6 +94,14 @@ struct GitDiffView: View {
                             Button("Changed files", systemImage: "list.bullet") { isShowingFileJump = true }
                         }
                     }
+                    #if targetEnvironment(macCatalyst)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Refresh", systemImage: "arrow.clockwise") {
+                            Task { await refresh() }
+                        }
+                        .disabled(isRefreshing || !hasLoaded || files.isEmpty || git == nil)
+                    }
+                    #endif
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         diffActionsMenu
                         Button("Done") { dismiss() }

@@ -88,6 +88,44 @@ If Hermex can't connect, check these in order:
 
 If sign-in works but chats fail, check that your proxy forwards WebSocket connections.
 
+### Mac Catalyst
+
+The `HermesMobile` scheme also builds a native Mac Catalyst app. In Xcode,
+choose **My Mac (Mac Catalyst)**. For a compile-only check:
+
+```zsh
+xcodebuild -project HermesMobile.xcodeproj -scheme HermesMobile \
+  -destination 'platform=macOS,variant=Mac Catalyst' CODE_SIGNING_ALLOWED=NO build
+```
+
+For a runnable build, configure your own team and identifiers in the ignored
+`Config/Local.xcconfig` as described in [Contributing](CONTRIBUTING.md#code-signing-for-contributors),
+then build with signing enabled. The Mac bundle identifier adds `.mac` to
+`APP_BUNDLE_IDENTIFIER`. The Mac App Group uses
+`DEVELOPMENT_TEAM.APP_BUNDLE_IDENTIFIER.mac` so macOS can verify container access
+from the app’s signature. The Mac sandbox permits outbound connections, selected
+files, microphone, camera and photo-library access. Credentials remain in Keychain.
+
+The Mac uses the Mac-optimized interface idiom (native scale and controls),
+centered onboarding content over the full-window background, bounded connection
+forms,
+the existing two-column session navigation with a resizable sidebar
+and a minimum window size of 800 × 600 points. Keyboard commands include ⌘N
+(new chat), ⌘F (session search), ⌘1–9 (open a chat), ⌃Tab / ⌃⇧Tab
+(adjacent chats), and Return or ⌘Return (send). Shift-Return inserts a newline;
+active input-method composition is left to the editor. The Mac composer keeps
+its editor and controls in one surface with room above the window edge. The file
+browser keeps search above its content, including empty and loading states.
+Source previews and Git diffs have a Mac Refresh action; source previews also support ⌘R.
+Web links open in the default browser.
+
+Live Activities, alternate app icons, the iOS share extension and encrypted relay
+push notifications are unavailable in this initial Mac build. Local response
+completion alerts remain available while the app is running. API requests,
+Cookie authentication, SSE streams, drafts, cached sessions and server switching
+use the same implementation as iOS. The existing XCTest suite runs on iOS;
+Mac window and input behavior also need a signed Mac smoke test.
+
 ## Server compatibility
 
 Hermex signs in to Hermes 0.21.3 and later. On an older host, it asks you to update Hermes. Session edits and Move to Hermes need Hermes 0.22.3 or later.

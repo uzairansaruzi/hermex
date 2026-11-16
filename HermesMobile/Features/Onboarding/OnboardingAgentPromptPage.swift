@@ -36,6 +36,7 @@ struct OnboardingAgentPromptPage: View {
             .padding(.top, 24)
             // Clear the bottom bar's fade so the switch link stays legible at the scroll end.
             .padding(.bottom, OnboardingView.bottomFadeHeight + 16)
+            .macReadableContent()
         }
         .scrollBounceBehavior(.basedOnSize)
     }

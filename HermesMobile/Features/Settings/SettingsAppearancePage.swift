@@ -79,7 +79,9 @@ struct SettingsAppearancePage: View {
                     SettingsLabel(title: String(localized: "Thinking Slider"), systemImage: "slider.horizontal.below.rectangle")
                 }
 
+                #if !targetEnvironment(macCatalyst)
                 AppIconSettingsSection()
+                #endif
             }
         }
         .settingsPage(String(localized: "Appearance"))

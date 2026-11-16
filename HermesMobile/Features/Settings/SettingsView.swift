@@ -92,7 +92,9 @@ struct SettingsView: View {
             } header: {
                 Text(verbatim: "Hermex")
             } appFooter: {
+                #if !targetEnvironment(macCatalyst)
                 Text("Applies on this iPhone to every server.")
+                #endif
             }
 
             Section {

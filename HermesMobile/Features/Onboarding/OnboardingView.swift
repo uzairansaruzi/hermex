@@ -99,6 +99,7 @@ struct OnboardingView: View {
         .padding(.horizontal, 24)
         .padding(.top, 12)
         .padding(.bottom, 12)
+        .macReadableContent()
         .background(
             LinearGradient(
                 colors: [.clear, .black.opacity(0.6), .black],

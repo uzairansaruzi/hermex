@@ -93,6 +93,14 @@ struct FilePreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                #if targetEnvironment(macCatalyst)
+                Button("Refresh", systemImage: "arrow.clockwise") {
+                    Task { await loadFile() }
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(viewModel.isLoading)
+                #endif
+
                 if let preview = viewModel.preview {
                     fileActionsMenu(for: preview)
                 }

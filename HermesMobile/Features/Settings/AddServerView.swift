@@ -98,6 +98,7 @@ struct AddServerView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
                 .padding(.bottom, 24)
+                .macReadableContent()
             }
             .background(Color(.appCanvas))
             .safeAreaInset(edge: .bottom, spacing: 0) { submitButton }
@@ -115,7 +116,11 @@ struct AddServerView: View {
         } message: {
             Text("Its sign-in, cached chats and drafts are removed from this iPhone. Conversations on the host stay.")
         }
+        #if targetEnvironment(macCatalyst)
+        .adaptiveFormPresentation(preferredMacSize: CGSize(width: 640, height: 640))
+        #else
         .adaptiveFormPresentation()
+        #endif
         .onDisappear { operation?.cancel() }
     }
 

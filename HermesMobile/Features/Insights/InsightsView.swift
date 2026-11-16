@@ -72,6 +72,7 @@ struct InsightsView: View {
                 windowPicker
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
+                    .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
                 placeholder
                     .frame(maxHeight: .infinity)
             }
@@ -167,6 +168,7 @@ struct InsightsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         }
         .refreshable {
             await refresh()

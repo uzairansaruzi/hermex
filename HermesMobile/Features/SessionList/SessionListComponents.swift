@@ -7,7 +7,11 @@ import UIKit
 enum HermesHomeLayout {
     static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?,
                           verticalSizeClass: UserInterfaceSizeClass?) -> Bool {
+        #if targetEnvironment(macCatalyst)
+        isHome
+        #else
         isHome && horizontalSizeClass == .regular && verticalSizeClass != .compact
+        #endif
     }
 }
 
@@ -27,7 +31,11 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if targetEnvironment(macCatalyst)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    #endif
     @State private var isRoomy = false
     /// Tracked apart from `columnVisibility`, where the system also writes `.detailOnly` for a
     /// hidden `.automatic` sidebar.
@@ -41,7 +49,11 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .toolbar(removing: offersSidebarToggle ? .sidebarToggle : nil)
+                #if targetEnvironment(macCatalyst)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
+                #else
                 .navigationSplitViewColumnWidth(min: 280, ideal: 380, max: 420)
+                #endif
                 .environment(\.splitDetailHasVerticalBar, detailHasVerticalBar)
         } detail: {
             NavigationStack {
@@ -71,6 +83,13 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
             .id(rootRevision)
         }
         .navigationSplitViewStyle(.balanced)
+        #if targetEnvironment(macCatalyst)
+        .environment(\.horizontalSizeClass, .regular)
+        .onChange(of: rootRevision) {
+            if columnVisibility != .detailOnly { columnVisibility = .all }
+            detailColumn.popToRoot()
+        }
+        #else
         // Fires for the first layout too, so a roomy launch or unfold opens with the sidebar out.
         .onGeometryChange(for: Bool.self) { $0.size.width >= NavigationSplitViewVisibility.roomyWidth } action: { isRoomy in
             self.isRoomy = isRoomy
@@ -83,6 +102,7 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
             columnVisibility = .settled(isRoomy: isRoomy, isCollapsedByUser: isCollapsedByUser)
             detailColumn.popToRoot()
         }
+        #endif
         .onChange(of: sidebarRequests) {
             if !columnVisibility.showsSidebar { columnVisibility = .doubleColumn }
         }
@@ -330,9 +350,9 @@ struct SessionsHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: isExpanded ? 0 : 16) {
+            HStack(alignment: .center, spacing: isExpanded ? 0 : headerSpacing) {
                 HermesHeaderLogo(selectedColor: logoColor)
-                    .frame(width: isExpanded ? 0 : 160, alignment: .leading)
+                    .frame(width: isExpanded ? 0 : logoWidth, alignment: .leading)
                     .opacity(isExpanded ? 0 : 1)
                     .clipped()
                     .accessibilityHidden(isExpanded)
@@ -344,14 +364,46 @@ struct SessionsHeader: View {
             }
             HomeConnectionStatusLine(driver: connectionStatus, reconnectNow: reconnectNow)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
+        .padding(.horizontal, headerHorizontalPadding)
+        .padding(.top, headerTopPadding)
         .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: isExpanded)
         .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsClearButton)
         .drivesHomeConnectionStatus(connectionStatus, connection: connection)
     }
 
     private var isExpanded: Bool { field?.isExpanded == true }
+
+    private var logoWidth: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        104
+        #else
+        160
+        #endif
+    }
+
+    private var headerSpacing: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        8
+        #else
+        16
+        #endif
+    }
+
+    private var headerHorizontalPadding: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        16
+        #else
+        24
+        #endif
+    }
+
+    private var headerTopPadding: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        0
+        #else
+        28
+        #endif
+    }
 
     private var showsClearButton: Bool {
         guard let field else { return false }
@@ -1327,7 +1379,12 @@ struct ScheduledSessionsView: View {
         .scrollContentBackground(.hidden)
         .themedPageBackground()
         .navigationTitle("Scheduled sessions")
+        #if targetEnvironment(macCatalyst)
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+        .macReadableSearchable(text: $searchText, prompt: Text("Search sessions"))
+        #else
         .searchable(text: $searchText, prompt: "Search sessions")
+        #endif
         .task(id: searchText) {
             if viewModel.isHermes { await viewModel.searchSessions(query: searchText) }
         }
@@ -1650,7 +1707,12 @@ extension View {
     }
 
     func sessionsTopChromeListRow() -> some View {
-        listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 18, trailing: 0))
+        #if targetEnvironment(macCatalyst)
+        let bottomInset: CGFloat = 8
+        #else
+        let bottomInset: CGFloat = 18
+        #endif
+        return listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: bottomInset, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
             .zIndex(1)

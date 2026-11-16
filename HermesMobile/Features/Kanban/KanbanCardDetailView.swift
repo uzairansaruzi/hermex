@@ -65,6 +65,7 @@ private struct KanbanCardDetailContent: View {
                 )
             }
         }
+        .macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         .task { await state.load() }
         .task(id: featureModel.detailRefreshRevision) {
             await state.reconcile(revision: featureModel.detailRefreshRevision)

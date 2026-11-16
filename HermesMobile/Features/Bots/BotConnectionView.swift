@@ -159,6 +159,7 @@ import Observation
                 }
             }
         }
+        .macReadableForm()
         .themedPageBackground()
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)

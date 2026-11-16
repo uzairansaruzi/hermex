@@ -10,6 +10,9 @@ struct AppIconSettingsSection: View {
     @State private var isAppIconPickerExpanded = false
 
     var body: some View {
+        #if targetEnvironment(macCatalyst)
+        EmptyView()
+        #else
         if UIApplication.shared.supportsAlternateIcons {
             VStack(alignment: .leading, spacing: 12) {
                 DisclosureGroup(isExpanded: $isAppIconPickerExpanded) {
@@ -35,6 +38,7 @@ struct AppIconSettingsSection: View {
                 refreshSelectedAppIcon()
             }
         }
+        #endif
     }
 
     private var appIconChoices: some View {

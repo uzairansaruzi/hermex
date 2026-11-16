@@ -68,9 +68,13 @@ Reply with the exact address, username, password, and both check results, plus a
     /// Step 1 opens on the Hermes prompt; Hermes Web UI is one tap away.
     static let initialSetupPrompt: OnboardingSetupPrompt = .hermes
 
+    #if targetEnvironment(macCatalyst)
+    static let tailscaleAppStoreURL = URL(string: "macappstore://apps.apple.com/us/app/tailscale/id1475387142")!
+    static let tailscaleAppStoreFallbackURL = URL(string: "https://apps.apple.com/us/app/tailscale/id1475387142")!
+    #else
     static let tailscaleAppStoreURL = URL(string: "itms-apps://apps.apple.com/us/app/tailscale/id1470499037")!
-
     static let tailscaleAppStoreFallbackURL = URL(string: "https://apps.apple.com/us/app/tailscale/id1470499037")!
+    #endif
 
     /// Where Continue goes from setup page `page`: the next one, or nil after the last, which
     /// opens the Add Server sheet.
@@ -113,10 +117,22 @@ enum OnboardingSetupPrompt: Hashable {
     case webUI
 
     var text: String {
-        switch self {
+        #if targetEnvironment(macCatalyst)
+        text(forMac: true)
+        #else
+        text(forMac: false)
+        #endif
+    }
+
+    func text(forMac: Bool) -> String {
+        let prompt: String = switch self {
         case .hermes: OnboardingFlowPolicy.hermesSetupPrompt
         case .webUI: OnboardingFlowPolicy.webUISetupPrompt
         }
+        guard forMac else { return prompt }
+        return prompt.replacingOccurrences(of: "iPhone", with: "Mac")
+            .replacingOccurrences(of: "the phone", with: "the Mac")
+            .replacingOccurrences(of: "exact-phone-address", with: "exact-mac-address")
     }
 
     var title: String {

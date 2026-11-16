@@ -671,6 +671,19 @@ struct MessageComposerView: View {
                     .transition(.opacity)
             }
 
+            #if targetEnvironment(macCatalyst)
+            VStack(spacing: 4) {
+                composerSurface
+                Group {
+                    if isDictating { dictationRow } else { toolbarRow }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+            }
+            .modifier(ChatComposerSurfaceStyle(isExpanded: true))
+            .padding(.horizontal)
+            .padding(.bottom, 16)
+            #else
             composerSurface
                 .padding(.horizontal)
                 // Above the toolbar row, whose solid background bleeds up under the card.
@@ -706,6 +719,7 @@ struct MessageComposerView: View {
                     )
                     .transition(.opacity)
             }
+            #endif
         }
         // Focus flips arrive from UIKit outside any withAnimation, so the
         // morph and the row's insertion take their animation from here: the
@@ -999,10 +1013,14 @@ struct MessageComposerView: View {
     }
 
     private var isExpanded: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
         isCardOpen
             || isDictating
             || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
+        #endif
     }
 
     /// Dictation locks the draft from the mic tap until its words have landed.
@@ -1082,7 +1100,9 @@ struct MessageComposerView: View {
         }
         .padding(.top, isExpanded ? 2 : 0)
         .padding(.bottom, isExpanded ? 4 : 0)
+        #if !targetEnvironment(macCatalyst)
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
+        #endif
     }
 
     /// Card-state row under the surface. It never scrolls: the model label takes the

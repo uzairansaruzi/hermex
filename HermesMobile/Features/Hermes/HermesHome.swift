@@ -43,6 +43,9 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     @Environment(\.splitDetailHasVerticalBar) private var detailHasVerticalBar
 
     func body(content: Content) -> some View {
+        #if targetEnvironment(macCatalyst)
+        content.toolbar(.hidden, for: .navigationBar)
+        #else
         VerticalBarReader { hasVerticalBar in
             let ownsRail = hasVerticalBar && !home.isSidebar
             let detailOwnsRail = home.isSidebar && detailHasVerticalBar
@@ -67,6 +70,7 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
                 }
                 .environment(\.homeBarOwnsSearch, ownsRail || detailOwnsRail)
         }
+        #endif
     }
 
     @ToolbarContentBuilder private var bottomBarItems: some ToolbarContent {
@@ -84,6 +88,29 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     }
 }
 
+#if targetEnvironment(macCatalyst)
+/// The mobile bottom bar does not fit a Mac sidebar. Keep the same actions beside the
+/// list header so they remain visible at every window size without toolbar overflow.
+struct HermesHomeDesktopControls<Filter: View, NewChat: View>: View {
+    let home: HermesHome
+    @ViewBuilder let filter: Filter
+    @ViewBuilder let newChat: NewChat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            filter.labelStyle(.iconOnly)
+            Spacer(minLength: 0)
+            HermesHomeSwitch(tab: home.tab)
+            Spacer(minLength: 0)
+            newChat.labelStyle(.iconOnly)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+    }
+}
+#endif
+
 /// The unfolded iPhone Duo's rail belongs to the split's detail column, so a split home's detail
 /// root (its placeholder or chat) carries the home's rail items. A screen pushed over it shows
 /// only its own.
@@ -94,17 +121,22 @@ struct HermesHomeDetailBar<Filter: View, NewChat: View>: ViewModifier {
     @ViewBuilder let newChat: NewChat
 
     func body(content: Content) -> some View {
+        #if targetEnvironment(macCatalyst)
+        content
+        #else
         content.verticalBarToolbar { hasVerticalBar in
             if #available(iOS 27.1, *), hasVerticalBar, let home, home.isSidebar {
                 HermesHomeRailItems(home: home, search: search, filter: filter, newChat: newChat)
             }
         }
+        #endif
     }
 }
 
 /// The home's buttons in a vertical bar: New Chat, Search and the filter at its top, and Bots,
 /// Sessions and the avatar at its foot. The segmented switch is too wide for it, so each side
 /// gets its own button.
+#if !targetEnvironment(macCatalyst)
 @available(iOS 27.1, *)
 private struct HermesHomeRailItems<Filter: View, NewChat: View>: ToolbarContent {
     let home: HermesHome
@@ -126,6 +158,8 @@ private struct HermesHomeRailItems<Filter: View, NewChat: View>: ToolbarContent 
             .axisBehavior(.verticalPreferred)
     }
 }
+
+#endif
 
 extension EnvironmentValues {
     /// The home's bar holds search and the avatar, so `SessionsHeader` leaves them out.
@@ -154,14 +188,19 @@ struct VerticalBarReader<Content: View>: View {
     @ViewBuilder let content: (Bool) -> Content
 
     var body: some View {
+        #if targetEnvironment(macCatalyst)
+        content(false)
+        #else
         if #available(iOS 27.1, *) {
             VerticalBarEdgeReader(content: content)
         } else {
             content(false)
         }
+        #endif
     }
 }
 
+#if !targetEnvironment(macCatalyst)
 @available(iOS 27.1, *)
 private struct VerticalBarEdgeReader<Content: View>: View {
     @Environment(\.toolbarVerticalEdge) private var edge
@@ -233,6 +272,8 @@ private struct RailTopInset: ViewModifier {
     }
 }
 
+#endif
+
 private struct HiddenBottomScrollEdge: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
@@ -259,7 +300,9 @@ private struct HermesHomeSwitch: View {
         .pickerStyle(.segmented)
         // A bare `.fixedSize()` hugs the longer label (#1344); the minimum gives both segments
         // room, and a longer translation still widens the switch instead of truncating.
+        #if !targetEnvironment(macCatalyst)
         .frame(minWidth: 200)
+        #endif
         .fixedSize()
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .accessibilityShowsLargeContentViewer()

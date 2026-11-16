@@ -148,6 +148,7 @@ import SwiftUI
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 36)
+            .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         }
         .background(Color(uiColor: .appCanvas))
         .scrollDismissesKeyboard(.interactively)

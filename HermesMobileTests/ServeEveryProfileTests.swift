@@ -5,6 +5,11 @@ import XCTest
 /// gateway (2bd378ed) answered on `scripts/local-hermes --gateway`: the migrate plan, the `.env`
 /// removal, and the migration's start.
 @MainActor final class ServeEveryProfileTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        HermesHostFixture.reset()
+    }
+
     override func tearDown() {
         HermesHostFixture.reset()
         super.tearDown()
