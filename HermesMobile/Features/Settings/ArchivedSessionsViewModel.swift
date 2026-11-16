@@ -215,6 +215,10 @@ final class ArchivedSessionsViewModel {
             }
             if let modelContext, let root = session.hermes?.lineageRoot, let listed = hermesProfile {
                 try? CacheStore.removeHermesSession(lineageRoot: root, profile: listed, serverURL: server, in: modelContext)
+                if let botRoot = session.hermes?.botChatRoot, let hermes {
+                    try? CacheStore.removeHermesBotChat(root: botRoot, serverURL: server, connectionID: hermes.connection.id,
+                                                        profile: listed, in: modelContext)
+                }
             }
             dropReads()
             pages.remove(sessionId)

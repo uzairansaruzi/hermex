@@ -354,6 +354,21 @@ extension CacheStore {
         try removeHermesBotChats(serverURL: serverURL, prefix: prefix, except: prefix + root, in: context)
     }
 
+    /// Removes one deleted Bot Chat's transcript under `root`, its bot's copy and its archive's
+    /// both, keeping every other root and Profile. A chat's write already under way can't put it
+    /// back (`hermesCacheEpoch`).
+    @MainActor
+    static func removeHermesBotChat(root: String, serverURL: URL, connectionID: UUID, profile: String, in context: ModelContext) throws {
+        revokeHermesWriters(serverURL: serverURL)
+        let serverURLString = serverURL.absoluteString
+        let bot = hermesBotChatScope(connectionID: connectionID, profile: profile, root: root)
+        let archived = hermesArchivedBotChatScope(connectionID: connectionID, profile: profile, root: root)
+        try context.delete(model: CachedMessage.self, where: #Predicate {
+            $0.serverURLString == serverURLString && ($0.sessionID == bot || $0.sessionID == archived)
+        })
+        try context.save()
+    }
+
     /// Removes the Bot Chat transcripts cached on `connectionID`, archived ones' included, only
     /// `profile`'s when given: a deleted Profile's, or a discarded connection's. A chat's write
     /// already under way can't put them back (`hermesCacheEpoch`).
