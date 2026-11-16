@@ -659,6 +659,7 @@ import UIKit
             let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
+            let previous = Set(profiles.map(\.id))
             profiles = Self.roster(rows)
             setReconnecting(false)
             if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name, model: $0.model) }, for: server) {
@@ -680,9 +681,13 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
-            // A Profile this fresh roster omits was deleted elsewhere: its cached Bot Chat goes too.
+            // A Profile the roster listed before and this fresh one omits was deleted elsewhere:
+            // its cached Bot Chat goes too. `profiles` starts as the cached roster, so a deletion
+            // made while the app was closed shows up here as well.
             if let connection, let offlineCache {
-                try? CacheStore.removeHermesBotChats(serverURL: server, connectionID: connection.id, exceptProfiles: present, in: offlineCache)
+                for name in previous.subtracting(present) {
+                    try? CacheStore.removeHermesBotChats(serverURL: server, connectionID: connection.id, profile: name, in: offlineCache)
+                }
             }
             if let scope {
                 await rosterCache.save(rows, scope: scope, readAt: readAt)

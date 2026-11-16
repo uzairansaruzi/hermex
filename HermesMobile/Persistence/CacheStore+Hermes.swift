@@ -366,39 +366,6 @@ extension CacheStore {
         }
     }
 
-    /// Removes the Bot Chat transcripts cached on `connectionID` for every Profile not in
-    /// `profiles`, archived ones' included: a fresh roster no longer lists them, so they were
-    /// deleted elsewhere. Moves the epoch only when something goes, so a roster that lists every
-    /// cached Profile leaves running chats writing.
-    @MainActor
-    static func removeHermesBotChats(
-        serverURL: URL,
-        connectionID: UUID,
-        exceptProfiles profiles: Set<String>,
-        in context: ModelContext
-    ) throws {
-        let serverURLString = serverURL.absoluteString
-        var absent: [String] = []
-        for archived in [false, true] {
-            let prefix = hermesBotChatScopePrefix(connectionID: connectionID, profile: nil, archived: archived)
-            let kept = profiles.map { prefix + $0 + "|" }
-            var descriptor = FetchDescriptor<CachedMessage>(predicate: #Predicate {
-                $0.serverURLString == serverURLString && $0.sessionID.starts(with: prefix)
-            })
-            descriptor.propertiesToFetch = [\.sessionID]
-            let rows = try context.fetch(descriptor)
-            absent += Set(rows.map(\.sessionID)).filter { scope in !kept.contains { scope.hasPrefix($0) } }
-        }
-        guard !absent.isEmpty else { return }
-        revokeHermesWriters(serverURL: serverURL)
-        for scope in absent {
-            try context.delete(model: CachedMessage.self, where: #Predicate {
-                $0.serverURLString == serverURLString && $0.sessionID == scope
-            })
-        }
-        try context.save()
-    }
-
     @MainActor
     private static func removeHermesBotChats(serverURL: URL, prefix: String, except kept: String?, in context: ModelContext) throws {
         let serverURLString = serverURL.absoluteString

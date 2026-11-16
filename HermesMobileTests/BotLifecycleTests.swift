@@ -387,6 +387,29 @@ import XCTest
         XCTAssertNotEqual(CacheStore.hermesCacheEpoch(serverURL: server), epoch, "a chat attached before can't write back")
     }
 
+    /// A Profile that has no cached rows yet (its first history read may be in flight) still
+    /// revokes attached writers when the roster drops it.
+    func testARosterOmittingABotWithoutCachedRowsStillRevokesWriters() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("keep")])
+        let inbox = try makeInbox(wires: [wire]) { _, _ in }
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        inbox.offlineCache = context
+        await inbox.open()
+        let connection = try XCTUnwrap(inbox.connection?.id)
+        let message = ChatMessage(role: "user", content: "Hi", timestamp: 1, messageId: "1", rowID: 1)
+        try CacheStore.cacheHermesMessages([message], newestCoverage: .all, serverURL: server,
+                                           scope: CacheStore.hermesBotChatScope(connectionID: connection, profile: "keep", root: "root"),
+                                           in: context)
+        let epoch = CacheStore.hermesCacheEpoch(serverURL: server)
+
+        wire.roster = [row("keep")]
+        wire.emit("sessions.changed")
+        await settle(inbox) { $0.profiles.map(\.id) == ["keep"] }
+
+        XCTAssertNotEqual(CacheStore.hermesCacheEpoch(serverURL: server), epoch, "a chat attached before can't write back")
+    }
+
     func testDefaultProfileCannotBeDeleted() async throws {
         let wire = BotInboxFixtureWire(roster: [row("default")])
         wire.delete = { _ in XCTFail("never sent") }

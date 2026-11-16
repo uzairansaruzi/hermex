@@ -116,7 +116,7 @@ to `CacheStore`. Two consequences:
   read drops the rows the host cut from the other copy of the same root too,
   writing nothing there, so an undo seen in either chat stays undone. It never becomes the
   bot's preview, and the bot's attach on another root leaves it. Deleting the
-  bot or discarding its connection removes both copies, and a clear or removal revokes the writes of chats already
+  bot, a roster that no longer lists it, or discarding its connection removes both copies, and a clear or removal revokes the writes of chats already
   attached until they attach again (`CacheStore.hermesCacheEpoch`).
   `HermesOfflineCacheTests` covers the root, the list and server isolation.
 
