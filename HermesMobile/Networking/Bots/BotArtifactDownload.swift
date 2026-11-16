@@ -26,8 +26,9 @@ final class BotArtifactRedirectGuard: NSObject, URLSessionTaskDelegate, @uncheck
 /// Reads one artifact from a `HermesREST.downloadArtifact` request, or one `HermesREST.speak`
 /// reply, on the session `HermesConnection.authorized` passes in; a remote MEDIA document's
 /// preview (#145) reads on the cookie-less `APIClient.sharedPublicMediaSession`. No webui endpoint. `limit` caps a preview's bytes; nil reads the whole file, as an export does
-/// (#1112). An empty body is a failed read unless `allowsEmpty`, which only a workspace file's
-/// Save and Share pass: an empty file is a real file there, but never a real image or speech.
+/// (#1112). An empty body is a failed read unless `allowsEmpty`, which whole-file reads pass
+/// (a workspace file's or a MEDIA file's Save and Share): an empty file is a real file there,
+/// but never a real image or speech.
 enum BotArtifactDownload {
     static func data(session: URLSession, request: URLRequest,
                      limit: Int? = BotArtifactBuffer.maximumBytes, allowsEmpty: Bool = false) async throws -> Data {

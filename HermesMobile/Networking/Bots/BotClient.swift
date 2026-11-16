@@ -95,7 +95,8 @@ import Foundation
         let http = self.http
         let task = Task {
             try await http.authorized(request, validateDispatch: { try self.checkOwner(attempt) }) { request, session in
-                try await BotArtifactDownload.data(session: session, request: request, limit: limit)
+                // Whole-file reads (nil limit: export, inline audio) accept an empty file.
+                try await BotArtifactDownload.data(session: session, request: request, limit: limit, allowsEmpty: limit == nil)
             }
         }
         artifactTasks[id] = task
