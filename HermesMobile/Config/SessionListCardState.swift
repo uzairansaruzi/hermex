@@ -117,9 +117,9 @@ struct SessionListCardState {
 
     /// The card's own button: hides it for good and tallies `link_opened`, not `dismissed`.
     @MainActor
-    func openLinkFromCard(usage: UsageReports? = nil) {
+    func openLinkFromCard(usage: UsageReports? = nil, now: Date = Date()) {
         recordLinkOpened()
-        (usage ?? .shared).record(card, \.linkOpened)
+        (usage ?? .shared).record(card, \.linkOpened, now: now)
     }
 
     /// The card's X.

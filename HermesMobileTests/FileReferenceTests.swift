@@ -26,6 +26,13 @@ final class FileReferenceTests: XCTestCase {
         XCTAssertEqual(parse("file:///Users/hermes/projects/app/README.md#l8"), FileReference(path: "README.md", line: 8, column: nil))
     }
 
+    func testSandboxLinkIsItsAbsolutePath() {
+        XCTAssertEqual(
+            parse("sandbox:/Users/hermes/projects/app/out/report.html"),
+            FileReference(path: "out/report.html", line: nil, column: nil)
+        )
+    }
+
     func testDotRelativePaths() {
         XCTAssertEqual(parse("./Package.swift"), FileReference(path: "Package.swift", line: nil, column: nil))
         XCTAssertEqual(parse("./Sources/../Tests/AppTests.swift:2"), FileReference(path: "Tests/AppTests.swift", line: 2, column: nil))

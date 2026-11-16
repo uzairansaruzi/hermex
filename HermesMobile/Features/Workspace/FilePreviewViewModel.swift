@@ -41,6 +41,11 @@ final class FilePreviewViewModel {
         ["md", "markdown", "mdown", "mkd"].contains(pathExtension(of: path))
     }
 
+    /// True for paths the preview renders as a web page rather than as source.
+    static func isHTMLPath(_ path: String) -> Bool {
+        ["html", "htm"].contains(pathExtension(of: path))
+    }
+
     /// True for paths that load through `WorkspaceFileClient.file` as text rather than as image or raw bytes.
     static func loadsTextPreview(forPath path: String) -> Bool {
         !rasterImageExtensions.contains(pathExtension(of: path)) && BinaryFilePreview(path: path) == nil

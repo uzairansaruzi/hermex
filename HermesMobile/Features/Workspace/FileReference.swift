@@ -1,7 +1,7 @@
 import Foundation
 
 /// A link to a file in the session workspace, the way an agent writes it in chat: a
-/// `file:` URL, an absolute path under the workspace, or a `./`, `../`, or `~/` path,
+/// `file:` or `sandbox:` URL, an absolute path under the workspace, or a `./`, `../`, or `~/` path,
 /// each with an optional `:line[:column]` suffix or `#L12[C3]` fragment.
 ///
 /// `path` is workspace-relative and `/`-joined, the same identity the file tree and
@@ -88,6 +88,10 @@ struct FileReference: Hashable, Identifiable {
     /// The path and fragment of a destination that could name a file; nil for everything
     /// with another scheme or without an accepted prefix.
     private static func fileTarget(of destination: String) -> Target? {
+        // OpenAI models write a file they made as `sandbox:/abs/path`: an absolute path.
+        if destination.lowercased().hasPrefix("sandbox:/") {
+            return fileTarget(of: String(destination.dropFirst("sandbox:".count)))
+        }
         if destination.lowercased().hasPrefix("file:") {
             guard let url = URL(string: destination), url.scheme?.lowercased() == "file" else { return nil }
             let path = url.path(percentEncoded: false)

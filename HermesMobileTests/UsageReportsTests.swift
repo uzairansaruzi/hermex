@@ -66,9 +66,9 @@ final class UsageReportsTests: XCTestCase {
         let defaults = try makeDefaults()
         let reports = makeReports(defaults: defaults)
         reports.allow(now: now)
-        reports.recordCompletedResponse(now: now)
+        RatingPromptState(defaults: defaults, now: now, usage: reports).recordCompletedResponse(now: now)
         reports.record(.kanban, now: now)
-        reports.record(.tip, \.linkOpened, now: now)
+        SessionListCardState(card: .tip, defaults: defaults).openLinkFromCard(usage: reports, now: now)
         let preview = await reports.preview(now: now)
 
         await reports.appBecameActive(now: now.addingTimeInterval(week))
