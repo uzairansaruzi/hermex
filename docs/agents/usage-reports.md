@@ -25,9 +25,12 @@ key, or a value outside its limits, so the two change together. Fields:
   as a UTC day).
 - `days_active` (UTC days with a foreground), `first_report_of_month`,
   `completed_responses` (a weekly count beside the all-time one).
-- `servers`: counts by kind and each server's kind and release. A version is a
-  plain release number, `other`, or `unknown`; a webui server stores none, so it
-  is always `unknown`. Building a report makes no server request.
+- `servers`: counts by kind and each server's kind and release, and from format
+  2 its `gateway`. A version is a plain release number, `other`, or `unknown`; a
+  webui server stores none, so it is always `unknown`. `gateway` is `webapp` or
+  `dashboard`, what the server's last sign-in reached (`ServerAccount.hermesGateway`,
+  recorded by `AuthManager.hermesSignedIn`), and `unknown` for a webui server or a
+  Hermes server not signed in since. Building a report makes no server request.
 - `features`: yes or no for the week, from `UsageFeature`. Each is tallied where
   the user does it: the destination screen's appearance (Workspace's file browser
   and manager, Tasks, Skills, Memory, Insights, Kanban, a Bot chat or room), the
@@ -78,7 +81,8 @@ data type here and on the label when none fits.
 The app stores the version the user accepted and encodes that one. A build with
 a newer version that adds fields bumps `UsageReport.currentVersion`, lists the
 fields in `fieldsAdded(after:)`, and the card asks again; No thanks keeps the old
-version and doesn't ask again for that one. Only version 1 exists.
+version and doesn't ask again for that one. Version 2 added `servers.versions[].gateway`
+(#1724). The collector must accept a version before any build sends it.
 
 ## Sending
 

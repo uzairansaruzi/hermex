@@ -10,6 +10,13 @@ enum ServerKind: String, Codable, Sendable {
     case hermes
 }
 
+/// Which door a Hermes server's sign-in came through (#1724): the dashboard, or a gateway's
+/// own Webapp (#1606). Recorded for the usage report only; routing reads the live connection.
+enum HermesGatewayKind: String, Codable, Sendable {
+    case dashboard
+    case webapp
+}
+
 /// Non-secret-shaped metadata for one configured server.
 ///
 /// This is the persisted account model introduced by I-039a (#15) — the
@@ -47,6 +54,9 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
     /// A Hermes server's release, as `/api/status` reported it at the last saved
     /// sign-in. Nil for webui servers, whose version Settings reads live.
     var serverVersion: String?
+    /// What a Hermes server's last sign-in reached, written by `AuthManager.hermesSignedIn`.
+    /// Nil for webui servers and for a Hermes server not signed in since this was added.
+    var hermesGateway: HermesGatewayKind?
     /// The webui servers whose chats moved here (Move to Hermes, #707). Kept on the
     /// destination so it outlives removing the webui entry and goes with this one, and
     /// written only by `AuthManager.commitMove` and `updateMoveRecord`: `ServerRegistry.update`
@@ -67,6 +77,7 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         updatedAt: Date,
         kind: ServerKind = .webui,
         serverVersion: String? = nil,
+        hermesGateway: HermesGatewayKind? = nil,
         movedWebuiServers: [MovedWebuiServer] = [],
         moveToHermesPrompt: MoveToHermesPrompt? = nil
     ) {
@@ -79,6 +90,7 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         self.updatedAt = updatedAt
         self.kind = kind
         self.serverVersion = serverVersion
+        self.hermesGateway = hermesGateway
         self.movedWebuiServers = movedWebuiServers
         self.moveToHermesPrompt = moveToHermesPrompt
     }
@@ -93,6 +105,7 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         case updatedAt
         case kind
         case serverVersion
+        case hermesGateway
         case movedWebuiServers
         case moveToHermesPrompt
     }
@@ -122,6 +135,8 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         // falls back to webui instead of failing the entry.
         kind = (try? container.decodeIfPresent(String.self, forKey: .kind)).flatMap(ServerKind.init(rawValue:)) ?? .webui
         serverVersion = try? container.decodeIfPresent(String.self, forKey: .serverVersion)
+        hermesGateway = (try? container.decodeIfPresent(String.self, forKey: .hermesGateway))
+            .flatMap(HermesGatewayKind.init(rawValue:))
         // One unreadable record is dropped on its own; the entry still loads.
         movedWebuiServers = ((try? container.decodeIfPresent([Lossy<MovedWebuiServer>].self, forKey: .movedWebuiServers)) ?? [])
             .compactMap(\.value)

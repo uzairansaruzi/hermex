@@ -135,6 +135,9 @@ final class AuthManager {
         self.hermesConnections.onSignInRejected = { [weak self] server, failure in
             self?.hermesSignInRejected(server: server, failure: failure)
         }
+        self.hermesConnections.onSignedIn = { [weak self] server, gateway in
+            self?.hermesSignedIn(server: server, gateway: gateway)
+        }
     }
 
     /// The active server's id (its normalized URL string), or nil when
@@ -476,6 +479,17 @@ final class AuthManager {
         if offersMove, state == .loggedIn(server: server) {
             moveOffer = MoveToHermesOffer(destinationID: server.absoluteString, servers: servers)
         }
+    }
+
+    /// `server`'s shared connection signed in and reached `gateway` (`HermesConnections.onSignedIn`).
+    /// Records it on a Hermes server's entry for the usage report (#1724) when it changed; a webui
+    /// server's own Hermes connection changes nothing.
+    func hermesSignedIn(server: URL, gateway: HermesGatewayKind) {
+        guard var account = servers.first(where: { $0.id == server.absoluteString }), account.kind == .hermes,
+              account.hermesGateway != gateway else { return }
+        account.hermesGateway = gateway
+        serverRegistry.update(account)
+        refreshServers()
     }
 
     /// An update from Settings installed `version` on the Hermes server `server` (#1075).
