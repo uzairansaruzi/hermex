@@ -61,6 +61,8 @@ struct UsageReportPreview: View {
             Section {
                 (isExample
                     ? Text("Example report. Nothing is recorded until you allow usage reports. This iPhone, Servers and Report show real values; the weekly counts are samples.")
+                    : asking
+                    ? Text("This week so far, in the newer format. Until you allow it, Hermex keeps sending the summary you already allowed.")
                     : Text("This week so far, built by the same code that sends it. It goes to the developer the first time you open Hermex after the week ends (Monday, UTC)."))
                     .font(AppFont.footnote())
                     .foregroundStyle(isExample ? Color.black : Color(.secondaryLabel))
