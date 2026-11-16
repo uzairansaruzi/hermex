@@ -176,6 +176,38 @@ import XCTest
         XCTAssertEqual(list.sessions.map(\.title), ["C", "A", "B"])
     }
 
+    /// A pull to refresh while the list is still connecting leaves that connect to read the rows:
+    /// the cached rows stay, no error shows, and the socket it opens is the one the list keeps.
+    func testARefreshWhileConnectingKeepsTheCachedRowsAndTheConnect() async throws {
+        let context = try makeContext()
+        let rows = [HermesSessionRow(id: "a", title: "A", lastActive: 20)]
+        let online = HermesSessionListWire()
+        online.pages["default"] = [0: HermesSessionPage(rows: rows)]
+        await makeList(online).openHermes(modelContext: context)
+
+        let wire = HermesSessionListWire()
+        wire.holdsConnect = true
+        wire.pages["default"] = [0: HermesSessionPage(rows: [HermesSessionRow(id: "c", title: "C", lastActive: 30)] + rows)]
+        let list = makeList(wire)
+        let open = Task { await list.openHermes(modelContext: context) }
+        await waitUntil("the cached rows show") { wire.connects == 1 && !list.sessions.isEmpty }
+
+        await list.refreshHermes(modelContext: context)
+
+        XCTAssertEqual(list.sessions.map(\.title), ["A"])
+        XCTAssertNil(list.sessionLoadError)
+        XCTAssertNil(list.errorMessage)
+        XCTAssertFalse(list.isHermesReconnecting)
+
+        wire.release()
+        await open.value
+
+        XCTAssertEqual(wire.connects, 1)
+        XCTAssertNil(list.sessionLoadError)
+        XCTAssertFalse(list.isViewingCachedData)
+        XCTAssertEqual(list.sessions.map(\.title), ["C", "A"])
+    }
+
     /// A host that answers and refuses drops the rows shown while connecting: the list says why,
     /// as it does with nothing cached.
     func testARefusedConnectDropsTheRowsShownWhileConnecting() async throws {
