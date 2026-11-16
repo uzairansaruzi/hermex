@@ -1133,6 +1133,9 @@ struct ChatView: View {
                     listenPlaybackBar
 
                     messageContent
+                        #if targetEnvironment(macCatalyst)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        #endif
                         // Scope RTL to the chat transcript only (#259): the offline
                         // banner above stays in the app's default direction.
                         .environment(\.layoutDirection, chatLayoutDirection)
@@ -1156,6 +1159,9 @@ struct ChatView: View {
                     .padding(.bottom, composerHeight + 8)
                     .zIndex(9)
             }
+            #if targetEnvironment(macCatalyst)
+            .frame(width: viewport.size.width, height: viewport.size.height, alignment: .bottom)
+            #endif
         }
         .overlay(alignment: .top) {
             ActionToastView(state: toastState, edge: .top)

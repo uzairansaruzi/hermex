@@ -421,6 +421,7 @@ struct KanbanStatusFocusView: View {
                 cardList
             }
         }
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
     }
 
     private var dispatcherSheet: some View {
@@ -1447,6 +1448,12 @@ struct KanbanStatusFocusView: View {
                 Button("Clear Filters") { Task { await model.clearFilters() } }
                     .frame(minHeight: 44)
             }
+            #if targetEnvironment(macCatalyst)
+            Button("Refresh", systemImage: "arrow.clockwise") {
+                Task { await model.refresh() }
+            }
+            .disabled(model.isRefreshing)
+            #endif
         }
     }
 

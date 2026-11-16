@@ -232,6 +232,7 @@ struct HermesSessionListView: View {
         // A split view's sidebar paints gray behind a plain List; only its rows cover it.
         .scrollContentBackground(.hidden)
         .background(Color(.appCanvas))
+        .macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         .modifier(chrome)
         .modifier(HomeHeaderScroll(requests: searchRequests))
     }

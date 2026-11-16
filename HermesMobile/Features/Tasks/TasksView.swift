@@ -186,6 +186,10 @@ struct TasksView: View {
                         }
                     }
                 }
+                #if targetEnvironment(macCatalyst)
+                .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+                .background(Color(.appGroupedCanvas))
+                #endif
                 .refreshable {
                     await loadTasks()
                 }

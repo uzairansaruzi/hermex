@@ -116,7 +116,11 @@ struct AddServerView: View {
         } message: {
             Text("Its sign-in, cached chats and drafts are removed from this iPhone. Conversations on the host stay.")
         }
+        #if targetEnvironment(macCatalyst)
+        .adaptiveFormPresentation(preferredMacSize: CGSize(width: 640, height: 640))
+        #else
         .adaptiveFormPresentation()
+        #endif
         .onDisappear { operation?.cancel() }
     }
 
