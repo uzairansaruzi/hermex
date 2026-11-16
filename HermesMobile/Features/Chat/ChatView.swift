@@ -962,16 +962,26 @@ struct ChatView: View {
         }
     }
 
-    /// A chat link that names a workspace file opens the source viewer at its line; every
+    /// A chat link that names a workspace file opens the source viewer at its line. In a
+    /// Hermes chat, a link to an HTML report outside the folder (an agent's scratch copy)
+    /// opens the report sheet through the attach, as a `MEDIA:` report does (#1713). Every
     /// other link returns nil for `transcriptLinks` to open. The viewer's own error state
     /// covers a path the server no longer has, so the tap never waits on a fetch. A Hermes
     /// chat's root is its folder, only while Files can read it.
     private func handleTranscriptLink(_ url: URL) -> OpenURLAction.Result? {
         let root = isHermesSession ? browsableHermesWorkspace?.cwd : session.workspace
-        guard let reference = FileReference.parse(url.absoluteString, workspaceRoot: root) else {
-            return nil
+        if let reference = FileReference.parse(url.absoluteString, workspaceRoot: root) {
+            openedFileReference = reference
+            return .handled
         }
-        openedFileReference = reference
+        guard isHermesSession,
+              let path = FileReference.absoluteMediaPath(url.absoluteString, workspaceRoot: root)
+        else { return nil }
+        let report = TranscriptMediaReference(rawReference: path)
+        guard report.isHTMLReportCandidate else { return nil }
+        presentPreviewRestoringComposerFocusIfNeeded {
+            hermesFilePreviewItem = HermesFilePreviewItem(reference: report)
+        }
         return .handled
     }
 
