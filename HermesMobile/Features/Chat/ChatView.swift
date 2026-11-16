@@ -2291,8 +2291,9 @@ struct ChatView: View {
 
     private var showsGitMenu: Bool { showsGitControls && gitAvailabilityViewModel.hasRepository }
 
-    /// iOS 26 wraps the trailing item in a glass pill even when the cluster holds nothing, which
-    /// left an empty, dead button in chats with none of these actions (a cron delivery, say).
+    /// Whether any trailing chat action shows. The trailing cluster and the spacer before the
+    /// delegated-work button are added only then: an empty cluster still draws as a blank button.
+    /// Keep in step with the actions the cluster and `chatActionRailItems` list.
     private var showsTrailingActions: Bool {
         showsBotChatSettingsButton || viewModel.showsGoalControls || showsFilesLink || showsGitMenu
             || screenShortcut != nil
@@ -2356,7 +2357,7 @@ struct ChatView: View {
     @ToolbarContentBuilder
     private var delegatedWorkToolbarItem: some ToolbarContent {
         if let work = delegatedWork, work.activeCount > 0 {
-            if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+            if #available(iOS 26, *), showsTrailingActions { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {
                 HermesDelegatedWorkButton(count: work.activeCount, action: openDelegatedWork)
             }
