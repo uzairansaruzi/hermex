@@ -99,7 +99,8 @@ final class SessionListCardTests: XCTestCase {
     func testUsageReportsReaskOnlyForANewerFormatAfterAllowing() {
         XCTAssertEqual(UsageReportConsent().question(currentVersion: 1), .allow)
         XCTAssertNil(UsageReportConsent(acceptedVersion: 1).question(currentVersion: 1))
-        XCTAssertEqual(UsageReportConsent(acceptedVersion: 1).question(currentVersion: 2), .moreFields([]))
+        XCTAssertEqual(UsageReportConsent(acceptedVersion: 1).question(currentVersion: 2),
+                       .moreFields(UsageReport.fieldsAdded(after: 1)))
         XCTAssertNil(UsageReportConsent(acceptedVersion: 1, declinedVersion: 2).question(currentVersion: 2),
                      "No thanks on the re-prompt keeps the old format and doesn't ask again")
         XCTAssertNil(UsageReportConsent(declinedVersion: 1).question(currentVersion: 2),

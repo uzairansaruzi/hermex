@@ -126,10 +126,13 @@ struct UsageDevice: Equatable {
 /// the same value the sender encodes. It has no field that could hold a URL or a name.
 struct UsageReport: Encodable, Equatable {
     /// The newest format this build can encode. Each user's reports use the version they accepted.
-    static let currentVersion = 1
+    static let currentVersion = 2
 
-    /// The fields each later format added, which the re-prompt names. Version 1 is the first.
-    static func fieldsAdded(after version: Int) -> [String] { [] }
+    /// The fields each later format added, which the re-prompt names. Version 2 added each
+    /// server's `gateway`.
+    static func fieldsAdded(after version: Int) -> [String] {
+        version < 2 ? [String(localized: "whether each Hermes server is a Webapp or a dashboard")] : []
+    }
 
     enum Channel: String, Encodable { case appstore, testflight }
 
@@ -142,7 +145,13 @@ struct UsageReport: Encodable, Equatable {
     struct Version: Encodable, Equatable {
         var kind: ServerKind
         var version: String
+        /// From format 2; nil, and so absent from the JSON, in format 1.
+        var gateway: Gateway?
     }
+
+    /// What a server's last sign-in reached; `unknown` for a webui server or a Hermes server
+    /// not signed in since this was recorded.
+    enum Gateway: String, Encodable { case webapp, dashboard, unknown }
 
     struct Features: Encodable, Equatable {
         var used: Set<UsageFeature>
@@ -214,7 +223,10 @@ struct UsageReport: Encodable, Equatable {
         self.servers = Servers(
             hermes: min(servers.count { $0.kind == .hermes }, 99),
             webui: min(servers.count { $0.kind == .webui }, 99),
-            versions: servers.prefix(20).map { Version(kind: $0.kind, version: Self.reportedVersion(of: $0)) }
+            versions: servers.prefix(20).map {
+                Version(kind: $0.kind, version: Self.reportedVersion(of: $0),
+                        gateway: version >= 2 ? Self.reportedGateway(of: $0) : nil)
+            }
         )
         completedResponses = min(tallies.completedResponses, 100_000)
         features = Features(used: tallies.features)
@@ -227,6 +239,14 @@ struct UsageReport: Encodable, Equatable {
     static func reportedVersion(of server: ServerAccount) -> String {
         guard server.kind == .hermes, let version = server.serverVersion else { return "unknown" }
         return version.wholeMatch(of: /[0-9]+(\.[0-9]+){1,3}/) != nil ? version : "other"
+    }
+
+    static func reportedGateway(of server: ServerAccount) -> Gateway {
+        guard server.kind == .hermes, let gateway = server.hermesGateway else { return .unknown }
+        return switch gateway {
+        case .webapp: .webapp
+        case .dashboard: .dashboard
+        }
     }
 
     func encoded() throws -> Data {
@@ -431,14 +451,15 @@ final class UsageReports {
     }
 
     /// The report for the week in progress, as it would be sent; the example before consent.
-    func preview(now: Date = Date()) async -> UsageReport {
+    /// `asking` builds it in the newest format, as the consent card's re-prompt asks for it.
+    func preview(now: Date = Date(), asking: Bool = false) async -> UsageReport {
         let week = UsageWeekID(containing: now)
-        guard let version = consent.acceptedVersion else {
+        guard let accepted = consent.acceptedVersion else {
             return build(version: currentVersion, tallies: .sample(week: week), firstOfMonth: true, device: await device())
         }
         // Roll over before the await: resuming in a later week with this `now` would discard that week's tallies.
         let tallies = rollOver(now)
-        return build(version: version, tallies: tallies, firstOfMonth: isFirstReport(ofMonthOf: week), device: await device())
+        return build(version: asking ? currentVersion : accepted, tallies: tallies, firstOfMonth: isFirstReport(ofMonthOf: week), device: await device())
     }
 
     private func build(version: Int, tallies: UsageTallies, firstOfMonth: Bool, device: UsageDevice) -> UsageReport {

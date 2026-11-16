@@ -708,6 +708,32 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(manager.state, .loggedIn(server: webuiServer))
     }
 
+    /// A sign-in records which gateway the Hermes server reached, for the usage report (#1724);
+    /// a webui server's own Hermes connection records nothing on the webui server.
+    func testASignInRecordsTheGatewayOnlyOnTheHermesServer() async throws {
+        defer { HermesHostFixture.reset() }
+        // A Webapp names its install only to a caller signed in (#1606): the first status, read
+        // signed out, leaves it out.
+        var statuses = 0
+        let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/status" else { return nil }
+            statuses += 1
+            guard statuses == 1 else { return nil }
+            return .json(200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                       "version": .string("0.21.5")]))
+        } })
+        let keychain = InMemoryKeychainStore()
+        let manager = try await makeHermesManager(keychain: keychain, connections: connections)
+        let saved = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: hermesServer))
+
+        try await connections.connection(for: saved, server: hermesServer).signIn()
+        XCTAssertEqual(manager.activeServer?.hermesGateway, .webapp)
+
+        let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "secret")
+        try await connections.connection(for: side, server: webuiServer).signIn()
+        XCTAssertNil(manager.servers.first { $0.id == webuiServer.absoluteString }?.hermesGateway)
+    }
+
     /// The host refusing a browser sign-in's refresh token (#708) shows the server's sign-in
     /// form saying the sign-in expired, not that a password was wrong.
     func testAnExpiredBrowserSignInSignsAHermesServerOutAsExpired() async throws {

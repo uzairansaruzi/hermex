@@ -108,6 +108,9 @@ import OSLog
     /// `HermesConnections` sets it so `AuthManager` can sign a Hermes server out (#899); nothing
     /// here remembers it.
     var onLoginRejected: ((BotFailure) -> Void)?
+    /// Called after each successful sign-in with what it reached. `HermesConnections` sets it so
+    /// `AuthManager` can record it for the usage report (#1724).
+    var onSignedIn: ((HermesGatewayKind) -> Void)?
     /// Called with the refresh token the host rotated the sent one into, before the new access
     /// token is used, even when this connection was retired meanwhile: the host has already
     /// retired the sent one. `HermesConnections` saves it.
@@ -315,6 +318,7 @@ import OSLog
                 if connection.installID == nil { connection.installID = serverInstallID }
                 isSignedIn = true
                 epoch += 1
+                onSignedIn?(servesWebapp ? .webapp : .dashboard)
                 let release = serverVersion ?? "unreported"
                 HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): signed in, release \(release, privacy: .public)")
             } catch {
@@ -730,6 +734,9 @@ import OSLog
     /// sign-in's refresh token. `AuthManager` sets it and signs that server out when it is
     /// the active Hermes server (#899).
     var onSignInRejected: ((URL, BotFailure) -> Void)?
+    /// Told what each configured server's connection reached when it signs in. `AuthManager`
+    /// sets it and records it on a Hermes server's entry (#1724).
+    var onSignedIn: ((URL, HermesGatewayKind) -> Void)?
     private let configuration: () -> URLSessionConfiguration
     private let store: BotConnectionStore
     private var server: String?
@@ -752,6 +759,7 @@ import OSLog
         retireCurrent()
         let fresh = HermesConnection(connection: saved, configuration: configuration())
         fresh.onLoginRejected = { [weak self] failure in self?.onSignInRejected?(server, failure) }
+        fresh.onSignedIn = { [weak self] gateway in self?.onSignedIn?(server, gateway) }
         if saved.oauth != nil { keepRefreshTokens(of: fresh, server: server) }
         current = fresh
         self.server = server.absoluteString

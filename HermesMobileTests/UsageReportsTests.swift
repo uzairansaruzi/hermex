@@ -62,6 +62,35 @@ final class UsageReportsTests: XCTestCase {
         XCTAssertEqual(report.servers.webui, 1)
     }
 
+    /// Format 2 says which gateway each Hermes server reached; format 1, which a user who
+    /// declined the re-prompt keeps sending, has no such key.
+    func testOnlyFormatTwoReportsEachServersGateway() throws {
+        servers[0].hermesGateway = .webapp
+        servers.append(Self.server("https://dash.example.org", kind: .hermes, version: "0.21.5"))
+        servers[2].hermesGateway = .dashboard
+        servers.append(Self.server("https://new.example.org", kind: .hermes, version: "0.21.5"))
+        func report(_ version: Int) -> UsageReport {
+            UsageReport(version: version, tallies: UsageTallies(week: UsageWeekID(containing: now)),
+                        firstReportOfMonth: true, installDate: now, device: device, servers: servers,
+                        settings: .init(pushEnabled: false, appLock: false))
+        }
+        XCTAssertEqual(report(2).servers.versions.map(\.gateway), [.webapp, .unknown, .dashboard, .unknown])
+        let formatOne = try XCTUnwrap(JSONSerialization.jsonObject(with: report(1).encoded()) as? [String: Any])
+        let entries = try XCTUnwrap((formatOne["servers"] as? [String: Any])?["versions"] as? [[String: Any]])
+        XCTAssertTrue(entries.allSatisfy { $0["gateway"] == nil })
+    }
+
+    /// The re-prompt's preview shows the format it asks for; Settings' shows the one being sent.
+    func testOnlyTheReaskPreviewShowsTheNewerFormat() async throws {
+        let defaults = try makeDefaults()
+        defaults.set(1, forKey: UsageReports.Keys.acceptedVersion)
+        let reports = makeReports(defaults: defaults)
+        let accepted = await reports.preview(now: now)
+        let asking = await reports.preview(now: now, asking: true)
+        XCTAssertEqual([accepted.v, asking.v], [1, 2])
+        XCTAssertEqual(reports.consent.acceptedVersion, 1)
+    }
+
     func testPreviewIsTheBodyThatIsSentOnceAfterTheWeekEnds() async throws {
         let defaults = try makeDefaults()
         let reports = makeReports(defaults: defaults)
