@@ -1325,13 +1325,15 @@ struct ChatView: View {
                 if #available(iOS 27.1, *), hasVerticalBar {
                     chatActionRailItems
                 } else {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        ChatToolbarActionCluster {
-                            if showsBotChatSettingsButton { ChatToolbarActionSlot { botChatSettingsButton } }
-                            if viewModel.showsGoalControls { ChatToolbarActionSlot { goalControlMenu } }
-                            if showsFilesLink { ChatToolbarActionSlot { filesLink } }
-                            if showsGitMenu { ChatToolbarActionSlot { gitActionsMenu } }
-                            if let screenShortcut { ChatToolbarActionSlot { screenButton(screenShortcut) } }
+                    if showsTrailingActions {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            ChatToolbarActionCluster {
+                                if showsBotChatSettingsButton { ChatToolbarActionSlot { botChatSettingsButton } }
+                                if viewModel.showsGoalControls { ChatToolbarActionSlot { goalControlMenu } }
+                                if showsFilesLink { ChatToolbarActionSlot { filesLink } }
+                                if showsGitMenu { ChatToolbarActionSlot { gitActionsMenu } }
+                                if let screenShortcut { ChatToolbarActionSlot { screenButton(screenShortcut) } }
+                            }
                         }
                     }
                     delegatedWorkToolbarItem
@@ -2289,6 +2291,14 @@ struct ChatView: View {
 
     private var showsGitMenu: Bool { showsGitControls && gitAvailabilityViewModel.hasRepository }
 
+    /// Whether any trailing chat action shows. The trailing cluster and the spacer before the
+    /// delegated-work button are added only then: an empty cluster still draws as a blank button.
+    /// Keep in step with the actions the cluster and `chatActionRailItems` list.
+    private var showsTrailingActions: Bool {
+        showsBotChatSettingsButton || viewModel.showsGoalControls || showsFilesLink || showsGitMenu
+            || screenShortcut != nil
+    }
+
     private var botChatSettingsButton: some View {
         Button { showsChatSettings = true } label: {
             Label("Chat settings", systemImage: "slider.horizontal.3")
@@ -2347,7 +2357,7 @@ struct ChatView: View {
     @ToolbarContentBuilder
     private var delegatedWorkToolbarItem: some ToolbarContent {
         if let work = delegatedWork, work.activeCount > 0 {
-            if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+            if #available(iOS 26, *), showsTrailingActions { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {
                 HermesDelegatedWorkButton(count: work.activeCount, action: openDelegatedWork)
             }
