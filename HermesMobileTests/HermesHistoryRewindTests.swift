@@ -285,6 +285,51 @@ import Observation
         XCTAssertEqual(chat.writes("slash.exec"), [], "never the host's own /undo")
     }
 
+    /// A whole-tree `/rollback` restore that rewound the newest turn (`history_removed`) re-reads
+    /// the newest rows, as `/undo` does (#1728), on either host; one that removed none leaves
+    /// the transcript.
+    func testARollbackThatRewindsTheNewestTurnReplacesTheTranscript() async throws {
+        let file = Self.fixtures.appendingPathComponent("slash-commands.json")
+        guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
+        let recorded = try JSONDecoder().decode(BotJSON.self, from: data)
+        for canonical in [false, true] {
+            let chat = await openChat(threeTurns, canonical: canonical)
+            chat.host.always("rollback.list", .init(result: recorded["rollback.list"]))
+            chat.host.next("rollback.restore", .init(result: recorded["rollback.restore whole tree, nothing rewound"]))
+            chat.host.next("rollback.restore", .init(result: recorded["rollback.restore whole tree, rewound"]))
+            chat.transcript.rows = Array(threeTurns.prefix(4))
+
+            _ = await chat.model.runHermesSlashCommand("/rollback 1")
+            _ = await chat.model.confirmHermesRollback(try XCTUnwrap(chat.model.pendingHermesRollback))
+            XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4, 5, 6], "canonical: \(canonical)")
+
+            _ = await chat.model.runHermesSlashCommand("/rollback 1")
+            _ = await chat.model.confirmHermesRollback(try XCTUnwrap(chat.model.pendingHermesRollback))
+            XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4], "canonical: \(canonical)")
+        }
+    }
+
+    /// Send waits while a whole-tree `/rollback` restore is out, as for `/undo`: a prompt sent
+    /// meanwhile would race the host's rewind of the newest turn.
+    func testSendWaitsWhileAWholeTreeRollbackIsOut() async throws {
+        let file = Self.fixtures.appendingPathComponent("slash-commands.json")
+        guard let data = try? Data(contentsOf: file) else { throw XCTSkip("The source tree is not present (physical device or remote runner).") }
+        let recorded = try JSONDecoder().decode(BotJSON.self, from: data)
+        let chat = await openChat(threeTurns, canonical: true)
+        chat.host.always("rollback.list", .init(result: recorded["rollback.list"]))
+        let restoring = expectation(description: "the restore is on the wire")
+        chat.host.expect(restoring, onNext: "rollback.restore")
+        chat.host.withhold("rollback.restore")
+
+        _ = await chat.model.runHermesSlashCommand("/rollback 1")
+        let request = try XCTUnwrap(chat.model.pendingHermesRollback)
+        let restore = Task { await chat.model.confirmHermesRollback(request) }
+        await fulfillment(of: [restoring], timeout: 2)
+
+        XCTAssertTrue(chat.model.isUndoingExchange, "the composer holds Send")
+        restore.cancel()
+    }
+
     /// `/undo` takes the plan of the exchange it removes, its saved row not yet known: the plan
     /// is not drawn under the earlier prompt that is now last.
     func testUndoTakesTheUndoneTurnsPlan() async {

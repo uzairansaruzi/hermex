@@ -170,6 +170,96 @@ enum HermesSlashReply: Equatable {
     }
 }
 
+/// One checkpoint a Hermes host's `rollback.list` names (#1728): a snapshot of the chat's
+/// folder the host took before the agent changed files there.
+struct HermesCheckpoint: Equatable {
+    /// Its place in the list, newest first, from 1: what `/rollback N` names.
+    let number: Int
+    let hash: String
+    /// When the host took it, as the host wrote it (ISO 8601).
+    let timestamp: String
+    /// Why the host took it.
+    let message: String
+
+    var shortHash: String { String(hash.prefix(8)) }
+
+    /// The rows of one `rollback.list` reply; nil while the host takes none (`enabled: false`).
+    static func list(_ reply: BotJSON) -> [HermesCheckpoint]? {
+        guard reply["enabled"].flag != false else { return nil }
+        return (reply["checkpoints"].list ?? []).enumerated().compactMap { index, row in
+            guard let hash = row["hash"].text, !hash.isEmpty else { return nil }
+            return HermesCheckpoint(number: index + 1, hash: hash, timestamp: row["timestamp"].text ?? "",
+                                    message: row["message"].text ?? "")
+        }
+    }
+
+    /// The checkpoint `ref` names in `list`, read as the host reads it (`tools/checkpoint_refs.py`):
+    /// a list number without a leading zero, else the start of a hash, at least 4 characters.
+    static func named(_ ref: String, in list: [HermesCheckpoint]) -> HermesCheckpoint? {
+        if !ref.isEmpty, ref.allSatisfy({ $0.isASCII && $0.isNumber }), !ref.hasPrefix("0"), let number = Int(ref), list.indices.contains(number - 1) {
+            return list[number - 1]
+        }
+        guard ref.count >= 4 else { return nil }
+        let matches = list.filter { $0.hash.lowercased().hasPrefix(ref.lowercased()) }
+        return matches.count == 1 ? matches[0] : nil
+    }
+}
+
+/// What `/rollback`'s argument asks for (#1728), read as Hermes Desktop reads it.
+enum HermesRollbackCommand: Equatable {
+    case list
+    /// What changed since a checkpoint, by its number or hash as typed.
+    case diff(String)
+    /// A restore of one file, or of the whole tree when `filePath` is nil.
+    case restore(String, filePath: String?)
+
+    /// Nil for a usage error. `--all` would overwrite the user's own edits too, so it is one:
+    /// a phone keeps the host's default, which keeps them.
+    init?(_ argument: String) {
+        let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.contains("--all") else { return nil }
+        switch words.first?.lowercased() {
+        case nil, "list", "ls":
+            guard words.count <= 1 else { return nil }
+            self = .list
+        case "diff":
+            guard words.count == 2 else { return nil }
+            self = .diff(words[1])
+        default:
+            self = .restore(words[0], filePath: words.count > 1 ? words.dropFirst().joined(separator: " ") : nil)
+        }
+    }
+}
+
+/// A `/rollback` restore waiting for the user to confirm it (#1728): the checkpoint the list
+/// named when the user ran it, and the one file, if any.
+struct HermesRollbackRequest: Equatable {
+    let checkpoint: HermesCheckpoint
+    let filePath: String?
+}
+
+/// What a `rollback.restore` did (#1728). A restore the host could not do is `success` false
+/// with its `error` sentence, not a refusal.
+struct HermesRollbackOutcome: Equatable {
+    let success: Bool
+    let error: String?
+    /// The files a whole-tree restore put back, when the host says.
+    let restoredFiles: [String]
+    /// The files a whole-tree restore left alone because the user edited them.
+    let skippedUserEdits: [String]
+    /// The rows a whole-tree restore rewound from the session's history (the newest turn's
+    /// prompt and every row after it), 0 when it rewound none.
+    let historyRemoved: Int
+
+    init(_ reply: BotJSON) {
+        success = reply["success"].flag == true
+        error = reply["error"].text.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        restoredFiles = (reply["restored_files"].list ?? []).compactMap(\.text)
+        skippedUserEdits = (reply["skipped_user_edits"].list ?? []).compactMap(\.text)
+        historyRemoved = reply["history_removed"].integer ?? 0
+    }
+}
+
 /// The host's suggestions for a command's argument (`complete.slash`), for `text`.
 struct HermesSlashCompletion: Equatable {
     struct Item: Equatable, Identifiable {
@@ -300,9 +390,43 @@ struct HermesSlashCompletion: Equatable {
         return parsed
     }
 
-    /// One write bound to the attached runtime. Throws `NotSent` when it never went out; a
-    /// reaped runtime also reattaches.
-    private func write(_ call: (String) -> HermesCall) async throws -> BotJSON {
+    // MARK: Rollback (#1728)
+
+    /// The runtime's checkpoints, newest first; nil while its host takes none.
+    func checkpoints() async throws -> [HermesCheckpoint]? {
+        HermesCheckpoint.list(try await write(reattachesOn: Self.isGoneRuntime) { .rollbackList(runtime: $0) })
+    }
+
+    /// What changed since the checkpoint `hash`: the host's stat and diff. Send a hash the list
+    /// named: a host answers an unknown one with an empty diff, not a refusal.
+    func checkpointDiff(_ hash: String) async throws -> (stat: String, diff: String) {
+        let reply = try await write(reattachesOn: Self.isGoneRuntime) { .rollbackDiff(runtime: $0, hash: hash) }
+        return (reply["stat"].text ?? "", reply["diff"].text ?? "")
+    }
+
+    /// Restores `filePath`, or the whole tree when nil, to the checkpoint `hash`. Sent once.
+    func restoreCheckpoint(_ hash: String, filePath: String?) async throws -> HermesRollbackOutcome {
+        HermesRollbackOutcome(try await write(reattachesOn: Self.isGoneRuntime) {
+            .rollbackRestore(runtime: $0, hash: hash, filePath: filePath)
+        })
+    }
+
+    /// A `rollback.*` refusal that means the host no longer holds the runtime, so the chat
+    /// reattaches: a dashboard's 4001 `session not found` (`tui_gateway/session_registry.py`
+    /// `_sess_nowait`), a Webapp's 4001 `not_found` or `runtime_retired` (`authorize`). Every
+    /// other 4001 on these calls, such as `session_busy` or `unsupported_terminal_backend`, is the
+    /// host's answer about this runtime.
+    static func isGoneRuntime(_ error: Error) -> Bool {
+        if case BotSettingFailure.rejected(4001, let reason) = error {
+            return ["session not found", "not_found", "runtime_retired"].contains(reason)
+        }
+        return false
+    }
+
+    /// One write bound to the attached runtime. Throws `NotSent` when it never went out; an
+    /// error `reattachesOn` names, a reaped runtime by default, also reattaches.
+    private func write(reattachesOn isReaped: (Error) -> Bool = HermesChatSideTasks.isReaped,
+                       _ call: (String) -> HermesCall) async throws -> BotJSON {
         guard engine.connectionState == .connected, let runtime = engine.runtime else {
             throw HermesChatTurnCoordinator.NotSent(underlying: BotFailure.transport)
         }
@@ -310,7 +434,7 @@ struct HermesSlashCompletion: Equatable {
         do {
             return try await engine.write(call(runtime), attempt: engine.generation, runtime: runtime) { dispatched = true }
         } catch {
-            if HermesChatSideTasks.isReaped(error) { onNeedsReattach() }
+            if isReaped(error) { onNeedsReattach() }
             throw dispatched ? error : HermesChatTurnCoordinator.NotSent(underlying: error)
         }
     }

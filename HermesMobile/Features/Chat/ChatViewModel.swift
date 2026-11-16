@@ -320,7 +320,8 @@ final class ChatViewModel {
     /// send of its own (#1603), so a second one now could share the first one's rewind and run the
     /// agent twice: it waits for this one.
     private var isChangingHermesHistory: Bool { isEditingMessage || isRegeneratingMessage }
-    /// A Hermes `/undo` is out (#1049). Send waits, since each one removes an exchange for good.
+    /// A Hermes `/undo` (#1049) or whole-tree `/rollback` restore (#1728) is out. Send waits,
+    /// since each one can remove an exchange for good.
     private(set) var isUndoingExchange = false
     private(set) var isCompressingSession = false
     private(set) var isCancellingStream = false
@@ -4222,6 +4223,8 @@ final class ChatViewModel {
             return await submitGoalFromSlashCommand(args)
         case .yolo:
             return await toggleHermesApprovalBypassFromSlashCommand()
+        case .rollback:
+            return await rollbackFromSlashCommand(args)
         }
     }
 
@@ -5032,6 +5035,162 @@ final class ChatViewModel {
         }
         settings.ask(personality: Self.personalityClearArgs.contains(requested.lowercased()) ? "none" : requested)
         return .executed(message: nil)
+    }
+
+    // MARK: Hermes rollback (#1728)
+
+    /// A `/rollback` restore waiting for the user to confirm it.
+    private(set) var pendingHermesRollback: HermesRollbackRequest?
+
+    func cancelHermesRollback() { pendingHermesRollback = nil }
+
+    /// `/rollback` in a Hermes chat: lists the host's checkpoints, shows one's diff, or asks
+    /// before restoring from one (`pendingHermesRollback`). A diff or restore reads the list
+    /// first and sends the hash of the checkpoint the number names now.
+    private func rollbackFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
+        guard let hermes = hermesTurn else {
+            return .unsupported(friendlyMessage: SlashCommandExecutor.unsupportedMessage(for: "rollback"))
+        }
+        guard let command = HermesRollbackCommand(args) else {
+            return .unsupported(friendlyMessage: String(localized: "Usage: /rollback [diff N | N [file]]"))
+        }
+        let slash = hermes.slashCommands
+        sendErrorMessage = nil
+        do {
+            switch command {
+            case .list:
+                guard let checkpoints = try await slash.checkpoints() else { return checkpointsOff() }
+                notifyLocally(Self.checkpointList(checkpoints))
+            case .diff(let ref):
+                // A host answers a hash it doesn't hold with an empty diff, so the list names it first.
+                guard let checkpoints = try await slash.checkpoints() else { return checkpointsOff() }
+                guard let checkpoint = HermesCheckpoint.named(ref, in: checkpoints) else { return noCheckpoint(ref) }
+                let diff = try await slash.checkpointDiff(checkpoint.hash)
+                notifyLocally(Self.checkpointDiff(stat: diff.stat, diff: diff.diff))
+            case .restore(let ref, let filePath):
+                if filePath == nil {
+                    // A whole-tree restore can rewind the newest turn (#1127 decision 3).
+                    if slash.policy == .botChat { return .unsupported(friendlyMessage: String(localized: "A bot’s chat can’t be rewound.")) }
+                    if activeStreamID != nil { return notDelivered(String(localized: "Wait for the current reply to finish.")) }
+                }
+                guard let checkpoints = try await slash.checkpoints() else { return checkpointsOff() }
+                guard let checkpoint = HermesCheckpoint.named(ref, in: checkpoints) else { return noCheckpoint(ref) }
+                pendingHermesRollback = HermesRollbackRequest(checkpoint: checkpoint, filePath: filePath)
+            }
+            return .executed(message: nil)
+        } catch {
+            return notDelivered(hermesRollbackFailure(error))
+        }
+    }
+
+    /// Sends the `/rollback` restore the user confirmed, by the checkpoint's hash. A whole-tree
+    /// restore that rewound the newest turn leaves the transcript without it. Send waits while a
+    /// whole-tree restore is out, as for `/undo`, so no prompt races the host's rewind.
+    func confirmHermesRollback(_ request: HermesRollbackRequest) async -> SlashCommandExecutionResult {
+        pendingHermesRollback = nil
+        guard let hermes = hermesTurn else { return .notDelivered }
+        let wholeTree = request.filePath == nil
+        let reconnect = String(localized: "Reconnect to the server to run /\("rollback").")
+        if wholeTree {
+            guard !isHermesSubmissionUncertain else { return notDelivered(reconnect) }
+            guard activeStreamID == nil, !isUndoingExchange else {
+                return notDelivered(String(localized: "Wait for the current reply to finish."))
+            }
+            isUndoingExchange = true
+        }
+        defer { if wholeTree { isUndoingExchange = false } }
+        sendErrorMessage = nil
+        let outcome: HermesRollbackOutcome
+        do {
+            outcome = try await hermes.restoreCheckpoint(request.checkpoint.hash, filePath: request.filePath)
+        } catch BotSettingFailure.rejected(let code, let message) {
+            // The host answered: a refusal is its reason, not a lost answer.
+            return notDelivered(hermesRollbackFailure(BotSettingFailure.rejected(code, message)))
+        } catch {
+            // A whole-tree restore whose answer was lost may have rewound the chat: Send waits.
+            return notDelivered(wholeTree ? hermesHistoryFailure(error, on: hermes, reconnect: reconnect) : hermesRollbackFailure(error))
+        }
+        guard outcome.success else {
+            return notDelivered(outcome.error ?? String(localized: "Hermes couldn’t restore this checkpoint."))
+        }
+        notifyLocally(Self.rollbackNotice(outcome, request))
+        return .executed(message: nil)
+    }
+
+    private func noCheckpoint(_ ref: String) -> SlashCommandExecutionResult {
+        notDelivered(String(localized: "There’s no checkpoint \(ref). Run /rollback to see the list."))
+    }
+
+    private func checkpointsOff() -> SlashCommandExecutionResult {
+        notifyLocally(String(localized: "Checkpoints are off on this Hermes host."))
+        return .executed(message: nil)
+    }
+
+    /// Why a `/rollback` call failed: busy, a gone runtime, which reattaches, or the host's own words.
+    private func hermesRollbackFailure(_ error: Error) -> String {
+        switch error {
+        case let notSent as HermesChatTurnCoordinator.NotSent where notSent.followedReplacedChat:
+            return Self.notSentToReplacedChat
+        case is HermesChatTurnCoordinator.NotSent:
+            return String(localized: "Reconnect to the server to run /\("rollback").")
+        case _ where HermesSlashCommands.isGoneRuntime(error):
+            return String(localized: "Reconnect to the server to run /\("rollback").")
+        case BotSettingFailure.rejected(4009, _), BotSettingFailure.rejected(4001, "session_busy"):
+            return String(localized: "Wait for the current reply to finish.")
+        case BotSettingFailure.rejected(_, let message):
+            return message
+        default:
+            return String(localized: "Hermes did not confirm /\("rollback"). Check before running it again.")
+        }
+    }
+
+    /// The checkpoints as a numbered list: number, short hash, local time and the host's reason.
+    static func checkpointList(_ checkpoints: [HermesCheckpoint]) -> String {
+        guard !checkpoints.isEmpty else { return String(localized: "This chat’s folder has no checkpoints yet.") }
+        let rows = checkpoints.map { checkpoint in
+            ["\(checkpoint.number). `\(checkpoint.shortHash)`", checkpointTime(checkpoint.timestamp), checkpoint.message]
+                .filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        return ([String(localized: "Checkpoints, newest first:")] + rows
+                + ["", String(localized: "Run /rollback diff N to see a checkpoint’s changes, or /rollback N [file] to restore it.")])
+            .joined(separator: "\n")
+    }
+
+    /// A checkpoint's time in the user's locale; the host's text when it doesn't parse.
+    static func checkpointTime(_ timestamp: String) -> String {
+        // The host writes git's strict ISO 8601 (`%aI`), with an offset.
+        ISO8601DateFormatter().date(from: timestamp)?.formatted(date: .abbreviated, time: .shortened) ?? timestamp
+    }
+
+    /// A checkpoint's diff: the stat, then the diff in a `diff` fence.
+    static func checkpointDiff(stat: String, diff: String) -> String {
+        let diff = diff.trimmingCharacters(in: .newlines)
+        guard !diff.trimmingCharacters(in: .whitespaces).isEmpty || !stat.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return String(localized: "No changes since this checkpoint.")
+        }
+        var fence = "```"
+        while diff.contains(fence) { fence += "`" }
+        return [HermesSlashReply.verbatim(stat), diff.isEmpty ? "" : "\(fence)diff\n\(diff)\n\(fence)"]
+            .filter { !$0.isEmpty }.joined(separator: "\n\n")
+    }
+
+    /// What a restore did: the files it put back, the user's edits it kept, and the turn it removed.
+    static func rollbackNotice(_ outcome: HermesRollbackOutcome, _ request: HermesRollbackRequest) -> String {
+        let hash = "`\(request.checkpoint.shortHash)`"
+        var lines: [String]
+        if let file = request.filePath.map({ "`\($0)`" }) {
+            lines = [String(localized: "Restored \(file) to checkpoint \(hash).")]
+        } else {
+            lines = [String(localized: "Restored the agent’s changes to checkpoint \(hash).")]
+        }
+        if !outcome.restoredFiles.isEmpty {
+            lines.append(String(localized: "Restored: \(outcome.restoredFiles.map { "`\($0)`" }.joined(separator: ", "))"))
+        }
+        if !outcome.skippedUserEdits.isEmpty {
+            lines.append(String(localized: "Kept your edits to: \(outcome.skippedUserEdits.map { "`\($0)`" }.joined(separator: ", "))"))
+        }
+        if outcome.historyRemoved > 0 { lines.append(String(localized: "The newest turn was removed from the chat.")) }
+        return lines.joined(separator: "\n\n")
     }
 
     /// Sends the `/personality` change the user confirmed. The notice names the Profile it changed.

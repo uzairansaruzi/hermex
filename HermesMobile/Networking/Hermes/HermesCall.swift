@@ -206,6 +206,18 @@ enum HermesCall: Equatable, Sendable {
     /// steered by `focus`, and answers `{status, removed, summary, info}`; another compressor
     /// holding the lock answers `{lock_held, message}`. Refused while a turn runs (4009).
     case sessionCompress(runtime: String, focus: String?, profile: String)
+    /// `/rollback` in a Hermes chat (#1728): the checkpoints of `runtime`'s working folder,
+    /// newest first, as `{enabled, checkpoints: [{hash, timestamp, message}]}`. A host that takes
+    /// none answers `enabled: false`.
+    case rollbackList(runtime: String)
+    /// What changed since the checkpoint `hash`: `{stat, diff}`, the diff cut at 4000
+    /// characters. A hash the host doesn't hold answers empty, so send one `rollbackList` named.
+    case rollbackDiff(runtime: String, hash: String)
+    /// Restores `filePath` alone, or else the whole tree keeping the user's own edits, to the
+    /// checkpoint `hash`: `{success, restored_to?, restored_files?, skipped_user_edits?,
+    /// history_removed?, error?}`. A whole-tree restore is refused while a turn runs (4009, or a
+    /// Webapp's 4001 `session_busy`) and may rewind the newest turn. Sent once.
+    case rollbackRestore(runtime: String, hash: String, filePath: String?)
     /// On a canonical host `fence` names the running generation the correction or stop is for,
     /// and a newer one refuses it (`HermesFenceRefusal`).
     case sessionSteer(sessionID: String, text: String, fence: Fence? = nil)
@@ -562,6 +574,9 @@ enum HermesCall: Equatable, Sendable {
         case .sessionMutate: return "session.mutate"
         case .sessionUndo: return "session.undo"
         case .sessionCompress: return "session.compress"
+        case .rollbackList: return "rollback.list"
+        case .rollbackDiff: return "rollback.diff"
+        case .rollbackRestore: return "rollback.restore"
         case .fileAttach: return "file.attach"
         case .promptBtw: return "prompt.btw"
         case .promptBackground: return "prompt.background"
@@ -683,7 +698,12 @@ enum HermesCall: Equatable, Sendable {
             return params
         case .sessionTitle(let sessionID): return ["session_id": .string(sessionID), "title": .string(Self.botChatTitle)]
         case .sessionRename(let runtime, let title): return ["session_id": .string(runtime), "title": .string(title)]
-        case .sessionClose(let runtime), .sessionUndo(let runtime): return ["session_id": .string(runtime)]
+        case .sessionClose(let runtime), .sessionUndo(let runtime), .rollbackList(let runtime): return ["session_id": .string(runtime)]
+        case .rollbackDiff(let runtime, let hash): return ["session_id": .string(runtime), "hash": .string(hash)]
+        case .rollbackRestore(let runtime, let hash, let filePath):
+            var params: [String: BotJSON] = ["session_id": .string(runtime), "hash": .string(hash)]
+            if let filePath { params["file_path"] = .string(filePath) }
+            return params
         case .sessionDelete(let profile, let storedKey): return ["session_id": .string(storedKey), "profile": .string(profile)]
         case .sessionBranch(let runtime, let name, let count):
             var params: [String: BotJSON] = ["session_id": .string(runtime)]
@@ -905,8 +925,12 @@ enum HermesCall: Equatable, Sendable {
         case .sessionCompress(let runtime, let focus, let profile):
             valid = !runtime.isEmpty && !profile.isEmpty && focus?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true
         case .sessionTitle(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID),
-             .sessionClose(let sessionID), .sessionUndo(let sessionID), .approvalPending(let sessionID):
+             .sessionClose(let sessionID), .sessionUndo(let sessionID), .approvalPending(let sessionID),
+             .rollbackList(let sessionID):
             valid = !sessionID.isEmpty
+        case .rollbackDiff(let runtime, let hash): valid = !runtime.isEmpty && !Self.isBlank(hash)
+        case .rollbackRestore(let runtime, let hash, let filePath):
+            valid = !runtime.isEmpty && !Self.isBlank(hash) && filePath.map(Self.isBlank) != true
         case .sessionRename(let runtime, let title):
             valid = !runtime.isEmpty && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .sessionDelete(let profile, let storedKey): valid = !profile.isEmpty && !storedKey.isEmpty

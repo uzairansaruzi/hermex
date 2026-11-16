@@ -59,6 +59,7 @@ import Observation
         XCTAssertEqual(slash.route("fork"), .appOwned(SlashCommandCatalog.command(named: "fork")!), "#1051")
         XCTAssertEqual(slash.route("workspace"), .appOwned(SlashCommandCatalog.command(named: "workspace")!), "#1673")
         XCTAssertEqual(slash.route("interrupt"), .appOwned(SlashCommandCatalog.command(named: "interrupt")!), "#1673")
+        XCTAssertEqual(slash.route("rollback").appOwnedHandler, .serverSide(.rollback), "#1728")
         XCTAssertEqual(slash.route("demo-skill").isSkill, true)
         XCTAssertEqual(slash.route("context"), .host)
         XCTAssertEqual(slash.route("ctx"), .host)
@@ -141,7 +142,7 @@ import Observation
     func testABotChatRefusesCommandsThatLeaveOrRewriteIt() async {
         let chat = await openChat(target: .canonicalChat(profile: "default"))
         let refused = ["/new", "/reset", "/clear", "/resume Launch plan", "/sessions", "/branch Idea", "/fork",
-                       "/title Renamed", "/undo", "/retry"]
+                       "/title Renamed", "/undo", "/retry", "/rollback 1"]
         let sent = chat.host.requests.count
         for line in refused {
             let result = await chat.model.runHermesSlashCommand(line)
@@ -326,6 +327,115 @@ import Observation
         unsent.host.always("slash.exec", reply)
         _ = await unsent.model.runHermesSlashCommand("/steer")
         XCTAssertEqual(unsent.model.sendErrorMessage, "Send a message first, then run /steer.")
+    }
+
+    // MARK: Rollback (#1728)
+
+    /// `/rollback` reads the runtime's checkpoints with `rollback.list` and lists them as a notice,
+    /// never through the host's own `/rollback`, which a Webapp refuses.
+    func testRollbackListsTheRuntimesCheckpoints() async throws {
+        let chat = await openChat()
+        chat.host.always("rollback.list", .init(result: try Self.fixture("rollback.list")))
+        chat.host.always("slash.exec", .init(result: .object(["output": .string("Command refused")])))
+
+        let result = await chat.model.runHermesSlashCommand("/rollback")
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.writes("rollback.list"), [["session_id": .string("runtime")]])
+        XCTAssertEqual(chat.writes("slash.exec"), [])
+        XCTAssertEqual(chat.model.messages.map(\.role), ["local_notice"])
+    }
+
+    /// A restore by number asks first, then sends the hash the list showed for that number, never
+    /// the number, with the file when one was named.
+    func testConfirmingARestoreSendsTheListedHash() async throws {
+        let chat = await openChat()
+        let listed = try Self.fixture("rollback.list")["checkpoints"].list ?? []
+        XCTAssertEqual(listed.count, 2)
+        chat.host.always("rollback.list", .init(result: .object(["enabled": .bool(true), "checkpoints": .array(listed)])))
+        chat.host.always("rollback.restore", .init(result: try Self.fixture("rollback.restore whole tree, nothing rewound")))
+
+        _ = await chat.model.runHermesSlashCommand("/rollback 2 notes.txt")
+        XCTAssertEqual(chat.writes("rollback.restore"), [], "nothing is restored before the user confirms")
+        _ = await chat.model.confirmHermesRollback(try XCTUnwrap(chat.model.pendingHermesRollback))
+        _ = await chat.model.runHermesSlashCommand("/rollback 1")
+        _ = await chat.model.confirmHermesRollback(try XCTUnwrap(chat.model.pendingHermesRollback))
+
+        XCTAssertEqual(chat.writes("rollback.restore"), [
+            ["session_id": .string("runtime"), "hash": listed[1]["hash"], "file_path": .string("notes.txt")],
+            ["session_id": .string("runtime"), "hash": listed[0]["hash"]]
+        ])
+        XCTAssertNil(chat.model.pendingHermesRollback)
+    }
+
+    /// A restore the host could not do (`success: false`) shows the host's sentence.
+    func testARestoreTheHostCouldNotDoShowsItsError() async throws {
+        let chat = await openChat()
+        let failed = try Self.fixture("rollback.restore unknown hash")
+        chat.host.always("rollback.list", .init(result: try Self.fixture("rollback.list")))
+        chat.host.always("rollback.restore", .init(result: failed))
+
+        _ = await chat.model.runHermesSlashCommand("/rollback 1")
+        let result = await chat.model.confirmHermesRollback(try XCTUnwrap(chat.model.pendingHermesRollback))
+
+        XCTAssertEqual(result, .notDelivered)
+        XCTAssertEqual(chat.model.sendErrorMessage, failed["error"].text)
+    }
+
+    /// Cancelling the question restores nothing.
+    func testCancellingARestoreSendsNothing() async throws {
+        let chat = await openChat()
+        chat.host.always("rollback.list", .init(result: try Self.fixture("rollback.list")))
+
+        _ = await chat.model.runHermesSlashCommand("/rollback 1")
+        XCTAssertNotNil(chat.model.pendingHermesRollback)
+        chat.model.cancelHermesRollback()
+
+        XCTAssertNil(chat.model.pendingHermesRollback)
+        XCTAssertEqual(chat.writes("rollback.restore"), [])
+    }
+
+    /// `/rollback diff` names its checkpoint from the list and sends that hash. A number or hash
+    /// the list doesn't hold sends nothing: the host would answer an empty diff, as if nothing
+    /// had changed.
+    func testADiffSendsTheListedHashAndNothingForAnUnknownCheckpoint() async throws {
+        let chat = await openChat()
+        let listed = try Self.fixture("rollback.list")["checkpoints"].list ?? []
+        chat.host.always("rollback.list", .init(result: try Self.fixture("rollback.list")))
+        chat.host.always("rollback.diff", .init(result: .object(["stat": .string(""), "diff": .string("")])))
+
+        for unknown in ["/rollback diff 9", "/rollback diff deadbeef"] {
+            let result = await chat.model.runHermesSlashCommand(unknown)
+            XCTAssertEqual(result, .notDelivered, unknown)
+        }
+        XCTAssertEqual(chat.writes("rollback.diff"), [])
+
+        _ = await chat.model.runHermesSlashCommand("/rollback diff 2")
+        XCTAssertEqual(chat.writes("rollback.diff").map { $0["hash"] }, [listed[1]["hash"]])
+    }
+
+    /// A `rollback.*` refusal about the runtime, such as a container-backed session's
+    /// `unsupported_terminal_backend`, shows the host's reason and keeps the chat attached; only
+    /// a runtime the host no longer holds reattaches.
+    func testOnlyAGoneRuntimeReattachesOnARollbackRefusal() async throws {
+        let chat = await openChat()
+        let resumes = { chat.writes("session.resume").count }
+        let attached = resumes()
+
+        chat.host.next("rollback.list", .init(error: 4001, message: "unsupported_terminal_backend"))
+        let refused = await chat.model.runHermesSlashCommand("/rollback")
+        await chat.turn.activate()
+        XCTAssertEqual(refused, .notDelivered)
+        XCTAssertEqual(chat.model.sendErrorMessage, "unsupported_terminal_backend")
+        XCTAssertEqual(resumes(), attached, "no reattach")
+
+        for gone in ["not_found", "session not found"] {
+            let before = resumes()
+            chat.host.next("rollback.list", .init(error: 4001, message: gone))
+            _ = await chat.model.runHermesSlashCommand("/rollback")
+            await chat.turn.activate()
+            XCTAssertGreaterThan(resumes(), before, gone)
+        }
     }
 
     // MARK: Argument completion

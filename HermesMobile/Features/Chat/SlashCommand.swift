@@ -67,6 +67,8 @@ enum ServerSideAction: String, Equatable, Sendable {
     case goal
     /// A Hermes chat's approval bypass (#1036).
     case yolo
+    /// A Hermes chat's checkpoints: list, diff and restore (#1728).
+    case rollback
 }
 
 enum SlashCommandSubArgs: Equatable, Sendable {

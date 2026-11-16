@@ -1,5 +1,5 @@
 {
-  "_note": "Replies scripts/local-hermes returned at the pin for #1036 (a quick command `hello` running `echo hermex-quick` and a local skill `demo-skill` configured), recorded by hand. The skill directory is redacted, and the catalog's `categories` (its `pairs` again, grouped) left out.",
+  "_note": "Replies scripts/local-hermes returned at the pin for #1036 (a quick command `hello` running `echo hermex-quick` and a local skill `demo-skill` configured), recorded by hand. The skill directory is redacted, and the catalog's `categories` (its `pairs` again, grouped) left out. The `rollback.*` replies (#1728) were recorded from a copy of scripts/local-hermes with checkpoints on, whose stub writes files: the list and a whole-tree restore that rewound the newest turn on a Webapp (`--gateway`), one that rewound none on a dashboard, and a Webapp's restore of a hash it doesn't hold. The folder is redacted to `/workspace`.",
   "command.dispatch demo-skill": {
     "display": "/demo-skill do it",
     "message": "[IMPORTANT: The user has invoked the \"demo-skill\" skill, indicating they want you to follow its instructions. The full skill content is loaded below.]\n\n---\nname: demo-skill\ndescription: A demo skill for Hermex tests\n---\nSay hello from the demo skill.\n\n[Skill directory: <skills>/demo-skill]",
@@ -1778,5 +1778,51 @@
   "slash.exec /steer": {
     "code": 4004,
     "message": "usage: /steer <prompt>"
+  },
+  "rollback.list": {
+    "enabled": true,
+    "checkpoints": [
+      {
+        "hash": "515ded2d65922df21f6886151cb0070c3e13eb7d",
+        "timestamp": "2026-11-16T22:12:22+00:00",
+        "message": "before write_file"
+      },
+      {
+        "hash": "f76d6da0d996b05ada1e8e40a20788064402fc55",
+        "timestamp": "2026-11-16T22:12:21+00:00",
+        "message": "before write_file"
+      }
+    ]
+  },
+  "rollback.restore whole tree, rewound": {
+    "success": true,
+    "restored_to": "86a4811f",
+    "reason": "before write_file",
+    "directory": "/workspace",
+    "restored_files": [
+      "other.txt"
+    ],
+    "skipped_user_edits": [
+      "notes.txt"
+    ],
+    "skipped_oversize": [],
+    "history_removed": 4
+  },
+  "rollback.restore whole tree, nothing rewound": {
+    "success": true,
+    "restored_to": "9ebf0c7f",
+    "reason": "pre-rollback snapshot (restoring to ee262282)",
+    "directory": "/workspace",
+    "restored_files": [
+      "other.txt"
+    ],
+    "skipped_user_edits": [],
+    "skipped_oversize": [],
+    "history_removed": 0
+  },
+  "rollback.restore unknown hash": {
+    "success": false,
+    "error": "Checkpoint 'deadbeef' not found",
+    "debug": "fatal: Not a valid object name deadbeef"
   }
 }
