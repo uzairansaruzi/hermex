@@ -333,11 +333,13 @@ struct FilePreviewView: View {
     }
 
     /// The report sheet's page, so a workspace page gets the same sandbox, theme and failure
-    /// state as an attached report. A truncated file (past the host's text preview) shows that
-    /// failure state rather than half a page; Source still shows what loaded.
+    /// state as an attached report. A truncated file (past the host's text preview) or one over
+    /// the sheet's size limit shows that failure state rather than half a page; Source still
+    /// shows what loaded.
     private func htmlContent(_ file: FileResponse) -> some View {
         let content = file.content ?? ""
-        return HTMLReportSheetPage(html: file.isTruncated ? nil : content)
+        let fits = !file.isTruncated && content.utf8.count <= BotArtifactBuffer.maximumBytes
+        return HTMLReportSheetPage(html: fits ? content : nil)
             .id(content)
     }
 
