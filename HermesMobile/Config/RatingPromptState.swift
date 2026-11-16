@@ -73,9 +73,9 @@ final class RatingPromptState {
         )
     }
 
-    func recordCompletedResponse() {
+    func recordCompletedResponse(now: Date = Date()) {
         defaults.set(policy.completedResponses + 1, forKey: TipJar.completedResponseCountKey)
-        usage?.recordCompletedResponse()
+        usage?.recordCompletedResponse(now: now)
     }
 
     /// A webui stream or a Hermes chat on `server`; a running turn holds the request back.
