@@ -118,6 +118,7 @@ to `CacheStore`. Two consequences:
   bot's preview, and the bot's attach on another root leaves it. Deleting the
   bot or discarding its connection removes both copies, and a clear or removal revokes the writes of chats already
   attached until they attach again (`CacheStore.hermesCacheEpoch`).
+  Deleting an archived Bot Chat removes both copies of its root and revokes those writes too.
   `HermesOfflineCacheTests` covers the root, the list and server isolation.
 
 ## Retained draft attachments

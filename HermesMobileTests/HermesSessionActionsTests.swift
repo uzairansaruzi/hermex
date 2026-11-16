@@ -1,5 +1,6 @@
 import XCTest
 import Observation
+import SwiftData
 @testable import HermesMobile
 
 /// A Hermes session's row actions (#1048) on the scripted gateway: a real `BotClient` and
@@ -285,6 +286,52 @@ import Observation
         XCTAssertTrue(restored)
         XCTAssertEqual(patches, [.object(["archived": .bool(false), "profile": .string("research")])])
         XCTAssertEqual(archive.sessions.map(\.sessionId), ["old"])
+    }
+
+    /// Deleting an archived Bot Chat clears its transcript from the offline cache, its bot's copy
+    /// and its archive's, and no write begun before can put it back; another root, another Profile's
+    /// chat and the same root on another connection stay (#1153).
+    func testDeletingAnArchivedBotChatClearsItsOwnCachedTranscriptOnly() async throws {
+        let host = BotSocketHost()
+        let connection = host.connection(record)
+        let page = BotJSON.object(["sessions": .array([
+            .object(["id": .string("bot"), "title": .string("Bot Chat"), "archived": .bool(true), "hidden": .number(1)])
+        ])])
+        _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
+            guard request.httpMethod == "GET", request.url?.path == "/api/sessions" else { return nil }
+            return .json(200, page)
+        }
+        host.always("session.active_list", .init(result: .object(["sessions": .array([])])))
+        host.always("session.delete", .init(result: .object(["deleted": .string("bot")])))
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        let message = ChatMessage(role: "user", content: "Hi", timestamp: 1, messageId: "m", rowID: 1)
+        let other = UUID()
+        let scopes = [
+            ("bot", CacheStore.hermesBotChatScope(connectionID: record.id, profile: "research", root: "bot")),
+            ("archive", CacheStore.hermesArchivedBotChatScope(connectionID: record.id, profile: "research", root: "bot")),
+            ("root", CacheStore.hermesBotChatScope(connectionID: record.id, profile: "research", root: "kept")),
+            ("profile", CacheStore.hermesBotChatScope(connectionID: record.id, profile: "other", root: "bot")),
+            ("connection", CacheStore.hermesBotChatScope(connectionID: other, profile: "research", root: "bot"))
+        ]
+        for (_, scope) in scopes {
+            try CacheStore.cacheHermesMessages([message], newestCoverage: .all, serverURL: server, scope: scope, in: context)
+        }
+        let archive = ArchivedSessionsViewModel(server: server, hermes: HermesArchiveSource(
+            connection: record, profile: "research", makeWire: { _ in BotClient(http: connection) }, preferences: defaults
+        ))
+        await archive.load()
+        let epoch = CacheStore.hermesCacheEpoch(serverURL: server)
+
+        let deleted = await archive.delete(try XCTUnwrap(archive.sessions.first), modelContext: context)
+
+        XCTAssertTrue(deleted)
+        let cached = { (scope: String) in try CacheStore.cachedHermesMessages(serverURL: self.server, scope: scope, in: context, limit: 100).count }
+        XCTAssertEqual(try scopes.map { try cached($0.1) }, [0, 0, 1, 1, 1])
+        XCTAssertEqual(try CacheStore.cachedHermesBotChatRoot(serverURL: server, connectionID: record.id, profile: "research", in: context),
+                       "kept")
+        XCTAssertNotEqual(CacheStore.hermesCacheEpoch(serverURL: server), epoch)
     }
 
     /// The Archived screen leaves a Profile's room sessions out, since a regular chat must never
