@@ -95,7 +95,7 @@ import Foundation
         let http = self.http
         let task = Task {
             try await http.authorized(request, validateDispatch: { try self.checkOwner(attempt) }) { request, session in
-                // A whole-file read (nil limit) is an export, where an empty file is a real file.
+                // Whole-file reads (nil limit: export, inline audio) accept an empty file.
                 try await BotArtifactDownload.data(session: session, request: request, limit: limit, allowsEmpty: limit == nil)
             }
         }
