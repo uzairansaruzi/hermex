@@ -536,15 +536,20 @@ struct ChatActiveRunStatusPresentation: Equatable {
     /// Start of the active run, or nil when the pill shows no time. Only
     /// `.active` keeps it; every other kind drops it, so only an active run ticks.
     let startedAt: Date?
+    /// The host is compacting the session's context (#1734). Only `.active` keeps it.
+    let isCompacting: Bool
 
-    init(kind: ChatActiveRunStatusKind, startedAt: Date? = nil) {
+    init(kind: ChatActiveRunStatusKind, startedAt: Date? = nil, isCompacting: Bool = false) {
         self.kind = kind
         self.startedAt = kind == .active ? startedAt : nil
+        self.isCompacting = kind == .active && isCompacting
     }
 
-    /// "Hermes is working · 2m 13s" while `startedAt` is set, else the kind's label.
+    /// "Hermes is working · 2m 13s" while `startedAt` is set, or the tail row's "Compacting
+    /// context · 2m 13s" while the host compacts; else the kind's label.
     func label(now: Date) -> String {
         guard let startedAt else { return kind.label }
+        if isCompacting { return ChatWorkingRowLabel.text(startedAt: startedAt, now: now, isCompacting: true) }
         return String(
             localized: "Hermes is working · \(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: now))"
         )
@@ -553,6 +558,9 @@ struct ChatActiveRunStatusPresentation: Equatable {
     /// The spoken form of `label(now:)`, matching the tail row's VoiceOver label.
     func accessibilityLabel(now: Date) -> String {
         guard let startedAt else { return kind.accessibilityLabel }
+        if isCompacting {
+            return ChatWorkingRowLabel.accessibilityLabel(startedAt: startedAt, now: now, isCompacting: true)
+        }
         return String(
             localized: "Hermes has been working for \(ChatWorkingElapsedFormatter.spokenLabel(startedAt: startedAt, now: now))"
         )
@@ -564,7 +572,7 @@ enum ChatActiveRunStatusPolicy {
     /// or nil when it hides. `activeRunStartedAt` is the tail row's start date
     /// (`ChatWorkingRowPolicy.startedAt`), so both count from the same start
     /// and drop the time in the same cases. `isWaitingForUser` is a Hermes
-    /// session parked on a host request.
+    /// session parked on a host request; `isCompacting`, its host compacting context.
     static func presentation(
         isStartingChat: Bool,
         hasActiveStream: Bool,
@@ -572,7 +580,8 @@ enum ChatActiveRunStatusPolicy {
         isCancellingStream: Bool,
         isScrolledNearBottom: Bool,
         activeRunStartedAt: Date?,
-        isWaitingForUser: Bool = false
+        isWaitingForUser: Bool = false,
+        isCompacting: Bool = false
     ) -> ChatActiveRunStatusPresentation? {
         guard !isScrolledNearBottom else { return nil }
 
@@ -600,7 +609,7 @@ enum ChatActiveRunStatusPolicy {
         }
 
         guard hasActiveStream else { return nil }
-        return ChatActiveRunStatusPresentation(kind: .active, startedAt: activeRunStartedAt)
+        return ChatActiveRunStatusPresentation(kind: .active, startedAt: activeRunStartedAt, isCompacting: isCompacting)
     }
 }
 
@@ -617,6 +626,22 @@ enum ChatWorkingRowPolicy {
             return nil
         }
         return activeRunStartedAt
+    }
+}
+
+/// The words of the transcript's tail row: "Working for 1m 3s", or "Compacting context · 1m 3s"
+/// while the host compacts (#1734), which the run-status pill shows too.
+enum ChatWorkingRowLabel {
+    static func text(startedAt: Date, now: Date, isCompacting: Bool) -> String {
+        let elapsed = ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: now)
+        return isCompacting ? String(localized: "Compacting context · \(elapsed)") : String(localized: "Working for \(elapsed)")
+    }
+
+    static func accessibilityLabel(startedAt: Date, now: Date, isCompacting: Bool) -> String {
+        let elapsed = ChatWorkingElapsedFormatter.spokenLabel(startedAt: startedAt, now: now)
+        return isCompacting
+            ? String(localized: "Hermes is compacting context, working for \(elapsed)")
+            : String(localized: "Hermes has been working for \(elapsed)")
     }
 }
 

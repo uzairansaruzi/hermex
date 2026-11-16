@@ -3241,6 +3241,9 @@ final class ChatViewModel {
     /// A Hermes session is parked on one of its host's requests.
     var isWaitingForUser: Bool { hermesRequests?.isWaiting == true }
 
+    /// A Hermes session's host is compacting its context mid-run (#1734).
+    var isCompacting: Bool { hermesTurn?.isCompacting == true }
+
     /// The host refused a Hermes session's saved password (#884, #942): the chat offers Update
     /// sign-in and never signs in again on its own.
     var hermesNeedsSignIn: Bool { hermesTurn?.needsSignIn == true }

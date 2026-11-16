@@ -58,6 +58,8 @@ struct ChatTranscriptView: View {
     let showsThinkingAndToolCards: Bool
     /// Start date for the "Working for" tail row; nil hides the row.
     let workingRowStartedAt: Date?
+    /// The host is compacting context: the tail row says so (#1734).
+    let isCompacting: Bool
     /// The note a Hermes session's withdrawn request leaves at the transcript's end (#1011).
     let requestWithdrawal: BotRequestWithdrawal?
     let showsScrollToBottomButton: Bool
@@ -686,7 +688,7 @@ struct ChatTranscriptView: View {
     @ViewBuilder
     private var workingRow: some View {
         if let workingRowStartedAt {
-            ChatWorkingRowView(startedAt: workingRowStartedAt)
+            ChatWorkingRowView(startedAt: workingRowStartedAt, isCompacting: isCompacting)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityHidden(hidesRunStatusAccessibility)
         }

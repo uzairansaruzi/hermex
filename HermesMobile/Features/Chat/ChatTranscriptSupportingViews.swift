@@ -1155,26 +1155,26 @@ final class ChatVerticalScrollAxisGuardView: UIView {
 }
 
 /// Transcript tail row for the active run: three static dots and a
-/// "Working for" counter that ticks once a second from the run's start date.
-/// The `TimelineView` scopes each tick to this row, so message rows above it
-/// are not re-evaluated.
+/// "Working for" counter that ticks once a second from the run's start date,
+/// reading "Compacting context" while the host compacts (#1734). The
+/// `TimelineView` scopes each tick to this row, so message rows above it are
+/// not re-evaluated.
 struct ChatWorkingRowView: View {
     let startedAt: Date
+    let isCompacting: Bool
 
     var body: some View {
         TimelineView(.periodic(from: startedAt, by: 1)) { context in
             HStack(spacing: 8) {
                 dots
 
-                Text("Working for \(ChatWorkingElapsedFormatter.label(startedAt: startedAt, now: context.date))")
+                Text(ChatWorkingRowLabel.text(startedAt: startedAt, now: context.date, isCompacting: isCompacting))
                     .font(AppFont.caption(weight: .medium).monospacedDigit())
                     .foregroundStyle(.appSecondary)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
-                String(
-                    localized: "Hermes has been working for \(ChatWorkingElapsedFormatter.spokenLabel(startedAt: startedAt, now: context.date))"
-                )
+                ChatWorkingRowLabel.accessibilityLabel(startedAt: startedAt, now: context.date, isCompacting: isCompacting)
             )
         }
         .padding(.leading, 4)

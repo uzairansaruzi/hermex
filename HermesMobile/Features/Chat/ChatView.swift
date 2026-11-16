@@ -2465,6 +2465,7 @@ struct ChatView: View {
             hidesRunStatusAccessibility: activeRunStatusPresentation != nil,
             showsThinkingAndToolCards: thinkingAndToolCards.showsCards,
             workingRowStartedAt: workingRowStartedAt,
+            isCompacting: viewModel.isCompacting,
             requestWithdrawal: viewModel.hermesRequests?.withdrawal,
             showsScrollToBottomButton: showsScrollToBottomButton,
             shouldFollowLatestMessage: shouldFollowLatestMessage,
@@ -2732,7 +2733,8 @@ struct ChatView: View {
             isCancellingStream: viewModel.isCancellingStream,
             isScrolledNearBottom: isScrolledNearBottom,
             activeRunStartedAt: workingRowStartedAt,
-            isWaitingForUser: viewModel.isWaitingForUser
+            isWaitingForUser: viewModel.isWaitingForUser,
+            isCompacting: viewModel.isCompacting
         )
     }
 

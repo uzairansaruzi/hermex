@@ -273,6 +273,9 @@ struct HermesLostTurn: Equatable {
     /// A `/compress` the compute host answered `pending`: its `status.update {kind:
     /// "compacted"}` re-reads the history, and until then a rebuild starts it again (#1050).
     @ObservationIgnored private var compactionPending = false
+    /// The host is compacting this session's context: its working row reads "Compacting
+    /// context" (#1734).
+    private(set) var isCompacting = false
     /// How the running turn ended, from `message.complete`, until `session.info` says idle.
     @ObservationIgnored private var pendingEnding: TranscriptTurnRunOutcome.Ending?
     /// The running turn's `message.complete` failed: once the turn ends, the host's retained
@@ -1308,6 +1311,7 @@ struct HermesLostTurn: Equatable {
     /// Ends the running turn the way the webui path ends a stream, so the chat records the
     /// same outcome, haptic and alert.
     private func finish(_ ending: TranscriptTurnRunOutcome.Ending) {
+        endCompaction()
         guard let streamID = activeStreamID else { return }
         endScreenUse()
         let startedAt = turnStartedAt
@@ -1362,7 +1366,11 @@ struct HermesLostTurn: Equatable {
     /// One event of this runtime, in `seq` order. `live` is a frame as it happened, not a replay's.
     private func apply(_ frame: BotJSON, live: Bool = false) {
         let payload = frame["payload"]
-        switch frame["type"].text ?? "" {
+        let type = frame["type"].text ?? ""
+        // A compaction that sent no `compacted` (no progress, refused) is over once the turn
+        // writes or works again, as Desktop reads it (`COMPACTION_RESUME_EVENT_TYPES`).
+        if isCompacting, Self.compactionResumeTypes.contains(type) { endCompaction() }
+        switch type {
         case "message.start":
             if activeStreamID != nil {
                 if awaitingStart { awaitingStart = false; return }
@@ -1439,6 +1447,7 @@ struct HermesLostTurn: Equatable {
             guard let id = payload["prompt_id"].text, let kind = frame["type"].text?.split(separator: ".").first else { return }
             requests.cancel(.object(["id": .string(id), "method": .string(String(kind)), "reason": .string("resolved")]))
         case "error":
+            endCompaction()
             if let message = payload["message"].text, !message.isEmpty {
                 delegate?.streamCoordinatorDidReceiveErrorMessage(message)
             }
@@ -1462,6 +1471,19 @@ struct HermesLostTurn: Equatable {
             // Roster changes, coalesced into one list; a child's reasoning and text never list.
             activity.delegatedWork.noteSubagentEvent()
         case "status.update":
+            // Auto-compaction's `compacting` (with its heartbeat) and `/compress`'s `compressing`
+            // start the line; `compacted` ends it, and so does `/compress`'s `ready`, which the
+            // host sends as `{kind: "status", text: "ready"}` (#1734).
+            switch payload["kind"].text {
+            case "compacting", "compressing":
+                if !isCompacting { isCompacting = true }
+            case "compacted":
+                endCompaction()
+            case "status" where payload["text"].text == "ready":
+                endCompaction()
+            default:
+                break
+            }
             // The compute host's late answer to a `pending` compaction (#1050).
             if compactionPending, payload["kind"].text == "compacted" { pendingCompactionDidFinish() }
         case "btw.complete", "background.complete", "session.control.update":
@@ -1471,6 +1493,18 @@ struct HermesLostTurn: Equatable {
             // itself: neither is reasoning. The working row already says Hermes is working.
             break
         }
+    }
+
+    /// The frames that show a turn writing or working again after a compaction began.
+    private static let compactionResumeTypes: Set<String> = [
+        "message.delta", "message.interim", "thinking.delta", "reasoning.delta", "reasoning.available",
+        "moa.reference", "moa.aggregating", "moa.progress", "moa.phase",
+        "tool.start", "tool.generating", "tool.complete"
+    ]
+
+    /// Drops the compacting line; an unchanged one is not written again.
+    private func endCompaction() {
+        if isCompacting { isCompacting = false }
     }
 
     /// A canonical host's `pending` admissions (#1602), from a snapshot or `session.info`: the
@@ -1525,6 +1559,8 @@ struct HermesLostTurn: Equatable {
             else if turnStartedAt == nil, let startedAt { adoptStart(startedAt) }
         } else {
             hostTurnStartedAt = nil
+            // Also with no turn shown: an idle `/compress` that never sent its end.
+            endCompaction()
             // A turn begun by a send's reply has not seen its own frames yet, so an idle
             // report then is the one from before it.
             guard pendingEnding != nil || !awaitingStart else { return }
@@ -1533,6 +1569,7 @@ struct HermesLostTurn: Equatable {
     }
 
     private func complete(_ payload: BotJSON) {
+        endCompaction()
         guard activeStreamID != nil else {
             // A turn this chat never saw start, such as another client's the host failed
             // before it began (#1158): it counts as a turn, so reads begun before it drop, and
@@ -2193,6 +2230,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     }
 
     func conversationDidReset() {
+        // A reattach can miss `compacted`; a compaction still running sends its heartbeat again.
+        endCompaction()
         requests.reset()
         settings.disconnect()
         activity.delegatedWork.disconnect()
@@ -2290,6 +2329,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
+        endCompaction()
         endScreenUse()
         drivenLiveActivity?.markStale()
         if failure == .rejected(401) { needsSignIn = true }

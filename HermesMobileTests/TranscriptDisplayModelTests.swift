@@ -532,6 +532,34 @@ final class ChatActiveRunStatusPolicyTests: XCTestCase {
         )
     }
 
+    /// While the host compacts, the pill carries the compacting line instead of "Hermes is
+    /// working", for its text and its spoken form (#1734).
+    func testActivePresentationCarriesTheCompactingLineWhileCompacting() {
+        let now = Date(timeIntervalSince1970: 1_700_000_133)
+        func presentation(isCompacting: Bool) -> ChatActiveRunStatusPresentation? {
+            ChatActiveRunStatusPolicy.presentation(
+                isStartingChat: false,
+                hasActiveStream: true,
+                activeStreamRecoveryState: .idle,
+                isCancellingStream: false,
+                isScrolledNearBottom: false,
+                activeRunStartedAt: now.addingTimeInterval(-133),
+                isCompacting: isCompacting
+            )
+        }
+        let compacting = presentation(isCompacting: true)
+        let working = presentation(isCompacting: false)
+
+        XCTAssertEqual(compacting?.isCompacting, true)
+        XCTAssertNotEqual(compacting?.label(now: now), working?.label(now: now))
+        XCTAssertNotEqual(compacting?.accessibilityLabel(now: now), working?.accessibilityLabel(now: now))
+        XCTAssertEqual(
+            compacting?.label(now: now),
+            ChatWorkingRowLabel.text(startedAt: now.addingTimeInterval(-133), now: now, isCompacting: true),
+            "the pill and the transcript's tail row read the same"
+        )
+    }
+
     func testRecoveryKindsIgnoreRunStart() {
         let now = Date(timeIntervalSince1970: 1_700_000_133)
         let expectations: [(ActiveStreamRecoveryState, String)] = [
