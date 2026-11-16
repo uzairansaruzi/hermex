@@ -22,7 +22,7 @@ struct ToolCallLogRowView: View {
         ) {
             Image(systemName: row.icon)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(row.isFailure ? Color.red : Color.secondary)
+                .foregroundStyle(row.isFailure ? Color.red : Color(.appTextSecondary))
         } accessory: {
             if let counts = row.diffCounts {
                 DiffCountsLabel(additions: counts.additions, deletions: counts.deletions)
@@ -30,11 +30,16 @@ struct ToolCallLogRowView: View {
         } status: {
             statusGlyph
         } expandedBody: {
-            ToolCallDetailBodyView(toolCall: entry.toolCall, status: row.status)
+            if let clarify = row.clarify {
+                ClarifyHistoryBody(result: clarify)
+            } else {
+                ToolCallDetailBodyView(toolCall: entry.toolCall, status: row.status)
+            }
         }
         // Commands, paths, and results are code-like and stay left-to-right
-        // inside an RTL transcript (#259), like the live card.
-        .forcedLeftToRight()
+        // inside an RTL transcript (#259), like the live card. Answered
+        // questions are prose and keep the transcript's direction.
+        .forcedLeftToRight(row.clarify == nil)
     }
 
     @ViewBuilder
@@ -43,7 +48,7 @@ struct ToolCallLogRowView: View {
         case .success:
             Image(systemName: "checkmark")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         case .failure:
             Image(systemName: "xmark")
                 .font(.system(size: 11, weight: .semibold))
@@ -51,11 +56,11 @@ struct ToolCallLogRowView: View {
         case .running:
             Image(systemName: "ellipsis")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         case .interrupted:
             Image(systemName: "minus")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
         }
     }
 }
@@ -64,7 +69,8 @@ struct ToolCallLogRowView: View {
 struct ToolCallDetailBodyView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
-    @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
     /// Whether a long diff shows every line instead of the first `collapsedLineLimit`.
     @State private var showsAllDiffLines = false
 
@@ -98,7 +104,7 @@ struct ToolCallDetailBodyView: View {
     }
 
     private var statusColor: Color {
-        status == .failure ? .red : .secondary
+        status == .failure ? .red : Color(.appTextSecondary)
     }
 
     private var statusText: String {
@@ -128,7 +134,7 @@ struct ToolCallDetailBodyView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text("Status")
                 .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Text(value)
                 .font(AppFont.caption())
@@ -170,7 +176,7 @@ struct ToolCallDetailBodyView: View {
                 Text("Partial diff. The server sent only the first part of this edit.")
             }
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .accessibilityElement(children: .combine)
         }
     }
@@ -190,7 +196,7 @@ struct ToolCallDetailBodyView: View {
                 Image(systemName: showsAllDiffLines ? "chevron.up" : "chevron.down")
                     .accessibilityHidden(true)
             }
-            .font(.subheadline.weight(.semibold))
+            .font(AppFont.subheadline(weight: .semibold))
             .frame(maxWidth: .infinity)
             .padding(.top, 11)
             .padding(.bottom, 13)
@@ -205,7 +211,7 @@ struct ToolCallDetailBodyView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Arguments")
                 .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(rows) { row in
@@ -221,16 +227,32 @@ struct ToolCallDetailBodyView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(result.title)
                 .font(AppFont.caption2(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
-            Text(result.text)
-                .font(result.isMonospaced ? AppFont.mono(style: .caption) : AppFont.caption())
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(7)
-                .chatTimelineAccessoryInsetSurface()
+            Group {
+                if result.isMonospaced, !wrapsCodeBlockLines, Self.fitsOnOneTextLine(result.text) {
+                    ScrollView(.horizontal) {
+                        Text(result.text)
+                            .fixedSize(horizontal: true, vertical: true)
+                            .padding(7)
+                    }
+                } else {
+                    Text(result.text)
+                        .padding(7)
+                }
+            }
+            .font(result.isMonospaced ? AppFont.code(style: .caption, customSize: customCodeSize) : AppFont.caption())
+            .foregroundStyle(.appPrimary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .chatTimelineAccessoryInsetSurface()
         }
+    }
+
+    /// One `Text` keeps the whole result selectable but can't draw an arbitrarily wide line, so
+    /// output with a very long line wraps even when Wrap Lines is off.
+    private static func fitsOnOneTextLine(_ text: String) -> Bool {
+        text.split(separator: "\n").allSatisfy { $0.count <= 500 }
     }
 
     @ViewBuilder
@@ -254,14 +276,109 @@ struct ToolCallDetailBodyView: View {
     private func argumentKey(_ value: String) -> some View {
         Text(value)
             .font(AppFont.mono(style: .caption2, weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
     }
 
     private func argumentValue(_ value: String) -> some View {
         Text(value)
-            .font(AppFont.mono(style: .caption))
-            .foregroundStyle(.primary)
+            .font(AppFont.code(style: .caption, customSize: customCodeSize))
+            .foregroundStyle(.appPrimary)
             .textSelection(.enabled)
+    }
+}
+
+/// What an answered `clarify` row opens to: each question over its answer,
+/// selectable and in the transcript's own direction, then how the wait ended.
+struct ClarifyHistoryBody: View {
+    let result: ClarifyResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(Array(result.exchanges.enumerated()), id: \.offset) { _, exchange in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(exchange.question)
+                        .font(AppFont.caption())
+                        .foregroundStyle(.appSecondary)
+
+                    ClarifyText.answer(exchange)
+                }
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(exchange.spokenText)
+            }
+
+            if let note = result.note {
+                ClarifyText.note(note)
+            }
+        }
+        .padding(7)
+        .chatTimelineAccessoryInsetSurface()
+    }
+}
+
+/// One answered question as a compact transcript line, shown in place of the
+/// tool rows a folded turn hides: question-bubble icon, the question dimmed,
+/// the answer bold, and the timeout note under the result's last question.
+struct ClarifyAnswerLineView: View {
+    let line: ClarifyResult.Line
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "questionmark.bubble")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.appSecondary)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    questionText
+                    ClarifyText.answer(line.exchange)
+                } else {
+                    questionText + Text(" ") + ClarifyText.answer(line.exchange)
+                }
+
+                if let note = line.note {
+                    ClarifyText.note(note)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([line.exchange.spokenText, line.note].compactMap { $0 }.joined(separator: ". "))
+    }
+
+    private var questionText: Text {
+        Text(line.exchange.question)
+            .font(AppFont.caption())
+            .foregroundStyle(.appSecondary)
+    }
+}
+
+/// The styled answer and note text both clarify views share.
+private enum ClarifyText {
+    /// The answer in bold, or a dimmed "No answer" when the exchange has none.
+    static func answer(_ exchange: ClarifyResult.Exchange) -> Text {
+        if let answer = exchange.answerText {
+            return Text(answer)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(.appPrimary)
+        }
+        return Text("No answer")
+            .font(AppFont.caption(weight: .medium))
+            .foregroundStyle(.appSecondary)
+    }
+
+    /// How the wait ended, as the server worded it.
+    static func note(_ note: String) -> Text {
+        Text(note)
+            .font(AppFont.caption2())
+            .italic()
+            .foregroundStyle(.appSecondary)
     }
 }

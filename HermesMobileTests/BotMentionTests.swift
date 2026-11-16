@@ -165,7 +165,7 @@ final class BotMentionTests: XCTestCase {
             XCTAssertEqual(BotMentions.displayText(text), "@helper \(mode)")
             XCTAssertNotEqual(text, "@helper \(mode)", "\(mode) carries the note")
         }
-        XCTAssertEqual(chat.turn.queuedPrompt?.contains("[@mentions"), false, "the receipt shows what was typed")
+        XCTAssertEqual(chat.turn.queuedPrompts.first?.text.contains("[@mentions"), false, "the receipt shows what was typed")
     }
 
     /// A restored prompt with an attachment hides its note: the host adds its context footer
@@ -272,18 +272,6 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(engine.connectionState, .connected)
         await waitUntil("the roster") { turn.settings.profiles.count == roster["profiles"].list?.count }
         return Chat(model: model, turn: turn, host: host)
-    }
-
-    /// Waits on observation, never a clock, until `condition` holds.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
     }
 }
 

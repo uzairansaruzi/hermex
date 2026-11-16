@@ -51,6 +51,18 @@ import XCTest
 
     // MARK: - Create
 
+    /// A canonical host's create titles and hides the Bot Chat itself (#1603), and has no
+    /// `session.title`: the chat is done once it's made.
+    func testACanonicalCreateMakesTheChatWithoutATitleWrite() async throws {
+        let (creator, wire) = try makeCreator(roster: []) { _ in }
+        wire.speaksCanonicalProtocol = true
+        creator.setTitle("Home Hunter")
+        await creator.create()
+        XCTAssertEqual(wire.calls.map(\.0), ["profiles.create", "profiles.configure", "session.list", "session.create"])
+        XCTAssertEqual(wire.calls.last?.1["title"], .string("Bot Chat"))
+        XCTAssertEqual(wire.calls.last?.1["hidden"], .bool(true))
+    }
+
     func testCreateWritesProfileLookAndChatInOrder() async throws {
         var created: [String] = []
         let (creator, wire) = try makeCreator(roster: []) { created.append($0) }
@@ -448,6 +460,7 @@ import XCTest
 /// `profiles.create` to leave the screen mid-write.
 @MainActor final class BotLifecycleFixtureWire: BotTransport {
     var replayEpoch: String? = "epoch"
+    var speaksCanonicalProtocol = false
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var roster: [BotJSON]

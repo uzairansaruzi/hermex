@@ -366,10 +366,12 @@ import Observation
         }
     }
 
+    /// The offsets of the list's own page reads: not its scheduled pages or its Archived count.
     private func pageOffsets() -> [Int] {
         HermesHostFixture.requests.filter { $0.url?.path == "/api/sessions" && HermesHostFixture.emptyScheduledPage($0) == nil }.compactMap { request in
-            request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems?
-                .first { $0.name == "offset" }?.value.flatMap(Int.init)
+            let items = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems
+            guard items?.contains(URLQueryItem(name: "archived", value: "only")) != true else { return nil }
+            return items?.first { $0.name == "offset" }?.value.flatMap(Int.init)
         }
     }
 
@@ -447,17 +449,5 @@ import Observation
             return reply
         }
         func release() { held?.resume(); held = nil }
-    }
-
-    /// Waits on observation of the list, never a clock, and fails once nothing changes for 5 s.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
     }
 }

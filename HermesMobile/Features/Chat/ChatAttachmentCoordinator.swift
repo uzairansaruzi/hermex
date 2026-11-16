@@ -50,6 +50,11 @@ final class ChatAttachmentCoordinator {
     private let draftStore: ChatDraftStore?
     private let attachmentLease: ChatDraftAttachmentLease?
     private var reservedUploadFilenames: Set<String> = []
+    /// Names held by pasted text still staging, so a paste that starts before the
+    /// last one lands takes the next name (#1381).
+    private var stagingPasteNames: Set<String> = []
+    /// Long pastes still staging, so `cancelPastedTextStaging()` can stop them.
+    private var pasteTasks: [UUID: Task<PendingAttachment?, Never>] = [:]
     /// A Hermes session (#1012): staging keeps only the local copy, under Bot Chat's
     /// limits and image conversion, and Send or Queue uploads it
     /// (`HermesChatTurnCoordinator`). A webui session uploads each file as it is staged.
@@ -88,8 +93,9 @@ final class ChatAttachmentCoordinator {
     /// so every attachment shown in the composer is restorable from its draft.
     /// A Hermes session only stages the copy (`stageForSend`).
     @discardableResult
-    func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async -> PendingAttachment? {
-        if uploadsOnSend { return await stageForSend(data: data, filename: filename) }
+    func uploadAttachment(data: Data, filename: String, previewData: Data? = nil,
+                          isClipboardPaste: Bool = false) async -> PendingAttachment? {
+        if uploadsOnSend { return await stageForSend(data: data, filename: filename, isClipboardPaste: isClipboardPaste) }
         guard data.count <= PendingAttachment.maximumUploadBytes else {
             uploadAttachmentErrorMessage = PendingAttachment.uploadTooLargeMessage(filename: filename)
             return nil
@@ -115,19 +121,126 @@ final class ChatAttachmentCoordinator {
             previewData: previewData,
             draftFileName: draftFileName,
             draftAttachmentID: stagingID,
-            reportsErrors: true
+            reportsErrors: true,
+            isClipboardPaste: isClipboardPaste
         ) else {
             attachmentLease?.filesByAttachmentID[stagingID] = nil
-            if let draftStore {
-                await draftStore.deleteAttachmentIfUnreferenced(draftFileName)
-            } else {
-                await draftAttachmentStore.delete(named: draftFileName)
-            }
+            await deleteUnreferencedCopy(draftFileName)
             return nil
         }
         pendingAttachments.append(attachment)
         refreshAttachmentSlots()
         return attachment
+    }
+
+    /// Starts staging a long paste as a text file under the next free `pasted-text`
+    /// name (#1381). The name is held before the task starts, against the strip and
+    /// every paste still staging, and the paste counts as an upload while the text is
+    /// encoded, so Send waits for it. The chat stops it with `cancelPastedTextStaging()`
+    /// as it goes away.
+    @discardableResult
+    func stagePastedText(_ text: String) -> Task<PendingAttachment?, Never> {
+        let filename = ComposerLargePaste.filename(avoiding: stagingPasteNames.union(pendingAttachments.map(\.name)))
+        stagingPasteNames.insert(filename)
+        activeUploadCount += 1
+        let id = UUID()
+        let limit = uploadsOnSend ? BotAttachmentUpload.maximumFileBytes : PendingAttachment.maximumUploadBytes
+        let task = Task { () -> PendingAttachment? in
+            defer {
+                stagingPasteNames.remove(filename)
+                pasteTasks[id] = nil
+            }
+            // Measured before encoding, so a paste over the file limit never copies its text.
+            let data = await Task.detached { text.utf8.count <= limit ? Data(text.utf8) : nil }.value
+            activeUploadCount = max(activeUploadCount - 1, 0)
+            guard !Task.isCancelled else { return nil }
+            guard let data else {
+                uploadAttachmentErrorMessage = uploadsOnSend
+                    ? BotAttachmentFailure.limit.localizedDescription
+                    : PendingAttachment.uploadTooLargeMessage(filename: filename)
+                return nil
+            }
+            return await uploadAttachment(data: data, filename: filename, isClipboardPaste: true)
+        }
+        pasteTasks[id] = task
+        return task
+    }
+
+    /// Stops every long paste still staging, so none lands after its chat is gone.
+    func cancelPastedTextStaging() {
+        pasteTasks.values.forEach { $0.cancel() }
+    }
+
+    /// The text of a staged paste, read from its local copy for `StagedPasteSheet` (#1456).
+    /// Nil when the copy is gone or isn't UTF-8.
+    func stagedPasteText(_ attachment: PendingAttachment) async -> StagedPasteText? {
+        guard let file = attachment.draftFileName,
+              let data = try? await draftAttachmentStore.data(named: file) else { return nil }
+        return await Task.detached { StagedPasteText(data: data) }.value
+    }
+
+    /// Puts edited text in place of a staged paste (#1456). The new copy is written first and
+    /// the draft saved before the old copy goes, so a failure at any step leaves the original
+    /// whole. The save counts as an upload, so Send waits for it. A tile removed or changed
+    /// meanwhile stays as it is. Returns why the edit did not save, or nil once it has.
+    func replaceStagedPaste(_ attachment: PendingAttachment, with text: String) async -> String? {
+        let isCurrent = { (staged: PendingAttachment, file: String?) in staged.id == attachment.id && staged.draftFileName == file }
+        let notSaved = String(localized: "Your original text is unchanged. Try again shortly.")
+        let gone = String(localized: "This attachment is no longer in the message.")
+        guard let old = attachment.draftFileName, pendingAttachments.contains(where: { isCurrent($0, old) }) else { return gone }
+
+        activeUploadCount += 1
+        defer {
+            activeUploadCount = max(activeUploadCount - 1, 0)
+            refreshAttachmentSlots()
+        }
+        let limit = BotAttachmentUpload.maximumFileBytes
+        let data = await Task.detached { text.utf8.count <= limit ? Data(text.utf8) : nil }.value
+        let others = pendingAttachments.reduce(stagingBytes) { $1.id == attachment.id ? $0 : $0 + ($1.size ?? limit) }
+        guard let data, others + data.count <= BotAttachmentUpload.maximumTotalBytes else {
+            return BotAttachmentFailure.limit.localizedDescription
+        }
+        stagingBytes += data.count
+        defer { stagingBytes -= data.count }
+
+        // A failure is reported in the sheet, so the composer's banner stays as it was.
+        let banner = uploadAttachmentErrorMessage
+        guard let file = await saveDraftCopy(data, filename: attachment.name, attachmentID: attachment.id,
+                                             maximumBytes: limit) else {
+            uploadAttachmentErrorMessage = banner
+            return notSaved
+        }
+        guard let index = pendingAttachments.firstIndex(where: { isCurrent($0, old) }) else {
+            attachmentLease?.filesByAttachmentID[attachment.id] = pendingAttachments.first { $0.id == attachment.id }?.draftFileName
+            await deleteUnreferencedCopy(file)
+            return gone
+        }
+
+        let original = pendingAttachments[index]
+        let edited = PendingAttachment(
+            id: original.id, name: original.name, path: original.path, mime: original.mime,
+            size: data.count, isImage: original.isImage, draftFileName: file,
+            isClipboardPaste: original.isClipboardPaste
+        )
+        pendingAttachments[index] = edited
+        let key = attachmentLease?.key
+        if let key { draftStore?.replaceAttachmentRecord(ChatDraftAttachment(pending: edited), for: key) }
+        // Nothing else references the old copy now; an import freeing space must not take it
+        // before the save below decides whether the edit stands.
+        attachmentLease?.files.insert(old)
+        do {
+            try await draftStore?.flush()
+        } catch {
+            if let index = pendingAttachments.firstIndex(where: { isCurrent($0, file) }) { pendingAttachments[index] = original }
+            if let key { draftStore?.replaceAttachmentRecord(ChatDraftAttachment(pending: original), for: key) }
+            attachmentLease?.filesByAttachmentID[attachment.id] = old
+            attachmentLease?.files.remove(old)
+            await deleteUnreferencedCopy(file)
+            return notSaved
+        }
+        attachmentLease?.files.remove(old)
+        await deleteUnreferencedCopy(old)
+        return nil
     }
 
     /// Re-uploads a restored draft attachment from its durable local copy,
@@ -144,7 +257,8 @@ final class ChatAttachmentCoordinator {
                 id: draftAttachment.id, name: draftAttachment.name, path: "", mime: draftAttachment.mime,
                 size: draftAttachment.size, isImage: draftAttachment.isImage,
                 thumbnailData: draftAttachment.isImage ? await Self.thumbnail(of: data) : nil,
-                draftFileName: draftAttachment.file
+                draftFileName: draftAttachment.file,
+                isClipboardPaste: draftAttachment.isClipboardPaste
             )
             pendingAttachments.append(attachment)
             refreshAttachmentSlots()
@@ -156,7 +270,8 @@ final class ChatAttachmentCoordinator {
             previewData: draftAttachment.isImage ? data : nil,
             draftFileName: draftAttachment.file,
             draftAttachmentID: draftAttachment.id,
-            reportsErrors: false
+            reportsErrors: false,
+            isClipboardPaste: draftAttachment.isClipboardPaste
         ) else {
             return nil
         }
@@ -169,7 +284,7 @@ final class ChatAttachmentCoordinator {
     /// eight files, 25 MB each and 50 MB in all; images re-encoded as JPEG, or PNG with
     /// transparency (`BotAttachmentUpload.prepare`). Counts as an upload while it runs, so
     /// the composer waits for it as it waits for a webui upload.
-    private func stageForSend(data: Data, filename: String) async -> PendingAttachment? {
+    private func stageForSend(data: Data, filename: String, isClipboardPaste: Bool) async -> PendingAttachment? {
         let stagingID = UUID()
         stagingIDs.insert(stagingID)
         activeUploadCount += 1
@@ -197,10 +312,15 @@ final class ChatAttachmentCoordinator {
         defer { stagingBytes -= prepared.data.count }
         guard let file = await saveDraftCopy(prepared.data, filename: prepared.name, attachmentID: stagingID,
                                              maximumBytes: BotAttachmentUpload.maximumFileBytes) else { return nil }
+        // A cancelled import (a paste whose chat went away) keeps no copy and no tile.
+        guard !Task.isCancelled else {
+            await deleteDraftCopy(named: file, attachmentID: stagingID)
+            return nil
+        }
         let attachment = PendingAttachment(
             id: stagingID, name: prepared.name, path: "", mime: prepared.mime, size: prepared.data.count,
             isImage: prepared.image, thumbnailData: prepared.image ? await Self.thumbnail(of: prepared.data) : nil,
-            draftFileName: file
+            draftFileName: file, isClipboardPaste: isClipboardPaste
         )
         pendingAttachments.append(attachment)
         refreshAttachmentSlots()
@@ -246,7 +366,8 @@ final class ChatAttachmentCoordinator {
     func outgoingAttachments(_ attachments: [PendingAttachment]) -> [HermesChatTurnCoordinator.OutgoingAttachment] {
         attachments.map { attachment in
             HermesChatTurnCoordinator.OutgoingAttachment(
-                name: attachment.name, mime: attachment.mime, isImage: attachment.isImage
+                name: attachment.name, mime: attachment.mime, isImage: attachment.isImage,
+                isClipboardPaste: attachment.isClipboardPaste
             ) { [draftAttachmentStore] in
                 guard let file = attachment.draftFileName else { throw BotAttachmentFailure.unreadable }
                 let data = try await draftAttachmentStore.data(named: file)
@@ -294,7 +415,8 @@ final class ChatAttachmentCoordinator {
         previewData: Data?,
         draftFileName: String?,
         draftAttachmentID: UUID?,
-        reportsErrors: Bool
+        reportsErrors: Bool,
+        isClipboardPaste: Bool = false
     ) async -> PendingAttachment? {
         guard delegate?.attachmentIsViewingCachedData != true else {
             if reportsErrors {
@@ -355,7 +477,8 @@ final class ChatAttachmentCoordinator {
                 size: response.size,
                 isImage: response.isImage ?? false,
                 thumbnailData: await Self.thumbnailData(for: response, originalData: data, previewData: previewData),
-                draftFileName: draftFileName
+                draftFileName: draftFileName,
+                isClipboardPaste: isClipboardPaste
             )
         } catch {
             if reportsErrors {
@@ -383,10 +506,15 @@ final class ChatAttachmentCoordinator {
 
     func deleteDraftCopy(named fileName: String, attachmentID: UUID) async {
         attachmentLease?.filesByAttachmentID[attachmentID] = nil
+        if let key = attachmentLease?.key {
+            draftStore?.removeAttachmentReference(id: attachmentID, for: key)
+        }
+        await deleteUnreferencedCopy(fileName)
+    }
+
+    /// Deletes a local copy unless a draft or a live owner still holds it.
+    private func deleteUnreferencedCopy(_ fileName: String) async {
         if let draftStore {
-            if let key = attachmentLease?.key {
-                draftStore.removeAttachmentReference(id: attachmentID, for: key)
-            }
             await draftStore.deleteAttachmentIfUnreferenced(fileName)
         } else {
             await draftAttachmentStore.delete(named: fileName)

@@ -27,6 +27,9 @@ final class CachedMessage {
     var displayMetadataData: Data?
     /// A Hermes session's row id (`ChatMessage.rowID`); nil on a webui message.
     var rowID: Int?
+    /// A Hermes row whose turn's tool or reasoning cards sit above it. The cache holds no
+    /// cards, so this is what lets a cached transcript draw the turn's fold row. Nullable.
+    var anchorsWork: Bool?
     var cachedAt: Date
     var expiresAt: Date
 

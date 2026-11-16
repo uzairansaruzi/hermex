@@ -3,38 +3,31 @@ import Observation
 import SwiftData
 import SwiftUI
 
-struct SessionListSection: Identifiable {
-    enum Kind: String {
-        case pinned
-        case today
-        case yesterday
-        case earlier
-    }
-
-    let kind: Kind
-    let title: String
-    let sessions: [SessionSummary]
-
-    var id: String { kind.rawValue }
-}
-
 struct ScheduledSessionGroups: Equatable {
+    /// Rows waiting on the user, shown above the rest (#1393); empty unless the list asked for it.
+    let needsYou: [SessionSummary]
     let ordinary: [SessionSummary]
     let scheduled: [SessionSummary]
     let totalScheduledCount: Int
 
     /// Splits the visible rows in one pass, keeping their order: cron rows go
-    /// to `scheduled` unless archived, everything else to `ordinary`.
-    init(partitioning visible: [SessionSummary], totalScheduledCount: Int) {
+    /// to `scheduled` unless archived, unarchived rows `needsInput` picks to
+    /// `needsYou`, everything else to `ordinary`.
+    init(partitioning visible: [SessionSummary], totalScheduledCount: Int,
+         needsInput: ((SessionSummary) -> Bool)? = nil) {
+        var needsYou: [SessionSummary] = []
         var ordinary: [SessionSummary] = []
         var scheduled: [SessionSummary] = []
         for session in visible {
             if session.isCronSession {
                 if session.archived != true { scheduled.append(session) }
+            } else if session.archived != true, needsInput?(session) == true {
+                needsYou.append(session)
             } else {
                 ordinary.append(session)
             }
         }
+        self.needsYou = needsYou
         self.ordinary = ordinary
         self.scheduled = scheduled.first?.hermes == nil ? scheduled : scheduled.sorted {
             let left = $0.lastMessageAt ?? $0.createdAt ?? 0, right = $1.lastMessageAt ?? $1.createdAt ?? 0
@@ -79,6 +72,8 @@ struct HermesSessionListSource {
     var statusPollInterval: Duration = .seconds(5)
     /// Waits before each reconnect after a lost socket; the last one repeats.
     var reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)]
+    /// Whether the device has a network; the list's reconnect holds while it doesn't (#1372).
+    var isNetworkAvailable: @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }
 }
 
 @MainActor
@@ -109,6 +104,18 @@ final class SessionListViewModel {
     private(set) var searchErrorMessage: String?
     private(set) var isSearchingRemoteSessions = false
     private(set) var sessionLoadError: Error?
+    /// The list's error while rows stay on screen: only a refusal the user has to act on (#1374).
+    /// A retryable failure retries behind the rows instead.
+    var hermesRefusalOverRows: String? {
+        guard !sessions.isEmpty, let sessionLoadError, !BotConnectionAdvice.isRetryable(sessionLoadError) else { return nil }
+        return errorMessage
+    }
+    /// What the home's status line speaks for (#1374): rows the host sent, which no cached copy
+    /// or refusal already explains, and whether the socket is coming back.
+    var hermesConnection: HomeConnectionStatus.Facts {
+        HomeConnectionStatus.Facts(keepsRows: !sessions.isEmpty && !isViewingCachedData && hermesRefusalOverRows == nil,
+                                   isReconnecting: isHermesReconnecting)
+    }
     private(set) var lastError: Error?
     private(set) var activeProfileName: String?
     private(set) var activeProfileDisplayName: String?
@@ -131,6 +138,14 @@ final class SessionListViewModel {
     /// have an entry, and the map is reassigned only when a value actually
     /// changes so rows do not invalidate on every poll tick.
     private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
+    /// True while a Hermes list's states are only the last ones known (#1374): kept through a
+    /// lost socket or a failed status read, until a current status reply replaces them. Never
+    /// on a webui list.
+    private(set) var attentionStatesAreStale = false
+    /// True from a lost Hermes socket that kept the rows on screen until a list read on a new
+    /// socket succeeds (#1374). A refusal the user has to act on, a closed list or a Profile
+    /// change ends it instead.
+    private(set) var isHermesReconnecting = false
     private(set) var seenMessageTimes: [String: Double]
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
@@ -147,7 +162,7 @@ final class SessionListViewModel {
 
     private let client: APIClient
     private let sessionMutator: SessionMutator
-    private let server: URL
+    let server: URL
     private let unreadStore: SessionUnreadStore
     private var viewingSessionID: String?
     private var returnedFromSessionIDs: Set<String> = []
@@ -166,13 +181,16 @@ final class SessionListViewModel {
     private(set) var hermesShowsAllProfiles = false
     /// The Hermes host's Profiles, for the Profile menu; empty until `profiles.list` answers.
     private(set) var hermesProfiles: [String] = []
+    /// Each Profile's model as `profiles.list` names it, for the Profile menu (#1679); a Profile
+    /// without one is absent.
+    private(set) var hermesProfileModels: [String: String] = [:]
     /// The Hermes list has read the host's rows on its current connection, so its Profile is the
     /// host's. Closing or dropping the connection clears it until the next read.
     private var hasReadHermes = false
     /// A Hermes session started now reaches the host: the list has read it and isn't showing the
     /// offline cache. A Shortcut's new chat waits for it (#1180).
     var isHermesLive: Bool { hasReadHermes && !isViewingCachedData }
-    /// The host's reason for refusing the last Hermes rename, shown in the rename sheet (#1048).
+    /// Why the last session rename failed, shown in the rename sheet (#1048).
     private(set) var renameErrorMessage: String?
     /// More of the Profile's sessions wait on the host.
     private(set) var hasMoreSessions = false
@@ -200,10 +218,13 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesReloadWanted = false
     @ObservationIgnored private var hermesDebounceTask: Task<Void, Never>?
     @ObservationIgnored private var hermesStatusTask: Task<Void, Never>?
-    @ObservationIgnored private var hermesReconnectTask: Task<Void, Never>?
-    @ObservationIgnored private var hermesReconnectAttempts = 0
+    @ObservationIgnored private var hermesArchivedCountTask: Task<Void, Never>?
+    /// The reconnect after a lost socket, on backoff while online and held while offline.
+    @ObservationIgnored private let hermesReconnect: BotReconnectSchedule?
     /// False once the host answered `session.active_list` "method not found".
     @ObservationIgnored private var hermesReadsStatus = true
+    /// False once the host answered `approval.pending` "method not found" (#1679).
+    @ObservationIgnored private var hermesReadsApprovals = true
     /// A live-state read failed while a row was busy, so re-reads go on until one succeeds.
     @ObservationIgnored private var hermesRetriesStatus = false
     /// Sessions a chat opened from this list has just closed.
@@ -213,7 +234,7 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesProjectOwners: [String: String] = [:]
     /// The Profile's lanes were read once, so a read shows "Loading projects..." only before that.
     @ObservationIgnored private var hermesProjectsRead = false
-    /// The host's reason for refusing the open project sheet's create or rename (#1052).
+    /// Why the open project sheet's create or rename failed, shown in that sheet (#1052).
     private(set) var projectSheetErrorMessage: String?
     /// The host's matches for the active search on a Hermes list (#1053), in its order, as it
     /// answered but for the deletes, archives, restores and renames this phone made since, each
@@ -243,6 +264,7 @@ final class SessionListViewModel {
         self.unreadStore = unreadStore
         self.hermes = hermes
         hermesProfile = hermes?.profile
+        hermesReconnect = hermes.map { BotReconnectSchedule(delays: $0.reconnectDelays, isNetworkAvailable: $0.isNetworkAvailable) }
         hermesShowsAllProfiles = hermes.map { HermesProfilePreference.showsAllProfiles(for: server, in: $0.preferences) } ?? false
         // A Hermes list loads as soon as it appears, so it starts on the skeleton.
         isLoading = hermes != nil
@@ -272,36 +294,6 @@ final class SessionListViewModel {
     nonisolated private static let sweepLeakedExportsOnce: Void = {
         try? FileManager.default.removeItem(at: exportsRootDirectory)
     }()
-
-    var sections: [SessionListSection] {
-        let sortedSessions = sessions.sorted { left, right in
-            timestamp(for: left) > timestamp(for: right)
-        }
-        let pinned = sortedSessions.filter { $0.pinned == true }
-        let unpinned = sortedSessions.filter { $0.pinned != true }
-
-        let calendar = Calendar.current
-        let today = unpinned.filter { session in
-            guard let date = date(for: session) else { return false }
-            return calendar.isDateInToday(date)
-        }
-        let yesterday = unpinned.filter { session in
-            guard let date = date(for: session) else { return false }
-            return calendar.isDateInYesterday(date)
-        }
-        let earlier = unpinned.filter { session in
-            guard let date = date(for: session) else { return true }
-            return !calendar.isDateInToday(date) && !calendar.isDateInYesterday(date)
-        }
-
-        return [
-            SessionListSection(kind: .pinned, title: String(localized: "Pinned"), sessions: pinned),
-            SessionListSection(kind: .today, title: String(localized: "Today"), sessions: today),
-            SessionListSection(kind: .yesterday, title: String(localized: "Yesterday"), sessions: yesterday),
-            SessionListSection(kind: .earlier, title: String(localized: "Earlier"), sessions: earlier)
-        ]
-        .filter { !$0.sessions.isEmpty }
-    }
 
     /// The rows the list shows for this search, project filter, and automated
     /// visibility: local matches sorted, then loaded remote content matches.
@@ -365,6 +357,7 @@ final class SessionListViewModel {
         }
         if hermes != nil {
             return sortedLocalMatches + hermesSearchMatches(excluding: sortedLocalMatches, selectedProjectID: selectedProjectID)
+                .filter { automatedVisibility.shows($0) }
         }
 
         let localMatchIDs = Set(sortedLocalMatches.compactMap(\.sessionId))
@@ -383,12 +376,16 @@ final class SessionListViewModel {
         return sortedLocalMatches + Self.sortedSessions(remoteMatches)
     }
 
+    /// The visible rows grouped as the list shows them. A Hermes list showing the host's rows
+    /// lifts the ones waiting for input into `needsYou` (#1393), by the same states their labels
+    /// show, last known ones included (#1374); a search or the cache keeps list order.
     func scheduledSessionGroups(
         searchText: String,
         selectedProjectID: String?,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> ScheduledSessionGroups {
-        ScheduledSessionGroups(
+        let liftsWaiting = hermes != nil && !isViewingCachedData && Self.normalizedSearchQuery(searchText).isEmpty
+        return ScheduledSessionGroups(
             partitioning: visibleSessions(
                 searchText: searchText,
                 selectedProjectID: selectedProjectID,
@@ -396,7 +393,8 @@ final class SessionListViewModel {
             ),
             totalScheduledCount: automatedVisibility.showsCron
                 ? (hermes != nil && !isViewingCachedData ? hermesScheduledTotal : sessions.filter { $0.isCronSession && $0.archived != true }.count)
-                : 0
+                : 0,
+            needsInput: liftsWaiting ? { [.input, .approval].contains(self.attentionState(for: $0)) } : nil
         )
     }
 
@@ -1160,32 +1158,34 @@ final class SessionListViewModel {
         return mutatingSessionIDs.contains(sessionId)
     }
 
+    /// Renames a session from the rename sheet; a failure's reason stays in the sheet as
+    /// `renameErrorMessage`.
     func rename(_ session: SessionSummary, to rawTitle: String, modelContext: ModelContext? = nil) async -> Bool {
+        renameErrorMessage = nil
         guard !isViewingCachedData else {
-            actionErrorMessage = String(localized: "Reconnect to the server to rename a session.")
+            renameErrorMessage = String(localized: "Reconnect to the server to rename a session.")
             return false
         }
 
         guard let sessionId = Self.nonEmpty(session.sessionId) else {
-            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            renameErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
 
         guard let title = Self.nonEmpty(rawTitle) else {
-            actionErrorMessage = String(localized: "Enter a session title.")
+            renameErrorMessage = String(localized: "Enter a session title.")
             return false
         }
 
         if session.hermes != nil { return await renameHermesSession(session, to: title) }
         isRenamingSession = true
-        actionErrorMessage = nil
         lastError = nil
         defer { isRenamingSession = false }
 
         do {
             let response = try await sessionMutator.rename(sessionID: sessionId, title: title)
             if let error = Self.nonEmpty(response.error) {
-                actionErrorMessage = error
+                renameErrorMessage = error
                 return false
             }
 
@@ -1209,7 +1209,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            renameErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1346,17 +1346,17 @@ final class SessionListViewModel {
         moving session: SessionSummary,
         modelContext: ModelContext? = nil
     ) async -> Bool {
-        actionErrorMessage = nil
+        projectSheetErrorMessage = nil
         lastError = nil
 
         guard let sessionId = session.sessionId else {
-            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            projectSheetErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
 
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            actionErrorMessage = String(localized: "Enter a project name.")
+            projectSheetErrorMessage = String(localized: "Enter a project name.")
             return false
         }
 
@@ -1370,12 +1370,12 @@ final class SessionListViewModel {
         do {
             let createResponse = try await client.createProject(name: name, color: color)
             guard let project = createResponse.project else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
                 return false
             }
 
             guard let projectID = project.projectId, !projectID.isEmpty else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
                 return false
             }
 
@@ -1387,7 +1387,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            projectSheetErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1402,12 +1402,12 @@ final class SessionListViewModel {
         color: String,
         modelContext: ModelContext? = nil
     ) async -> Bool {
-        actionErrorMessage = nil
+        projectSheetErrorMessage = nil
         lastError = nil
 
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            actionErrorMessage = String(localized: "Enter a project name.")
+            projectSheetErrorMessage = String(localized: "Enter a project name.")
             return false
         }
 
@@ -1417,12 +1417,12 @@ final class SessionListViewModel {
         do {
             let createResponse = try await client.createProject(name: name, color: color)
             guard let project = createResponse.project else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
                 return false
             }
 
             guard let projectID = project.projectId, !projectID.isEmpty else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
                 return false
             }
 
@@ -1433,7 +1433,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            projectSheetErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1464,18 +1464,20 @@ final class SessionListViewModel {
         }
     }
 
+    /// Renames a project from the rename sheet; a failure's reason stays in the sheet as
+    /// `projectSheetErrorMessage`.
     func rename(_ project: ProjectSummary, named rawName: String, color: String?) async -> Bool {
-        actionErrorMessage = nil
+        projectSheetErrorMessage = nil
         lastError = nil
 
         guard let projectID = project.projectId, !projectID.isEmpty else {
-            actionErrorMessage = String(localized: "The server did not provide a project ID.")
+            projectSheetErrorMessage = String(localized: "The server did not provide a project ID.")
             return false
         }
 
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            actionErrorMessage = String(localized: "Enter a project name.")
+            projectSheetErrorMessage = String(localized: "Enter a project name.")
             return false
         }
         if project.hermes != nil { return await renameHermesProject(projectID, named: name, color: color) }
@@ -1486,12 +1488,12 @@ final class SessionListViewModel {
         do {
             let response = try await client.renameProject(id: projectID, name: name, color: color)
             guard let renamedProject = response.project else {
-                actionErrorMessage = response.error ?? String(localized: "The server did not return the renamed project.")
+                projectSheetErrorMessage = response.error ?? String(localized: "The server did not return the renamed project.")
                 return false
             }
 
             guard renamedProject.projectId?.isEmpty == false else {
-                actionErrorMessage = response.error ?? String(localized: "The server did not return the renamed project ID.")
+                projectSheetErrorMessage = response.error ?? String(localized: "The server did not return the renamed project ID.")
                 return false
             }
 
@@ -1501,7 +1503,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            projectSheetErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1692,16 +1694,6 @@ final class SessionListViewModel {
         return (sessionIDs, excerpts)
     }
 
-    private func timestamp(for session: SessionSummary) -> Double {
-        Self.timestamp(for: session)
-    }
-
-    private func date(for session: SessionSummary) -> Date? {
-        let value = timestamp(for: session)
-        guard value > 0 else { return nil }
-        return Date(timeIntervalSince1970: value)
-    }
-
     private func beginSessionMutation(_ sessionId: String) -> Bool {
         mutatingSessionIDs.insert(sessionId).inserted
     }
@@ -1784,9 +1776,11 @@ final class SessionListViewModel {
             if !hermesShowsAllProfiles { await readHermesProfiles(wire) }
             return
         }
+        hermesReconnect?.cancel()
         let wire = hermes.makeWire(hermes.connection)
         hermesWire = wire
         hermesReadsStatus = true
+        hermesReadsApprovals = true
         if sessions.isEmpty { isLoading = !showCachedHermesSessions(provisional: true) }
         wire.onEvent = { [weak self, weak wire] event in
             guard let self, let wire, self.hermesWire === wire, self.hermesIsListening,
@@ -1800,7 +1794,6 @@ final class SessionListViewModel {
         do {
             try await wire.connect()
             guard hermesWire === wire else { return }
-            hermesReconnectAttempts = 0
             if hermesProfile == nil || hermesShowsAllProfiles { await readHermesProfiles(wire) }
             if hermesProfile == nil { await resolveHermesProfile(wire) }
             guard hermesWire === wire else { return }
@@ -1813,7 +1806,8 @@ final class SessionListViewModel {
             guard hermesWire === wire else { return }
             // The screen left while connecting: the next open starts a fresh client.
             if Task.isCancelled { wire.close(); hermesWire = nil; isLoading = false; return }
-            showCachedHermesSessions(after: error)
+            // A reconnect keeps the live rows and their last known states over the cached copy (#1374).
+            if !isHermesReconnecting { showCachedHermesSessions(after: error) }
             dropHermes(error)
         }
     }
@@ -1826,11 +1820,22 @@ final class SessionListViewModel {
         hermesStatusTask?.cancel(); hermesStatusTask = nil
     }
 
-    /// The list left the screen for good, or the app went to the background.
+    /// The list left the screen for good, or the app went to the background: it stops
+    /// reconnecting, and states that were only the last known ones go, since nothing re-reads
+    /// them meanwhile.
     func closeHermes() {
+        teardownHermes()
+        setHermesReconnecting(false)
+        if attentionStatesAreStale { setHermesStates([:]) }
+    }
+
+    /// Ends the socket and everything waiting on it. A lost socket starts with it, so the
+    /// reconnect keeps the last known states and its reconnecting state.
+    private func teardownHermes() {
         pauseHermes()
-        hermesReconnectTask?.cancel(); hermesReconnectTask = nil
+        hermesReconnect?.cancel()
         hermesReloadTask?.cancel(); hermesReloadTask = nil; hermesReloadWanted = false
+        hermesArchivedCountTask?.cancel(); hermesArchivedCountTask = nil
         hermesReadSerial += 1
         isLoading = false; isLoadingMoreSessions = false; isLoadingMoreScheduledSessions = false
         hermesWire?.close(); hermesWire = nil
@@ -1912,6 +1917,8 @@ final class SessionListViewModel {
             applyHermesScheduled(pages)
             showHermesPages(hermesPages, animation: nil)
             cacheHermesRows(hermesPages)
+            // The page answers an earlier refusal, which shows over the rows.
+            if errorMessage != nil || sessionLoadError != nil { errorMessage = nil; sessionLoadError = nil }
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
             showHermesFailure(error)
@@ -1938,7 +1945,6 @@ final class SessionListViewModel {
         guard let wire = hermesWire, hermesProfile != nil else { return }
         hermesReadSerial += 1
         let serial = hermesReadSerial
-        let pageSize = HermesREST.sessionPageSize
         var holdsPaging = true
         defer {
             if holdsPaging, serial == hermesReadSerial {
@@ -1947,27 +1953,32 @@ final class SessionListViewModel {
                 if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
             }
         }
-        var pages = HermesProfilePages()
         do {
-            for profile in hermesListedProfiles {
-                let wanted = max(hermesPages[profile].nextOffset + (isLoadingMoreSessions ? pageSize : 0), pageSize)
-                while pages[profile].hasMore, pages[profile].nextOffset < wanted {
-                    let page = try await wire.sessionPage(profile: profile, offset: pages[profile].nextOffset, archived: false)
-                    guard serial == hermesReadSerial, hermesWire === wire else { return }
-                    pages[profile].append(page)
-                }
+            // Independent page chains share the connection latency. Keep each chain ordered
+            // and cap the refresh at two concurrent requests, even across many Profiles.
+            async let ordinary = readHermesPages(wire, previous: hermesPages, loadingMore: isLoadingMoreSessions,
+                                                scheduled: false, profiles: hermesListedProfiles, serial: serial)
+            async let cron = readHermesPages(wire, previous: hermesScheduledPages, loadingMore: isLoadingMoreScheduledSessions,
+                                            scheduled: true, profiles: hermesListedProfiles, serial: serial)
+            var (pages, scheduled) = try await (ordinary, cron)
+            // A Load more can finish while the other chain is waiting. Extend this
+            // refresh to that depth before applying, so it never takes those rows away.
+            while hermesListedProfiles.contains(where: { profile in
+                (pages[profile].hasMore && pages[profile].nextOffset < hermesPages[profile].nextOffset)
+                    || (scheduled[profile].hasMore && scheduled[profile].nextOffset < hermesScheduledPages[profile].nextOffset)
+            }) {
+                async let moreOrdinary = readHermesPages(wire, previous: hermesPages, loadingMore: false,
+                                                        scheduled: false, profiles: hermesListedProfiles, serial: serial, starting: pages)
+                async let moreCron = readHermesPages(wire, previous: hermesScheduledPages, loadingMore: false,
+                                                    scheduled: true, profiles: hermesListedProfiles, serial: serial, starting: scheduled)
+                (pages, scheduled) = try await (moreOrdinary, moreCron)
             }
-            var scheduled = HermesProfilePages()
-            for profile in hermesListedProfiles {
-                let wanted = max(hermesScheduledPages[profile].nextOffset + (isLoadingMoreScheduledSessions ? pageSize : 0), pageSize)
-                while scheduled[profile].hasMore, scheduled[profile].nextOffset < wanted {
-                    let page = try await wire.scheduledSessionPage(profile: profile, offset: scheduled[profile].nextOffset, archived: false)
-                    guard serial == hermesReadSerial, hermesWire === wire else { return }
-                    scheduled[profile].append(page)
-                }
-            }
+            guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
             applyHermesScheduled(scheduled)
             applyHermes(pages, readSerial: serial)
+            setHermesReconnecting(false)
+            // Only the rows prove the host is back: a socket whose reads fail keeps its backoff.
+            hermesReconnect?.succeeded()
             // The rows are in, and the lanes, read next, never hold them back. A "Load more"
             // that starts meanwhile owns the paging flag, so this read lets go of it once.
             holdsPaging = false
@@ -1975,7 +1986,12 @@ final class SessionListViewModel {
             if isLoadingMoreSessions { isLoadingMoreSessions = false }
             if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
             startHermesStatusRead(wire)
-            if !hermesShowsAllProfiles { await readHermesProjects(wire, readSerial: serial) }
+            if !hermesShowsAllProfiles {
+                await readHermesProjects(wire, readSerial: serial)
+                startHermesArchivedCountRead(wire, readSerial: serial)
+            } else if archivedCount != nil {
+                archivedCount = nil
+            }
             await runAwaitedHermesSearch()
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
@@ -1991,9 +2007,38 @@ final class SessionListViewModel {
                     return
                 }
             }
+            // A read on a socket that just came back recovers as a lost socket does (#1374).
+            if isHermesReconnecting { return dropHermes(error) }
             if showCachedHermesSessions(after: error) { return }
             showHermesFailure(error)
         }
+    }
+
+    /// Reads one ordered page chain; a replaced refresh never starts another request.
+    private func readHermesPages(
+        _ wire: any BotTransport, previous: HermesProfilePages, loadingMore: Bool,
+        scheduled: Bool, profiles: [String], serial: Int, starting: HermesProfilePages = HermesProfilePages()
+    ) async throws -> HermesProfilePages {
+        let pageSize = HermesREST.sessionPageSize
+        var pages = starting
+        for profile in profiles {
+            let wanted = max(previous[profile].nextOffset + (loadingMore ? pageSize : 0), pageSize)
+            while pages[profile].hasMore, pages[profile].nextOffset < wanted {
+                try Task.checkCancellation()
+                guard serial == hermesReadSerial, hermesWire === wire else { throw CancellationError() }
+                let offset = pages[profile].nextOffset
+                let page: HermesSessionPage
+                if scheduled {
+                    page = try await wire.scheduledSessionPage(profile: profile, offset: offset, archived: false)
+                } else {
+                    page = try await wire.sessionPage(profile: profile, offset: offset, archived: false)
+                }
+                try Task.checkCancellation()
+                guard serial == hermesReadSerial, hermesWire === wire else { throw CancellationError() }
+                pages[profile].append(page)
+            }
+        }
+        return pages
     }
 
     private func applyHermes(_ pages: HermesProfilePages, readSerial: Int) {
@@ -2162,10 +2207,10 @@ final class SessionListViewModel {
         hermesReadSerial += 1
         sessions = []; hasMoreSessions = false; isLoadingMoreSessions = false; isViewingCachedData = false
         hermesUnreadMarks = [:]; hermesReturnedFrom = []
-        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
+        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false; archivedCount = nil
         clearHermesSearchMatches()
         errorMessage = nil; sessionLoadError = nil
-        setHermesStates([:])
+        setHermesStates([:]); setHermesReconnecting(false)
         guard let wire = hermesWire else { return await openHermes() }
         isLoading = true
         if hermesShowsAllProfiles && hermesProfiles.isEmpty { await readHermesProfiles(wire) }
@@ -2186,45 +2231,81 @@ final class SessionListViewModel {
         isLoadingMoreScheduledSessions = false
         sessions = []; hasMoreSessions = false; isViewingCachedData = false
         hermesUnreadMarks = [:]; hermesReturnedFrom = []
-        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
+        projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false; archivedCount = nil
         clearHermesSearchMatches()
-        setHermesStates([:])
+        setHermesStates([:]); setHermesReconnecting(false)
         isLoading = true
         return true
     }
 
-    private func readHermesProfiles(_ wire: any BotTransport) async {
+    /// The host's Profiles, read now on the list's socket, for a Shortcut's text that names one
+    /// (#1402): `hermesProfiles` keeps its last read while a chat pauses the list. Nil when the
+    /// list has no socket or the host didn't answer.
+    func readHostProfiles() async -> [String]? {
+        guard let wire = hermesWire else { return nil }
+        return await readHermesProfiles(wire)
+    }
+
+    @discardableResult
+    private func readHermesProfiles(_ wire: any BotTransport) async -> [String]? {
         guard let reply = try? await wire.call(.profilesList(includeSessions: false)), hermesWire === wire,
-              let rows = reply["profiles"].list else { return }
+              let rows = reply["profiles"].list else { return nil }
         let names = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty }
         if names != hermesProfiles { hermesProfiles = names }
+        let models = Dictionary(rows.compactMap { row -> (String, String)? in
+            guard let name = row["name"].text, let model = row["model"].text?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty, !model.isEmpty else { return nil }
+            return (name, model)
+        }, uniquingKeysWith: { first, _ in first })
+        if models != hermesProfileModels { hermesProfileModels = models }
         // A list of every Profile names only those the host still has, so a pick removed elsewhere
         // shows up here rather than as a refused watch.
         if hermesShowsAllProfiles, let pick = hermesProfile, !names.isEmpty, !names.contains(pick) {
             await resolveHermesProfile(wire)
         }
+        return names
     }
 
-    /// A lost socket: the rows stay, live states clear, and the list reconnects on the inbox's
-    /// backoff while it is on screen. A refusal the user has to act on
-    /// (`BotConnectionAdvice.isRetryable`) stops there and is kept as the list's error, which
-    /// shows once no rows do; pull to refresh tries again.
+    /// The device's network path changed (#1372): a reconnect waiting on its backoff runs now if
+    /// the network is back, or holds until it is. A list a chat covers stays down.
+    /// Offline, the live states are only the last known ones, whatever the socket says (#1374).
+    func networkPathDidChange() {
+        if hermes?.isNetworkAvailable() == false, !attentionStatesBySessionID.isEmpty {
+            setHermesStates(attentionStatesBySessionID, stale: true)
+        }
+        hermesReconnect?.networkPathDidChange()
+    }
+
+    /// The user tapped "Reconnecting…" (#1374): the waiting reconnect runs now, past its backoff,
+    /// the way a network return runs it. Offline, or with no reconnect waiting, nothing happens.
+    func reconnectNow() { hermesReconnect?.networkPathDidChange() }
+
+    /// A lost socket: the rows and their last known states stay, and the list reconnects on the
+    /// inbox's backoff while it is on screen and the device is online; `isHermesReconnecting`
+    /// says so. A refusal the user has to act on (`BotConnectionAdvice.isRetryable`) clears the
+    /// states and stops there, kept as the list's error, which shows over the rows; pull to
+    /// refresh tries again.
     private func dropHermes(_ error: Error) {
-        guard let hermes else { return }
         // Rows shown while connecting stay only as the offline state.
         if isCachedCopyProvisional { showCachedHermesSessions(after: error) }
         let listening = hermesIsListening
-        closeHermes()
+        teardownHermes()
         hermesIsListening = listening
-        setHermesStates([:])
-        let retries = BotConnectionAdvice.isRetryable(error)
-        if sessions.isEmpty || !retries { showHermesFailure(error) }
-        guard listening, retries else { return }
-        let delay = hermes.reconnectDelays[min(hermesReconnectAttempts, hermes.reconnectDelays.count - 1)]
-        hermesReconnectAttempts += 1
-        hermesReconnectTask = Task { [weak self] in
-            guard (try? await Task.sleep(for: delay)) != nil, let self, self.hermesIsListening else { return }
-            self.hermesReconnectTask = nil
+        guard BotConnectionAdvice.isRetryable(error) else {
+            setHermesStates([:]); setHermesReconnecting(false)
+            return showHermesFailure(error)
+        }
+        setHermesStates(attentionStatesBySessionID, stale: !attentionStatesBySessionID.isEmpty)
+        if sessions.isEmpty {
+            showHermesFailure(error)
+        } else {
+            // The reconnecting line speaks for the rows instead of an earlier read's failure.
+            if errorMessage != nil || sessionLoadError != nil { errorMessage = nil; sessionLoadError = nil }
+            setHermesReconnecting(true)
+        }
+        guard listening else { return }
+        hermesReconnect?.schedule { [weak self] in
+            guard let self, self.hermesIsListening else { return }
             await self.openHermes()
         }
     }
@@ -2254,6 +2335,17 @@ final class SessionListViewModel {
         }
     }
 
+    /// One fresh `session.active_list` on the live socket: whether every session on the host is
+    /// `idle`. An unknown or missing status counts as busy. Nil when the list isn't live, the read
+    /// fails, or the reply has no `sessions`. The rating prompt asks it, since the list's own
+    /// states pause while a chat covers it.
+    func hermesHostIsIdle() async -> Bool? {
+        guard isHermesLive, let wire = hermesWire,
+              let reply = try? await wire.call(.sessionActiveList),
+              let sessions = reply["sessions"].list else { return nil }
+        return sessions.allSatisfy { $0["status"].text == "idle" }
+    }
+
     /// Replaces any live-state read in flight with one read, now or after `delay`.
     private func startHermesStatusRead(_ wire: any BotTransport, after delay: Duration? = nil) {
         hermesStatusTask?.cancel(); hermesStatusTask = nil
@@ -2265,9 +2357,10 @@ final class SessionListViewModel {
         }
     }
 
-    /// One `session.active_list`, mapped onto the listed rows by session key. A failed read
-    /// shows no states rather than old ones. While a row is busy, or a read failed while one
-    /// was, it reads again after `statusPollInterval`; once all are idle it stops.
+    /// One `session.active_list`, mapped onto the listed rows by session key, then its waiting
+    /// rows told apart by `hermesPendingApprovals`. A failed read keeps the states as the last
+    /// known ones; a host without the method shows none. While a row is busy, or a read failed while
+    /// one was, it reads again after `statusPollInterval`; once all are idle it stops.
     private func readHermesStatuses(_ wire: any BotTransport) async {
         guard let hermes else { return }
         hermesStatusSerial += 1
@@ -2277,21 +2370,86 @@ final class SessionListViewModel {
             let reply = try await wire.call(.sessionActiveList)
             guard current() else { return }
             let listed = Set(sessions.compactMap(\.sessionId))
-            setHermesStates(SessionRowAttentionState.hermesStates(reply["sessions"].list ?? []).filter { listed.contains($0.key) })
+            let items = reply["sessions"].list ?? []
+            var states = SessionRowAttentionState.hermesStates(items).filter { listed.contains($0.key) }
+            let waiting = hermesReadsApprovals ? Self.hermesWaitingRuntimes(items, states: states) : []
+            // The states show at once; a waiting row that last showed Approval keeps it until its
+            // runtimes answer.
+            for (key, _) in waiting where attentionStatesBySessionID[key] == .approval { states[key] = .approval }
+            setHermesStates(states)
             hermesRetriesStatus = false
+            if !waiting.isEmpty {
+                let (pending, unsupported) = await hermesPendingApprovals(waiting, wire: wire)
+                guard current() else { return }
+                if unsupported { hermesReadsApprovals = false }
+                for (key, isPending) in pending { states[key] = isPending ? .approval : .input }
+                setHermesStates(states)
+            }
         } catch {
             guard current() else { return }
-            if error as? BotFailure == .rejected(-32601) { hermesReadsStatus = false }
-            hermesRetriesStatus = hermesRetriesStatus || !attentionStatesBySessionID.isEmpty
-            setHermesStates([:])
+            if error as? BotFailure == .rejected(-32601) {
+                hermesReadsStatus = false
+                setHermesStates([:])
+            } else {
+                hermesRetriesStatus = hermesRetriesStatus || !attentionStatesBySessionID.isEmpty
+                setHermesStates(attentionStatesBySessionID, stale: !attentionStatesBySessionID.isEmpty)
+            }
         }
         if attentionStatesBySessionID.isEmpty && !hermesRetriesStatus { hermesStatusTask = nil }
         else { startHermesStatusRead(wire, after: hermes.statusPollInterval) }
     }
 
+    /// The waiting runtimes behind each Input row of one `session.active_list` reply, by session
+    /// key, for `hermesPendingApprovals`.
+    private static func hermesWaitingRuntimes(_ items: [BotJSON], states: [String: SessionRowAttentionState])
+        -> [(key: String, runtime: String)] {
+        items.compactMap { item in
+            guard let key = item["session_key"].text, states[key] == .input,
+                  BotLiveStatus(wire: item["status"].text) == .waiting,
+                  let runtime = item["id"].text, !runtime.isEmpty else { return nil }
+            return (key, runtime)
+        }
+    }
+
+    /// Whether each waiting row holds an unresolved approval (#1679): one `approval.pending` per
+    /// runtime, by its runtime id, all at once; a row with several is pending when any is. A row
+    /// with no pending answer and a failed read is absent, so it keeps what it showed, as webui's
+    /// probe does.
+    /// `unsupported` when the host answered "method not found", for the caller to apply only if
+    /// its read is still current.
+    private func hermesPendingApprovals(_ waiting: [(key: String, runtime: String)], wire: any BotTransport) async
+        -> (pending: [String: Bool], unsupported: Bool) {
+        await withTaskGroup(of: (key: String, pending: Bool?, unsupported: Bool).self) { group in
+            for (key, runtime) in waiting {
+                group.addTask { @MainActor in
+                    do {
+                        let reply = try await wire.call(.approvalPending(sessionID: runtime))
+                        return (key, !(reply["approvals"].list ?? []).isEmpty, false)
+                    } catch {
+                        return (key, nil, error as? BotFailure == .rejected(-32601))
+                    }
+                }
+            }
+            var result: (pending: [String: Bool], unsupported: Bool) = ([:], false)
+            var failed: Set<String> = []
+            for await answer in group {
+                result.unsupported = result.unsupported || answer.unsupported
+                if let pending = answer.pending { result.pending[answer.key] = result.pending[answer.key] == true || pending }
+                else { failed.insert(answer.key) }
+            }
+            for key in failed where result.pending[key] != true { result.pending[key] = nil }
+            return result
+        }
+    }
+
     /// Writes only a real change, so an unchanged re-read never invalidates the rows.
-    private func setHermesStates(_ states: [String: SessionRowAttentionState]) {
+    private func setHermesStates(_ states: [String: SessionRowAttentionState], stale: Bool = false) {
         if states != attentionStatesBySessionID { attentionStatesBySessionID = states }
+        if stale != attentionStatesAreStale { attentionStatesAreStale = stale }
+    }
+
+    private func setHermesReconnecting(_ reconnecting: Bool) {
+        if reconnecting != isHermesReconnecting { isHermesReconnecting = reconnecting }
     }
 
     // MARK: Hermes search (#1053)
@@ -2464,7 +2622,7 @@ final class SessionListViewModel {
     /// stays without a message.
     private func renameHermesSession(_ session: SessionSummary, to title: String) async -> Bool {
         guard let target = hermesTarget(session) else {
-            // The sheet is up, so the reason goes there rather than to the list's alert.
+            // The sheet is up, so the reason goes there rather than to the list's toast.
             renameErrorMessage = actionErrorMessage
             actionErrorMessage = nil
             return false
@@ -2472,7 +2630,6 @@ final class SessionListViewModel {
         let (wire, key, profile) = target
         isRenamingSession = true
         renameErrorMessage = nil
-        actionErrorMessage = nil
         defer { isRenamingSession = false }
         do {
             let kept = try await wire.updateSession(.title(title), key: key, profile: profile)
@@ -2549,6 +2706,14 @@ final class SessionListViewModel {
     func hermesLaneIsShort(_ projectID: String) -> Bool {
         guard let claimed = projects.first(where: { $0.projectId == projectID })?.hermes?.claimedCount else { return false }
         return sessions.lazy.filter { $0.projectId == projectID }.count < claimed
+    }
+
+    /// The host folder New Session starts in for the selected lane `lane`, as webui's New Chat
+    /// does (#1671); nil, the Profile's default folder, with no lane or while All Profiles shows,
+    /// whose list keeps the last Profile's lanes without showing them.
+    func hermesNewSessionFolder(lane: String?) -> String? {
+        guard let lane, !hermesShowsAllProfiles else { return nil }
+        return projects.first { $0.projectId == lane }?.hermes?.folder
     }
 
     /// Reads pages until the lane `projectID` holds every session the host named for it, or the
@@ -2651,7 +2816,11 @@ final class SessionListViewModel {
         actionErrorMessage = nil
         defer { isMovingSession = false }
         do {
-            _ = try await wire.call(.sessionWorkspaceMove(profile: profile, storedKey: key, cwd: folder))
+            if wire.speaksCanonicalProtocol {
+                _ = try await wire.mutateStoredSession(profile: profile, key: key, .workspace(cwd: folder))
+            } else {
+                _ = try await wire.call(.sessionWorkspaceMove(profile: profile, storedKey: key, cwd: folder))
+            }
             requestHermesReload()
             return left.flatMap { $0.isEmpty || $0 == folder ? nil : $0 }
         } catch BotSettingFailure.rejected(4017, _) {
@@ -2685,6 +2854,27 @@ final class SessionListViewModel {
         if projects != tree.projects { projects = tree.projects }
         showHermesPages(hermesPages, animation: nil)
         showHermesSearch(hermesSearchResults)
+    }
+
+    /// The listed Profile's archived session count, for its Archived row (#1679). It includes
+    /// room sessions the Archived screen hides, so it can run slightly high. A failed read keeps
+    /// the last count, nil until one answers. It runs on its own, replacing any read in flight,
+    /// so a slow count never holds the next list read back. Only a list read still current
+    /// replaces it: one a Profile switch or teardown left behind starts nothing.
+    private func startHermesArchivedCountRead(_ wire: any BotTransport, readSerial serial: Int) {
+        guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled, !hermesShowsAllProfiles else { return }
+        hermesArchivedCountTask?.cancel()
+        hermesArchivedCountTask = Task { [weak self] in
+            await self?.readHermesArchivedCount(wire, readSerial: serial)
+        }
+    }
+
+    private func readHermesArchivedCount(_ wire: any BotTransport, readSerial serial: Int) async {
+        guard let profile = hermesProfile,
+              let count = try? await wire.archivedSessionCount(profile: profile), !Task.isCancelled,
+              serial == hermesReadSerial, hermesWire === wire, hermesProfile == profile, !hermesShowsAllProfiles,
+              count != archivedCount else { return }
+        archivedCount = count
     }
 
     private func mutate(

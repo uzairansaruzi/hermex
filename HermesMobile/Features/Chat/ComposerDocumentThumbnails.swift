@@ -28,8 +28,9 @@ struct QuickLookComposerThumbnailGenerator: ComposerThumbnailGenerating {
 
 /// Previews of the documents staged in a composer, drawn from each one's
 /// app-owned draft copy. One cache serves the attachment strip and the
-/// collapsed pill in every chat, keyed by `PendingAttachment.id`,
-/// which a draft restore keeps, so a reopened chat shows its previews at once.
+/// collapsed pill in every chat, keyed by the copy's file name, which a draft
+/// restore keeps, so a reopened chat shows its previews at once. An edited paste
+/// gets a new copy (#1456), so it draws a new preview under the same attachment.
 @MainActor
 final class ComposerDocumentThumbnails {
     static let shared = ComposerDocumentThumbnails()
@@ -39,9 +40,9 @@ final class ComposerDocumentThumbnails {
     private let limit: Int
     /// A nil value is a document Quick Look couldn't draw, kept so it isn't
     /// retried on every render.
-    private var results: [UUID: UIImage?] = [:]
+    private var results: [String: UIImage?] = [:]
     /// Oldest first, for evicting past `limit`.
-    private var order: [UUID] = []
+    private var order: [String] = []
 
     init(
         store: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
@@ -55,18 +56,18 @@ final class ComposerDocumentThumbnails {
 
     /// A preview already made, without starting any work, so a tile that
     /// reappears draws it in its first frame.
-    func cachedThumbnail(for id: UUID) -> UIImage? {
-        results[id] ?? nil
+    func cachedThumbnail(for attachment: PendingAttachment) -> UIImage? {
+        attachment.draftFileName.flatMap { results[$0] ?? nil }
     }
 
-    /// The document's preview, made once per attachment. Images (which carry
+    /// The document's preview, made once per copy. Images (which carry
     /// their own thumbnail) and attachments without a draft copy get nil
-    /// without any work. A result is kept per attachment, not per size, so
+    /// without any work. A result is kept per copy, not per size, so
     /// every caller asks at one size. A cancelled request keeps nothing, so
     /// the next caller makes it afresh.
     func thumbnail(for attachment: PendingAttachment, size: CGSize, scale: CGFloat) async -> UIImage? {
         guard !attachment.isImage, let fileName = attachment.draftFileName else { return nil }
-        if let result = results[attachment.id] { return result }
+        if let result = results[fileName] { return result }
 
         let image: UIImage?
         if let url = try? await store.fileURL(named: fileName) {
@@ -76,13 +77,13 @@ final class ComposerDocumentThumbnails {
         }
         guard !Task.isCancelled else { return nil }
 
-        remember(image, for: attachment.id)
+        remember(image, for: fileName)
         return image
     }
 
-    private func remember(_ image: UIImage?, for id: UUID) {
-        if results.updateValue(image, forKey: id) == nil {
-            order.append(id)
+    private func remember(_ image: UIImage?, for fileName: String) {
+        if results.updateValue(image, forKey: fileName) == nil {
+            order.append(fileName)
         }
         while order.count > limit {
             results.removeValue(forKey: order.removeFirst())

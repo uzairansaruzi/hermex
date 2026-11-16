@@ -3,13 +3,16 @@ import SwiftUI
 /// The "Limits" group at the top of the Usage screen (#415): one card per
 /// provider that reported a usable quota, or a placeholder card while the first
 /// probes are still running. The caller omits the group entirely when there are
-/// no cards and nothing is loading, which is how every failed or unsupported
-/// probe disappears.
+/// no cards and nothing is loading, which is how a provider with nothing to
+/// show stays out of sight.
 struct ProviderLimitsSection: View {
     let cards: [ProviderLimitCard]
     /// Drives the placeholder, and only while `cards` is empty: a refresh with
     /// cards already on screen keeps them rather than blanking the group.
     let isLoading: Bool
+    /// The last refresh failed for at least one card, which still shows the
+    /// values loaded before it (#1408). Each card's own footer says how old.
+    let refreshFailed: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -18,8 +21,12 @@ struct ProviderLimitsSection: View {
             Text("Limits")
                 .textCase(.uppercase)
                 .font(AppFont.caption(weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 4)
+
+            if refreshFailed, !cards.isEmpty {
+                refreshFailureNotice
+            }
 
             if !cards.isEmpty {
                 ForEach(cards) { card in
@@ -30,6 +37,30 @@ struct ProviderLimitsSection: View {
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: cards)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: refreshFailed)
+    }
+
+    /// Styled as `ProvidersView`'s refresh-failure banner, so the app says this
+    /// one way.
+    private var refreshFailureNotice: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(AppFont.caption())
+                .foregroundStyle(.orange)
+                .accessibilityHidden(true)
+
+            Text("Couldn't refresh limits. Showing the last values loaded.")
+                .font(AppFont.footnote(weight: .medium))
+                .foregroundStyle(.appPrimary)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.14))
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -45,15 +76,13 @@ private struct ProviderLimitsPlaceholderCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: "Provider")
                     .font(AppFont.headline())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .padding(.bottom, 14)
 
                 row
 
-                Divider()
-                    .padding(.vertical, 14)
-
                 row
+                    .padding(.top, 28)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .redacted(reason: .placeholder)
@@ -103,12 +132,8 @@ struct ProviderLimitsCard: View {
                 header
 
                 ForEach(Array(card.rows.enumerated()), id: \.element.id) { index, row in
-                    if index > 0 {
-                        Divider()
-                            .padding(.vertical, 14)
-                    }
-
                     ProviderLimitRowView(row: row, now: now)
+                        .padding(.top, index > 0 ? 28 : 0)
                 }
 
                 if let updated = providerLimitUpdatedText(card.updatedAt, now: now) {
@@ -117,7 +142,7 @@ struct ProviderLimitsCard: View {
 
                     Text(updated)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
         }
@@ -127,7 +152,7 @@ struct ProviderLimitsCard: View {
     private var header: some View {
         let title = Text(card.title)
             .font(AppFont.headline())
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
 
         Group {
             if dynamicTypeSize.isAccessibilitySize {
@@ -153,12 +178,12 @@ struct ProviderLimitsCard: View {
         if let plan = card.plan {
             Text(plan)
                 .font(AppFont.caption(weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .overlay {
                     Capsule()
-                        .stroke(Color.primary.opacity(0.18), lineWidth: 0.8)
+                        .stroke(Color(.appText).opacity(0.18), lineWidth: 0.8)
                 }
         }
     }
@@ -186,16 +211,16 @@ private struct ProviderLimitRowView: View {
                 Label {
                     Text(secondary)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 } icon: {
                     Image(systemName: "arrow.clockwise")
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             } else if let note = row.note {
                 Text(note)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -207,7 +232,7 @@ private struct ProviderLimitRowView: View {
     private var amountRow: some View {
         let label = Text(row.label)
             .font(AppFont.body())
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
 
         let amount = Group {
             if let amount = row.amount {
@@ -269,7 +294,7 @@ private struct ProviderLimitBar: View {
 
     var body: some View {
         Capsule()
-            .fill(Color.primary.opacity(0.14))
+            .fill(Color(.appText).opacity(0.14))
             .frame(height: 8)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in

@@ -1,7 +1,10 @@
 import SwiftUI
 
+/// A session list's delete confirmations, and its failed actions handed to `showFailure`, which
+/// shows them as failure toasts rather than alerts (#1410), since nothing needs the user's answer.
 struct SessionActionConfirmations: ViewModifier {
     @Bindable var viewModel: SessionListViewModel
+    let showFailure: (String) -> Void
     @Binding var sessionPendingDeletion: SessionSummary?
     @Binding var projectPendingDeletion: ProjectSummary?
 
@@ -10,22 +13,10 @@ struct SessionActionConfirmations: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .alert(
-                "Session Action Failed",
-                isPresented: Binding(
-                    get: { viewModel.actionErrorMessage != nil },
-                    set: { isPresented in
-                        if !isPresented {
-                            viewModel.clearActionError()
-                        }
-                    }
-                )
-            ) {
-                Button("OK") {
-                    viewModel.clearActionError()
-                }
-            } message: {
-                Text(viewModel.actionErrorMessage ?? "")
+            .onChange(of: viewModel.actionErrorMessage) { _, message in
+                guard let message else { return }
+                showFailure(message)
+                viewModel.clearActionError()
             }
             .alert(
                 "Delete Session?",

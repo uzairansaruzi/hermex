@@ -2,7 +2,8 @@ import Charts
 import SwiftUI
 
 /// The Usage screen's headline card: the window figure, the metric toggle, the
-/// bar chart, and the edge labels beneath it.
+/// bar chart, and the edge labels beneath it. Without `showsChart` it is the
+/// figure and toggle alone.
 ///
 /// Dragging across the chart replaces the hero with the touched bucket's own
 /// figures and restores the window total on release, which is what lets the old
@@ -11,6 +12,7 @@ struct UsageChartCard: View {
     let buckets: [UsageBucket]
     @Binding var metric: UsageMetric
     let showsMetricToggle: Bool
+    let showsChart: Bool
     let windowTotal: UsageHeroFigure
     let hourlyNote: String?
     let chartAccessibilityLabel: String
@@ -25,13 +27,16 @@ struct UsageChartCard: View {
         SectionCard {
             VStack(alignment: .leading, spacing: 14) {
                 header
-                chart
-                footer
+
+                if showsChart {
+                    chart
+                    footer
+                }
 
                 if let hourlyNote {
                     Text(hourlyNote)
                         .font(AppFont.caption())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -57,7 +62,7 @@ struct UsageChartCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(hero.label)
                     .font(AppFont.subheadline())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
 
                 Text(hero.value)
                     .font(AppFont.title(weight: .bold))
@@ -67,7 +72,7 @@ struct UsageChartCard: View {
 
                 Text(hero.caption)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -131,7 +136,7 @@ struct UsageChartCard: View {
         } else {
             Text("No activity in this window.")
                 .font(AppFont.body())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: Self.chartHeight)
         }
@@ -188,7 +193,7 @@ struct UsageChartCard: View {
             }
         }
         .font(AppFont.caption2())
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.appSecondary)
         .accessibilityHidden(!hasActivity)
     }
 

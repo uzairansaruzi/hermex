@@ -36,6 +36,7 @@ struct ReviewDiffSurface: UIViewRepresentable {
     let scrollTarget: ReviewDiffScrollTarget?
     var presentation: ReviewDiffPresentation = .diff
     var wrapsLines = false
+    @AppStorage(CodeDisplaySettings.customSizeKey) private var customCodeSize: Double?
     /// Syntax colour runs by row id, replaced whenever `tokensVersion` changes.
     var tokensByRowID: [String: [SourceHighlightRun]] = [:]
     var tokensVersion = 0
@@ -84,6 +85,8 @@ struct ReviewDiffSurface: UIViewRepresentable {
             view.setRows(rows)
         }
         if view.wrapsLines != wrapsLines { view.wrapsLines = wrapsLines }
+        view.customCodeSize = customCodeSize.map { CGFloat($0) }
+        view.fontFamily = AppFontSettings.shared.family
         if coordinator.appliedTokensVersion != tokensVersion {
             coordinator.appliedTokensVersion = tokensVersion
             view.tokensByRowID = tokensByRowID

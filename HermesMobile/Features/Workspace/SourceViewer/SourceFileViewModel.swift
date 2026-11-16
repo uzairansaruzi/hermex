@@ -14,6 +14,9 @@ final class SourceFileViewModel {
     private(set) var tokensVersion = 0
     /// True when this file draws without colour: no grammar, or Highlightr gave up.
     private(set) var isPlainText: Bool
+    /// The reader's lines and open Comment… both quote `rows`; new rows or a refresh drop them.
+    var selection = ReviewDiffSelection()
+    var commentComposer = ReviewCommentComposer()
 
     /// Rows either side of the viewport tokenized along with it.
     static let highlightOverscan = 40
@@ -42,7 +45,7 @@ final class SourceFileViewModel {
     }
 
     /// Replaces the file text. Rows build off the main actor; an older build that
-    /// lands after a newer one is dropped.
+    /// lands after a newer one is dropped. New rows drop the selection and open comment.
     func load(content: String) async {
         loadGeneration += 1
         let buildGeneration = loadGeneration
@@ -57,7 +60,15 @@ final class SourceFileViewModel {
         lines = built.0
         rows = built.1
         rowsVersion += 1
+        dropSelection()
         resetHighlighting()
+    }
+
+    /// Clears the selection and closes an open comment unadded: on new rows, and from
+    /// the surface when a refresh starts, so nothing quotes lines it may replace.
+    func dropSelection() {
+        selection.clear()
+        commentComposer.discard()
     }
 
     func setColorScheme(isDark: Bool) {

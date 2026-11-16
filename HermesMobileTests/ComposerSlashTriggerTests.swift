@@ -44,6 +44,18 @@ final class ComposerSlashTriggerTests: XCTestCase {
         )
     }
 
+    func testAHermesChatOffersOnlyAMatchingSkillMidSentence() {
+        let scope = SlashCommandScope(builtins: SlashCommandCatalog.hermesCommands, isHermes: true)
+        let skills = [SkillSlashSuggestion(name: "demo-skill", category: nil, description: nil)]
+        func panelQuery(_ draft: String) -> String? {
+            ComposerSlashTrigger.detect(in: draft, selection: caret(draft.utf16.count), scope: scope)?
+                .panelQuery(scope: scope, skills: skills, hasLoadedSkills: true, hostCompletion: nil)
+        }
+
+        XCTAssertEqual(panelQuery("use /dem"), "/dem")
+        XCTAssertNil(panelQuery("check /tmp"))
+    }
+
     func testTriggerStopsAtTheCaretRatherThanTheEndOfTheDraft() {
         let trigger = ComposerSlashTrigger.detect(in: "/model gpt", selection: caret(3))
 

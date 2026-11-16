@@ -4,6 +4,30 @@ import XCTest
 /// Every typed Hermes request keeps the exact wire shape the app sent before it
 /// was typed, including the fields it omits. Admission rules live in `BotClientTests`.
 final class HermesRequestTests: XCTestCase {
+    func testPromptSubmitCarriesBoundedTitlePreviewOutsidePromptText() throws {
+        let preview = String(repeating: "😀", count: 1_500)
+        let call = HermesCall.promptSubmit(sessionID: "runtime", text: "@file:pasted-text.txt", titlePreview: preview)
+        let params = try call.params(hostVersion: "0.23.1")
+        XCTAssertEqual(params["text"]?.text, "@file:pasted-text.txt")
+        XCTAssertEqual(params["title_preview"]?.text?.utf16.count, HermesCompatibility.titlePreviewLimit)
+        XCTAssertEqual(params["title_preview"]?.text, String(repeating: "😀", count: 500))
+        XCTAssertNil(try call.params(hostVersion: "0.21.5")["title_preview"])
+        XCTAssertNil(try call.params(hostVersion: nil)["title_preview"], "unknown server versions must omit the optional field")
+        XCTAssertNil(try HermesCall.promptSubmit(sessionID: "runtime", text: "hi").params()["title_preview"])
+    }
+
+    func testApprovalSummarySendsTheFlaggedCommandOutsideTheConversation() throws {
+        let input = "Why it was flagged: Deletes files\nCommand: rm ./draft.txt\nWorking directory: /work"
+        let call = HermesCall.approvalSummary(input: input, language: ApprovalSummaries.language("ja"), sessionID: "runtime", profile: "dev")
+        let params = try call.params()
+        XCTAssertEqual(call.method, "llm.oneshot")
+        XCTAssertEqual(params["input"]?.text, input)
+        XCTAssertEqual(params["session_id"]?.text, "runtime")
+        XCTAssertEqual(params["profile"]?.text, "dev")
+        XCTAssertTrue(params["instructions"]?.text?.contains("in Japanese") == true, "a Japanese app asks for Japanese")
+        XCTAssertNil(params["template"], "A command is not a commit-message template")
+    }
+
     func testEveryCallSendsItsExactWireShape() throws {
         let members = [HermesCall.RoomMember(memberID: "default", profile: "default", handle: "hermes", displayName: "Hermes"),
                        HermesCall.RoomMember(memberID: "dev", profile: "dev", handle: "dev")]
@@ -76,7 +100,7 @@ final class HermesRequestTests: XCTestCase {
             (.sessionResume(profile: "triage", sessionID: "tip", omitMessages: true), "session.resume",
              ["profile": .string("triage"), "session_id": .string("tip"), "close_on_disconnect": .bool(false),
               "omit_messages": .bool(true), "source": .string("gui")]),
-            (.sessionEventsSince(sessionID: "runtime", lastSeen: 7), "session.events.since",
+            (.sessionEventsSince(profile: "triage", sessionID: "runtime", lastSeen: 7, replayEpoch: "e1"), "session.events.since",
              ["session_id": .string("runtime"), "last_seen": .number(7)]),
             (.sessionActiveList, "session.active_list", [:]),
             (.promptSubmit(sessionID: "runtime", text: "hi"), "prompt.submit",
@@ -109,6 +133,8 @@ final class HermesRequestTests: XCTestCase {
              ["session_id": .string("runtime"), "profile": .string("triage")]),
             (.configuredModelOptions, "model.options", ["include_unconfigured": .bool(false)]),
             (.profileModelOptions(profile: "research"), "model.options", ["profile": .string("research")]),
+            (.profileModelOptions(profile: "research", refresh: true), "model.options",
+             ["profile": .string("research"), "refresh": .bool(true)]),
             (.configSet(sessionID: "runtime", profile: "triage", setting: .model(value: "gpt-6 --provider openai --session", confirmExpensive: false)),
              "config.set", ["session_id": .string("runtime"), "profile": .string("triage"), "scope": .string("session"),
                             "key": .string("model"), "value": .string("gpt-6 --provider openai --session"),
@@ -277,7 +303,7 @@ final class HermesRequestTests: XCTestCase {
              "https://hermes.example:9120/api/dashboard/agent-plugins/hermex-push/enable", .object([:]), json),
             (.setPlugin(name: "hermex-push", enabled: false), "POST",
              "https://hermes.example:9120/api/dashboard/agent-plugins/hermex-push/disable", .object([:]), json),
-            (.restartGateway, "POST", "https://hermes.example:9120/api/gateway/restart", .object([:]), json),
+            (.restartGateway(), "POST", "https://hermes.example:9120/api/gateway/restart", .object([:]), json),
             (.pushPairing, "GET", "https://hermes.example:9120/api/plugins/hermex-push/pairing", nil, [:]),
             (.pluginCapabilities, "GET", "https://hermes.example:9120/api/plugins/hermex-push/capabilities", nil, [:]),
             (.restartDashboard, "POST", "https://hermes.example:9120/api/plugins/hermex-push/restart", .object([:]), json),
@@ -286,6 +312,9 @@ final class HermesRequestTests: XCTestCase {
              "https://hermes.example:9120/api/sessions/bg_0a5110/messages?profile=triage", nil, [:]),
             (.sessionList(profile: "triage", offset: 100, archived: true), "GET",
              "https://hermes.example:9120/api/sessions?profile=triage&order=recent&archived=only&limit=100&offset=100&exclude_sources=kanban,oneshot,subagent,tool",
+             nil, [:]),
+            (.sessionList(profile: "triage", offset: 0, archived: true, limit: 0), "GET",
+             "https://hermes.example:9120/api/sessions?profile=triage&order=recent&archived=only&limit=0&offset=0&exclude_sources=kanban,oneshot,subagent,tool",
              nil, [:]),
             (.updateSession(key: "tip", profile: "triage", change: .title("Plan"), identity: nil), "PATCH",
              "https://hermes.example:9120/api/sessions/tip", .object(["title": .string("Plan"), "profile": .string("triage")]), json),
@@ -326,10 +355,11 @@ final class HermesRequestTests: XCTestCase {
             (.skills(profile: "research"), "GET", "https://hermes.example:9120/api/skills?profile=research", nil, [:]),
             (.fsReadText(path: "/h/a+b c/MEMORY.md"), "GET",
              "https://hermes.example:9120/api/fs/read-text?path=/h/a%2Bb%20c/MEMORY.md", nil, [:]),
-            (.fsWriteText(path: "/h/memories/MEMORY.md", content: "a\n§\nb"), "POST", "https://hermes.example:9120/api/fs/write-text",
-             .object(["path": .string("/h/memories/MEMORY.md"), "content": .string("a\n§\nb")]), json),
-            (.filesMkdir(path: "/h/memories"), "POST", "https://hermes.example:9120/api/files/mkdir",
-             .object(["path": .string("/h/memories")]), json),
+            (.filesRead(path: "/h/a+b c/MEMORY.md"), "GET",
+             "https://hermes.example:9120/api/files/read?path=/h/a%2Bb%20c/MEMORY.md", nil, [:]),
+            (.filesUpload(path: "/h/memories/MEMORY.md", text: "a\n§\nb"), "POST", "https://hermes.example:9120/api/files/upload",
+             .object(["path": .string("/h/memories/MEMORY.md"), "overwrite": .bool(true),
+                      "data_url": .string("data:text/plain;base64,YQrCpwpi")]), json),
             (.gitStage(repository: "/r/a+b", file: "Sources/A.swift"), "POST", "https://hermes.example:9120/api/git/review/stage",
              .object(["path": .string("/r/a+b"), "file": .string(":(literal)Sources/A.swift")]), json),
             (.gitUnstage(repository: "/r", file: "A.swift"), "POST", "https://hermes.example:9120/api/git/review/unstage",

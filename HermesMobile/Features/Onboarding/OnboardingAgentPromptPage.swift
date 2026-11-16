@@ -26,7 +26,7 @@ struct OnboardingAgentPromptPage: View {
                     Button(shownPrompt.switchTitle) {
                         shownPrompt = shownPrompt.alternative
                     }
-                    .font(.footnote.weight(.medium))
+                    .font(AppFont.footnote(weight: .medium))
                     .foregroundStyle(.white.opacity(0.55))
                     .multilineTextAlignment(.center)
                     .buttonStyle(.plain)
@@ -36,6 +36,7 @@ struct OnboardingAgentPromptPage: View {
             .padding(.top, 24)
             // Clear the bottom bar's fade so the switch link stays legible at the scroll end.
             .padding(.bottom, OnboardingView.bottomFadeHeight + 16)
+            .macReadableContent()
         }
         .scrollBounceBehavior(.basedOnSize)
     }

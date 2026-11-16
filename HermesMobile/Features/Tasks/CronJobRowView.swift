@@ -35,7 +35,7 @@ struct CronJobRowView: View {
                 }
 
                 Text(metaText)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(metaStyle)
                     .lineLimit(metaLineLimit)
             }
@@ -47,16 +47,16 @@ struct CronJobRowView: View {
 
     private var name: some View {
         Text(job.displayName)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(isDimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            .font(AppFont.subheadline(weight: .semibold))
+            .foregroundStyle(isDimmed ? AnyShapeStyle(.appSecondary) : AnyShapeStyle(.appPrimary))
             .lineLimit(nameLineLimit)
     }
 
     /// Beside the name, or under it at accessibility sizes where both need the width.
     private func profileLabel(_ profile: String) -> some View {
         Text(verbatim: profile)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(AppFont.caption())
+            .foregroundStyle(.appSecondary)
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
     }
 
@@ -136,9 +136,9 @@ struct CronJobRowView: View {
         case .needsAttention:
             return AnyShapeStyle(.red)
         case .paused:
-            return AnyShapeStyle(.tertiary)
+            return AnyShapeStyle(.appTertiary)
         default:
-            return AnyShapeStyle(.secondary)
+            return AnyShapeStyle(.appSecondary)
         }
     }
 

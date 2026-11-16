@@ -10,7 +10,7 @@ extension View {
     /// happens to sit underneath.
     func pendingRequestCardSurface(cornerRadius: CGFloat) -> some View {
         background(
-            Color(.secondarySystemBackground),
+            Color(.appSurface),
             in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         )
         .overlay(
@@ -32,10 +32,10 @@ extension View {
     @ViewBuilder
     func pendingRequestChoiceSurface(reduceTransparency: Bool) -> some View {
         if reduceTransparency {
-            background(Color(.tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            background(Color(.appRaised), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color(.separator), lineWidth: 1)
+                        .stroke(Color(.appSeparator), lineWidth: 1)
                 )
         } else if #available(iOS 26.0, *) {
             // Fixed corner radius (not .capsule): a capsule's radius grows with the
@@ -93,7 +93,7 @@ struct PendingRequestSubmitButton: View {
     }
 
     private var foreground: Color {
-        guard canSubmit else { return Color(.secondaryLabel) }
+        guard canSubmit else { return Color(.appTextSecondary) }
         return colorScheme == .dark ? .black : .white
     }
 }

@@ -11,7 +11,7 @@ struct APIKeysView: View {
     }
 
     var body: some View {
-        List {
+        AppList {
             if let profile = model.profile {
                 profileSection(profile)
             }
@@ -48,19 +48,11 @@ struct APIKeysView: View {
         }
     }
 
-    /// The Profile the page lists, a menu of the others when the host has more than one.
+    /// The Profile the page lists, with what its list covers.
     private func profileSection(_ profile: String) -> some View {
-        Section {
-            if model.profiles.count > 1 {
-                Picker("Profile", selection: Binding(get: { profile }, set: { name in Task { await model.select(name) } })) {
-                    ForEach(model.profiles, id: \.self) { Text(verbatim: $0).tag($0) }
-                }
-                .pickerStyle(.menu)
-            } else {
-                LabeledContent("Profile") { Text(verbatim: profile) }
-            }
-        } footer: {
-            Text("Keys in this Profile's .env file. Keys the host gets from its environment or a sign-in still work but aren't listed.")
+        ServerProfileRow(profiles: model.profiles, selection: profile,
+                         footer: "Keys in this Profile's .env file. Keys the host gets from its environment or a sign-in still work but aren't listed.") { name in
+            Task { await model.select(name) }
         }
     }
 
@@ -112,7 +104,7 @@ struct APIKeysView: View {
                                 if let preview = key.preview {
                                     Text(verbatim: preview)
                                         .font(.callout.monospaced())
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.appSecondary)
                                         .lineLimit(1)
                                 }
                             }
@@ -149,11 +141,11 @@ struct APIKeyRow<Trailing: View>: View {
         } label: {
             Text(verbatim: key.title)
                 .font(key.hasLabel ? .body : .body.monospaced())
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
             if key.hasLabel {
                 Text(verbatim: key.name)
                     .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
         }
         .accessibilityElement(children: .combine)

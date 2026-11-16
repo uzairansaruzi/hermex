@@ -37,6 +37,14 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         pendingTransitionFocus = nil
     }
 
+    /// Gives up the keyboard for dictation, sent down the responder chain from the
+    /// mic. A live composition is committed first, or dictation's first write would
+    /// replace the document under it and split its characters (#312).
+    @objc func resignForDictation() {
+        if markedTextRange != nil { unmarkText() }
+        _ = resignFirstResponder()
+    }
+
     override func resignFirstResponder() -> Bool {
         cancelDeferredFocus()
         return super.resignFirstResponder()
@@ -63,9 +71,11 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     var acceptsAttachments = true
-    var isKeyboardSendEnabled = false
-    var isReturnSendEnabled = true
-    var onKeyboardSend: () -> Void = {}
+    var keyboardCommands = ComposerKeyboardCommands()
+    /// Settings' Send with Return (#1655): a hardware-keyboard ↩ does what ⌘↩ does,
+    /// and ⇧↩ or ⌥↩ types the newline. UIKit sends key commands only from a
+    /// hardware keyboard, so the on-screen Return key keeps typing newlines.
+    var returnSends = false
     /// The chat's last sent message, which ↑ brings back into an empty editor
     /// on a hardware keyboard. Nil where there is no single author to recall
     /// (Bot rooms), which leaves ↑ to move the caret.
@@ -74,6 +84,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     var onPasteFileURLs: ([URL]) -> Void = { _ in }
     var onPasteImageProviders: ([NSItemProvider]) -> Void = { _ in }
     var onPasteImages: ([UIImage]) -> Void = { _ in }
+    /// Takes a paste past `ComposerLargePaste.threshold` as a file (#1381). Nil
+    /// keeps every paste inline and turns Paste as Text off.
+    var onPasteLargeText: ((String) -> Void)?
+    /// What paste reads and copy writes. Tests use a private one rather than the
+    /// clipboard the simulator shares with the Mac.
+    var pasteboard = UIPasteboard.general
     /// Reports a tap that landed on a chip's glyph. Every chip reports; what a
     /// tap means belongs to the composer.
     var onTapChip: (ComposerChipToken) -> Void = { _ in }
@@ -129,9 +145,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     /// of appearance or text size has to redraw it even when the draft has not
     /// moved at all.
     private struct ChipRenderStyle: Equatable {
+        let fontName: String
         let fontPointSize: CGFloat
         let userInterfaceStyle: UIUserInterfaceStyle
+        let appearance: AppAppearance
         let accessibilityContrast: UIAccessibilityContrast
+        let displayScale: CGFloat
         let isRightToLeft: Bool
         let quoteMaximumWidth: CGFloat
     }
@@ -142,7 +161,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         addGestureRecognizer(chipTapRecognizer)
 
         registerForTraitChanges(
-            [UITraitUserInterfaceStyle.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self]
+            [UITraitUserInterfaceStyle.self, AppAppearanceTrait.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]
         ) { (view: ComposerChipTextView, _) in
             // Deferred: `adjustsFontForContentSizeCategory` updates `font` from
             // the same trait change, and the chips have to be sized against the
@@ -191,7 +210,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             textAlignment = alignment
         }
 
-        let color: UIColor = isDisabled ? .secondaryLabel : .label
+        let color: UIColor = isDisabled ? .appTextSecondary : .appText
         if textColor != color {
             textColor = color
         }
@@ -340,12 +359,19 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var currentStyle: ChipRenderStyle {
         ChipRenderStyle(
-            fontPointSize: (font ?? .preferredFont(forTextStyle: .body)).pointSize,
+            fontName: (font ?? fallbackFont).fontName,
+            fontPointSize: (font ?? fallbackFont).pointSize,
             userInterfaceStyle: traitCollection.userInterfaceStyle,
+            appearance: traitCollection[AppAppearanceTrait.self],
             accessibilityContrast: traitCollection.accessibilityContrast,
+            displayScale: traitCollection.displayScale,
             isRightToLeft: isRightToLeft,
             quoteMaximumWidth: max(120, min(260, bounds.width * 0.72))
         )
+    }
+
+    private var fallbackFont: UIFont {
+        .app(forTextStyle: .body, compatibleWith: traitCollection)
     }
 
     private var isRightToLeft: Bool {
@@ -354,7 +380,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     private var baseAttributes: [NSAttributedString.Key: Any] {
         [
-            .font: font ?? .preferredFont(forTextStyle: .body),
+            .font: font ?? fallbackFont,
             .foregroundColor: textColor ?? .label
         ]
     }
@@ -365,7 +391,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         quotes: [ComposerQuote],
         sourceSelection: NSRange
     ) {
-        let font = self.font ?? .preferredFont(forTextStyle: .body)
+        let font = self.font ?? fallbackFont
         let textColor = self.textColor ?? .label
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: textColor]
         let metrics = ComposerChipMetrics(editorFont: font)
@@ -457,7 +483,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             traits: traitCollection,
             isRightToLeft: isRightToLeft
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerChipAttachment(
             token: token,
             image: image,
@@ -483,7 +509,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             maximumWidth: currentStyle.quoteMaximumWidth,
             usesAccentIcon: true
         )
-        let font = (attributes[.font] as? UIFont) ?? .preferredFont(forTextStyle: .body)
+        let font = (attributes[.font] as? UIFont) ?? fallbackFont
         let attachment = ComposerQuoteAttachment(
             quote: quote,
             image: image,
@@ -535,7 +561,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             super.copy(sender)
             return
         }
-        UIPasteboard.general.string = attributedText.composerSourceText(in: selectedRange)
+        pasteboard.string = attributedText.composerSourceText(in: selectedRange)
     }
 
     override func cut(_ sender: Any?) {
@@ -543,7 +569,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             super.cut(sender)
             return
         }
-        UIPasteboard.general.string = attributedText.composerSourceText(in: selectedRange)
+        pasteboard.string = attributedText.composerSourceText(in: selectedRange)
         replace(range, withText: "")
     }
 
@@ -581,32 +607,56 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     override var keyCommands: [UIKeyCommand]? {
-        let sendCommand = UIKeyCommand(
-            title: ComposerKeyboardCommand.title,
-            action: #selector(sendMessageFromKeyboard),
-            input: ComposerKeyboardCommand.input,
-            modifierFlags: ComposerKeyboardCommand.modifierFlags
-        )
-        var sendCommands = [sendCommand]
-        #if targetEnvironment(macCatalyst)
-        let returnCommand = UIKeyCommand(
-            title: ComposerKeyboardCommand.title,
-            action: #selector(sendMessageFromReturnKey),
-            input: ComposerKeyboardCommand.input,
-            modifierFlags: []
-        )
-        returnCommand.wantsPriorityOverSystemBehavior = true
-        sendCommands.append(returnCommand)
-        let newlineCommand = UIKeyCommand(
-            input: ComposerKeyboardCommand.input, modifierFlags: .shift,
-            action: #selector(insertNewlineFromKeyboard)
-        )
-        newlineCommand.wantsPriorityOverSystemBehavior = true
-        sendCommands.append(newlineCommand)
-        #endif
-        guard recallLastSentText != nil else {
-            return (super.keyCommands ?? []) + sendCommands
+        var commands = super.keyCommands ?? []
+        if let send = keyboardCommands.send {
+            commands.append(UIKeyCommand(
+                title: send.title, action: #selector(sendFromKeyboard), input: "\r", modifierFlags: .command
+            ))
         }
+        // Left out entirely while an IME composition is open, so ↩ confirms the
+        // candidate. Otherwise registered even while Send is unavailable, so ↩ on an
+        // empty or blocked draft does nothing rather than type a newline.
+        if returnSends, acceptsKeyboardCommands {
+            let send = UIKeyCommand(
+                title: keyboardCommands.send?.title ?? String(localized: "Send Message"),
+                action: #selector(returnFromKeyboard), input: "\r", modifierFlags: []
+            )
+            send.wantsPriorityOverSystemBehavior = true
+            commands.append(send)
+            // ⌥↩ works too but stays out of the ⌘-hold overlay, which lists ⇧↩ once.
+            let newlines = [
+                UIKeyCommand(
+                    title: String(localized: "New Line"), action: #selector(newlineFromKeyboard),
+                    input: "\r", modifierFlags: .shift
+                ),
+                UIKeyCommand(input: "\r", modifierFlags: .alternate, action: #selector(newlineFromKeyboard)),
+            ]
+            for newline in newlines {
+                newline.wantsPriorityOverSystemBehavior = true
+                commands.append(newline)
+            }
+        }
+        if let alternateSend = keyboardCommands.alternateSend {
+            commands.append(UIKeyCommand(
+                title: alternateSend.title, action: #selector(alternateSendFromKeyboard), input: "\r",
+                modifierFlags: [.command, .shift]
+            ))
+        }
+        if let escape = keyboardCommands.escape {
+            let command = UIKeyCommand(
+                title: escape.title, action: #selector(escapeFromKeyboard), input: UIKeyCommand.inputEscape,
+                modifierFlags: []
+            )
+            command.wantsPriorityOverSystemBehavior = true
+            commands.append(command)
+        }
+        if onPasteLargeText != nil {
+            commands.append(UIKeyCommand(
+                title: ComposerLargePaste.bypassTitle, action: #selector(pasteAsText), input: "v",
+                modifierFlags: [.command, .shift]
+            ))
+        }
+        guard recallLastSentText != nil else { return commands }
         let recallCommand = UIKeyCommand(
             title: ComposerRecall.commandTitle,
             action: #selector(recallLastSentTextFromKeyboard),
@@ -615,39 +665,36 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         )
         // Arrow keys go to text editing first otherwise.
         recallCommand.wantsPriorityOverSystemBehavior = true
-        return (super.keyCommands ?? []) + sendCommands + [recallCommand]
+        return commands + [recallCommand]
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if action == #selector(sendMessageFromKeyboard) {
-            #if targetEnvironment(macCatalyst)
-            return ComposerKeyboardSendPolicy.canSend(
-                isEnabled: isKeyboardSendEnabled, hasMarkedText: markedTextRange != nil,
-                isPlainReturn: false, allowsPlainReturn: isReturnSendEnabled
-            )
-            #else
-            return isKeyboardSendEnabled
-            #endif
+        if action == #selector(sendFromKeyboard) {
+            return acceptsKeyboardCommands && keyboardCommands.send != nil
         }
 
-        #if targetEnvironment(macCatalyst)
-        if action == #selector(insertNewlineFromKeyboard) {
-            return isEditable && markedTextRange == nil
+        if action == #selector(returnFromKeyboard) || action == #selector(newlineFromKeyboard) {
+            return acceptsKeyboardCommands && returnSends
         }
-        if action == #selector(sendMessageFromReturnKey) {
-            return ComposerKeyboardSendPolicy.canSend(
-                isEnabled: isKeyboardSendEnabled, hasMarkedText: markedTextRange != nil,
-                isPlainReturn: true, allowsPlainReturn: isReturnSendEnabled
-            )
+
+        if action == #selector(alternateSendFromKeyboard) {
+            return acceptsKeyboardCommands && keyboardCommands.alternateSend != nil
         }
-        #endif
+
+        if action == #selector(escapeFromKeyboard) {
+            return acceptsKeyboardCommands && keyboardCommands.escape != nil
+        }
 
         if action == #selector(recallLastSentTextFromKeyboard) {
             return recallableText != nil
         }
 
+        if action == #selector(pasteAsText) {
+            return canPasteAsText
+        }
+
         if action == #selector(paste(_:)), !acceptsAttachments {
-            return isEditable && UIPasteboard.general.hasStrings
+            return isEditable && pasteboard.hasStrings
         }
 
         if action == #selector(paste(_:)), hasPasteboardContent {
@@ -657,31 +704,42 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return super.canPerformAction(action, withSender: sender)
     }
 
-    @objc private func sendMessageFromKeyboard() {
-        #if targetEnvironment(macCatalyst)
-        guard canPerformAction(#selector(sendMessageFromKeyboard), withSender: nil) else { return }
-        #else
-        guard isKeyboardSendEnabled else { return }
-        #endif
-        onKeyboardSend()
+    /// A locked editor takes no command, and an unfinished IME composition keeps
+    /// Return and Esc for itself: ⌘↩ must never submit half-composed text. Checked
+    /// again when a key fires, since UIKit can dispatch a command it listed earlier.
+    private var acceptsKeyboardCommands: Bool {
+        isEditable && markedTextRange == nil
     }
 
-    #if targetEnvironment(macCatalyst)
-    @objc private func insertNewlineFromKeyboard() {
-        guard canPerformAction(#selector(insertNewlineFromKeyboard), withSender: nil) else { return }
+    @objc private func sendFromKeyboard() {
+        guard acceptsKeyboardCommands else { return }
+        keyboardCommands.send?.perform()
+    }
+
+    @objc private func returnFromKeyboard() {
+        guard acceptsKeyboardCommands, returnSends else { return }
+        keyboardCommands.send?.perform()
+    }
+
+    @objc private func newlineFromKeyboard() {
+        guard acceptsKeyboardCommands, returnSends else { return }
         insertText("\n")
     }
 
-    @objc private func sendMessageFromReturnKey() {
-        guard canPerformAction(#selector(sendMessageFromReturnKey), withSender: nil) else { return }
-        onKeyboardSend()
+    @objc private func alternateSendFromKeyboard() {
+        guard acceptsKeyboardCommands else { return }
+        keyboardCommands.alternateSend?.perform()
     }
-    #endif
+
+    @objc private func escapeFromKeyboard() {
+        guard acceptsKeyboardCommands else { return }
+        keyboardCommands.escape?.perform()
+    }
 
     /// What ↑ would bring back. Only an empty editor takes it, so ↑ inside a
     /// draft, or with a quote staged, keeps moving the caret.
     private var recallableText: String? {
-        guard isEditable, quotes.isEmpty, textStorage.length == 0,
+        guard acceptsKeyboardCommands, quotes.isEmpty, textStorage.length == 0,
               let text = recallLastSentText?(), !text.isEmpty
         else {
             return nil
@@ -712,7 +770,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     override func paste(_ sender: Any?) {
         guard acceptsAttachments else {
-            guard isEditable, let text = UIPasteboard.general.string else { return }
+            guard isEditable, let text = pasteboard.string else { return }
             insertText(text)
             return
         }
@@ -735,17 +793,36 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             return
         }
 
-        let images = UIPasteboard.general.images ?? []
+        let images = pasteboard.images ?? []
         if !images.isEmpty {
             onPasteImages(images)
+            return
+        }
+
+        // An IME composition keeps UIKit's own paste.
+        if let onPasteLargeText, isEditable, markedTextRange == nil,
+           let text = pasteboard.string, ComposerLargePaste.converts(text) {
+            onPasteLargeText(text)
             return
         }
 
         super.paste(sender)
     }
 
+    /// Whether ⌘⇧V and the edit menu's Paste as Text are on: only where long
+    /// pastes convert, and never mid-composition.
+    var canPasteAsText: Bool {
+        onPasteLargeText != nil && acceptsKeyboardCommands && pasteboard.hasStrings
+    }
+
+    /// Puts the copied text in inline however long it is, as an ordinary edit
+    /// that publishes the draft and that undo takes back.
+    @objc func pasteAsText() {
+        guard canPasteAsText, let text = pasteboard.string else { return }
+        insertText(text)
+    }
+
     private var hasPasteboardContent: Bool {
-        let pasteboard = UIPasteboard.general
         return pasteboard.hasStrings
             || !pasteboardFileProviders.isEmpty
             || !pasteboardFileURLs.isEmpty
@@ -754,17 +831,17 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     private var pasteboardFileProviders: [NSItemProvider] {
-        UIPasteboard.general.itemProviders.filter {
+        pasteboard.itemProviders.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
         }
     }
 
     private var pasteboardFileURLs: [URL] {
-        UIPasteboard.general.urls?.filter(\.isFileURL) ?? []
+        pasteboard.urls?.filter(\.isFileURL) ?? []
     }
 
     private var pasteboardImageProviders: [NSItemProvider] {
-        UIPasteboard.general.itemProviders.filter {
+        pasteboard.itemProviders.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
         }
     }

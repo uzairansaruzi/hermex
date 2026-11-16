@@ -21,13 +21,15 @@ import UIKit
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene, session.role == .windowApplication else { return }
         #if targetEnvironment(macCatalyst)
-        // Keep the desktop sidebar usable as the user resizes the window.
         windowScene.sizeRestrictions?.minimumSize = CGSize(width: 800, height: 600)
         #endif
+        AppTextSize.applyStoredSize(to: windowScene)
+        AppAppearanceSettings.applyStored(to: windowScene)
         let window = UIWindow(windowScene: windowScene)
         window.windowLevel = .alert + 1
         let host = UIHostingController(rootView: AppLockView(lock: lock, icon: .current))
-        host.view.backgroundColor = .systemBackground
+        host.view.backgroundColor = .appCanvas
+        window.tintColor = .appAccent
         window.rootViewController = host
         // VoiceOver reads only the lock while it is up.
         window.accessibilityViewIsModal = true
@@ -117,7 +119,7 @@ import UIKit
         }
     }
 
-    /// The Theme setting, which the app window gets through `preferredColorScheme`.
+    /// The Color Scheme setting, which the app window gets through `preferredColorScheme`.
     private static var themeStyle: UIUserInterfaceStyle {
         switch AppTheme.storedValue(UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? "") {
         case .system: .unspecified
@@ -175,7 +177,8 @@ struct AppLockView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Color(.appCanvas).ignoresSafeArea())
+        .appRootFont()
     }
 
     private var locked: some View {
@@ -195,7 +198,7 @@ struct AppLockView: View {
 
             Text("This iPhone no longer has a passcode, so the lock is off. Set a passcode, then turn the lock back on in Settings.")
                 .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 310)
                 .fixedSize(horizontal: false, vertical: true)
@@ -241,7 +244,7 @@ private struct AppLockIcon: View {
             .scaledToFit()
             .frame(width: 76, height: 76)
             .clipShape(shape)
-            .overlay(shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+            .overlay(shape.strokeBorder(Color(.appText).opacity(0.08), lineWidth: 1))
             .accessibilityHidden(true)
     }
 
@@ -272,15 +275,15 @@ private struct AppLockButton: View {
                 }
             }
             .font(AppFont.subheadline(weight: .medium))
-            .foregroundStyle(.primary)
+            .foregroundStyle(.appPrimary)
             .padding(.horizontal, 22)
             .padding(.vertical, 10)
             .frame(minWidth: 190, minHeight: 46)
-            .background { shape.fill(Color.primary.opacity(0.08)) }
+            .background { shape.fill(Color(.appText).opacity(0.08)) }
             .adaptiveGlass(.regular, isInteractive: true, fallbackMaterial: .thinMaterial, in: shape)
             .overlay {
                 shape
-                    .stroke(Color.primary.opacity(colorSchemeContrast == .increased ? 0.24 : 0.12), lineWidth: 0.7)
+                    .stroke(Color(.appText).opacity(colorSchemeContrast == .increased ? 0.24 : 0.12), lineWidth: 0.7)
                     .allowsHitTesting(false)
             }
             .contentShape(shape)

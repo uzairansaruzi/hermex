@@ -1,24 +1,48 @@
 import Foundation
 
-/// Loads read-only git status for a chat's repository (issue #312, Slice A; Hermes #1114).
+/// Loads read-only git status for a chat's repository (issue #312, Slice A; Hermes #1114), and on a
+/// Hermes host the branch's committed changes too (This Branch, #1386).
 ///
 /// State is per repository client: a webui session's (`WebUIGitClient`, which only ever sends
 /// that session's `session_id`, so the server resolves the workspace path) or a Hermes chat's
 /// folder (`HermesGitClient`). Two sessions on the same folder therefore see the same git
 /// state; different folders see independent state.
+///
+/// Each scope keeps its own result, loading and error state, so neither's answer shows under the
+/// other. Within a scope only the newest read publishes, and a cancelled one (the sheet closed, or
+/// its `.task(id:)` moved to the other scope) publishes nothing, so coming back reads again.
 @Observable
 final class GitWorkspaceViewModel {
     /// Nil for a webui session without an ID.
     private let git: (any GitDataClient)?
+    /// The chat's review progress, pruned to each successful status read (`ReviewProgressStore`).
+    private let progress: ReviewProgressStore?
+
+    /// The picker's selection: Uncommitted or This Branch, never a turn's range. Each sheet opens
+    /// on Uncommitted.
+    var scope: GitReviewScope = .uncommitted
 
     private(set) var status: GitStatus?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    /// The failure of the latest `load()` or `loadIfNeeded()`, for the sheet to report once.
     private(set) var lastError: Error?
     private var hasLoaded = false
 
-    init(git: (any GitDataClient)?) {
+    /// This Branch's last answer; nil until one lands, after a failed read, and after one from
+    /// outside a repository.
+    private(set) var branchReview: GitBranchReview?
+    private(set) var isLoadingBranch = false
+    private(set) var branchErrorMessage: String?
+    private(set) var hasLoadedBranch = false
+
+    /// Bumped by each read of its scope; a read publishes only while it is still the latest.
+    private var statusRead = 0
+    private var branchRead = 0
+
+    init(git: (any GitDataClient)?, progress: ReviewProgressStore? = nil) {
         self.git = git
+        self.progress = progress
     }
 
     convenience init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
@@ -36,32 +60,89 @@ final class GitWorkspaceViewModel {
         status?.isGit == true
     }
 
+    /// Whether Uncommitted shows its retryable failure: no status, and none on the way.
+    var showsStatusFailure: Bool {
+        status == nil && (errorMessage != nil || hasLoaded && !isLoading)
+    }
+
+    /// Whether the sheet offers This Branch: a Hermes repository, since webui has no branch range.
+    var showsScopePicker: Bool {
+        git?.isHermes == true && hasRepository
+    }
+
+    /// Reads the selected scope unless it has loaded.
     @MainActor
     func loadIfNeeded() async {
-        guard !hasLoaded, !isLoading else { return }
+        lastError = nil
+        switch scope {
+        case .uncommitted, .since: guard !hasLoaded else { return }
+        case .branch: guard !hasLoadedBranch else { return }
+        }
         await load()
     }
 
+    /// Reads the selected scope again. A load cancelled while it waits (its sheet closed, or a
+    /// newer retry replaced it) writes nothing when it returns, so it never prunes choices made
+    /// in a sheet opened since.
     @MainActor
     func load() async {
+        switch scope {
+        case .uncommitted, .since: await loadStatus()
+        case .branch: await loadBranch()
+        }
+    }
+
+    @MainActor
+    private func loadStatus() async {
         guard let git else {
             errorMessage = String(localized: "Session ID is missing.")
             return
         }
-
+        statusRead += 1
+        let read = statusRead
         isLoading = true
         errorMessage = nil
         lastError = nil
+        defer { if read == statusRead { isLoading = false } }
 
         do {
-            status = try await git.status()
+            let loaded = try await git.status()
+            guard read == statusRead, !Task.isCancelled else { return }
+            status = loaded
             hasLoaded = true
+            progress?.prune(to: loaded, in: git.reviewScope)
         } catch {
+            guard read == statusRead, !Task.isCancelled else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }
+    }
 
-        isLoading = false
+    /// A failure drops the last answer, so the sheet shows a retryable failure rather than a stale
+    /// or empty range (a Hermes chat reports no `lastError`). Branch progress is pruned within its
+    /// own range (`GitDataClient.progressScope`), never by the working tree's status.
+    @MainActor
+    private func loadBranch() async {
+        guard let git else { return }
+        branchRead += 1
+        let read = branchRead
+        isLoadingBranch = true
+        branchErrorMessage = nil
+        lastError = nil
+        defer { if read == branchRead { isLoadingBranch = false } }
+
+        do {
+            let review = try await git.branchReview()
+            guard read == branchRead, !Task.isCancelled else { return }
+            branchReview = review
+            hasLoadedBranch = true
+            if let review { progress?.prune(toListed: review.files, in: git.progressScope(.branch, base: review.base)) }
+        } catch {
+            guard read == branchRead, !Task.isCancelled else { return }
+            lastError = error
+            branchReview = nil
+            branchErrorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -69,7 +150,7 @@ final class GitWorkspaceViewModel {
 /// The toolbar stays hidden unless the server confirms `is_git == true`.
 ///
 /// Everything goes through `git` (#1114, #1115, #1116): reads, commits, pushes, branch switches,
-/// and fetch, pull and New Branch where `supportsSync` (#1236).
+/// fetch, pull and New Branch where `supportsSync` (#1236), and the branch's pull request (#1391).
 @Observable
 final class GitWorkspaceAvailabilityViewModel {
     /// What the menu, Changes sheet and diffs read; nil when the chat has no repository to read.
@@ -97,6 +178,10 @@ final class GitWorkspaceAvailabilityViewModel {
     private var hasLoaded = false
     /// Set once the chat leaves this repository (`retire()`).
     private(set) var isRetired = false
+    /// The latest turn's range since the base its send read (#1392), apart from `status`, which the
+    /// toolbar and commit surfaces keep reading. Only the newest read publishes (`turnReviewRead`).
+    private var turnReview: (base: GitTurnBase, review: GitTurnReview)?
+    private var turnReviewRead = 0
 
     init(git: (any GitDataClient)?) {
         self.git = git
@@ -109,9 +194,56 @@ final class GitWorkspaceAvailabilityViewModel {
 
     /// Called when the chat leaves this repository, as a Hermes chat does when its folder changes:
     /// an action still running finishes without a result to show (`GitQuickCommitOutcome.retired`,
-    /// and no message for a remote action), so nothing from this repository appears under the next.
-    func retire() {
+    /// and no message for a remote action), and a pull-request read still out never lands, so
+    /// nothing from this repository appears under the next.
+    @MainActor func retire() {
         isRetired = true
+        suspendPullRequestReads()
+    }
+
+    /// Reads the latest turn's range since `base` at turn end (#1392); nil, for a turn without
+    /// one, forgets the last. A read the chat has moved past, to another turn or folder, publishes
+    /// nothing.
+    @MainActor
+    func loadTurnReview(since base: GitTurnBase?) async {
+        turnReviewRead += 1
+        let read = turnReviewRead
+        guard let base, let git else {
+            turnReview = nil
+            return
+        }
+        turnReview = (base, .reading)
+        let review: GitTurnReview
+        do {
+            review = try await git.changes(since: base.sha).map(GitTurnReview.read) ?? .failed
+        } catch {
+            review = .failed
+        }
+        guard read == turnReviewRead, !isRetired else { return }
+        turnReview = (base, review)
+    }
+
+    /// Reads the latest turn's range again after a switch or pull here moved the tree it compares
+    /// with; nothing while no turn's range is held.
+    @MainActor
+    private func reloadTurnReview() async {
+        guard let base = turnReview?.base else { return }
+        await loadTurnReview(since: base)
+    }
+
+    /// The rows the latest turn's card joins and the range they were read in (#1392): the range
+    /// since `base` once read; the uncommitted status without a base or once that read failed; nil
+    /// while it reads, so the card shows once, under the right label.
+    @MainActor
+    func turnChangeRows(since base: GitTurnBase?) -> (files: [GitFile], scope: GitReviewScope)? {
+        let uncommitted = (files: status?.files ?? [], scope: GitReviewScope.uncommitted)
+        guard let base else { return uncommitted }
+        guard let turnReview, turnReview.base == base else { return nil }
+        switch turnReview.review {
+        case .reading: return nil
+        case .read(let files): return (files, .since(base: base.sha))
+        case .failed: return uncommitted
+        }
     }
 
     /// Whether the menu can stage, commit and push: a repository client to write through.
@@ -145,6 +277,7 @@ final class GitWorkspaceAvailabilityViewModel {
             lastError = nil
 
             if hasRepository {
+                refreshPullRequest()
                 isStatusLoading = true
                 do {
                     status = try await git.status()
@@ -211,10 +344,10 @@ final class GitWorkspaceAvailabilityViewModel {
         isLoadingBranches = false
     }
 
-    /// Switches branches, then reads the status and branches again. A failed Hermes switch reads
-    /// them again too; one finishing after `retire()` has nothing to show (`.retired`). Refused,
-    /// quietly, while another write holds the repository's `GitWriteLock`, as the picker is
-    /// disabled then.
+    /// Switches branches, then reads the status, branches and the latest turn's range again. A
+    /// failed Hermes switch reads the status and branches again too; one finishing after
+    /// `retire()` has nothing to show (`.retired`). Refused, quietly, while another write holds
+    /// the repository's `GitWriteLock`, as the picker is disabled then.
     @MainActor
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool = false) async -> GitCheckoutOutcome {
         guard let git, !isSwitchingBranch, git.writeLock?.acquire() ?? true else { return .failure }
@@ -229,10 +362,16 @@ final class GitWorkspaceAvailabilityViewModel {
             let response = try await git.checkout(target, stashingChanges: stashingChanges)
             guard !isRetired else { return .retired }
             apply(response)
+            // The previous branch's link goes now, not once the reads below answer (they can fail),
+            // and the new one belongs to the branch the host switched to.
+            pullRequestRead = nil
+            refreshPullRequest(force: true, on: response.currentBranch)
+            async let turnRange: Void = reloadTurnReview()
             await refreshGitInfo()
             // Reload the branch list so the picker + composer pill reflect the new
             // current branch (a freshly created branch isn't in the cached list yet).
             await loadBranches()
+            await turnRange
             guard !isRetired else { return .retired }
             lastActionMessage = response.message
             if response.restoreFailed == true {
@@ -264,8 +403,11 @@ final class GitWorkspaceAvailabilityViewModel {
             guard !isRetired else { return false }
             status = response.status ?? status
             lastActionMessage = response.message
+            async let turnRange: Void = action == .pull ? reloadTurnReview() : ()
             await loadBranches()
             await refreshGitInfo()
+            await turnRange
+            if action == .push { refreshPullRequest(force: true) }
             return !isRetired && response.ok != false
         } catch {
             guard !isRetired else { return false }
@@ -357,6 +499,7 @@ final class GitWorkspaceAvailabilityViewModel {
             await loadBranches()
             await refreshGitInfo()
             guard !isRetired else { return .retired }
+            if didPush { refreshPullRequest(force: true) }
 
             return .success(GitQuickCommitResult(
                 shortSHA: commit.shortSHA,
@@ -379,9 +522,9 @@ final class GitWorkspaceAvailabilityViewModel {
         notify?(phase)
     }
 
-    /// Re-fetch info, status and branches after the advanced staging sheet mutates the
-    /// working tree, a turn ends, or a Hermes write here fails partway, so the toolbar badge and
-    /// Changes row stay in sync. A closed sync gate is asked again, so a host whose plugin read
+    /// Re-fetch info, status, branches and the pull request after the advanced staging sheet
+    /// mutates the working tree, a turn ends, or a Hermes write here fails partway, so the toolbar
+    /// badge, Changes row and pull-request link stay in sync. A closed sync gate is asked again, so a host whose plugin read
     /// failed, or that has loaded the plugin since, shows sync without reopening the chat; an open
     /// one isn't, and a route that has gone fails as any write does.
     @MainActor
@@ -391,6 +534,7 @@ final class GitWorkspaceAvailabilityViewModel {
         await refreshGitInfo()
         if let open = await sync { supportsSync = open }
         guard let git, hasRepository else { return }
+        refreshPullRequest(force: true)
         if let refreshed = try? await git.status() {
             status = refreshed
             statusError = nil
@@ -400,6 +544,72 @@ final class GitWorkspaceAvailabilityViewModel {
 
     func clearActionError() {
         actionErrorMessage = nil
+    }
+
+    // MARK: - Pull request (#1391)
+
+    /// How long a pull-request read stands before opening the menu reads it again.
+    static let pullRequestFreshness: TimeInterval = 60
+
+    /// The last pull-request answer and the branch it was read on.
+    private var pullRequestRead: (branch: String, pullRequest: GitPullRequest?)?
+    private var pullRequestFreshUntil: Date?
+    private var pullRequestTask: Task<Void, Never>?
+    /// Bumped by each read and by `suspendPullRequestReads()`, so only the latest read's answer lands.
+    private var pullRequestGeneration = 0
+    /// Set while the chat is off screen, so a switch or push finishing then reads nothing.
+    private var arePullRequestReadsSuspended = false
+
+    /// The current branch's pull request, for the Git menu's link; nil when there is none, its
+    /// read failed, or it was read on another branch, so a switch drops the link at once.
+    var pullRequest: GitPullRequest? {
+        guard let pullRequestRead, pullRequestRead.branch == currentBranchName else { return nil }
+        return pullRequestRead.pullRequest
+    }
+
+    /// Reads the branch's pull request in the background, apart from the status and branches, so
+    /// a slow `gh` on the host never holds them. Without `force` a read still running, or one from
+    /// the last `pullRequestFreshness`, stands; `force` reads again after something that can
+    /// change it: a branch switch, a push, or a turn. A failed or timed-out read shows no link.
+    /// The answer belongs to `branch`, by default the current one.
+    /// Returns the read that will answer, if any, for a caller to wait on.
+    @MainActor @discardableResult
+    func refreshPullRequest(force: Bool = false, on branch: String? = nil) -> Task<Void, Never>? {
+        guard let git, hasRepository, !isRetired, !arePullRequestReadsSuspended else { return nil }
+        if !force {
+            if let pullRequestTask { return pullRequestTask }
+            if let pullRequestFreshUntil, Date() < pullRequestFreshUntil { return nil }
+        }
+        pullRequestTask?.cancel()
+        pullRequestGeneration += 1
+        let generation = pullRequestGeneration
+        let branch = branch ?? currentBranchName
+        let task = Task { @MainActor [weak self] in
+            let pullRequest = try? await git.pullRequest()
+            guard let self, generation == pullRequestGeneration else { return }
+            pullRequestTask = nil
+            pullRequestRead = (branch, pullRequest)
+            pullRequestFreshUntil = Date().addingTimeInterval(Self.pullRequestFreshness)
+        }
+        pullRequestTask = task
+        return task
+    }
+
+    /// Stops a read still out, so its answer never lands, and starts none until
+    /// `resumePullRequestReads()`; the last answer stands, and the next menu open reads again.
+    /// Called when the chat goes off screen and by `retire()`.
+    @MainActor func suspendPullRequestReads() {
+        arePullRequestReadsSuspended = true
+        pullRequestFreshUntil = nil
+        guard let pullRequestTask else { return }
+        pullRequestTask.cancel()
+        self.pullRequestTask = nil
+        pullRequestGeneration += 1
+    }
+
+    /// Lets reads start again once the chat is back on screen.
+    @MainActor func resumePullRequestReads() {
+        arePullRequestReadsSuspended = false
     }
 
     private func apply(_ response: GitCheckoutResponse) {
@@ -463,6 +673,15 @@ enum GitRemoteAction: String, Equatable, Identifiable {
         case .push: String(localized: "Push complete")
         }
     }
+
+    /// The busy toast's static glyph (#1410).
+    var systemImage: String {
+        switch self {
+        case .fetch: "arrow.triangle.2.circlepath.circle"
+        case .pull: "arrow.down.circle"
+        case .push: "arrow.up.circle"
+        }
+    }
 }
 
 enum GitCheckoutOutcome: Equatable {
@@ -486,6 +705,14 @@ enum GitCommitPhase: Equatable {
         case .generatingMessage: String(localized: "Generating commit message...")
         case .committing: String(localized: "Committing...")
         case .pushing: String(localized: "Pushing...")
+        }
+    }
+
+    /// The busy toast's static glyph (#1410).
+    var systemImage: String {
+        switch self {
+        case .generatingMessage, .committing: "smallcircle.filled.circle"
+        case .pushing: "arrow.up.circle"
         }
     }
 

@@ -173,6 +173,9 @@ import UIKit
     /// The inbox offers the sign-in form instead of Reconnect, and `open()` never sends
     /// that record again until it changes or the form saves a sign-in (#884).
     private(set) var needsSignIn = false
+    /// True after the address turned out to be a gateway's own listener (`.gatewayListener`),
+    /// which no reconnect fixes: the inbox offers a way to a new address instead (#1598).
+    private(set) var needsAddress = false
     /// What to check once an empty inbox has failed to reach the host
     /// `routeFailuresBeforeAdvice` times in a row. The quiet retry goes on behind it,
     /// and `open()` leaves it alone so it holds steady between attempts.
@@ -193,13 +196,31 @@ import UIKit
     /// `last_active` the user last saw for each Profile. Never leaves the phone.
     private(set) var seen: [String: Double] = [:]
     /// Live turn state per Profile from the newest `session.active_list` read on this
-    /// connection. Emptied when the socket drops or the connection changes, so a row
-    /// never claims work nobody can vouch for.
+    /// connection. A lost socket or a failed read keeps them as the last known ones
+    /// (`liveStatusesAreStale`); a refusal, a closed inbox or another connection empties
+    /// stale ones, so a row never claims work as current that nobody can vouch for.
     private(set) var liveStatuses: [String: BotLiveStatus] = [:]
+    /// True while `liveStatuses` are only the last ones known (#1374): kept through a lost
+    /// socket or a failed status read, until a current status reply replaces them.
+    private(set) var liveStatusesAreStale = false
+    /// True from a lost socket that kept the roster on screen until a roster read on a new
+    /// socket succeeds (#1374). A refusal the user has to act on, a closed inbox or another
+    /// connection ends it instead.
+    private(set) var isReconnecting = false
+    /// What the home's status line speaks for (#1374): a roster that no message already
+    /// explains, and whether the socket is coming back.
+    var homeConnection: HomeConnectionStatus.Facts {
+        HomeConnectionStatus.Facts(keepsRows: !profiles.isEmpty && errorMessage == nil && routeAdvice == nil,
+                                   isReconnecting: isReconnecting)
+    }
 
     private var wire: (any BotTransport)?
-    private var reconnectTask: Task<Void, Never>?
-    private var reconnectAttempts = 0
+    /// The quiet reconnect after a lost socket, on backoff while online and held while offline.
+    private let reconnect: BotReconnectSchedule
+    private let isNetworkAvailable: @MainActor () -> Bool
+    /// Bumped by every `teardown()`, which each `open()` starts with, so an open that
+    /// awaited the roster cache meanwhile stops before painting or connecting.
+    private var openSerial = 0
     private var routeFailures = 0
     private static let routeFailuresBeforeAdvice = 3
     private var reloadTask: Task<Void, Never>?
@@ -220,8 +241,12 @@ import UIKit
     private let sectionOrderStore: BotSectionOrderStore
     private let avatarStore: BotAvatarStore
     private let historyCache: BotHistoryCache
+    /// The last roster each connection read, painted while the next open connects (#1403).
+    private let rosterCache: BotRosterCache
     /// Where each roster read leaves the Profiles' names for the Shortcuts picker (#1180).
     private let profileNames: HermesProfileNameCache
+    /// Where each roster read leaves the bots for the Bot widget's picker (#1643).
+    private let widgets: BotWidgetPublisher
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
     /// Drops this phone's drafts for one deleted bot.
     private let purgeLocalState: @MainActor (UUID, String) async -> Void
@@ -231,8 +256,6 @@ import UIKit
     /// Minimum gap between event-driven roster reads; the host already floors
     /// `sessions.changed` at two seconds, this guards against a chattier one.
     private let reloadSpacing: Duration
-    /// Waits before each silent reconnect after a lost socket; the last one repeats.
-    private let reconnectDelays: [Duration]
     /// Gap between status-only re-reads while some bot is busy. `sessions.changed`
     /// can miss a turn's end (post-turn work writes nothing), so the inbox re-reads
     /// on its own while it is open, connected, and a row shows Working or Waiting.
@@ -241,16 +264,21 @@ import UIKit
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
-         avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared,
-         profileNames: HermesProfileNameCache = .shared, reloadSpacing: Duration = .seconds(1),
+         avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, rosterCache: BotRosterCache = .shared,
+         profileNames: HermesProfileNameCache = .shared, widgets: BotWidgetPublisher? = nil,
+         reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          statusPollInterval: Duration = .seconds(5),
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
-         purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
+         purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil,
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread; self.roomStore = roomStore
         self.sectionOrderStore = sectionOrderStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
-        self.reconnectDelays = reconnectDelays; self.historyCache = historyCache; self.profileNames = profileNames
+        reconnect = BotReconnectSchedule(delays: reconnectDelays, isNetworkAvailable: isNetworkAvailable)
+        self.isNetworkAvailable = isNetworkAvailable
+        self.historyCache = historyCache; self.rosterCache = rosterCache; self.profileNames = profileNames
+        self.widgets = widgets ?? .shared
         self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
@@ -330,7 +358,7 @@ import UIKit
     /// path, so a rejected password stays unsent here until the saved record changes
     /// or `signInSaved()` runs.
     func open() async {
-        close(); hasRoomList = false
+        teardown(); hasRoomList = false
         var client: (any BotTransport)?
         do {
             let saved = try store.load(server: server)
@@ -338,21 +366,41 @@ import UIKit
                 selection = BotInboxSelection()
                 profiles = []; avatars = [:]; seen = [:]; rooms = []; roomCapabilities = BotRoomCapabilities(.null)
                 roomFlags = BotRoomOrganizeStore.Flags(); sectionOrder = []; setLiveStatuses([:])
+                setReconnecting(false)
             }
             // The form can keep the UUID under a new address; advice for the old host
             // and its failure streak do not carry over to the new one.
             if connection?.id != saved?.id || connection?.address != saved?.address {
                 routeFailures = 0; routeAdvice = nil
             }
-            if connection != saved { needsSignIn = false }
+            if connection != saved { needsSignIn = false; needsAddress = false }
             connection = saved
-            guard let saved else { link = .idle; return }
+            guard var saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
             if roomFlags == BotRoomOrganizeStore.Flags() { roomFlags = roomStore.load(connectionID: saved.id) }
             if sectionOrder.isEmpty { sectionOrder = sectionOrderStore.load(server: server, connectionID: saved.id) }
             // Each resend spends one of the host's ten password logins a minute per client
             // IP, which Desktop and the browser may share behind the same tunnel.
             guard !needsSignIn else { link = .disconnected; return }
+            if profiles.isEmpty {
+                // The roster this connection last read paints while it connects (#1403). It
+                // claims nothing live and allows no server edit; the first read replaces it.
+                // The connection form may save or remove the record during the load without
+                // closing this inbox, so the record is re-read before painting or connecting.
+                // Another client of a browser sign-in may rotate its refresh token meanwhile
+                // (`saveRotatedRefreshToken`); that is still this connection, opened on the new token.
+                let serial = openSerial
+                let cached = await rosterCache.load(.init(server: server, connectionID: saved.id))
+                guard serial == openSerial, !Task.isCancelled, let fresh = try? store.load(server: server) else { return }
+                var unrotated = fresh
+                if let token = saved.oauth?.refreshToken { unrotated.oauth?.refreshToken = token }
+                guard unrotated == saved else { return }
+                saved = fresh; connection = fresh
+                if let cached, profiles.isEmpty {
+                    profiles = Self.roster(cached)
+                    avatars = avatarStore.images(connectionID: saved.id)
+                }
+            }
             let opened = makeWire(saved)
             client = opened
             wire = opened; link = .connecting; errorMessage = nil; notice = nil; readsLiveStatus = true; retriesStatusRead = false
@@ -376,7 +424,7 @@ import UIKit
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
             link = .live
-            reconnectAttempts = 0
+            reconnect.succeeded()
             await refreshAvatars(opened)
             // A pull-to-refresh ends once the fresh statuses are in, too.
             await statuses?.value
@@ -392,7 +440,8 @@ import UIKit
                 // still a visible failure with the Reconnect path, not a stale roster.
                 link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription
                 needsSignIn = error as? BotFailure == .rejected(401)
-                setLiveStatuses([:])
+                needsAddress = error as? BotFailure == .gatewayListener
+                setLiveStatuses([:]); setReconnecting(false)
             }
         }
     }
@@ -429,11 +478,34 @@ import UIKit
         close(); setLiveStatuses([:]); link = .disconnected
         routeFailures = 0; routeAdvice = nil
         errorMessage = BotConnectionAdvice.message(for: BotFailure.rejected(401), address: rejected.address)
-        needsSignIn = true
+        needsSignIn = true; needsAddress = false
     }
 
+    /// The device's network path changed (#1372): a quiet reconnect waiting on its backoff runs
+    /// now if the network is back, or holds until it is. `BotsInboxView` calls it while on screen.
+    /// Offline, the statuses are only the last known ones, whatever the socket says (#1374).
+    func networkPathDidChange() {
+        if !isNetworkAvailable(), !liveStatuses.isEmpty { setLiveStatuses(liveStatuses, stale: true) }
+        reconnect.networkPathDidChange()
+    }
+
+    /// The user tapped "Reconnecting…" (#1374): the waiting reconnect runs now, past its backoff,
+    /// the way a network return runs it. Offline, or with no reconnect waiting, nothing happens.
+    func reconnectNow() { reconnect.networkPathDidChange() }
+
+    /// The inbox left the screen, or the app went to the background: it stops reconnecting, and
+    /// statuses that were only the last known ones go, since nothing re-reads them meanwhile.
     func close() {
-        reconnectTask?.cancel(); reconnectTask = nil
+        teardown()
+        setReconnecting(false)
+        if liveStatusesAreStale { setLiveStatuses([:]) }
+    }
+
+    /// Ends the socket and everything waiting on it. `open()` starts with it, so a reconnect
+    /// keeps the last known statuses and its reconnecting state.
+    private func teardown() {
+        openSerial += 1
+        reconnect.cancel()
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         statusPollTask?.cancel(); statusPollTask = nil
         wire?.close(); wire = nil
@@ -574,21 +646,25 @@ import UIKit
         }
     }
 
-    /// One `profiles.list` on the live socket, then starts a live-status read against
-    /// it without waiting for one. Only the newest request's reply is applied, and
-    /// only while `client` still owns the inbox.
+    /// One `profiles.list` on the live socket, saved as the connection's cached roster,
+    /// then starts a live-status read against it without waiting for one. Only the newest
+    /// request's reply is applied, and only while `client` still owns the inbox.
     private func reload(_ client: any BotTransport) async -> Bool {
         reloadSerial += 1
         let serial = reloadSerial
+        // The scope this read belongs to, and when it started, so a removal meanwhile revokes its save.
+        let scope = connection.map { BotRosterCache.Scope(server: server, connectionID: $0.id) }
+        let readAt = ContinuousClock.now
         do {
             let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
-            var ids = Set<String>()
-            profiles = rows.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
-            if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
+            profiles = Self.roster(rows)
+            setReconnecting(false)
+            if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name, model: $0.model) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
             }
+            if let connection { widgets.publish(profiles, server: server, connectionID: connection.id) }
             var changed = false
             for profile in profiles {
                 guard let lastActive = profile.lastActive?.timeIntervalSince1970,
@@ -602,6 +678,10 @@ import UIKit
             uncertainDeletions = []
             for name in settled where !present.contains(name) {
                 await forget(name)
+                guard wire === client, serial == reloadSerial else { return false }
+            }
+            if let scope {
+                await rosterCache.save(rows, scope: scope, readAt: readAt)
                 guard wire === client, serial == reloadSerial else { return false }
             }
             startLiveStatusRead(client)
@@ -629,8 +709,9 @@ import UIKit
 
     /// One read-only `session.active_list`, mapped onto the current roster. A reply
     /// applies only while `client` owns the inbox, the read was not cancelled, and no
-    /// newer status or roster read has started. A failed read shows no statuses
-    /// rather than old ones, and never drops the socket: the roster owns the link.
+    /// newer status or roster read has started. A failed read keeps the statuses as the
+    /// last known ones, and never drops the socket: the roster owns the link. A host
+    /// without the method shows none.
     /// While a bot is busy, or a read failed while one was, the next read is
     /// scheduled `statusPollInterval` later; once every bot is idle it stops.
     private func readLiveStatuses(_ client: any BotTransport) async {
@@ -646,17 +727,32 @@ import UIKit
             retriesStatusRead = false
         } catch {
             guard current() else { return }
-            if error as? BotFailure == .rejected(-32601) { readsLiveStatus = false }
-            retriesStatusRead = retriesStatusRead || !liveStatuses.isEmpty
-            setLiveStatuses([:])
+            if error as? BotFailure == .rejected(-32601) {
+                readsLiveStatus = false
+                setLiveStatuses([:])
+            } else {
+                retriesStatusRead = retriesStatusRead || !liveStatuses.isEmpty
+                setLiveStatuses(liveStatuses, stale: !liveStatuses.isEmpty)
+            }
         }
         if liveStatuses.isEmpty && !retriesStatusRead { statusPollTask = nil }
         else { startLiveStatusRead(client, after: statusPollInterval) }
     }
 
+    /// `profiles.list` rows as the inbox lists them: unnamed rows dropped, the first of each Profile kept.
+    private static func roster(_ rows: [BotJSON]) -> [BotProfile] {
+        var ids = Set<String>()
+        return rows.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
+    }
+
     /// Writes only a real change, so an unchanged re-read never invalidates the list.
-    private func setLiveStatuses(_ statuses: [String: BotLiveStatus]) {
+    private func setLiveStatuses(_ statuses: [String: BotLiveStatus], stale: Bool = false) {
         if statuses != liveStatuses { liveStatuses = statuses }
+        if stale != liveStatusesAreStale { liveStatusesAreStale = stale }
+    }
+
+    private func setReconnecting(_ reconnecting: Bool) {
+        if reconnecting != isReconnecting { isReconnecting = reconnecting }
     }
 
     func roomKey(_ room: BotGroupRoom) -> BotRoomKey? {
@@ -844,38 +940,40 @@ import UIKit
         await avatarStore.refresh(profiles, connectionID: connection.id, using: client) {
             if wire === client { avatars = avatarStore.images(connectionID: connection.id) }
         }
+        // After the photos, so a configured Bot widget gets its bot's photo rather than its face.
+        guard wire === client, !Task.isCancelled else { return }
+        await widgets.renderAvatars(profiles, server: server, connectionID: connection.id, photos: avatars)
     }
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for as long as
-    /// the inbox stays open; the roster stays on screen meanwhile. Only a refusal the user has
-    /// to act on (`BotConnectionAdvice.isRetryable`) shows a message and the Reconnect button
-    /// (Update sign-in for a rejected password). An empty inbox shows `routeAdvice` if the
-    /// host stays unreachable.
+    /// the inbox stays open, and held while the device is offline; the roster and its last known
+    /// statuses stay on screen meanwhile, and `isReconnecting` says so. Only a refusal the user
+    /// has to act on (`BotConnectionAdvice.isRetryable`) clears the statuses and shows a message
+    /// and the Reconnect button (Update sign-in for a rejected password, a new address for a
+    /// gateway's own listener). An empty inbox shows
+    /// `routeAdvice` if the host stays unreachable.
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
-        statusPollTask?.cancel(); statusPollTask = nil; setLiveStatuses([:])
+        statusPollTask?.cancel(); statusPollTask = nil
         client.close(); wire = nil
         link = .disconnected
         let address = connection?.address
         guard BotConnectionAdvice.isRetryable(error) else {
+            setLiveStatuses([:]); setReconnecting(false)
             routeFailures = 0; routeAdvice = nil
             errorMessage = address.map { BotConnectionAdvice.message(for: error, address: $0) }
                 ?? (error as? BotFailure ?? .transport).localizedDescription
             needsSignIn = error as? BotFailure == .rejected(401)
+            needsAddress = error as? BotFailure == .gatewayListener
             return
         }
         if Self.isRouteFailure(error) { routeFailures += 1 } else { routeFailures = 0; routeAdvice = nil }
         if routeFailures >= Self.routeFailuresBeforeAdvice, profiles.isEmpty, let address {
             routeAdvice = BotConnectionAdvice.message(for: error, address: address)
         }
-        let delay = reconnectDelays[min(reconnectAttempts, reconnectDelays.count - 1)]
-        reconnectAttempts += 1
-        reconnectTask?.cancel()
-        reconnectTask = Task { [weak self] in
-            guard (try? await Task.sleep(for: delay)) != nil, let self, !Task.isCancelled else { return }
-            self.reconnectTask = nil
-            await self.open()
-        }
+        setLiveStatuses(liveStatuses, stale: !liveStatuses.isEmpty)
+        if !profiles.isEmpty { setReconnecting(true) }
+        reconnect.schedule { [weak self] in await self?.open() }
     }
 
     private func persistSeen() {

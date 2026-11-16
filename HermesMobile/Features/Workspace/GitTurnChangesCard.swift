@@ -2,14 +2,17 @@ import SwiftUI
 
 /// Turn-end "File changes" recap card shown under the latest assistant turn for git
 /// workspaces (issue #316, Slice D, surface B). The per-file list is derived from the
-/// turn's tool-call metadata and joined to `git/status` for counts/chips. The card is
-/// collapsible (default expanded); the header "Open diff" opens the turn's files in the
-/// diff surface and each file row opens that surface at the file. The host owns the
-/// actual sheet presentation.
+/// turn's tool-call metadata and joined to one range's rows for counts/chips
+/// (`TurnFileChangeAggregator`). The card is collapsible (default expanded); the header
+/// "Open diff" opens the turn's files in the diff surface and each file row opens that surface
+/// at the file. The host owns the actual sheet presentation. A Hermes card names the range it
+/// counted under its header, with what that range includes one tap away (#1392).
 struct GitTurnChangesCard: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var isExpanded = true
+    @State private var showsRangeInfo = false
 
     let summary: TurnFileChangeSummary
     /// Open the diff sheet for every changed file in the turn (header "Open diff").
@@ -18,12 +21,16 @@ struct GitTurnChangesCard: View {
     let onOpenFile: (GitFile) -> Void
 
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
-    private var dividerColor: Color { Color(.separator).opacity(colorScheme == .dark ? 0.8 : 1.0) }
+    private var dividerColor: Color { Color(.appSeparator).opacity(colorScheme == .dark ? 0.8 : 1.0) }
     private var showsTotals: Bool { summary.totalAdditions > 0 || summary.totalDeletions > 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+
+            if let scope = summary.scope {
+                rangeCaption(scope)
+            }
 
             if isExpanded {
                 divider
@@ -36,7 +43,7 @@ struct GitTurnChangesCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: shape)
+        .background(Color(.appSurface), in: shape)
         .overlay { shape.stroke(dividerColor, lineWidth: 0.5) }
         .clipShape(shape)
     }
@@ -45,11 +52,11 @@ struct GitTurnChangesCard: View {
         HStack(spacing: 8) {
             Image(systemName: "square.and.pencil")
                 .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Text("File changes")
                 .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             if showsTotals {
                 DiffCountsLabel(additions: summary.totalAdditions, deletions: summary.totalDeletions)
@@ -71,12 +78,49 @@ struct GitTurnChangesCard: View {
                     : String(localized: "Expand file changes"),
                 rotation: isExpanded ? 0 : -90
             ) {
-                withAnimation(.easeInOut(duration: 0.18)) { isExpanded.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { isExpanded.toggle() }
             }
         }
         .padding(.leading, 12)
         .padding(.trailing, 6)
         .padding(.vertical, 8)
+    }
+
+    /// The range's name, and the info button whose popover says what it includes.
+    private func rangeCaption(_ scope: GitReviewScope) -> some View {
+        let isTurnRange = if case .since = scope { true } else { false }
+        return HStack(spacing: 5) {
+            Text(isTurnRange ? String(localized: "Since turn start") : String(localized: "Uncommitted changes"))
+                .font(AppFont.caption())
+                .foregroundStyle(.appSecondary)
+
+            Button {
+                showsRangeInfo = true
+            } label: {
+                // A 44 pt hit area around the caption-sized glyph, without moving the row.
+                Image(systemName: "info.circle")
+                    .font(AppFont.caption())
+                    .foregroundStyle(.tint)
+                    .contentShape(Rectangle().inset(by: -16))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About this range")
+            .popover(isPresented: $showsRangeInfo) {
+                Text(isTurnRange
+                     ? String(localized: "Compares the commit from before this turn with the files now. Edits that were already uncommitted are included.")
+                     : String(localized: "Shows uncommitted changes to the files this turn touched. Work the agent already committed is not shown."))
+                    .font(AppFont.subheadline())
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(idealWidth: 280)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .presentationCompactAdaptation(.popover)
+            }
+        }
+        .padding(.leading, 34)
+        .padding(.trailing, 12)
+        .padding(.top, -4)
+        .padding(.bottom, 8)
     }
 
     private func headerButton(
@@ -89,7 +133,7 @@ struct GitTurnChangesCard: View {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
                 .rotationEffect(.degrees(rotation))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
@@ -106,7 +150,7 @@ struct GitTurnChangesCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(change.gitFile?.displayPath ?? change.path)
                     .font(AppFont.subheadline())
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 

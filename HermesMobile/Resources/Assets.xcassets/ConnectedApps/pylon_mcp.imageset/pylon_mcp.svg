@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 80 80">
+<!-- SVG created with Arrow, by QuiverAI (https://quiver.ai) -->
+  <circle cx="40" cy="40" r="40" fill="#590FFF"/>
+  <path d="m43.97 8.23v63.57c16.02-1.93 28.11-15.47 28.11-31.79 0-16.31-12.09-29.86-28.11-31.78z" fill="#fff"/>
+  <path d="m36.05 8.23c-8.65 1.04-16.48 5.64-21.14 11.94h21.14v-11.94z" fill="#fff"/>
+  <path d="m36.05 28.14h-25.79c-1.03 2.45-1.7 5.17-2.02 7.95h27.82v-7.95h-0.01z" fill="#fff"/>
+  <path d="m36.05 44.02h-27.8c0.31 2.77 1.14 5.62 2.05 7.91h25.75v-7.91z" fill="#fff"/>
+  <path d="m36.05 59.9h-21.07c5.08 6.52 12.86 10.91 21.07 11.9v-11.9z" fill="#fff"/>
+</svg>

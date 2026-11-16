@@ -7,7 +7,6 @@ struct FilePathAutocompleteView: View {
     // than the rows it actually draws.
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 48
     @ScaledMetric(relativeTo: .subheadline) private var emptyPanelHeight: CGFloat = 64
-    private let maxPanelHeight: CGFloat = 280
 
     /// The path typed after the `@`, without it.
     let query: String
@@ -22,20 +21,15 @@ struct FilePathAutocompleteView: View {
         VStack(spacing: 0) {
             if search.matches.isEmpty {
                 emptyText
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.subheadline())
+                    .foregroundStyle(.appSecondary)
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
             } else {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(search.matches.enumerated()), id: \.element.id) { index, match in
+                        ForEach(search.matches, id: \.id) { match in
                             FilePathRow(match: match, onSelect: onSelect)
-
-                            if index < search.matches.count - 1 {
-                                Divider()
-                                    .padding(.horizontal, 16)
-                            }
                         }
                     }
                 }
@@ -48,7 +42,7 @@ struct FilePathAutocompleteView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: Color.black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: panelHeight)
+        .composerPanelHeight(panelHeight)
         .task(id: LoadKey(query: query, scope: search.scopeRevision)) {
             await load(query)
         }
@@ -73,7 +67,7 @@ struct FilePathAutocompleteView: View {
 
     private var panelHeight: CGFloat {
         guard !search.matches.isEmpty else { return emptyPanelHeight }
-        return min(maxPanelHeight, CGFloat(search.matches.count) * rowHeight)
+        return CGFloat(search.matches.count) * rowHeight
     }
 }
 
@@ -94,16 +88,16 @@ struct FilePathRow: View {
                     .frame(width: 20)
 
                 Text(match.name)
-                    .font(Font.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .layoutPriority(2)
 
                 if !match.parentPath.isEmpty {
                     Text(match.parentPath)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.caption())
+                        .foregroundStyle(.appSecondary)
                         .lineLimit(1)
                         .truncationMode(.head)
                         .layoutPriority(1)
@@ -113,8 +107,8 @@ struct FilePathRow: View {
 
                 if match.isDirectory {
                     Image(systemName: "chevron.forward")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .font(AppFont.caption2(weight: .semibold))
+                        .foregroundStyle(.appTertiary)
                 }
             }
             .padding(.horizontal, 16)

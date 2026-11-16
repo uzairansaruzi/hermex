@@ -33,13 +33,16 @@ struct FileReference: Hashable, Identifiable {
     /// would only hide images the server is happy to hand over.
     ///
     /// `./` and `../` need a workspace root to resolve against; an absolute path or a
-    /// `file:` URL does not. Bare relative paths stay unrecognized, as they do for links.
-    static func absoluteMediaPath(_ destination: String, workspaceRoot: String?) -> String? {
+    /// `file:` URL does not. Bare relative paths stay unrecognized, as they do for links,
+    /// unless `resolvesBarePaths`: a Hermes reply's `out/chart.png` is its folder's (#1679).
+    static func absoluteMediaPath(_ destination: String, workspaceRoot: String?, resolvesBarePaths: Bool = false) -> String? {
         var normalized = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.hasPrefix("<"), normalized.hasSuffix(">"), normalized.count >= 2 {
             normalized = String(normalized.dropFirst().dropLast())
         }
-        guard let target = fileTarget(of: normalized) else { return nil }
+        // A colon marks a URL scheme (`https:`, `data:`), never a bare path.
+        let bare = resolvesBarePaths && !normalized.contains(":") && !normalized.hasPrefix("#")
+        guard let target = fileTarget(of: normalized) ?? (bare ? fileTarget(of: "./" + normalized) : nil) else { return nil }
 
         let rootComponents = pathComponents(ofAbsolutePath: workspaceRoot ?? "") ?? []
         guard target.path.hasPrefix("/") || !rootComponents.isEmpty else { return nil }
@@ -172,4 +175,38 @@ struct FileReference: Hashable, Identifiable {
         }
         return result
     }
+}
+
+/// What a preview does with a file it can't draw as text or an image, by extension.
+/// The workspace preview, chat file links and chat attachments share one list, and
+/// the Files tree never prefetches either kind as text. Foundation-only and kept beside
+/// `FileReference` so `scripts/benchmark-streaming-scans` can compile it on the host.
+enum BinaryFilePreview: Equatable {
+    /// Downloaded (at most 25 MB) and shown by Quick Look, which can still decline.
+    case quickLook
+    /// Never downloaded to preview: archives, executables, object code and databases
+    /// would only reach a Quick Look file icon.
+    case unavailable
+
+    /// Nil for every other path, which previews as text or as an image.
+    init?(path: String) {
+        let pathExtension = URL(fileURLWithPath: path).pathExtension.lowercased()
+        if Self.quickLookExtensions.contains(pathExtension) {
+            self = .quickLook
+        } else if Self.unavailableExtensions.contains(pathExtension) {
+            self = .unavailable
+        } else {
+            return nil
+        }
+    }
+
+    private static let quickLookExtensions: Set<String> = [
+        "aiff", "avi", "doc", "docx", "flac", "key", "m4a", "mov", "mp3", "mp4", "numbers",
+        "pages", "pdf", "ppt", "pptx", "rtf", "svg", "usdz", "wav", "xls", "xlsx"
+    ]
+
+    private static let unavailableExtensions: Set<String> = [
+        "7z", "a", "bin", "bz2", "class", "db", "dmg", "dylib", "exe", "gz",
+        "jar", "o", "pkg", "pyc", "rar", "sqlite", "tar", "tgz", "xz", "zip"
+    ]
 }

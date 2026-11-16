@@ -1,0 +1,16 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : {
+    "count" : 0,
+    "epoch" : "3f82fb819fe149cdab6046ecc824708b",
+    "events" : [],
+    "last_sequence" : 20,
+    "latest_seq" : 20,
+    "open_requests" : [],
+    "replay_epoch" : "3f82fb819fe149cdab6046ecc824708b",
+    "snapshot_required" : true,
+    "truncated" : true
+  },
+  "version" : "0.23.1"
+}

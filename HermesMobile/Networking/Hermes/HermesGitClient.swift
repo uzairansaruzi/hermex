@@ -15,7 +15,9 @@ import Foundation
 /// (`WriteOwner`). Each successful write answers the status read again. A branch switch (#1116)
 /// is a write too, refused while the tree has any uncommitted change. Fetch, pull and New Branch
 /// (#1236) go through the host's hermex-push plugin, the only place they exist, and show only
-/// while it lists their routes (`supportsSync()`).
+/// while it lists their routes (`supportsSync()`). This Branch (#1386) reads the branch's committed
+/// range through the same review routes, read-only, and so does a turn's range since the HEAD its
+/// send read (#1392). The branch's pull request (#1391) comes from the host's `gh` through ship-info.
 ///
 /// Neither the root nor git's own output (a refusal's `detail`, which can name host paths) reaches
 /// the screen or a log. Checked at the `HERMES_AGENT_TESTED_SHA` pin (ca678285) in
@@ -34,6 +36,7 @@ import Foundation
     typealias WriteOwner = @MainActor @Sendable () throws -> Dispatch
 
     let context: HermesWorkspaceContext
+    nonisolated let reviewScope: String
     private let http: HermesConnection
     private let writeMessage: MessageWriter?
     private let writeOwner: WriteOwner?
@@ -53,6 +56,7 @@ import Foundation
     init(context: HermesWorkspaceContext, http: HermesConnection, writeMessage: MessageWriter? = nil,
          writeOwner: WriteOwner? = nil) {
         self.context = context
+        reviewScope = "\(context.server.absoluteString)|hermes|\(context.profile)|\(context.storedKey)|\(context.cwd)"
         self.http = http
         self.writeMessage = writeMessage
         self.writeOwner = writeOwner
@@ -101,12 +105,84 @@ import Foundation
         let kind = wholeChange ? nil : file.preferredDiffKind
         let request: HermesREST = wholeChange ? .gitFileDiff(repository: root, file: path)
             : .gitDiff(repository: root, file: path, staged: kind == "staged")
-        let text = try Self.json(try await send(request))["diff"].text ?? ""
-        if wholeChange, text.isEmpty, file.changeKind == .added {
+        let text = try Self.json(try await send(request))["diff"].text
+        if wholeChange, text?.isEmpty != false, file.changeKind == .added {
             return try await currentContent(of: path, root: root)
         }
-        let tooLarge = text.utf8.count > Self.maximumDiffBytes
-        return GitDiff(path: path, kind: kind, binary: Self.isBinary(text),
+        return Self.diff(text, path: path, kind: kind)
+    }
+
+    /// This Branch (#1386): `review/list`'s branch rows, with the branch name and detached flag
+    /// from `git/status`. Nil outside a repository.
+    func branchReview() async throws -> GitBranchReview? {
+        guard let root = try await repositoryRoot() else { return nil }
+        async let summary = send(.gitStatus(repository: root))
+        async let changes = send(.gitBranchChanges(repository: root))
+        let (summaryBody, changesBody) = try await (summary, changes)
+        return Self.branchReview(summary: try Self.json(summaryBody), changes: try Self.json(changesBody))
+    }
+
+    /// HEAD's full sha (#1392), read just before a direct send's prompt goes out; nil outside a
+    /// repository and before the first commit.
+    func headSHA() async throws -> String? {
+        guard let root = try await repositoryRoot() else { return nil }
+        return Self.text(try Self.json(try await send(.gitHead(repository: root)))["sha"])
+    }
+
+    /// A turn's range (#1392): `review/list`'s rows since `base`. The host marks every tracked row
+    /// `M`, whatever happened to it, so those claim no kind; an untracked row (`?`) keeps its flag,
+    /// which its diff needs. Nil without the base echoed back, which the host sends only for a
+    /// range it read.
+    func changes(since base: String) async throws -> [GitFile]? {
+        guard let root = try await repositoryRoot() else { return nil }
+        let changes = try Self.json(try await send(.gitTurnChanges(repository: root, base: base)))
+        guard Self.text(changes["base"]) == base else { return nil }
+        return (changes["files"].list ?? []).compactMap { row in
+            guard let path = row["path"].text, !path.isEmpty else { return nil }
+            let untracked = row["status"].text == "?"
+            return GitFile(path: path, status: untracked ? "?" : nil, staged: nil, unstaged: nil, untracked: untracked,
+                           conflict: nil, additions: row["added"].integer, deletions: row["removed"].integer)
+        }
+    }
+
+    /// A branch or turn row's diff over its range, skipping the staged and worktree choice
+    /// `diff(for:)` makes for an uncommitted one. The range's diff of a file untracked when listed
+    /// is empty, so it reads `file-diff`, which all-adds a file still untracked and never a clean
+    /// tracked one; a file committed since keeps its range patch.
+    func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff? {
+        let request: (_ root: String, _ path: String) -> HermesREST
+        switch scope {
+        case .uncommitted: return try await diff(for: file)
+        case .branch: request = { .gitBranchDiff(repository: $0, file: $1) }
+        case .since(let base): request = { .gitTurnDiff(repository: $0, file: $1, base: base) }
+        }
+        guard let root = try await repositoryRoot() else { return nil }
+        let path = file.displayPath
+        var text = try Self.json(try await send(request(root, path)))["diff"].text
+        if case .since = scope, file.untracked == true, text?.isEmpty != false {
+            text = try Self.json(try await send(.gitFileDiff(repository: root, file: path)))["diff"].text
+        }
+        return Self.diff(text, path: path, kind: nil)
+    }
+
+    /// `git/status` and the branch's `review/list` as one `GitBranchReview`. Rows keep only their
+    /// path and counts: the host's `M` and `staged: false` say nothing about the change.
+    nonisolated static func branchReview(summary: BotJSON, changes: BotJSON) -> GitBranchReview? {
+        guard summary.fields != nil else { return nil }
+        let files = (changes["files"].list ?? []).compactMap { row -> GitFile? in
+            guard let path = row["path"].text, !path.isEmpty else { return nil }
+            return GitFile(path: path, status: nil, staged: nil, unstaged: nil, untracked: nil, conflict: nil,
+                           additions: row["added"].integer, deletions: row["removed"].integer)
+        }
+        return GitBranchReview(files: files, base: text(changes["base"]), branch: summary["branch"].text,
+                               detached: summary["detached"].flag == true)
+    }
+
+    /// A diff's text as a `GitDiff`, too large past `maximumDiffBytes`. A missing diff stays nil,
+    /// so it shows as no changes but has no patch to mark viewed.
+    private static func diff(_ text: String?, path: String, kind: String?) -> GitDiff {
+        let tooLarge = (text?.utf8.count ?? 0) > maximumDiffBytes
+        return GitDiff(path: path, kind: kind, binary: isBinary(text ?? ""),
                        tooLarge: tooLarge, additions: nil, deletions: nil, diff: tooLarge ? nil : text)
     }
 
@@ -116,10 +192,12 @@ import Foundation
         let file = try Self.json(try await send(.fsReadText(path: root + "/" + path)))
         let binary = file["binary"].flag == true
         let tooLarge = file["truncated"].flag == true
-        var lines = (file["text"].text ?? "").components(separatedBy: "\n")
-        if lines.last == "" { lines.removeLast() }
-        let diff = "diff --git a/\(path) b/\(path)\n--- /dev/null\n+++ b/\(path)\n"
-            + (lines.isEmpty ? "" : "@@ -0,0 +1,\(lines.count) @@\n" + lines.map { "+\($0)\n" }.joined())
+        let diff = file["text"].text.map { text in
+            var lines = text.components(separatedBy: "\n")
+            if lines.last == "" { lines.removeLast() }
+            return "diff --git a/\(path) b/\(path)\n--- /dev/null\n+++ b/\(path)\n"
+                + (lines.isEmpty ? "" : "@@ -0,0 +1,\(lines.count) @@\n" + lines.map { "+\($0)\n" }.joined())
+        }
         return GitDiff(path: path, kind: nil, binary: binary, tooLarge: tooLarge, additions: nil, deletions: nil,
                        diff: binary || tooLarge ? nil : diff)
     }
@@ -164,14 +242,16 @@ import Foundation
     /// every change; `status.files` stops at 200 and adds the flags a row lacks. A row past it has
     /// no `unstaged` flag (unknown, not clean) and takes untracked and conflicted from its status
     /// letter (`?`, `U`).
-    /// The list is whole, so it is never `truncated`; `changed` is the host's full count.
+    /// The list is whole, so it is never `truncated`, unless `review/list` sent none, which leaves
+    /// its completeness unknown (nil); `changed` is the host's full count.
     nonisolated static func status(summary: BotJSON, changes: BotJSON) -> GitStatus {
         guard summary.fields != nil else { return notARepository }
         var flags: [String: BotJSON] = [:]
         for entry in summary["files"].list ?? [] {
             if let path = entry["path"].text { flags[path] = entry }
         }
-        let files = (changes["files"].list ?? []).compactMap { row -> GitFile? in
+        let rows = changes["files"].list
+        let files = (rows ?? []).compactMap { row -> GitFile? in
             guard let path = row["path"].text, !path.isEmpty else { return nil }
             let flag = flags[path]
             let letter = row["status"].text
@@ -184,7 +264,7 @@ import Foundation
                                unstaged: summary["unstaged"].integer, untracked: summary["untracked"].integer,
                                conflicts: summary["conflicted"].integer)
         return GitStatus(isGit: true, branch: branch(summary), upstream: nil, ahead: summary["ahead"].integer,
-                         behind: summary["behind"].integer, totals: totals, files: files, truncated: false)
+                         behind: summary["behind"].integer, totals: totals, files: files, truncated: rows == nil ? nil : false)
     }
 
     private nonisolated static let notARepository = GitStatus(isGit: false, branch: nil, upstream: nil, ahead: nil,
@@ -438,6 +518,24 @@ import Foundation
         guard summary["changed"].integer == 0 else { throw HermesGitRefusal.uncommittedSwitch }
         try await write(.gitSwitchBranch(repository: root, branch: branch), dispatch, deadline: .provisioning)
         return Self.switched(to: branch, status: try? await status())
+    }
+
+    // MARK: - Pull request (#1391)
+
+    /// The checked-out branch's pull request from ship-info, which asks the host's `gh`; nil
+    /// without `gh`, without a pull request, or outside a repository. Read on the standard
+    /// deadline, so a slow `gh` fails the read rather than holding it.
+    func pullRequest() async throws -> GitPullRequest? {
+        guard let root = try await repositoryRoot() else { return nil }
+        return Self.pullRequest(try Self.json(try await send(.gitShipInfo(repository: root)))["pr"])
+    }
+
+    /// `pr` as a link, only with a positive number and a web page; a state `gh` adds later is nil.
+    private nonisolated static func pullRequest(_ pr: BotJSON) -> GitPullRequest? {
+        guard let number = pr["number"].integer, number > 0,
+              let url = Self.text(pr["url"]).flatMap(URL.init(string:)), InAppBrowserPolicy.opensInApp(url)
+        else { return nil }
+        return GitPullRequest(number: number, url: url, state: Self.text(pr["state"]).flatMap(GitPullRequest.State.init))
     }
 
     private nonisolated static func switched(to branch: String, status: GitStatus?) -> GitCheckoutResponse {

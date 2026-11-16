@@ -36,9 +36,10 @@ enum CacheFallbackPolicy {
         }
     }
 
+    /// 520-530 are Cloudflare's answers for a tunnel or origin that is down.
     private static func isTransientUnavailableStatus(_ statusCode: Int) -> Bool {
         switch statusCode {
-        case 408, 502, 503, 504:
+        case 408, 502, 503, 504, 520...530:
             return true
         default:
             return false

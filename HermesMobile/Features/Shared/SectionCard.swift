@@ -38,7 +38,7 @@ struct SectionCard<Content: View, Footer: View>: View {
                 Text(title)
                     .textCase(.uppercase)
                     .font(AppFont.caption(weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .padding(.horizontal, 4)
                     .padding(.bottom, 8)
             }
@@ -55,13 +55,13 @@ struct SectionCard<Content: View, Footer: View>: View {
                 }
             }
             .background {
-                shape.fill(Color(.secondarySystemBackground).opacity(reduceTransparency ? 1 : 0.34))
+                shape.fill(Color(.appSurface).opacity(reduceTransparency ? 1 : 0.34))
             }
             .adaptiveGlass(.regular, fallbackMaterial: .regularMaterial, in: shape)
             .clipShape(shape)
             .overlay {
                 shape
-                    .stroke(Color.primary.opacity(colorSchemeContrast == .increased ? 0.16 : 0.06), lineWidth: 0.7)
+                    .stroke(Color(.appText).opacity(colorSchemeContrast == .increased ? 0.16 : 0.06), lineWidth: 0.7)
                     .allowsHitTesting(false)
             }
         }

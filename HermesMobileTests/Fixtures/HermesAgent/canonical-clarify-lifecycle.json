@@ -1,0 +1,45 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : [
+    {
+      "admission_id" : "bf594bf2b1154c60b4fdcba7cfe8038f",
+      "authority_epoch" : 1,
+      "execution_generation" : 1,
+      "payload" : {
+        "choices" : [
+          "Unit tests (Recommended)",
+          "Lint"
+        ],
+        "execution_generation" : 1,
+        "kind" : "clarify",
+        "multi_select" : false,
+        "prompt_id" : "1f80a818ba",
+        "question" : "Which check should I run?",
+        "timeout_s" : 90
+      },
+      "replay_epoch" : "71e19051aace409796887e1505175219",
+      "seq" : 10,
+      "session_id" : "local-eb3f0b51454bbb1343f29c30c67ed1c84e207107c48c98df32479ec187ac7811",
+      "type" : "clarify.request"
+    },
+    {
+      "prompt_id" : "1f80a818ba",
+      "status" : "resolved"
+    },
+    {
+      "admission_id" : "bf594bf2b1154c60b4fdcba7cfe8038f",
+      "authority_epoch" : 1,
+      "execution_generation" : 1,
+      "payload" : {
+        "execution_generation" : 1,
+        "prompt_id" : "1f80a818ba"
+      },
+      "replay_epoch" : "71e19051aace409796887e1505175219",
+      "seq" : 11,
+      "session_id" : "local-eb3f0b51454bbb1343f29c30c67ed1c84e207107c48c98df32479ec187ac7811",
+      "type" : "clarify.settled"
+    }
+  ],
+  "version" : "0.23.1"
+}

@@ -161,7 +161,7 @@ struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedB
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
                     .frame(width: 16, height: 16)
 
                 status()
@@ -171,7 +171,7 @@ struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedB
         .padding(.horizontal, 2)
         .frame(minHeight: TranscriptLogRowMetrics.minimumHeight)
         .background(
-            Color.primary.opacity(isPressed ? 0.06 : 0),
+            Color(.appText).opacity(isPressed ? 0.06 : 0),
             in: RoundedRectangle(cornerRadius: 6, style: .continuous)
         )
         .contentShape(Rectangle())
@@ -216,13 +216,13 @@ struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedB
     private var summaryText: Text {
         Text(summary)
             .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(isFailure ? Color.red : Color.primary)
+            .foregroundStyle(isFailure ? Color.red : Color(.appText))
     }
 
     private func detailText(_ detail: String) -> Text {
         Text(detail)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
     }
 
     private func toggle() {

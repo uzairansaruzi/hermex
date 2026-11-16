@@ -7,17 +7,24 @@ struct ModelFavoriteKey: Codable, Equatable, Hashable {
 
 // UserDefaults supports concurrent preference access; these stores are immutable wrappers around it.
 struct ModelFavoritesStore: @unchecked Sendable {
-    static let shared = ModelFavoritesStore()
+    private static let baseKey = "hermes.mobile.favoriteModels"
 
     private let defaults: UserDefaults
     private let storageKey: String
 
-    init(
-        defaults: UserDefaults = .standard,
-        storageKey: String = "hermes.mobile.favoriteModels"
-    ) {
+    init(defaults: UserDefaults, storageKey: String) {
         self.defaults = defaults
         self.storageKey = storageKey
+    }
+
+    /// One server's favorites. A model's name means nothing on another server.
+    init(server: URL, defaults: UserDefaults = .standard) {
+        let key = defaults.scopedModelListKey(base: Self.baseKey, server: server)
+        self.init(defaults: defaults, storageKey: key)
+    }
+
+    static func remove(for server: URL, in defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: UserDefaults.modelListKey(base: baseKey, server: server))
     }
 
     var favoriteKeys: [ModelFavoriteKey] {
@@ -85,20 +92,26 @@ struct ModelFavoritesStore: @unchecked Sendable {
 }
 
 struct ModelRecentsStore: @unchecked Sendable {
-    static let shared = ModelRecentsStore()
+    private static let baseKey = "hermes.mobile.recentModels"
 
     private let defaults: UserDefaults
     private let storageKey: String
     private let limit: Int
 
-    init(
-        defaults: UserDefaults = .standard,
-        storageKey: String = "hermes.mobile.recentModels",
-        limit: Int = 5
-    ) {
+    init(defaults: UserDefaults, storageKey: String, limit: Int = 5) {
         self.defaults = defaults
         self.storageKey = storageKey
         self.limit = limit
+    }
+
+    /// One server's recent models.
+    init(server: URL, defaults: UserDefaults = .standard) {
+        let key = defaults.scopedModelListKey(base: Self.baseKey, server: server)
+        self.init(defaults: defaults, storageKey: key)
+    }
+
+    static func remove(for server: URL, in defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: UserDefaults.modelListKey(base: baseKey, server: server))
     }
 
     var recentKeys: [ModelFavoriteKey] {
@@ -156,6 +169,24 @@ struct ModelRecentsStore: @unchecked Sendable {
         }
 
         return result
+    }
+}
+
+private extension UserDefaults {
+    static func modelListKey(base: String, server: URL) -> String {
+        "\(base)|\(server.absoluteString)"
+    }
+
+    /// `server`'s key for a model list. The first server read after the lists became
+    /// per-server takes the old shared list, so the other servers start empty instead of
+    /// inheriting it.
+    func scopedModelListKey(base: String, server: URL) -> String {
+        let key = Self.modelListKey(base: base, server: server)
+        if let shared = object(forKey: base) {
+            if object(forKey: key) == nil { set(shared, forKey: key) }
+            removeObject(forKey: base)
+        }
+        return key
     }
 }
 

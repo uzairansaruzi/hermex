@@ -18,7 +18,7 @@ struct RatingPromptPolicy {
             && completedResponses - responsesAtLastRequest >= 30
     }
 
-    func allowsTipCard(at now: Date) -> Bool {
+    func allowsSessionListCard(at now: Date) -> Bool {
         guard let lastRequestDate else { return true }
         return now.timeIntervalSince(lastRequestDate) >= 7 * Self.day
     }
@@ -34,7 +34,7 @@ enum RatingPromptMoment {
 @MainActor
 final class RatingPromptState {
     static let shared: RatingPromptState = {
-        let state = RatingPromptState(defaults: .standard)
+        let state = RatingPromptState(defaults: .standard, usage: .shared)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--rating-prompt-eligible") {
             state.prepareForTesting()
@@ -44,17 +44,20 @@ final class RatingPromptState {
     }()
 
     private struct StreamOwner {
-        weak var coordinator: ChatStreamCoordinator?
+        weak var coordinator: (any ChatTurnCoordinating)?
         let server: URL
     }
 
     private let defaults: UserDefaults
+    /// Also counts each completed response for the week's usage report, when reports are allowed.
+    private let usage: UsageReports?
     private var streamOwners: [StreamOwner] = []
     private(set) var isFirstLaunch: Bool
-    private(set) var tipCardShownThisLaunch = false
+    private(set) var cardShownThisLaunch: SessionListCard?
 
-    init(defaults: UserDefaults, now: Date = Date()) {
+    init(defaults: UserDefaults, now: Date = Date(), usage: UsageReports? = nil) {
         self.defaults = defaults
+        self.usage = usage
         isFirstLaunch = defaults.object(forKey: RatingPromptSettings.firstLaunchDateKey) == nil
         if isFirstLaunch {
             defaults.set(now, forKey: RatingPromptSettings.firstLaunchDateKey)
@@ -72,9 +75,11 @@ final class RatingPromptState {
 
     func recordCompletedResponse() {
         defaults.set(policy.completedResponses + 1, forKey: TipJar.completedResponseCountKey)
+        usage?.recordCompletedResponse()
     }
 
-    func register(_ coordinator: ChatStreamCoordinator, server: URL) {
+    /// A webui stream or a Hermes chat on `server`; a running turn holds the request back.
+    func register(_ coordinator: any ChatTurnCoordinating, server: URL) {
         streamOwners.removeAll { $0.coordinator == nil }
         streamOwners.append(StreamOwner(coordinator: coordinator, server: server))
     }
@@ -83,14 +88,15 @@ final class RatingPromptState {
         streamOwners.contains { $0.server == server && $0.coordinator?.activeStreamID != nil }
     }
 
-    // The list checks tip eligibility before rating requests and records display here,
-    // so dismissing the card cannot allow a rating request later in the same launch.
-    func recordTipCardShown() {
-        tipCardShownThisLaunch = true
+    // The list checks card eligibility before rating requests and records display here,
+    // so dismissing a card cannot allow a rating request, or the other card, later in the
+    // same launch.
+    func recordCardShown(_ card: SessionListCard) {
+        if cardShownThisLaunch == nil { cardShownThisLaunch = card }
     }
 
     func canRequest(at now: Date = Date()) -> Bool {
-        !isFirstLaunch && !tipCardShownThisLaunch && policy.isEligible(at: now)
+        !isFirstLaunch && cardShownThisLaunch == nil && policy.isEligible(at: now)
     }
 
     /// Check all server sessions, including rows hidden by sidebar filters. Recheck
@@ -143,7 +149,7 @@ final class RatingPromptState {
         defaults.removeObject(forKey: TipJar.completedResponseCountKey)
         defaults.set(now, forKey: RatingPromptSettings.firstLaunchDateKey)
         isFirstLaunch = true
-        tipCardShownThisLaunch = false
+        cardShownThisLaunch = nil
     }
 
     /// Launch-only override for exercising the real navigation and stream guards.

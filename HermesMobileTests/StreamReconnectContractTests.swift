@@ -452,18 +452,4 @@ final class StreamReconnectContractTests: APIClientTestCase {
         let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         return Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
     }
-
-    /// Waits on observation, never a clock, until `condition` holds: it is checked again
-    /// whenever an observable value it read changes.
-    @MainActor
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
-    }
 }

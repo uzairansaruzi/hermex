@@ -15,7 +15,7 @@ final class ComposerDocumentThumbnailsTests: XCTestCase {
 
         XCTAssertIdentical(first, fixture.generator.image)
         XCTAssertIdentical(second, fixture.generator.image)
-        XCTAssertIdentical(fixture.thumbnails.cachedThumbnail(for: document.id), fixture.generator.image)
+        XCTAssertIdentical(fixture.thumbnails.cachedThumbnail(for: document), fixture.generator.image)
         let requests = await fixture.generator.requests
         XCTAssertEqual(requests.map(\.url.lastPathComponent), [try XCTUnwrap(document.draftFileName)])
         XCTAssertEqual(requests.first?.size, size)
@@ -70,11 +70,26 @@ final class ComposerDocumentThumbnailsTests: XCTestCase {
         await fixture.generator.releaseHeldRequest()
         _ = await request.value
 
-        XCTAssertNil(fixture.thumbnails.cachedThumbnail(for: document.id))
+        XCTAssertNil(fixture.thumbnails.cachedThumbnail(for: document))
         let retried = await fixture.thumbnails.thumbnail(for: document, size: size, scale: 3)
         XCTAssertIdentical(retried, fixture.generator.image)
         let requests = await fixture.generator.requests
         XCTAssertEqual(requests.count, 2)
+    }
+
+    /// An edited paste keeps its attachment id with a new copy (#1456), so its tile draws afresh.
+    func testANewCopyOfTheSameAttachmentGeneratesAgain() async throws {
+        let fixture = try await Fixture()
+        let document = try await fixture.stageDocument(named: "pasted-text.txt")
+        let copy = try await fixture.store.save(data: Data("edited".utf8), suggestedFilename: "pasted-text.txt")
+        let edited = PendingAttachment(id: document.id, name: document.name, path: document.path, mime: document.mime,
+                                       isImage: false, draftFileName: copy)
+
+        _ = await fixture.thumbnails.thumbnail(for: document, size: size, scale: 3)
+        _ = await fixture.thumbnails.thumbnail(for: edited, size: size, scale: 3)
+
+        let requests = await fixture.generator.requests
+        XCTAssertEqual(requests.map(\.url.lastPathComponent), [try XCTUnwrap(document.draftFileName), copy])
     }
 
     func testTheOldestResultIsEvictedPastTheLimit() async throws {
@@ -87,9 +102,9 @@ final class ComposerDocumentThumbnailsTests: XCTestCase {
             _ = await fixture.thumbnails.thumbnail(for: document, size: size, scale: 3)
         }
 
-        XCTAssertNil(fixture.thumbnails.cachedThumbnail(for: first.id))
-        XCTAssertIdentical(fixture.thumbnails.cachedThumbnail(for: second.id), fixture.generator.image)
-        XCTAssertIdentical(fixture.thumbnails.cachedThumbnail(for: third.id), fixture.generator.image)
+        XCTAssertNil(fixture.thumbnails.cachedThumbnail(for: first))
+        XCTAssertIdentical(fixture.thumbnails.cachedThumbnail(for: second), fixture.generator.image)
+        XCTAssertIdentical(fixture.thumbnails.cachedThumbnail(for: third), fixture.generator.image)
     }
 }
 

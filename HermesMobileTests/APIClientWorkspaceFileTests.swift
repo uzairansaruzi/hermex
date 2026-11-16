@@ -7,6 +7,38 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class APIClientWorkspaceFileTests: APIClientTestCase {
+    @MainActor
+    func testCancelledImageLoadsDoNotPublishPreviewOrError() async throws {
+        for attachment in [false, true] {
+            let requested = expectation(description: "image requested")
+            let answered = expectation(description: "image answered")
+            let release = DispatchSemaphore(value: 0)
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+                UIColor.blue.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+            }
+            let data = try XCTUnwrap(image.pngData())
+            let client = makeClient { request in
+                requested.fulfill()
+                release.wait()
+                defer { answered.fulfill() }
+                return (try Self.rawResponse(for: request, headers: ["Content-Type": "image/png"]), data)
+            }
+            let file = try FilePreviewViewModel(files: makeFilePreviewFiles(client), path: "image.png")
+            let chip = try ChatAttachmentPreviewViewModel(session: makeFilePreviewSession(), server: XCTUnwrap(URL(string: "https://example.test")),
+                item: ChatAttachmentPreviewItem(message: MessageAttachment(name: "image.png", path: "image.png", isImage: true), localData: nil), apiClient: client)
+            let loading = Task { if attachment { await chip.load() } else { await file.load() } }
+            await fulfillment(of: [requested], timeout: 2)
+            loading.cancel()
+            release.signal()
+            await loading.value
+            await fulfillment(of: [answered], timeout: 2)
+            XCTAssertNil(attachment ? chip.preview : file.preview)
+            XCTAssertNil(attachment ? chip.errorMessage : file.errorMessage)
+            XCTAssertFalse(attachment ? chip.isLoading : file.isLoading)
+        }
+    }
+
     func testProjectsToleratesLossyProjectFields() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/projects")
@@ -550,6 +582,23 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
 
         let largeSource = try await loadedMarkdownChunks(path: "Sources/Notes.txt", content: large)
         XCTAssertNil(largeSource, "Only Markdown previews are chunked.")
+    }
+
+    // MARK: - Copy Path
+
+    /// Copy Path offers exactly the workspace-relative path the tree or link named (for
+    /// every file kind; it never reads the preview), and nothing for a path that would
+    /// leak or escape the workspace.
+    func testCopyPathIsWorkspaceRelativeOnly() {
+        func copyablePath(_ path: String) -> String? {
+            FilePreviewViewModel(files: nil, path: path).copyablePath
+        }
+        XCTAssertEqual(copyablePath("docs/README.md"), "docs/README.md")
+        XCTAssertEqual(copyablePath(" README.md"), " README.md", "A filename's own spaces are part of the path.")
+        XCTAssertNil(copyablePath(" "))
+        XCTAssertNil(copyablePath("/Users/me/repo/README.md"))
+        XCTAssertNil(copyablePath("~/repo/README.md"))
+        XCTAssertNil(copyablePath("docs/../../secret.md"))
     }
 
     @MainActor

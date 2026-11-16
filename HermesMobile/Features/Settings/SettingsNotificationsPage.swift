@@ -36,12 +36,12 @@ struct SettingsNotificationsPage: View {
                 #if !targetEnvironment(macCatalyst)
                 Text("On this iPhone · All servers")
                 #endif
-            } footer: {
+            } appFooter: {
                 VStack(alignment: .leading, spacing: 4) {
                     if let notificationStatusText {
                         Text(notificationStatusText)
                     }
-                    // A denied permission must be restored in the platform's system settings.
+                    // iOS never re-prompts after a denial, so the way back is iPhone Settings.
                     #if targetEnvironment(macCatalyst)
                     if notificationPermissionStatus == .denied, let settingsURL = macNotificationSettingsURL {
                         Link("Open Settings", destination: settingsURL)

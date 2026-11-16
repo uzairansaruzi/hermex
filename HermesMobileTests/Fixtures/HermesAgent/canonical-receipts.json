@@ -1,0 +1,43 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : {
+    "behind_running" : {
+      "admission_id" : "a9a5879eafd84c01b1b2b635cc881f2e",
+      "authority_epoch" : 1,
+      "execution_generation" : null,
+      "outcome" : null,
+      "ref" : {
+        "profile_id" : "fixture-redacted",
+        "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
+      },
+      "sequence" : 3,
+      "status" : "queued"
+    },
+    "cancelled" : {
+      "admission_id" : "8c5be98a81d94634adb09bc94943d43d",
+      "authority_epoch" : 1,
+      "execution_generation" : null,
+      "outcome" : "cancelled",
+      "ref" : {
+        "profile_id" : "fixture-redacted",
+        "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
+      },
+      "sequence" : 4,
+      "status" : "terminal"
+    },
+    "idle" : {
+      "admission_id" : "a520daeb4a354aba959258a3278a6675",
+      "authority_epoch" : 1,
+      "execution_generation" : null,
+      "outcome" : null,
+      "ref" : {
+        "profile_id" : "fixture-redacted",
+        "session_id" : "local-9d257c35419099a8045adacf120a27ae1b525c627f926d0affe20daa8306e493"
+      },
+      "sequence" : 2,
+      "status" : "queued"
+    }
+  },
+  "version" : "0.23.1"
+}

@@ -85,14 +85,14 @@ struct ProviderGlyphGalleryView: View {
     }
 
     var body: some View {
-        List {
+        AppList {
             Section {
                 Button {
                     showsPicker = true
                 } label: {
                     Text(verbatim: "Open Model Picker with Every Provider")
                 }
-            } footer: {
+            } appFooter: {
                 Text(verbatim: "Same picker as the composer, fed a synthetic catalog with one group per documented provider ID. OpenRouter carries 400 models to exercise Show all models.")
             }
 
@@ -104,32 +104,33 @@ struct ProviderGlyphGalleryView: View {
                                 ProviderGlyph(providerID: provider.id)
                             } else {
                                 Image(systemName: "questionmark")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
+                                    .font(AppFont.caption(weight: .semibold))
+                                    .foregroundStyle(.appTertiary)
                             }
                         }
                         .frame(width: 17, height: 17)
 
                         VStack(alignment: .leading, spacing: 1) {
                             Text(verbatim: provider.id)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(AppFont.fixed(size: 14, weight: .semibold))
                                 .textCase(.uppercase)
                             Text(verbatim: provider.name)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.footnote())
+                                .foregroundStyle(.appSecondary)
                         }
 
                         Spacer(minLength: 0)
 
                         Text(verbatim: ProviderGlyphKind.resolve(providerID: provider.id)?.rawValue ?? "no glyph")
                             .font(.caption.monospaced())
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.appTertiary)
                     }
                 }
             } header: {
                 Text(verbatim: "Documented provider IDs")
             }
         }
+        .themedPageBackground()
         .navigationTitle(Text(verbatim: "Provider Glyphs"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsPicker) {
@@ -150,6 +151,7 @@ struct ProviderGlyphGalleryView: View {
                 onToggleFavorite: { _ in },
                 onDeleteSavedCustom: { _ in }
             )
+            .themedPageBackground()
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }

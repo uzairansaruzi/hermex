@@ -91,3 +91,65 @@ private final class NetworkPathDeduplicator: @unchecked Sendable {
         return NetworkPathSnapshot.publishesChange(from: last, to: next)
     }
 }
+
+/// A Bot screen's quiet reconnect after its socket dropped (#1372): it waits out a backoff
+/// step while the network is up, holds without retrying while it is down, and runs at once,
+/// from the first step again, when `networkPathDidChange()` finds it back. The inbox, the
+/// Hermes session list and a room each own one; closing or backgrounding the screen cancels
+/// it, so a hidden screen never reconnects.
+@MainActor final class BotReconnectSchedule {
+    /// Waits before each attempt; the last one repeats.
+    private let delays: [Duration]
+    /// Attempts on backoff before its timer stops for the screen's Reconnect button; nil never
+    /// stops. The reconnect still waits for a network return, which always gets one more.
+    private let limit: Int?
+    private let isNetworkAvailable: @MainActor () -> Bool
+    /// The reconnect waiting on its backoff step or on the network.
+    private var pending: (@MainActor () async -> Void)?
+    private var task: Task<Void, Never>?
+    private var attempts = 0
+
+    init(delays: [Duration], limit: Int? = nil,
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
+        self.delays = delays; self.limit = limit; self.isNetworkAvailable = isNetworkAvailable
+    }
+
+    /// Runs `reconnect` after the next backoff step, or once the network is back. It replaces
+    /// any reconnect already waiting.
+    func schedule(_ reconnect: @escaping @MainActor () async -> Void) {
+        cancel()
+        pending = reconnect
+        if let limit, attempts >= limit { return }
+        guard isNetworkAvailable() else { return }
+        let delay = delays[min(attempts, delays.count - 1)]
+        attempts += 1
+        start(after: delay)
+    }
+
+    /// The device's network path changed. Offline, a waiting reconnect stops its backoff;
+    /// online, it runs now. Nothing happens when none is waiting.
+    func networkPathDidChange() {
+        guard pending != nil else { return }
+        task?.cancel(); task = nil
+        guard isNetworkAvailable() else { return }
+        attempts = 0
+        start(after: nil)
+    }
+
+    /// The screen reached the host: the next drop starts from the first step.
+    func succeeded() { attempts = 0 }
+
+    func cancel() {
+        task?.cancel(); task = nil
+        pending = nil
+    }
+
+    private func start(after delay: Duration?) {
+        task = Task { [weak self] in
+            if let delay, (try? await Task.sleep(for: delay)) == nil { return }
+            guard let self, !Task.isCancelled, let reconnect = self.pending else { return }
+            self.task = nil; self.pending = nil
+            await reconnect()
+        }
+    }
+}

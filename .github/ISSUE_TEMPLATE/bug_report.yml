@@ -43,21 +43,22 @@ body:
     id: app-version
     attributes:
       label: App version / commit
-      description: TestFlight build number, or the commit you built from source.
+      description: Report a Problem in Settings → About Hermex fills in the version and build. If you built from source, the commit.
     validations:
       required: true
   - type: input
     id: ios-version
     attributes:
       label: iOS version and device
+      description: Report a Problem fills in the iOS version and iPhone or iPad; add the model if it matters.
       placeholder: e.g. iOS 18.5 on iPhone 15 Pro, or iOS 18 simulator
     validations:
       required: true
   - type: input
     id: server-version
     attributes:
-      label: hermes-webui server version
-      description: Settings → server info in the app, or the upstream tag/commit you deployed.
+      label: Server kind and version
+      description: Hermes or hermes-webui, and its release. Report a Problem fills this in when the app knows it; otherwise use the upstream tag/commit you deployed.
     validations:
       required: true
   - type: dropdown
@@ -68,6 +69,7 @@ body:
         - HTTPS tunnel (e.g. Cloudflare Tunnel)
         - Reverse proxy
         - Tailscale
+        - Local network (LAN)
         - localhost (simulator only)
         - Other
     validations:

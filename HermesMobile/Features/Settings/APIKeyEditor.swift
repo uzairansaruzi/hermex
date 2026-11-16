@@ -23,7 +23,7 @@ struct APIKeyForm: View {
     private var trimmedValue: String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        Form {
+        AppForm {
             if key == nil {
                 Section("Name") {
                     TextField("Name", text: $customName, prompt: Text(verbatim: "MY_API_KEY"))
@@ -37,7 +37,7 @@ struct APIKeyForm: View {
                 Section("Current") {
                     Text(verbatim: preview)
                         .font(.body.monospaced())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                 }
             }
 
@@ -45,7 +45,7 @@ struct APIKeyForm: View {
                 SecureField("New value", text: $value)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-            } footer: {
+            } appFooter: {
                 Text("Saved on the server in Profile “\(profile)”. Hermex doesn't keep a copy.")
             }
 
@@ -60,6 +60,7 @@ struct APIKeyForm: View {
         #endif
         .disabled(isWriting)
         .interactiveDismissDisabled(isWriting)
+        .themedPageBackground()
         .navigationTitle(key?.title ?? String(localized: "Custom Key"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isWriting)
@@ -129,7 +130,7 @@ struct APIKeyPicker: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList {
                 Section {
                     NavigationLink("Custom Key…") {
                         APIKeyForm(key: nil, profile: profile, model: model, onDone: onDone)
@@ -155,6 +156,7 @@ struct APIKeyPicker: View {
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
+            .themedPageBackground()
             .navigationTitle("Add Key")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

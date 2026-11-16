@@ -25,6 +25,32 @@ final class AppIntentRouter {
         guard let url else { return }
         pendingDeepLink = url
     }
+
+    /// Opens a new chat on `server`, in `profile` or the one its New Session uses, with `text` in
+    /// the composer for the user to review; nothing is sent (#1402). The text and its destination
+    /// wait in the app group's share inbox first, so a cold launch, a server switch or a sign-in
+    /// can't lose them, and only the bare share link travels as the deep link. Each call is its
+    /// own chat text, even for the same text. The Hermes home adds it to that Profile's new
+    /// session draft, after any unsent text, then opens it with a review notice naming `origin`.
+    /// Callers: the New Chat with Content intent, and About's Troubleshoot with Hermes (#1476).
+    func openNewChat(prefilling text: String, server: URL, profile: String?, origin: ImportedTextOrigin = .shortcut,
+                     inbox: URL? = HermesShareDraft.containerURL(), now: Date = Date()) throws {
+        guard let inbox else { throw NewChatWithContentError.storage }
+        do {
+            try HermesShareDraft.saveShortcutText(
+                text, for: SharedShortcutDestination(server: server, profile: profile, origin: origin), in: inbox, now: now
+            )
+        } catch let error as SharedShortcutTextError {
+            switch error {
+            case .empty: throw NewChatWithContentError.empty
+            case .tooLong: throw NewChatWithContentError.tooLong
+            case .tooManyWaiting: throw NewChatWithContentError.tooManyWaiting
+            }
+        } catch {
+            throw NewChatWithContentError.storage
+        }
+        requestDeepLink(HermesShareDraft.openURL)
+    }
 }
 
 /// "New Chat" — opens Hermex on the New Chat composer, mirroring the in-app "+" button
@@ -39,6 +65,7 @@ struct NewChatIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        UsageReports.shared.record(.appIntents)
         AppIntentRouter.shared.requestDeepLink(HermesDeepLink.newChatURL)
         return .result()
     }
@@ -59,6 +86,7 @@ struct NewChatVoiceIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        UsageReports.shared.record(.appIntents)
         AppIntentRouter.shared.requestDeepLink(HermesDeepLink.newChatVoiceURL)
         return .result()
     }
@@ -86,11 +114,76 @@ struct NewChatInProfileIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        UsageReports.shared.record(.appIntents)
         let hermes = profile.hermesNewChat
         AppIntentRouter.shared.requestDeepLink(
             HermesDeepLink.newChatInProfileURL(profileName: hermes?.profile ?? profile.id, server: hermes?.server)
         )
         return .result()
+    }
+}
+
+/// "New Chat with Content" — opens Hermex on a new chat with the Shortcut's text in the composer,
+/// never sent (#1402): on a Hermes server's Profile, or the active Hermes server's New Session
+/// Profile. A webui Profile can't take it.
+struct NewChatWithContentIntent: AppIntent {
+    static var title: LocalizedStringResource = "New Chat with Content"
+    static var description = IntentDescription("Open Hermex on a new chat with this text in the composer. Nothing is sent until you send it.")
+
+    /// Foregrounds the app so the user can review the text.
+    static var openAppWhenRun: Bool = true
+
+    @Parameter(title: "Content", inputOptions: String.IntentInputOptions(multiline: true))
+    var content: String
+
+    @Parameter(title: "Profile")
+    var profile: ProfileEntity?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("New chat with \(\.$content)") {
+            \.$profile
+        }
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        UsageReports.shared.record(.appIntents)
+        let destination = try Self.destination(profile: profile, active: ProfileEntityProvider.savedServerURL(),
+                                               servers: ServerRegistry.shared.servers)
+        try AppIntentRouter.shared.openNewChat(prefilling: content, server: destination.server, profile: destination.profile)
+        return .result()
+    }
+
+    /// The chosen Hermes Profile, else the active server when it is a Hermes server.
+    static func destination(profile: ProfileEntity?, active: URL?,
+                            servers: [ServerAccount]) throws -> (server: URL, profile: String?) {
+        if let profile {
+            guard let hermes = profile.hermesNewChat else { throw NewChatWithContentError.noHermesServer }
+            return (hermes.server, hermes.profile)
+        }
+        guard let active, servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else {
+            throw NewChatWithContentError.noHermesServer
+        }
+        return (active, nil)
+    }
+}
+
+/// Why New Chat with Content opened nothing; Shortcuts shows the message.
+enum NewChatWithContentError: Error, Equatable, CustomLocalizedStringResourceConvertible {
+    case empty
+    case tooLong
+    case tooManyWaiting
+    case noHermesServer
+    case storage
+
+    var localizedStringResource: LocalizedStringResource {
+        switch self {
+        case .empty: "There’s no text to add to a new chat."
+        case .tooLong: "That text is too long. A Shortcut can add up to 100 KB."
+        case .tooManyWaiting: "10 Shortcut texts are already waiting. Open Hermex to review them first."
+        case .noHermesServer: "Choose a Profile on a Hermes server, or make a Hermes server active in Hermex."
+        case .storage: "Hermex couldn’t save the text. Try again."
+        }
     }
 }
 
@@ -130,6 +223,23 @@ struct HermexShortcuts: AppShortcutsProvider {
             shortTitle: "New Chat in Profile",
             systemImageName: "person.crop.circle.badge.plus"
         )
+        AppShortcut(
+            intent: NewChatWithContentIntent(),
+            phrases: [
+                "New chat with content in \(.applicationName)",
+                "Start a \(.applicationName) chat with content"
+            ],
+            shortTitle: "New Chat with Content",
+            systemImageName: "text.bubble"
+        )
+    }
+}
+
+extension SharedShortcutDestination {
+    /// The new chat for this text on the Hermes server it names; nil once that server is gone.
+    func newChat(in servers: [ServerAccount]) -> HermesNewChatDestination? {
+        servers.lazy.filter { $0.kind == .hermes }.compactMap { URL(string: $0.id) }.first(where: opens(on:))
+            .map { HermesNewChatDestination(server: $0, profile: profile) }
     }
 }
 

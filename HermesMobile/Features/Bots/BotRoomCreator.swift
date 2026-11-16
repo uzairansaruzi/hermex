@@ -7,6 +7,10 @@ import Observation
     let connection: BotConnection
     let server: URL
     let roster: [BotProfile]
+    /// The Profiles a canonical host can seat (`BotRoomCapabilities.seatableProfiles`, #1605); nil
+    /// on a dashboard, which seats its whole roster. No other bot is offered or sent. Create
+    /// refreshes it from the host's latest answer.
+    private(set) var seatable: Set<String>?
     private(set) var selected: [BotProfile] = []
     var name = "Group Chat"
     var query = ""
@@ -20,11 +24,11 @@ import Observation
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
     private let onReconciled: ([BotGroupRoom]) -> Void
 
-    init(server: URL, connection: BotConnection, roster: [BotProfile],
+    init(server: URL, connection: BotConnection, roster: [BotProfile], seatable: Set<String>? = nil,
          store: BotConnectionStore? = nil,
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          onReconciled: @escaping ([BotGroupRoom]) -> Void = { _ in }) {
-        self.server = server; self.connection = connection; self.roster = roster
+        self.server = server; self.connection = connection; self.roster = roster; self.seatable = seatable
         self.store = store ?? BotConnectionStore()
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.onReconciled = onReconciled
@@ -32,15 +36,21 @@ import Observation
     var locked: Bool { attempt != nil }
     var mayContinue: Bool { (2...6).contains(selected.count) }
     var mayCreate: Bool { !busy && created == nil && mayContinue && BotRoomRPC.validName(name) }
+    /// Whether the host can seat `bot`.
+    func seats(_ bot: BotProfile) -> Bool { seatable?.contains(bot.id) ?? true }
+    /// The host can't seat some bot the list would otherwise show, so the list says it left some out.
+    var leavesOutBots: Bool { roster.contains { !$0.hidden && !seats($0) } }
+    /// Fewer than two bots can join, so no group can be made.
+    var tooFewToSeat: Bool { seatable != nil && roster.filter(seats).count < 2 }
     var remaining: [BotProfile] {
         let filter = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return roster.filter { bot in
-            !selected.contains(where: { $0.id == bot.id }) &&
+            seats(bot) && !selected.contains(where: { $0.id == bot.id }) &&
             (filter.isEmpty ? !bot.hidden : bot.name.localizedStandardContains(filter) || bot.id.localizedStandardContains(filter))
         }
     }
     func select(_ bot: BotProfile) {
-        guard !locked, selected.count < 6, roster.contains(bot), !selected.contains(where: { $0.id == bot.id }) else { return }
+        guard !locked, selected.count < 6, roster.contains(bot), seats(bot), !selected.contains(where: { $0.id == bot.id }) else { return }
         selected.append(bot); query = ""
     }
     func remove(_ bot: BotProfile) {
@@ -73,6 +83,21 @@ import Observation
             try check(owner, client)
             guard caps.enabled, caps.methods.contains("groups.create"), caps.authority != nil else { throw BotFailure.unsupported }
             authority = caps.authority
+            // Rechecked at create: a bot the host stopped seating since the sheet opened is never sent.
+            // The host refuses such a member before it looks for the room, so a Try Again reads the
+            // rooms instead: the room it made, or an unlocked choice when it made none.
+            if let fresh = caps.seatableProfiles, !selected.allSatisfy({ fresh.contains($0.id) }) {
+                if let attempt {
+                    let rooms = try await BotRoomList.read(client) { try self.check(owner, client) }
+                    try check(owner, client); onReconciled(rooms)
+                    if let room = Self.room(made: attempt, in: rooms, authority: authority) { created = room; return }
+                    self.attempt = nil
+                }
+                seatable = fresh
+                selected.removeAll { !fresh.contains($0.id) }
+                message = String(localized: "A bot you chose can’t join group chats on this Hermes any more. Go back and choose again.")
+                return
+            }
             let creation = attempt ?? HermesCall.RoomCreation(roomID: UUID().uuidString, name: name,
                                                               members: selected.map(Self.member))
             let result = try await client.call(.groupsCreate(creation), validateDispatch: { [weak self] in
@@ -95,14 +120,7 @@ import Observation
                         // Another client can rename the room between a lost create
                         // reply and retry. Its permanent ID and frozen members still
                         // identify our successful creation; the name may differ.
-                        if let attempt,
-                           let room = rooms.first(where: { $0.id == attempt.roomID }),
-                           room.authority == authority, authority != nil,
-                           room.members.count == attempt.members.count,
-                           zip(room.members, attempt.members).allSatisfy({ actual, expected in
-                               actual.id == expected.memberID && actual.profile == expected.profile
-                                   && actual.handle == expected.handle
-                           }) {
+                        if let attempt, let room = Self.room(made: attempt, in: rooms, authority: authority) {
                             created = room; message = nil
                         }
                     } catch { /* Keep the original rejection; a failed read is not success. */ }
@@ -111,6 +129,17 @@ import Observation
                 message = dispatched ? String(localized: "Outcome unknown. Try Again checks the same group creation; it will not create a second room.") : error.localizedDescription
             }
         }
+    }
+
+    /// The room `attempt` made, found in `rooms` by its permanent id, frozen members and authority;
+    /// its name may differ, since another client can rename it in between.
+    private static func room(made attempt: HermesCall.RoomCreation, in rooms: [BotGroupRoom], authority: String?) -> BotGroupRoom? {
+        guard let authority, let room = rooms.first(where: { $0.id == attempt.roomID }), room.authority == authority,
+              room.members.count == attempt.members.count,
+              zip(room.members, attempt.members).allSatisfy({ actual, expected in
+                  actual.id == expected.memberID && actual.profile == expected.profile && actual.handle == expected.handle
+              }) else { return nil }
+        return room
     }
 
     func suspend() {

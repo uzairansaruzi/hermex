@@ -229,7 +229,7 @@ extension ReviewDiffCanvasView {
             theme.addTint.setFill()
             context.fill(barRect)
         case .deletion:
-            drawDeleteStripes(rect: barRect, context: context)
+            drawDeleteStripes(rect: barRect, dirtyRect: dirtyRect, context: context)
         case .context:
             break
         }
@@ -327,13 +327,23 @@ extension ReviewDiffCanvasView {
         case .deletion: fill = theme.deleteTint.withAlphaComponent(0.28)
         case .context: return
         }
-        let height = max(4, min(rowRect.height - 4, style.codeFont.lineHeight))
-        let y = rowRect.midY - height / 2
+        let height = max(4, min(style.metrics.rowHeight - 4, style.codeFont.lineHeight))
+        let firstLineY = rowRect.minY + (style.metrics.rowHeight - height) / 2
+        // Unwrapped, every range sits on one line; wrapped, a range splits at each wrap.
+        let wrapColumns = layout.wrapColumns ?? Int.max
         fill.setFill()
         for range in line.wordDiffRanges where !range.isEmpty {
-            let x = style.codeStartX - horizontalOffset + CGFloat(range.lowerBound) * style.codeCharacterWidth
-            let width = max(2, CGFloat(range.count) * style.codeCharacterWidth)
-            UIBezierPath(roundedRect: CGRect(x: x, y: y, width: width, height: height), cornerRadius: 3).fill()
+            var start = range.lowerBound
+            while start < range.upperBound {
+                let visualLine = start / wrapColumns
+                let lineStart = visualLine * wrapColumns
+                let end = min(range.upperBound, lineStart + wrapColumns)
+                let x = style.codeStartX - horizontalOffset + CGFloat(start - lineStart) * style.codeCharacterWidth
+                let y = firstLineY + CGFloat(visualLine) * style.metrics.wrappedLineHeight
+                let width = max(2, CGFloat(end - start) * style.codeCharacterWidth)
+                UIBezierPath(roundedRect: CGRect(x: x, y: y, width: width, height: height), cornerRadius: 3).fill()
+                start = end
+            }
         }
     }
 
@@ -354,13 +364,21 @@ extension ReviewDiffCanvasView {
     }
 
     /// Alternating 1 pt stripes so a deletion reads without relying on red alone.
-    private func drawDeleteStripes(rect: CGRect, context: CGContext) {
+    private func drawDeleteStripes(rect: CGRect, dirtyRect: CGRect, context: CGContext) {
         theme.deleteTint.setFill()
-        var y = rect.minY
-        while y < rect.maxY {
+        for y in Self.deleteStripeOrigins(bar: rect, dirtyRect: dirtyRect) {
             context.fill(CGRect(x: rect.minX, y: y, width: rect.width, height: 1))
-            y += 2
         }
+    }
+
+    /// The y of each stripe of a delete bar that `dirtyRect` shows. A wrapped deletion can be
+    /// thousands of points tall, so only the visible stripes are drawn; they keep the phase
+    /// of the bar's top so scrolling never shifts the pattern.
+    static func deleteStripeOrigins(bar: CGRect, dirtyRect: CGRect) -> StrideTo<CGFloat> {
+        let minY = max(bar.minY, dirtyRect.minY)
+        let maxY = min(bar.maxY, dirtyRect.maxY)
+        let first = bar.minY + ((minY - bar.minY) / 2).rounded(.down) * 2
+        return stride(from: first, to: max(first, maxY), by: 2)
     }
 
     // MARK: - Glyphs

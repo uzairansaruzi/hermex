@@ -30,6 +30,9 @@ struct KeychainStore: KeychainStoring {
         // every other key here it lives in a shared Keychain access group so the
         // Notification Service Extension can read it; see `PushPairing.swift`.
         case pushPairing = "push_pairing"
+        // Per-server JSON of the Bot Screen takeovers this iPhone holds (#1567). The viewer id in
+        // each is a capability on the host.
+        case screenHolds = "screen_holds"
     }
 
     private let keychain: Keychain

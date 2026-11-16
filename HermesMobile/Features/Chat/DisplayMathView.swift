@@ -15,6 +15,7 @@ struct DisplayMathView: View {
     let latex: String
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appAppearance) private var appearance
     @ScaledMetric(relativeTo: .body) private var mathFontSize: CGFloat = 18
 
     var body: some View {
@@ -24,7 +25,8 @@ struct DisplayMathView: View {
                     SwiftMathLabelView(
                         latex: latex,
                         fontSize: mathFontSize,
-                        colorScheme: colorScheme
+                        colorScheme: colorScheme,
+                        appearance: appearance
                     )
                     .padding(.vertical, 8)
                 }
@@ -115,6 +117,7 @@ private struct SwiftMathLabelView: UIViewRepresentable {
     let latex: String
     let fontSize: CGFloat
     let colorScheme: ColorScheme
+    let appearance: AppAppearance
 
     func makeUIView(context: Context) -> MTMathUILabel {
         let label = MTMathUILabel()
@@ -147,7 +150,7 @@ private struct SwiftMathLabelView: UIViewRepresentable {
             label.fontSize = fontSize
         }
 
-        let textColor = Self.resolvedTextColor(for: colorScheme)
+        let textColor = Self.resolvedTextColor(for: colorScheme, appearance: appearance)
         if label.textColor != textColor {
             label.textColor = textColor
         }
@@ -159,9 +162,8 @@ private struct SwiftMathLabelView: UIViewRepresentable {
 
     /// Resolves the dynamic label color against the SwiftUI color scheme so the
     /// Core Graphics-drawn math matches the surrounding text in light and dark.
-    private static func resolvedTextColor(for colorScheme: ColorScheme) -> MTColor {
-        let style: UIUserInterfaceStyle = colorScheme == .dark ? .dark : .light
-        return UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+    private static func resolvedTextColor(for colorScheme: ColorScheme, appearance: AppAppearance) -> MTColor {
+        appearance.theme(for: colorScheme).resolvedText(isDark: colorScheme == .dark)
     }
 }
 
@@ -170,6 +172,7 @@ private struct SwiftMathLabelView: UIViewRepresentable {
 struct InlineMathImageProvider: InlineImageProvider {
     let fontSize: CGFloat
     let colorScheme: ColorScheme
+    var theme = ColorTheme.default
     let scale: CGFloat
     var fallback: any InlineImageProvider = DefaultInlineImageProvider.default
     var tintImages = false
@@ -180,7 +183,7 @@ struct InlineMathImageProvider: InlineImageProvider {
         }
         try Task.checkCancellation()
         let image = try await InlineMathImageCache.shared.image(
-            latex: latex, fontSize: fontSize, dark: colorScheme == .dark, scale: scale
+            latex: latex, fontSize: fontSize, dark: colorScheme == .dark, theme: theme, scale: scale
         )
         try Task.checkCancellation()
         return tintImages ? Image(uiImage: image).renderingMode(.template) : Image(uiImage: image)
@@ -215,15 +218,15 @@ actor InlineMathImageCache {
         storage.totalCostLimit = 16 * 1024 * 1024
     }
 
-    nonisolated func cachedImage(latex: String, fontSize: CGFloat, dark: Bool, scale: CGFloat) -> UIImage? {
-        storage.object(forKey: "\(fontSize)|\(dark)|\(scale)|\(latex)" as NSString)
+    nonisolated func cachedImage(latex: String, fontSize: CGFloat, dark: Bool, theme: ColorTheme = .default, scale: CGFloat) -> UIImage? {
+        storage.object(forKey: "\(fontSize)|\(dark)|\(theme.rawValue)|\(scale)|\(latex)" as NSString)
     }
 
-    func image(latex: String, fontSize: CGFloat, dark: Bool, scale: CGFloat) throws -> UIImage {
+    func image(latex: String, fontSize: CGFloat, dark: Bool, theme: ColorTheme = .default, scale: CGFloat) throws -> UIImage {
         try Task.checkCancellation()
-        let key = "\(fontSize)|\(dark)|\(scale)|\(latex)" as NSString
+        let key = "\(fontSize)|\(dark)|\(theme.rawValue)|\(scale)|\(latex)" as NSString
         if let cached = storage.object(forKey: key) { return cached }
-        let color = UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light))
+        let color = theme.resolvedText(isDark: dark)
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = false
@@ -285,7 +288,8 @@ struct MathMarkdownLabel<Label: View>: View {
     var body: some View {
         if containsMath {
             let markdown = content.renderMarkdown()
-            if markdown.contains(InlineMathSource.marker) {
+            if markdown.contains(InlineMathSource.marker)
+                || MarkdownContentRenderingPolicy.hasTooManyInlineElements(markdown) {
                 MathInlineText(markdown: markdown.trimmingCharacters(in: .newlines),
                                separator: separator, tableColumn: tableColumn,
                                fontScale: fontScale, weight: weight, tintImages: tintImages)
@@ -310,14 +314,18 @@ struct MathInlineText: View {
     var fontScale: Double = 1
     var weight: Font.Weight = .regular
     var tintImages = false
-    @ScaledMetric(relativeTo: .body) private var fontSize: CGFloat = 16
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appAppearance) private var appearance
     @Environment(\.displayScale) private var displayScale
     @State private var loaded: (style: InlineMathImageStyle, images: [URL: Image])?
 
+    /// Matches the surrounding Markdown prose, which `Theme.chat` sizes the same way.
+    private var fontSize: CGFloat { ChatTypography(dynamicTypeSize: dynamicTypeSize).bodySize }
+
     private var request: InlineMathTextRequest {
         InlineMathTextRequest(markdown: markdown, fontSize: fontSize * fontScale,
-                              dark: colorScheme == .dark, scale: displayScale, tintImages: tintImages, fontWeight: weight)
+                              dark: colorScheme == .dark, theme: appearance.theme(for: colorScheme), scale: displayScale, tintImages: tintImages, fontWeight: weight)
     }
 
     var body: some View {
@@ -332,7 +340,7 @@ struct MathInlineText: View {
                     .accessibilityLabel(rendered.accessibilityText)
             }
         }
-        .font(.system(size: fontSize * fontScale, weight: weight))
+        .font(AppFont.fixed(size: fontSize * fontScale, weight: weight))
         .task(id: loadIdentity) {
             guard loadIdentity != nil else { return }
             try? await currentRequest.renderWithRetries(images: images) { result in
@@ -352,6 +360,7 @@ struct InlineMathTextResult {
 struct InlineMathImageStyle: Equatable {
     let fontSize: CGFloat
     let dark: Bool
+    var theme = ColorTheme.default
     let scale: CGFloat
     let tintImages: Bool
 }
@@ -369,12 +378,13 @@ struct InlineMathTextRequest: Equatable {
     let markdown: String
     let fontSize: CGFloat
     let dark: Bool
+    var theme = ColorTheme.default
     let scale: CGFloat
     var tintImages = false
     var fontWeight: Font.Weight = .regular
 
     var imageStyle: InlineMathImageStyle {
-        InlineMathImageStyle(fontSize: fontSize, dark: dark, scale: scale, tintImages: tintImages)
+        InlineMathImageStyle(fontSize: fontSize, dark: dark, theme: theme, scale: scale, tintImages: tintImages)
     }
 
     /// Token-only appends must not cancel an unchanged image download.
@@ -396,7 +406,7 @@ struct InlineMathTextRequest: Equatable {
         for run in attributed.runs {
             guard run.link == nil, let url = run.imageURL, images[url] == nil else { continue }
             guard let latex = InlineMathSource.latex(from: url),
-                  let image = InlineMathImageCache.shared.cachedImage(latex: latex, fontSize: fontSize, dark: dark, scale: scale) else {
+                  let image = InlineMathImageCache.shared.cachedImage(latex: latex, fontSize: fontSize, dark: dark, theme: theme, scale: scale) else {
                 return nil
             }
             images[url] = tintImages ? Image(uiImage: image).renderingMode(.template) : Image(uiImage: image)
@@ -411,7 +421,7 @@ struct InlineMathTextRequest: Equatable {
         for run in attributed.runs {
             guard let url = run.imageURL, images[url] == nil,
                   let latex = InlineMathSource.latex(from: url),
-                  let image = InlineMathImageCache.shared.cachedImage(latex: latex, fontSize: fontSize, dark: dark, scale: scale) else { continue }
+                  let image = InlineMathImageCache.shared.cachedImage(latex: latex, fontSize: fontSize, dark: dark, theme: theme, scale: scale) else { continue }
             images[url] = tintImages ? Image(uiImage: image).renderingMode(.template) : Image(uiImage: image)
         }
         return compose(attributed, images: images)
@@ -444,7 +454,7 @@ struct InlineMathTextRequest: Equatable {
     func render(provider suppliedProvider: (any InlineImageProvider)? = nil, images suppliedImages: [URL: Image] = [:]) async throws -> InlineMathTextResult {
         try Task.checkCancellation()
         let attributed = try parsed()
-        let provider = suppliedProvider ?? InlineMathImageProvider(fontSize: fontSize, colorScheme: dark ? .dark : .light, scale: scale, tintImages: tintImages)
+        let provider = suppliedProvider ?? InlineMathImageProvider(fontSize: fontSize, colorScheme: dark ? .dark : .light, theme: theme, scale: scale, tintImages: tintImages)
         var images = suppliedImages
         for run in attributed.runs {
             guard run.link == nil, let url = run.imageURL, images[url] == nil else { continue }
@@ -497,7 +507,9 @@ struct InlineMathTextRequest: Equatable {
     }
 
     private func compose(_ attributed: AttributedString, images: [URL: Image]) -> InlineMathTextResult {
+        // Prose runs share one `Text`: a `+` per run nests as deep as the paragraph is long.
         var text = Text("")
+        var prose = AttributedString()
         var selectable = ""
         var accessible = ""
         var retainedImages: [URL: Image] = [:]
@@ -515,20 +527,23 @@ struct InlineMathTextRequest: Equatable {
                     retainedImages[url] = images[url]
                     attachment = images[url].map { Text($0) } ?? Text(verbatim: alt)
                 }
+                if !prose.characters.isEmpty { text = text + Text(prose) }
+                prose = AttributedString()
                 text = text + attachment.customAttribute(ResponseSelectionImageAttribute())
                 accessible += alt
             } else {
                 var span = AttributedString(attributed[run.range])
                 if run.inlinePresentationIntent?.contains(.code) == true {
                     span.font = .system(size: fontSize * ChatMarkdownInlineStyle.codeFontScale, weight: fontWeight, design: .monospaced)
-                    span.backgroundColor = ChatMarkdownInlineStyle.codeBackground(dark: dark)
+                    span.backgroundColor = ChatMarkdownInlineStyle.codeBackground
                 }
-                text = text + Text(span)
+                prose.append(span)
                 let plain = String(span.characters)
                 selectable += plain
                 accessible += plain
             }
         }
+        if !prose.characters.isEmpty { text = text + Text(prose) }
         return InlineMathTextResult(text: text, selectableText: selectable, accessibilityText: accessible, images: retainedImages)
     }
 }

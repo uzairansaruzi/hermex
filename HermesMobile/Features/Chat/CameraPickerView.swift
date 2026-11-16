@@ -412,15 +412,15 @@ struct HermexAttachmentCameraPanel: View {
         case .denied, .restricted:
             VStack(spacing: 12) {
                 Image(systemName: "camera.fill")
-                    .font(.title)
+                    .font(AppFont.title())
                 Text("Camera access is off")
-                    .font(.headline)
+                    .font(AppFont.headline())
                 Text("Allow camera access in Settings to take a photo for this chat.")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.white.opacity(0.72))
                     .multilineTextAlignment(.center)
                 Button("Open Settings", action: openSettings)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appProminent)
                     .tint(.accentColor)
             }
             .foregroundStyle(.white)
@@ -434,7 +434,7 @@ struct HermexAttachmentCameraPanel: View {
         case .ready, .capturing:
             if let message = controller.captureErrorMessage {
                 Text(message)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -496,7 +496,7 @@ struct HermexAttachmentCameraPanel: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.body.weight(.semibold))
+                .font(AppFont.body(weight: .semibold))
                 .foregroundStyle(.white.opacity(enabled ? 1 : 0.45))
                 .frame(width: 46, height: 46)
                 .background(.black.opacity(0.54), in: Circle())
@@ -510,10 +510,10 @@ struct HermexAttachmentCameraPanel: View {
     private func cameraMessage(_ title: String, detail: String) -> some View {
         VStack(spacing: 8) {
             Image(systemName: "camera.fill")
-                .font(.title)
-            Text(title).font(.headline)
+                .font(AppFont.title())
+            Text(title).font(AppFont.headline())
             Text(detail)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.white.opacity(0.72))
                 .multilineTextAlignment(.center)
         }

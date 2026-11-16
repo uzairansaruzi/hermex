@@ -8,7 +8,29 @@ enum HermesCompatibility {
     static let minimumVersion = "0.21.3"
     /// The release Hermex was validated against. Mirrors line 2 of
     /// `HERMES_AGENT_TESTED_SHA`; `BotConnectionVersionTests` fails when they drift.
-    static let testedVersion = "0.21.5"
+    static let testedVersion = "0.23.1"
+    /// The first release whose `prompt.submit` takes `title_preview`; older hosts refuse it.
+    static let titlePreviewVersion = "0.21.6"
+    /// Desktop's preview length, in UTF-16 units.
+    static let titlePreviewLimit = 1_000
+
+    /// Whether a host reporting `version` takes `title_preview`. Unlike sign-in, a missing or
+    /// unreadable version fails closed: an older host refuses the whole prompt.
+    static func supportsTitlePreview(_ version: String?) -> Bool {
+        guard let reported = release(version), let minimum = release(titlePreviewVersion) else { return false }
+        return !reported.lexicographicallyPrecedes(minimum)
+    }
+
+    /// The first `titlePreviewLimit` UTF-16 units of `text`, never splitting a character;
+    /// nil when nothing fits.
+    static func boundedTitlePreview(_ text: String) -> String? {
+        var units = 0
+        let end = text.firstIndex { character in
+            units += character.utf16.count
+            return units > titlePreviewLimit
+        } ?? text.endIndex
+        return end == text.startIndex ? nil : String(text[..<end])
+    }
 
     /// Whether a host reporting `version` may sign in. A missing or unreadable version
     /// counts as supported: the pin always reports one, so its absence means a proxy or

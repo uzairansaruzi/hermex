@@ -28,11 +28,11 @@ final class KanbanLiveUpdateTests: XCTestCase {
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
         stream.emit(Self.eventsFrame(cursor: 13, kind: "future.unknown.kind"))
 
-        try await waitUntil { await client.boardCallCount == 2 }
+        await until("the burst's refresh") { state.snapshot?.latestEventID == 13 }
         XCTAssertEqual(state.liveCursor, 13)
-        XCTAssertEqual(state.snapshot?.latestEventID, 13)
-        let lastRequest = await client.boardRequests.last
-        XCTAssertNil(lastRequest?.since)
+        let requests = await client.boardRequests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertNil(requests.last?.since)
         let statsCallCount = await client.statsCallCount
         let assigneeCallCount = await client.assigneeCallCount
         // Only the initial load reads stats and assignees; the live burst fetches the Board alone.
@@ -50,7 +50,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(true)
         stream.emit(.hello(cursor: 11, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
-        try await waitUntil { await client.boardCallCount == 2 }
+        await fulfillment(of: [client.boardCalls(reaching: 2)], timeout: 5)
 
         // Writes stay gated while the refresh runs, but the Card list keeps its shape.
         XCTAssertTrue(state.isRefreshing)
@@ -58,7 +58,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertFalse(state.showsBoardLoadingRow)
 
         await client.release(.cursor12)
-        try await waitUntil { state.snapshot?.latestEventID == 12 && !state.isRefreshing }
+        await until("the refresh at cursor 12") { state.snapshot?.latestEventID == 12 && !state.isRefreshing }
         state.setVisible(false)
     }
 
@@ -68,6 +68,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         let probe = RefreshingProbe()
         let state = makeState(client: client, stream: stream, sleep: { duration in
             probe.recordSleep()
+            // test-wait: the 5 ms debounce runs for real; the test waits on the gated client.
             try await Task.sleep(for: duration)
         })
         probe.state = state
@@ -76,7 +77,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(true)
         stream.emit(.hello(cursor: 11, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
-        try await waitUntil { await client.boardCallCount == 2 }
+        await fulfillment(of: [client.boardCalls(reaching: 2)], timeout: 5)
 
         // Two more bursts land while the live refresh is still downloading.
         stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
@@ -84,10 +85,10 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await client.release(.cursor12)
 
         // The in-flight refresh was applied, then exactly one follow-up started.
-        try await waitUntil { await client.boardCallCount == 3 }
+        await fulfillment(of: [client.boardCalls(reaching: 3)], timeout: 5)
         XCTAssertEqual(state.snapshot?.latestEventID, 12)
         await client.release(.cursor14)
-        try await waitUntil { state.snapshot?.latestEventID == 14 && !state.isRefreshing }
+        await until("the refresh at cursor 14") { state.snapshot?.latestEventID == 14 && !state.isRefreshing }
 
         let boardCallCount = await client.boardCallCount
         let statsCallCount = await client.statsCallCount
@@ -112,15 +113,16 @@ final class KanbanLiveUpdateTests: XCTestCase {
 
         // A pull is still downloading the Board when a burst's live refresh takes over.
         let pull = Task { await state.refresh() }
-        try await waitUntil { await client.boardCallCount == 2 }
+        await fulfillment(of: [client.boardCalls(reaching: 2)], timeout: 5)
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
-        try await waitUntil { await client.boardCallCount == 3 }
+        await fulfillment(of: [client.boardCalls(reaching: 3)], timeout: 5)
         await client.release(.cursor12)
         await pull.value
         await client.release(.cursor12)
 
         // The live refresh reads the stats and assignees the superseded pull never did.
-        try await waitUntil { await client.assigneeCallCount == 2 && !state.isRefreshing }
+        await fulfillment(of: [client.assigneeCalls(reaching: 2)], timeout: 5)
+        await until("the live refresh finishes") { !state.isRefreshing }
         let statsCallCount = await client.statsCallCount
         XCTAssertEqual(statsCallCount, 2)
         state.setVisible(false)
@@ -135,7 +137,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(true)
         stream.emit(.hello(cursor: 11, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
-        try await waitUntil { await client.boardCallCount == 2 }
+        await fulfillment(of: [client.boardCalls(reaching: 2)], timeout: 5)
 
         // Push a Card mid-refresh, pop back, and receive a new burst.
         state.setVisible(false)
@@ -143,20 +145,22 @@ final class KanbanLiveUpdateTests: XCTestCase {
         stream.emit(.hello(cursor: 12, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
 
-        try await waitUntil { await client.boardCallCount == 3 }
+        await fulfillment(of: [client.boardCalls(reaching: 3)], timeout: 5)
         await client.release(.cursor12)
         // Once the client has returned the stale result, the stale refresh finishes on
-        // the main actor before this test resumes there.
-        try await waitUntil { await client.resumedFetchCount == 1 }
+        // the main actor before this test resumes there from reading the count.
+        await fulfillment(of: [client.resumedFetches(reaching: 1)], timeout: 5)
+        let resumedFetchCount = await client.resumedFetchCount
+        XCTAssertEqual(resumedFetchCount, 1)
 
         // The stale refresh must not clear the new refresh's in-flight flag: this burst
         // queues a follow-up instead of cancelling the fetch holding cursor 14.
         stream.emit(Self.eventsFrame(cursor: 15, kind: "task.updated"))
         await client.release(.cursor14)
-        try await waitUntil { await client.boardCallCount == 4 }
+        await fulfillment(of: [client.boardCalls(reaching: 4)], timeout: 5)
         XCTAssertEqual(state.snapshot?.latestEventID, 14)
         await client.release(.cursor15)
-        try await waitUntil { state.snapshot?.latestEventID == 15 && !state.isRefreshing }
+        await until("the refresh at cursor 15") { state.snapshot?.latestEventID == 15 && !state.isRefreshing }
         state.setVisible(false)
     }
 
@@ -173,17 +177,17 @@ final class KanbanLiveUpdateTests: XCTestCase {
         // Returning resumes the stream while `loadIfNeeded` refetches to finish the reads.
         state.setVisible(true)
         let reappear = Task { await state.loadIfNeeded() }
-        try await waitUntil { await client.boardCallCount == 2 }
+        await fulfillment(of: [client.boardCalls(reaching: 2)], timeout: 5)
 
         // A backlog burst supersedes that refresh before its Board returns.
         stream.emit(.hello(cursor: 11, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
-        try await waitUntil { await client.boardCallCount == 3 }
+        await fulfillment(of: [client.boardCalls(reaching: 3)], timeout: 5)
         await client.release(.cursor12)
         await reappear.value
         await client.release(.cursor12)
 
-        try await waitUntil { state.stats != nil && state.assigneeHistory != nil }
+        await until("the stats and assignees") { state.stats != nil && state.assigneeHistory != nil }
         let statsCallCount = await client.statsCallCount
         XCTAssertEqual(statsCallCount, 2)
         state.setVisible(false)
@@ -199,7 +203,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         stream.emit(.hello(cursor: 11, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
         stream.emit(Self.eventsFrame(cursor: 13, kind: "task.updated"))
-        try await waitUntil { state.snapshot?.latestEventID == 13 }
+        await until("the burst's refresh") { state.snapshot?.latestEventID == 13 }
         XCTAssertEqual(state.liveCursor, 13)
 
         // Push a Card, then pop back to the Board.
@@ -269,15 +273,15 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await state.load()
         state.setVisible(true)
         stream.failCurrent()
-        try await waitUntil { stream.starts.count == 2 }
+        await until("the first reconnect") { stream.starts.count == 2 }
         stream.failCurrent()
-        try await waitUntil { stream.starts.count == 3 }
+        await until("the second reconnect") { stream.starts.count == 3 }
         stream.failCurrent()
 
-        try await waitUntil { state.liveUpdatesDelayed }
-        try await waitUntil { await client.boardCallCount == 2 }
+        await until("live updates are delayed") { state.liveUpdatesDelayed }
+        await fulfillment(of: [client.boardCalls(reaching: 2)], timeout: 5)
         // The loop is parked on its second interval, so no further poll can land.
-        try await waitUntil { polling.intervalsStarted == 2 }
+        await until("the second polling interval") { polling.intervalsStarted == 2 }
         let eventCallCount = await client.eventCallCount
         XCTAssertEqual(eventCallCount, 1)
         XCTAssertEqual(state.liveCursor, 13)
@@ -372,8 +376,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
 
         // The stream stayed current through the overlay, so its events still land.
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
-        try await waitUntil { await client.boardCallCount == 2 }
-        XCTAssertEqual(state.snapshot?.latestEventID, 13)
+        await until("the event's refresh") { state.snapshot?.latestEventID == 13 }
         state.setVisible(false)
     }
 
@@ -504,7 +507,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await state.setScenePhase(.background)
 
         let foreground = Task { await state.setScenePhase(.active) }
-        try await waitUntil { await client.foregroundRequestStarted }
+        await fulfillment(of: [client.foregroundRequestHeld], timeout: 5)
         await state.selectBoard("release")
         let stopCountAfterSwitch = stream.stopCount
 
@@ -536,8 +539,9 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertEqual(state.liveCursor, 20)
         stream.emit(Self.eventsFrame(cursor: 21, kind: "task.created"))
 
-        try await waitUntil { await client.boardCallCount == 3 }
-        XCTAssertEqual(state.snapshot?.latestEventID, 21)
+        await until("the new Board's refresh") { state.snapshot?.latestEventID == 21 }
+        let boardCallCount = await client.boardCallCount
+        XCTAssertEqual(boardCallCount, 3)
         state.setVisible(false)
     }
 
@@ -559,10 +563,10 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(true)
         for expectedStarts in 2...3 {
             stream.failCurrent()
-            try await waitUntil { stream.starts.count == expectedStarts }
+            await until("reconnect \(expectedStarts - 1)") { stream.starts.count == expectedStarts }
         }
         stream.failCurrent()
-        try await waitUntil { state.liveUpdatesDelayed }
+        await until("live updates are delayed") { state.liveUpdatesDelayed }
 
         await state.refresh()
 
@@ -586,19 +590,20 @@ final class KanbanLiveUpdateTests: XCTestCase {
                 failuresBeforePolling: 3
             )
         )
-        weak let releasedState = state
 
         await state?.load()
         state?.setVisible(true)
         for expectedStarts in 2...3 {
             stream.failCurrent()
-            try await waitUntil { stream.starts.count == expectedStarts }
+            await until("reconnect \(expectedStarts - 1)") { stream.starts.count == expectedStarts }
         }
         stream.failCurrent()
-        try await waitUntil { state?.liveUpdatesDelayed == true }
+        await until("live updates are delayed") { state?.liveUpdatesDelayed == true }
 
+        let released = expectation(description: "the state is released")
+        expectDeallocation(of: try XCTUnwrap(state), released)
         state = nil
-        try await waitUntil { releasedState == nil }
+        await fulfillment(of: [released], timeout: 5)
     }
 
     func testServerVisibilityHandoffMakesOutgoingCallbacksInert() async throws {
@@ -626,8 +631,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
 
         first.setVisible(false)
         second.setVisible(true)
+        // The hidden state drops the frame as it arrives, before scheduling any refresh.
         firstStream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"), startIndex: 0)
-        try await Task.sleep(for: .milliseconds(20))
 
         XCTAssertGreaterThanOrEqual(firstStream.stopCount, 1)
         let firstBoardCallCount = await firstClient.boardCallCount
@@ -869,6 +874,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
             failuresBeforePolling: 3
         ),
         sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { duration in
+            // test-wait: 5 ms debounces and reconnects run for real and longer delays never
+            // elapse in a test; tests wait on signals.
             try await Task.sleep(for: duration)
         }
     ) -> KanbanFeatureState {
@@ -905,13 +912,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
     /// which a busy CI runner can stretch past a few seconds.
     private func until(_ description: String, file: StaticString = #filePath, line: UInt = #line,
                        _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 10) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
+        await waitUntil(description, timeout: 10, file: file, line: line, condition)
     }
 
     private static func eventsFrame(cursor: Int, kind: String) -> KanbanStreamFrame {
@@ -920,18 +921,6 @@ final class KanbanLiveUpdateTests: XCTestCase {
             data: #"{"events":[{"id":\#(cursor),"task_id":"CARD-1","kind":"\#(kind)","payload":{"value":"private"}}],"cursor":\#(cursor)}"#,
             frameID: String(cursor)
         )
-    }
-
-    private func waitUntil(
-        timeout: TimeInterval = 2,
-        condition: @escaping @MainActor @Sendable () async -> Bool
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if await condition() { return }
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        XCTFail("Timed out waiting for condition")
     }
 }
 
@@ -1166,6 +1155,7 @@ private actor LiveKanbanClient: KanbanDataClient {
     private(set) var statsCallCount = 0
     private(set) var assigneeCallCount = 0
     private var statsFailuresRemaining: Int
+    private var boardCallLog = CallCount()
     nonisolated let backend: KanbanBackend
 
     init(
@@ -1185,6 +1175,8 @@ private actor LiveKanbanClient: KanbanDataClient {
 
     var boardCallCount: Int { boardRequests.count }
 
+    func boardCalls(reaching count: Int) -> XCTestExpectation { boardCallLog.expectation(reaching: count) }
+
     func kanbanConfiguration() -> KanbanConfiguration { .liveConfiguration }
     func kanbanBoards() throws -> KanbanBoardsResponse {
         boardsCallCount += 1
@@ -1197,6 +1189,7 @@ private actor LiveKanbanClient: KanbanDataClient {
 
     func kanbanBoard(_ request: KanbanBoardRequest) throws -> KanbanBoardSnapshot {
         boardRequests.append(request)
+        boardCallLog.record()
         guard !boardResults.isEmpty else { return .newer }
         return try boardResults.removeFirst().get()
     }
@@ -1235,14 +1228,16 @@ private final class RefreshingProbe {
 /// Stands in for the polling timer: the first interval elapses at once and every
 /// later one holds until the polling task is cancelled, so a test counts polls
 /// exactly instead of racing a real timer. Other sleeps run for their duration.
-@MainActor
+@MainActor @Observable
 private final class PollingProbe {
     static let interval = Duration.seconds(30)
     private(set) var intervalsStarted = 0
 
     func sleep(_ duration: Duration) async throws {
+        // test-wait: the 5 ms debounce runs for real; only the polling interval is scripted.
         guard duration == Self.interval else { return try await Task.sleep(for: duration) }
         intervalsStarted += 1
+        // test-wait: holds the polling loop until leaving the Board cancels it.
         if intervalsStarted > 1 { try await Task.sleep(for: .seconds(3600)) }
     }
 }
@@ -1251,11 +1246,11 @@ private final class PollingProbe {
 /// the test releases it, so a burst can land while a live refresh is in flight.
 /// `cancelsFirstStatsRead` models a pop that cancels the first load mid-reads.
 private actor GatedLiveKanbanClient: KanbanDataClient {
-    private(set) var boardCallCount = 0
+    private var boardCallLog = CallCount()
     private(set) var statsCallCount = 0
-    private(set) var assigneeCallCount = 0
+    private var assigneeCallLog = CallCount()
     /// Held fetches that were released and handed their result back to the caller.
-    private(set) var resumedFetchCount = 0
+    private var resumedFetchLog = CallCount()
     private var pending: [CheckedContinuation<KanbanBoardSnapshot, Never>] = []
     private var cancelsNextStatsRead: Bool
 
@@ -1263,14 +1258,22 @@ private actor GatedLiveKanbanClient: KanbanDataClient {
         cancelsNextStatsRead = cancelsFirstStatsRead
     }
 
+    var boardCallCount: Int { boardCallLog.value }
+    var assigneeCallCount: Int { assigneeCallLog.value }
+    var resumedFetchCount: Int { resumedFetchLog.value }
+
+    func boardCalls(reaching count: Int) -> XCTestExpectation { boardCallLog.expectation(reaching: count) }
+    func assigneeCalls(reaching count: Int) -> XCTestExpectation { assigneeCallLog.expectation(reaching: count) }
+    func resumedFetches(reaching count: Int) -> XCTestExpectation { resumedFetchLog.expectation(reaching: count) }
+
     func kanbanConfiguration() -> KanbanConfiguration { .liveConfiguration }
     func kanbanBoards() -> KanbanBoardsResponse { .single }
 
     func kanbanBoard(_ request: KanbanBoardRequest) async -> KanbanBoardSnapshot {
-        boardCallCount += 1
+        boardCallLog.record()
         guard boardCallCount > 1 else { return .rich }
         let snapshot = await withCheckedContinuation { pending.append($0) }
-        resumedFetchCount += 1
+        resumedFetchLog.record()
         return snapshot
     }
 
@@ -1292,7 +1295,7 @@ private actor GatedLiveKanbanClient: KanbanDataClient {
     }
 
     func kanbanAssignees(board: String) -> KanbanAssigneeHistory {
-        assigneeCallCount += 1
+        assigneeCallLog.record()
         return .emptyHistory
     }
 
@@ -1302,8 +1305,8 @@ private actor GatedLiveKanbanClient: KanbanDataClient {
 private actor ForegroundBoardSwitchClient: KanbanDataClient {
     private var boardCallCount = 0
     private var foregroundContinuation: CheckedContinuation<Void, Never>?
-
-    var foregroundRequestStarted: Bool { foregroundContinuation != nil }
+    /// Fulfilled once the foreground's Board read is held.
+    nonisolated let foregroundRequestHeld = XCTestExpectation(description: "the foreground read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { .liveConfiguration }
     func kanbanBoards() -> KanbanBoardsResponse { .multiple }
@@ -1314,7 +1317,10 @@ private actor ForegroundBoardSwitchClient: KanbanDataClient {
         case 1:
             return .rich
         case 2:
-            await withCheckedContinuation { foregroundContinuation = $0 }
+            await withCheckedContinuation {
+                foregroundContinuation = $0
+                foregroundRequestHeld.fulfill()
+            }
             return .newer
         default:
             return request.board == "release" ? .release : .newer
@@ -1381,4 +1387,18 @@ private func decode<T: Decodable>(_ json: String) -> T {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
     return try! decoder.decode(T.self, from: Data(json.utf8))
+}
+
+/// Fulfills `expectation` once `object` is deallocated: a sentinel tied to its lifetime goes
+/// with it, so a test waits for the release instead of polling a weak reference.
+private func expectDeallocation(of object: AnyObject, _ expectation: XCTestExpectation) {
+    objc_setAssociatedObject(object, &deallocationSentinelKey, DeallocationSentinel(expectation), .OBJC_ASSOCIATION_RETAIN)
+}
+
+private var deallocationSentinelKey: UInt8 = 0
+
+private final class DeallocationSentinel {
+    let expectation: XCTestExpectation
+    init(_ expectation: XCTestExpectation) { self.expectation = expectation }
+    deinit { expectation.fulfill() }
 }

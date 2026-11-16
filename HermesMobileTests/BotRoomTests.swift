@@ -3,6 +3,117 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotRoomTests: XCTestCase {
+    func testARoomApprovalSummaryUsesItsMembersProfileAndEndsWithThePendingTuple() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = try XCTUnwrap(reader.status.actions.first)
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        await presentation.summaries.show(presentation.key, load: presentation.load)
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"))
+        XCTAssertEqual(wire.writes.last { $0.0 == "llm.oneshot" }?.1["profile"]?.text, "chief-of-staff")
+        XCTAssertNil(wire.writes.last { $0.0 == "llm.oneshot" }?.1["session_id"], "rooms never guess a hidden member runtime")
+        reader.suspend()
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"))
+        await reader.open()
+        wire.driverStatus = RoomFixture.status(actions: [])
+        await reader.poll()
+        XCTAssertNil(presentation.summaries.states[presentation.key])
+    }
+
+    func testSendingKeepsAnotherApprovalSummaryLoadingUntilItsReply() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = try XCTUnwrap(reader.status.actions.first)
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        let loading = expectation(description: "summary reply held")
+        var reply: CheckedContinuation<Void, Never>?
+        wire.beforeSummaryReply = { await withCheckedContinuation { reply = $0; loading.fulfill() } }
+        let summary = Task { await presentation.summaries.show(presentation.key, load: presentation.load) }
+        await fulfillment(of: [loading], timeout: 3)
+        wire.holdWrite = true
+        let sending = expectation(description: "message reply held")
+        wire.onWriteHeld = { sending.fulfill() }
+        reader.draft = "continue discussion"
+        let send = Task { await reader.send() }
+        await fulfillment(of: [sending], timeout: 3)
+        XCTAssertTrue(reader.busy)
+        XCTAssertFalse(reader.mayAct(action), "temporary command lock still disables buttons")
+        XCTAssertEqual(reader.summaryPresentation(for: action)?.key, presentation.key,
+                       "sending must not remove another pending approval's summary")
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .loading)
+        reply?.resume(); await summary.value
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"))
+        XCTAssertEqual(reader.summaryPresentation(for: action)?.key, presentation.key)
+        wire.releaseWrite(); await send.value
+    }
+
+    func testAnsweringAnotherApprovalDoesNotInvalidateASummaryWaitingToDispatch() async throws {
+        let wire = RoomWire()
+        var other = try XCTUnwrap(RoomFixture.approval.fields)
+        other["request_id"] = .string("approval:2")
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval, .object(other)])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = reader.status.actions[0], answered = reader.status.actions[1]
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        let queued = expectation(description: "summary awaiting dispatch")
+        var dispatch: CheckedContinuation<Void, Never>?
+        wire.beforeSummaryDispatch = { await withCheckedContinuation { dispatch = $0; queued.fulfill() } }
+        let summary = Task { await presentation.summaries.show(presentation.key, load: presentation.load) }
+        await fulfillment(of: [queued], timeout: 3)
+        wire.holdWrite = true
+        let answering = expectation(description: "other approval reply held")
+        wire.onWriteHeld = { answering.fulfill() }
+        let answer = Task { await reader.act(answered, choice: .once) }
+        await fulfillment(of: [answering], timeout: 3)
+        XCTAssertTrue(reader.busy)
+        XCTAssertEqual(reader.summaryPresentation(for: action)?.key, presentation.key)
+        XCTAssertNil(reader.summaryPresentation(for: answered), "only the answered tuple is inactive")
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .loading)
+        dispatch?.resume(); await summary.value
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"),
+                       "dispatch eligibility belongs to the approval, not the room command lock")
+        XCTAssertEqual(wire.writes.filter { $0.0 == "llm.oneshot" }.count, 1)
+        wire.releaseWrite(); await answer.value
+    }
+
+    func testAnAcceptedAnswerRemovesItsLoadingSummary() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = try XCTUnwrap(reader.status.actions.first)
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        let loading = expectation(description: "summary reply held")
+        var reply: CheckedContinuation<Void, Never>?
+        wire.beforeSummaryReply = { await withCheckedContinuation { reply = $0; loading.fulfill() } }
+        let summary = Task { await presentation.summaries.show(presentation.key, load: presentation.load) }
+        await fulfillment(of: [loading], timeout: 3)
+        wire.holdWrite = true
+        let answering = expectation(description: "approval reply held")
+        wire.onWriteHeld = { answering.fulfill() }
+        let answer = Task { await reader.act(action, choice: .once) }
+        await fulfillment(of: [answering], timeout: 3)
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .loading, "an answer can still fail")
+        XCTAssertNil(reader.summaryPresentation(for: action))
+        wire.releaseWrite(); await answer.value
+        XCTAssertNil(presentation.summaries.states[presentation.key])
+        reply?.resume(); await summary.value
+        XCTAssertNil(presentation.summaries.states[presentation.key], "a late model reply cannot restore an answered approval")
+    }
+
     func testRecentRoomKeepsSystemEventsBeforeNetworkAndFetchesOnlyNewRows() async throws {
         let cache = BotHistoryCache(), wire = RoomWire()
         wire.latest = 3; wire.kind = "room.renamed"
@@ -261,6 +372,67 @@ import XCTest
         XCTAssertEqual(reader.events.count, 1)
         XCTAssertGreaterThan(wire.closed, 0)
         reader.close()
+    }
+
+    /// A probe can end the room's socket after the network change that started it, so no second
+    /// change will come: a room on screen reconnects on its own, keeping its history. Leaving it
+    /// cancels that (#1372).
+    func testALostRoomOnScreenReconnectsOnItsOwnAndLeavingCancelsIt() async {
+        let wire = RoomWire(), next = RoomWire(), spare = RoomWire(); next.latest = 1
+        var wires = [wire, next, spare]
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!,
+                                   cache: BotHistoryCache(), makeWire: { _ in wires.removeFirst() },
+                                   reconnectDelays: [.zero], isNetworkAvailable: { true })
+        let owner = UUID()
+        await reader.open(owner: owner)
+
+        wire.onDisconnect?(BotFailure.transport)
+        XCTAssertEqual(reader.link, .stopped)
+        await waitUntil("reconnected") { reader.link == .live }
+        XCTAssertEqual(reader.events.count, 1)
+
+        next.onDisconnect?(BotFailure.transport)
+        reader.leave(owner: owner)
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(reader.link, .idle)
+        XCTAssertEqual(spare.stateCalls, 0, "a room off screen stays down")
+    }
+
+    /// A room that spent its automatic reconnects still reconnects when the network returns,
+    /// without resending anything (#1372).
+    func testARoomOutOfRetriesReconnectsWhenTheNetworkReturns() async {
+        let wire = RoomWire(), offline = RoomWire(), next = RoomWire(); next.latest = 1
+        offline.connectFailure = URLError(.notConnectedToInternet)
+        var wires = [wire, offline, next]
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!,
+                                   cache: BotHistoryCache(), makeWire: { _ in wires.removeFirst() },
+                                   reconnectDelays: [.zero], isNetworkAvailable: { true })
+        await reader.open(owner: UUID())
+
+        wire.onDisconnect?(BotFailure.transport)
+        let offlineMessage = URLError(.notConnectedToInternet).localizedDescription
+        await waitUntil("out of retries") { reader.link == .stopped && reader.errorMessage == offlineMessage }
+        reader.networkPathDidChange()
+        await waitUntil("reconnected") { reader.link == .live }
+        XCTAssertEqual(reader.events.count, 1)
+        XCTAssertTrue(next.writes.isEmpty, "a reconnect never resends")
+    }
+
+    /// A tunnel's passing 503 during an automatic reconnect doesn't end the room's recovery
+    /// (#1372).
+    func testARoomKeepsReconnectingPastATransientRefusal() async {
+        let wire = RoomWire(), refused = RoomWire(), next = RoomWire(); next.latest = 1
+        refused.connectFailure = BotFailure.rejected(503)
+        var wires = [wire, refused, next]
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!,
+                                   cache: BotHistoryCache(), makeWire: { _ in wires.removeFirst() },
+                                   reconnectDelays: [.zero, .zero], isNetworkAvailable: { true })
+        await reader.open(owner: UUID())
+
+        wire.onDisconnect?(BotFailure.transport)
+        await waitUntil("reconnected") { reader.link == .live }
+        XCTAssertEqual(reader.events.count, 1)
+        XCTAssertTrue(next.writes.isEmpty, "a reconnect never resends")
     }
 
     func testExpiredAndWorkerErrorsHaveRequiredRecovery() async {
@@ -592,6 +764,40 @@ import XCTest
         reader.close()
     }
 
+    /// A canonical host fences a room task by its member and generation (#1605). Retry names
+    /// both, and a task whose outcome is unknown offers Discard instead, never Retry; Discard
+    /// sends all four fields, and a host that doesn't list `groups.discard` gets no card button.
+    func testACanonicalRoomTaskIsRetriedOrDiscardedUnderItsFence() async throws {
+        let wire = RoomWire()
+        var caps = RoomFixture.capabilities.fields!
+        caps["methods"] = .array((RoomFixture.methods + ["groups.discard"]).map(BotJSON.string))
+        wire.capabilities = .object(caps)
+        func action(_ kind: String, _ task: String, member: String = "chief") -> BotJSON {
+            .object(["kind": .string(kind), "member_id": .string(member), "task_id": .string(task), "execution_generation": .number(3)])
+        }
+        // A stalled preparation's Retry names every member it couldn't wake.
+        wire.driverStatus = RoomFixture.status(actions: [action("retry", "prepare:fixture-room", member: "chief, coder"),
+                                                         action("discard", "task:2")])
+        let reader = makeReader(wire); await reader.open()
+        let retry = reader.status.actions[0], discard = reader.status.actions[1]
+        XCTAssertFalse(discard.isRetry)
+        XCTAssertTrue(reader.mayAct(discard))
+        await reader.act(retry)
+        let attempt = HermesCall.RoomAttempt(memberID: "chief, coder", executionGeneration: 3)
+        XCTAssertEqual(wire.writeCalls.first, .groupsRetry(roomID: "fixture-room", taskID: "prepare:fixture-room", attempt: attempt))
+        await reader.act(discard)
+        XCTAssertNil(reader.commandMessage)
+        XCTAssertEqual(wire.writes.last?.0, "groups.discard")
+        XCTAssertEqual(wire.writes.last?.1, ["room_id": .string("fixture-room"), "member_id": .string("chief"),
+                                             "task_id": .string("task:2"), "execution_generation": .number(3)])
+        reader.close()
+
+        wire.capabilities = RoomFixture.capabilities
+        let older = makeReader(wire); await older.open()
+        XCTAssertFalse(older.mayAct(older.status.actions[1]))
+        older.close()
+    }
+
     func testForeignOrMissingAuthorityAndMissingMethodPreventWrites() async {
         let wire = RoomWire(); wire.authority = "elsewhere"
         let reader = makeReader(wire); await reader.open(); reader.draft = "hello"
@@ -834,7 +1040,11 @@ enum RoomFixture {
     var failure: Error?
     var driverStatus = RoomFixture.status()
     var writes: [(String, [String: BotJSON])] = []
+    /// The writes as typed calls, for what only a canonical socket adds to their params.
+    var writeCalls: [HermesCall] = []
     var beforeWrite: (() async -> Void)?
+    var beforeSummaryDispatch: (() async -> Void)?
+    var beforeSummaryReply: (() async -> Void)?
     var writeFailure: Error?
     var loseWrite = false
     var holdWrite = false
@@ -849,10 +1059,11 @@ enum RoomFixture {
     func close() { closed += 1 }
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let method = call.method, params = try call.params()
-        if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.create", "groups.rename", "groups.disband"].contains(method) {
+        if ["groups.send", "groups.stop", "groups.approve", "groups.retry", "groups.discard", "groups.create", "groups.rename",
+            "groups.disband"].contains(method) {
             await beforeWrite?()
             try validateDispatch?()
-            writes.append((method, params))
+            writes.append((method, params)); writeCalls.append(call)
             if let writeFailure { throw writeFailure }
             var result: BotJSON
             switch method {
@@ -887,6 +1098,7 @@ enum RoomFixture {
                 driverStatus = RoomFixture.status(stopping: 1)
                 result = .object(["cancelled": .number(1)])
             case "groups.approve": result = .object(["approved": .bool(true)])
+            case "groups.discard": result = .object(["discarded": .bool(true), "task": params["task_id"]!])
             default: result = .object(["retried": .bool(true)])
             }
             if loseWrite { onDisconnect?(BotFailure.transport); throw BotFailure.transport }
@@ -896,8 +1108,13 @@ enum RoomFixture {
             }
             return result
         }
+        if method == "llm.oneshot" { await beforeSummaryDispatch?() }
         try validateDispatch?()
         switch method {
+        case "llm.oneshot":
+            writes.append((method, params))
+            await beforeSummaryReply?()
+            return .object(["text": .string("Room command explanation")])
         case "profiles.list": return .object(["profiles": .array([])])
         // The inbox reads live statuses after every roster read; no bot is busy here.
         case "session.active_list": return .object(["sessions": .array([])])

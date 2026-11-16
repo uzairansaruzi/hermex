@@ -197,12 +197,16 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
         // written (the intermediate toggle is coalesced away).
         var writtenValues: [Bool] = []
         var releaseFirstWrite: CheckedContinuation<Void, Never>?
+        let firstWriteInFlight = expectation(description: "write 1 is in flight")
         let model = makeModel(
             server: serverA,
             writeToServer: { value in
                 writtenValues.append(value)
                 if writtenValues.count == 1 {
-                    await withCheckedContinuation { releaseFirstWrite = $0 }
+                    await withCheckedContinuation {
+                        releaseFirstWrite = $0
+                        firstWriteInFlight.fulfill()
+                    }
                 }
             }
         )
@@ -212,7 +216,7 @@ final class CliSessionsSyncModelTests: APIClientTestCase {
 
         // Let write 1 start and suspend inside writeToServer, so it is truly
         // in flight when the user keeps toggling.
-        while releaseFirstWrite == nil { await Task.yield() }
+        await fulfillment(of: [firstWriteInFlight], timeout: 5)
 
         model.setShowsCliSessions(true)  // superseded before it can send
         model.setShowsCliSessions(false) // final desired value

@@ -70,19 +70,33 @@ struct HermesUpdateCheck: Equatable {
     let updateCommand: String?
     /// The host's guidance, such as why the check couldn't run.
     let message: String?
+    /// What the check offers this build, which can be newer than its release channel.
+    let offer: Offer
+
+    enum Offer: Equatable {
+        /// A newer release, or nothing new, by `update_available`.
+        case update, nothing
+        /// `rollback_to`: the only release on offer is older, and applying it moves back.
+        case moveBack
+        /// `held`: the host keeps this build, which is newer than the release on offer.
+        case held
+    }
 
     init(installMethod: String? = "git", currentVersion: String? = nil, behind: Int?, updateAvailable: Bool,
-         canApply: Bool = true, updateCommand: String? = "hermes update", message: String? = nil) {
+         canApply: Bool = true, updateCommand: String? = "hermes update", message: String? = nil,
+         offer: Offer? = nil) {
         self.installMethod = installMethod; self.currentVersion = currentVersion; self.behind = behind
         self.updateAvailable = updateAvailable; self.canApply = canApply
         self.updateCommand = updateCommand; self.message = message
+        self.offer = offer ?? (updateAvailable ? .update : .nothing)
     }
 
     init(_ json: BotJSON) {
         self.init(installMethod: json["install_method"].text, currentVersion: json["current_version"].text,
                   behind: json["behind"].integer, updateAvailable: json["update_available"].flag ?? false,
                   canApply: json["can_apply"].flag ?? false, updateCommand: json["update_command"].text,
-                  message: json["message"].text)
+                  message: json["message"].text,
+                  offer: json["rollback_to"].text != nil ? .moveBack : json["held"].text != nil ? .held : nil)
     }
 
     /// The command for the user to run on the host, or nil when there is none to copy.

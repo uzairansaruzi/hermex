@@ -564,6 +564,34 @@ extension APIClientGitTests {
         XCTAssertNil(oversized?.diff)
     }
 
+    /// A diff or file read whose answer has no text has nothing a viewed mark could vouch for,
+    /// while an empty diff is a real, empty patch.
+    @MainActor
+    func testAHermesDiffWithoutTextCanNotBeMarkedViewed() async throws {
+        let git = HermesGitHost.client { request in
+            switch (request.url?.path, HermesGitHost.query(request, "file")) {
+            case ("/api/git/review/diff", "Empty.swift"): .json(200, .object(["diff": .string("")]))
+            case ("/api/git/review/diff", _): .json(200, .object([:]))
+            case ("/api/git/file-diff", _): .json(200, .object(["diff": .string("")]))
+            case ("/api/fs/read-text", _): .json(200, .object(["binary": .bool(false), "truncated": .bool(false)]))
+            default: HermesGitHost.repositoryReply(request)
+            }
+        }
+        let modified = { (path: String) in
+            GitFile(path: path, status: "M", staged: false, unstaged: true, untracked: false, conflict: false,
+                    additions: 1, deletions: 0)
+        }
+        let added = GitFile(path: "New.swift", status: "A", staged: true, unstaged: nil, untracked: false,
+                            conflict: false, additions: 1, deletions: 0)
+
+        for file in [modified("Missing.swift"), added, modified("Empty.swift")] {
+            let loaded = try await git.diff(for: file)
+            let diff = try XCTUnwrap(loaded)
+            XCTAssertEqual(ReviewDiffProgress.patch(for: file, state: .loaded(diff)) != nil, file.displayPath == "Empty.swift",
+                           file.displayPath)
+        }
+    }
+
     /// A failed git call is 400 `{detail}`, git's own stderr, which can name host paths: it reads
     /// as the existing repository-unavailable copy, never the detail.
     @MainActor
@@ -580,6 +608,85 @@ extension APIClientGitTests {
         } catch {
             XCTAssertEqual(error.localizedDescription, String(localized: "Repository status unavailable"))
         }
+    }
+
+    /// This Branch (#1386) reads the branch's range at the root. The host marks every row `M`,
+    /// added and deleted files too, so rows keep their counts but claim no kind, and each file's
+    /// diff asks for the same range.
+    @MainActor
+    func testAHermesBranchReviewReadsTheBranchRangeWithoutClaimingKinds() async throws {
+        let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request, detached: true) }
+            return .json(200, .object(["base": .string("1a2b3c"), "files": .array([
+                .object(["path": .string("Sources/New.swift"), "added": .number(12), "removed": .number(0),
+                         "status": .string("M"), "staged": .bool(false)]),
+                .object(["path": .string("Old.swift"), "added": .number(0), "removed": .number(7),
+                         "status": .string("M"), "staged": .bool(false)])
+            ])]))
+        }
+
+        let loaded = try await git.branchReview()
+        let review = try XCTUnwrap(loaded)
+        let diff = try await git.diff(for: try XCTUnwrap(review.files.first), in: .branch)
+
+        let list = try XCTUnwrap(HermesGitHost.requests.first { $0.url?.path == "/api/git/review/list" })
+        XCTAssertEqual(HermesGitHost.query(list, "path"), HermesGitHost.repository)
+        XCTAssertEqual(HermesGitHost.query(list, "scope"), "branch")
+        let diffRequest = try XCTUnwrap(HermesGitHost.requests.last)
+        XCTAssertEqual(diffRequest.url?.path, "/api/git/review/diff")
+        XCTAssertEqual(HermesGitHost.query(diffRequest, "path"), HermesGitHost.repository)
+        XCTAssertEqual(HermesGitHost.query(diffRequest, "file"), "Sources/New.swift")
+        XCTAssertEqual(HermesGitHost.query(diffRequest, "scope"), "branch")
+        XCTAssertEqual(review.base, "1a2b3c")
+        XCTAssertTrue(review.detached)
+        XCTAssertEqual(review.files.map(\.displayPath), ["Sources/New.swift", "Old.swift"])
+        XCTAssertEqual(review.files.map { [$0.additions, $0.deletions] }, [[12, 0], [0, 7]])
+        XCTAssertEqual(review.files.map(\.changeKind), [.unknown, .unknown])
+        XCTAssertEqual(diff?.diff, HermesGitHost.diffText(for: "Sources/New.swift"))
+    }
+
+    /// A turn's range (#1392) is read since its base, with that base on the list and on each diff.
+    /// A tracked row claims no kind. An untracked row's empty range diff opens all-add through
+    /// `file-diff`, which all-adds only a file still untracked; one committed since the list was
+    /// read keeps its range patch.
+    @MainActor
+    func testAHermesTurnRangeReadsSinceItsBaseAndOpensAnUntrackedFileAllAdd() async throws {
+        let base = HermesGitHost.headSHA
+        let git = HermesGitHost.client { request in
+            switch (request.url?.path, HermesGitHost.query(request, "file")) {
+            case ("/api/git/review/list", _):
+                return .json(200, .object(["base": .string(base), "files": .array([
+                    .object(["path": .string("App.swift"), "added": .number(5), "removed": .number(1),
+                             "status": .string("M"), "staged": .bool(false)]),
+                    .object(["path": .string("notes.md"), "added": .number(3), "removed": .number(0),
+                             "status": .string("?"), "staged": .bool(false)]),
+                    .object(["path": .string("later.md"), "added": .number(2), "removed": .number(0),
+                             "status": .string("?"), "staged": .bool(false)])
+                ])]))
+            case ("/api/git/review/diff", "notes.md"):
+                return .json(200, .object(["diff": .string("")]))
+            default:
+                return HermesGitHost.repositoryReply(request)
+            }
+        }
+
+        let listed = try await git.changes(since: base)
+        let files = try XCTUnwrap(listed)
+        _ = try await git.diff(for: files[0], in: .since(base: base))
+        let untracked = try await git.diff(for: files[1], in: .since(base: base))
+        _ = try await git.diff(for: files[2], in: .since(base: base))
+
+        let list = try XCTUnwrap(HermesGitHost.requests.first { $0.url?.path == "/api/git/review/list" })
+        XCTAssertEqual(HermesGitHost.query(list, "scope"), "lastTurn")
+        XCTAssertEqual(HermesGitHost.query(list, "base"), base)
+        let diffs = HermesGitHost.requests.filter { $0.url?.path == "/api/git/review/diff" }
+        XCTAssertEqual(diffs.map { HermesGitHost.query($0, "scope") }, ["lastTurn", "lastTurn", "lastTurn"])
+        XCTAssertEqual(diffs.map { HermesGitHost.query($0, "base") }, [base, base, base])
+        XCTAssertEqual(HermesGitHost.requests.filter { $0.url?.path == "/api/git/file-diff" }.map { HermesGitHost.query($0, "file") },
+                       ["notes.md"])
+        XCTAssertEqual(files.map { [$0.additions, $0.deletions] }, [[5, 1], [3, 0], [2, 0]])
+        XCTAssertEqual(files.map(\.changeKind), [.unknown, .untracked, .untracked])
+        XCTAssertEqual(untracked?.diff, HermesGitHost.diffText(for: "notes.md"))
     }
 }
 
@@ -935,6 +1042,53 @@ extension APIClientGitTests {
         XCTAssertEqual(refusals, [.failed, .failed, .failed])
         XCTAssertEqual(HermesGitHost.writes, sent)
     }
+
+    // MARK: - Pull request (#1391)
+
+    /// The branch's pull request is asked of this host's ship-info at the repository root, from a
+    /// subfolder too, and read as its number, link and state.
+    @MainActor
+    func testAHermesPullRequestIsReadFromShipInfoAtTheRoot() async throws {
+        let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
+            request.url?.path == "/api/git/review/ship-info"
+                ? HermesGitHost.shipInfo(["url": .string("https://github.com/o/r/pull/975"), "state": .string("MERGED"),
+                                          "number": .number(975)])
+                : HermesGitHost.repositoryReply(request)
+        }
+
+        let pullRequest = try await git.pullRequest()
+
+        let request = try XCTUnwrap(HermesGitHost.requests.last)
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.host(), "hermes.example")
+        XCTAssertEqual(request.url?.path, "/api/git/review/ship-info")
+        XCTAssertEqual(HermesGitHost.query(request, "path"), HermesGitHost.repository)
+        XCTAssertEqual(pullRequest, GitPullRequest(number: 975, url: URL(string: "https://github.com/o/r/pull/975")!,
+                                                   state: .merged))
+    }
+
+    /// No `gh`, no pull request, or a reply without a usable number and web link has no link to
+    /// show, rather than a bogus one; a state `gh` adds later keeps the link without a state.
+    @MainActor
+    func testAHermesPullRequestNeedsANumberAndAWebLink() async throws {
+        let link = BotJSON.string("https://github.com/o/r/pull/7")
+        let answers: [(HermesHostFixture.Reply, GitPullRequest?)] = [
+            (.json(200, .object(["ghReady": .bool(false), "pr": .null])), nil),
+            (HermesGitHost.shipInfo(["url": link, "state": .string("OPEN")]), nil),
+            (HermesGitHost.shipInfo(["url": link, "number": .number(0)]), nil),
+            (HermesGitHost.shipInfo(["url": .string("javascript:alert(1)"), "number": .number(7)]), nil),
+            (HermesGitHost.shipInfo(["url": link, "state": .string("QUEUED"), "number": .number(7)]),
+             GitPullRequest(number: 7, url: URL(string: "https://github.com/o/r/pull/7")!, state: nil)),
+        ]
+        for (reply, expected) in answers {
+            HermesHostFixture.reset()
+            let git = HermesGitHost.client { request in
+                request.url?.path == "/api/git/review/ship-info" ? reply : HermesGitHost.repositoryReply(request)
+            }
+            let pullRequest = try await git.pullRequest()
+            XCTAssertEqual(pullRequest, expected, "\(reply)")
+        }
+    }
 }
 
 /// The chat that owns a test repository's writes (`HermesGitClient.WriteOwner`): a turn is
@@ -1064,6 +1218,11 @@ enum HermesGitHost {
     /// hermex-push's `/capabilities` answer listing `routes` (#1235), or the sync routes by default.
     static func capabilities(_ routes: [String] = HermesGitClient.syncRoutes) -> HermesHostFixture.Reply {
         .json(200, .object(["plugin_version": .string("0.6.0"), "routes": .array(routes.map(BotJSON.string))]))
+    }
+
+    /// ship-info's answer with `gh` signed in and `pr` as the branch's pull request (#1391).
+    static func shipInfo(_ pr: [String: BotJSON]) -> HermesHostFixture.Reply {
+        .json(200, .object(["ghReady": .bool(true), "pr": .object(pr)]))
     }
 
     /// A request's route and query, as `/api/git/status path=/repo`.

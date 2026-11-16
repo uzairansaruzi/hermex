@@ -1,6 +1,48 @@
 import Foundation
 import SwiftData
 
+/// Opens the offline cache. Its rows name their server's URL, so the store lives in the app's own
+/// container, which no extension reads, not in the app group SwiftData picks by default (#1509).
+enum CacheContainer {
+    static let configuration = ModelConfiguration(groupContainer: .none)
+
+    /// Called once at launch, before anything can open the store.
+    static func open() -> ModelContainer {
+        if let group = HermesShareDraft.containerURL() {
+            moveStore(from: group.appending(path: "Library/Application Support/\(configuration.url.lastPathComponent)"),
+                      to: configuration.url)
+        }
+        return container(for: configuration)
+    }
+
+    static func container(for configuration: ModelConfiguration) -> ModelContainer {
+        do {
+            return try ModelContainer(for: CachedSession.self, CachedMessage.self, configurations: configuration)
+        } catch {
+            // The cache refills from the server, so a store that won't open never blocks the app.
+            return try! ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                       configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        }
+    }
+
+    /// Moves a store and its SQLite sidecars, replacing any at `destination`. The store goes last,
+    /// so a move cut short runs again on the next launch. A file that can't move is deleted: the
+    /// cache refills from the server, and the URLs it holds must not stay behind.
+    static func moveStore(from source: URL, to destination: URL, fileManager: FileManager = .default) {
+        guard fileManager.fileExists(atPath: source.path) else { return }
+        try? fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let suffixes = ["-wal", "-shm", ""]
+        for suffix in suffixes { try? fileManager.removeItem(atPath: destination.path + suffix) }
+        for suffix in suffixes {
+            do {
+                try fileManager.moveItem(atPath: source.path + suffix, toPath: destination.path + suffix)
+            } catch {
+                try? fileManager.removeItem(atPath: source.path + suffix)
+            }
+        }
+    }
+}
+
 enum CacheStore {
     @MainActor
     static func cachedSessions(

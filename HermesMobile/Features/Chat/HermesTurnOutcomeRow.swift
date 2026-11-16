@@ -72,25 +72,25 @@ struct HermesTurnOutcomeRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.subheadline)
+                    .font(AppFont.subheadline())
                     .foregroundStyle(tint)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(title)
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppFont.subheadline(weight: .semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let detail {
                         // Raw provider text is often a JSON blob: capped, and selectable to copy.
                         Text(detail)
                             .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(4)
                             .textSelection(.enabled)
                     }
                     if let resetsAt, resetsAt > Date() {
                         Label(Self.resetLine(resetsAt), systemImage: "clock")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(AppFont.caption())
+                            .foregroundStyle(.appSecondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

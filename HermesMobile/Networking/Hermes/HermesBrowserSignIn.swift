@@ -10,7 +10,8 @@ import SwiftUI
 /// pages (an OIDC IdP, or its `/login` form for a password provider) and redirects to the
 /// listener with a single-use code, which `HermesConnection.signIn(browserCode:verifier:)`
 /// trades for tokens. The onboarding and Add Server form and a Hermes server's sign-in form
-/// use it for a host whose status asks for it (`isRequired(by:)`).
+/// use it for a host whose status offers it (`HermesSignInMethod.offered(by:)`): on its own,
+/// or picked over the host's password (#1539).
 ///
 /// Checked on a phone against a 0.21.5 host in the slice 8.1 spike: the HTTPS hop to the
 /// loopback port is never upgraded to HTTPS, the listener survives the app being suspended
@@ -21,9 +22,6 @@ import SwiftUI
     /// The scheme the listener's `302` bounces to, which closes the sheet. It needs no
     /// registration: the session watches for it.
     static let callbackScheme = "hermexsignin"
-    /// The defaults key of the testing toggle.
-    nonisolated static let forcedKey = "hermesForcesBrowserSignIn"
-
     /// Shows the host's authorize page and returns once the sheet closes on the callback
     /// scheme. The views make it from their `webAuthenticationSession`; tests script it.
     struct Presenter {
@@ -31,30 +29,6 @@ import SwiftUI
 
         /// A form that can't show a browser, which a browser host's sign-in then refuses.
         static let unavailable = Presenter { _ in throw BotFailure.browserSignInFailed }
-    }
-
-    /// Whether `status`, a host's public `/api/status`, asks for browser sign-in: the host
-    /// offers it (`auth_flows ∋ native_pkce`) and has no `basic` password provider, or
-    /// `forced` (the testing toggle) and it offers it at all.
-    nonisolated static func isRequired(by status: BotJSON, forced: Bool = isForcedForTesting) -> Bool {
-        guard status["auth_flows"].list?.contains(.string("native_pkce")) == true else { return false }
-        return forced || status["auth_providers"].list?.contains(.string("basic")) != true
-    }
-
-    /// The Developer toggle that signs a password host in through the browser too, so the
-    /// browser path can be tested against one. Debug and Hermex Branch builds only.
-    nonisolated static var isForcedForTesting: Bool {
-        get { offersTestingToggle && UserDefaults.standard.bool(forKey: forcedKey) }
-        set { UserDefaults.standard.set(newValue, forKey: forcedKey) }
-    }
-
-    /// Debug builds and the side-by-side Hermex Branch build, which is a Release build.
-    nonisolated static var offersTestingToggle: Bool {
-        #if DEBUG
-        true
-        #else
-        Bundle.main.bundleIdentifier?.hasSuffix(".branch") == true
-        #endif
     }
 
     /// Runs one browser sign-in for `http`, a connection not yet saved, and leaves it signed

@@ -62,6 +62,50 @@ struct ComposerSlashTrigger: Equatable {
         return nil
     }
 
+    /// What the slash panel filters on for this trigger, or `nil` when it stays closed.
+    ///
+    /// A command the user has typed past no longer produces a trigger at all, so besides the
+    /// trigger itself, three things close the panel: a settled `/skills` invocation, a settled
+    /// goal action, and a mid-sentence word no loaded skill matches. A Hermes chat's panel opens
+    /// at a host command's argument only while `hostCompletion` has suggestions for it (#1036);
+    /// mid-sentence it offers the host's skills, as on webui (#1679).
+    func panelQuery(
+        scope: SlashCommandScope,
+        skills: [SkillSlashSuggestion],
+        hasLoadedSkills: Bool,
+        hostCompletion: HermesSlashCompletion?
+    ) -> String? {
+        let parsed = ParsedSlashQuery(query: text, scope: scope)
+        if scope.isHermes, startsDraft, parsed.isHostArgumentMode,
+           hostCompletion.map({ $0.items.isEmpty || !$0.applies(to: text) }) ?? true { return nil }
+        if parsed.command?.subArgs == .skills,
+           SlashSkillFormatter.invocation(from: parsed.argQuery, suggestions: skills) != nil {
+            return nil
+        }
+
+        if parsed.command?.subArgs == .goalActions,
+           parsed.isSubArgMode,
+           !parsed.argQuery.isEmpty,
+           !SlashCommandCatalog.goalActions.contains(where: {
+               $0.hasPrefix(parsed.argQuery.lowercased())
+           }) {
+            return nil
+        }
+
+        // Mid-sentence the panel's only content is skills, so once the catalog
+        // question is settled — a request has succeeded, even one that found
+        // no skills — and nothing matches the typed word, close rather than
+        // hold an empty box up. Before that, keep the panel open so its load
+        // task can fetch the list and judge the word against real data.
+        if !startsDraft,
+           hasLoadedSkills,
+           SlashSkillFormatter.matching(parsed.commandName, in: skills).isEmpty {
+            return nil
+        }
+
+        return text
+    }
+
     /// What the draft and caret become when the user accepts `replacement`.
     ///
     /// Only the trigger's own range changes. When the completion wants a

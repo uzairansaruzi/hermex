@@ -27,7 +27,7 @@ import XCTest
                        [0, 0, 0, 0])
         XCTAssertEqual(response.totalCost, 0)
         XCTAssertNil(response.totalCacheHitPercent, "No cache reads, no hit rate")
-        XCTAssertEqual(response.dailyTokens?.first?.date, "2026-10-06")
+        XCTAssertEqual(response.dailyTokens?.first?.date, try XCTUnwrap(recorded["usage"]["daily"].list?.first?["day"].text))
         XCTAssertEqual(response.dailyTokens?.first?.sessions, 1)
         XCTAssertEqual(response.models?.map(\.model), ["fixture-redacted"])
         XCTAssertEqual(response.models?.map(\.provider), ["custom"])

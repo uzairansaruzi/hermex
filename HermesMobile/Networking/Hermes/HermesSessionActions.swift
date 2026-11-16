@@ -197,6 +197,9 @@ extension BotJSON {
 /// runtime this phone did not attach: another app has the session open, and nothing changed.
 /// The host can't say who else views a runtime this phone attached, so closing one ends it for
 /// them too.
+///
+/// A canonical host (#1603) has no runtimes to close: one fenced `delete` edit removes it, and a
+/// session still replying refuses it (`session_busy`).
 @MainActor enum HermesSessionDeletion {
     enum Outcome: Equatable {
         case deleted
@@ -207,6 +210,11 @@ extension BotJSON {
     }
 
     static func delete(key: String, profile: String, on wire: any BotTransport) async throws -> Outcome {
+        if wire.speaksCanonicalProtocol {
+            do { _ = try await wire.mutateStoredSession(profile: profile, key: key, .delete) }
+            catch BotSettingFailure.rejected(_, "session_busy") { return .busyHere }
+            return .deleted
+        }
         // An older host without the live list still refuses a held session with 4023.
         let live = (try? await wire.call(.sessionActiveList))?["sessions"].list ?? []
         let attached = wire.attachedRuntimes

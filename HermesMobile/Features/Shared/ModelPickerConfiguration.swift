@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Everything that differs between the surfaces that open `ModelPickerSheet`:
 /// the composer, which switches the running session's model instantly,
-/// Settings > Default Model, which writes to the server and can fail, and the
-/// Task editor, which only edits a local draft.
+/// Settings > Default Model, which writes to the server (or a Hermes Profile)
+/// and can fail, and the Task editor, which only edits a local draft.
 ///
 /// Call sites take a preset rather than assembling a pile of booleans.
 struct ModelPickerConfiguration {
@@ -36,9 +36,10 @@ struct ModelPickerConfiguration {
     /// Whether committing a model closes the sheet. The server default stays
     /// open until the server confirms the save.
     let dismissesOnCommit: Bool
+    var searchPrompt: LocalizedStringKey = "Search models"
 
     static let composer = ModelPickerConfiguration(
-        navigationTitle: "Choose Model",
+        navigationTitle: "All models",
         dismissTitle: "Done",
         dismissPlacement: .topBarTrailing,
         customActionTitle: "Use Custom",
@@ -47,7 +48,8 @@ struct ModelPickerConfiguration {
         showsModelFavoriteStars: true,
         showsCurrentCustomModelGroup: true,
         showsSavedCustomModelGroup: true,
-        dismissesOnCommit: true
+        dismissesOnCommit: true,
+        searchPrompt: "Search all models"
     )
 
     static let serverDefault = ModelPickerConfiguration(
@@ -59,6 +61,22 @@ struct ModelPickerConfiguration {
         showsCustomFavoriteStar: false,
         showsModelFavoriteStars: true,
         showsCurrentCustomModelGroup: false,
+        showsSavedCustomModelGroup: false,
+        dismissesOnCommit: false
+    )
+
+    /// A Hermes server's Default Model page (#1670), which writes one Profile's model. The host
+    /// pins a model with its provider, so a custom entry names both, as the Bots editor's does.
+    /// It stays open until the host applies the pick, and leaves favorites alone.
+    static let hermesProfileDefault = ModelPickerConfiguration(
+        navigationTitle: "Default Model",
+        dismissTitle: "Cancel",
+        dismissPlacement: .cancellationAction,
+        customActionTitle: "Save Custom Model",
+        requiresCustomProviderID: true,
+        showsCustomFavoriteStar: false,
+        showsModelFavoriteStars: false,
+        showsCurrentCustomModelGroup: true,
         showsSavedCustomModelGroup: false,
         dismissesOnCommit: false
     )

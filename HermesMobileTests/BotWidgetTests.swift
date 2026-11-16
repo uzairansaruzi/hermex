@@ -1,0 +1,123 @@
+import XCTest
+@testable import HermesMobile
+
+/// The Bot widget (#1643): where its digest-keyed tap opens, and the snapshot its picker reads.
+@MainActor final class BotWidgetTests: XCTestCase {
+    private let hermes = URL(string: "https://hermes.example")!
+    private let studio = URL(string: "https://studio.example")!
+    private let webui = URL(string: "https://webui.example")!
+
+    private func account(_ server: URL, _ kind: ServerKind) -> ServerAccount {
+        ServerAccount(id: server.absoluteString, urlString: server.absoluteString, displayName: "", initials: "",
+                      headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: Date(timeIntervalSince1970: 0),
+                      updatedAt: Date(timeIntervalSince1970: 0), kind: kind)
+    }
+
+    /// The link a widget for `profile` on `server` sends, read back the way `ContentView` reads it.
+    private func tap(_ server: URL, _ profile: String = "work") throws -> BotWidgetDestination {
+        let url = try XCTUnwrap(BotWidgetDestination(serverKey: BotHistoryCache.Scope.key(server), profile: profile).url)
+        XCTAssertNil(HermesDeepLink.botDestination(from: url), "Never read as a bot link")
+        return try XCTUnwrap(BotWidgetDestination(url: url))
+    }
+
+    func testATapOpensTheBotOnItsServerAndSwitchesToIt() throws {
+        let connection = UUID()
+        let servers = [account(hermes, .hermes), account(studio, .hermes)]
+        let ids: @MainActor (URL) -> UUID? = { $0 == self.hermes ? connection : UUID() }
+        let expected = BotDestination(server: hermes, connectionID: connection, profile: "work")
+
+        var links = PendingLinks()
+        XCTAssertNil(links.open(try tap(hermes), state: .loggedIn(server: hermes), servers: servers,
+                                isBotModeEnabled: false, botConnectionID: ids))
+        XCTAssertEqual(links.bot, expected)
+
+        links = PendingLinks()
+        XCTAssertEqual(links.open(try tap(hermes), state: .loggedIn(server: studio), servers: servers,
+                                  isBotModeEnabled: false, botConnectionID: ids), servers[0])
+        XCTAssertEqual(links.bot, expected)
+    }
+
+    func testAnUnknownServerOrAWebuiServerWithBotModeOffOpensNothing() throws {
+        let servers = [account(hermes, .hermes), account(webui, .webui)]
+        var links = PendingLinks()
+        XCTAssertNil(links.open(try tap(studio), state: .loggedIn(server: hermes), servers: servers,
+                                isBotModeEnabled: true, botConnectionID: { _ in UUID() }))
+        XCTAssertNil(links.bot)
+        XCTAssertNil(links.botWidget)
+
+        XCTAssertNil(links.open(try tap(webui), state: .loggedIn(server: hermes), servers: servers,
+                                isBotModeEnabled: false, botConnectionID: { _ in UUID() }))
+        XCTAssertNil(links.bot)
+        XCTAssertNil(links.botWidget)
+    }
+
+    /// A sign-out deleted the server's Bot connection, so the link waits by digest and Profile and
+    /// opens the bot on the connection the next sign-in saves.
+    func testASignedOutServerHoldsTheTapUntilSignInSavesANewConnection() throws {
+        let servers = [account(hermes, .hermes), account(studio, .hermes)]
+        var saved: UUID?
+        let ids: @MainActor (URL) -> UUID? = { $0 == self.hermes ? saved : UUID() }
+
+        var links = PendingLinks()
+        XCTAssertEqual(links.open(try tap(hermes), state: .loggedIn(server: studio), servers: servers,
+                                  isBotModeEnabled: false, botConnectionID: ids), servers[0], "Shows its sign-in form")
+        XCTAssertNil(links.reroute(state: .loggedOut(server: hermes), servers: servers, isBotModeEnabled: false,
+                                   botConnectionID: ids))
+        XCTAssertNotNil(links.botWidget)
+        XCTAssertNil(links.bot)
+
+        let signedIn = UUID()
+        saved = signedIn
+        XCTAssertNil(links.reroute(state: .loggedIn(server: hermes), servers: servers, isBotModeEnabled: false,
+                                   botConnectionID: ids))
+        XCTAssertEqual(links.bot, BotDestination(server: hermes, connectionID: signedIn, profile: "work"))
+        XCTAssertNil(links.botWidget)
+
+        saved = nil
+        links = PendingLinks()
+        XCTAssertNil(links.open(try tap(hermes), state: .loggedOut(server: hermes), servers: servers,
+                                isBotModeEnabled: false, botConnectionID: ids))
+        XCTAssertNil(links.reroute(state: .loggedIn(server: studio), servers: servers, isBotModeEnabled: false,
+                                   botConnectionID: ids))
+        XCTAssertNil(links.botWidget, "Switching away drops the held tap, so a later sign-in can't open it")
+    }
+
+    /// A photo the editor replaced keeps its look revision, so its widget copy goes until rendered again.
+    func testAReplacedPhotoIsRenderedAgainAtTheSameLookRevision() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = BotWidgetSnapshotFile(directory: directory)
+        let key = BotHistoryCache.Scope.key(hermes)
+        let publisher = BotWidgetPublisher(file: file, serverTitle: { _ in "" }, reloadWidget: {},
+                                           configuredBots: { [BotWidgetDestination(serverKey: key, profile: "work")] })
+        let work = try XCTUnwrap(BotProfile(.object(["name": .string("work"), "ui_meta_revisions": .object(["hermes-bots": .number(3)])])))
+        let connection = UUID()
+        let avatar = file.avatarURL(BotWidgetPublisher.avatarName(serverKey: key, profile: work, connectionID: connection), dark: true)
+        publisher.publish([work], server: hermes, connectionID: connection)
+
+        await publisher.renderAvatars([work], server: hermes, connectionID: connection, photos: [:])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: avatar.path))
+        publisher.forgetAvatar(server: hermes, profile: "work")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: avatar.path))
+        await publisher.renderAvatars([work], server: hermes, connectionID: connection, photos: [:])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: avatar.path))
+    }
+
+    func testTheSnapshotKeepsEqualProfileNamesOnTwoServersApartAndDropsARemovedServer() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = BotWidgetSnapshotFile(directory: directory)
+        let publisher = BotWidgetPublisher(file: file, serverTitle: { $0.host ?? "" }, reloadWidget: {},
+                                           configuredBots: { [] })
+        let work = try XCTUnwrap(BotProfile(.object(["name": .string("work")])))
+        publisher.publish([work], server: hermes, connectionID: UUID())
+        publisher.publish([work], server: studio, connectionID: UUID())
+
+        let ids = Set(file.read().servers.flatMap { server in server.bots.map { BotWidgetEntity(serverKey: server.serverKey, bot: $0).id } })
+        XCTAssertEqual(ids.count, 2, "Two picker choices")
+
+        publisher.remove(server: hermes)
+        XCTAssertNil(file.read().bot(serverKey: BotHistoryCache.Scope.key(hermes), profile: "work"))
+        XCTAssertNotNil(file.read().bot(serverKey: BotHistoryCache.Scope.key(studio), profile: "work"))
+    }
+}

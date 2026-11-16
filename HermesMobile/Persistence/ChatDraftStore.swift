@@ -12,6 +12,7 @@ struct ChatDraftAttachment: Equatable, Sendable {
     let size: Int?
     let isImage: Bool
     let file: String?
+    var isClipboardPaste = false
 }
 
 /// Effective composer choices snapshotted for a draft context. Restored for
@@ -82,9 +83,22 @@ struct ChatDraft: Equatable, Sendable {
     /// so a retried or replayed share isn't added twice (#1181, #1197). Rides along with the content; never
     /// keeps a draft alive on its own.
     var sharedImportIDs: Set<String> = []
+    /// Where added text came from, a Shortcut (#1402) or Troubleshoot with Hermes (#1476): the
+    /// composer shows its review notice until the user dismisses it or sends. Rides along with the
+    /// content; never keeps a draft alive on its own.
+    var textOrigin: ImportedTextOrigin?
+    /// A Hermes chat's plain-text Send waiting for the chat to reconnect (#1407), kept on disk until
+    /// the host answers it. A reopen or relaunch puts it back in `text`; it never sends on its own.
+    var waitingSend: WaitingSend?
+
+    struct WaitingSend: Equatable, Sendable {
+        var text: String
+        var createdAt: Date
+    }
 
     var isEmpty: Bool {
         text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true) && !botSubmissionUncertain
+            && waitingSend == nil
     }
 }
 
@@ -99,7 +113,8 @@ extension ChatDraftAttachment {
             mime: pending.mime,
             size: pending.size,
             isImage: pending.isImage,
-            file: pending.draftFileName
+            file: pending.draftFileName,
+            isClipboardPaste: pending.isClipboardPaste
         )
     }
 }
@@ -169,8 +184,10 @@ struct ChatDraftKey: Hashable, Sendable {
         case session(String)
         case bot(connectionID: UUID, profile: String)
         /// A Hermes session on a Hermes connection, by its stored key; nil for a new
-        /// session not created yet (`ConversationTarget`).
-        case hermesSession(connectionID: UUID, profile: String, key: String?)
+        /// session not created yet (`ConversationTarget`). A new session also keys by the
+        /// working folder it starts in (#1683), so New Session in one project doesn't show
+        /// another's draft; nil for the Profile's default folder, and for every stored key.
+        case hermesSession(connectionID: UUID, profile: String, key: String?, cwd: String?)
         case newChat
     }
 
@@ -185,8 +202,15 @@ struct ChatDraftKey: Hashable, Sendable {
         Self(serverID: server.absoluteString, context: .bot(connectionID: connectionID, profile: profile))
     }
 
-    static func hermesSession(server: URL, connectionID: UUID, profile: String, key: String?) -> Self {
-        Self(serverID: server.absoluteString, context: .hermesSession(connectionID: connectionID, profile: profile, key: key))
+    /// `cwd` counts only for a new session (`key` nil); an empty one is the default folder.
+    static func hermesSession(server: URL, connectionID: UUID, profile: String, key: String?, cwd: String? = nil) -> Self {
+        hermesSession(serverID: server.absoluteString, connectionID: connectionID, profile: profile, key: key, cwd: cwd)
+    }
+
+    fileprivate static func hermesSession(serverID: String, connectionID: UUID, profile: String, key: String?,
+                                          cwd: String?) -> Self {
+        Self(serverID: serverID, context: .hermesSession(
+            connectionID: connectionID, profile: profile, key: key, cwd: key == nil && cwd?.isEmpty == false ? cwd : nil))
     }
 
     static func newChat(server: URL) -> Self {
@@ -310,6 +334,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         let size: Int?
         let isImage: Bool?
         let file: String?
+        let isClipboardPaste: Bool?
 
         init(_ attachment: ChatDraftAttachment) {
             id = attachment.id.uuidString
@@ -318,6 +343,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             size = attachment.size
             isImage = attachment.isImage
             file = attachment.file
+            isClipboardPaste = attachment.isClipboardPaste
         }
 
         var attachment: ChatDraftAttachment? {
@@ -353,7 +379,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 mime: mime,
                 size: size,
                 isImage: isImage ?? false,
-                file: sanitizedFile
+                file: sanitizedFile,
+                isClipboardPaste: isClipboardPaste ?? false
             )
         }
 
@@ -400,8 +427,16 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         let settings: SettingsRecord?
         var connectionID: UUID?
         var profile: String?
+        /// A new Hermes session's working folder (#1683). Absent for the default folder, so
+        /// drafts saved before it keep their identity.
+        var cwd: String?
         var botSubmissionUncertain: Bool?
         var sharedImportIDs: [String]?
+        /// Written before #1476, which records `textOrigin` instead; true reads as a Shortcut's.
+        var fromShortcut: Bool?
+        var textOrigin: String?
+        var waitingSendText: String?
+        var waitingSendCreatedAt: Date?
 
         let lastUsedAt: Date?
 
@@ -412,7 +447,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case text
             case quotes
             case attachments
-            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs
+            case settings, connectionID, profile, cwd, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut, textOrigin
+            case waitingSendText, waitingSendCreatedAt
         }
 
         init(key: ChatDraftKey, draft: ChatDraft) {
@@ -426,11 +462,12 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 sessionID = nil
                 self.connectionID = connectionID
                 self.profile = profile
-            case .hermesSession(let connectionID, let profile, let key):
+            case .hermesSession(let connectionID, let profile, let key, let cwd):
                 context = "hermesSession"
                 sessionID = key
                 self.connectionID = connectionID
                 self.profile = profile
+                self.cwd = cwd
             case .newChat:
                 context = "newChat"
                 sessionID = nil
@@ -442,6 +479,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             attachments = draft.attachments.map { FailableAttachment(value: AttachmentRecord($0)) }
             settings = draft.settings.map { SettingsRecord($0) }
             sharedImportIDs = draft.sharedImportIDs.isEmpty ? nil : draft.sharedImportIDs.sorted()
+            textOrigin = draft.textOrigin?.rawValue
+            waitingSendText = draft.waitingSend?.text
+            waitingSendCreatedAt = draft.waitingSend?.createdAt
         }
 
         init(from decoder: Decoder) throws {
@@ -454,6 +494,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             sessionID = (try? container.decodeIfPresent(String.self, forKey: .sessionID)) ?? nil
             connectionID = try? container.decodeIfPresent(UUID.self, forKey: .connectionID)
             profile = try? container.decodeIfPresent(String.self, forKey: .profile)
+            cwd = (try? container.decodeIfPresent(String.self, forKey: .cwd)) ?? nil
             // A malformed uncertainty field fails closed for Bot and Hermes session records.
             botSubmissionUncertain = (try? container.decodeIfPresent(Bool.self, forKey: .botSubmissionUncertain))
                 ?? (["bot", "hermesSession"].contains(context) && container.contains(.botSubmissionUncertain))
@@ -462,6 +503,10 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
             settings = (try? container.decodeIfPresent(SettingsRecord.self, forKey: .settings)) ?? nil
             sharedImportIDs = (try? container.decodeIfPresent([String].self, forKey: .sharedImportIDs)) ?? nil
+            fromShortcut = (try? container.decodeIfPresent(Bool.self, forKey: .fromShortcut)) ?? nil
+            textOrigin = (try? container.decodeIfPresent(String.self, forKey: .textOrigin)) ?? nil
+            waitingSendText = (try? container.decodeIfPresent(String.self, forKey: .waitingSendText)) ?? nil
+            waitingSendCreatedAt = (try? container.decodeIfPresent(Date.self, forKey: .waitingSendCreatedAt)) ?? nil
         }
 
         var draft: (key: ChatDraftKey, draft: ChatDraft)? {
@@ -489,8 +534,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case "hermesSession":
                 guard let connectionID, let profile, !profile.isEmpty else { return nil }
                 let session = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
-                key = ChatDraftKey(serverID: serverID, context: .hermesSession(
-                    connectionID: connectionID, profile: profile, key: session?.isEmpty == false ? session : nil))
+                key = .hermesSession(serverID: serverID, connectionID: connectionID, profile: profile,
+                                     key: session?.isEmpty == false ? session : nil, cwd: cwd)
             case "newChat":
                 key = ChatDraftKey(serverID: serverID, context: .newChat)
             default:
@@ -504,7 +549,10 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 settings: settings?.settings,
                 botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
                 lastUsedAt: lastUsedAt,
-                sharedImportIDs: Set(sharedImportIDs ?? [])
+                sharedImportIDs: Set(sharedImportIDs ?? []),
+                textOrigin: textOrigin.flatMap(ImportedTextOrigin.init(rawValue:)) ?? (fromShortcut == true ? .shortcut : nil),
+                // Without its time it reads as expired, which only returns it to the composer.
+                waitingSend: waitingSendText.flatMap { $0.isEmpty ? nil : .init(text: $0, createdAt: waitingSendCreatedAt ?? .distantPast) }
             )
             guard !draft.isEmpty else { return nil }
             return (key, draft)
@@ -655,6 +703,35 @@ final class ChatDraftStore {
         updateDraft(for: key) { $0.botSubmissionUncertain = uncertain }
     }
 
+    /// Holds `send` as the draft's waiting send (#1407), and takes `submitted`, the composer text it
+    /// came from, out of the draft's text in the same write, so the text is never in both or neither.
+    func holdWaitingSend(_ send: ChatDraft.WaitingSend, replacing submitted: String, for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.waitingSend = send
+            if draft.text == submitted { draft.text = "" }
+        }
+    }
+
+    /// The host took the draft's waiting send (#1407): only it goes.
+    func removeWaitingSend(for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { $0.waitingSend = nil }
+    }
+
+    /// Puts the draft's waiting send (#1407) back in its text, ahead of anything typed since, and
+    /// returns the draft. Nothing is sent.
+    @discardableResult
+    func returnWaitingSend(for key: ChatDraftKey) -> ChatDraft? {
+        guard let waiting = drafts[key]?.waitingSend else { return drafts[key] }
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.text = [waiting.text, draft.text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            draft.waitingSend = nil
+        }
+        return drafts[key]
+    }
+
     /// Drops Bot Chat and Hermes session drafts for a server, one connection, or one
     /// deleted bot on it.
     func discardBotDrafts(server: URL, connectionID: UUID? = nil, profile: String? = nil) async {
@@ -663,7 +740,7 @@ final class ChatDraftStore {
             guard key.serverID == server.absoluteString else { return false }
             let id: UUID, name: String
             switch key.context {
-            case .bot(let keyConnection, let keyProfile), .hermesSession(let keyConnection, let keyProfile, _):
+            case .bot(let keyConnection, let keyProfile), .hermesSession(let keyConnection, let keyProfile, _, _):
                 (id, name) = (keyConnection, keyProfile)
             case .session, .newChat: return false
             }
@@ -736,9 +813,12 @@ final class ChatDraftStore {
     /// them, and throws if they don't fit. A throw (cancellation, storage, a limit,
     /// a record or the text dropped meanwhile) takes back only what this share
     /// added, on disk before its copies go, so the share can be moved again.
+    /// Text with an `origin` (#1402, #1476) leaves the unsent text exactly as it is and
+    /// turns on the draft's review notice for that origin.
     func appendShare(
         _ shareID: String, text: String, files: [(data: Data, name: String, mime: String, image: Bool)],
-        to key: ChatDraftKey, maximumFileBytes: Int, admitting fits: ([ChatDraftAttachment]) throws -> Void = { _ in }
+        to key: ChatDraftKey, maximumFileBytes: Int, origin: ImportedTextOrigin? = nil,
+        admitting fits: ([ChatDraftAttachment]) throws -> Void = { _ in }
     ) async throws {
         await loadIfNeeded()
         func isHere() -> Bool { drafts[key]?.sharedImportIDs.contains(shareID) == true }
@@ -778,11 +858,13 @@ final class ChatDraftStore {
             }
         }
         let unsent = drafts[key]?.text ?? ""
+        let earlierOrigin = drafts[key]?.textOrigin
         updateDraft(for: key) { draft in
-            let trimmed = draft.text.trimmingCharacters(in: .newlines)
-            if !text.isEmpty { draft.text = trimmed.isEmpty ? text : trimmed + "\n\n" + text }
+            let earlier = origin != nil ? draft.text : draft.text.trimmingCharacters(in: .newlines)
+            if !text.isEmpty { draft.text = earlier.isEmpty ? text : earlier + "\n\n" + text }
             draft.attachments += records
             draft.sharedImportIDs.insert(shareID)
+            if let origin { draft.textOrigin = origin }
         }
         let merged = drafts[key]?.text
         let ids = Set(records.map(\.id))
@@ -798,11 +880,19 @@ final class ChatDraftStore {
                 draft.sharedImportIDs.remove(shareID)
                 draft.attachments.removeAll { ids.contains($0.id) }
                 if draft.text == merged { draft.text = unsent }
+                if origin != nil { draft.textOrigin = earlierOrigin }
             }
             // A replay after a quit must not find the share here. Unsaved, the copies stay.
             if (try? await flush()) != nil { await deleteCopies() }
             throw error
         }
+    }
+
+    /// Turns the draft's review notice off (nil) once the user dismisses it or sends, or back on
+    /// when Undo restores text a removal emptied (#1402). A draft with nothing else stays gone.
+    func setTextOrigin(_ origin: ImportedTextOrigin?, for key: ChatDraftKey) {
+        guard drafts[key]?.textOrigin != origin else { return }
+        updateDraft(for: key) { $0.textOrigin = origin }
     }
 
     /// Replaces the draft's settings snapshot without disturbing its text or
@@ -1153,6 +1243,14 @@ final class ChatDraftStore {
         lease.files.insert(file)
         didStage = true
         return file
+    }
+
+    /// Points a staged attachment's record at its edited copy (#1456), keeping its place.
+    func replaceAttachmentRecord(_ record: ChatDraftAttachment, for key: ChatDraftKey) {
+        updateDraft(for: key) { draft in
+            guard let index = draft.attachments.firstIndex(where: { $0.id == record.id }) else { return }
+            draft.attachments[index] = record
+        }
     }
 
     func removeAttachmentReference(id: UUID, for key: ChatDraftKey) {

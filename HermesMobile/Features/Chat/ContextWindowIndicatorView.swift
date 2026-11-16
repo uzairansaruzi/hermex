@@ -44,19 +44,10 @@ struct ContextWindowIndicatorView: View {
                 }
 
                 Text(presentation.percentageLabel)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(presentation.isInteractive ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                    .font(AppFont.fixed(size: 9, weight: .semibold))
+                    .foregroundStyle(presentation.isInteractive ? AnyShapeStyle(.appPrimary) : AnyShapeStyle(.appSecondary))
             }
             .frame(width: ringSize, height: ringSize)
-            // Lives inside the masked toolbar scroller: glass would draw over
-            // the pinned Send button instead of fading behind it.
-            .adaptiveGlass(
-                .regular,
-                isInteractive: presentation.isInteractive,
-                fallbackMaterial: .ultraThinMaterial,
-                inheritsClipping: true,
-                in: Circle()
-            )
             .frame(width: tapTargetSize, height: tapTargetSize)
             .contentShape(Circle())
         }
@@ -98,7 +89,7 @@ private struct ContextWindowPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(ContextWindowFormatter.tokensLabel(from: snapshot))
-                .font(.subheadline)
+                .font(AppFont.subheadline())
                 .fontWeight(.semibold)
 
             Divider()
@@ -138,11 +129,11 @@ private struct ContextWindowInfoRow: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption())
+                .foregroundStyle(.appSecondary)
             Spacer()
             Text(value)
-                .font(.caption)
+                .font(AppFont.caption())
                 .fontWeight(.medium)
         }
     }

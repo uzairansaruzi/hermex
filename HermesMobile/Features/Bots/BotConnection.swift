@@ -36,10 +36,12 @@ struct BotConnection: Codable, Equatable, Identifiable {
         return value
     }
 
-    /// Called with the live `install_id` before any password is sent. Throws
-    /// `.differentHost` only when both ids are known and differ; a record without one,
-    /// or a host that omits it this time, connects as before (trust on first use). The
-    /// id is public, so this catches an address that now reaches another host, not an impostor.
+    /// Called with the live `install_id` before any password is sent, or, on a gateway's Webapp,
+    /// which names it only once signed in, right after sign-in and before anything loads (#1606).
+    /// Throws `.differentHost` only when both ids are known and differ; a record without one,
+    /// or a host that omits it this time, connects as before (trust on first use). The id is
+    /// public on a dashboard, so this catches an address that now reaches another host, not an
+    /// impostor.
     func requireSameInstall(_ live: String?) throws {
         if let installID, let live, installID != live { throw BotFailure.differentHost }
     }
@@ -156,9 +158,11 @@ enum BotAddressError: LocalizedError, Equatable {
 /// account mints a new identity even when Profile names happen to match, unless the
 /// host reports the record's stored `install_id` (`BotConnectionSetup.connect`).
 /// Saving other credentials or headers, or removing them, retires the server's shared
-/// `HermesConnection` at once; a rename or an install id backfill keeps it.
+/// `HermesConnection` at once; a rename or an install id backfill keeps it. Saving another
+/// connection, or removing it, also empties a Limits widget read through the old one (#1409).
 @MainActor struct BotConnectionStore {
     var keychain: any KeychainStoring = KeychainStore()
+    var limitsPublisher: ProviderLimitsPublisher = .shared
     func load(server: URL) throws -> BotConnection? {
         guard let value = try keychain.load(.botConnection, scope: server.absoluteString) else { return nil }
         return try JSONDecoder().decode(BotConnection.self, from: Data(value.utf8))
@@ -167,6 +171,7 @@ enum BotAddressError: LocalizedError, Equatable {
         let value = String(decoding: try JSONEncoder().encode(connection), as: UTF8.self)
         try keychain.save(value, forKey: .botConnection, scope: server.absoluteString)
         HermesConnections.shared.retire(server: server, unlessStill: connection)
+        limitsPublisher.invalidate(server: server, unlessConnection: connection.id)
     }
     /// Writes the refresh token the host just rotated into, only while `server`'s record is
     /// still connection `id` holding `sent`, the token that connection last saw saved: a
@@ -181,6 +186,7 @@ enum BotAddressError: LocalizedError, Equatable {
     func remove(server: URL) throws {
         try keychain.delete(.botConnection, scope: server.absoluteString)
         HermesConnections.shared.retire(server: server)
+        limitsPublisher.invalidate(server: server)
     }
 }
 
@@ -197,6 +203,8 @@ struct BotProfile: Identifiable, Hashable {
     let title: String?
     let displayName: String?
     let description: String?
+    /// The Profile's model as the host names it, for the Shortcuts picker (#1679).
+    let model: String?
     let preview: String?
     let lastActive: Date?
     /// The canonical chat's root (`canonical_session.id`) and the compression tip
@@ -231,6 +239,7 @@ struct BotProfile: Identifiable, Hashable {
         displayName = Self.firstText(row["display_name"])
         name = Self.firstText(look["title"], row["display_name"]) ?? (profile == "default" ? "Hermes" : profile)
         description = Self.firstText(look["description"], row["description"])
+        model = Self.firstText(row["model"])
         preview = row["canonical_session"]["preview"].text
         lastActive = row["canonical_session"]["last_active"].number.map(Date.init(timeIntervalSince1970:))
         canonicalID = Self.firstText(row["canonical_session"]["id"])

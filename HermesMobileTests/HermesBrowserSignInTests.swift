@@ -27,20 +27,18 @@ import XCTest
             + "&code_challenge_method=S256&redirect_uri=http%3A%2F%2F127.0.0.1%3A5000%2Fcallback&state=s%2Bt")
     }
 
-    /// Browser sign-in when the host offers it and no password provider, or when the testing
-    /// toggle asks for it on a host that offers it; never on a host without it.
-    func testOnlyAHostOfferingBrowserSignInWithoutAPasswordRequiresIt() {
-        let rows: [(providers: [String], flows: [String], forced: Bool, required: Bool)] = [
-            (["nous"], ["cookie", "native_pkce"], false, true),
-            (["basic"], ["cookie", "native_pkce"], false, false),
-            (["basic"], ["cookie", "native_pkce"], true, true),
-            (["nous"], ["cookie"], false, false),
-            (["basic"], [], true, false)
+    /// A host that asks for a sign-in offers a password for `basic` and the browser for
+    /// `native_pkce`: both, Password first, when it lists both.
+    func testAStatusOffersEachSignInItLists() {
+        let rows: [(providers: [String], flows: [String], offered: [HermesSignInMethod])] = [
+            (["basic"], ["cookie", "native_pkce"], [.password, .browser]),
+            (["nous"], ["cookie", "native_pkce"], [.browser]),
+            (["basic"], ["cookie"], [.password])
         ]
         for row in rows {
-            let status = BotJSON.object(["auth_providers": .array(row.providers.map(BotJSON.string)),
+            let status = BotJSON.object(["auth_required": .bool(true), "auth_providers": .array(row.providers.map(BotJSON.string)),
                                          "auth_flows": .array(row.flows.map(BotJSON.string))])
-            XCTAssertEqual(HermesBrowserSignIn.isRequired(by: status, forced: row.forced), row.required, "\(row)")
+            XCTAssertEqual(HermesSignInMethod.offered(by: status), row.offered, "\(row)")
         }
     }
 
@@ -116,6 +114,12 @@ import XCTest
     /// A 0.21.5 host whose only provider signs in through the browser.
     static let browserStatus = BotJSON.object([
         "auth_required": .bool(true), "auth_providers": .array([.string("nous")]),
+        "auth_flows": .array([.string("cookie"), .string("native_pkce")]), "version": .string("0.21.5")
+    ])
+
+    /// A host with both a password and browser sign-in, the shape the live 0.22.5 host reports.
+    static let bothStatus = BotJSON.object([
+        "auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
         "auth_flows": .array([.string("cookie"), .string("native_pkce")]), "version": .string("0.21.5")
     ])
 

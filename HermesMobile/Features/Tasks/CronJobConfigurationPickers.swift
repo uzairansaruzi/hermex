@@ -46,12 +46,12 @@ struct CronJobModelRow: View {
                 HStack(spacing: 6) {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(title)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.appPrimary)
 
                         if let providerID = selection?.providerID {
                             Text(verbatim: providerID)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.caption())
+                                .foregroundStyle(.appSecondary)
                         }
                     }
                     .multilineTextAlignment(.trailing)
@@ -71,13 +71,14 @@ struct CronJobModelRow: View {
     }
 
     private var title: String {
-        selection?.displayName ?? String(localized: "Server default")
+        selection.map { ModelDisplayNames.displayLabel(for: $0.id, displayName: $0.displayName) } ?? String(localized: "Server default")
     }
 
     private var accessibilityValue: Text {
         guard let selection else { return Text("Server default") }
-        guard let providerID = selection.providerID else { return Text(verbatim: selection.displayName) }
-        return Text(verbatim: "\(selection.displayName), \(providerID)")
+        let modelLabel = ModelDisplayNames.displayLabel(for: selection.id, displayName: selection.displayName)
+        guard let providerID = selection.providerID else { return Text(verbatim: modelLabel) }
+        return Text(verbatim: "\(modelLabel), \(providerID)")
     }
 }
 
@@ -114,7 +115,7 @@ struct CronJobProfileRow: View {
             LabeledContent {
                 HStack(spacing: 6) {
                     Text(title)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.appPrimary)
                         .lineLimit(2)
 
                     CronJobPickerChevron()
@@ -133,13 +134,13 @@ struct CronJobProfileRow: View {
         if let errorMessage, !isLoading {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(verbatim: errorMessage)
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.red)
 
                 Spacer(minLength: 0)
 
                 Button("Try Again", action: onRetry)
-                    .font(.caption.weight(.semibold))
+                    .font(AppFont.caption(weight: .semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
             }
@@ -162,8 +163,8 @@ struct CronJobProfileRow: View {
 struct CronJobPickerChevron: View {
     var body: some View {
         Image(systemName: "chevron.up.chevron.down")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(.tertiary)
+            .font(AppFont.caption2(weight: .semibold))
+            .foregroundStyle(.appTertiary)
             .accessibilityHidden(true)
     }
 }
@@ -188,7 +189,7 @@ struct CronJobProfilePickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            AppList(rows: .plain) {
                 if trimmedSearchQuery.isEmpty {
                     serverDefaultRow
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
@@ -206,6 +207,7 @@ struct CronJobProfilePickerSheet: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .themedPageBackground()
             .navigationTitle("Task Profile")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
@@ -264,14 +266,14 @@ struct CronJobProfilePickerSheet: View {
         } label: {
             HStack(spacing: 12) {
                 Text("Server default")
-                    .font(.body)
+                    .font(AppFont.body())
                     .lineLimit(2)
 
                 Spacer(minLength: 0)
 
                 if selected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -336,7 +338,7 @@ struct CronJobProfilePickerSheet: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(profile.displayName)
-                        .font(.body)
+                        .font(AppFont.body())
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
                     // The profile's own model and provider, so the inheritance
@@ -344,9 +346,9 @@ struct CronJobProfilePickerSheet: View {
                     // implied.
                     if let details = Self.details(for: profile) {
                         Text(details)
-                            .font(.caption)
+                            .font(AppFont.caption())
                             .foregroundStyle(
-                                selected ? Color(.systemBackground).opacity(0.7) : Color.secondary
+                                selected ? Color(.appCanvas).opacity(0.7) : Color(.appTextSecondary)
                             )
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
@@ -356,7 +358,7 @@ struct CronJobProfilePickerSheet: View {
 
                 if selected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }

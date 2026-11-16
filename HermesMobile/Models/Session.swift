@@ -354,8 +354,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         case parentSessionId, relationshipType, readOnly, isReadOnly, matchType, matchPreview
     }
 
-    /// Lossy field by field, like `SessionDetail` and `ProjectSummary` already
-    /// are (`AGENTS.md` hard rule 3).
+    /// Lossy field by field, like `SessionDetail` and `ProjectSummary` already are.
     ///
     /// The synthesized `Decodable` this replaces failed the whole value on one
     /// mistyped field, and `SessionsResponse` decoded the array as a unit — so a
@@ -596,8 +595,10 @@ extension SessionSummary {
     }
 
     /// The source chip shown by hermes-webui, preferring the server's label and
-    /// falling back to stable brand/acronym casing for older servers.
+    /// falling back to stable brand/acronym casing for older servers. A Hermes row's
+    /// chip names its creator instead (`hermesSourceLabel`).
     var sourceDisplayLabel: String? {
+        if hermes != nil { return hermesSourceLabel }
         guard requiresExternalImport else { return nil }
 
         if let label = Self.nonEmpty(sourceLabel), label.lowercased() != "webui" {
@@ -608,26 +609,46 @@ extension SessionSummary {
             .compactMap(Self.normalizedSourceMarker)
             .first { $0 != "messaging" && $0 != "webui" }
 
+        guard let marker else { return isCliSession == true ? "CLI" : "Messaging" }
+        return Self.sourceChipLabel(marker)
+    }
+
+    /// Hermex's own chats on a Hermes host, current (`gui`, stored as `desktop`) and older
+    /// (`hermex`, #1279), and rows no client made. They show no chip (#1674).
+    private static let hermesUnchippedSources: Set<String> = ["cron", "desktop", "fork", "gui", "hermex", "local", "unknown"]
+
+    /// A Hermes row's chip (#1674): the client or platform that made it (`sessionSource`,
+    /// set by `HermesSessionRow.summary`), unless that was Hermex or nobody.
+    private var hermesSourceLabel: String? {
+        guard let marker = Self.normalizedSourceMarker(sessionSource),
+              !Self.hermesUnchippedSources.contains(marker) else { return nil }
+        return Self.sourceChipLabel(marker)
+    }
+
+    /// A lowercased source marker as a chip shows it: brand and acronym casing where plain
+    /// capitalizing gets it wrong, else its words capitalized.
+    private static func sourceChipLabel(_ marker: String) -> String {
         switch marker {
         case "cli": return "CLI"
         case "tui": return "TUI"
         case "acp": return "ACP"
-        case "telegram": return "Telegram"
-        case "discord": return "Discord"
-        case "slack": return "Slack"
-        case "email": return "Email"
-        case "matrix": return "Matrix"
+        case "api_server": return "API"
+        case "webui": return "WebUI"
         case "weixin": return "WeChat"
         case "wecom": return "WeCom"
         case "wecom_callback": return "WeCom Callback"
-        case "desktop": return "Desktop"
-        case let marker?:
+        case "whatsapp": return "WhatsApp"
+        case "whatsapp_cloud": return "WhatsApp Cloud"
+        case "dingtalk": return "DingTalk"
+        case "bluebubbles": return "BlueBubbles"
+        case "qqbot": return "QQ Bot"
+        case "sms": return "SMS"
+        case "msgraph_webhook": return "Microsoft Graph"
+        default:
             return marker
                 .replacingOccurrences(of: "_", with: " ")
                 .replacingOccurrences(of: "-", with: " ")
                 .capitalized
-        case nil:
-            return isCliSession == true ? "CLI" : "Messaging"
         }
     }
 
@@ -731,11 +752,13 @@ struct AutomatedSessionVisibility: Equatable {
     ///
     /// `isCliSession` is server-computed (`is_cli_session_row`, re-stamped onto
     /// every row by `_normalize_sidebar_source_flags` in `api/routes.py`); cron
-    /// detection is client-side (`SessionSummary.isCronSession`).
+    /// detection is client-side (`SessionSummary.isCronSession`). On a Hermes server
+    /// `showsCli` is CLI and Messaging Sessions: it hides every row with a source chip (#1674).
     func shows(_ session: SessionSummary) -> Bool {
         if session.isDelegatedSubagentSession, !showsSubagents { return false }
         if session.isCronSession, !showsCron { return false }
         if session.isCliSession == true, !showsCli { return false }
+        if !showsCli, session.hermes != nil, session.sourceDisplayLabel != nil { return false }
         if session.isClaudeCodeSession, !showsClaudeCode { return false }
         return true
     }

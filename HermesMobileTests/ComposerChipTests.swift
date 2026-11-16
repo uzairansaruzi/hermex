@@ -509,6 +509,23 @@ final class ComposerChipGestureTests: XCTestCase {
 
 @MainActor
 final class ComposerChipPresentationTests: XCTestCase {
+    func testChipRenderingTracksDisplayScaleWithoutChangingPointSize() {
+        let metrics = ComposerChipMetrics(editorFont: .systemFont(ofSize: 17))
+        func render(scale: CGFloat) -> UIImage {
+            ComposerChipRenderer.image(
+                label: "Workspace", icon: .symbol("folder"),
+                metrics: metrics,
+                traits: UITraitCollection { $0.displayScale = scale },
+                isRightToLeft: false
+            )
+        }
+        let first = render(scale: 2)
+        let second = render(scale: 3)
+        XCTAssertEqual(first.scale, 2)
+        XCTAssertEqual(second.scale, 3)
+        XCTAssertEqual(first.size, second.size)
+    }
+
     func testHostedRedundantUpdateKeepsFocusedManualScrollOffset() async throws {
         let state = ComposerPresentationHarnessState()
         let host = UIHostingController(
@@ -552,6 +569,77 @@ final class ComposerChipPresentationTests: XCTestCase {
         XCTAssertEqual(updatedEditor.contentOffset.y, manualOffset.y, accuracy: 0.001)
     }
 
+    /// The mic tap resigns the editor before dictation reads its baseline. That has to
+    /// commit a live composition, so dictation's first write cannot break it.
+    func testHostedResigningForDictationCommitsAComposition() throws {
+        let state = ComposerPresentationHarnessState()
+        state.text = "draft "
+        state.selection = ComposerSelection(range: NSRange(location: 6, length: 0))
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.layoutIfNeeded()
+        let editor = try XCTUnwrap(descendants(of: host.view).compactMap { $0 as? ComposerChipTextView }.first)
+        XCTAssertTrue(editor.becomeFirstResponder())
+        editor.setMarkedText("にほん", selectedRange: NSRange(location: 3, length: 0))
+        XCTAssertNotNil(editor.markedTextRange)
+
+        UIApplication.shared.sendAction(#selector(ComposerChipTextView.resignForDictation), to: nil, from: nil, for: nil)
+        XCTAssertNil(editor.markedTextRange)
+        XCTAssertEqual(state.text, "draft にほん")
+    }
+
+    /// Dictated words reach the resigned editor at the caret and never read as a
+    /// user edit, or dictation would stop after its first word. A real edit does.
+    func testHostedDictationWritesAreNotUserEditsButTypingIs() async throws {
+        let state = ComposerPresentationHarnessState()
+        state.text = "one two"
+        state.selection = ComposerSelection(range: NSRange(location: 3, length: 0))
+        state.isFocused = false
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        host.view.layoutIfNeeded()
+        let editor = try XCTUnwrap(descendants(of: host.view).compactMap { $0 as? ComposerChipTextView }.first)
+        func draft() -> ComposerVoiceDraftState {
+            ComposerVoiceDraftState(text: state.text, selection: state.selection)
+        }
+
+        var session = ComposerVoiceDraftUpdateSession()
+        session.begin(draft())
+        for (revision, transcript) in ["and", "and then"].enumerated() {
+            let update = try XCTUnwrap(session.update(for: transcript, current: draft()))
+            state.text = update.text
+            state.selection = state.selection.moved(to: update.caret)
+            host.rootView = ComposerPresentationHarness(state: state, updateRevision: revision + 1)
+            host.view.layoutIfNeeded()
+            await Task.yield()
+            XCTAssertEqual(editor.sourceText, update.text)
+            XCTAssertEqual(editor.sourceSelection, update.caret)
+        }
+        XCTAssertEqual(state.text, "one and then two")
+
+        XCTAssertTrue(editor.becomeFirstResponder())
+        editor.insertText("x")
+        XCTAssertNil(session.update(for: "late", current: draft()))
+    }
+
     private func descendants(of view: UIView) -> [UIView] {
         [view] + view.subviews.flatMap { descendants(of: $0) }
     }
@@ -583,12 +671,11 @@ private struct ComposerPresentationHarness: View {
             measuredHeight: binding(\ComposerPresentationHarnessState.measuredHeight),
             isDisabled: false,
             isCollapsed: false,
-            isKeyboardSendEnabled: false,
+            keyboardCommands: ComposerKeyboardCommands(),
             verticalPadding: 0,
             chipSkills: [],
             chipFilePaths: [],
             quotes: [],
-            onKeyboardSend: {},
             onPasteFileProviders: { _ in },
             onPasteFileURLs: { _ in },
             onPasteImageProviders: { _ in },
@@ -896,5 +983,167 @@ final class ComposerUndoTests: XCTestCase {
         DispatchQueue.main.async { turned.fulfill() }
         wait(for: [turned], timeout: 5)
         XCTAssertFalse(undoManager.canUndo, "Undo must not put back text the redrawn chips no longer describe")
+    }
+}
+
+/// The editor's hardware-keyboard commands (#1380), driven through the key commands
+/// UIKit would dispatch.
+@MainActor final class ComposerKeyboardCommandTests: XCTestCase {
+    /// An IME's Return confirms the composition; no shortcut may act on half-composed text.
+    func testKeyboardCommandsWaitForIMECompositionToFinish() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        let keys = try XCTUnwrap(editor.keyCommands?.filter { $0.title.hasPrefix("test-") })
+        XCTAssertEqual(keys.count, 3)
+
+        editor.setMarkedText("に", selectedRange: NSRange(location: 1, length: 0))
+        _ = try XCTUnwrap(editor.markedTextRange)
+        for key in keys {
+            let action = try XCTUnwrap(key.action)
+            XCTAssertFalse(editor.canPerformAction(action, withSender: key))
+            editor.perform(action)
+        }
+        XCTAssertEqual(performed, [])
+
+        editor.unmarkText()
+        for key in keys {
+            editor.perform(try XCTUnwrap(key.action))
+        }
+        XCTAssertEqual(performed, ["test-send", "test-alternate", "test-escape"])
+    }
+
+    /// A key UIKit listed before the editor locked, or before the gate closed, does nothing.
+    func testAKeyListedEarlierDoesNothingOnceTheEditorLocksOrTheGateCloses() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        let send = try XCTUnwrap(editor.keyCommands?.first { $0.title == "test-send" }?.action)
+
+        editor.isEditable = false
+        editor.perform(send)
+        editor.isEditable = true
+        editor.keyboardCommands = ComposerKeyboardCommands()
+        XCTAssertFalse(editor.canPerformAction(send, withSender: nil))
+        editor.perform(send)
+
+        XCTAssertEqual(performed, [])
+    }
+
+    /// Send with Return (#1655): ↩ sends only once turned on; ⇧↩ and ⌥↩ then type the newline.
+    func testReturnSendsOnlyWhenTurnedOnAndShiftOrOptionReturnTypesANewline() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        XCTAssertNil(returnKey(in: editor, modifiers: []))
+
+        editor.returnSends = true
+        editor.perform(try XCTUnwrap(returnKey(in: editor, modifiers: [])?.action))
+        editor.perform(try XCTUnwrap(returnKey(in: editor, modifiers: .shift)?.action))
+        editor.perform(try XCTUnwrap(returnKey(in: editor, modifiers: .alternate)?.action))
+
+        XCTAssertEqual(performed, ["test-send"])
+        XCTAssertEqual(editor.text, "\n\n")
+    }
+
+    /// While Send is unavailable, ↩ still belongs to Send with Return: it does nothing
+    /// rather than type the newline it no longer means.
+    func testReturnDoesNothingWhileSendIsUnavailable() throws {
+        let editor = ComposerChipTextView()
+        editor.returnSends = true
+        let send = try XCTUnwrap(returnKey(in: editor, modifiers: [])?.action)
+
+        XCTAssertTrue(editor.canPerformAction(send, withSender: nil))
+        editor.perform(send)
+
+        XCTAssertEqual(editor.text, "")
+    }
+
+    /// With Send with Return on, an IME's ↩ still confirms the candidate rather than sending.
+    func testReturnConfirmsAnIMECompositionInsteadOfSending() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        editor.returnSends = true
+        let send = try XCTUnwrap(returnKey(in: editor, modifiers: [])?.action)
+
+        editor.setMarkedText("に", selectedRange: NSRange(location: 1, length: 0))
+        XCTAssertNil(returnKey(in: editor, modifiers: []))
+        XCTAssertFalse(editor.canPerformAction(send, withSender: nil))
+        editor.perform(send)
+
+        XCTAssertEqual(performed, [])
+    }
+
+    private func returnKey(in editor: ComposerChipTextView, modifiers: UIKeyModifierFlags) -> UIKeyCommand? {
+        editor.keyCommands?.first { $0.input == "\r" && $0.modifierFlags == modifiers }
+    }
+
+    private func commands(_ record: @escaping (String) -> Void) -> ComposerKeyboardCommands {
+        ComposerKeyboardCommands(
+            send: .init(title: "test-send") { record("test-send") },
+            alternateSend: .init(title: "test-alternate") { record("test-alternate") },
+            escape: .init(title: "test-escape") { record("test-escape") }
+        )
+    }
+}
+
+/// A Hermes paste past Desktop's limit becomes a file (#1381); Paste as Text keeps it
+/// inline. Each test reads a private pasteboard, never the clipboard shared with the Mac.
+@MainActor
+final class ComposerLargePasteTests: XCTestCase {
+    /// The limit counts UTF-16 units: 1,501 emoji are 3,002 units but 1,501 characters, so a
+    /// character count would have left them inline. What was typed stays as it was.
+    func testAPastePastTheLimitStagesAFileAndLeavesTheEditorAlone() {
+        XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "😀", count: 1_500)))
+        let (textView, pasteboard) = makeEditor()
+        textView.replaceDocument(with: "Why does this crash?")
+        var staged: [String] = []
+        textView.onPasteLargeText = { staged.append($0) }
+        let log = String(repeating: "😀", count: 1_501)
+        pasteboard.string = log
+
+        textView.paste(nil)
+
+        XCTAssertEqual(staged, [log])
+        XCTAssertEqual(textView.sourceText, "Why does this crash?")
+    }
+
+    /// ⌘⇧V, offered only where pastes convert, puts a long paste inline as one edit undo
+    /// takes back.
+    func testPasteAsTextInsertsInlineAndUndoes() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let (textView, pasteboard) = makeEditor()
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+        }
+        XCTAssertNil(pasteAsTextCommand(in: textView), "Rooms and webui keep plain paste only")
+        textView.onPasteLargeText = { _ in XCTFail("Paste as Text never stages a file") }
+        XCTAssertTrue(textView.becomeFirstResponder())
+        textView.replaceDocument(with: "Why? ")
+        let log = String(repeating: "x", count: 3_001)
+        pasteboard.string = log
+        let action = try XCTUnwrap(pasteAsTextCommand(in: textView)?.action)
+
+        textView.perform(action, with: nil)
+        XCTAssertEqual(textView.sourceText, "Why? " + log)
+
+        try XCTUnwrap(textView.undoManager).undo()
+        XCTAssertEqual(textView.sourceText, "Why? ")
+    }
+
+    private func makeEditor() -> (ComposerChipTextView, UIPasteboard) {
+        let pasteboard = UIPasteboard.withUniqueName()
+        addTeardownBlock { UIPasteboard.remove(withName: pasteboard.name) }
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        textView.pasteboard = pasteboard
+        return (textView, pasteboard)
+    }
+
+    private func pasteAsTextCommand(in textView: ComposerChipTextView) -> UIKeyCommand? {
+        textView.keyCommands?.first { $0.input == "v" && $0.modifierFlags == [.command, .shift] }
     }
 }

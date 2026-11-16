@@ -1,7 +1,7 @@
 import Foundation
 
-/// Which links open in the in-app browser (`SafariView`) instead of leaving
-/// Hermex: web pages only. Mail, phone, and app links keep going to the system.
+/// Which links go to `SafariView` (the app that claims the page, else the
+/// in-app browser) instead of the system: web pages only. Mail, phone, and app links keep going to the system.
 /// `SFSafariViewController` raises for any scheme but `http(s)`, so every
 /// presentation checks this first.
 enum InAppBrowserPolicy {

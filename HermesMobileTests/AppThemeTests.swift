@@ -89,13 +89,6 @@ final class ChatLayoutDirectionSettingsTests: XCTestCase {
 }
 
 final class CodeBlockWrappingSettingsTests: XCTestCase {
-    func testWrapsCodeBlockLinesKeyIsStable() {
-        XCTAssertEqual(
-            ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey,
-            "chatTranscript.wrapsCodeBlockLines"
-        )
-    }
-
     /// Wrap mode concatenates a line's 500-char segments back into one `Text`, so
     /// joining them must reproduce the source line exactly (no dropped/duplicated
     /// characters) even when the line is split into several segments.
@@ -411,5 +404,153 @@ final class SpyResponseCompletionNotificationScheduler: ResponseCompletionNotifi
 
     func schedule(_ request: ResponseCompletionNotificationRequest) async {
         scheduledRequests.append(request)
+    }
+}
+
+/// The legacy source viewer's wrap setting folds into the one Code setting.
+final class CodeWrapMigrationTests: XCTestCase {
+    func testEitherSettingBeingOnStaysOn() throws {
+        let suite = "CodeWrapMigrationTests"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let legacyKey = "workspace.sourceViewer.wrapsLines"
+
+        defaults.set(true, forKey: legacyKey)
+        CodeDisplaySettings.migrateWrapSetting(defaults: defaults)
+        XCTAssertTrue(defaults.bool(forKey: CodeDisplaySettings.wrapsLinesKey))
+        XCTAssertNil(defaults.object(forKey: legacyKey))
+
+        defaults.set(false, forKey: legacyKey)
+        CodeDisplaySettings.migrateWrapSetting(defaults: defaults)
+        XCTAssertTrue(defaults.bool(forKey: CodeDisplaySettings.wrapsLinesKey), "A legacy off doesn't undo chat's on")
+    }
+}
+
+@MainActor
+final class AppearanceTextAndCodeSizeTests: XCTestCase {
+    private func settle(_ window: UIWindow) async {
+        for _ in 0..<3 {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async { continuation.resume() }
+            }
+            window.layoutIfNeeded()
+            _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+        }
+    }
+
+    /// One stored stop reaches SwiftUI and auto-adjusting UIKit text in any window on the
+    /// scene, and the first stop gives the size back to the iPhone.
+    func testAStopResizesTheSceneAndTheFirstStopFollowsTheIPhone() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        let probe = DynamicTypeProbe()
+        let controller = UIHostingController(rootView: DynamicTypeProbeView(probe: probe))
+        let textView = UITextView()
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.adjustsFontForContentSizeCategory = true
+        controller.view.addSubview(textView)
+        window.rootViewController = controller
+        window.isHidden = false
+        defer {
+            window.isHidden = true
+            UserDefaults.standard.removeObject(forKey: AppTextSize.storageKey)
+            AppTextSize.applyStoredSize(to: scene)
+        }
+
+        let stop = try XCTUnwrap(AppTextSize.stops.firstIndex(of: .accessibility3))
+        UserDefaults.standard.set(stop, forKey: AppTextSize.storageKey)
+        AppTextSize.applyStoredSizeToConnectedScenes()
+        await settle(window)
+        XCTAssertEqual(probe.size, .accessibility3)
+        XCTAssertEqual(
+            try XCTUnwrap(textView.font).pointSize,
+            UIFont.preferredFont(forTextStyle: .body, at: .accessibility3).pointSize
+        )
+
+        UserDefaults.standard.set(0, forKey: AppTextSize.storageKey)
+        AppTextSize.applyStoredSizeToConnectedScenes()
+        await settle(window)
+        XCTAssertEqual(window.traitCollection.preferredContentSizeCategory, UIApplication.shared.preferredContentSizeCategory)
+        XCTAssertEqual(probe.size, DynamicTypeSize(window.traitCollection.preferredContentSizeCategory))
+    }
+
+    /// A settled reply sits in its own hosting controller and skips rebuilds, so this proves
+    /// the setting reaches code already on screen.
+    func testCustomCodeSizeResizesASettledReplysCodeBlock() async throws {
+        let reply = ChatMessage(
+            role: "assistant",
+            content: "```swift\nlet value = 1\nlet other = 2\n```",
+            timestamp: 1,
+            messageId: "custom-code-size"
+        )
+        UserDefaults.standard.removeObject(forKey: CodeDisplaySettings.customSizeKey)
+        let controller = UIHostingController(
+            rootView: MessageBubbleView(message: reply, transcriptMediaCacheNamespace: "custom-code-size")
+                .environment(\.dynamicTypeSize, .large)
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            UserDefaults.standard.removeObject(forKey: CodeDisplaySettings.customSizeKey)
+        }
+        func height() -> CGFloat { controller.sizeThatFits(in: CGSize(width: 390, height: 2000)).height }
+
+        await settle(window)
+        let followingText = height()
+        XCTAssertGreaterThan(followingText, 0)
+
+        UserDefaults.standard.set(28.0, forKey: CodeDisplaySettings.customSizeKey)
+        await settle(window)
+        XCTAssertGreaterThan(height(), followingText)
+
+        UserDefaults.standard.removeObject(forKey: CodeDisplaySettings.customSizeKey)
+        await settle(window)
+        XCTAssertEqual(height(), followingText, accuracy: 0.5)
+    }
+
+    /// Off, a long line of terminal output scrolls sideways and stays one row tall.
+    func testWrapSettingControlsToolOutput() async throws {
+        let toolCall = ToolCall(
+            name: "terminal",
+            preview: String(repeating: "output ", count: 60),
+            args: nil,
+            isCompleted: true
+        )
+        let controller = UIHostingController(rootView: ToolCallDetailBodyView(toolCall: toolCall, status: .success))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 700))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            UserDefaults.standard.removeObject(forKey: CodeDisplaySettings.wrapsLinesKey)
+        }
+        func height() -> CGFloat { controller.sizeThatFits(in: CGSize(width: 390, height: 2000)).height }
+
+        UserDefaults.standard.set(false, forKey: CodeDisplaySettings.wrapsLinesKey)
+        await settle(window)
+        let unwrapped = height()
+
+        UserDefaults.standard.set(true, forKey: CodeDisplaySettings.wrapsLinesKey)
+        await settle(window)
+        XCTAssertGreaterThan(height(), unwrapped + 60, "Wrapped, the line takes several rows")
+    }
+}
+
+@MainActor
+private final class DynamicTypeProbe {
+    var size: DynamicTypeSize?
+}
+
+private struct DynamicTypeProbeView: View {
+    let probe: DynamicTypeProbe
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let _ = (probe.size = dynamicTypeSize)
+        Color.clear
     }
 }

@@ -98,6 +98,23 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertEqual(legacyCLI.sourceDisplayLabel, "CLI")
     }
 
+    /// A Hermes row's chip names who made it (#1674): a local row by its `created_source`, any
+    /// other by its `source`. Hermex's own chats, current (`gui` → `desktop`) and older
+    /// (`hermex`), show none.
+    func testHermesRowSourceChipNamesItsCreator() throws {
+        let page = try JSONDecoder().decode(HermesSessionPage.self, from: Data("""
+        {"sessions": [
+          {"id": "cli", "source": "local", "created_source": "cli"},
+          {"id": "telegram", "source": "telegram", "created_source": "telegram"},
+          {"id": "hermex", "source": "local", "created_source": "desktop"},
+          {"id": "older-hermex", "source": "hermex", "created_source": "hermex"}
+        ]}
+        """.utf8))
+        let labels = page.rows.map { $0.summary(in: "default").sourceDisplayLabel }
+
+        XCTAssertEqual(labels, ["CLI", "Telegram", nil, nil])
+    }
+
     func testWebUISourceOverridesStaleCLIFlag() {
         let imported = SessionSummary(
             sessionId: "imported",
@@ -111,27 +128,18 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertNil(imported.sourceDisplayLabel)
     }
 
-    func testChatComposerReadOnlyMessageUsesServerAndOfflineState() {
-        XCTAssertEqual(
-            ChatView.composerReadOnlyMessage(
-                for: SessionSummary(sessionId: "read-only", readOnly: true),
-                isViewingCachedData: false
-            ),
-            "Read-only"
-        )
-        XCTAssertEqual(
-            ChatView.composerReadOnlyMessage(
-                for: SessionSummary(sessionId: "offline"),
-                isViewingCachedData: true
-            ),
-            "Reconnect to send messages."
-        )
-        XCTAssertNil(
-            ChatView.composerReadOnlyMessage(
-                for: SessionSummary(sessionId: "writable"),
-                isViewingCachedData: false
-            )
-        )
+    /// Offline keeps the draft editable and holds the host's controls (#1375); a read-only
+    /// session stays locked either way.
+    func testOfflineHoldsHostControlsAndReadOnlyStaysLocked() {
+        let offline = ChatComposerAccess(session: SessionSummary(sessionId: "writable"), isViewingCachedData: true)
+        XCTAssertTrue(offline.allowsEditing)
+        XCTAssertFalse(offline.allowsHostControls)
+        for isViewingCachedData in [false, true] {
+            let access = ChatComposerAccess(session: SessionSummary(sessionId: "read-only", readOnly: true),
+                                            isViewingCachedData: isViewingCachedData)
+            XCTAssertFalse(access.allowsEditing)
+            XCTAssertFalse(access.allowsHostControls)
+        }
     }
 
     /// A row without a `session_id` gets the same identity every time it decodes, so a list

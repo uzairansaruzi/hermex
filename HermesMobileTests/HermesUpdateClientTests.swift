@@ -45,6 +45,19 @@ import XCTest
         XCTAssertEqual(checks.map(\.httpMethod), ["GET", "GET"])
     }
 
+    /// A build newer than its release channel (`check_hermes_update` at `bf0203a7`) isn't offered
+    /// an update: a rollback is `update_available` with `rollback_to`, and a hold is `behind: 0`.
+    func testABuildNewerThanItsReleaseIsNeitherUpdatableNorCurrent() async throws {
+        var reply = #"{"install_method": "git", "behind": -1, "update_available": true, "can_apply": true, "rollback_to": "0.22.4", "source_version": "0.22.4", "message": "This build is newer than stable release v0.22.4. Updating moves it back to that release."}"#
+        let client = client { request in request.url?.path == "/api/hermes/update/check" ? .json(200, Self.json(reply)) : nil }
+        let rollback = try await client.check(force: false)
+        XCTAssertEqual(rollback.offer, .moveBack)
+
+        reply = #"{"install_method": "git", "behind": 0, "update_available": false, "can_apply": true, "held": "downgrade", "source_version": "0.22.4", "message": "It stays on this build until a newer release ships."}"#
+        let held = try await client.check(force: false)
+        XCTAssertEqual(held.offer, .held)
+    }
+
     func testAnInstallThatUpdatesOnTheHostCarriesItsCommandUnlessItIsManagedElsewhere() async throws {
         var reply = #"{"install_method": "docker", "current_version": "0.21.5", "behind": null, "update_available": false, "can_apply": false, "update_command": "docker compose pull && docker compose up -d", "message": "Pull the new image."}"#
         let client = client { request in request.url?.path == "/api/hermes/update/check" ? .json(200, Self.json(reply)) : nil }

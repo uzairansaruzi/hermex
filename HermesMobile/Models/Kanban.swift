@@ -2,6 +2,8 @@ import Foundation
 
 enum KanbanBulkAction: Equatable, Sendable {
     case changeStatus(String)
+    /// Done with the note a Hermes host needs to complete a Card outside Review (#1677).
+    case complete(result: String)
     case assignProfile(String?)
     case setPriority(Int)
     case archiveCards
@@ -99,6 +101,9 @@ struct KanbanCardStatusRequest: Equatable, Sendable {
     let cardID: String
     let board: String
     let status: String
+    /// What was done, which a Hermes host needs to complete a Card outside Review (#1677).
+    /// webui never sends it.
+    var result: String? = nil
 
     var queryItems: [URLQueryItem] {
         [URLQueryItem(name: "board", value: board)]
@@ -599,6 +604,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         case currentRunID = "currentRunId"
         case claimLock, claimExpires
         case workerID = "workerPid"
+        case startedAt, currentRunStartedAt
     }
 
     init(
@@ -657,8 +663,10 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         commentCount = container.decodeLossyIntIfPresent(forKey: .commentCount)
         linkCounts = try? container.decodeIfPresent(KanbanLinkCounts.self, forKey: .linkCounts)
         // A Hermes host sends `age`; webui forwards the same dict as `age_seconds` too.
-        age = KanbanCardAge.decode(from: container, forKey: .age)
-            ?? KanbanCardAge.decode(from: container, forKey: .ageSeconds)
+        age = (KanbanCardAge.decode(from: container, forKey: .age)
+            ?? KanbanCardAge.decode(from: container, forKey: .ageSeconds))?
+            .sinceCurrentRun(firstStart: container.decodeLossyDoubleIfPresent(forKey: .startedAt),
+                             currentRunStart: container.decodeLossyDoubleIfPresent(forKey: .currentRunStartedAt))
         createdAt = container.decodeLossyStringIfPresent(forKey: .createdAt)
         updatedAt = container.decodeLossyStringIfPresent(forKey: .updatedAt)
         workspaceKind = container.decodeLossyStringIfPresent(forKey: .workspaceKind)
@@ -727,6 +735,15 @@ struct KanbanCardAge: Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case createdSeconds = "createdAgeSeconds"
         case startedSeconds = "startedAgeSeconds"
+    }
+
+    /// The host's started age counts from the Card's first start, so a retried Card's run reads
+    /// from the start of its current run. Only the host's own times go into it, because the
+    /// phone's clock can differ. Without both times, as from an older host, the age stays as sent.
+    func sinceCurrentRun(firstStart: Double?, currentRunStart: Double?) -> KanbanCardAge {
+        guard let startedSeconds, let firstStart, let currentRunStart else { return self }
+        return KanbanCardAge(createdSeconds: createdSeconds,
+                             startedSeconds: max(0, startedSeconds - (currentRunStart - firstStart)))
     }
 
     static func decode<Key: CodingKey>(
@@ -1113,7 +1130,7 @@ enum KanbanStaleness: Equatable, Sendable {
 }
 
 /// Retains an unknown server Status rather than turning it into a decoding
-/// failure. Future mutation slices can use `isSupported` to keep it read-only.
+/// failure; `isSupported` keeps it read-only.
 /// Scheduled and Review are Hermes-only Columns; webui never sends them.
 struct KanbanStatus: Equatable, Hashable, Sendable {
     let rawValue: String
@@ -1178,17 +1195,17 @@ struct KanbanWriteRefusal: Error, Equatable, LocalizedError, Sendable {
 /// Where a Card can go on each server (#1044). A Hermes host promotes a To Do Card whose
 /// prerequisites are all done to Ready on its next dispatcher tick, so To Do never sticks
 /// there: a Card goes to Triage or Ready, and the host itself puts it in To Do while a
-/// prerequisite is open. Scheduled and Review are the host's own states, moved out of but
-/// never into. webui keeps today's Triage, To Do and Ready.
+/// prerequisite is open. Only a Bulk Action moves Cards into Scheduled or Review, as on
+/// webui (#1677). webui keeps today's Triage, To Do and Ready.
 extension KanbanBackend {
     /// The Statuses a new Card starts in, which are also the ordinary Move destinations.
     var createStatuses: [String] {
         self == .hermes ? ["triage", "ready"] : ["triage", "todo", "ready"]
     }
 
-    /// Statuses never offered as a destination, in a Move, a Bulk Action or the editor.
+    /// Statuses a Bulk Action never offers as a destination.
     var unofferedStatuses: Set<String> {
-        self == .hermes ? ["running", "todo", "scheduled", "review"] : ["running"]
+        self == .hermes ? ["running", "todo"] : ["running"]
     }
 
     /// Whether a Card in `status` offers Block. A Hermes host blocks only a Ready or Running
@@ -1200,13 +1217,20 @@ extension KanbanBackend {
         }
     }
 
-    /// Whether a Card in `status` offers Complete. A Hermes host completes a Card without a
-    /// result, which Hermex never sends, only out of Review, and refuses the rest with a 400.
+    /// Whether a Card in `status` offers Complete. A Hermes host completes a Ready, Running,
+    /// Blocked or Review Card and refuses the rest.
     func offersComplete(from status: String?) -> Bool {
         switch self {
         case .webui: status != "done" && status != "archived"
-        case .hermes: status == "review"
+        case .hermes: ["ready", "running", "blocked", "review"].contains(status)
         }
+    }
+
+    /// Whether completing a Card in `status` needs a note of what was done. A Hermes host
+    /// completes a Card outside Review only with a result, and refuses it without one with a
+    /// 400 (#1677).
+    func completionNeedsResult(from status: String?) -> Bool {
+        self == .hermes && status != "review"
     }
 
     /// Whether a Card the server now reports in `landed` shows that a write asking for

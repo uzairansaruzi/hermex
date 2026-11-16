@@ -1,0 +1,12 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : {
+    "body" : {
+      "detail" : "fixture-redacted",
+      "error" : "fixture-redacted"
+    },
+    "status" : 401
+  },
+  "version" : "0.23.1"
+}

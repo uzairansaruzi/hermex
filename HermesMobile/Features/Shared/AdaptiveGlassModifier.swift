@@ -65,14 +65,14 @@ extension View {
         #if targetEnvironment(macCatalyst)
         safeAreaInset(edge: .top, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                Image(systemName: "magnifyingglass").foregroundStyle(.appSecondary)
                 TextField(text: text, prompt: prompt) { prompt }
                     .textFieldStyle(.plain)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 if !text.wrappedValue.isEmpty {
                     Button { text.wrappedValue = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.appSecondary)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Clear search")
@@ -80,11 +80,11 @@ extension View {
             }
             .padding(.horizontal, 12)
             .frame(height: 34)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+            .background(Color(.appFillTertiary), in: RoundedRectangle(cornerRadius: 8))
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .adaptiveReadableContent(maxWidth: maxWidth)
-            .background(.bar)
+            .background(.appMaterial(.bar))
         }
         #else
         searchable(text: text, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)
@@ -103,18 +103,19 @@ extension View {
     func adaptiveFormPresentation(preferredMacSize: CGSize? = nil) -> some View {
         #if targetEnvironment(macCatalyst)
         if let size = preferredMacSize {
-            frame(idealWidth: size.width, idealHeight: size.height)
+            themedPageBackground()
+                .frame(idealWidth: size.width, idealHeight: size.height)
                 .presentationSizing(.fitted)
         } else {
-            presentationSizing(.form)
+            themedPageBackground().presentationSizing(.form)
         }
         #else
-        presentationSizing(.form)
+        themedPageBackground().presentationSizing(.form)
         #endif
     }
 
     func adaptivePagePresentation() -> some View {
-        presentationSizing(.page)
+        themedPageBackground().presentationSizing(.page)
     }
 
     func adaptiveSecondaryNavigationTitle() -> some View {
@@ -140,14 +141,6 @@ enum GlassPreference {
         }
 
         return false
-    }
-
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.object(forKey: isEnabledKey) != nil else {
-            return defaultIsEnabled
-        }
-
-        return defaults.bool(forKey: isEnabledKey)
     }
 }
 
@@ -275,7 +268,7 @@ private struct AdaptiveGlassModifier<S: Shape>: ViewModifier {
 
     private func opaqueContent(_ content: Content) -> some View {
         content
-            .background(Color(.secondarySystemBackground), in: shape)
+            .background(Color(.appSurface), in: shape)
             .adaptiveGlassAccessibilityStroke(
                 shape: shape,
                 isVisible: true,
@@ -336,7 +329,7 @@ private extension View {
         if isVisible {
             overlay(
                 shape
-                    .stroke(Color.primary.opacity(opacity), lineWidth: 1)
+                    .stroke(Color(.appText).opacity(opacity), lineWidth: 1)
                     .allowsHitTesting(false)
             )
         } else {

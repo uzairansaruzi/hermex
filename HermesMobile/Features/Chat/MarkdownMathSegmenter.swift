@@ -20,7 +20,7 @@ enum MarkdownMathLayout: Equatable {
 struct MarkdownMathSegmenter {
     static func segments(in content: String) -> [MarkdownMathSegment] {
         // Skip Markdown protection and delimiter scans when no math opener is possible.
-        guard content.utf8.contains(0x24) || content.utf8.contains(0x5C) else {
+        guard MarkdownMathFormatter.mayContainMath(content) else {
             return [.markdown(content)]
         }
         let characters = Array(content)
@@ -32,22 +32,33 @@ struct MarkdownMathSegmenter {
         var segments: [MarkdownMathSegment] = []
         var cursor = 0
         var index = 0
+        // A failed search exhausted this suffix. Keep the result local: the next
+        // streaming update may supply its closer, or use another delimiter kind.
+        var exhausted = Set<DisplayDelimiter>()
 
         while index < characters.count {
             guard let delimiter = displayDelimiter(in: characters, at: index, protected: protected),
-                  let closeIndex = closingDisplayDelimiter(
-                    in: characters,
-                    from: index + delimiter.openLength,
-                    protected: protected,
-                    delimiter: delimiter
-                  )
-            else {
+                  !exhausted.contains(delimiter) else {
                 index += 1
+                continue
+            }
+            guard let closeIndex = closingDisplayDelimiter(
+                in: characters, from: index + delimiter.openLength, protected: protected, delimiter: delimiter
+            ) else {
+                exhausted.insert(delimiter)
+                index += 1
+                continue
+            }
+            let latex = String(characters[(index + delimiter.openLength)..<closeIndex])
+            // `$$` is also the shell's PID: `$$ and $$` is prose, `$$42$$` is math.
+            // A rejected pair stays literal, and its closer never opens a later span.
+            if delimiter == .dollars, latex.contains(where: \.isWhitespace),
+               !MarkdownMathFormatter.looksLikeMath(latex) {
+                index = closeIndex + delimiter.closeLength
                 continue
             }
 
             appendMarkdown(String(characters[cursor..<index]), to: &segments)
-            let latex = String(characters[(index + delimiter.openLength)..<closeIndex])
             appendDisplayMath(latex, to: &segments)
             index = closeIndex + delimiter.closeLength
             cursor = index
@@ -103,7 +114,7 @@ struct MarkdownMathSegmenter {
     }
 }
 
-private enum DisplayDelimiter: CaseIterable {
+private enum DisplayDelimiter: CaseIterable, Hashable {
     case dollars
     case brackets
 
@@ -124,10 +135,10 @@ private enum DisplayDelimiter: CaseIterable {
     func isOpen(in characters: [Character], at index: Int, protected: [Bool]) -> Bool {
         switch self {
         case .dollars:
-            return matches("$$", in: characters, at: index, protected: protected)
+            return matches("$", "$", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         case .brackets:
-            return matches(#"\["#, in: characters, at: index, protected: protected)
+            return matches("\\", "[", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         }
     }
@@ -135,26 +146,22 @@ private enum DisplayDelimiter: CaseIterable {
     func isClose(in characters: [Character], at index: Int, protected: [Bool]) -> Bool {
         switch self {
         case .dollars:
-            return matches("$$", in: characters, at: index, protected: protected)
+            return matches("$", "$", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         case .brackets:
-            return matches(#"\]"#, in: characters, at: index, protected: protected)
+            return matches("\\", "]", in: characters, at: index, protected: protected)
                 && !MarkdownMathProtection.isEscaped(characters, at: index)
         }
     }
 
     private func matches(
-        _ token: String,
+        _ first: Character, _ second: Character,
         in characters: [Character],
         at index: Int,
         protected: [Bool]
     ) -> Bool {
-        let tokenCharacters = Array(token)
-        guard index >= 0, index + tokenCharacters.count <= characters.count else { return false }
-        for offset in 0..<tokenCharacters.count where protected[index + offset] {
-            return false
-        }
-        return Array(characters[index..<(index + tokenCharacters.count)]) == tokenCharacters
+        guard index >= 0, index < characters.count, !protected[index], characters[index] == first else { return false }
+        return index + 1 < characters.count && !protected[index + 1] && characters[index + 1] == second
     }
 }
 
@@ -371,8 +378,8 @@ enum MarkdownMathLayoutCache {
             // second full-string walk for an identical result.
             //
             // One exception: the segmenter *recognises* a display-math span but
-            // drops it when the body is empty or whitespace-only (`$$ $$`,
-            // `\[ \]`). Those produce no `.displayMath` segment, so
+            // drops it when the body is empty or whitespace-only (`$$$$`, `\[ \]`).
+            // Those produce no `.displayMath` segment, so
             // `containsMath` is false, yet the surrounding markdown segments no
             // longer contain the delimiters — joining them would silently
             // swallow literal text the old single-pass renderer preserved.

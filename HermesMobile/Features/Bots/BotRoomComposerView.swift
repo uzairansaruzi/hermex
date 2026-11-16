@@ -10,6 +10,7 @@ struct BotRoomComposerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(HeaderLogoColor.storageKey) private var themeHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(AppAppearanceSettings.accentHexKey) private var accentHex: String?
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @State private var selection = ComposerSelection()
     @State private var focused = false
@@ -30,6 +31,7 @@ struct BotRoomComposerView: View {
                             selection = selection.moved(to: result.selection)
                             ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
                         }
+                        .layoutPriority(-1)
                     }
                 }
                 HStack(spacing: 4) {
@@ -37,12 +39,13 @@ struct BotRoomComposerView: View {
                         text: Binding(get: { reader.draft(in: threadID) }, set: { reader.setDraft($0, in: threadID) }), selection: $selection, isFocused: $focused,
                         inputHeight: $inputHeight, measuredHeight: $measuredHeight,
                         isDisabled: !reader.mayEditDraft(in: threadID), isCollapsed: !focused,
-                        isKeyboardSendEnabled: reader.maySend(in: threadID), verticalPadding: 12,
-                        chipSkills: [], chipFilePaths: [], quotes: [], onKeyboardSend: send,
+                        // Send only: a room has no send choices, and its Stop halts every bot in it.
+                        keyboardCommands: ComposerKeyboardCommands(send: reader.maySend(in: threadID)
+                            ? .init(title: String(localized: "Send Message"), perform: send) : nil),
+                        verticalPadding: 12, chipSkills: [], chipFilePaths: [], quotes: [],
                         onPasteFileProviders: { _ in }, onPasteFileURLs: { _ in },
                         onPasteImageProviders: { _ in }, onPasteImages: { _ in },
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
-                        isReturnSendEnabled: BotMentionTrigger.detect(in: reader.draft(in: threadID), selection: selection.range) == nil,
                         placeholder: threadID == nil ? String(localized: "Message \(reader.room.name)") : String(localized: "Reply in thread"), acceptsAttachments: false
                     )
                     actionButton
@@ -58,13 +61,14 @@ struct BotRoomComposerView: View {
         let stop = reader.showsStop
         let enabled = stop ? reader.mayStop : reader.maySend(in: threadID)
         let appearance = ChatComposerActionAppearance(isStop: stop, isDisabled: !enabled,
-            colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions, themeHex: themeHex)
+            colorScheme: colorScheme, tintsPrimaryActions: tintsPrimaryActions,
+            tint: PrimaryActionTintSettings.colors(accentHex: accentHex, serverHex: themeHex))
         return Button {
             if stop { Task { await reader.stop() } } else { send() }
         } label: {
             Group {
                 if reader.awaitingStop || reader.status.stopping > 0 {
-                    Text("Stopping…").font(.caption).padding(.horizontal, 8)
+                    Text("Stopping…").font(AppFont.caption()).padding(.horizontal, 8)
                 } else {
                     Image(systemName: stop ? "stop.fill" : "arrow.up")
                         .font(.system(size: iconSize, weight: .semibold))
@@ -105,6 +109,9 @@ enum BotRoomMentions {
 struct BotRoomActionCard: View {
     let reader: BotRoomReader
     let action: BotRoomAction
+    /// The action whose Discard is being confirmed, kept apart from `action`: the room's cards are
+    /// keyed by position, so a poll can hand this card another task while the sheet is open.
+    @State private var confirmingDiscard: BotRoomAction?
     var body: some View {
         if let approval = action.approval {
             BotPendingRequestCard(request: .approval(approval), identity: identity,
@@ -112,15 +119,30 @@ struct BotRoomActionCard: View {
                 isAnswering: reader.busy && reader.inactiveActions.contains(action.id), resolution: nil,
                 onApprove: { choice in Task { await reader.act(action, choice: choice) } },
                 onAnswer: { _ in }, onSkip: {}, onCredential: { _ in },
-                onStop: { Task { await reader.stop() } }, onConnection: { _ in })
+                onStop: { Task { await reader.stop() } }, onConnection: { _ in },
+                summary: reader.summaryPresentation(for: action))
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                Text(identity).font(.caption).foregroundStyle(.secondary)
+                Text(identity).font(AppFont.caption()).foregroundStyle(.appSecondary)
                 if action.isRetry {
                     Button("Retry") { Task { await reader.act(action) } }.disabled(!reader.mayAct(action))
+                } else if action.isDiscard {
+                    // A canonical host lost this task's reply in a restart (#1605); discarding is permanent.
+                    Text("Hermes restarted while this bot was replying, so its reply is lost.")
+                        .font(AppFont.callout())
+                    Button("Discard", role: .destructive) { confirmingDiscard = action }
+                        .disabled(!reader.mayAct(action))
+                        .confirmationDialog("Discard this reply?", isPresented: Binding(
+                            get: { confirmingDiscard != nil }, set: { if !$0 { confirmingDiscard = nil } }),
+                            titleVisibility: .visible, presenting: confirmingDiscard) { confirmed in
+                            Button("Discard", role: .destructive) { Task { await reader.act(confirmed) } }
+                            Button("Cancel", role: .cancel) {}
+                        } message: { _ in
+                            Text("The bot won’t finish it, and it isn’t retried. The group carries on.")
+                        }
                 } else {
                     Label("Needs attention. Answer the request in Hermes Desktop on this same connection.", systemImage: "desktopcomputer")
-                        .font(.callout)
+                        .font(AppFont.callout())
                 }
             }
             .padding(16).frame(maxWidth: 560, alignment: .leading)
@@ -201,9 +223,9 @@ struct BotComposerPillView: View {
         .lineLimit(3)
         .multilineTextAlignment(.center)
         .fixedSize(horizontal: false, vertical: true)
-        .foregroundStyle(.primary)
+        .foregroundStyle(.appPrimary)
         .padding(.horizontal, 14).padding(.vertical, 9)
-        .background(.regularMaterial, in: Capsule())
+        .background(.appMaterial(.regularMaterial), in: Capsule())
         .overlay(Capsule().stroke(.primary.opacity(0.10), lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 24)

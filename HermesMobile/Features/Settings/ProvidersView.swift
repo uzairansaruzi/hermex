@@ -21,18 +21,16 @@ struct ProvidersView: View {
     }
 
     var body: some View {
-        List {
+        AppList(rows: .plain) {
             if viewModel.providers.isEmpty {
                 statusRow
                     .frame(maxWidth: .infinity)
                     .containerRelativeFrame(.vertical)
                     .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
             } else {
                 if let errorMessage = viewModel.errorMessage {
                     refreshFailureBanner(detail: errorMessage)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-                        .listRowSeparator(.hidden)
                 }
 
                 ForEach(Array(viewModel.providers.enumerated()), id: \.offset) { index, provider in
@@ -46,19 +44,18 @@ struct ProvidersView: View {
                         )
                     )
                     .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 12))
-                    .listRowSeparator(.hidden)
                 }
 
                 Text("Provider keys are managed on the server. This screen is read-only.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
                     .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 24, trailing: 16))
-                    .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
+        .background(Color(.appCanvas))
+        .themedPageBackground()
         .navigationTitle("Providers")
         .task {
             await viewModel.load()
@@ -106,19 +103,19 @@ struct ProvidersView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .font(AppFont.caption())
                     .foregroundStyle(.orange)
                     .accessibilityHidden(true)
 
                 Text("Couldn't refresh. Showing previously loaded providers.")
-                    .font(.footnote.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.footnote(weight: .medium))
+                    .foregroundStyle(.appPrimary)
                     .multilineTextAlignment(.leading)
             }
 
             Text(verbatim: detail)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption())
+                .foregroundStyle(.appSecondary)
                 .lineLimit(2)
         }
         .padding(12)
@@ -166,7 +163,7 @@ private struct ProviderDisclosure: View {
             } label: {
                 header
             }
-            .tint(Color(.secondaryLabel))
+            .tint(Color(.appTextSecondary))
             .accessibilityHint("Shows this provider's model list.")
         } else {
             header
@@ -182,15 +179,15 @@ private struct ProviderDisclosure: View {
                 }
 
                 Text(ProvidersViewModel.displayName(for: provider))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.fixed(size: 14, weight: .semibold))
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .textCase(.uppercase)
 
                 if let count = ProvidersViewModel.modelCountLabel(for: provider) {
                     Text(verbatim: count)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.fixed(size: 12, weight: .medium))
+                        .foregroundStyle(.appSecondary)
                         .accessibilityLabel(modelCountAccessibilityLabel)
                 }
 
@@ -202,12 +199,12 @@ private struct ProviderDisclosure: View {
             if let authError = ProvidersViewModel.authErrorText(for: provider) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.red)
                         .accessibilityHidden(true)
 
                     Text(authError)
-                        .font(.footnote)
+                        .font(AppFont.footnote())
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.leading)
                 }
@@ -230,13 +227,13 @@ private struct ProviderDisclosure: View {
             HStack(spacing: 6) {
                 if let hasKey = provider.hasKey {
                     Image(systemName: hasKey ? "checkmark.seal.fill" : "key.slash")
-                        .font(.caption)
-                        .foregroundStyle(hasKey ? Color.green : Color.secondary)
+                        .font(AppFont.caption())
+                        .foregroundStyle(hasKey ? Color.green : Color(.appTextSecondary))
                         .accessibilityHidden(true)
 
                     Text(hasKey ? "Key configured" : "No key")
-                        .font(.footnote)
-                        .foregroundStyle(hasKey ? Color.primary : Color.secondary)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(hasKey ? Color(.appText) : Color(.appTextSecondary))
                         .multilineTextAlignment(.leading)
                 }
 
@@ -244,7 +241,7 @@ private struct ProviderDisclosure: View {
 
                 if isActive {
                     Text("Active")
-                        .font(.caption2.weight(.semibold))
+                        .font(AppFont.caption2(weight: .semibold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .background(Capsule().fill(Color.green.opacity(0.16)))
@@ -255,11 +252,11 @@ private struct ProviderDisclosure: View {
                 if let badge {
                     // Technical token (env / OAuth / config) — deliberately not localized.
                     Text(verbatim: badge)
-                        .font(.caption2.weight(.medium))
+                        .font(AppFont.caption2(weight: .medium))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
-                        .foregroundStyle(.secondary)
+                        .background(Capsule().fill(Color(.appFillTertiary)))
+                        .foregroundStyle(.appSecondary)
                         .layoutPriority(1)
                 }
             }
@@ -280,7 +277,7 @@ private struct ProviderDisclosure: View {
             LazyVStack(spacing: 1) {
                 ForEach(titles, id: \.index) { entry in
                     Text(verbatim: entry.title)
-                        .font(.body)
+                        .font(AppFont.body())
                         .lineLimit(2)
                         .padding(.horizontal, 12)
                         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)

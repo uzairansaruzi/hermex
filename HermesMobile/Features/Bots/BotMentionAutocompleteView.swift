@@ -14,9 +14,8 @@ struct BotMentionAutocompleteView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(completions.enumerated()), id: \.element.id) { index, item in
+                ForEach(completions, id: \.id) { item in
                     BotMentionRow(item: item, avatars: avatars, room: room, roster: roster, onSelect: onSelect)
-                    if index < completions.count - 1 { Divider().padding(.horizontal, 16) }
                 }
             }
         }
@@ -24,7 +23,7 @@ struct BotMentionAutocompleteView: View {
                        in: RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
-        .frame(height: min(280, CGFloat(completions.count) * rowHeight))
+        .composerPanelHeight(CGFloat(completions.count) * rowHeight)
     }
 }
 
@@ -46,10 +45,10 @@ struct BotMentionRow: View {
                     .accessibilityHidden(true)
                 Text(verbatim: "@" + item.tag)
                     .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(.primary).lineLimit(1).layoutPriority(2)
+                    .foregroundStyle(.appPrimary).lineLimit(1).layoutPriority(2)
                 Spacer(minLength: 8)
                 Text(verbatim: item.profile.name)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .font(AppFont.caption()).foregroundStyle(.appSecondary).lineLimit(1)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .contentShape(Rectangle())

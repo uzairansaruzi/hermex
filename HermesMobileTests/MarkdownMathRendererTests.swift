@@ -68,6 +68,34 @@ final class MarkdownMathRendererTests: XCTestCase {
         )
     }
 
+    func testPriceAndPathWithoutMathOpenerStayPlain() {
+        let input = String(repeating: "Plain prose line.\n", count: 50) + #"It costs $5 and saves to C:\Users\me."#
+        XCTAssertFalse(MarkdownMathFormatter.mayContainMath(input))
+        XCTAssertEqual(MarkdownMathLayoutCache.uncachedLayout(for: input), .plain(input))
+    }
+
+    func testShellVariablesInProseStayLiteral() {
+        for input in ["Use $HOME/foo:$PATH.", "Set $FOO_BAR/$BAZ before running.", "The shell prints $$ and $$."] {
+            XCTAssertEqual(MarkdownMathLayoutCache.uncachedLayout(for: input), .plain(input))
+        }
+        XCTAssertEqual(
+            MarkdownMathSegmenter.segments(in: "The shell prints $$ and $$; a non-zero exit stops it.\n\n$$x^2$$"),
+            [.markdown("The shell prints $$ and $$; a non-zero exit stops it.\n\n"), .displayMath("x^2")]
+        )
+    }
+
+    func testRealInlineMathStillRendersAlongsideShellVariableRules() {
+        for expression in [#"$n$th"#, "$x^2$", #"$\alpha$"#, "$(4,-2)$", "$M_S$"] {
+            let input = "Take " + expression + " here."
+            guard case .plain(let rendered) = MarkdownMathLayoutCache.uncachedLayout(for: input) else {
+                return XCTFail("Expected inline math only in \(input)")
+            }
+            XCTAssertTrue(rendered.contains("hermex-math:///"), input)
+            XCTAssertFalse(rendered.contains("$"), input)
+        }
+        XCTAssertEqual(MarkdownMathSegmenter.segments(in: "$$42$$"), [.displayMath("42")])
+    }
+
     func testLetterLedInlineMathStillRendersAfterBoundaryGuards() {
         let output = MarkdownMathFormatter.replacingInlineMath(in: #"The value $x^2 + y_1$ renders."#)
         XCTAssertNotEqual(output, #"The value $x^2 + y_1$ renders."#)
@@ -282,6 +310,49 @@ final class MarkdownMathRendererTests: XCTestCase {
 
         let colors = foregroundColorSignatures(in: highlightedCode, userInterfaceStyle: .light)
         XCTAssertGreaterThan(colors.count, 1)
+    }
+
+    func testChatTypographyGrowsWithDynamicTypeUpToTheCap() {
+        let large = ChatTypography(dynamicTypeSize: .large)
+        let xxxLarge = ChatTypography(dynamicTypeSize: .xxxLarge)
+        let ax5 = ChatTypography(dynamicTypeSize: .accessibility5)
+
+        XCTAssertEqual(large.bodySize, 16, accuracy: 0.01)
+        XCTAssertEqual(large.codeSize, 13, accuracy: 0.01)
+        XCTAssertGreaterThan(xxxLarge.bodySize, large.bodySize)
+        XCTAssertLessThan(xxxLarge.bodySize, ax5.bodySize)
+        XCTAssertGreaterThan(xxxLarge.codeSize, large.codeSize)
+        XCTAssertLessThan(xxxLarge.codeSize, ax5.codeSize)
+        XCTAssertEqual(ax5.bodySize, 16 * 2.2, accuracy: 0.01)
+        XCTAssertEqual(ax5.codeSize, 13 * 2.2, accuracy: 0.01)
+    }
+
+    @MainActor
+    func testHighlightedCodeTakesItsSizeFromTheParentFontAndKeepsEmphasis() async {
+        let result = await MarkdownCodeHighlighter().highlightedCode(
+            for: MarkdownCodeHighlightRequest(
+                code: "**strong** and *emphasis*",
+                language: "markdown",
+                colorScheme: .light,
+                isStreaming: false
+            )
+        )
+        guard case .highlighted(let highlightedCode) = result else {
+            return XCTFail("Expected Highlightr to highlight Markdown code.")
+        }
+
+        let intents = AttributedString(highlightedCode).runs.compactMap(\.inlinePresentationIntent)
+        XCTAssertTrue(intents.contains(.stronglyEmphasized))
+        XCTAssertTrue(intents.contains(.emphasized))
+
+        // A Dynamic Type code size reaches the token only when no absolute font is attached to it.
+        func renderedWidth(codeSize: CGFloat) -> CGFloat {
+            let text = Text(AttributedString(highlightedCode))
+                .font(.system(size: codeSize, design: .monospaced))
+                .fixedSize()
+            return ImageRenderer(content: text).uiImage?.size.width ?? 0
+        }
+        XCTAssertGreaterThan(renderedWidth(codeSize: 26), renderedWidth(codeSize: 13) * 1.8)
     }
 
     func testMarkdownCodeHighlighterSkipsStreamingBlocks() async {
@@ -884,4 +955,46 @@ private actor RetryingInlineImageProvider: InlineImageProvider {
         }
         return Image(systemName: "square")
     }
+}
+
+/// Renders one overlong paragraph with only an iPhone's 1 MB main-thread stack
+/// left. The simulator has 8 MB, which hides #1333.
+@MainActor
+final class InlineElementStackDepthTests: XCTestCase {
+    func testInlineCodeHeavyParagraphRendersOnAPhoneStack() {
+        renderWithPhoneStack((0..<400).map { "`path/file\($0).swift`" }.joined(separator: " "))
+    }
+
+    func testBareURLParagraphRendersOnAPhoneStack() {
+        renderWithPhoneStack((0..<400).map { "https://example.com/p/\($0)" }.joined(separator: " "))
+    }
+
+    func testSchemelessWWWLinkParagraphRendersOnAPhoneStack() {
+        renderWithPhoneStack((0..<400).map { "www.example.com/p/\($0)" }.joined(separator: " "))
+    }
+
+    private func renderWithPhoneStack(_ markdown: String) {
+        let host = UIHostingController(rootView: ScrollView { MarkdownRenderer(content: markdown) })
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 900))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let thread = pthread_self()
+        let bottom = Int(bitPattern: pthread_get_stackaddr_np(thread)) - pthread_get_stacksize_np(thread)
+        withStack(left: 1_008 * 1024, above: bottom) {
+            window.layoutIfNeeded()
+            _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+        }
+    }
+}
+
+/// Recurses until about `limit` bytes of stack remain, then runs `body`.
+@inline(never)
+private func withStack(left limit: Int, above bottom: Int, _ body: () -> Void) {
+    var marker = 0
+    let sp = withUnsafeMutablePointer(to: &marker) { Int(bitPattern: $0) }
+    if sp - bottom > limit { withStack(left: limit, above: bottom, body) } else { body() }
+    withExtendedLifetime(marker) {}
 }

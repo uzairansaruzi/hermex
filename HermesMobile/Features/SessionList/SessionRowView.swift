@@ -16,6 +16,8 @@ struct SessionRowView: View {
     /// polls the server (`SessionListViewModel`). Screens that do not poll pass
     /// nothing and the row falls back to what the session itself reports.
     var attentionState: SessionRowAttentionState?
+    /// `attentionState` is only the last one known (#1374): drawn secondary, read "Last known".
+    var isAttentionStale = false
     /// Set only while a remote content search is showing this row, so the row
     /// can say why it matched.
     var searchExcerpt: SessionSearchExcerpt?
@@ -100,6 +102,7 @@ struct SessionRowView: View {
         isViewingCachedData: Bool,
         isCachedCopyProvisional: Bool = false,
         attentionState: SessionRowAttentionState? = nil,
+        isAttentionStale: Bool = false,
         isUnread: Bool = false,
         labelsArchived: Bool = false
     ) -> [String] {
@@ -110,7 +113,9 @@ struct SessionRowView: View {
             attentionState: attentionState,
             isViewingCachedData: isViewingCachedData
         ) {
-            labels.append(state.accessibilityLabel)
+            labels.append(isAttentionStale && attentionState != nil
+                ? String(localized: "Last known: \(state.accessibilityLabel)")
+                : state.accessibilityLabel)
         } else if isUnread {
             labels.append(String(localized: "Unread"))
         }
@@ -237,7 +242,7 @@ struct SessionRowView: View {
         Text(state.title)
             .font(AppFont.caption(weight: .semibold))
             .monospacedDigit()
-            .foregroundStyle(state.tint)
+            .foregroundStyle(isAttentionStale && attentionState != nil ? AnyShapeStyle(.appSecondary) : AnyShapeStyle(state.tint))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityHidden(true)
@@ -247,7 +252,7 @@ struct SessionRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(displayTitle)
                 .font(AppFont.headline(weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .lineLimit(titleLineLimit)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
@@ -265,7 +270,7 @@ struct SessionRowView: View {
     private func relativeDateText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityHidden(true)
@@ -276,7 +281,7 @@ struct SessionRowView: View {
     private func excerptText(_ excerpt: SessionSearchExcerpt) -> some View {
         Text(excerpt.highlighted)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(excerptLineLimit)
             .truncationMode(.tail)
             .fixedSize(horizontal: false, vertical: true)
@@ -341,7 +346,7 @@ struct SessionRowView: View {
     private func metadataText(_ text: String) -> some View {
         Text(text)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(metadataLineLimit)
             .truncationMode(.middle)
             .fixedSize(horizontal: false, vertical: true)
@@ -429,6 +434,7 @@ struct SessionRowView: View {
             isViewingCachedData: isViewingCachedData,
             isCachedCopyProvisional: isCachedCopyProvisional,
             attentionState: attentionState,
+            isAttentionStale: isAttentionStale,
             isUnread: isUnread,
             labelsArchived: labelsArchived
         ))
@@ -558,11 +564,11 @@ private struct SessionProfileTag: View {
     var body: some View {
         Text(verbatim: profile)
             .font(AppFont.caption2(weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.appSecondary)
             .lineLimit(1)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .background(Color(.appTextSecondary).opacity(0.12), in: Capsule())
             .accessibilityHidden(true)
     }
 }
@@ -644,14 +650,6 @@ enum SessionRowDisplaySettings {
     ) -> Bool {
         defaults.object(forKey: showClaudeCodeSessionsKey(for: server)) as? Bool ?? true
     }
-
-    static func showsSubagentSessions(in defaults: UserDefaults = .standard) -> Bool {
-        guard let stored = defaults.object(forKey: showSubagentSessionsKey) as? Bool else {
-            return defaultShowsSubagentSessions
-        }
-
-        return stored
-    }
 }
 
 enum SessionSidebarDisclosureSettings {
@@ -661,30 +659,6 @@ enum SessionSidebarDisclosureSettings {
     static let defaultProfilesAreExpanded = false
     static let defaultProjectsAreExpanded = false
     static let defaultScheduledSessionsAreExpanded = false
-
-    static func profilesAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: profilesAreExpandedKey) as? Bool else {
-            return defaultProfilesAreExpanded
-        }
-
-        return value
-    }
-
-    static func projectsAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: projectsAreExpandedKey) as? Bool else {
-            return defaultProjectsAreExpanded
-        }
-
-        return value
-    }
-
-    static func scheduledSessionsAreExpanded(in defaults: UserDefaults = .standard) -> Bool {
-        guard let value = defaults.object(forKey: scheduledSessionsAreExpandedKey) as? Bool else {
-            return defaultScheduledSessionsAreExpanded
-        }
-
-        return value
-    }
 }
 
 enum SessionIdentitySettings {

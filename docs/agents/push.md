@@ -33,6 +33,14 @@ see [Push provisioning](bots.md#push-provisioning) and
   session id, and timestamps. Progress events add a status, the tool's name,
   and a call count. Title, subtitle, body, profile name, the bot's name, and
   request id stay inside the sealed blob, which the relay cannot open.
+  Live Activity updates go out at APNs priority 10 when an activity starts or
+  its status changes (running, waiting, done, failed); same-status progress
+  goes at priority 5, at most once a second. A run's end can send two
+  priority-10 pushes: an alerting update, then the silent `end`. iOS budgets
+  priority-10 pushes. The app declares `NSSupportsLiveActivitiesFrequentUpdates`
+  (#1371) to ask for a larger allowance, which the user can turn off in iOS
+  Settings (`ActivityAuthorizationInfo().frequentPushesEnabled`); ordinary
+  updates still arrive, and neither setting promises delivery timing.
 - **App.** `HermesMobile/Push/` provisions the host, stores the pairing,
   registers the device token with every paired relay, and routes taps. The
   app target carries the Time Sensitive entitlement, so the relay's

@@ -285,6 +285,70 @@ actor BotHistoryCache {
     }
 }
 
+/// The last `profiles.list` rows each Bot connection read, so the inbox paints its roster
+/// while it connects (#1403). One file per server digest and connection UUID under Caches,
+/// main app only: rows, never live status, rooms or photos. A missing, oversized or
+/// unreadable file is a miss, never a failure. Removal revokes every write whose roster
+/// was read before it, so a late save cannot bring back a signed-out connection's rows.
+actor BotRosterCache {
+    typealias Scope = BotHistoryCache.Scope
+
+    static let shared = BotRosterCache(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("BotRoster", isDirectory: true))
+    static let maximumRows = 200
+    static let maximumBytes = 2 * 1024 * 1024
+    private let directory: URL
+    /// When each scope's saved roster was read, so a slower, older save never replaces a newer one.
+    private var savedReadAt: [Scope: ContinuousClock.Instant] = [:]
+    /// Removals by server digest, and by `<digest>-<connection UUID>` for one connection.
+    private var removedAt: [String: ContinuousClock.Instant] = [:]
+    /// Runs as each load starts. Fixtures change the saved connection here, while an open waits on the load.
+    private let willLoad: @Sendable () async -> Void
+
+    init(directory: URL, willLoad: @escaping @Sendable () async -> Void = {}) {
+        self.directory = directory; self.willLoad = willLoad
+    }
+
+    func load(_ scope: Scope) async -> [BotJSON]? {
+        await willLoad()
+        let file = file(scope)
+        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= Self.maximumBytes,
+              let data = try? Data(contentsOf: file),
+              let rows = try? JSONDecoder().decode([BotJSON].self, from: data),
+              !rows.isEmpty, rows.count <= Self.maximumRows else { return nil }
+        return rows
+    }
+
+    /// Replaces `scope`'s rows with a complete roster read at `readAt`. An empty roster, or
+    /// one over the bounds, leaves no file, so the next open shows no stale bots.
+    func save(_ rows: [BotJSON], scope: Scope, readAt: ContinuousClock.Instant) {
+        let revoked = [removedAt[scope.serverKey], removedAt[name(scope)], savedReadAt[scope]].compactMap { $0 }
+        guard revoked.allSatisfy({ $0 < readAt }) else { return }
+        savedReadAt[scope] = readAt
+        guard !rows.isEmpty, rows.count <= Self.maximumRows,
+              let data = try? JSONEncoder().encode(rows), data.count <= Self.maximumBytes else {
+            try? FileManager.default.removeItem(at: file(scope))
+            return
+        }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? data.write(to: file(scope), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
+    /// Deletes `server`'s rosters, or only `connectionID`'s, and revokes saves of rosters read before now.
+    func remove(server: URL, connectionID: UUID? = nil, now: ContinuousClock.Instant = .now) {
+        let key = Scope.key(server)
+        let prefix = connectionID.map { name(.init(server: server, connectionID: $0)) } ?? key
+        removedAt[prefix] = now
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        for file in files where file.lastPathComponent.hasPrefix(prefix + (connectionID == nil ? "-" : ".")) {
+            try? FileManager.default.removeItem(at: file)
+        }
+    }
+
+    private func name(_ scope: Scope) -> String { scope.serverKey + "-" + scope.connectionID.uuidString }
+    private func file(_ scope: Scope) -> URL { directory.appendingPathComponent(name(scope) + ".json") }
+}
+
 /// Each recent room's rendered window, separate from the lossy on-disk search index, so
 /// reopening a room draws its last window before the first poll. The lock covers every
 /// access because screens read synchronously before their first frame, while the history

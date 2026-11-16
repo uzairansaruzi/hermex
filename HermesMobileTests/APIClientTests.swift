@@ -177,6 +177,7 @@ final class MockAuthAPIClient: AuthAPIClient, @unchecked Sendable {
         case .hang:
             // Block until the caller's timeout cancels this task, mimicking a
             // server that accepts the connection but never responds.
+            // test-wait: hangs until the caller's timeout cancels it; no test waits it out.
             try await Task.sleep(for: .seconds(3600))
             return LoginResponse(ok: true, message: nil, error: nil)
         }

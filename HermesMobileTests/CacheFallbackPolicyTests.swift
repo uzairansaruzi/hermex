@@ -22,7 +22,7 @@ final class CacheFallbackPolicyTests: XCTestCase {
     }
 
     func testUsesCacheForTransientUnavailableHTTPStatuses() {
-        for statusCode in [408, 502, 503, 504] {
+        for statusCode in [408, 502, 503, 504, 522, 530] {
             XCTAssertTrue(
                 CacheFallbackPolicy.shouldUseCache(for: APIError.http(statusCode: statusCode, body: nil)),
                 "HTTP \(statusCode) should use cache fallback"

@@ -19,6 +19,36 @@ final class ModelFavoritesStoreTests: XCTestCase {
         super.tearDown()
     }
 
+    /// A favorite or recent picked on one server never shows on another.
+    func testFavoritesAndRecentsStayWithTheirServer() throws {
+        let first = try XCTUnwrap(URL(string: "https://a.test"))
+        let second = try XCTUnwrap(URL(string: "https://b.test"))
+        let option = ModelCatalogOption(id: "gpt", displayName: "GPT", providerID: "openai")
+
+        ModelFavoritesStore(server: first, defaults: defaults).toggleFavorite(for: option)
+        ModelRecentsStore(server: first, defaults: defaults).recordRecent(option)
+
+        XCTAssertEqual(ModelFavoritesStore(server: first, defaults: defaults).favoriteKeys, [option.favoriteKey])
+        XCTAssertEqual(ModelRecentsStore(server: first, defaults: defaults).recentKeys, [option.favoriteKey])
+        XCTAssertEqual(ModelFavoritesStore(server: second, defaults: defaults).favoriteKeys, [])
+        XCTAssertEqual(ModelRecentsStore(server: second, defaults: defaults).recentKeys, [])
+
+        ModelFavoritesStore.remove(for: first, in: defaults)
+        XCTAssertEqual(ModelFavoritesStore(server: first, defaults: defaults).favoriteKeys, [])
+    }
+
+    /// An upgrade keeps the old shared list on the first server read, and only there.
+    func testTheOldSharedListMovesToTheFirstServerRead() throws {
+        let first = try XCTUnwrap(URL(string: "https://a.test"))
+        let second = try XCTUnwrap(URL(string: "https://b.test"))
+        let option = ModelCatalogOption(id: "gpt", displayName: "GPT", providerID: "openai")
+        ModelFavoritesStore(defaults: defaults, storageKey: "hermes.mobile.favoriteModels").toggleFavorite(for: option)
+
+        XCTAssertEqual(ModelFavoritesStore(server: first, defaults: defaults).favoriteKeys, [option.favoriteKey])
+        XCTAssertEqual(ModelFavoritesStore(server: second, defaults: defaults).favoriteKeys, [])
+        XCTAssertEqual(ModelFavoritesStore(server: first, defaults: defaults).favoriteKeys, [option.favoriteKey])
+    }
+
     func testToggleFavoritePersistsExactModelAndProvider() {
         let store = ModelFavoritesStore(defaults: defaults, storageKey: "favorites")
         let option = ModelCatalogOption(id: "openai/gpt-5.5", displayName: "GPT-5.5", providerID: "openai")

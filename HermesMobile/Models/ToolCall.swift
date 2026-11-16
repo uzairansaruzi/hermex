@@ -250,7 +250,7 @@ struct ToolCallGroup: Identifiable, Equatable {
         }
 
         for (messageIndex, message) in messages.enumerated() {
-            if TranscriptTurnClassifier.isUserTurnBoundary(message) {
+            if TranscriptTurnClassifier.isTurnBoundary(message) {
                 flushCurrentGroup()
                 continue
             }

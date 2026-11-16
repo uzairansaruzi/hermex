@@ -18,6 +18,12 @@ enum ChatMotion {
         reduceMotion ? nil : .smooth(duration: 0.22, extraBounce: 0)
     }
 
+    /// The system keyboard's own curve, for what has to move with it. These spring values are the
+    /// widely used match for its private animation curve.
+    static func keyboard(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .interpolatingSpring(mass: 3, stiffness: 1000, damping: 500)
+    }
+
     static func scrollToLatest(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeOut(duration: 0.20)
     }

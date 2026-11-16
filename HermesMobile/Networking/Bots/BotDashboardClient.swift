@@ -16,6 +16,9 @@ import Foundation
 
     init(http: HermesConnection) { self.http = http }
 
+    /// Whether the last sign-in reached a gateway's own Webapp (`HermesConnection.servesWebapp`).
+    var servesWebapp: Bool { http.servesWebapp }
+
     /// Signs in through the host's password gate unless the connection already is, with
     /// the provisioning deadline. The install identity is checked before the password
     /// goes out, so a swapped host is refused before anything on it changes.
@@ -35,8 +38,14 @@ import Foundation
     /// fail with nothing the user can do from the phone. Reinstalling cannot unpair a
     /// device: `hermex-push` keeps its key pair in `plugin-data`, outside the install
     /// directory.
-    func installPlugin(identifier: String) async throws {
-        _ = try await send(.installPlugin(identifier: identifier))
+    func installPlugin(identifier: String, ref: String? = nil) async throws {
+        _ = try await send(.installPlugin(identifier: identifier, ref: ref))
+    }
+
+    /// Removes a plugin's folder. Only hermex-screen uses this: hermex-push keeps its plugin on
+    /// disk, and only ever disables it.
+    func removePlugin(_ name: String) async throws {
+        _ = try await send(.removePlugin(name: name))
     }
 
     /// Enables or disables an installed agent plugin. Disabling is deliberately never
@@ -51,14 +60,17 @@ import Foundation
     /// Restarts the agent gateway so a newly installed plugin is loaded. This interrupts
     /// the user's running work, so only a confirmed Enable or plugin update reaches it.
     func restartGateway() async throws {
-        _ = try await send(.restartGateway)
+        _ = try await send(.restartGateway())
     }
 
     /// Asks hermex-push 0.4.0 or newer to restart the dashboard process it runs in (#934). It
     /// answers 202 and re-execs about a second later, stopping Bot turns running there, so
-    /// only a confirmed "Restart Hermes…" reaches it.
+    /// only a confirmed "Restart Hermes…" reaches it. Never sent to a gateway's Webapp, whose
+    /// drain it skips (#1606): checked at each dispatch, after any sign-in, which throws `.stale`.
     func restartHermes() async throws {
-        _ = try await send(.restartDashboard)
+        _ = try await send(.restartDashboard, validateDispatch: { [http] in
+            if http.servesWebapp { throw BotFailure.stale }
+        })
     }
 
     /// Whether the host answers its public status route, read without signing in.

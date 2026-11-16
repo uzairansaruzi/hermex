@@ -24,7 +24,7 @@ struct SettingsView: View {
     @State private var isPushOn = false
 
     var body: some View {
-        List {
+        AppList {
             Section(String(localized: "Servers")) {
                 ForEach(authManager.servers) { account in
                     NavigationLink {
@@ -58,7 +58,7 @@ struct SettingsView: View {
                     LabeledContent {
                         Text((AppTheme(rawValue: appThemeRawValue) ?? .system).title)
                     } label: {
-                        SettingsLabel(title: String(localized: "Appearance"), systemImage: "circle.lefthalf.filled")
+                        SettingsLabel(title: String(localized: "Appearance"), systemImage: "paintbrush.pointed")
                     }
                 }
 
@@ -71,21 +71,17 @@ struct SettingsView: View {
                 NavigationLink {
                     SettingsChatPage()
                 } label: {
-                    SettingsLabel(title: String(localized: "Chat"), systemImage: "text.bubble")
+                    SettingsLabel(title: String(localized: "Chat"), systemImage: "bubble.left.and.bubble.right")
                 }
 
                 NavigationLink {
                     SettingsNotificationsPage(server: server)
                 } label: {
-                    #if targetEnvironment(macCatalyst)
-                    SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell")
-                    #else
                     LabeledContent {
                         Text(isPushOn ? String(localized: "Push on") : String(localized: "Push off"))
                     } label: {
-                        SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell")
+                        SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell.badge")
                     }
-                    #endif
                 }
 
                 NavigationLink {
@@ -95,7 +91,7 @@ struct SettingsView: View {
                 }
             } header: {
                 Text(verbatim: "Hermex")
-            } footer: {
+            } appFooter: {
                 #if !targetEnvironment(macCatalyst)
                 Text("Applies on this iPhone to every server.")
                 #endif
@@ -103,7 +99,7 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
-                    SettingsAboutPage()
+                    SettingsAboutPage(server: authManager.activeServer)
                 } label: {
                     LabeledContent {
                         Text(SettingsAboutPage.appVersion)
@@ -112,21 +108,18 @@ struct SettingsView: View {
                     }
                 }
 
-                if SettingsDeveloperPage.isAvailable {
-                    NavigationLink {
-                        SettingsDeveloperPage()
-                    } label: {
-                        SettingsLabel(title: "Developer", systemImage: "hammer")
-                    }
+                #if DEBUG
+                NavigationLink {
+                    SettingsDeveloperPage()
+                } label: {
+                    SettingsLabel(title: "Developer", systemImage: "hammer")
                 }
+                #endif
             }
         }
-        .macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         .listStyle(.insetGrouped)
+        .themedPageBackground()
         .navigationTitle("Settings")
-        #if targetEnvironment(macCatalyst)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
         .onAppear {
             isPushOn = PushRegistrar.shared?.pairing(for: server) != nil
         }
@@ -174,8 +167,8 @@ private struct SettingsServerRow: View {
                     .lineLimit(1)
 
                 Text(detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }

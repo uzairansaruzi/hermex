@@ -87,14 +87,22 @@ struct ClarificationRequestInset: View {
     }
 }
 
-/// One-line footprint of a pending clarification: what is being asked, a way
-/// back into the card, and Stop for when the run should end instead.
+/// One-line footprint of a pending request: what is being asked, a way back
+/// into the card, and Stop for when the run should end instead.
 struct ClarificationRequestBar: View {
+    /// What the bar stands in for: a question or other input, or an approval,
+    /// which carries a warning accent and the count of open approvals (#1584).
+    enum Kind: Equatable {
+        case input
+        case approval(pendingCount: Int)
+    }
+
     /// One line of what is asked (`summary(for:)`).
     let summary: String
     let isStopping: Bool
     let onExpand: () -> Void
     let onStop: () -> Void
+    var kind: Kind = .input
 
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var stopButtonSize: CGFloat = 32
@@ -112,34 +120,44 @@ struct ClarificationRequestBar: View {
         HStack(spacing: 8) {
             Button(action: onExpand) {
                 HStack(spacing: 10) {
-                    Image(systemName: "questionmark.circle")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    Image(systemName: isApproval ? "exclamationmark.triangle.fill" : "questionmark.circle")
+                        .font(AppFont.subheadline(weight: .semibold))
+                        .foregroundStyle(isApproval ? AnyShapeStyle(.yellow) : AnyShapeStyle(.appSecondary))
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Input needed")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                        Text(isApproval ? "Approval needed" : "Input needed")
+                            .font(AppFont.caption(weight: .semibold))
+                            .foregroundStyle(isApproval ? AnyShapeStyle(.yellow) : AnyShapeStyle(.appSecondary))
 
                         Text(summary)
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
+                            .font(AppFont.subheadline())
+                            .foregroundStyle(.appPrimary)
                             .lineLimit(1)
                     }
 
                     Spacer(minLength: 8)
 
+                    if approvalCount > 1 {
+                        Text(approvalCount, format: .number)
+                            .font(AppFont.caption(weight: .bold))
+                            .foregroundStyle(.yellow)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 1)
+                            .background(Color.yellow.opacity(0.18), in: Capsule())
+                            .accessibilityHidden(true)
+                    }
+
                     Image(systemName: "chevron.up")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.caption(weight: .semibold))
+                        .foregroundStyle(.appSecondary)
                         .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Expand clarification")
-            .accessibilityValue(summary)
+            .accessibilityLabel(isApproval ? "Expand approval" : "Expand clarification")
+            .accessibilityValue(accessibilityValue)
 
             Button(action: onStop) {
                 Image(systemName: "stop.fill")
@@ -158,7 +176,26 @@ struct ClarificationRequestBar: View {
         .padding(.vertical, 8)
         .frame(maxWidth: 560)
         .pendingRequestCardSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
+        .overlay {
+            if isApproval {
+                RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
+                    .strokeBorder(Color.yellow.opacity(0.45), lineWidth: 1)
+            }
+        }
         .accessibilityElement(children: .contain)
+    }
+
+    private var isApproval: Bool { kind != .input }
+
+    /// The open approvals, or 0 for an input request.
+    private var approvalCount: Int {
+        if case .approval(let pendingCount) = kind { return pendingCount }
+        return 0
+    }
+
+    private var accessibilityValue: String {
+        guard approvalCount > 1 else { return summary }
+        return String(localized: "\(summary), \(approvalCount) pending")
     }
 }
 
@@ -203,18 +240,18 @@ struct ClarificationRequestCard: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "questionmark.circle")
-                .font(.headline)
-                .foregroundStyle(.secondary)
+                .font(AppFont.headline())
+                .foregroundStyle(.appSecondary)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Clarification Required")
-                    .font(.headline)
+                    .font(AppFont.headline())
 
                 if prompt.pendingCount > 1 {
                     Text("1 of \(prompt.pendingCount) pending")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(AppFont.caption())
+                        .foregroundStyle(.appSecondary)
                 }
             }
 
@@ -241,7 +278,7 @@ struct ClarificationRequestCard: View {
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: collapseButtonSize, height: collapseButtonSize)
                 .background(.primary.opacity(0.08))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
                 .clipShape(Circle())
         }
         .buttonStyle(.chatTactile(.icon))
@@ -250,8 +287,8 @@ struct ClarificationRequestCard: View {
 
     private var question: some View {
         Text(prompt.question)
-            .font(.subheadline)
-            .foregroundStyle(.primary)
+            .font(AppFont.subheadline())
+            .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
             .pendingRequestBlockSurface()
     }
@@ -312,7 +349,7 @@ struct ClarificationRequestCard: View {
     private var footer: some View {
         if let errorMessage = nonEmpty(errorMessage) {
             Text(errorMessage)
-                .font(.caption)
+                .font(AppFont.caption())
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
                 .onGeometryChange(for: CGFloat.self) { proxy in
@@ -337,8 +374,8 @@ struct ClarificationRequestCard: View {
 
         return VStack(alignment: .trailing, spacing: 5) {
             Text(expirationText(remaining: remaining))
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(AppFont.caption2(weight: .semibold))
+                .foregroundStyle(.appSecondary)
 
             if !reduceMotion {
                 GeometryReader { proxy in
@@ -409,13 +446,13 @@ struct ClarificationRequestCard: View {
             onSubmit(choice)
         } label: {
             Text(choice)
-                .font(.callout.weight(.semibold))
+                .font(AppFont.callout(weight: .semibold))
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.appPrimary)
                 .pendingRequestChoiceSurface(reduceTransparency: reduceTransparency)
         }
         .buttonStyle(.chatTactile(.capsule))
@@ -583,8 +620,8 @@ struct HermesRequestInset: View {
             Image(systemName: "chevron.down")
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: collapseButtonSize, height: collapseButtonSize)
-                .background(.regularMaterial, in: Circle())
-                .foregroundStyle(.secondary)
+                .background(.appMaterial(.regularMaterial), in: Circle())
+                .foregroundStyle(.appSecondary)
         }
         .buttonStyle(.chatTactile(.icon))
         .accessibilityLabel("Collapse clarification")

@@ -34,6 +34,7 @@ struct GitCommitView: View {
     var body: some View {
         NavigationStack {
             content
+                .themedPageBackground()
                 .navigationTitle("Commit Changes")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -46,6 +47,7 @@ struct GitCommitView: View {
                     if let error = viewModel.lastError { onAPIError(error) }
                 }
         }
+        .themedPageBackground()
         .presentationDetents([.large])
         .adaptivePagePresentation()
         .alert("Discard local changes?", isPresented: $showsDiscardConfirmation) {
@@ -125,7 +127,7 @@ struct GitCommitView: View {
                 if viewModel.status?.truncated == true {
                     Text("Showing first 500 changed files.")
                         .font(AppFont.footnote())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.appSecondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.vertical, 6)
                 }
@@ -141,7 +143,7 @@ struct GitCommitView: View {
                 ? "\(viewModel.selectedPaths.count) selected"
                 : "All changes")
                 .font(AppFont.caption())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.appSecondary)
 
             Spacer(minLength: 8)
 
@@ -192,7 +194,7 @@ struct GitCommitView: View {
             } else if let sha = viewModel.shownCommitSHA {
                 Label("Commit \(sha)", systemImage: "checkmark.seal")
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             HStack(alignment: .top, spacing: 8) {
@@ -220,7 +222,7 @@ struct GitCommitView: View {
             if viewModel.messageWasTruncated {
                 Text("Diff was large; message may be partial.")
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.appSecondary)
             }
 
             Toggle("Push after commit", isOn: $pushAfterCommit)
@@ -243,12 +245,12 @@ struct GitCommitView: View {
                 } label: {
                     commitLabel(pushAfterCommit ? "Commit & Push" : "Commit")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.appProminent)
                 .disabled(commitDisabled || !viewModel.hasStagedChanges)
             }
         }
         .padding(16)
-        .background(.bar)
+        .background(.appMaterial(.bar))
     }
 
     private func commitLabel(_ title: LocalizedStringKey) -> some View {
@@ -298,7 +300,7 @@ private struct GitCommitFileRow: View {
             HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isSelected ? Color.accentColor : Color(.appTextSecondary))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(file.fileName)
@@ -308,7 +310,7 @@ private struct GitCommitFileRow: View {
                     if let parent = file.parentDirectory {
                         Text(parent)
                             .font(AppFont.mono(style: .caption2))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.appSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -328,10 +330,10 @@ private struct GitCommitFileRow: View {
                 GitStatusChip(kind: file.changeKind)
             }
             .padding(12)
-            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 12))
+            .background(Color(.appSurface), in: .rect(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color(.separator).opacity(0.35), lineWidth: isSelected ? 1 : 0.5)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.5) : Color(.appSeparator).opacity(0.35), lineWidth: isSelected ? 1 : 0.5)
             }
             .contentShape(.rect)
         }

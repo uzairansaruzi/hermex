@@ -754,6 +754,37 @@ final class CacheStoreTests: XCTestCase {
         )
     }
 
+    func testClearOfflineDataRemovesOnlyTheGivenServersBotHistoryAndRoster() async throws {
+        let context = try makeContext()
+        let serverA = URL(string: "https://a.example.test")!
+        let serverB = URL(string: "https://b.example.test")!
+        let connectionID = UUID()
+        let rosterDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: rosterDirectory) }
+        let history = BotHistoryCache(), roster = BotRosterCache(directory: rosterDirectory)
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 1)))
+        let page = RoomFixture.page([RoomFixture.event(1)], cursor: 1)
+
+        for server in [serverA, serverB] {
+            let key = BotRoomKey(server: server, connectionID: connectionID, roomID: room.id)
+            try await history.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: Date().addingTimeInterval(-1))
+            await roster.save([.object(["name": .string("chief")])], scope: .init(server: server, connectionID: connectionID), readAt: .now)
+        }
+
+        try await OfflineDataSection.clear(server: serverA, in: context, history: history, roster: roster)
+
+        let keyA = BotRoomKey(server: serverA, connectionID: connectionID, roomID: room.id)
+        let keyB = BotRoomKey(server: serverB, connectionID: connectionID, roomID: room.id)
+        let historyA = try await history.roomHistory(keyA)
+        let historyB = try await history.roomHistory(keyB)
+        let rosterA = await roster.load(.init(server: serverA, connectionID: connectionID))
+        let rosterB = await roster.load(.init(server: serverB, connectionID: connectionID))
+        XCTAssertNil(historyA)
+        XCTAssertNil(rosterA)
+        XCTAssertEqual(historyB?.messages.map(\.text), ["Message 1"])
+        XCTAssertEqual(rosterB?.count, 1)
+    }
+
     func testCachedSessionByIDFindsAnExpiredRowForALabel() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
@@ -827,10 +858,29 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.hermesLineageRoot(forKey: "tip", profile: "default", serverURL: hermesServer, in: context), "root")
 
         // The same session id in another Profile's store is another session.
-        let other = HermesSessionRow(id: "tip", title: "Elsewhere", lineageRootID: "root").summary(in: "research")
-        try CacheStore.cacheHermesSessions([other], profile: "research", reachedEnd: true, serverURL: hermesServer, in: context)
+        let other = HermesSessionRow(id: "tip", title: "Elsewhere", lineageRootID: "root").summary(in: "default-extra")
+        try CacheStore.cacheHermesSessions([other], profile: "default-extra", reachedEnd: true, serverURL: hermesServer, in: context)
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default", in: context).map(\.title), ["Chain"])
-        XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "research", in: context).map(\.title), ["Elsewhere"])
+        XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default-extra", in: context).map(\.title), ["Elsewhere"])
+    }
+
+    /// The cache holds no tool or reasoning cards, only which rows anchor them, so a cached
+    /// transcript can draw a turn's fold row before the host answers. A later read that finds
+    /// the row anchors nothing clears it.
+    func testHermesTranscriptRemembersWhichRowsAnchorWork() throws {
+        let context = try makeContext()
+        let scope = CacheStore.hermesScope(profile: "default", lineageRoot: "root")
+        let rows = [hermesMessage(1), hermesMessage(2)]
+        let anchor = try XCTUnwrap(rows[1].messageId)
+        try CacheStore.cacheHermesMessages(rows, workAnchorIDs: [anchor], newestCoverage: .all, serverURL: hermesServer,
+                                           scope: scope, in: context)
+        let cached = try CacheStore.cachedHermesTranscript(serverURL: hermesServer, scope: scope, in: context, limit: 10)
+        XCTAssertEqual(cached.messages, rows)
+        XCTAssertEqual(cached.workAnchorIDs, [anchor])
+
+        try CacheStore.cacheHermesMessages(rows, newestCoverage: .all, serverURL: hermesServer, scope: scope, in: context)
+        XCTAssertEqual(try CacheStore.cachedHermesTranscript(serverURL: hermesServer, scope: scope, in: context, limit: 10)
+            .workAnchorIDs, [])
     }
 
     /// Each page is upserted and none sweeps, so reading page 1 alone keeps the rows later pages
@@ -1051,6 +1101,53 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(message.content, "Kept")
         XCTAssertNil(message.rowID)
         XCTAssertEqual(try CacheStore.cachedSessions(serverURL: URL(string: "https://example.test")!, in: context).map(\.title), ["Before"])
+    }
+
+    /// The cache names its servers' URLs, so it stays out of the app group (#1509).
+    func testTheCacheIsNotStoredInTheAppGroup() throws {
+        guard let group = HermesShareDraft.containerURL() else {
+            throw XCTSkip("An unsigned build, as on CI, has no app group.")
+        }
+        XCTAssertFalse(CacheContainer.configuration.url.path.hasPrefix(group.path))
+    }
+
+    /// An install's existing cache moves with its rows, and nothing stays behind.
+    func testMovingTheStoreKeepsItsRowsAndLeavesNothingBehind() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appendingPathComponent("group/default.store")
+        let destination = directory.appendingPathComponent("app/default.store")
+        let server = URL(string: "https://example.test")!
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        do {
+            let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                          configurations: ModelConfiguration(url: source)))
+            let sessions = try decodeSessions(#"{"sessions": [{"session_id": "s1", "title": "Kept", "archived": false}]}"#)
+            try CacheStore.cacheSessions(try XCTUnwrap(sessions.sessions), serverURL: server, in: context)
+        }
+
+        CacheContainer.moveStore(from: source, to: destination)
+
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: source.deletingLastPathComponent().path), [])
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(url: destination)))
+        XCTAssertEqual(try CacheStore.cachedSessions(serverURL: server, in: context).map(\.title), ["Kept"])
+    }
+
+    /// A store that won't open leaves the app a working cache that isn't written to disk.
+    func testAStoreThatWontOpenFallsBackToMemory() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: file) }
+        try Data().write(to: file)
+        let server = URL(string: "https://example.test")!
+
+        // A regular file as the store's parent directory can't hold a store.
+        let context = ModelContext(CacheContainer.container(for: ModelConfiguration(url: file.appendingPathComponent("default.store"))))
+        let sessions = try decodeSessions(#"{"sessions": [{"session_id": "s1", "title": "Kept", "archived": false}]}"#)
+        try CacheStore.cacheSessions(try XCTUnwrap(sessions.sessions), serverURL: server, in: context)
+
+        XCTAssertEqual(try CacheStore.cachedSessions(serverURL: server, in: context).map(\.title), ["Kept"])
+        XCTAssertEqual(try Data(contentsOf: file), Data())
     }
 
     private let hermesServer = URL(string: "https://hermes.example")!

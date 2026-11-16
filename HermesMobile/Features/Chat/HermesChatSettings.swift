@@ -59,6 +59,18 @@ enum HermesProfilePreference {
         save(nil, for: server, in: defaults)
         return current
     }
+
+    /// The Profile a server's screen opened without one starts on (`resolve`), read from the host
+    /// on `wire`, with the Profiles it lists: Archived Sessions (#1048) and Default Model (#1670).
+    /// A failed list read proves nothing, so it keeps the pick; only `current` must answer.
+    @MainActor
+    static func starting(for server: URL, on wire: any BotTransport,
+                         in defaults: UserDefaults = .standard) async throws -> (profile: String, listed: [String]) {
+        let rows = (try? await wire.call(.profilesList(includeSessions: false)))?["profiles"].list ?? []
+        let listed = rows.compactMap { $0["name"].text }
+        let current = try await wire.currentProfile()
+        return (resolve(for: server, listed: listed, current: current, in: defaults), listed)
+    }
 }
 
 /// A Hermes session's model, effort, Fast and Profile chips in the main chat's composer (#1015,
@@ -70,7 +82,9 @@ enum HermesProfilePreference {
 /// `--session`, so the next chat in the Profile still starts on its default. The host may
 /// ask to confirm an expensive model (`confirmation`) or apply the pick after the running
 /// response (`pendingModel`). A new chat's session exists from the moment it opens, so a pick
-/// there is sent at once, like any other.
+/// there is sent at once, like any other. On a canonical host (#1604) the pick is the session's
+/// fenced `model` edit, whose confirmation resends the host's own token, and Fast goes without a
+/// scope.
 ///
 /// Effort is session-scoped like the model: one `config.set` reasoning for this chat, never a
 /// display word. The host may send a lower level than the one picked when the model's route
@@ -113,11 +127,15 @@ enum HermesProfilePreference {
     @ObservationIgnored private var latestInfo: BotJSON?
     private let engine: HermesConversation
 
-    init(engine: HermesConversation, loadsAvatars: Bool = false) {
+    /// `openedBot` is the roster row a Bot Chat opened from: with the pictures the shared store
+    /// already holds, it gives the pill the bot's name, look and photo before the first read.
+    init(engine: HermesConversation, loadsAvatars: Bool = false, openedBot: BotProfile? = nil) {
         self.engine = engine
         self.loadsAvatars = loadsAvatars
         profile = engine.target.profile
         mentions = BotMentions(roster: [], excluding: profile)
+        if let openedBot { bots = [openedBot] }
+        if loadsAvatars { avatars = BotAvatarStore.shared.images(connectionID: engine.connection.id) }
     }
 
     /// The model the chip shows: a pick waiting for the running response, else the
@@ -136,8 +154,12 @@ enum HermesProfilePreference {
     /// attach that is no longer current, and a failed Profile read keeps the last list.
     func connect(runtime: String, attempt: Int) async {
         guard engine.generation == attempt, engine.connectionState == .connected else { return }
+        // A canonical host takes the model as the session's fenced edit (#1604).
+        let mutate: BotChatControls.Mutate? = engine.wire.speaksCanonicalProtocol ? { [engine] operation, check in
+            try await engine.mutate(operation, attempt: attempt, runtime: runtime, stillCurrent: check)
+        } : nil
         await controls.connect(.init(connectionID: engine.connection.id, profile: profile, runtime: runtime,
-                                     generation: attempt), wire: engine.wire)
+                                     generation: attempt), wire: engine.wire, mutate: mutate)
         guard engine.generation == attempt else { return }
         if let latestInfo { controls.snapshot(latestInfo) }
         await readProfiles(attempt: attempt)

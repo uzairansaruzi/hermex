@@ -205,6 +205,8 @@ enum KanbanCardMutationPhase: Equatable, Sendable {
 
 enum KanbanCardMutationKind: Equatable, Sendable {
     case status(String)
+    /// Done, with the note a Hermes host needs outside Review (#1677).
+    case complete(String?)
     case block(String?)
     case unblock
     case addPrerequisite(String)
@@ -587,7 +589,7 @@ final class KanbanFeatureState {
     }
 
     var sharedActiveBoardSlug: String? {
-        normalizedOptional(boardsResponse?.current)
+        normalized(boardsResponse?.current)
     }
 
     var requiresBoardSelection: Bool {
@@ -658,9 +660,9 @@ final class KanbanFeatureState {
         return result
     }
 
-    /// Only Mine filters by the webui's active chat Profile. A Hermes host's Kanban has no
-    /// such Profile, so it does not offer the filter.
-    var offersOnlyMine: Bool { backend == .webui }
+    /// Only Mine filters by webui's active chat Profile, or on a Hermes host by the Profile
+    /// the Sessions side lists, offered only when one is known (#1677).
+    var offersOnlyMine: Bool { client.offersOnlyMine }
 
     var profileOptions: [String] {
         sortedUnique(
@@ -711,23 +713,23 @@ final class KanbanFeatureState {
 
     func canMutateCard(_ card: KanbanCard) -> Bool {
         guard canUseCardWorkflow,
-              normalizedOptional(card.cardID) != nil,
+              normalized(card.cardID) != nil,
               let status = card.status?.rawValue else { return false }
         return Self.liveStatuses.contains(status) || status == "archived"
     }
 
     func isMutatingCard(_ cardID: String?) -> Bool {
-        guard let cardID = normalizedOptional(cardID) else { return false }
+        guard let cardID = normalized(cardID) else { return false }
         return activeCardMutationIDs[cardID] != nil
     }
 
     func mutationState(for cardID: String?) -> KanbanCardMutationState? {
-        guard let cardID = normalizedOptional(cardID) else { return nil }
+        guard let cardID = normalized(cardID) else { return nil }
         return cardMutationStates[cardID]
     }
 
     /// The ordinary Statuses a Card can move to: Triage, To Do and Ready, or on a Hermes host
-    /// Triage and Ready (#1044). Scheduled and Review are never destinations.
+    /// Triage and Ready (#1044). Only a Bulk Action moves Cards into Scheduled or Review.
     func moveDestinations(for card: KanbanCard) -> [String] {
         guard canMutateCard(card) else { return [] }
         return (configuration?.columns ?? [])
@@ -739,21 +741,37 @@ final class KanbanFeatureState {
         canMutateCard(card) && backend.offersBlock(from: card.status?.rawValue)
     }
 
-    /// Whether `card` offers Complete: a Hermes host completes only a Card in Review (#1044).
+    /// Whether `card` offers Complete: a Hermes host completes a Ready, Running, Blocked or
+    /// Review Card (#1677).
     func canComplete(_ card: KanbanCard) -> Bool {
         canMutateCard(card) && backend.offersComplete(from: card.status?.rawValue)
     }
 
+    /// Whether completing `card` needs a note of what was done: on a Hermes host, any Card
+    /// outside Review (#1677).
+    func completionNeedsResult(_ card: KanbanCard) -> Bool {
+        backend.completionNeedsResult(from: card.status?.rawValue)
+    }
+
     /// The Statuses a Bulk Action can move Cards to: every Column but Running, and on a Hermes
-    /// host none of To Do, Scheduled and Review either (#1044).
+    /// host not To Do either (#1044, #1677).
     var bulkStatusOptions: [String] {
         (configuration?.columns ?? []).filter { !backend.unofferedStatuses.contains($0) }
+    }
+
+    /// The Bulk Action that moves the selected Cards to `status`: Done carries `result` when a
+    /// selected Card, where it is on the Board now, needs a note to complete (#1677).
+    func bulkStatusAction(_ status: String, result: String) -> KanbanBulkAction {
+        let needsResult = selectedCardIDs.contains { cardID in
+            backend.completionNeedsResult(from: (cardInSnapshot(cardID) ?? selectedCardsByID[cardID])?.status?.rawValue)
+        }
+        return status == "done" && needsResult ? .complete(result: result) : .changeStatus(status)
     }
 
     /// Where `cardID` is on the Board now, which after a Hermes write can differ from where it
     /// was asked to go (#1044).
     func status(ofCard cardID: String?) -> String? {
-        normalizedOptional(cardID).flatMap(cardInSnapshot)?.status?.rawValue
+        normalized(cardID).flatMap(cardInSnapshot)?.status?.rawValue
     }
 
     func displayedPrerequisites(for cardID: String, canonical: [String]) -> [String] {
@@ -764,7 +782,7 @@ final class KanbanFeatureState {
     }
 
     func displayedCard(_ canonical: KanbanCard) -> KanbanCard {
-        guard let cardID = normalizedOptional(canonical.cardID),
+        guard let cardID = normalized(canonical.cardID),
               let status = pendingOptimisticStatuses[cardID] ?? settledDetailStatuses[cardID] else {
             return canonical
         }
@@ -772,7 +790,7 @@ final class KanbanFeatureState {
     }
 
     func acknowledgeLoadedCardDetail(_ detail: KanbanCardDetailEnvelope) {
-        guard let cardID = normalizedOptional(detail.card?.cardID),
+        guard let cardID = normalized(detail.card?.cardID),
               activeCardMutationIDs[cardID] == nil,
               cardMutationStates[cardID]?.phase == .succeeded else { return }
         settledDetailStatuses[cardID] = nil
@@ -793,14 +811,23 @@ final class KanbanFeatureState {
         )
     }
 
-    func completeCard(_ card: KanbanCard, confirmingRunningExit: Bool = false) async {
-        guard backend.offersComplete(from: card.status?.rawValue) else { return }
+    /// Completes `card`, sending `result` as what was done. A Card that needs a note
+    /// (`completionNeedsResult`) is not completed without one.
+    func completeCard(_ card: KanbanCard, result: String? = nil, confirmingRunningExit: Bool = false) async {
+        let result = normalized(result)
+        guard backend.offersComplete(from: card.status?.rawValue),
+              result != nil || !completionNeedsResult(card) else { return }
         await performStatusMutation(
             card,
             status: "done",
-            kind: .status("done"),
+            kind: .complete(result),
             confirmingRunningExit: confirmingRunningExit
-        )
+        ) { [client, selectedBoardSlug] cardID in
+            guard let board = selectedBoardSlug else { throw CancellationError() }
+            return try await client.setKanbanCardStatus(
+                KanbanCardStatusRequest(cardID: cardID, board: board, status: "done", result: result)
+            )
+        }
     }
 
     func archiveCard(_ card: KanbanCard, confirmingRunningExit: Bool = false) async {
@@ -819,7 +846,7 @@ final class KanbanFeatureState {
         confirmingRunningExit: Bool = false
     ) async {
         guard canBlock(card) else { return }
-        let reason = normalizedOptional(reason)
+        let reason = normalized(reason)
         await performStatusMutation(
             card,
             status: "blocked",
@@ -903,12 +930,14 @@ final class KanbanFeatureState {
     }
 
     func retryMutation(for card: KanbanCard) async {
-        guard let cardID = normalizedOptional(card.cardID),
+        guard let cardID = normalized(card.cardID),
               let mutation = cardMutationStates[cardID],
               mutation.phase == .failed else { return }
         switch mutation.kind {
         case let .status(status):
             await performStatusMutation(card, status: status, kind: mutation.kind)
+        case let .complete(result):
+            await completeCard(card, result: result)
         case let .block(reason):
             await blockCard(card, reason: reason)
         case .unblock:
@@ -925,7 +954,7 @@ final class KanbanFeatureState {
     }
 
     func checkUncertainMutation(for card: KanbanCard) async {
-        guard let cardID = normalizedOptional(card.cardID),
+        guard let cardID = normalized(card.cardID),
               let mutation = cardMutationStates[cardID],
               mutation.phase == .outcomeUncertain,
               activeCardMutationIDs[cardID] == nil,
@@ -948,6 +977,8 @@ final class KanbanFeatureState {
             switch mutation.kind {
             case let .status(status), let .undoArchive(status):
                 succeeded = backend.accepts(landed, requested: status, from: previous)
+            case .complete:
+                succeeded = backend.accepts(landed, requested: "done", from: previous)
             case .block:
                 succeeded = backend.accepts(landed, requested: "blocked", from: previous)
             case .unblock:
@@ -980,7 +1011,7 @@ final class KanbanFeatureState {
     }
 
     func load() async {
-        let previouslySelectedBoard = normalizedOptional(selectedBoardSlug)
+        let previouslySelectedBoard = normalized(selectedBoardSlug)
         let previouslySelectedBoardName = selectedBoard?.name
         invalidateBoardMutation()
         invalidateDispatch()
@@ -1263,8 +1294,8 @@ final class KanbanFeatureState {
     }
 
     func createBoard(_ request: KanbanCreateBoardRequest) async {
-        guard let slug = normalizedOptional(request.slug),
-              let name = normalizedOptional(request.name),
+        guard let slug = normalized(request.slug),
+              let name = normalized(request.name),
               canManageBoards else { return }
         let normalizedRequest = KanbanCreateBoardRequest(
             slug: slug,
@@ -1281,8 +1312,8 @@ final class KanbanFeatureState {
     }
 
     func editBoard(_ request: KanbanEditBoardRequest) async {
-        guard let slug = normalizedOptional(request.slug),
-              let name = normalizedOptional(request.name),
+        guard let slug = normalized(request.slug),
+              let name = normalized(request.name),
               boards.contains(where: { normalized($0.slug) == slug }),
               canManageBoards else { return }
         let normalizedRequest = KanbanEditBoardRequest(
@@ -1298,15 +1329,15 @@ final class KanbanFeatureState {
             guard let board = response.boards?.first(where: { self.normalized($0.slug) == slug }) else {
                 return false
             }
-            return self.normalizedOptional(board.name) == normalizedRequest.name
-                && self.normalizedOptional(board.description) == self.normalizedOptional(normalizedRequest.description)
-                && self.normalizedOptional(board.icon) == self.normalizedOptional(normalizedRequest.icon)
-                && self.normalizedOptional(board.color) == self.normalizedOptional(normalizedRequest.color)
+            return self.normalized(board.name) == normalizedRequest.name
+                && self.normalized(board.description) == self.normalized(normalizedRequest.description)
+                && self.normalized(board.icon) == self.normalized(normalizedRequest.icon)
+                && self.normalized(board.color) == self.normalized(normalizedRequest.color)
         }
     }
 
     func archiveBoard(slug: String) async {
-        guard let slug = normalizedOptional(slug),
+        guard let slug = normalized(slug),
               slug != "default",
               boards.contains(where: { normalized($0.slug) == slug }),
               canManageBoards else { return }
@@ -1318,7 +1349,7 @@ final class KanbanFeatureState {
     }
 
     func makeBoardActive(slug: String) async {
-        guard let slug = normalizedOptional(slug),
+        guard let slug = normalized(slug),
               boards.contains(where: { normalized($0.slug) == slug }),
               canManageBoards else { return }
         await performBoardMutation(kind: .makeActive(slug: slug)) {
@@ -1481,7 +1512,7 @@ final class KanbanFeatureState {
         }
     }
 
-    /// `KanbanLabView` forwards every scene phase change. Only `.background` suspends live
+    /// `KanbanStatusFocusView` forwards every scene phase change. Only `.background` suspends live
     /// updates: `.inactive` is a transient overlay (Control Center, Notification Center, a
     /// system alert, the app switcher), so the stream and the Board stay as they are.
     /// Returning to `.active` asks the server for the Board since the snapshot's cursor.
@@ -1561,7 +1592,7 @@ final class KanbanFeatureState {
     func toggleCardSelection(_ card: KanbanCard) {
         guard isSelectingCards,
               bulkActionPhase == nil,
-              let cardID = normalizedOptional(card.cardID) else { return }
+              let cardID = normalized(card.cardID) else { return }
         if selectedCardIDs.remove(cardID) != nil {
             selectedCardsByID[cardID] = nil
         } else {
@@ -1707,7 +1738,7 @@ final class KanbanFeatureState {
             case let .success(detail):
                 guard selectedBoardSlug == board,
                       let authoritative = detail.card,
-                      normalizedOptional(authoritative.cardID) == cardID else {
+                      normalized(authoritative.cardID) == cardID else {
                     members.append(bulkMember(
                         cardID: cardID,
                         card: original,
@@ -1800,8 +1831,10 @@ final class KanbanFeatureState {
         case let .changeStatus(status):
             guard let normalizedStatus = normalized(status) else { return false }
             return bulkStatusOptions.contains(normalizedStatus)
+        case let .complete(result):
+            return bulkStatusOptions.contains("done") && normalized(result) != nil
         case let .assignProfile(profile):
-            guard let profile = normalizedOptional(profile) else { return profile == nil }
+            guard let profile = normalized(profile) else { return profile == nil }
             return profileOptions.contains(profile)
         case let .setPriority(priority):
             return (-100...100).contains(priority)
@@ -1815,8 +1848,10 @@ final class KanbanFeatureState {
         case let .changeStatus(status):
             guard let status = normalized(status) else { return false }
             return backend.accepts(card.status?.rawValue, requested: status, from: original?.status?.rawValue)
+        case .complete:
+            return backend.accepts(card.status?.rawValue, requested: "done", from: original?.status?.rawValue)
         case let .assignProfile(profile):
-            return normalizedOptional(card.assignee) == normalizedOptional(profile)
+            return normalized(card.assignee) == normalized(profile)
         case let .setPriority(priority):
             return (card.priority ?? 0) == priority
         case .archiveCards:
@@ -1831,7 +1866,7 @@ final class KanbanFeatureState {
     ) -> KanbanBulkMemberResult {
         KanbanBulkMemberResult(
             cardID: cardID,
-            cardTitle: normalizedOptional(card?.title) ?? cardID,
+            cardTitle: normalized(card?.title) ?? cardID,
             outcome: outcome
         )
     }
@@ -1846,7 +1881,7 @@ final class KanbanFeatureState {
         guard status != "running",
               card.status?.rawValue != "running" || confirmingRunningExit,
               canMutateCard(card),
-              let cardID = normalizedOptional(card.cardID),
+              let cardID = normalized(card.cardID),
               activeCardMutationIDs[cardID] == nil,
               let board = selectedBoardSlug else { return }
 
@@ -1961,7 +1996,7 @@ final class KanbanFeatureState {
         kind: KanbanCardMutationKind,
         mutationID: UUID
     ) {
-        guard let cardID = normalizedOptional(authoritative.cardID),
+        guard let cardID = normalized(authoritative.cardID),
               activeCardMutationIDs[cardID] == mutationID else { return }
         pendingOptimisticStatuses[cardID] = nil
         settledDetailStatuses[cardID] = authoritative.status?.rawValue
@@ -1978,8 +2013,8 @@ final class KanbanFeatureState {
 
     private func mutatePrerequisite(_ prerequisiteID: String, card: KanbanCard, isAdding: Bool) async {
         guard canMutateCard(card),
-              let cardID = normalizedOptional(card.cardID),
-              let prerequisiteID = normalizedOptional(prerequisiteID),
+              let cardID = normalized(card.cardID),
+              let prerequisiteID = normalized(prerequisiteID),
               prerequisiteID != cardID,
               activeCardMutationIDs[cardID] == nil,
               let board = selectedBoardSlug else { return }
@@ -2066,11 +2101,11 @@ final class KanbanFeatureState {
     }
 
     private func offerArchiveUndo(card: KanbanCard, title: String?, previousStatus: String) {
-        guard let cardID = normalizedOptional(card.cardID) else { return }
+        guard let cardID = normalized(card.cardID) else { return }
         archiveUndoTask?.cancel()
         let undo = KanbanArchiveUndo(
             cardID: cardID,
-            cardTitle: normalizedOptional(title) ?? cardID,
+            cardTitle: normalized(title) ?? cardID,
             previousStatus: previousStatus,
             expiresAt: Date().addingTimeInterval(archiveUndoLifetime),
             card: card
@@ -2137,16 +2172,16 @@ final class KanbanFeatureState {
     }
 
     private func cardInSnapshot(_ cardID: String) -> KanbanCard? {
-        allCards.first { normalizedOptional($0.cardID) == cardID }
+        allCards.first { normalized($0.cardID) == cardID }
     }
 
     private func replaceCardInSnapshot(_ card: KanbanCard) {
-        guard let snapshot, let cardID = normalizedOptional(card.cardID),
-              let destination = normalizedOptional(card.status?.rawValue) else { return }
+        guard let snapshot, let cardID = normalized(card.cardID),
+              let destination = normalized(card.status?.rawValue) else { return }
         markBoardActivity()
         var destinationFound = false
         var columns = (snapshot.columns ?? []).map { column in
-            var cards = (column.cards ?? []).filter { normalizedOptional($0.cardID) != cardID }
+            var cards = (column.cards ?? []).filter { normalized($0.cardID) != cardID }
             if column.name == destination {
                 cards.append(card)
                 destinationFound = true
@@ -2165,7 +2200,7 @@ final class KanbanFeatureState {
         let columns = (snapshot.columns ?? []).map { column in
             KanbanColumn(
                 name: column.name,
-                cards: (column.cards ?? []).filter { normalizedOptional($0.cardID) != cardID }
+                cards: (column.cards ?? []).filter { normalized($0.cardID) != cardID }
             )
         }
         self.snapshot = snapshotReplacingColumns(snapshot, columns: columns)
@@ -2178,7 +2213,7 @@ final class KanbanFeatureState {
         }
         for (cardID, status) in pendingOptimisticStatuses {
             guard let card = (result.columns ?? []).flatMap({ $0.cards ?? [] }).first(where: {
-                normalizedOptional($0.cardID) == cardID
+                normalized($0.cardID) == cardID
             }) ?? cardInSnapshot(cardID) else { continue }
             result = snapshotReplacing(card.replacingStatus(status), in: result)
         }
@@ -2186,11 +2221,11 @@ final class KanbanFeatureState {
     }
 
     private func snapshotReplacing(_ card: KanbanCard, in snapshot: KanbanBoardSnapshot) -> KanbanBoardSnapshot {
-        guard let cardID = normalizedOptional(card.cardID),
-              let destination = normalizedOptional(card.status?.rawValue) else { return snapshot }
+        guard let cardID = normalized(card.cardID),
+              let destination = normalized(card.status?.rawValue) else { return snapshot }
         var destinationFound = false
         var columns = (snapshot.columns ?? []).map { column in
-            var cards = (column.cards ?? []).filter { normalizedOptional($0.cardID) != cardID }
+            var cards = (column.cards ?? []).filter { normalized($0.cardID) != cardID }
             if column.name == destination {
                 cards.append(card)
                 destinationFound = true
@@ -2313,7 +2348,7 @@ final class KanbanFeatureState {
             let response = try await client.kanbanBoards()
             guard boardCollectionExpectationIsCurrent(expectation) else { return nil }
             guard let availableBoards = response.boards,
-                  normalizedOptional(response.current) != nil else {
+                  normalized(response.current) != nil else {
                 return nil
             }
             let previousBoards = boards
@@ -2447,11 +2482,6 @@ final class KanbanFeatureState {
         if availableBoards.contains(where: { normalized($0.slug) == saved }) { return saved }
         KanbanBoardPreference.save(nil, for: server, in: defaults)
         return nil
-    }
-
-    private func normalizedOptional(_ value: String?) -> String? {
-        let value = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value?.isEmpty == false ? value : nil
     }
 
     private var searchMatchedCards: [KanbanCard] {
@@ -2988,7 +3018,7 @@ final class KanbanFeatureState {
             return .incompatibleContract
         case .stale, .unsupported, .missingChat, .wrongIdentity, .differentHost, .notDashboard, .blocked,
              .browserSignIn, .signInExpired, .browserSignInFailed, .signInChanged, .upgradeRefused, .outdated,
-             .gatewayListener:
+             .gatewayListener, .profileNotServed:
             return .authenticationRequired
         }
     }

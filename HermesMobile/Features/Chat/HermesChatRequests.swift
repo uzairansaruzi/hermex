@@ -70,9 +70,10 @@ import Observation
     /// session's flag is set or the host approves everything itself (`approvals.mode: off`,
     /// or a `--yolo` launch).
     private(set) var approvalBypass = false
-    /// `session.info`'s `approval_mode` is `off`: the host approves everything, whatever this
-    /// session sets.
-    private var hostApprovesAll = false
+    /// `session.info`'s `approval_mode`, kept as sent so a mode newer than this app still shows.
+    private(set) var approvalMode: String?
+    /// The host approves everything, whatever this session sets.
+    private var hostApprovesAll: Bool { approvalMode == HermesApprovalMode.off.rawValue }
     /// Turning this session's flag off left `session.info`'s `yolo` on, so the bypass is the
     /// host's own (a `--yolo` launch, which `session.info` does not name). Cleared once the
     /// bypass goes off.
@@ -80,7 +81,7 @@ import Observation
     /// Bumped by every `session.info` that reports `yolo`, so a bypass write knows whether
     /// the host reported the result itself.
     @ObservationIgnored private var bypassReports = 0
-    /// A `config.set yolo` in flight.
+    /// A `config.set` for `yolo` or `approvals.mode` in flight.
     private(set) var isChangingApprovalBypass = false
     /// This phone's Stop or Stop & send is in flight: the host withdrawing the cards then is
     /// the user's own doing, so it leaves no note.
@@ -118,10 +119,10 @@ import Observation
             || open.contains { if case .desktopTask? = $0.pending { return false }; return true }
     }
 
-    /// The pill may turn the bypass off: only this session's own flag can be.
+    /// Model settings' switch may turn the bypass off: only this session's own flag can be.
     var mayTurnOffApprovalBypass: Bool { approvalBypass && !hostApprovesAll && !bypassOutlivedTurnOff }
 
-    /// The open approvals, for the overlay's count.
+    /// The open approvals, for the approval card's count.
     var approvalCount: Int {
         open.filter { if case .approval? = $0.pending { return true }; return false }.count
     }
@@ -154,7 +155,50 @@ import Observation
     /// answered now.
     func prepareAnswer() -> HermesAnswerAction? {
         guard mayAnswer, let runtime = engine.runtime, let id = onScreen?.requestID else { return nil }
-        return HermesAnswerAction(generation: engine.generation, runtime: runtime, requestID: id)
+        let prompt = open.first { $0.pending?.requestID == id }?.promptGeneration
+        return HermesAnswerAction(generation: engine.generation, runtime: runtime, requestID: id, promptGeneration: prompt)
+    }
+
+    private var summaryScope: ApprovalSummaries.Scope? {
+        guard let root = engine.root else { return nil }
+        return .init(server: engine.server, connectionID: engine.connection.id,
+                     conversation: .session(profile: engine.target.profile, key: root))
+    }
+
+    /// The existing chat transport only: a legacy/no-connection card gets no summary slot.
+    func summaryPresentation(for approval: BotApprovalRequest, workingDirectory: String?) -> ApprovalSummaryPresentation? {
+        guard engine.connectionState == .connected, answeringRequestID != approval.requestID,
+              let runtime = engine.runtime, let scope = summaryScope,
+              open.contains(where: { $0.pending == .approval(approval) }),
+              let input = ApprovalSummaries.input(description: approval.consequence, command: approval.command,
+                                                  cwd: approval.workingDirectory ?? workingDirectory) else { return nil }
+        let key = ApprovalSummaries.Key(scope: scope, request: .approval(approval.requestID))
+        let attempt = engine.generation
+        return ApprovalSummaryPresentation(key: key) { [weak self] in
+            guard let self else { throw BotFailure.stale }
+            let call = HermesCall.approvalSummary(input: input, language: ApprovalSummaries.language(),
+                                                  sessionID: runtime, profile: self.engine.target.profile)
+            let reply = try await self.engine.request(call, attempt: attempt) {
+                guard self.open.contains(where: { $0.pending == .approval(approval) }),
+                      self.answeringRequestID != approval.requestID else { throw BotFailure.stale }
+            }
+            guard let text = reply["text"].text else { throw BotFailure.unsupported }
+            return text
+        }
+    }
+
+    private func retireSummary(_ requestID: String) {
+        guard let scope = summaryScope else { return }
+        ApprovalSummaries.shared.remove(.init(scope: scope, request: .approval(requestID)))
+    }
+
+    private func retainPendingSummaries() {
+        guard let scope = summaryScope else { return }
+        let pending = open.compactMap { row -> ApprovalSummaries.Key? in
+            guard case .approval(let approval)? = row.pending else { return nil }
+            return .init(scope: scope, request: .approval(approval.requestID))
+        }
+        ApprovalSummaries.shared.retain(Set(pending), in: scope)
     }
 
     // MARK: Answers
@@ -223,12 +267,6 @@ import Observation
         return released == .answered || released == .alreadyResolved
     }
 
-    /// Turns the session's approval bypass off from its pill, so approvals ask again.
-    func turnOffApprovalBypass() async {
-        guard mayTurnOffApprovalBypass else { return }
-        await setApprovalBypass(false, for: nil)
-    }
-
     /// `/yolo` (#1036): turns the session's approval bypass on, or off when only this
     /// session's flag holds it. The bypass after the change, or nil when it did not change;
     /// a refusal's reason went to `onFailure`.
@@ -236,6 +274,44 @@ import Observation
         let enabled = !approvalBypass
         guard enabled || mayTurnOffApprovalBypass, await setApprovalBypass(enabled, for: nil) else { return nil }
         return approvalBypass
+    }
+
+    /// Sets this chat's YOLO from Model settings' switch, to the value the user asked for.
+    func setApprovalBypass(_ enabled: Bool) async {
+        guard enabled != approvalBypass, enabled || mayTurnOffApprovalBypass else { return }
+        await setApprovalBypass(enabled, for: nil)
+    }
+
+    /// Sends the Profile's approval mode, once; true when the host confirmed it. The `session.info`
+    /// the host sends ahead of the reply carries the new bypass. Only a session with no agent
+    /// sends none: then Off still bypasses, and leaving Off keeps showing the bypass until a report
+    /// says otherwise, because this chat's own flag may be holding it.
+    @discardableResult
+    func setApprovalMode(_ mode: HermesApprovalMode) async -> Bool {
+        guard engine.connectionState == .connected, let runtime = engine.runtime, !isChangingApprovalBypass,
+              answeringRequestID == nil else { return false }
+        let attempt = engine.generation
+        let reportsBefore = bypassReports
+        isChangingApprovalBypass = true
+        errorMessage = nil
+        var dispatched = false
+        do {
+            let reply = try await engine.write(.configSet(sessionID: runtime, profile: engine.target.profile, setting: .approvalMode(mode)),
+                                               attempt: attempt, runtime: runtime) { dispatched = true }
+            guard attempt == engine.generation, !Task.isCancelled else { return false }
+            isChangingApprovalBypass = false
+            guard reply["key"].text == "approvals.mode", reply["value"].text == mode.rawValue else {
+                throw BotSettingFailure.unknownOutcome
+            }
+            approvalMode = mode.rawValue
+            if bypassReports == reportsBefore, mode == .off { approvalBypass = true }
+            return true
+        } catch {
+            guard attempt == engine.generation, !Task.isCancelled else { return false }
+            isChangingApprovalBypass = false
+            failChange(error, dispatched: dispatched)
+            return false
+        }
     }
 
     /// Answers one row of the connection card, or Continue without: one `connection.respond`,
@@ -341,6 +417,7 @@ import Observation
                 return outcome
             }
             open.removeAll { $0.pending?.requestID == action.requestID }
+            retireSummary(action.requestID)
             return outcome
         } catch {
             guard action.generation == engine.generation, !Task.isCancelled else { return nil }
@@ -395,12 +472,17 @@ import Observation
         } catch {
             guard attempt == engine.generation, !Task.isCancelled else { return false }
             isChangingApprovalBypass = false
-            if error as? BotFailure == .stale { return false }
-            if case BotSettingFailure.rejected = error { fail(error.localizedDescription) }
-            else if !dispatched { fail(error.localizedDescription) }
-            else { fail(BotSettingFailure.unknownOutcome.localizedDescription) }
+            failChange(error, dispatched: dispatched)
             return false
         }
+    }
+
+    /// Why a `config.set` failed. One that went out and lost its reply may still have applied.
+    private func failChange(_ error: Error, dispatched: Bool) {
+        if error as? BotFailure == .stale { return }
+        if case BotSettingFailure.rejected = error { fail(error.localizedDescription) }
+        else if !dispatched { fail(error.localizedDescription) }
+        else { fail(BotSettingFailure.unknownOutcome.localizedDescription) }
     }
 
     private func fail(_ message: String, about requestID: String? = nil) {
@@ -416,7 +498,12 @@ import Observation
     func receive(_ envelope: BotJSON) {
         guard let request = BotServerRequest(envelope), request.sessionID == engine.runtime else { return }
         revision += 1
-        if let index = open.firstIndex(where: { $0.id == request.id }) { open[index] = request } else { open.append(request) }
+        if let index = open.firstIndex(where: { $0.id == request.id }) {
+            if case .approval(let old)? = open[index].pending, old.requestID != request.pending?.requestID {
+                retireSummary(old.requestID)
+            }
+            open[index] = request
+        } else { open.append(request) }
         withdrawal = nil
     }
 
@@ -427,6 +514,9 @@ import Observation
         revision += 1
         let envelope = BotRequestWithdrawal.Envelope(id: id, method: method)
         let shown = envelope == envelopeOnScreen
+        for row in open where row.id == id && row.method == method {
+            if case .approval(let approval)? = row.pending { retireSummary(approval.requestID) }
+        }
         open.removeAll { $0.id == id && $0.method == method }
         if shown { withdrawal = onScreen == nil ? note(envelope, reason: payload["reason"].text) : nil }
     }
@@ -453,6 +543,7 @@ import Observation
     func withdrawAll() {
         revision += 1
         open = []
+        retainPendingSummaries()
         if let opID = connection?.opID { closeConnection(opID) }
         hasUnreadableConnection = false
     }
@@ -464,7 +555,7 @@ import Observation
             if yolo != approvalBypass { approvalBypass = yolo }
             if !yolo, bypassOutlivedTurnOff { bypassOutlivedTurnOff = false }
         }
-        if let mode = info["approval_mode"].text, (mode == "off") != hostApprovesAll { hostApprovesAll = mode == "off" }
+        if let mode = info["approval_mode"].text, mode != approvalMode { approvalMode = mode }
     }
 
     /// The host accepted a prompt: the withdrawn card's note has served its turn.
@@ -475,6 +566,7 @@ import Observation
     /// Leaving a live connection: remember the card on screen for the replay on return.
     /// Leaving again before that replay keeps the one already held.
     func willLeave() {
+        if let scope = summaryScope { ApprovalSummaries.shared.leave(scope) }
         guard engine.connectionState == .connected else { return }
         envelopeShownWhenLeft = envelopeOnScreen
     }
@@ -489,6 +581,7 @@ import Observation
     /// A new attach or leaving dropped the connection, and the requests with it. The
     /// connection card's verdict stays for the card the next attach restores.
     func reset() {
+        if let scope = summaryScope { ApprovalSummaries.shared.leave(scope) }
         open = []; answeringRequestID = nil; isChangingApprovalBypass = false
         errorMessage = nil; withdrawal = nil
         connection = nil; hasUnreadableConnection = false
@@ -597,5 +690,6 @@ import Observation
         var seen = Set<String>()
         open = (rows.list ?? []).compactMap(BotServerRequest.init)
             .filter { $0.sessionID == engine.runtime && seen.insert($0.id).inserted }
+        retainPendingSummaries()
     }
 }

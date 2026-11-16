@@ -55,7 +55,6 @@ final class ComposerVoiceNoteRecorder {
 
     var isRecording: Bool { state == .recording }
     var isRequestingPermission: Bool { state == .requestingPermission }
-    var hasReachedMaximumDuration: Bool { elapsed >= Self.maximumDuration }
 
     static let recordingSettings: [String: Any] = [
         AVFormatIDKey: Int(kAudioFormatMPEG4AAC),

@@ -56,6 +56,44 @@ import XCTest
                        .error("Hermes didn't accept the username or password."), "the error still shows first")
     }
 
+    func testAnsweringARoomApprovalKeepsTheNextCardsSummaryLoading() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let wire = RoomWire()
+        var next = try XCTUnwrap(RoomFixture.approval.fields)
+        next["request_id"] = .string("approval:2")
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval, .object(next)])
+        let bothLoading = expectation(description: "both cards' summaries in flight")
+        bothLoading.expectedFulfillmentCount = 2
+        var replies: [CheckedContinuation<Void, Never>] = []
+        wire.beforeSummaryReply = { await withCheckedContinuation { replies.append($0); bothLoading.fulfill() } }
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+                                   connection: connection, room: room, cache: BotHistoryCache(), makeWire: { _ in wire })
+        let suite = "approval-summary-room-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.set(true, forKey: ApprovalSummaries.enabledKey)
+        let window = try show(NavigationStack { BotRoomView(reader: reader, roster: [], avatars: [:]) }
+            .environment(\.scenePhase, .inactive).defaultAppStorage(defaults))
+        defer { reader.close(); close(window); defaults.removePersistentDomain(forName: suite) }
+        await reader.open()
+        await settle(window)
+        await fulfillment(of: [bothLoading], timeout: 3)
+        let key = try XCTUnwrap(reader.summaryPresentation(for: reader.status.actions[1])).key
+        defer { ApprovalSummaries.shared.retain([], in: key.scope) }
+
+        // The host settles the first approval; the second card moves up into its slot.
+        wire.driverStatus = RoomFixture.status(actions: [.object(next)])
+        await reader.poll()
+        await settle(window)
+        XCTAssertEqual(ApprovalSummaries.shared.states[key], .loading, "moving up must not cancel the card's summary")
+        let ready = expectation(description: "the moved card's summary arrived")
+        withObservationTracking { _ = ApprovalSummaries.shared.states[key] } onChange: { ready.fulfill() }
+        replies.forEach { $0.resume() }
+        await fulfillment(of: [ready], timeout: 3)
+        XCTAssertEqual(ApprovalSummaries.shared.states[key], .ready("Room command explanation"))
+    }
+
     func testRoomTranscriptDismissesKeyboardWithoutLosingDraft() async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
@@ -236,28 +274,31 @@ import XCTest
         XCTAssertTrue(field.isSecureTextEntry, "the password field, not the address or username, has focus")
     }
 
-    /// At the largest text size the Sessions approval overlay, with its scope
-    /// line, is taller than the screen; it scrolls so its last button stays
-    /// reachable.
-    func testSessionsApprovalOverlayScrollsToItsLastButtonAtTheLargestTextSize() async throws {
+    /// At the largest text size the Sessions approval card, with its scope
+    /// line, is taller than the space above the composer; it scrolls so its
+    /// last button stays reachable.
+    func testSessionsApprovalCardScrollsToItsLastButtonAtTheLargestTextSize() async throws {
         let pending = PendingApproval(
             command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh && rm -rf ./build",
             description: "Security scan — [medium] Shortened URL: The link hides where it points; recursive delete",
             patternKeys: ["tirith:shortened_url", "recursive delete"]
         )
-        let window = try show(ApprovalRequestOverlay(
-            prompt: ApprovalPromptState(sessionID: "s1", pending: pending, pendingCount: 1),
-            isResponding: false, errorMessage: nil, onChoice: { _ in }, onSkipAll: {}
-        ).environment(\.dynamicTypeSize, .accessibility5))
+        let inset = ApprovalRequestInset(
+            content: ApprovalPromptState(sessionID: "s1", pending: pending, pendingCount: 1).requestContent,
+            maximumExpandedHeight: 600, isResponding: false, isStopping: false, errorMessage: nil,
+            isHapticsEnabled: false, onChoice: { _ in }, onSkipAll: {}, onStop: {},
+            onDismissKeyboard: {}, onFootprintChange: { _ in }
+        )
+        let window = try show(VStack { Spacer(); inset }.environment(\.dynamicTypeSize, .accessibility5))
         defer { close(window) }
         await settle(window)
         let scroll = try XCTUnwrap(
             descendants(window).compactMap { $0 as? UIScrollView }.first { $0.contentSize.height > $0.bounds.height + 1 },
-            "The overlay outgrows the window but nothing scrolls vertically"
+            "The card outgrows the space above the composer but nothing scrolls vertically"
         )
         drag(scroll, to: scroll.contentSize.height - scroll.bounds.height)
         await settle(window)
-        let shown = try screenshot(window, name: "sessions-approval-overlay-ax5")
+        let shown = try screenshot(window, name: "sessions-approval-card-ax5")
         XCTAssertTrue(shown.contains("Skip all"), shown)
     }
 
@@ -389,6 +430,136 @@ import XCTest
         XCTAssertEqual(probe.scannedDrafts, ["", "read @a.md "])
         XCTAssertEqual(probe.editedDrafts, ["read ", "read @a.md", "read @a.md ", "read @a.md and more"])
         XCTAssertEqual(probe.draftSeenOnAppear, "")
+    }
+
+    /// Offline (#1375) the draft stays editable while Send, keyboard included, waits for
+    /// the reconnect.
+    func testOfflineComposerKeepsTheDraftEditableAndHoldsSend() async throws {
+        let focus = ComposerFixtureFocus()
+        let probe = SessionFixtureProbe()
+        let window = try show(SessionChatPresentationFixture(
+            focus: focus, probe: probe,
+            access: ChatComposerAccess(session: SessionSummary(), isViewingCachedData: true)
+        ))
+        defer { close(window) }
+        await settle(window)
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+
+        XCTAssertTrue(editor.isEditable)
+        focus.isFocused = true
+        await settle(window)
+        editor.insertText("Next step")
+        await settle(window)
+
+        XCTAssertEqual(probe.editedDrafts, ["Next step"])
+        XCTAssertNil(editor.keyboardCommands.send)
+    }
+
+    /// Every composer control is reachable without sideways scrolling, with the keyboard up
+    /// or down (#1550), so nothing in the composer may scroll horizontally.
+    func testComposerControlsNeverScrollSideways() async throws {
+        let focus = ComposerFixtureFocus()
+        let window = try show(SessionChatPresentationFixture(focus: focus))
+        defer { close(window) }
+
+        func sidewaysScrollers() -> [UIScrollView] {
+            descendants(window).compactMap { $0 as? UIScrollView }
+                .filter { $0.contentSize.width > $0.bounds.width + 1 }
+        }
+        await settle(window)
+        XCTAssertEqual(sidewaysScrollers(), [])
+
+        focus.isFocused = true
+        await settle(window)
+        XCTAssertEqual(sidewaysScrollers(), [])
+    }
+
+    /// Chat settings takes the keyboard while it is up and gives back only what it took: a
+    /// focused composer refocuses when it closes, and an idle one stays idle.
+    func testChatSettingsRestoresOnlyTheFocusItTook() async throws {
+        let focus = ComposerFixtureFocus()
+        let window = try show(SessionChatPresentationFixture(focus: focus))
+        defer { close(window) }
+        await settle(window)
+        let host = try XCTUnwrap(window.rootViewController)
+
+        func openAndCloseSettings() async {
+            focus.isChatSettingsOpen = true
+            await waitUntil(window) { host.presentedViewController != nil }
+            XCTAssertNotNil(host.presentedViewController)
+            XCTAssertFalse(focus.isFocused)
+            focus.isChatSettingsOpen = false
+            await waitUntil(window) { host.presentedViewController == nil }
+            XCTAssertNil(host.presentedViewController)
+        }
+
+        await openAndCloseSettings()
+        await settle(window)
+        XCTAssertFalse(focus.isFocused, "Settings opened from an idle composer must not raise the keyboard")
+
+        // Focus opens the card, keyboard or not, and it stays open across the sheet: the editor
+        // is only about one line tall while collapsed.
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        let cardHeight: CGFloat = 40
+        XCTAssertLessThan(editor.bounds.height, cardHeight)
+        focus.isFocused = true
+        await waitUntil(window) { editor.bounds.height > cardHeight }
+        XCTAssertGreaterThan(editor.bounds.height, cardHeight)
+        await openAndCloseSettings()
+        XCTAssertGreaterThan(editor.bounds.height, cardHeight, "Closing the sheet must not flash the pill")
+        await waitUntil(window) { focus.isFocused }
+        XCTAssertTrue(focus.isFocused)
+        XCTAssertGreaterThan(editor.bounds.height, cardHeight)
+    }
+
+    /// Esc (#1380) closes the `/` panel first and keeps it closed only until the draft changes,
+    /// then stops the run through the composer's Stop; the draft stays. ⌘-hold titles name
+    /// the real sends.
+    func testEscapeClosesTheSlashPanelBeforeStoppingTheRun() async throws {
+        let focus = ComposerFixtureFocus()
+        let probe = SessionFixtureProbe()
+        let window = try show(SessionChatPresentationFixture(focus: focus, probe: probe, isWaitingForStream: true))
+        defer { close(window) }
+        await settle(window)
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        focus.isFocused = true
+        await settle(window)
+        editor.insertText("/")
+        await settle(window)
+        XCTAssertEqual(editor.keyboardCommands.send?.title, StreamingSendBehavior.steer.settingsDescription)
+        XCTAssertEqual(editor.keyboardCommands.alternateSend?.title, StreamingSendBehavior.queue.settingsDescription)
+
+        try pressEscape(editor)
+        await settle(window)
+        XCTAssertEqual(probe.cancels, 0, "Esc must close the open panel before it stops the run")
+
+        editor.deleteBackward()
+        await settle(window)
+        editor.insertText("/")
+        await settle(window)
+        try pressEscape(editor)
+        await settle(window)
+        XCTAssertEqual(probe.cancels, 0, "Retyping the trigger must reopen the panel Esc closed")
+
+        try pressEscape(editor)
+        await settle(window)
+        XCTAssertEqual(probe.cancels, 1)
+        XCTAssertEqual(editor.sourceText, "/")
+    }
+
+    /// For UIKit's sheet transitions, which finish on their own schedule with no model change
+    /// to await. Bounded by `callbackTimeout`, so a missed change fails the caller's assertion.
+    private func waitUntil(_ window: UIWindow, _ condition: @escaping @MainActor () -> Bool) async {
+        let changed = expectation(for: NSPredicate { _, _ in
+            MainActor.assumeIsolated { condition() }
+        }, evaluatedWith: nil)
+        await fulfillment(of: [changed], timeout: callbackTimeout)
+        await settle(window)
+    }
+
+    private func pressEscape(_ editor: ComposerChipTextView) throws {
+        let escape = try XCTUnwrap(editor.keyCommands?.first { $0.input == UIKeyCommand.inputEscape })
+        editor.perform(try XCTUnwrap(escape.action))
     }
 
     /// Safety net only: these waits end on a notification or callback, and the
@@ -552,6 +723,7 @@ private struct AttachmentOverlayHarnessView: View {
 /// Holds a composer's screen-owned focus binding for hosted integration tests.
 @MainActor @Observable private final class ComposerFixtureFocus {
     var isFocused = false
+    var isChatSettingsOpen = false
 }
 
 /// Counts the Sessions fixture's own body passes, and records the drafts its
@@ -561,11 +733,14 @@ private struct AttachmentOverlayHarnessView: View {
     var scannedDrafts: [String] = []
     var editedDrafts: [String] = []
     var draftSeenOnAppear: String?
+    var cancels = 0
 }
 
 private struct SessionChatPresentationFixture: View {
     @Bindable var focus: ComposerFixtureFocus
     var probe = SessionFixtureProbe()
+    var access = ChatComposerAccess(session: SessionSummary(), isViewingCachedData: false)
+    var isWaitingForStream = false
     @State private var draft = ""
     @State private var quotes: [ComposerQuote] = []
     @State private var paths = ComposerFilePathSearch()
@@ -589,9 +764,9 @@ private struct SessionChatPresentationFixture: View {
         // with edits reported for persistence.
         MessageComposerView(
             draftMessage: $draft, quotes: $quotes, isFocused: $focus.isFocused,
-            isSending: false, isCompressingSession: false, isWaitingForStream: false,
-            isCancellingStream: false, readOnlyMessage: nil, errorMessage: nil,
-            errorFixPrompt: nil, configurationErrorMessage: nil, contextWindowSnapshot: nil, gitViewModel: git,
+            isSending: false, isCompressingSession: false, isWaitingForStream: isWaitingForStream,
+            isCancellingStream: false, access: access, errorMessage: nil,
+            errorFixPrompt: nil, onFixError: nil, configurationErrorMessage: nil, contextWindowSnapshot: nil, gitViewModel: git,
             modelGroups: [], selectedModelID: nil, selectedModelProviderID: nil, selectedModelTitle: "Model",
             workspaceRoots: [], selectedWorkspacePath: nil, workspaceSuggestions: [], workspaceManagementServer: nil,
             personalitySuggestions: [], skillSuggestions: [], hasLoadedSkillSuggestions: true,
@@ -600,20 +775,22 @@ private struct SessionChatPresentationFixture: View {
             supportedReasoningEfforts: nil, supportsReasoningEffort: false, showsReasoningControl: false,
             isUpdatingConfiguration: false, pendingAttachments: [], isUploadingAttachment: false,
             attachmentUploadCount: 0, attachmentUploadGeneration: 0, isSendingVoiceNote: false,
-            autoStartsVoiceInput: false, apiClient: nil, sessionID: nil, searchFilePaths: nil, chipFilePaths: [],
+            autoStartsVoiceInput: false, apiClient: nil, sessionID: nil, server: URL(string: "https://webui.example")!,
+            searchFilePaths: nil, chipFilePaths: [],
             filePathSearch: paths, uploadAttachmentErrorMessage: nil, steerFailure: nil,
-            streamingSendBehavior: .steer, onSend: {}, onSendWithBehavior: { _ in },
-            onSendVoiceNote: { _, _ in }, onCancel: {}, onSelectModel: { _ in },
-            onModelPickerOpen: {}, onSelectReasoningEffort: { _ in }, onLoadWorkspaceSuggestions: { _ in },
+            streamingSendBehavior: .steer, onSend: { _ in },
+            onSendVoiceNote: { _, _ in }, onCancel: { probe.cancels += 1 }, onSelectModel: { _ in },
+            onModelPickerOpen: {}, onSelectReasoningEffort: { _ in false }, onLoadWorkspaceSuggestions: { _ in },
             onWorkspaceRegistryChanged: {}, onLoadPersonalitySuggestions: {}, onLoadSkillSuggestions: {},
-            onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _ in },
+            onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _, _ in },
             onPhotoMediaSelected: { _ in }, onFileURLsSelected: { _ in }, onPasteFileProviders: { _ in },
             onPasteFileURLs: { _ in }, onPasteImageProviders: { _ in }, onPasteImages: { _ in },
-            onRemoveAttachment: { _ in }, onPreviewAttachment: { _ in }, onDismissUploadAttachmentError: {},
+            onRemoveAttachment: { _ in }, onPreviewAttachment: { _ in }, onDismissUploadAttachmentError: {}, onDismissError: nil,
             onSelectFileReference: { _ in }, onFileReferenceCandidatesChange: { probe.scannedDrafts.append($0) },
             onDraftEdit: { probe.editedDrafts.append($0) },
             onOpenFileReference: { _ in }, onSelectGitBranch: { _ in },
-            onCreateGitBranch: { _ in }, onRefreshGitBranches: {}
+            onCreateGitBranch: { _ in }, onRefreshGitBranches: {},
+            isChatSettingsPresented: $focus.isChatSettingsOpen
         )
     }
 }

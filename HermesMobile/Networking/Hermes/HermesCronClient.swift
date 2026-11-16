@@ -166,19 +166,21 @@ import Foundation
     }
 
     /// A 2xx reply's body. A 4xx the host explains in `detail`, such as a schedule it can't
-    /// parse or a Task that is gone, reads as that reason. Hermes never answers 403, 502-504
-    /// or 520-530 itself, so those get the Hermes connection's copy for the proxy or tunnel
-    /// in front of it. Any other status is `APIError.http`, whose 500 is the host's unhandled error.
+    /// parse, a Task that is gone or a path outside a locked files root (403), reads as that
+    /// reason. A 403 with no reason, and any 502-504 or 520-530, gets the Hermes connection's
+    /// copy for the proxy or tunnel in front of it. Any other status is `APIError.http`, whose
+    /// 500 is the host's unhandled error.
     /// `HermesSkillsClient` and `HermesInsightsClient` read their replies through it too.
     static func accepted(_ reply: (body: Data, status: Int)) throws -> Data {
         switch reply.status {
         case 200..<300: return reply.body
-        case 403, 502...504, 520...530: throw BotFailure.rejected(reply.status)
+        case 502...504, 520...530: throw BotFailure.rejected(reply.status)
         case 400..<500:
             if let detail = (try? json(reply.body))?["detail"].text?.trimmingCharacters(in: .whitespacesAndNewlines),
                !detail.isEmpty {
                 throw HermesCronRefusal(detail: detail)
             }
+            if reply.status == 403 { throw BotFailure.rejected(403) }
         default: break
         }
         throw APIError.http(statusCode: reply.status, body: String(data: reply.body, encoding: .utf8))

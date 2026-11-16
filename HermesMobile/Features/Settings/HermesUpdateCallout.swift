@@ -17,17 +17,26 @@ import UIKit
         Group {
             if let card { callout(card) }
         }
-        .confirmationDialog("Update Hermes?", isPresented: $isConfirmingUpdate, titleVisibility: .visible) {
+        .confirmationDialog(movesBack ? "Move Hermes Back?" : "Update Hermes?", isPresented: $isConfirmingUpdate,
+                            titleVisibility: .visible) {
             // Like push's restart, the run outlives Settings once the host has been asked.
-            Button("Update", role: .destructive) { model.apply() }
+            Button(movesBack ? "Move Back" : "Update", role: .destructive) { model.apply() }
         } message: {
-            Text("Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back. This can’t be undone.")
+            Text(movesBack
+                 ? "Hermes moves back to an older release. Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back."
+                 : "Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back. This can’t be undone.")
         }
     }
 
     /// `check` and `lookAgain` ask the host's check again; `checkAgain` follows an update that
-    /// stopped without an outcome; `update` and `retry` confirm an update first.
-    private enum Action { case check, lookAgain, update, retry, checkAgain }
+    /// stopped without an outcome; `update`, `moveBack` and `retry` confirm first.
+    private enum Action { case check, lookAgain, update, moveBack, retry, checkAgain }
+
+    /// Whether what the host offers is an older release, so the confirmation says so.
+    private var movesBack: Bool {
+        guard case .answered(let check, _)? = model.check else { return false }
+        return check.offer == .moveBack
+    }
 
     /// What the callout shows: the update this phone started, else the host's check.
     private struct Card {
@@ -54,7 +63,7 @@ import UIKit
     }
 
     private var updating: Card {
-        Card(symbol: "circle.dashed", tint: .secondary, title: String(localized: "Updating…"),
+        Card(symbol: "circle.dashed", tint: Color(.appTextSecondary), title: String(localized: "Updating…"),
              message: behind.map { String(localized: "Hermes is installing \($0) commits on your host.") }
                 ?? String(localized: "Hermes is installing the update on your host."))
     }
@@ -65,7 +74,7 @@ import UIKit
         switch state {
         case .applying: return updating
         case .recovering:
-            return Card(symbol: "circle.dashed", tint: .secondary, title: String(localized: "Restarting Hermes…"),
+            return Card(symbol: "circle.dashed", tint: Color(.appTextSecondary), title: String(localized: "Restarting Hermes…"),
                         message: String(localized: "Waiting for Hermes to come back"))
         case .done(let installed):
             return Card(symbol: "checkmark.circle.fill", tint: .green,
@@ -86,7 +95,7 @@ import UIKit
                         message: String(localized: "The update finished, but Hermes hasn’t answered for 2 minutes. Run this on your host, then check again."),
                         command: Self.dashboardCommand, action: .checkAgain)
         case .stillRunning:
-            return Card(symbol: "circle.dashed", tint: .secondary, title: String(localized: "Updating…"),
+            return Card(symbol: "circle.dashed", tint: Color(.appTextSecondary), title: String(localized: "Updating…"),
                         message: String(localized: "Hermes is still updating after 10 minutes. Check again later."),
                         action: .checkAgain)
         }
@@ -99,6 +108,16 @@ import UIKit
             return Card(symbol: "exclamationmark.triangle.fill", tint: .orange,
                         title: String(localized: "Couldn't check for updates"), message: message, action: .lookAgain)
         case .answered(let check, let checkedAt)?:
+            // The host's own message says which release, and why, for both of these.
+            let newer = String(localized: "Newer than the latest release")
+            if check.offer == .held {
+                return Card(symbol: "checkmark.circle.fill", tint: Color(.appTextSecondary), title: newer, message: check.message, action: .check)
+            }
+            if check.offer == .moveBack {
+                return check.canApply
+                    ? Card(symbol: "arrow.uturn.backward.circle", tint: Color(.appTextSecondary), title: newer, message: check.message, action: .moveBack)
+                    : Card(symbol: "arrow.uturn.backward.circle", tint: Color(.appTextSecondary), title: newer, message: check.message, command: check.hostCommand)
+            }
             if check.updateAvailable {
                 let behind = check.behind.flatMap { $0 > 0 ? String(localized: "\($0) commits behind.") : nil }
                     ?? String(localized: "A newer Hermes is available.")
@@ -119,7 +138,7 @@ import UIKit
             // An install the dashboard can't update (Docker, a package manager, a managed
             // runtime) says how it updates, or a check that couldn't run says why.
             guard check.canApply else {
-                return Card(symbol: "arrow.up.circle", tint: .secondary, title: String(localized: "Update Hermes on your host"),
+                return Card(symbol: "arrow.up.circle", tint: Color(.appTextSecondary), title: String(localized: "Update Hermes on your host"),
                             message: check.message, command: check.hostCommand, action: .check)
             }
             return Card(symbol: "exclamationmark.triangle.fill", tint: .orange,
@@ -142,6 +161,7 @@ import UIKit
         case .check: return model.isChecking ? String(localized: "Checking…") : String(localized: "Check")
         case .lookAgain: return model.isChecking ? String(localized: "Checking…") : String(localized: "Check again")
         case .update: return String(localized: "Update…")
+        case .moveBack: return String(localized: "Move back…")
         case .retry: return String(localized: "Try again…")
         case .checkAgain: return model.isWorking ? String(localized: "Checking…") : String(localized: "Check again")
         }
@@ -150,7 +170,7 @@ import UIKit
     private func perform(_ action: Action) {
         switch action {
         case .check, .lookAgain: Task { await model.checkNow() }
-        case .update, .retry: isConfirmingUpdate = true
+        case .update, .moveBack, .retry: isConfirmingUpdate = true
         case .checkAgain: model.checkAgain()
         }
     }
@@ -163,8 +183,8 @@ import UIKit
         let content = HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: card.symbol).foregroundStyle(card.tint).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(card.title).fontWeight(.semibold).foregroundStyle(Color.primary)
-                if let message = card.message { Text(message).foregroundStyle(.secondary) }
+                Text(card.title).fontWeight(.semibold).foregroundStyle(Color(.appText))
+                if let message = card.message { Text(message).foregroundStyle(.appSecondary) }
                 if let command = card.command { commandRow(command) }
                 if let action = card.action {
                     if card.command == nil {
@@ -198,7 +218,7 @@ import UIKit
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: command)
                 .font(AppFont.footnote().monospaced())
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(Color(.appText))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button {
@@ -209,7 +229,7 @@ import UIKit
             .buttonStyle(.borderless)
         }
         .padding(.vertical, 6).padding(.horizontal, 8)
-        .background(Color(.systemBackground).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color(.appCanvas).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
         .padding(.top, 4)
     }
 }

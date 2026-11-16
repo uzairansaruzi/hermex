@@ -67,7 +67,7 @@ import Observation
         XCTAssertTrue(resumed)
         XCTAssertEqual(chat.writes("command.dispatch").map { $0["arg"] }, [.string("pause"), .string("resume")])
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("[Continuing toward your standing goal]")])
-        XCTAssertEqual(chat.model.queuedMessagesReceipt, "Queued, sends when this run finishes",
+        XCTAssertEqual(chat.model.queuedPromptMessages.first?.content, "[Continuing toward your standing goal]",
                        "the host holds the resume for the next turn")
         XCTAssertEqual(chat.model.pinnedLocalNotices,
                        ["⏸ Goal paused: write three haiku", "▶ Goal resumed: write three haiku"], "pinned until the turn ends")
@@ -539,19 +539,6 @@ import Observation
         chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 600, truncated: true)))
         await chat.model.reconnectStreamIfNeeded()
         XCTAssertEqual(chat.turn.engine.connectionState, .connected)
-    }
-
-    /// Waits on observation, never a clock, until `condition` holds; fails once nothing it
-    /// reads changes for the wait's ceiling.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
     }
 
     private func event(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:]) -> BotJSON {

@@ -87,11 +87,12 @@ extension Array where Element == CustomHeader {
     }
 
     /// Merges these headers underneath `builtIns` into a single dictionary so
-    /// built-ins win on collision. Used for the SSE stream, whose client takes a
-    /// header dictionary rather than a `URLRequest`.
+    /// built-ins win on collision, whatever the case of the name. Used for the SSE
+    /// stream, whose client takes a header dictionary rather than a `URLRequest`.
     func merged(under builtIns: [String: String]) -> [String: String] {
+        let builtInNames = Set(builtIns.keys.map { $0.lowercased() })
         var result: [String: String] = [:]
-        for header in self where header.isApplicable {
+        for header in self where header.isApplicable && !builtInNames.contains(header.sanitizedName.lowercased()) {
             result[header.sanitizedName] = header.sanitizedValue
         }
         for (key, value) in builtIns {

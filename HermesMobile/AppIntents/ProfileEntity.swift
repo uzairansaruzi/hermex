@@ -32,12 +32,15 @@ struct ProfileEntity: AppEntity, Identifiable, Equatable {
 
 extension ProfileEntity {
     /// A Hermes server's Profile (#1180), titled by the name its Bots roster last showed, with the
-    /// Profile's own name under it; one the roster never named is titled by its own name alone.
-    init(hermesServer server: URL, profile: String, title: String?) {
+    /// Profile's own name and its `model` (#1679) under it; one the roster never named is titled
+    /// by its own name alone.
+    init(hermesServer server: URL, profile: String, title: String?, model: String? = nil) {
         let shown = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let model = model?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         id = "\(server.absoluteString)|\(profile)"
         name = shown.isEmpty ? profile : shown
-        subtitle = shown.isEmpty || shown == profile ? nil : profile
+        let details = [shown.isEmpty || shown == profile ? "" : profile, model].filter { !$0.isEmpty }
+        subtitle = details.isEmpty ? nil : details.joined(separator: " · ")
     }
 
     /// The new Hermes session this Profile opens (#1180); nil for a webui profile's bare id, which
@@ -136,9 +139,9 @@ enum ProfileEntityProvider {
             case .hermes:
                 guard let server = URL(string: account.urlString) else { return nil }
                 let cached = names.names(for: server)
-                let titles = Dictionary(cached.map { ($0.profile, $0.title) }, uniquingKeysWith: { first, _ in first })
+                let named = Dictionary(cached.map { ($0.profile, $0) }, uniquingKeysWith: { first, _ in first })
                 profiles = (live[account.id] ?? cached.map(\.profile)).map {
-                    ProfileEntity(hermesServer: server, profile: $0, title: titles[$0])
+                    ProfileEntity(hermesServer: server, profile: $0, title: named[$0]?.title, model: named[$0]?.model)
                 }
             case .webui:
                 guard account.id == webuiServer else { return nil }
@@ -168,8 +171,8 @@ enum ProfileEntityProvider {
                 return MovedWebuiRoute.names(profile: id, in: servers) ? ProfileEntity(id: id, name: id, subtitle: nil) : nil
             }
             guard servers.contains(where: { $0.id == chat.server.absoluteString && $0.kind == .hermes }) else { return nil }
-            let title = names.names(for: chat.server).first { $0.profile == profile }?.title
-            return ProfileEntity(hermesServer: chat.server, profile: profile, title: title)
+            let named = names.names(for: chat.server).first { $0.profile == profile }
+            return ProfileEntity(hermesServer: chat.server, profile: profile, title: named?.title, model: named?.model)
         }
     }
 
@@ -326,7 +329,7 @@ private struct CachedProfile: Codable, Equatable {
     }
 }
 
-/// The Profile names each Hermes server's Bots roster last showed (#1180), in the app-group
+/// The Profile names, and models (#1679), each Hermes server's Bots roster last showed (#1180), in the app-group
 /// container, so the Shortcuts picker titles a host's Profiles as the app does and still lists
 /// them while the host can't be read or is signed out. One entry per server, keyed by a digest of
 /// its URL so the app group holds no server URL, written on every roster read and deleted with
@@ -335,6 +338,8 @@ struct HermesProfileNameCache {
     struct Name: Codable, Equatable {
         let profile: String
         let title: String
+        /// The Profile's model (#1679); optional, so an entry saved before it still decodes.
+        var model: String? = nil
     }
 
     static let shared = HermesProfileNameCache()

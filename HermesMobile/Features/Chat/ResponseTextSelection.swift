@@ -3,13 +3,33 @@ import UIKit
 
 /// One native selection document around the existing response layout. Text leaves
 /// supply their actual glyph geometry; images, equations and controls never register.
+///
+/// The content renders in its own hosted SwiftUI graph, rebuilt only when `identity`,
+/// `inputs` or the forwarded environment change: a long chat updates its replies far
+/// more often than they change, and every rebuild re-lays the whole reply out.
 struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     let identity: String
+    /// Everything `content` renders from besides `identity` and the forwarded
+    /// environment. Callbacks don't belong here: route them through a stable
+    /// reference so a kept content tree still calls the latest one.
+    var inputs: AnyHashable?
     // Metadata stays registered when glyph rendering is deferred offscreen.
     var collectsGlyphs = true
     var onAskHermex: ((String) -> Void)?
     @ViewBuilder let content: () -> Content
-    @Environment(\.self) private var environment
+    // The hosted graph sees only these and UIKit traits. A renderer that reads
+    // another environment value must join `ResponseSelectionEnvironment`, or a
+    // settled reply keeps the old value until its text changes.
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.locale) private var locale
+    @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
+    @Environment(\.transcriptHTMLReportLoader) private var htmlReportLoader
+    @Environment(\.markdownTableEdgeFadeColor) private var tableEdgeFadeColor
+    @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
+    @Environment(\.openURL) private var openURL
     /// The hosted content's height. The content can grow after its first layout
     /// (MarkdownUI block margins, async code highlighting); reading this in
     /// `updateUIViewController` turns that growth into an update, so SwiftUI asks
@@ -22,19 +42,45 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: ResponseSelectionController, context: Context) {
+        RenderProbe.hit(.responseSelectionUpdate)
         controller.scope.collectsGlyphs = collectsGlyphs
         controller.input.onAskHermex = onAskHermex
+        controller.openURL = openURL
         if controller.identity != identity {
             controller.input.selectedTextRange = nil
             controller.identity = identity
         }
         _ = contentHeight
+        let rendering = ResponseSelectionRendering(identity: identity, inputs: inputs, environment: ResponseSelectionEnvironment(
+            colorScheme: colorScheme,
+            layoutDirection: layoutDirection,
+            dynamicTypeSize: dynamicTypeSize,
+            displayScale: displayScale,
+            locale: locale,
+            previewsHermesDocuments: previewsHermesDocuments,
+            htmlReportLoader: htmlReportLoader,
+            tableEdgeFadeColor: tableEdgeFadeColor,
+            chatDisclosureToggled: chatDisclosureToggled
+        ))
+        guard controller.rendering != rendering else { return }
+        controller.rendering = rendering
         let contentHeight = $contentHeight
+        let environment = rendering.environment
+        // Forwarded values go outermost so the selection scope installed inside wins.
         controller.host.rootView = AnyView(content()
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight.wrappedValue = $0 }
             .responseSelectionDocument(controller.scope)
             .textSelection(.disabled)
-            .environment(\.self, environment))
+            .environment(\.colorScheme, environment.colorScheme)
+            .environment(\.layoutDirection, environment.layoutDirection)
+            .environment(\.dynamicTypeSize, environment.dynamicTypeSize)
+            .environment(\.displayScale, environment.displayScale)
+            .environment(\.locale, environment.locale)
+            .environment(\.previewsHermesDocuments, environment.previewsHermesDocuments)
+            .environment(\.transcriptHTMLReportLoader, environment.htmlReportLoader)
+            .environment(\.markdownTableEdgeFadeColor, environment.tableEdgeFadeColor)
+            .environment(\.chatDisclosureToggled, environment.chatDisclosureToggled)
+            .environment(\.openURL, controller.forwardedOpenURL))
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: ResponseSelectionController, context: Context) -> CGSize? {
@@ -43,11 +89,40 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     }
 }
 
+/// The environment a hosted reply renders from, compared to skip rebuilds.
+struct ResponseSelectionEnvironment: Equatable {
+    let colorScheme: ColorScheme
+    let layoutDirection: LayoutDirection
+    let dynamicTypeSize: DynamicTypeSize
+    let displayScale: CGFloat
+    let locale: Locale
+    let previewsHermesDocuments: Bool
+    let htmlReportLoader: TranscriptHTMLReportLoader?
+    let tableEdgeFadeColor: Color?
+    let chatDisclosureToggled: ChatDisclosureToggleAction
+}
+
+/// What the hosted root was last built from.
+struct ResponseSelectionRendering: Equatable {
+    let identity: String
+    let inputs: AnyHashable?
+    let environment: ResponseSelectionEnvironment
+}
+
 final class ResponseSelectionController: UIViewController {
     let input = ResponseSelectionInput()
     lazy var scope = ResponseSelectionScope(input: input)
     let host = UIHostingController(rootView: AnyView(EmptyView()))
     var identity = ""
+    var rendering: ResponseSelectionRendering?
+    /// The latest `openURL` around the reply. The hosted root holds
+    /// `forwardedOpenURL` instead, so a kept root still reaches this one.
+    var openURL = OpenURLAction { _ in .systemAction }
+    private(set) lazy var forwardedOpenURL = OpenURLAction { [weak self] url in
+        guard let self else { return .systemAction }
+        openURL(url)
+        return .handled
+    }
 
     override func loadView() {
         view = input
@@ -79,10 +154,37 @@ private struct ResponseSelectionScopeKey: EnvironmentKey {
     static let defaultValue: ResponseSelectionScope? = nil
 }
 
+/// A reply's selectable leaves in view order. SwiftUI merges these at every level of the reply's
+/// tree, on every layout, so a merge only links two nodes; concatenating arrays copied every leaf
+/// below it each time (#1528).
+private indirect enum ResponseSelectionOrder: Equatable {
+    case empty
+    case leaf(UUID)
+    case pair(ResponseSelectionOrder, ResponseSelectionOrder)
+
+    var ids: [UUID] {
+        var ids: [UUID] = []
+        collect(into: &ids)
+        return ids
+    }
+
+    private func collect(into ids: inout [UUID]) {
+        switch self {
+        case .empty: break
+        case .leaf(let id): ids.append(id)
+        case .pair(let first, let second):
+            first.collect(into: &ids)
+            second.collect(into: &ids)
+        }
+    }
+}
+
 private struct ResponseSelectionOrderKey: PreferenceKey {
-    static let defaultValue: [UUID] = []
-    static func reduce(value: inout [UUID], nextValue: () -> [UUID]) {
-        value += nextValue()
+    static let defaultValue = ResponseSelectionOrder.empty
+    static func reduce(value: inout ResponseSelectionOrder, nextValue: () -> ResponseSelectionOrder) {
+        let next = nextValue()
+        if case .empty = next { return }
+        if case .empty = value { value = next } else { value = .pair(value, next) }
     }
 }
 
@@ -97,7 +199,7 @@ extension View {
     func responseSelectionDocument(_ scope: ResponseSelectionScope) -> some View {
         environment(\.responseSelectionScope, scope)
             .onPreferenceChange(ResponseSelectionOrderKey.self) { [weak input = scope.input] order in
-                input?.leafOrder = order
+                input?.leafOrder = order.ids
             }
     }
 }
@@ -143,7 +245,7 @@ private struct RegisteredResponseSelectionLeaf: ViewModifier {
             }
         }
         .background(ResponseSelectionMarker(scope: scope, id: id, text: text, separator: separator, tableColumn: tableColumn, geometry: geometry))
-        .preference(key: ResponseSelectionOrderKey.self, value: [id])
+        .preference(key: ResponseSelectionOrderKey.self, value: .leaf(id))
     }
 }
 

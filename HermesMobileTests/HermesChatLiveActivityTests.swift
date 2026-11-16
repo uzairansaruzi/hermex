@@ -529,18 +529,6 @@ import Observation
                                                      "ui_meta": .object(["hermes-bots": .object(look)])])])])
     }
 
-    /// Waits on observation, never a clock, until `condition` holds.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
-    }
-
     /// A live worker as `subagent.list` reports it.
     private func worker(_ id: String) -> BotJSON {
         .object(["subagent_id": .string(id), "goal": .string("Work on \(id)"), "depth": .number(0),

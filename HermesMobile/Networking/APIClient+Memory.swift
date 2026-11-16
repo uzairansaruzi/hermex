@@ -50,7 +50,8 @@ private struct MemoryWriteRequest: Encodable {
 
 /// The Memory screen's client on a Hermes host (#1073), for one Profile: its notes and user
 /// profile are `memories/MEMORY.md` and `USER.md` in the Profile's folder, read and written
-/// through the host's file routes, and its soul is `/api/profiles/{name}/soul`. The folder is
+/// through the host's managed file routes, which stay on the dashboard's machine when a Profile's
+/// terminal runs over SSH (#1566), and its soul is `/api/profiles/{name}/soul`. The folder is
 /// read from the Profile's `profiles.list` row on every load and save, and is the only host
 /// path these routes are ever sent; it is never shown, logged or kept. The host's config says
 /// which sections are on and their limits, and only its `memory` section is decoded.
@@ -76,8 +77,7 @@ private struct MemoryWriteRequest: Encodable {
     }
 
     /// The sections the host's config turns on, with their limits, and the soul. A missing
-    /// file is an empty one. A file the host could only preview (over 512 KiB) or that isn't
-    /// text is shown read-only.
+    /// file is an empty one. A file over 512 KiB or that isn't text is shown read-only.
     func memory() async throws -> MemoryResponse {
         async let folderRead = memoriesFolder()
         async let configRead = memoryConfig()
@@ -97,9 +97,8 @@ private struct MemoryWriteRequest: Encodable {
     }
 
     /// Notes and the user profile are written in the agent's own format
-    /// (`MemoryCanonicalizer`), then read back to confirm. Writing needs the `memories` folder,
-    /// which a Profile normally has; one that doesn't is created once and the write retried.
-    /// The soul is written as it is, with the same check first.
+    /// (`MemoryCanonicalizer`), then read back to confirm. The host creates a missing `memories`
+    /// folder. The soul is written as it is, with the same check first.
     func saveMemory(section: MemorySection, content: String, loaded: String) async throws -> MemoryWriteResponse {
         switch section {
         case .soul:
@@ -112,12 +111,7 @@ private struct MemoryWriteRequest: Encodable {
             let text = MemoryCanonicalizer.canonical(content)
             let current = try await read(path)
             guard current.isEditable, current.text == loaded || current.text == text else { throw MemoryConflict() }
-            var written = try await reply(.fsWriteText(path: path, content: text))
-            if written.status == 400, Self.detail(written.body) == "Parent directory does not exist" {
-                _ = try accepted(try await reply(.filesMkdir(path: folder)))
-                written = try await reply(.fsWriteText(path: path, content: text))
-            }
-            _ = try accepted(written)
+            _ = try accepted(try await reply(.filesUpload(path: path, text: text)))
             guard try await read(path).text == text else { throw MemoryConflict() }
         }
         return MemoryWriteResponse(saved: section)
@@ -156,13 +150,22 @@ private struct MemoryWriteRequest: Encodable {
         return content
     }
 
+    /// The largest file the screen edits or previews, the same 512 KiB as the host's text preview.
+    private static let editableBytes = 512 * 1024
+
     /// One file's text. A file the host doesn't have (404) reads as empty.
     private func read(_ path: String) async throws -> HermesMemoryFile {
-        let answer = try await reply(.fsReadText(path: path))
+        let answer = try await reply(.filesRead(path: path))
         guard answer.status != 404 else { return HermesMemoryFile(text: "", isEditable: true) }
-        let file = Self.json(try accepted(answer))
-        guard let text = file?["text"].text else { throw APIError.decoding(underlying: HermesMemoryUnreadable()) }
-        return HermesMemoryFile(text: text, isEditable: file?["truncated"].flag != true && file?["binary"].flag != true)
+        guard let url = Self.json(try accepted(answer))?["data_url"].text, let comma = url.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else {
+            throw APIError.decoding(underlying: HermesMemoryUnreadable())
+        }
+        if data.count <= Self.editableBytes, let text = String(bytes: data, encoding: .utf8) {
+            return HermesMemoryFile(text: text, isEditable: true)
+        }
+        // The screen renders what it gets, so a read-only file stays a preview.
+        return HermesMemoryFile(text: String(decoding: data.prefix(Self.editableBytes), as: UTF8.self), isEditable: false)
     }
 
     /// A section's file when the host's config turns the section on; nil, unread, when not.

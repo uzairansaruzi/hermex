@@ -299,7 +299,7 @@ enum AgentMemoryDrift {
 }
 
 /// Memory on a Hermes host (#1073): `HermesMemoryClient` on a scripted host whose routes answer
-/// as `scripts/local-hermes` did at the pin (0.21.5, ca678285), for the `research` Profile.
+/// as `scripts/local-hermes` did at 0.22.5 (bf0203a7), for the `research` Profile.
 @MainActor final class HermesMemoryClientTests: XCTestCase {
     private static let home = "/Users/someone/.hermes/profiles/research"
     private static let notes = home + "/memories/MEMORY.md"
@@ -363,13 +363,22 @@ enum AgentMemoryDrift {
         XCTAssertEqual(response.characterLimits, [.memory: 2200, .user: 1375])
     }
 
-    func testAFileTheHostCanOnlyPreviewIsReadOnly() async throws {
-        let host = MemoryHost(files: [Self.notes: "the first 512 KiB"])
-        host.truncated = [Self.notes]
+    func testAFileTooLargeToEditOrNotTextIsReadOnly() async throws {
+        let host = MemoryHost(files: [Self.notes: String(repeating: "a", count: 512 * 1024 + 1)])
+        host.rawFiles = [Self.user: Data([0xFF, 0xFE])]
 
         let response = try await client(host).memory()
 
-        XCTAssertEqual(response.readOnlySections, [.memory])
+        XCTAssertEqual(response.readOnlySections, [.memory, .user])
+        XCTAssertEqual(response.memory?.utf8.count, 512 * 1024, "A read-only file stays a preview")
+    }
+
+    func testClearingASectionSavesAnEmptyFile() async throws {
+        let host = MemoryHost(files: [Self.notes: "Prefers short PRs"])
+
+        _ = try await client(host).saveMemory(section: .memory, content: "", loaded: "Prefers short PRs")
+
+        XCTAssertEqual(host.files[Self.notes], "")
     }
 
     func testSaveWritesTheAgentsFormatOnceTheFileIsUnchanged() async throws {
@@ -380,7 +389,8 @@ enum AgentMemoryDrift {
 
         XCTAssertEqual(saved.ok, true)
         XCTAssertEqual(host.files[Self.notes], "Prefers short PRs\n§\nNew entry")
-        XCTAssertEqual(host.calls(), ["GET /api/fs/read-text", "POST /api/fs/write-text", "GET /api/fs/read-text"])
+        XCTAssertEqual(host.calls(), ["GET /api/files/read", "POST /api/files/upload", "GET /api/files/read"],
+                       "Only the routes that stay on the host when a terminal runs over SSH")
     }
 
     func testSaveRefusesAFileChangedOnTheHostAndWritesNothing() async throws {
@@ -393,7 +403,7 @@ enum AgentMemoryDrift {
             XCTAssertEqual(error as? MemoryConflict, MemoryConflict())
         }
         XCTAssertEqual(host.files[Self.notes], "Prefers short PRs\n§\nAdded by the agent")
-        XCTAssertFalse(host.calls().contains("POST /api/fs/write-text"))
+        XCTAssertFalse(host.calls().contains("POST /api/files/upload"))
     }
 
     /// A save that landed but whose reply or refresh was lost leaves the editor open on its old
@@ -409,19 +419,7 @@ enum AgentMemoryDrift {
         XCTAssertEqual(host.files[Self.notes], "Prefers short PRs\n§\nNew entry")
         XCTAssertEqual(host.soul, "Mine")
         XCTAssertEqual(host.calls().filter { $0.hasPrefix("POST") || $0.hasPrefix("PUT") },
-                       ["POST /api/fs/write-text", "PUT /api/profiles/research/soul"])
-    }
-
-    func testAMissingMemoriesFolderIsCreatedOnceAndTheWriteRetried() async throws {
-        let host = MemoryHost()
-        host.folders = []
-
-        _ = try await client(host).saveMemory(section: .user, content: "Name: Uzair", loaded: "")
-
-        XCTAssertEqual(host.files[Self.user], "Name: Uzair")
-        XCTAssertEqual(host.mkdirs, [Self.home + "/memories"])
-        XCTAssertEqual(host.calls(), ["GET /api/fs/read-text", "POST /api/fs/write-text", "POST /api/files/mkdir",
-                                      "POST /api/fs/write-text", "GET /api/fs/read-text"])
+                       ["POST /api/files/upload", "PUT /api/profiles/research/soul"])
     }
 
     func testAHostRefusalShowsItsReasonUnlessItNamesAPath() async throws {
@@ -505,14 +503,12 @@ enum AgentMemoryDrift {
 /// `HermesHostFixture`'s lock.
 private final class MemoryHost: @unchecked Sendable {
     var files: [String: String]
-    var folders: Set<String> = ["/Users/someone/.hermes/memories", "/Users/someone/.hermes/profiles/research/memories",
-                                "/Users/a+b/.hermes/memories"]
-    var truncated: Set<String> = []
+    /// Files that aren't UTF-8, by path.
+    var rawFiles: [String: Data] = [:]
     var soul: String
     var config: [String: BotJSON] = [:]
     /// Replaces `config` as the whole `memory` section when set.
     var configMemory: BotJSON?
-    var mkdirs: [String] = []
     var writeRefusal: (Int, String)?
 
     init(files: [String: String] = [:], soul: String = "") {
@@ -529,9 +525,9 @@ private final class MemoryHost: @unchecked Sendable {
         }
     }
 
-    /// The paths read through `fs/read-text`.
+    /// The paths read through `files/read`.
     func reads() -> [String] {
-        HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/read-text" }.compactMap(Self.queryPath)
+        HermesHostFixture.requests.filter { $0.url?.path == "/api/files/read" }.compactMap(Self.queryPath)
     }
 
     /// A request's `?path=` as the host decodes it, reading `+` as a space.
@@ -551,22 +547,18 @@ private final class MemoryHost: @unchecked Sendable {
         case ("PUT", "/api/profiles/research/soul"):
             soul = body["content"].text ?? ""
             return .json(200, .object(["ok": .bool(true)]))
-        case ("GET", "/api/fs/read-text"):
-            guard let path = Self.queryPath(request), let text = files[path] else { return .json(404, .object(["detail": .string("File not found")])) }
-            return .json(200, .object(["text": .string(text), "binary": .bool(false), "truncated": .bool(truncated.contains(path)),
-                                       "byteSize": .number(Double(text.utf8.count)), "path": .string(path)]))
-        case ("POST", "/api/fs/write-text"):
-            if let (status, detail) = writeRefusal { return .json(status, .object(["detail": .string(detail)])) }
-            guard let path = body["path"].text, let content = body["content"].text else { return .json(422, .null) }
-            guard folders.contains((path as NSString).deletingLastPathComponent) else {
-                return .json(400, .object(["detail": .string("Parent directory does not exist")]))
+        case ("GET", "/api/files/read"):
+            guard let path = Self.queryPath(request), let data = rawFiles[path] ?? files[path].map({ Data($0.utf8) }) else {
+                return .json(404, .object(["detail": .string("File not found")]))
             }
-            files[path] = content
-            return .json(200, .object(["ok": .bool(true), "path": .string(path), "byteSize": .number(Double(content.utf8.count))]))
-        case ("POST", "/api/files/mkdir"):
-            guard let path = body["path"].text else { return .json(422, .null) }
-            mkdirs.append(path)
-            folders.insert(path)
+            return .json(200, .object(["data_url": .string("data:text/markdown;base64," + data.base64EncodedString()),
+                                       "size": .number(Double(data.count)), "path": .string(path)]))
+        case ("POST", "/api/files/upload"):
+            if let (status, detail) = writeRefusal { return .json(status, .object(["detail": .string(detail)])) }
+            guard let path = body["path"].text, body["overwrite"].flag == true,
+                  let url = body["data_url"].text, let comma = url.firstIndex(of: ","),
+                  let data = Data(base64Encoded: String(url[url.index(after: comma)...])) else { return .json(422, .null) }
+            files[path] = String(bytes: data, encoding: .utf8)
             return .json(200, .object(["ok": .bool(true)]))
         default:
             return nil

@@ -699,8 +699,8 @@ extension CronManagementViewModelTests {
 
         XCTAssertFalse(didRun)
         XCTAssertEqual(viewModel.runNowState, .idle)
-        XCTAssertEqual(viewModel.actionErrorMessage,
-                       "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected.")
+        let why = try XCTUnwrap(viewModel.actionErrorMessage)
+        XCTAssertFalse(why.localizedCaseInsensitiveContains("webui"), "A Hermes host is not hermes-webui: \(why)")
         XCTAssertEqual(host.listReads, 3)
         XCTAssertEqual(host.triggers, ["a1?profile=research"])
     }

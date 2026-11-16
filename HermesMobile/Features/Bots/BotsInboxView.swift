@@ -7,6 +7,7 @@ import SwiftUI
 /// filter holds hidden bots and section order, and new chat makes a bot or a group chat.
 @MainActor struct BotsInboxView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
@@ -44,6 +45,14 @@ import SwiftUI
     /// True once `open()` has returned at least once, so "no Bot connection" is a
     /// settled answer to a held deep link rather than a not-loaded-yet one.
     @State private var hasSettled = false
+    /// The bot whose Screen is open (#1567), on the connection it opened with.
+    @State private var screenTarget: BotScreenTarget?
+    /// The host answered a Screen's `display.*` with -32601, so the entries hide.
+    @State private var hostLacksScreen = false
+    /// The server's Bot Screen switch.
+    @AppStorage private var isScreenEnabled: Bool
+    /// The Profiles whose screen this iPhone still holds, for the banner.
+    @State private var heldScreens: [String] = []
 
     init(
         server: URL,
@@ -59,6 +68,7 @@ import SwiftUI
         self.home = home
         _pendingDestination = pendingDestination
         _inbox = State(initialValue: inbox)
+        _isScreenEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
 
     /// An inbox the caller built, such as one on scripted wires.
@@ -67,14 +77,26 @@ import SwiftUI
         home = nil
         _pendingDestination = .constant(nil)
         _inbox = State(initialValue: inbox)
+        _isScreenEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
 
     var body: some View {
         let toasted = navigationSurface
+            .focusedSceneValue(\.hermexSceneActions, sceneActions)
+            .fullScreenCover(item: $screenTarget) { target in
+                ScreenView(profile: target.profile.id, title: target.profile.name, server: server, connection: target.connection,
+                           takesOverWhenLive: target.takesOver) {
+                    hostLacksScreen = true
+                }
+            }
+            .onChange(of: isScreenEnabled) { if !isScreenEnabled { screenTarget = nil } }
+            .onChange(of: ScreenHoldStore.shared.revision, initial: true) {
+                heldScreens = ScreenHoldStore.shared.holds(server: server).keys.sorted()
+            }
             .overlay(alignment: .bottom) {
                 if let toast {
-                    Text(toast).font(.callout).padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    Text(toast).font(AppFont.callout()).padding()
+                        .background(.appMaterial(.regularMaterial), in: RoundedRectangle(cornerRadius: 16))
                         .padding().accessibilityAddTraits(.updatesFrequently)
                 }
             }
@@ -87,18 +109,19 @@ import SwiftUI
     }
 
     private var usesSplit: Bool {
-        HermesHomeLayout.usesSplit(isHome: home != nil, horizontalSizeClass: horizontalSizeClass)
+        HermesHomeLayout.usesSplit(isHome: home != nil, horizontalSizeClass: horizontalSizeClass, verticalSizeClass: verticalSizeClass)
     }
 
     @ViewBuilder private var navigationSurface: some View {
         if usesSplit {
-            SessionSplitView(rootRevision: inbox.selection.pick.hashValue) {
+            SessionSplitView(rootRevision: inbox.selection.pick.hashValue, offersHideSidebar: true) {
                 list
-                    #if !targetEnvironment(macCatalyst)
-                    .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
-                    #endif
             } detail: {
                 regularWidthDetail
+                    .modifier(HermesHomeDetailBar(home: home, search: HermesHomeSearch(label: "Search bots and messages",
+                                                                                         isDisabled: inbox.connection == nil,
+                                                                                         open: { showingSearch = true }),
+                                                  filter: { filterMenu }, newChat: { newChatMenu }))
             }
         } else {
             compactList
@@ -117,6 +140,7 @@ import SwiftUI
             }), roster: inbox.profiles, avatars: inbox.avatars,
                 onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                 .id(key)
+                .onAppear { UsageReports.shared.record(.bots) }
         } else {
             ContentUnavailableView("Select a Bot", systemImage: "bubble.left.and.bubble.right")
                 #if targetEnvironment(macCatalyst)
@@ -141,6 +165,7 @@ import SwiftUI
                     }), roster: inbox.profiles, avatars: inbox.avatars,
                         onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                     .id(key)
+                    .onAppear { UsageReports.shared.record(.bots) }
                 }
             }
             .navigationDestination(item: $editSelection) { selection in
@@ -151,14 +176,29 @@ import SwiftUI
     /// The rows alone. The list, its sheets and its lifecycle each sit in their
     /// own expression: together they were too much for the CI type-checker.
     private var list: some View {
-        List {
+        AppList(rows: .plain) {
             homeHeader
+            // Not gated on the switch: a hand-back that failed as it was turned off still needs a way out.
+            if let connection = inbox.connection {
+                ForEach(heldScreens, id: \.self) { profile in
+                    heldScreenRow(profile, connection)
+                }
+            }
             if inbox.connection != nil {
                 if let message = inbox.errorMessage ?? inbox.routeAdvice {
-                    Text(message).font(.callout)
+                    Text(message).font(AppFont.callout())
                     // Reconnecting would only send the refused password again (#884).
                     if inbox.needsSignIn {
                         Button("Update sign-in", action: updateSignIn)
+                    } else if inbox.needsAddress {
+                        // Reconnecting reaches the same listener (#1598). A Hermes server's address
+                        // is fixed, so its way out is another server; a webui's Bot connection
+                        // edits its own.
+                        if let home {
+                            Button("Add Server", action: home.avatar.addServer)
+                        } else {
+                            Button("Hermes connection") { showingSetup = true }
+                        }
                     } else {
                         Button("Reconnect") { revision = UUID() }
                     }
@@ -175,7 +215,7 @@ import SwiftUI
                     home == nil ? Text("No bots yet. Tap + to create one.") : Text("No bots yet. Tap New Chat to create one.")
                 }
                 if let notice = inbox.notice {
-                    Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
+                    Text(notice).font(AppFont.callout()).foregroundStyle(.appSecondary).listRowSeparator(.hidden)
                 }
                 let pinned = inbox.pinned
                 if !pinned.isEmpty {
@@ -195,7 +235,7 @@ import SwiftUI
                             case .bot(let profile):
                                 Menu { organizeMenu(profile) } label: {
                                     BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                                                status: inbox.liveStatuses[profile.id])
+                                                status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
                                 } primaryAction: { inbox.selection.profile = profile }
                                 .buttonStyle(.plain)
                             case .room(let room):
@@ -215,7 +255,7 @@ import SwiftUI
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
                     }
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(AppFont.subheadline()).foregroundStyle(.appSecondary)
                     .listRowSeparator(.hidden)
                 }
             } else {
@@ -223,10 +263,9 @@ import SwiftUI
             }
         }
         .listStyle(.plain)
-        #if targetEnvironment(macCatalyst)
+        // A split view's sidebar paints gray behind a plain List; only its rows cover it.
         .scrollContentBackground(.hidden)
-        .background(Color(.systemBackground))
-        #endif
+        .background(Color(.appCanvas))
         .overlay {
             if inbox.connection == nil {
                 GeometryReader { geometry in
@@ -238,7 +277,7 @@ import SwiftUI
                         }
                         .frame(minHeight: geometry.size.height)
                     }
-                    .background(Color(uiColor: .systemBackground))
+                    .background(Color(uiColor: .appCanvas))
                 }
             }
         }
@@ -251,6 +290,7 @@ import SwiftUI
         if let home {
             SessionsHeader(logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
                            searchLabel: "Search bots and messages", isSearchDisabled: inbox.connection == nil,
+                           connection: inbox.homeConnection, reconnectNow: inbox.reconnectNow,
                            openSearch: { showingSearch = true })
                 .sessionsTopChromeListRow()
             #if targetEnvironment(macCatalyst)
@@ -273,6 +313,7 @@ import SwiftUI
             Button("New Group Chat", systemImage: "person.2") {
                 guard let connection = inbox.connection else { return }
                 roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
+                    seatable: inbox.roomCapabilities.seatableProfiles,
                     onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
             }
             .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
@@ -315,6 +356,7 @@ import SwiftUI
         ) else { return }
         pendingDestination = nil
         inbox.selection.open(destination, connection: inbox.connection, profiles: inbox.profiles)
+        if destination.opensScreen, let profile = inbox.selection.profile { openScreen(profile) }
     }
 
     /// Resolve the selection again after the sheet closes so a refreshed roster
@@ -340,7 +382,7 @@ import SwiftUI
                     Group {
                         if let name = section.name { Text(verbatim: name) } else { Text("Other chats") }
                     }
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    .font(AppFont.subheadline(weight: .semibold)).foregroundStyle(.appSecondary)
                     .lineLimit(1).truncationMode(.tail).textCase(nil)
                     .accessibilityAddTraits(.isHeader)
                 }
@@ -364,7 +406,7 @@ import SwiftUI
     private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
         Button { inbox.selection.profile = profile } label: {
             BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                        status: inbox.liveStatuses[profile.id])
+                        status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
         }
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
@@ -413,15 +455,16 @@ import SwiftUI
     /// lands. A refused password comes back here to the inbox's sign-in form.
     @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
         if let chat = inbox.selection.chat(server: server, connection: connection) {
-            ChatView(hermesSession: chat)
+            ChatView(hermesSession: chat, continuity: inbox.selection.chatContinuity)
             .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); inbox.selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them
             // could let two destinations share one identity and keep the wrong
             // conversation on screen.
             .id([profile.id, connection.id.uuidString, inbox.selection.conversation ?? ""])
-            .onAppear { inbox.markSeen(profile) }
+            .onAppear { inbox.markSeen(profile); UsageReports.shared.record(.bots) }
             .onDisappear { inbox.noteReturn(from: profile) }
+            .modifier(BotScreenOpenerModifier(isOffered: canOpenScreen) { takingOver in openScreen(profile, takingOver: takingOver) })
         }
     }
 
@@ -471,6 +514,85 @@ import SwiftUI
         roomSequence = nil; inbox.selection.room = key
     }
 
+    /// The hardware-keyboard commands (`HermexCommands`) on the home's Bots side, acting as its
+    /// New Bot, search, tiles and rows do. An inbox the webui list pushed publishes none, so that
+    /// list keeps its own.
+    private var sceneActions: HermexSceneActions? {
+        guard home != nil else { return nil }
+        return HermexSceneActions(
+            canCreateNewChat: inbox.link == .live,
+            createNewChat: { if inbox.link == .live { creation = .new } },
+            searchSessions: { if inbox.connection != nil { showingSearch = true } },
+            openChat: { position in
+                if let chat = ChatShortcutNavigation.chat(atPosition: position, in: keyboardShortcutChats) { open(chat) }
+            },
+            openAdjacentChat: { offset in
+                if let chat = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedChatID, in: keyboardShortcutChats) {
+                    open(chat)
+                }
+            },
+            openScreen: inbox.selection.profile.flatMap { profile in
+                canOpenScreen ? { openScreen(profile) } : nil
+            }
+        )
+    }
+
+    /// A takeover that outlived its Screen view: the bot stays paused until someone hands back, so
+    /// it stays in sight here. The name opens the Screen.
+    private func heldScreenRow(_ profile: String, _ connection: BotConnection) -> some View {
+        let bot = inbox.profiles.first { $0.id == profile }
+        return HStack {
+            Button {
+                if let bot { openScreen(bot) }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: bot?.name ?? profile).font(AppFont.headline())
+                    Text("You hold its screen").font(AppFont.subheadline()).foregroundStyle(.appSecondary)
+                }
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            Button("Hand Back") {
+                Task { await ScreenHolds.handBack(profile: profile, server: server, connection: connection) }
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    /// Whether the entries to a bot's Screen show: the server's switch is on, and the host hasn't
+    /// answered that it has no such method.
+    private var canOpenScreen: Bool {
+        isScreenEnabled && !hostLacksScreen
+    }
+
+    /// Opens `profile`'s Screen; `takingOver` takes control once its picture is live (#1632).
+    private func openScreen(_ profile: BotProfile, takingOver: Bool = false) {
+        guard canOpenScreen, let connection = inbox.connection else { return }
+        screenTarget = BotScreenTarget(profile: profile, connection: connection, takesOver: takingOver)
+    }
+
+    /// The tiles, then the rows under them, as the list shows them, which it does only with a
+    /// connection. Read only on a key press, never in `body`.
+    private var keyboardShortcutChats: [BotInbox.ChatRow] {
+        guard inbox.connection != nil else { return [] }
+        return inbox.pinned + inbox.sections.flatMap(\.chats)
+    }
+
+    /// The open bot's or room's `ChatRow.id`, where Next and Previous Chat step from.
+    private var selectedChatID: String? {
+        if let profile = inbox.selection.profile { return BotInbox.ChatRow.bot(profile).id }
+        guard let key = inbox.selection.room, let room = inbox.rooms.first(where: { $0.id == key.roomID }) else { return nil }
+        return BotInbox.ChatRow.room(room).id
+    }
+
+    /// Opens a tile or row as its tap does.
+    private func open(_ chat: BotInbox.ChatRow) {
+        switch chat {
+        case .bot(let profile): inbox.selection.profile = profile
+        case .room(let room): openRoom(room)
+        }
+    }
+
     /// Pin and hide are this phone's own marks and always apply; Rename and
     /// Disband go to the host and stay inert until the inbox is live and the
     /// host offers them for this room.
@@ -498,8 +620,14 @@ import SwiftUI
     }
 
     /// Pin, hide and the section write Desktop's own roster fields; all stay inert
-    /// until the inbox is live and no write for this bot is in flight.
-    private func organizeMenu(_ profile: BotProfile) -> some View {
+    /// until the inbox is live and no write for this bot is in flight. Screen writes nothing, so
+    /// it sits outside them.
+    @ViewBuilder private func organizeMenu(_ profile: BotProfile) -> some View {
+        if canOpenScreen {
+            Button { openScreen(profile) } label: {
+                Label("Screen", systemImage: "display")
+            }
+        }
         Group {
             Button {
                 guard let connection = inbox.connection else { return }
@@ -638,6 +766,8 @@ extension BotsInboxView {
                 deleting = nil
                 renamingRoom = nil; disbanding = nil; filing = nil
                 showingSectionOrder = false
+                // Another host answers for itself whether it has Screen.
+                screenTarget = nil; hostLacksScreen = false
             }
             .sheet(isPresented: $showingSectionOrder) {
                 BotSectionOrderView(inbox: inbox)
@@ -663,6 +793,7 @@ extension BotsInboxView {
             .task(id: revision) {
                 inbox.offlineCache = modelContext
                 await inbox.open(); hasSettled = true; openPendingDestination()
+                if let connection = inbox.connection { await ScreenHolds.reconcile(server: server, connection: connection) }
             }
             .onChange(of: inbox.link) { openPendingDestination() }
             .onChange(of: pendingDestination) { openPendingDestination() }
@@ -677,6 +808,8 @@ extension BotsInboxView {
                 }
             }
             .onDisappear { inbox.close() }
+            // A quiet reconnect holds while offline and runs as the network returns (#1372).
+            .onChange(of: NetworkPathMonitor.shared.changeCount) { inbox.networkPathDidChange() }
     }
 }
 
@@ -701,9 +834,12 @@ private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         if let home {
-            content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newChat }))
+            content.modifier(HermesHomeChrome(home: home, search: HermesHomeSearch(label: "Search bots and messages",
+                                                                               isDisabled: isOffline, open: search),
+                                               filter: { filter }, newChat: { newChat }))
         } else {
             content
+                .themedPageBackground()
                 .navigationTitle("Bots")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(removing: .title)
@@ -732,7 +868,7 @@ private struct BotSectionOrderView: View {
     var body: some View {
         let sections = inbox.reorderableSectionNames
         NavigationStack {
-            List {
+            AppList {
                 Section {
                     ForEach(sections) { section in
                         Text(verbatim: section.name).lineLimit(1)
@@ -749,6 +885,7 @@ private struct BotSectionOrderView: View {
                 }
             }
             .environment(\.editMode, .constant(.active))
+            .themedPageBackground()
             .navigationTitle("Reorder Sections")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -765,6 +902,14 @@ private enum BotCreationIntent: Identifiable {
     var source: BotProfile? { if case .duplicate(let profile) = self { return profile }; return nil }
 }
 
+/// One open Screen: the bot, on the connection the entry saw, and whether the entry was Take Over.
+private struct BotScreenTarget: Identifiable {
+    let profile: BotProfile
+    let connection: BotConnection
+    let takesOver: Bool
+    var id: String { connection.id.uuidString + "|" + profile.id }
+}
+
 private struct BotProfileEditSelection: Identifiable, Hashable {
     let connectionID: UUID
     let profileID: String
@@ -778,19 +923,27 @@ private struct BotHeroTile: View {
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
+    let statusIsStale: Bool
     var body: some View {
         VStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 84)
             VStack(spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(profile.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                    Text(profile.name).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
                     if unread { BotUnreadDot() }
                 }
-                if let status {
-                    // Two lines, so a long translation at a large size still reads whole.
-                    BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold))
-                        .lineLimit(2).multilineTextAlignment(.center)
-                }
+                // The longer status, hidden, holds the line's place at this text size whether a
+                // status shows or not: statuses arrive after the tiles, and a tile changing height
+                // moved the whole list under the pinned bots. Two lines, so a long translation at
+                // a large size still reads whole.
+                BotLiveStatusLabel(status: .waiting, font: AppFont.footnote(weight: .semibold), isStale: false)
+                    .lineLimit(2).multilineTextAlignment(.center).hidden().accessibilityHidden(true)
+                    .overlay(alignment: .top) {
+                        if let status {
+                            BotLiveStatusLabel(status: status, font: AppFont.footnote(weight: .semibold), isStale: statusIsStale)
+                                .lineLimit(2).multilineTextAlignment(.center)
+                        }
+                    }
             }
         }
         .frame(maxWidth: 132)
@@ -806,7 +959,7 @@ private struct BotRoomHeroTile: View {
     var body: some View {
         VStack(spacing: 14) {
             BotRoomAvatars(room: room, roster: roster, avatars: avatars, size: 60).frame(height: 84)
-            Text(room.name).font(.body).foregroundStyle(.secondary).lineLimit(1)
+            Text(room.name).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
         }
         .frame(maxWidth: 132)
         .accessibilityElement(children: .combine)
@@ -824,6 +977,7 @@ private struct BotInboxRow: View {
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
+    let statusIsStale: Bool
     /// A description short enough to read as a role sits beside the name; a
     /// longer one only stands in for the preview when the chat has none.
     private var chip: String? {
@@ -851,7 +1005,7 @@ private struct BotInboxRow: View {
                     }
                 }
                 HStack(spacing: 8) {
-                    Text(subline).font(.body).foregroundStyle(.secondary).lineLimit(1)
+                    Text(subline).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
                     Spacer(minLength: 0)
                     if unread { BotUnreadDot() }
                 }
@@ -861,9 +1015,9 @@ private struct BotInboxRow: View {
     }
 
     @ViewBuilder private var nameAndChip: some View {
-        Text(profile.name).font(.headline).lineLimit(1)
+        Text(profile.name).font(AppFont.headline()).lineLimit(1)
         if let chip {
-            Text(chip).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            Text(chip).font(AppFont.footnote()).foregroundStyle(.appSecondary).lineLimit(1)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
                 .layoutPriority(-1)
@@ -874,25 +1028,30 @@ private struct BotInboxRow: View {
     /// otherwise the last activity.
     @ViewBuilder private var trailingSlot: some View {
         if let status {
-            BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold))
+            BotLiveStatusLabel(status: status, font: AppFont.subheadline(weight: .semibold), isStale: statusIsStale)
                 .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
         } else if let date = profile.lastActive {
-            Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.secondary)
+            Text(BotInboxDateLabel.text(for: date)).font(AppFont.subheadline()).foregroundStyle(.appSecondary)
         }
     }
 }
 
 /// A bot's live status as a still, tinted word: the Live Activity's translated
 /// "Working" and "Waiting for you" in the Sessions list's attention tints. It never
-/// animates; the word carries the meaning without the color.
+/// animates; the word carries the meaning without the color. A last known status
+/// (#1374) is drawn secondary and read "Last known".
 private struct BotLiveStatusLabel: View {
     let status: BotLiveStatus
     let font: Font
+    let isStale: Bool
     var body: some View {
-        switch status {
-        case .working: Text("Working").font(font).foregroundStyle(Color("AttentionWorking"))
-        case .waiting: Text("Waiting for you").font(font).foregroundStyle(Color("AttentionApproval"))
+        let (word, tint) = switch status {
+        case .working: (String(localized: "Working"), Color("AttentionWorking"))
+        case .waiting: (String(localized: "Waiting for you"), Color("AttentionApproval"))
         }
+        Text(word).font(font)
+            .foregroundStyle(isStale ? AnyShapeStyle(.appSecondary) : AnyShapeStyle(tint))
+            .accessibilityLabel(isStale ? String(localized: "Last known: \(word)") : word)
     }
 }
 
@@ -904,11 +1063,11 @@ private struct BotInboxSkeletonRow: View {
             Circle().fill(.fill.tertiary).frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(verbatim: "Chief of Staff").font(.headline)
+                    Text(verbatim: "Chief of Staff").font(AppFont.headline())
                     Spacer(minLength: 8)
-                    Text(verbatim: "Saturday").font(.subheadline)
+                    Text(verbatim: "Saturday").font(AppFont.subheadline())
                 }
-                Text(verbatim: "Reading the latest conversation").font(.body)
+                Text(verbatim: "Reading the latest conversation").font(AppFont.body())
             }
             .redacted(reason: .placeholder)
         }

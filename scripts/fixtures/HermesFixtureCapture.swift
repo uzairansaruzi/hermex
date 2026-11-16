@@ -9,7 +9,8 @@ import Foundation
 /// The capture signs in like `BotClient.connect`, reads `/api/status` and
 /// `profiles.list`, runs one turn in a disposable hidden session (see `Mode`),
 /// resumes it, then closes and deletes it. In local mode it also reads the
-/// Profile's analytics while that session exists. Nothing reaches disk until the
+/// Profile's analytics while that session exists. `--gateway` records the canonical
+/// session protocol instead (`CanonicalCapture`). Nothing reaches disk until the
 /// allow-list sanitizer and the leak check have both passed.
 @main
 struct HermesFixtureCapture {
@@ -18,9 +19,9 @@ struct HermesFixtureCapture {
     static func main() async {
         let arguments = Array(CommandLine.arguments.dropFirst())
         do {
-            guard let root = arguments.first else { throw Failure("usage: HermesFixtureCapture <repo-root> [--local] [--keep-raw <file> | --from-raw <file>]") }
+            guard let root = arguments.first else { throw Failure("usage: HermesFixtureCapture <repo-root> [--local [--gateway]] [--keep-raw <file> | --from-raw <file>]") }
             let options = try Options(Array(arguments.dropFirst()))
-            let mode = Mode(local: options.local)
+            let mode = Mode(local: options.local, gateway: options.gateway)
             let repo = URL(fileURLWithPath: root)
             let pin = try Pin(repo.appendingPathComponent("HERMES_AGENT_TESTED_SHA"))
             var secrets = try Secrets.fromEnvironment()
@@ -76,12 +77,14 @@ struct Failure: Error, CustomStringConvertible {
 
 struct Options {
     var local = false
+    var gateway = false
     var keepRaw: URL?
     var fromRaw: URL?
     init(_ arguments: [String]) throws {
         var rest = arguments[...]
         while let flag = rest.popFirst() {
             if flag == "--local" { local = true; continue }
+            if flag == "--gateway" { gateway = true; continue }
             guard let value = rest.popFirst() else { throw Failure("\(flag) needs a file") }
             switch flag {
             case "--keep-raw": keepRaw = URL(fileURLWithPath: value)
@@ -90,22 +93,35 @@ struct Options {
             }
         }
         if keepRaw != nil, fromRaw != nil { throw Failure("--keep-raw and --from-raw are exclusive") }
+        if gateway, !local { throw Failure("--gateway records scripts/local-hermes --gateway, so it needs --local") }
     }
 }
 
-/// What one run records. A real host gets the canned text turn on its `inbox-triage`
-/// bot, and any tool or request traffic fails the capture. `--local` records the
+/// What one run records. A real host gets the canned text turn on its `hermex-fixtures`
+/// Profile, kept for this, and any tool or request traffic fails the capture. `--local` records the
 /// scripted tool and approval turn from `scripts/local-hermes` on its `default`
 /// Profile, and is the only mode that lets that traffic and its fields through. It
 /// also records that Profile's 30-day analytics, the Insights screen's three reads.
+/// `--local --gateway` records the canonical protocol from `scripts/local-hermes --gateway`
+/// instead (`CanonicalCapture`).
 struct Mode {
     let local: Bool
-    var profile: String { local ? "default" : "inbox-triage" }
+    var gateway = false
+    var profile: String { local ? "default" : "hermex-fixtures" }
+    /// The second Profile the gateway capture makes, whose sessions route by `profile`.
+    static let sibling = "fixtures-sibling"
     var prompt: String { local ? "Run the quick check." : "Reply with exactly: ok. Do not use tools." }
     /// String keys the sanitizer keeps: `Sanitizer.keptStrings`, plus what the tool
     /// and approval fixture test reads in local mode.
     var keptStrings: Set<String> {
-        local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
+        if gateway {
+            return Sanitizer.keptStrings.union(["replay_epoch", "epoch", "subscription_id", "admission_id", "prompt_id",
+                                                "kind", "choices", "command", "submission_id", "input_id", "outcome",
+                                                "reason", "message", "question", "description", "operation",
+                                                "branched_session_id", "deleted_ids", "headline", "key", "value", "scope",
+                                                "provider"])
+        }
+        return local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
     }
 }
 
@@ -189,8 +205,11 @@ final class Capture {
     private let mode: Mode
     private let session = URLSession(configuration: .ephemeral)
     private var socket: URLSessionWebSocketTask?
-    private var frames: [JSON] = []
+    /// Every inbound frame that was not a reply, in order.
+    private(set) var frames: [JSON] = []
     private var nextID = 0
+    /// The last socket's `gateway.ready` payload.
+    private(set) var readyPayload = JSON.null
 
     init(secrets: Secrets, pin: Pin, mode: Mode) { self.secrets = secrets; self.pin = pin; self.mode = mode }
 
@@ -210,6 +229,7 @@ final class Capture {
         guard try await http("api/auth/me")["provider"].text == "basic" else { throw Failure("unexpected identity provider") }
         defer { socket?.cancel(with: .normalClosure, reason: nil) }
         let ticket = try await openSocket()
+        if mode.gateway { return (try await CanonicalCapture(capture: self, mode: mode, status: status).run(), ticket) }
         let profiles = try await call("profiles.list", ["include_sessions": .bool(true)])
 
         var runtimes: [String] = []
@@ -273,7 +293,7 @@ final class Capture {
 
     /// Opens a socket the way `BotClient.connect` does: a fresh ticket, the ticket
     /// subprotocol, `gateway.ready`, then `client.capabilities`. Returns the ticket.
-    private func openSocket() async throws -> String {
+    func openSocket() async throws -> String {
         guard let ticket = try await http("api/auth/ws-ticket", body: .object([:]))["ticket"].text, !ticket.isEmpty else {
             throw Failure("no socket ticket")
         }
@@ -286,6 +306,7 @@ final class Capture {
         socket = task
         let ready = try await receive(timeout: 30)
         guard ready["params"]["type"].text == "gateway.ready" else { throw Failure("the socket did not open with gateway.ready") }
+        readyPayload = ready["params"]["payload"]
         // The same first frame BotClient sends, so the host treats this socket as Hermex.
         _ = try await call("client.capabilities", ["server_requests": .bool(true)])
         return ticket
@@ -348,7 +369,7 @@ final class Capture {
         }
     }
 
-    private func http(_ path: String, query: [URLQueryItem] = [], body: JSON? = nil) async throws -> JSON {
+    func http(_ path: String, query: [URLQueryItem] = [], body: JSON? = nil) async throws -> JSON {
         var parts = URLComponents(url: secrets.address.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { parts.queryItems = query }
         var request = URLRequest(url: parts.url!)
@@ -365,7 +386,28 @@ final class Capture {
         return try JSONDecoder().decode(JSON.self, from: data)
     }
 
-    private func call(_ method: String, _ params: [String: JSON]) async throws -> JSON {
+    /// One POST to `path` that must be refused with `expected`, for a refusal the fixture keeps:
+    /// `{status, body}`.
+    func refusal(_ path: String, body: JSON, expected: Int) async throws -> JSON {
+        var request = URLRequest(url: secrets.address.appendingPathComponent(path))
+        request.timeoutInterval = 20
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == expected else { throw Failure("\(path) answered HTTP \(status), not the \(expected) it refuses with") }
+        return .object(["status": .number(Double(status)), "body": (try? JSONDecoder().decode(JSON.self, from: data)) ?? .null])
+    }
+
+    func call(_ method: String, _ params: [String: JSON]) async throws -> JSON {
+        let reply = try await reply(method, params)
+        if let code = reply["error"]["code"].integer { throw RPCFailure(method: method, code: code) }
+        return reply["result"]
+    }
+
+    /// The whole reply frame to one call, a refusal's `error` included.
+    func reply(_ method: String, _ params: [String: JSON]) async throws -> JSON {
         guard let socket else { throw Failure("no socket") }
         nextID += 1
         let id = nextID
@@ -374,8 +416,21 @@ final class Capture {
         while true {
             let reply = try await receive(timeout: 30)
             guard reply["id"].integer == id, reply["method"] == .null else { frames.append(reply); continue }
-            if let code = reply["error"]["code"].integer { throw RPCFailure(method: method, code: code) }
-            return reply["result"]
+            return reply
+        }
+    }
+
+    /// Returns once a frame from index `start` on matches `stop`, counting those `call` already
+    /// kept while it waited for a reply, and keeps each frame it reads in `frames`; 180 s at most.
+    func readFrames(from start: Int, until stop: (JSON) -> Bool) async throws {
+        if frames.dropFirst(start).contains(where: stop) { return }
+        let deadline = Date().addingTimeInterval(180)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { throw Failure("the awaited frame did not arrive within 180 s") }
+            let frame = try await receive(timeout: remaining)
+            frames.append(frame)
+            if stop(frame) { return }
         }
     }
 
@@ -427,6 +482,7 @@ enum Sanitizer {
     static func fixtures(raw: JSON, pin: Pin, mode: Mode) throws -> [String: Data] {
         let status = raw["status"]
         guard status["version"].text == pin.release else { throw Failure("the capture is from \(status["version"].text ?? "an unknown release"), the pin is \(pin.release)") }
+        if mode.gateway { return try CanonicalCapture.fixtures(raw: raw, pin: pin, mode: mode) }
         guard let runtime = raw["runtime_id"].text, let frames = raw["frames"].list else { throw Failure("the capture has no turn") }
         let turn = try settledTurn(frames, runtime: runtime, mode: mode)
         let stamp: [String: JSON] = [
@@ -524,7 +580,7 @@ enum Sanitizer {
             guard let key else { return .string(placeholder) }
             if identities.contains(key) { return .string("fixture-install") }
             if paths.contains(key) { return .string("/fixture/\(key)") }
-            if text == mode.profile || mode.keptStrings.contains(key) || extra.contains(key) || (transcript && key == "text")
+            if text == mode.profile || (mode.gateway && text == Mode.sibling) || mode.keptStrings.contains(key) || extra.contains(key) || (transcript && key == "text")
                 || (key == "auth_providers") { return .string(text) }
             return .string(placeholder)
         default:
@@ -567,5 +623,321 @@ enum LeakCheck {
         case .array(let items): return items.flatMap { values(of: key, in: $0) }
         default: return []
         }
+    }
+}
+
+// MARK: - Canonical gateway capture
+
+/// `--local --gateway`: what a gateway's own listener (`scripts/local-hermes --gateway`) answers
+/// on a canonical socket (`gateway.ready` with `session_authority`), sent as Hermex sends it
+/// there (#1601). It records the ready payload; a session's create, an idle resume and a second
+/// resume repeating its subscription; a resume while the scripted turn waits on its approval;
+/// a replay of that turn from the session's own epoch, one from the socket's (the epoch
+/// mismatch) and one from past the host's cursor (the gap); a detach and its stale repeat; and a
+/// session on a second Profile, routed by `profile`. The approval is answered once so the turn
+/// ends. The sessions stay in the local gateway's temporary home, which goes when it stops.
+struct CanonicalCapture {
+    let capture: Capture
+    let mode: Mode
+    let status: JSON
+
+    /// Each fixture file and the raw capture's key it holds.
+    static let files: [(name: String, key: String)] = [
+        // Sign-in on the Webapp (#1606): its status before and after a password sign-in, and a
+        // refresh token it didn't issue to a native sign-in.
+        ("canonical-status-signed-out.json", "status"), ("canonical-status-signed-in.json", "status_signed_in"),
+        ("canonical-refresh-refused.json", "refresh_refused"),
+        ("canonical-ready.json", "ready"), ("canonical-create.json", "create"),
+        ("canonical-resume-idle.json", "resume_idle"), ("canonical-resume-repeat.json", "resume_repeat"),
+        ("canonical-resume-running.json", "resume_running"),
+        ("canonical-replay.json", "replay"), ("canonical-replay-epoch-mismatch.json", "replay_epoch_mismatch"),
+        ("canonical-replay-gap.json", "replay_gap"), ("canonical-detach.json", "detach"),
+        ("canonical-profile-create.json", "profile_create"),
+        // Turns (#1602)
+        ("canonical-receipts.json", "receipts"), ("canonical-resume-queued.json", "resume_queued"),
+        ("canonical-withdrawn-complete.json", "withdrawn_complete"), ("canonical-stale-generation.json", "stale_generation"),
+        ("canonical-second-turn-start.json", "second_turn_start"),
+        ("canonical-clarify-lifecycle.json", "clarify_lifecycle"),
+        // Session edits (#1603) and settings (#1604)
+        ("canonical-mutations.json", "mutations"), ("canonical-settings.json", "settings")
+    ]
+
+    func run() async throws -> JSON {
+        var ready = capture.readyPayload.fields ?? [:]
+        guard ready["session_authority"]?.flag == true else {
+            throw Failure("gateway.ready has no session_authority; start scripts/local-hermes --gateway")
+        }
+        ready["skin"] = nil
+        let socketEpoch = ready["replay_epoch"] ?? .null
+        let signedIn = try await capture.http("api/status")
+        guard signedIn["install_id"].text?.isEmpty == false, status["install_id"] == .null else {
+            throw Failure("the Webapp should name its install only once signed in")
+        }
+        let refused = try await capture.refusal("auth/native/refresh", body: .object([
+            "refresh_token": .string(UUID().uuidString), "provider": .string("basic")
+        ]), expected: 401)
+        let profile = JSON.string(mode.profile)
+
+        // As `HermesCall.sessionNew` and `.sessionResume` reach the canonical wire.
+        let create = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])
+        guard let session = create["session_id"].text else { throw Failure("session.create returned no session_id") }
+        print("Canonical session: \(session).")
+        func resume() async throws -> JSON {
+            try await capture.call("session.resume", ["profile": profile, "session_id": .string(session),
+                                                      "source": .string("gui"), "omit_messages": .bool(true)])
+        }
+        let idle = try await resume()
+        let repeated = try await resume()
+        guard idle["subscription_id"] == repeated["subscription_id"] else { throw Failure("a second resume changed the subscription") }
+
+        let submitted = capture.frames.count
+        _ = try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session),
+                                                     "text": .string(mode.prompt), "submission_id": .string(UUID().uuidString)])
+        try await capture.readFrames(from: submitted) { Self.event($0, of: session) == "approval.request" }
+        let running = try await resume()
+        guard running["running"].flag == true, let prompt = running["prompts"].list?.first else {
+            throw Failure("the resume during the turn shows no running turn waiting on its approval")
+        }
+        _ = try await capture.call("approval.respond", [
+            "profile": profile, "session_id": .string(session), "execution_generation": prompt["execution_generation"],
+            "prompt_id": prompt["prompt_id"], "choice": .string("once")
+        ])
+        try await capture.readFrames(from: submitted) { Self.event($0, of: session) == "message.complete" }
+
+        func replay(_ epoch: JSON, from cursor: Int) async throws -> JSON {
+            try await capture.call("session.events.since", ["profile": profile, "session_id": .string(session),
+                                                            "last_seen": .number(Double(cursor)), "replay_epoch": epoch])
+        }
+        let ownEpoch = running["replay_epoch"]
+        let replayed = try await replay(ownEpoch, from: 0)
+        let mismatch = try await replay(socketEpoch, from: 0)
+        let gap = try await replay(ownEpoch, from: (replayed["latest_seq"].integer ?? 0) + 100)
+        guard replayed["snapshot_required"].flag == false, mismatch["snapshot_required"].flag == true,
+              gap["snapshot_required"].flag == true else { throw Failure("the replays did not answer as the contract says") }
+
+        let detach: [String: JSON] = ["profile": profile, "session_id": .string(session), "subscription_id": running["subscription_id"]]
+        let detached = try await capture.call("session.detach", detach)
+        let stale = try await capture.call("session.detach", detach)
+
+        do { _ = try await capture.call("profiles.create", ["name": .string(Mode.sibling)]) }
+        catch let failure as RPCFailure where failure.code == 4062 {} // made by an earlier run on this gateway
+        let sibling = try await capture.call("session.create", ["profile": .string(Mode.sibling), "source": .string("gui")])
+        let turns = try await captureTurns()
+        let mutations = try await captureMutations()
+        let settings = try await captureSettings()
+
+        return .object([
+            "status": status, "status_signed_in": signedIn, "refresh_refused": refused,
+            "ready": .object(ready), "create": create, "resume_idle": idle, "resume_repeat": repeated,
+            "resume_running": running, "replay": replayed, "replay_epoch_mismatch": mismatch,
+            "replay_gap": gap, "detach": .array([detached, stale]), "profile_create": sibling,
+            "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
+        ].merging(turns) { $1 }.merging(["mutations": mutations, "settings": settings]) { $1 })
+    }
+
+    /// #1604's settings on a canonical session, as Hermex sends them: the model as a fenced
+    /// `model` edit, then Fast without a scope, the session's reasoning, and the Profile's
+    /// personality and approval mode. The stub model has no price, so no selection guard asks to
+    /// confirm, and the stub runs no Fast tier: `normal` is acknowledged, `fast` refused.
+    private func captureSettings() async throws -> JSON {
+        let profile = JSON.string(mode.profile)
+        guard let session = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])["session_id"].text
+        else { throw Failure("session.create returned no session_id") }
+        let snapshot = try await capture.call("session.resume", ["profile": profile, "session_id": .string(session),
+                                                                 "source": .string("gui"), "omit_messages": .bool(true)])
+        func set(_ key: String, _ value: String, scope: String? = nil) async throws -> JSON {
+            var params: [String: JSON] = ["profile": profile, "session_id": .string(session), "key": .string(key), "value": .string(value)]
+            if let scope { params["scope"] = .string(scope) }
+            return try await capture.reply("config.set", params)
+        }
+        let model = try await capture.reply("session.mutate", [
+            "profile": profile, "session_id": .string(session), "request_id": .string(UUID().uuidString),
+            "expected_revision": snapshot["revision"], "expected_generation": snapshot["execution_generation"],
+            "operation": .string("model"), "payload": .object(["model": .string("hermex-stub"), "provider": .string("custom")])
+        ])
+        let configModel = try await set("model", "hermex-stub --provider custom --session", scope: "session")
+        return .object([
+            "model": model, "config_set_model": configModel, "fast_normal": try await set("fast", "normal"),
+            "fast_scoped": try await set("fast", "fast", scope: "session"),
+            "reasoning": try await set("reasoning", "high", scope: "session"),
+            "personality": try await set("personality", "none"), "approval_mode": try await set("approvals.mode", "manual")
+        ])
+    }
+
+    /// #1603's `session.mutate` edits, as Hermex sends them, on a session with two settled turns:
+    /// a rename, the same edit at an older revision (the conflict), a rewind at an older generation,
+    /// a branch through the first reply's row, a rewind of the last prompt, a compaction, a delete
+    /// refused while a turn runs, and the delete once it stopped. Also a titled Bot Chat create.
+    private func captureMutations() async throws -> JSON {
+        let profile = JSON.string(mode.profile)
+        guard let session = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])["session_id"].text
+        else { throw Failure("session.create returned no session_id") }
+        func settle(_ text: String) async throws {
+            let start = capture.frames.count
+            _ = try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session), "text": .string(text),
+                                                         "queued": .bool(true), "submission_id": .string(UUID().uuidString)])
+            try await capture.readFrames(from: start) { Self.event($0, of: session) == "approval.request" }
+            guard let asked = capture.frames.dropFirst(start).last(where: { Self.event($0, of: session) == "approval.request" }) else {
+                throw Failure("no approval")
+            }
+            _ = try await capture.call("approval.respond", [
+                "profile": profile, "session_id": .string(session), "execution_generation": asked["params"]["payload"]["execution_generation"],
+                "prompt_id": asked["params"]["payload"]["prompt_id"], "choice": .string("once")
+            ])
+            try await capture.readFrames(from: start) {
+                Self.event($0, of: session) == "session.info" && $0["params"]["payload"]["running"].flag == false
+                    && capture.frames.dropFirst(start).contains { Self.event($0, of: session) == "message.complete" }
+            }
+        }
+        func fences() async throws -> (revision: JSON, generation: JSON) {
+            let snapshot = try await capture.call("session.resume", ["profile": profile, "session_id": .string(session),
+                                                                     "source": .string("gui"), "omit_messages": .bool(true)])
+            return (snapshot["revision"], snapshot["execution_generation"])
+        }
+        func mutate(_ operation: String, _ payload: [String: JSON], revision: JSON, generation: JSON?) async throws -> JSON {
+            var params: [String: JSON] = ["profile": profile, "session_id": .string(session), "request_id": .string(UUID().uuidString),
+                                          "expected_revision": revision, "operation": .string(operation), "payload": .object(payload)]
+            if let generation { params["expected_generation"] = generation }
+            return try await capture.reply("session.mutate", params)
+        }
+        try await settle(mode.prompt)
+        try await settle("Then run it again.")
+        let rows = try await capture.http("api/sessions/\(session)/messages")["messages"].list ?? []
+        guard let firstReply = rows.first(where: { $0["role"].text == "assistant" })?["id"],
+              let lastPrompt = rows.last(where: { $0["role"].text == "user" })?["id"] else { throw Failure("the turns saved no rows") }
+
+        // Titles are unique per Profile, and a gateway keeps the last run's sessions.
+        let run = UUID().uuidString.prefix(8)
+        var fence = try await fences()
+        let renamed = try await mutate("rename", ["title": .string("Renamed \(run)")], revision: fence.revision, generation: nil)
+        let conflict = try await mutate("rename", ["title": .string("Again \(run)")], revision: fence.revision, generation: nil)
+        fence = try await fences()
+        let staleRewind = try await mutate("rewind", ["target_message_id": lastPrompt], revision: fence.revision,
+                                           generation: .number(Double((fence.generation.integer ?? 1) - 1)))
+        let branched = try await mutate("branch", ["title": .string("Branched \(run)"), "through_message_id": firstReply],
+                                        revision: fence.revision, generation: fence.generation)
+        fence = try await fences()
+        let rewound = try await mutate("rewind", ["target_message_id": lastPrompt], revision: fence.revision, generation: fence.generation)
+        fence = try await fences()
+        let compacted = try await mutate("compress", [:], revision: fence.revision, generation: fence.generation)
+
+        let start = capture.frames.count
+        _ = try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session), "text": .string(mode.prompt),
+                                                     "queued": .bool(true), "submission_id": .string(UUID().uuidString)])
+        try await capture.readFrames(from: start) { Self.event($0, of: session) == "approval.request" }
+        fence = try await fences()
+        let busy = try await mutate("delete", [:], revision: fence.revision, generation: fence.generation)
+        _ = try await capture.call("session.interrupt", ["profile": profile, "session_id": .string(session),
+                                                         "execution_generation": fence.generation])
+        try await capture.readFrames(from: start) {
+            Self.event($0, of: session) == "session.info" && $0["params"]["payload"]["running"].flag == false
+                && capture.frames.dropFirst(start).contains { Self.event($0, of: session) == "message.complete" }
+        }
+        fence = try await fences()
+        let deleted = try await mutate("delete", [:], revision: fence.revision, generation: fence.generation)
+
+        let titled = try await capture.call("session.create", ["profile": profile, "title": .string("Bot Chat"), "hidden": .bool(true),
+                                                               "follow_profile_config": .bool(true), "source": .string("gui")])
+        let expected: [(String, Bool)] = [
+            ("rename", renamed["result"] != .null), ("revision conflict", conflict["error"]["data"]["reason"].text == "revision_conflict"),
+            ("stale rewind", staleRewind["error"]["data"]["reason"].text == "stale_generation"), ("branch", branched["result"] != .null),
+            ("rewind", rewound["result"] != .null), ("compress", compacted["result"] != .null), ("busy delete", busy["error"] != .null),
+            ("delete", deleted["result"] != .null)
+        ]
+        if let wrong = expected.first(where: { !$0.1 })?.0 { throw Failure("the \(wrong) edit did not answer as the contract says") }
+        return .object([
+            "rows": .array(rows.map { .object(["id": $0["id"], "role": $0["role"]]) }),
+            "rename": renamed, "revision_conflict": conflict, "stale_generation": staleRewind, "branch": branched,
+            "rewind": rewound, "compress": compacted, "busy_delete": busy, "delete": deleted, "titled_create": titled
+        ])
+    }
+
+    /// #1602's turns, sent as Hermex sends them. One session runs the scripted turn while two more
+    /// sends queue behind it: their receipts, a resume listing all three, the newest withdrawn
+    /// (its receipt and the `message.complete` it settles with), a stop refused for a stale
+    /// generation, and once the approval is answered, the next turn's start under the next
+    /// generation, stopped. Another session asks the stub's clarify question: the request, the
+    /// `clarify.respond` receipt and the settled event.
+    private func captureTurns() async throws -> [String: JSON] {
+        let profile = JSON.string(mode.profile)
+        func session() async throws -> String {
+            guard let id = try await capture.call("session.create", ["profile": profile, "source": .string("gui")])["session_id"].text
+            else { throw Failure("session.create returned no session_id") }
+            return id
+        }
+        func submit(_ session: String, _ text: String) async throws -> JSON {
+            try await capture.call("prompt.submit", ["profile": profile, "session_id": .string(session), "text": .string(text),
+                                                     "queued": .bool(true), "submission_id": .string(UUID().uuidString)])
+        }
+        func event(_ type: String, of session: String, from start: Int, where match: (JSON) -> Bool = { _ in true }) async throws -> JSON {
+            let found = { (frame: JSON) in Self.event(frame, of: session) == type && match(frame["params"]) }
+            try await capture.readFrames(from: start, until: found)
+            guard let frame = capture.frames.dropFirst(start).first(where: found) else { throw Failure("no \(type)") }
+            return frame["params"]
+        }
+
+        let running = try await session()
+        let start = capture.frames.count
+        let idle = try await submit(running, mode.prompt)
+        let approval = try await event("approval.request", of: running, from: start)
+        let behind = try await submit(running, "Then the tests")
+        let newest = try await submit(running, "And the docs")
+        let queued = try await capture.call("session.resume", ["profile": profile, "session_id": .string(running),
+                                                               "source": .string("gui"), "omit_messages": .bool(true)])
+        guard queued["pending"].list?.count == 3, let generation = queued["execution_generation"].integer else {
+            throw Failure("the resume does not list the running turn and two queued sends")
+        }
+        let cancelled = try await capture.call("prompt.cancel", ["profile": profile, "session_id": .string(running),
+                                                                 "admission_id": newest["admission_id"]])
+        let withdrawn = try await event("message.complete", of: running, from: start) { $0["admission_id"] == newest["admission_id"] }
+        let stale = try await capture.reply("session.interrupt", ["profile": profile, "session_id": .string(running),
+                                                                  "execution_generation": .number(Double(generation - 1))])
+        guard stale["error"]["data"]["reason"].text == "stale_generation" else { throw Failure("an older generation's stop was not refused as stale") }
+        _ = try await capture.call("approval.respond", [
+            "profile": profile, "session_id": .string(running), "execution_generation": approval["payload"]["execution_generation"],
+            "prompt_id": approval["payload"]["prompt_id"], "choice": .string("once")
+        ])
+        let next = try await event("message.start", of: running, from: start) { $0["admission_id"] == behind["admission_id"] }
+        guard next["execution_generation"].integer == generation + 1 else { throw Failure("the next turn kept the generation") }
+        _ = try await capture.call("session.interrupt", ["profile": profile, "session_id": .string(running),
+                                                         "execution_generation": next["execution_generation"]])
+
+        let asking = try await session()
+        let askStart = capture.frames.count
+        _ = try await submit(asking, "Please clarify")
+        let question = try await event("clarify.request", of: asking, from: askStart)
+        let answer = try await capture.call("clarify.respond", [
+            "profile": profile, "session_id": .string(asking), "execution_generation": question["payload"]["execution_generation"],
+            "prompt_id": question["payload"]["prompt_id"], "answer": .string("Lint")
+        ])
+        let answered = try await event("clarify.settled", of: asking, from: askStart)
+
+        return [
+            "receipts": .object(["idle": idle, "behind_running": behind, "cancelled": cancelled]),
+            "resume_queued": queued, "withdrawn_complete": withdrawn, "stale_generation": stale["error"],
+            "second_turn_start": next,
+            "clarify_lifecycle": .array([question, answer, answered])
+        ]
+    }
+
+    /// The event type of a frame for `session`; nil for any other frame.
+    static func event(_ frame: JSON, of session: String) -> String? {
+        guard frame["method"].text == "event", frame["params"]["session_id"].text == session else { return nil }
+        return frame["params"]["type"].text
+    }
+
+    /// One file per fixture, each stamped with the pin, its reply under `reply`.
+    static func fixtures(raw: JSON, pin: Pin, mode: Mode) throws -> [String: Data] {
+        let stamp: [String: JSON] = [
+            "hermes_agent_sha": .string(pin.sha), "version": .string(pin.release),
+            "captured_at": .string(raw["captured_at"].text ?? ISO8601DateFormatter().string(from: Date()))
+        ]
+        var files: [String: Data] = [:]
+        for (name, key) in Self.files {
+            guard raw[key] != .null else { throw Failure("the capture has no \(key); record it again") }
+            let file = stamp.merging(["reply": Sanitizer.clean(raw[key], transcript: true, mode: mode)]) { $1 }
+            files[name] = try HermesFixtureCapture.encode(.object(file))
+        }
+        return files
     }
 }

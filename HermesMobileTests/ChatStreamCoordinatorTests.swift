@@ -582,6 +582,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             delegate: delegate,
             reconnectDelay: { _ in
                 enteredDelay.fulfill()
+                // test-wait: holds the backoff until replacing the stream cancels it.
                 try await Task.sleep(nanoseconds: 60_000_000_000)
             }
         ) { request in

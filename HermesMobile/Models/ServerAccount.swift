@@ -20,7 +20,7 @@ enum ServerKind: String, Codable, Sendable {
 /// lives in `HTTPCookieStorage`. This model is an additive shadow of the
 /// single-server state; nothing in this slice reads it for routing yet.
 ///
-/// Decoding is tolerant (CLAUDE.md rule 3): missing fields fall back to sensible
+/// Decoding is tolerant: missing fields fall back to sensible
 /// defaults so a blob written by a different slice in the epic still loads.
 struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
     /// Stable per-server identity. We reuse the normalized base-URL string so it

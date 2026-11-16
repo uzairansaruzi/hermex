@@ -359,6 +359,58 @@ import Observation
         conversation.suspend()
     }
 
+    // MARK: Canonical sockets
+
+    /// On a canonical socket (#1341) a Bot Chat's resume carries no `close_on_disconnect`, its
+    /// canonical snapshot (no `session_key`) is this attach's, and the replay goes under the
+    /// snapshot's own epoch, never `gateway.ready`'s. A drop reattaches from the cursor and hands
+    /// over each frame once, though the live copy of seq 3 landed ahead of its replay.
+    func testACanonicalBotChatReplaysUnderItsOwnEpochAndReconnectsDeliveringEachFrameOnce() async {
+        let host = BotSocketHost()
+        host.always("session.resume", .init(result: canonicalSnapshot()))
+        host.always("session.events.since", .init(result: BotFixtureWire.replay(
+            latest: 2, epoch: "session-epoch", events: [frame(1, of: "tip"), frame(2, of: "tip")])))
+        addTeardownBlock { HermesHostFixture.reset() }
+        let http = host.connection(record, canonical: true)
+        let (conversation, owner) = attach(BotClient(http: http), .canonicalChat(profile: profile), reconnectDelay: { _ in })
+        await conversation.activate()
+        XCTAssertEqual(conversation.connectionState, .connected)
+        XCTAssertEqual(owner.log, ["root root", "replay 1", "replay 2", "snapshot", "connected"])
+        let resume = host.requests.first { $0["method"].text == "session.resume" }?["params"]
+        XCTAssertEqual(resume?["close_on_disconnect"], .null, "the host refuses it with 4001")
+        XCTAssertEqual(replays(host).map(\.epoch), ["session-epoch"])
+
+        owner.log = []
+        host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3, epoch: "session-epoch", events: [frame(3, of: "tip")]),
+                                                before: [frame(3, of: "tip")]))
+        http.gateway.dropSocket()
+        let reconnected = expectation(description: "reattached")
+        withObservationTracking { _ = conversation.isReconnecting } onChange: { reconnected.fulfill() }
+        await fulfillment(of: [reconnected], timeout: 3)
+        XCTAssertEqual(conversation.connectionState, .connected)
+        XCTAssertEqual(owner.log, ["root root", "replay 3", "snapshot", "connected"])
+        XCTAssertEqual(replays(host).map(\.lastSeen), [0, 2], "the reattach replays from its cursor")
+        XCTAssertEqual(Set(replays(host).map(\.epoch)), ["session-epoch"])
+        XCTAssertEqual(Set(replays(host).map(\.profile)), [profile])
+        conversation.suspend()
+    }
+
+    /// A canonical snapshot of the Bot Chat at `tip`, under `session-epoch`.
+    private func canonicalSnapshot() -> BotJSON {
+        .object([
+            "session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("session-epoch"),
+            "subscription_id": .string("sub-1"), "revision": .number(0), "execution_generation": .number(1),
+            "running": .bool(true), "messages": .array([]), "messages_omitted": .bool(true),
+            "pending": .array([]), "prompts": .array([]), "info": .object([:])
+        ])
+    }
+
+    /// Each `session.events.since` the host received: its cursor, epoch and Profile.
+    private func replays(_ host: BotSocketHost) -> [(lastSeen: Int?, epoch: String?, profile: String?)] {
+        host.requests.filter { $0["method"].text == "session.events.since" }
+            .map { ($0["params"]["last_seen"].integer, $0["params"]["replay_epoch"].text, $0["params"]["profile"].text) }
+    }
+
     private let profile = "inbox-triage"
 
     /// A host whose replay holds the running turn through seq 3.
@@ -371,6 +423,8 @@ import Observation
     /// An engine on `target` over a fresh connection to `host`, with an owner that logs.
     private func attach(_ host: BotSocketHost, _ target: ConversationTarget,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
+                        // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
+                        // reaches one passes its own delay.
                         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) })
         -> (HermesConversation, RecordingOwner, BotClient) {
         addTeardownBlock { HermesHostFixture.reset() }
@@ -382,6 +436,8 @@ import Observation
     /// An engine on `target` over `wire`, with an owner that logs.
     private func attach(_ wire: any BotTransport, _ target: ConversationTarget,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
+                        // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
+                        // reaches one passes its own delay.
                         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) })
         -> (HermesConversation, RecordingOwner) {
         let conversation = HermesConversation(server: URL(string: "https://hermes.example")!, connection: record,
@@ -394,8 +450,10 @@ import Observation
     private let record = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                        username: "user", password: "fixture")
 
-    private func frame(_ seq: Int) -> BotJSON {
-        .object(["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string("message.delta"),
+    private func frame(_ seq: Int) -> BotJSON { frame(seq, of: "runtime") }
+
+    private func frame(_ seq: Int, of session: String) -> BotJSON {
+        .object(["session_id": .string(session), "seq": .number(Double(seq)), "type": .string("message.delta"),
                  "payload": .object(["text": .string("part \(seq)")])])
     }
 }

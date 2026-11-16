@@ -12,6 +12,7 @@ struct TranscriptLinkPreviewView: View {
     @State private var previewImage: UIImage?
     @State private var didFail = false
     @State private var isLoading = false
+    @State private var admittedURL: URL?
 
     var body: some View {
         Button {
@@ -24,7 +25,9 @@ struct TranscriptLinkPreviewView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens the web page")
-        .task(id: url.absoluteString) {
+        .loadsOnceVisible(id: url) { admittedURL = $0 }
+        .task(id: admittedURL) {
+            guard admittedURL == url else { return }
             await loadMetadataIfNeeded()
         }
     }
@@ -226,22 +229,22 @@ private extension TranscriptLinkPreviewView {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppFont.subheadline(weight: .semibold))
                     .lineLimit(2)
 
                 Text(displaySubtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.caption())
+                    .foregroundStyle(.appSecondary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.trailing, 10)
         }
         .frame(minHeight: 84, alignment: .center)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.appMaterial(.thinMaterial), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
+                .stroke(Color(.appSeparator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }

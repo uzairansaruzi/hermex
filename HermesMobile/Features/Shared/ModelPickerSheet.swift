@@ -61,10 +61,10 @@ struct ModelPickerSheet: View {
         let groups = filteredModelGroups
 
         NavigationStack {
-            List {
+            AppList(rows: .plain) {
                 if let errorMessage {
                     Text(verbatim: errorMessage)
-                        .font(.caption)
+                        .font(AppFont.caption())
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, minHeight: rowContentMinHeight(verticalInsets: 8), alignment: .leading)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 0, trailing: 12))
@@ -97,12 +97,13 @@ struct ModelPickerSheet: View {
             // through `rowContentMinHeight(verticalInsets:)`.
             .environment(\.defaultMinListRowHeight, 0)
             .scrollContentBackground(.hidden)
+            .themedPageBackground()
             .navigationTitle(configuration.navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: $searchText,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search models"
+                prompt: configuration.searchPrompt
             )
             .onAppear {
                 initializeCustomProviderIfNeeded()
@@ -175,14 +176,14 @@ struct ModelPickerSheet: View {
         } label: {
             HStack(spacing: 12) {
                 Text(clearAction.title)
-                    .font(.body)
+                    .font(AppFont.body())
                     .lineLimit(2)
 
                 Spacer(minLength: 0)
 
                 if clearAction.isSelected {
                     Image(systemName: "checkmark")
-                        .font(.body.weight(.semibold))
+                        .font(AppFont.body(weight: .semibold))
                         .accessibilityHidden(true)
                 }
             }
@@ -220,8 +221,8 @@ struct ModelPickerSheet: View {
                             }
                         } label: {
                             Image(systemName: "chevron.down")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .font(AppFont.footnote(weight: .semibold))
+                                .foregroundStyle(.appSecondary)
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
                         }
@@ -242,7 +243,7 @@ struct ModelPickerSheet: View {
                                     .tint(customEntryForeground)
                             } else {
                                 Label(configuration.customActionTitle, systemImage: "plus")
-                                    .font(.body.weight(.semibold))
+                                    .font(AppFont.body(weight: .semibold))
                             }
 
                             Spacer(minLength: 0)
@@ -268,7 +269,7 @@ struct ModelPickerSheet: View {
                 .padding(.horizontal, 12)
                 .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
                 .background(
-                    customOption == nil ? Color.clear : Color.primary,
+                    customOption == nil ? Color.clear : Color(.appText),
                     in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
                 )
                 .disabled(customOption == nil || isSelectionDisabled)
@@ -284,7 +285,7 @@ struct ModelPickerSheet: View {
     }
 
     private var customEntryForeground: Color {
-        customOption == nil ? Color(.tertiaryLabel) : Color(.systemBackground)
+        customOption == nil ? Color(.appTextTertiary) : Color(.appCanvas)
     }
 
     /// Trailing star shared by model rows and the custom entry. Monochrome:
@@ -299,7 +300,7 @@ struct ModelPickerSheet: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: isFavorite ? "star.fill" : "star")
-                .font(.body)
+                .font(AppFont.body())
                 .frame(width: 32, height: 32)
                 .contentShape(Rectangle())
         }
@@ -309,9 +310,9 @@ struct ModelPickerSheet: View {
     }
 
     private func starColor(isFavorite: Bool, isInverted: Bool, isEnabled: Bool) -> Color {
-        guard isEnabled else { return Color(.tertiaryLabel) }
-        if isInverted { return Color(.systemBackground) }
-        return isFavorite ? Color.primary : Color(.tertiaryLabel)
+        guard isEnabled else { return Color(.appTextTertiary) }
+        if isInverted { return Color(.appCanvas) }
+        return isFavorite ? Color(.appText) : Color(.appTextTertiary)
     }
 
     /// One provider group. Inside a List, each view in the disclosure content
@@ -361,8 +362,8 @@ struct ModelPickerSheet: View {
                 }
 
                 Text(group.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .font(AppFont.fixed(size: 14, weight: .semibold))
+                    .foregroundStyle(.appPrimary)
                     .lineLimit(1)
                     .textCase(.uppercase)
 
@@ -371,8 +372,8 @@ struct ModelPickerSheet: View {
                         ? "\(displayedModels.count) / \(totalModelCount)"
                         : "\(displayedModels.count)"
                 )
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(AppFont.fixed(size: 12, weight: .medium))
+                    .foregroundStyle(.appSecondary)
                     .accessibilityLabel(
                         Text("Showing \(displayedModels.count) of \(totalModelCount) models")
                     )
@@ -383,7 +384,7 @@ struct ModelPickerSheet: View {
             .frame(minHeight: rowContentMinHeight(verticalInsets: 10))
             .contentShape(Rectangle())
         }
-        .tint(Color(.secondaryLabel))
+        .tint(Color(.appTextSecondary))
     }
 
     /// The hairline under a group header and above its overflow toggle. The
@@ -412,7 +413,7 @@ struct ModelPickerSheet: View {
                         ? String(localized: "Show fewer models")
                         : String(localized: "Show all models")
                 )
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(AppFont.fixed(size: 13, weight: .semibold))
 
                 Spacer(minLength: 0)
 
@@ -464,25 +465,38 @@ struct ModelPickerSheet: View {
     private func modelOptionRowContent(_ option: ModelCatalogOption) -> some View {
         let selected = isSelected(option)
         let inFlight = Self.isInFlight(option, inFlightKey: inFlightKey)
+        let displayLabel = ModelDisplayNames.displayLabel(for: option.id, displayName: option.displayName)
+        // Two ids can share a readable name (`…-flash` and `…-flash:local`), so
+        // the id stays visible, and spoken, beside it.
+        let showsID = displayLabel.caseInsensitiveCompare(option.id) != .orderedSame
 
         return HStack(spacing: 12) {
             Button {
                 commit(option)
             } label: {
                 HStack(spacing: 12) {
-                    Text(option.displayName)
-                        .font(.body)
-                        .lineLimit(2)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(verbatim: displayLabel)
+                            .font(AppFont.body())
+                            .lineLimit(2)
+                        if showsID {
+                            Text(verbatim: option.id)
+                                .font(AppFont.caption())
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
 
                     Spacer(minLength: 0)
 
                     if inFlight {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(selected ? Color(.systemBackground) : Color.primary)
+                            .tint(selected ? Color(.appCanvas) : Color(.appText))
                     } else if selected {
                         Image(systemName: "checkmark")
-                            .font(.body.weight(.semibold))
+                            .font(AppFont.body(weight: .semibold))
                             .accessibilityHidden(true)
                     }
                 }
@@ -491,15 +505,16 @@ struct ModelPickerSheet: View {
             }
             .buttonStyle(.plain)
             .disabled(isSelectionDisabled)
-            .accessibilityLabel(Text(verbatim: option.displayName))
+            .accessibilityLabel(Text(verbatim: displayLabel))
+            .accessibilityValue(Text(verbatim: showsID ? option.id : ""))
             .accessibilityAddTraits(selected ? .isSelected : [])
 
             if configuration.showsModelFavoriteStars {
                 favoriteStar(
                     isFavorite: isFavorite(option),
                     isInverted: selected,
-                    removeLabel: Text("Remove \(option.displayName) from favorites"),
-                    addLabel: Text("Add \(option.displayName) to favorites")
+                    removeLabel: Text("Remove \(displayLabel) from favorites"),
+                    addLabel: Text("Add \(displayLabel) to favorites")
                 ) {
                     onToggleFavorite(option)
                 }
@@ -762,6 +777,12 @@ struct ModelPickerSheet: View {
         option.displayName.localizedCaseInsensitiveContains(query)
             || option.id.localizedCaseInsensitiveContains(query)
             || (option.providerID?.localizedCaseInsensitiveContains(query) ?? false)
+            // The row renders the prettified label, so the query the user
+            // sees on screen has to find the model too: searching "GLM 5.3"
+            // must match `zai/glm-5.3-flash:local`, not only its raw id.
+            || ModelDisplayNames
+                .displayLabel(for: option.id, displayName: option.displayName)
+                .localizedCaseInsensitiveContains(query)
     }
 }
 
@@ -774,11 +795,11 @@ private struct ModelProviderChoice: Identifiable, Hashable {
 private struct CustomModelFieldStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .font(.body)
+            .font(AppFont.body())
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, minHeight: PickerRowMetrics.minHeight, alignment: .leading)
             .background(
-                Color(.tertiarySystemFill),
+                Color(.appFillTertiary),
                 in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
             )
     }
@@ -794,15 +815,15 @@ enum PickerRowMetrics {
 
 extension View {
     /// The selected-row treatment shared by the model rows and the profile
-    /// rows: a filled `Color.primary` pill with the inverted foreground that
+    /// rows: a filled `Color(.appText)` pill with the inverted foreground that
     /// fill needs. The caller owns the row's frame, because the pill can wrap
     /// content that sits outside the row's own button — the model rows'
     /// favorite star does.
     func pickerSelectionPill(isSelected: Bool) -> some View {
-        foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
+        foregroundStyle(isSelected ? Color(.appCanvas) : Color(.appText))
             .padding(.horizontal, 12)
             .background(
-                isSelected ? Color.primary : Color.clear,
+                isSelected ? Color(.appText) : Color.clear,
                 in: RoundedRectangle(cornerRadius: PickerRowMetrics.cornerRadius, style: .continuous)
             )
     }

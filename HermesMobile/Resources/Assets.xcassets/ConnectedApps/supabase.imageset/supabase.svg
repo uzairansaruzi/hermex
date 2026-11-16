@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" fill="none" viewBox="0 0 80 80">
+<!-- SVG created with Arrow, by QuiverAI (https://quiver.ai) -->
+  <defs>
+    <linearGradient id="paint0_linear_5294_37492" x1="46.93" x2="61.72" y1="32.69" y2="46.04" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#279A6A" offset="0"/>
+      <stop stop-color="#39C78A" offset=".6232"/>
+    </linearGradient>
+  </defs>
+  <rect width="80" height="80" fill="#1C1C1C"/>
+  <path d="m39.87 32.69h20.85c3.75 0 5.77 4.26 3.27 7.19l-19.8 23.84c-1.43 1.69-4 0.75-4.01-1.47l-0.21-15.28-0.1-14.28z" fill="url(#paint0_linear_5294_37492)"/>
+  <path d="m40.03 47.01h-20.65c-3.83 0-5.83-4.31-3.37-7.19l19.8-23.91c1.42-1.66 4-0.71 4.01 1.44l0.21 29.66z" fill="#3FCC8E"/>
+</svg>

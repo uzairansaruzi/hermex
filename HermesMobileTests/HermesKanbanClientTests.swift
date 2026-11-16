@@ -209,6 +209,19 @@ import XCTest
         XCTAssertEqual(state.availableStatuses.last, "archived")
     }
 
+    /// Only Mine is the Profile the Sessions side lists, filtered here: the host's `/board`
+    /// takes no assignee and knows no "mine".
+    func testOnlyMineShowsTheListedProfilesCards() async {
+        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host(), mine: "reviewer"))
+        await state.load()
+        XCTAssertTrue(state.offersOnlyMine)
+
+        await state.applyFilters(profile: nil, tenant: nil, includeArchived: false, onlyMine: true)
+
+        XCTAssertEqual(state.allCards.map(\.cardID), ["t_04fba87e"])
+        XCTAssertFalse(kanbanRequests().contains { $0.contains("only_mine") })
+    }
+
     // MARK: - Writes (#1044)
 
     /// Create is `POST /tasks?board=`: Triage is `triage: true` and never a `status`, and no
@@ -270,13 +283,14 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 2, "the load, then one reload after the write")
     }
 
-    /// No To Do anywhere on Hermes: a Card goes to Triage or Ready, and Scheduled and Review are
-    /// never destinations, though a Card in either moves out to them. Block is offered only on
-    /// Ready and Running Cards, the only ones the host blocks, and Complete only on a Card in
-    /// Review, the only one the host completes without a result.
+    /// No To Do anywhere on Hermes: a Card moves to Triage or Ready, and only a Bulk Action
+    /// moves Cards into Scheduled or Review, though a Card in either moves out to them. Block is
+    /// offered only on Ready and Running Cards, the only ones the host blocks, and Complete on
+    /// the Ready, Running, Blocked and Review Cards it completes, with a result outside Review.
     func testHermesOffersTriageAndReadyButNeverToDoScheduledOrReview() async throws {
         let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
-            "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard))
+            "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard)),
+            "PATCH /api/plugins/kanban/tasks/t_2ad0ddc5": .json(200, Self.json(Self.card("t_2ad0ddc5", status: "done")))
         ])))
         await state.load()
         func card(_ id: String) throws -> KanbanCard { try XCTUnwrap(state.allCards.first { $0.cardID == id }) }
@@ -285,16 +299,18 @@ import XCTest
         XCTAssertEqual(state.moveDestinations(for: try card("t_ded419c6")), ["triage", "ready"], "out of Scheduled")
         XCTAssertEqual(state.moveDestinations(for: try card("t_04fba87e")), ["triage", "ready"], "out of Review")
         XCTAssertEqual(state.moveDestinations(for: try card("t_2ad0ddc5")), ["triage"])
-        XCTAssertEqual(state.bulkStatusOptions, ["triage", "ready", "blocked", "done"])
+        XCTAssertEqual(state.bulkStatusOptions, ["triage", "scheduled", "ready", "blocked", "review", "done"])
         XCTAssertFalse(state.canSubmitBulkAction(.changeStatus("todo")))
         XCTAssertEqual(["t_017edf3a", "t_ded419c6", "t_2ad0ddc5", "t_9b1c2d3e", "t_04fba87e", "t_ed0bb193"]
             .map { state.canBlock(try! card($0)) }, [false, false, true, true, false, false])
         XCTAssertEqual(["t_017edf3a", "t_ded419c6", "t_2ad0ddc5", "t_9b1c2d3e", "t_04fba87e", "t_ed0bb193"]
-            .map { state.canComplete(try! card($0)) }, [false, false, false, false, true, false])
+            .map { state.canComplete(try! card($0)) }, [false, false, true, true, true, false])
 
-        await state.completeCard(try card("t_2ad0ddc5"))
+        await state.completeCard(try card("t_2ad0ddc5"), result: "Shipped")
 
-        XCTAssertEqual(writes(), [], "the host refuses Done for a Ready Card without a result")
+        XCTAssertEqual(body(of: "PATCH /api/plugins/kanban/tasks/t_2ad0ddc5"),
+                       .object(["status": .string("done"), "result": .string("Shipped")]))
+        XCTAssertEqual(state.mutationState(for: "t_2ad0ddc5")?.phase, .succeeded)
     }
 
     /// Unblock succeeds wherever the host lands the Card but Blocked: To Do while a prerequisite
@@ -427,6 +443,71 @@ import XCTest
         XCTAssertEqual(state.bulkActionSummary?.succeededCount, 1)
         XCTAssertEqual(state.bulkActionSummary?.failedCardIDs, ["t_ed0bb193"])
         XCTAssertEqual(state.selectedCardIDs, ["t_ed0bb193"])
+    }
+
+    /// Bulk Review lands a Ready Card in Review; the host refuses a Triage one, which shows as
+    /// failed and stays where it was.
+    func testBulkReviewShowsTheCardsTheHostCannotReview() async throws {
+        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
+            "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard)),
+            "POST /api/plugins/kanban/tasks/bulk": .json(200, Self.json(#"""
+            {"results":[{"id":"t_017edf3a","ok":false,"error":"transition to 'review' refused"},{"id":"t_2ad0ddc5","ok":true}]}
+            """#))
+        ], after: [
+            "POST /api/plugins/kanban/tasks/bulk": [
+                "/api/plugins/kanban/tasks/t_017edf3a": .json(200, Self.json(Self.detail("t_017edf3a", status: "triage"))),
+                "/api/plugins/kanban/tasks/t_2ad0ddc5": .json(200, Self.json(Self.detail("t_2ad0ddc5", status: "review")))
+            ]
+        ])))
+        await state.load()
+        state.beginSelectingCards()
+        for id in ["t_017edf3a", "t_2ad0ddc5"] { state.toggleCardSelection(try XCTUnwrap(state.allCards.first { $0.cardID == id })) }
+
+        await state.performBulkAction(.changeStatus("review"))
+
+        XCTAssertEqual(body(of: "POST /api/plugins/kanban/tasks/bulk"),
+                       .object(["ids": .array([.string("t_017edf3a"), .string("t_2ad0ddc5")]), "status": .string("review")]))
+        XCTAssertEqual(state.bulkActionSummary?.succeededCount, 1)
+        XCTAssertEqual(state.bulkActionSummary?.failedCardIDs, ["t_017edf3a"])
+    }
+
+    /// Bulk Done on a Card outside Review carries the note the host needs to complete it, and
+    /// Retry sends the same note again.
+    func testBulkDoneOutsideReviewSendsTheNoteAndRetryKeepsIt() async throws {
+        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
+            "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard)),
+            "POST /api/plugins/kanban/tasks/bulk": .json(200, Self.json(#"""
+            {"results":[{"id":"t_2ad0ddc5","ok":false,"error":"cannot move t_2ad0ddc5 to 'done'"}]}
+            """#)),
+            "/api/plugins/kanban/tasks/t_2ad0ddc5": .json(200, Self.json(Self.detail("t_2ad0ddc5", status: "ready")))
+        ])))
+        await state.load()
+        state.beginSelectingCards()
+        state.toggleCardSelection(try XCTUnwrap(state.allCards.first { $0.cardID == "t_2ad0ddc5" }))
+
+        await state.performBulkAction(state.bulkStatusAction("done", result: "Shipped"))
+        await state.retryFailedBulkAction()
+
+        let sent = HermesHostFixture.requests.filter { $0.url?.path == "/api/plugins/kanban/tasks/bulk" }
+            .compactMap(apiTestBodyData(from:)).compactMap { try? JSONDecoder().decode(BotJSON.self, from: $0) }
+        XCTAssertEqual(sent, Array(repeating: .object(["ids": .array([.string("t_2ad0ddc5")]), "status": .string("done"),
+                                                       "result": .string("Shipped")]), count: 2))
+    }
+
+    /// A selected Review Card that another client reopens asks for the note once the Board shows it.
+    func testBulkDoneNeedsTheNoteWhenASelectedCardLeavesReview() async throws {
+        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
+            "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWith("t_2ad0ddc5", in: "review")))
+        ], after: [
+            "/api/plugins/kanban/board": ["/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard))]
+        ])))
+        await state.load()
+        state.beginSelectingCards()
+        state.toggleCardSelection(try XCTUnwrap(state.allCards.first { $0.cardID == "t_2ad0ddc5" }))
+
+        await state.refresh()
+
+        XCTAssertEqual(state.bulkStatusAction("done", result: "Shipped"), .complete(result: "Shipped"))
     }
 
     /// Preview Dispatch shows today's summary from the host's `DispatchResult`.

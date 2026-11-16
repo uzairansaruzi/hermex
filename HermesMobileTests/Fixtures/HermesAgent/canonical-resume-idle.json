@@ -1,0 +1,109 @@
+{
+  "captured_at" : "2026-11-10T03:47:41Z",
+  "hermes_agent_sha" : "3b421578588243f920886e6fe79a6faa87ea026e",
+  "reply" : {
+    "authority_epoch" : 1,
+    "execution_generation" : 0,
+    "info" : {
+      "api_mode" : null,
+      "archived" : false,
+      "branch" : "fixture-redacted",
+      "credential_hint" : null,
+      "cwd" : "/fixture/cwd",
+      "desktop_protocol" : "fixture-redacted",
+      "enabled_toolsets" : [
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted",
+        "fixture-redacted"
+      ],
+      "fast" : false,
+      "last_active_at" : 1794282452.834022,
+      "launch_request" : {
+        "source" : "fixture-redacted"
+      },
+      "lazy" : true,
+      "mcp_servers" : [],
+      "model" : "fixture-redacted",
+      "profile_id" : "fixture-redacted",
+      "profile_name" : "default",
+      "project" : null,
+      "provider" : "custom",
+      "reasoning_effort" : "fixture-redacted",
+      "reasoning_effort_wire" : "fixture-redacted",
+      "release_date" : "fixture-redacted",
+      "service_tier" : "fixture-redacted",
+      "skills" : {},
+      "source" : "fixture-redacted",
+      "started_at" : 1794282452.834022,
+      "title" : null,
+      "tool_availability" : {
+        "disabled_tools" : [],
+        "lazy_tools" : [
+          "fixture-redacted",
+          "fixture-redacted"
+        ],
+        "unavailable_toolsets" : [
+          {
+            "env_vars" : [],
+            "name" : "fixture-redacted",
+            "tools" : []
+          },
+          {
+            "env_vars" : [],
+            "name" : "fixture-redacted",
+            "tools" : []
+          }
+        ]
+      },
+      "tool_count" : 21,
+      "tools" : {},
+      "update_behind" : null,
+      "update_command" : "fixture-redacted",
+      "usage" : {
+        "calls" : 0,
+        "completion" : 0,
+        "input" : 0,
+        "model" : "fixture-redacted",
+        "output" : 0,
+        "prompt" : 0,
+        "reasoning" : 0,
+        "total" : 0
+      },
+      "version" : "0.23.1",
+      "yolo" : false
+    },
+    "last_sequence" : 0,
+    "message_count" : 0,
+    "messages" : [],
+    "messages_omitted" : true,
+    "open_requests" : [],
+    "pending" : [],
+    "pending_connection" : null,
+    "prompts" : [],
+    "replay_epoch" : "3f82fb819fe149cdab6046ecc824708b",
+    "revision" : 0,
+    "running" : false,
+    "session_id" : "local-4438fe0803e1083c2d3ebf518546d1e75760a1fa6dc157c950649891ace2f416",
+    "stored_session_id" : "local-4438fe0803e1083c2d3ebf518546d1e75760a1fa6dc157c950649891ace2f416",
+    "subscription_id" : "948758be282b4bcc9178a09f96353f21",
+    "todo_state" : null
+  },
+  "version" : "0.23.1"
+}

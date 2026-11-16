@@ -134,12 +134,10 @@ struct ChatUIKitMenuButton<Label: View>: View {
     private let label: Label
     private let horizontalPadding: CGFloat
     private let verticalPadding: CGFloat
-    private let loadsMenuEagerly: Bool
 
     init(
         horizontalPadding: CGFloat = 0,
         verticalPadding: CGFloat = 0,
-        loadsMenuEagerly: Bool = false,
         @ViewBuilder label: () -> Label,
         menu: @escaping () -> UIMenu
     ) {
@@ -147,7 +145,6 @@ struct ChatUIKitMenuButton<Label: View>: View {
         self.menu = menu
         self.horizontalPadding = horizontalPadding
         self.verticalPadding = verticalPadding
-        self.loadsMenuEagerly = loadsMenuEagerly
     }
 
     var body: some View {
@@ -157,7 +154,6 @@ struct ChatUIKitMenuButton<Label: View>: View {
                 ChatUIKitMenuButtonBacker(
                     horizontalPadding: horizontalPadding,
                     verticalPadding: verticalPadding,
-                    loadsMenuEagerly: loadsMenuEagerly,
                     menu: menu
                 )
             }
@@ -171,7 +167,6 @@ private struct ChatUIKitMenuButtonBacker: UIViewControllerRepresentable {
 
     let horizontalPadding: CGFloat
     let verticalPadding: CGFloat
-    let loadsMenuEagerly: Bool
     let menu: () -> UIMenu
 
     func makeCoordinator() -> Coordinator {
@@ -183,9 +178,7 @@ private struct ChatUIKitMenuButtonBacker: UIViewControllerRepresentable {
         let button = controller.button
 
         controller.setHitPadding(horizontal: horizontalPadding, vertical: verticalPadding)
-        button.menu = loadsMenuEagerly
-            ? context.coordinator.menu()
-            : deferredMenu(using: context.coordinator)
+        button.menu = deferredMenu(using: context.coordinator)
         button.isEnabled = isEnabled
         button.isAccessibilityElement = false
 
@@ -196,9 +189,6 @@ private struct ChatUIKitMenuButtonBacker: UIViewControllerRepresentable {
         context.coordinator.menu = menu
         uiViewController.setHitPadding(horizontal: horizontalPadding, vertical: verticalPadding)
         uiViewController.button.isEnabled = isEnabled
-        if loadsMenuEagerly {
-            uiViewController.button.menu = menu()
-        }
     }
 
     func sizeThatFits(
@@ -331,7 +321,7 @@ struct ChatDecisionButtonStyle: ButtonStyle {
         let isPressed = isEnabled && configuration.isPressed
 
         configuration.label
-            .font(.callout.weight(.semibold))
+            .font(AppFont.callout(weight: .semibold))
             .foregroundStyle(foregroundColor)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
@@ -348,7 +338,7 @@ struct ChatDecisionButtonStyle: ButtonStyle {
 
     private var foregroundColor: Color {
         guard isEnabled else {
-            return Color(.secondaryLabel)
+            return Color(.appTextSecondary)
         }
 
         switch emphasis {
@@ -381,7 +371,7 @@ struct ChatDecisionButtonStyle: ButtonStyle {
         case .primary:
             return .clear
         case .secondary:
-            return Color(.separator).opacity(colorScheme == .dark ? 0.36 : 0.24)
+            return Color(.appSeparator).opacity(colorScheme == .dark ? 0.36 : 0.24)
         case .destructive:
             return Color.red.opacity(colorScheme == .dark ? 0.36 : 0.26)
         }

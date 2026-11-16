@@ -190,7 +190,7 @@ final class InsightsViewModelTests: XCTestCase {
 
         viewModel.selectedTimeframe = .last7Days
         let refreshTask = Task { await viewModel.load() }
-        await client.waitForPendingRequest()
+        await fulfillment(of: [client.requestHeld], timeout: 5)
 
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertTrue(viewModel.isRefreshing)
@@ -358,9 +358,10 @@ final class InsightsViewModelTests: XCTestCase {
     }
 
     /// A Hermes host (#1074) has no hours and counts messages over part of the window: the
-    /// picker leaves Today out and messages read "≈".
+    /// picker offers a rolling 24 hours instead of Today, and messages read "≈". The 24-hour
+    /// window asks for one day and shows totals only (#1678).
     @MainActor
-    func testHermesFeaturesHideTodayAndMarkMessagesApproximate() async throws {
+    func testHermesFeaturesOffer24HoursAndMarkMessagesApproximate() async throws {
         let client = StubInsightsClient(
             insightsResult: .success(try decodeInsights("""
             {"period_days": 30, "total_sessions": 5, "total_messages": 1234, "total_input_tokens": 10, "total_output_tokens": 5}
@@ -372,17 +373,30 @@ final class InsightsViewModelTests: XCTestCase {
 
         await viewModel.load()
 
-        XCTAssertEqual(viewModel.timeframes, [.last7Days, .last30Days, .last90Days])
+        XCTAssertEqual(viewModel.timeframes, [.last24Hours, .last7Days, .last30Days, .last90Days])
         let messages = try XCTUnwrap(viewModel.totalsCells.first { $0.id == "messages" })
         XCTAssertEqual(messages.value, "≈1,234")
         XCTAssertEqual(messages.detail, "across 5 sessions")
+
+        client.insightsResult = .success(try decodeInsights("""
+        {"period_days": 1, "total_tokens": 150,
+         "daily_tokens": [{"date": "2026-09-03", "input_tokens": 100, "output_tokens": 50, "sessions": 1, "cost": 0.0}]}
+        """))
+        viewModel.selectedTimeframe = .last24Hours
+        await viewModel.load()
+
+        XCTAssertEqual(client.requestedDays, [30, 1])
+        XCTAssertFalse(viewModel.loadedTimeframe.showsChart)
+        XCTAssertTrue(viewModel.showsMetricToggle)
+        XCTAssertNil(viewModel.totalsCells.first { $0.id == "processedTokens" }?.detail,
+                     "A rolling day has no per-active-day average")
     }
 
     @MainActor
     func testWebuiOffersEveryWindowAndExactMessages() async throws {
         let viewModel = try await loadedViewModel(timeframe: .last30Days, json: #"{"period_days": 30, "total_messages": 1234}"#)
 
-        XCTAssertEqual(viewModel.timeframes, AnalyticsTimeframe.allCases)
+        XCTAssertEqual(viewModel.timeframes, [.today, .last7Days, .last30Days, .last90Days])
         XCTAssertEqual(viewModel.totalsCells.first { $0.id == "messages" }?.value, "1,234")
     }
 
@@ -524,6 +538,8 @@ private final class DelayedInsightsClient: InsightsDataClient {
     nonisolated var insightsFeatures: InsightsFeatures { .webui }
     private var firstResponse: InsightsResponse?
     private var pendingContinuation: CheckedContinuation<InsightsResponse, Error>?
+    /// Fulfilled once a request after the first is held.
+    let requestHeld = XCTestExpectation(description: "the refresh request is held")
 
     init(firstResponse: InsightsResponse) {
         self.firstResponse = firstResponse
@@ -537,6 +553,7 @@ private final class DelayedInsightsClient: InsightsDataClient {
 
         return try await withCheckedThrowingContinuation { continuation in
             pendingContinuation = continuation
+            requestHeld.fulfill()
         }
     }
 
@@ -550,12 +567,6 @@ private final class DelayedInsightsClient: InsightsDataClient {
 
     func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse {
         throw StubInsightsError()
-    }
-
-    func waitForPendingRequest() async {
-        while pendingContinuation == nil {
-            await Task.yield()
-        }
     }
 
     func completePendingRequest(with result: Result<InsightsResponse, Error>) {

@@ -81,7 +81,7 @@ struct CronJobEditorSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            AppForm {
                 Section("Task") {
                     TextField("Name", text: $draft.name)
 
@@ -142,7 +142,7 @@ struct CronJobEditorSheet: View {
                     )
                 } header: {
                     Text("Configuration")
-                } footer: {
+                } appFooter: {
                     // States what upstream already does rather than
                     // reimplementing it: `_selected_profile_snapshot_updates`
                     // fills in the model from the profile only while the model
@@ -153,11 +153,12 @@ struct CronJobEditorSheet: View {
                 if let formMessage {
                     Section {
                         Text(formMessage)
-                            .font(.footnote)
+                            .font(AppFont.footnote())
                             .foregroundStyle(messageColor)
                     }
                 }
             }
+            .themedPageBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             // A new loader is a new Profile's sources, so its loads start over. Once a
@@ -278,6 +279,6 @@ struct CronJobEditorSheet: View {
     }
 
     private var messageColor: Color {
-        errorMessage == nil ? .secondary : .red
+        errorMessage == nil ? Color(.appTextSecondary) : .red
     }
 }
