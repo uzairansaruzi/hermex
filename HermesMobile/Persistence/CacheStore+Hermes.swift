@@ -358,7 +358,7 @@ extension CacheStore {
     /// both, keeping every other root and Profile. A chat's write already under way can't put it
     /// back (`hermesCacheEpoch`).
     @MainActor
-    static func removeHermesBotChat(root: String, serverURL: URL, connectionID: UUID, profile: String, in context: ModelContext) throws {
+    static func removeHermesBotChatRoot(_ root: String, serverURL: URL, connectionID: UUID, profile: String, in context: ModelContext) throws {
         revokeHermesWriters(serverURL: serverURL)
         let serverURLString = serverURL.absoluteString
         let bot = hermesBotChatScope(connectionID: connectionID, profile: profile, root: root)
