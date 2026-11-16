@@ -680,6 +680,10 @@ import UIKit
                 await forget(name)
                 guard wire === client, serial == reloadSerial else { return false }
             }
+            // A Profile this fresh roster omits was deleted elsewhere: its cached Bot Chat goes too.
+            if let connection, let offlineCache {
+                try? CacheStore.removeHermesBotChats(serverURL: server, connectionID: connection.id, exceptProfiles: present, in: offlineCache)
+            }
             if let scope {
                 await rosterCache.save(rows, scope: scope, readAt: readAt)
                 guard wire === client, serial == reloadSerial else { return false }

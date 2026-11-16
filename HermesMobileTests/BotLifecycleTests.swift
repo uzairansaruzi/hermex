@@ -354,6 +354,39 @@ import XCTest
                        "root")
     }
 
+    /// A bot deleted from another client leaves the offline cache when the next roster omits it,
+    /// without any `delete` here: a late chat write can't put it back, and a bot made again under
+    /// its name starts empty. Present bots and other connections' rows stay.
+    func testARosterOmittingABotDropsItsCachedBotChat() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("keep")])
+        let inbox = try makeInbox(wires: [wire]) { _, _ in }
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        inbox.offlineCache = context
+        await inbox.open()
+        let connection = try XCTUnwrap(inbox.connection?.id)
+        let otherConnection = UUID()
+        let message = ChatMessage(role: "user", content: "Hi", timestamp: 1, messageId: "1", rowID: 1)
+        for (id, profile) in [(connection, "triage"), (connection, "keep"), (otherConnection, "triage")] {
+            try CacheStore.cacheHermesMessages([message], newestCoverage: .all, serverURL: server,
+                                               scope: CacheStore.hermesBotChatScope(connectionID: id, profile: profile, root: "root"),
+                                               in: context)
+        }
+        let epoch = CacheStore.hermesCacheEpoch(serverURL: server)
+
+        wire.roster = [row("keep")]
+        wire.emit("sessions.changed")
+        await settle(inbox) { $0.profiles.map(\.id) == ["keep"] }
+
+        let root = { (id: UUID, profile: String) in
+            try CacheStore.cachedHermesBotChatRoot(serverURL: self.server, connectionID: id, profile: profile, in: context)
+        }
+        XCTAssertNil(try root(connection, "triage"))
+        XCTAssertEqual(try root(connection, "keep"), "root")
+        XCTAssertEqual(try root(otherConnection, "triage"), "root")
+        XCTAssertNotEqual(CacheStore.hermesCacheEpoch(serverURL: server), epoch, "a chat attached before can't write back")
+    }
+
     func testDefaultProfileCannotBeDeleted() async throws {
         let wire = BotInboxFixtureWire(roster: [row("default")])
         wire.delete = { _ in XCTFail("never sent") }
