@@ -382,9 +382,11 @@ extension CacheStore {
         for archived in [false, true] {
             let prefix = hermesBotChatScopePrefix(connectionID: connectionID, profile: nil, archived: archived)
             let kept = profiles.map { prefix + $0 + "|" }
-            let rows = try context.fetch(FetchDescriptor<CachedMessage>(predicate: #Predicate {
+            var descriptor = FetchDescriptor<CachedMessage>(predicate: #Predicate {
                 $0.serverURLString == serverURLString && $0.sessionID.starts(with: prefix)
-            }))
+            })
+            descriptor.propertiesToFetch = [\.sessionID]
+            let rows = try context.fetch(descriptor)
             absent += Set(rows.map(\.sessionID)).filter { scope in !kept.contains { scope.hasPrefix($0) } }
         }
         guard !absent.isEmpty else { return }
