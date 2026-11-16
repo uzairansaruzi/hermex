@@ -236,7 +236,7 @@ struct FilePreviewView: View {
         case let .text(file) where isMarkdownFile && renderedMode == .preview:
             markdownContent(file.content ?? "")
         case let .text(file) where isHTMLFile && renderedMode == .preview:
-            htmlContent(file.content ?? "")
+            htmlContent(file)
         case let .text(file):
             sourceContent(file)
         case let .image(file):
@@ -333,9 +333,11 @@ struct FilePreviewView: View {
     }
 
     /// The report sheet's page, so a workspace page gets the same sandbox, theme and failure
-    /// state as an attached report. A page over the sheet's size limit shows that failure state.
-    private func htmlContent(_ content: String) -> some View {
-        HTMLReportSheetPage(html: content.utf8.count <= BotArtifactBuffer.maximumBytes ? content : nil)
+    /// state as an attached report. A truncated file (past the host's text preview) shows that
+    /// failure state rather than half a page; Source still shows what loaded.
+    private func htmlContent(_ file: FileResponse) -> some View {
+        let content = file.content ?? ""
+        return HTMLReportSheetPage(html: file.isTruncated ? nil : content)
             .id(content)
     }
 
