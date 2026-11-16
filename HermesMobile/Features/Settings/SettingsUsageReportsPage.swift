@@ -113,8 +113,8 @@ struct UsageReportPreview: View {
             LabeledContent { Text(report.servers.webui, format: .number) } label: { Text(verbatim: "webui") }
             ForEach(Array(report.servers.versions.enumerated()), id: \.offset) { _, server in
                 value(server.kind == .hermes ? "Hermes version" : "webui version", server.version)
-                if server.kind == .hermes, let gateway = server.gateway {
-                    value("Hermes gateway", gateway.rawValue)
+                if let gateway = server.gateway {
+                    value(server.kind == .hermes ? "Hermes gateway" : "webui gateway", gateway.rawValue)
                 }
             }
         } header: {
