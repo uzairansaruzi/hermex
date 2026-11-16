@@ -383,6 +383,21 @@ import XCTest
         }
     }
 
+    /// A zero-byte MEDIA file saves and shares (#1118); an inline preview of one is still a failed read.
+    func testAnEmptyMediaFileExportsButItsPreviewStillFails() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.path == "/api/fs/download" ? .body(200, Data()) : nil
+        }, gateway: .init { _ in BotScriptedSocket() })
+        let client = BotClient(http: http)
+        try await client.connect()
+        defer { client.close() }
+        let context = BotArtifactContext(connectionID: record.id, profile: "inbox-triage", sessionID: "tip", generation: 1)
+        let exported = try await client.artifactData(path: "empty.txt", context: context, limit: nil)
+        XCTAssertTrue(exported.isEmpty)
+        do { _ = try await client.artifactData(path: "empty.txt", context: context); XCTFail("Expected an empty preview to fail") }
+        catch { XCTAssertEqual(error as? BotArtifactFailure, .unavailable) }
+    }
+
     /// The saved record's headers, as `HermesConnections` and the connection form's
     /// candidate pass it. The active webui server's custom headers are loaded too, and
     /// never reach Hermes.
