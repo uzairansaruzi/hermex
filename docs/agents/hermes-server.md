@@ -591,8 +591,11 @@ exists before calling it, the first consumer that needs to (#701 onward) sends a
 deliberately invalid-parameter probe, `{"__hermex_probe": true}`: 4000 means
 present, -32601 absent. Nothing sends one yet.
 
-Every other check is a probe whose answer the app already understands. There is no
-describe RPC, and `gateway.ready` lists no methods.
+Every other check is a probe whose answer the app already understands. `gateway.ready`
+lists no methods. A dashboard has no describe RPC: `runtime.describe` answers -32601 there,
+and `gateway.capabilities` returns only `per_session_exclusive_submit`. A gateway's Webapp
+answers `runtime.describe` with a `capabilities` list (`plugin-rpc-v1` among them), which
+nothing reads yet.
 
 | Probe | Answer | Meaning |
 | :--- | :--- | :--- |
@@ -729,7 +732,10 @@ doesn't cover a plugin's own HTTP routes. hermex-push 0.4.0 and newer mounts its
 route (#934); anything older costs the user one restart on the host, and so does a gateway's
 Webapp, whose drain that route skips (#1606).
 
-A plugin adds REST routes, hooks, tools and its own sockets, but no RPC method and no `/api/ws`
-event, so a gap the companion plugin fills is always a REST route, and each new route on an
-installed hermex-push costs a restart: ship them in batches, and gate each feature on
+A plugin adds REST routes, hooks, tools and its own sockets. On a dashboard it adds no RPC
+method and no `/api/ws` event. On a gateway's Webapp it can also register
+`plugin.<plugin_id>.<name>` methods and session events (`ctx.register_rpc`,
+`ctx.emit_to_session`), advertised as `plugin-rpc-v1` in `runtime.describe`; hermex-push
+registers none. So a gap the companion plugin fills is still a REST route, and each new route
+on an installed hermex-push costs a restart: ship them in batches, and gate each feature on
 `/capabilities`, never on a version number.
