@@ -518,6 +518,94 @@ import Observation
         XCTAssertNil(list.archivedCount)
     }
 
+    /// A row whose turn ended while its delegated children or background processes still run reads
+    /// Working, matched by its session key or its lineage root (#1730). A roster id the list
+    /// doesn't hold marks nothing, an entry with nothing running marks nothing, Approval still wins
+    /// and keeps its row in Needs you, and the label goes on the first list read after the work ends.
+    func testBackgroundWorkKeepsAnEndedTurnWorking() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([
+            HermesSessionRow(id: "delegating"), HermesSessionRow(id: "tip", lineageRootID: "root"),
+            HermesSessionRow(id: "approve"), HermesSessionRow(id: "done"), HermesSessionRow(id: "plain")
+        ])]
+        wire.active = [live("delegating", "idle"), live("approve", "waiting")]
+        wire.approvals["runtime-approve"] = [.object(["request_id": .string("r1")])]
+        wire.roster["default"] = [rosterEntry("delegating", subagents: 2), rosterEntry("root", background: 1),
+                                  rosterEntry("approve", subagents: 1), rosterEntry("done"),
+                                  rosterEntry("elsewhere", subagents: 1)]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        func state(_ id: String) -> SessionRowAttentionState? {
+            list.sessions.first { $0.sessionId == id }.flatMap { list.attentionState(for: $0) }
+        }
+
+        await list.openHermes()
+        await waitUntil("roster read") { state("delegating") == .working && state("approve") == .approval }
+        XCTAssertEqual(state("tip"), .working, "matched by its lineage root")
+        XCTAssertNil(state("done"))
+        XCTAssertNil(state("plain"))
+        XCTAssertEqual(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).needsYou.compactMap(\.sessionId),
+                       ["approve"])
+
+        wire.roster["default"] = []
+        wire.emit("sessions.changed")
+        await waitUntil("work ended") { state("delegating") == nil }
+        XCTAssertNil(state("tip"))
+        XCTAssertEqual(state("approve"), .approval)
+    }
+
+    /// The roster is read with each list read and never by the busy re-read: ticks of
+    /// `statusPollInterval` send no further roster call, and a `sessions.changed` sends one (#1730).
+    func testTheRosterIsReadOncePerListRead() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        wire.active = [live("a", "working")]
+        wire.holdsActive = true
+        let list = makeList(wire, statusPollInterval: .zero)
+        defer { list.closeHermes(); wire.holdsActive = false; wire.release() }
+        func count(_ method: String) -> Int { wire.calls.filter { $0.method == method }.count }
+
+        await list.openHermes()
+        for tick in 1...3 {
+            await waitUntil("status read \(tick)") { count("session.active_list") == tick }
+            wire.release()
+        }
+        await waitUntil("status re-read") { count("session.active_list") == 4 }
+        XCTAssertEqual(count("subagent.roster"), 1)
+
+        wire.emit("sessions.changed")
+        await waitUntil("list read again") { count("subagent.roster") == 2 }
+    }
+
+    /// A host without `subagent.roster` (-32601) shows exactly the states `session.active_list`
+    /// gives, and the socket never asks it again (#1730).
+    func testAHostWithoutTheRosterShowsOnlyTheActiveListStates() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a"), HermesSessionRow(id: "b")])]
+        wire.active = [live("a", "working"), live("b", "idle")]
+        wire.roster["default"] = [rosterEntry("b", background: 1)]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        func state(_ id: String) -> SessionRowAttentionState? {
+            list.sessions.first { $0.sessionId == id }.flatMap { list.attentionState(for: $0) }
+        }
+        func count(_ method: String) -> Int { wire.calls.filter { $0.method == method }.count }
+
+        await list.openHermes()
+        await waitUntil("roster read") { state("b") == .working }
+
+        wire.lacksRoster = true
+        wire.emit("sessions.changed")
+        await waitUntil("roster refused") { state("b") == nil }
+        XCTAssertEqual(state("a"), .working)
+        XCTAssertEqual(count("subagent.roster"), 2)
+
+        wire.emit("sessions.changed")
+        await waitUntil("list read again") { count("session.active_list") == 3 }
+        XCTAssertEqual(count("subagent.roster"), 2)
+        XCTAssertNil(state("b"))
+    }
+
     /// The rating prompt's idle check reads the host fresh: any running or waiting session, listed
     /// or not, is busy, and a list that isn't live has no answer.
     func testHostIdleCheckReadsTheHostFresh() async {
@@ -1071,11 +1159,11 @@ import Observation
     // MARK: Fixture
 
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",
-                          reconnectDelays: [Duration] = [.seconds(3600)],
+                          reconnectDelays: [Duration] = [.seconds(3600)], statusPollInterval: Duration = .seconds(3600),
                           isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) -> SessionListViewModel {
         SessionListViewModel(server: server, unreadStore: SessionUnreadStore(defaults: defaults), hermes: HermesSessionListSource(
             connection: connection, profile: profile, makeWire: { _ in wire }, preferences: defaults,
-            changeDebounce: .zero, statusPollInterval: .seconds(3600), reconnectDelays: reconnectDelays,
+            changeDebounce: .zero, statusPollInterval: statusPollInterval, reconnectDelays: reconnectDelays,
             isNetworkAvailable: isNetworkAvailable
         ))
     }
@@ -1085,6 +1173,12 @@ import Observation
     /// Rows `s<n>`, newest first.
     private func rows(_ range: Range<Int>) -> [HermesSessionRow] {
         range.map { HermesSessionRow(id: "s\($0)", lastActive: Double(10_000 - $0)) }
+    }
+
+    /// One `subagent.roster` entry in the host's shape (`methods_subagents.py`): live children and
+    /// running background processes of one stored conversation.
+    private func rosterEntry(_ id: String, subagents: Int = 0, background: Int = 0) -> BotJSON {
+        .object(["session_id": .string(id), "subagents": .number(Double(subagents)), "background": .number(Double(background))])
     }
 
     /// One `session.active_list` item in the host's shape (`server.py` `_session_live_item`).
@@ -1436,6 +1530,10 @@ import Observation
     var archivedTotals: [String: Int] = [:]
     /// `approval.pending`'s approvals by runtime id; none for any other.
     var approvals: [String: [BotJSON]] = [:]
+    /// `subagent.roster`'s entries by Profile; an empty roster for any other.
+    var roster: [String: [BotJSON]] = [:]
+    /// While true, `subagent.roster` answers "method not found", as a host without it does.
+    var lacksRoster = false
     /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
     var holdsActive = false
     /// While true, `approval.pending` waits for `release()`.
@@ -1522,6 +1620,9 @@ import Observation
             let runtime = params["session_id"]?.text ?? ""
             if failingApprovals.contains(runtime) { throw BotFailure.rejected(500) }
             return .object(["approvals": .array(approvals[runtime] ?? [])])
+        case "subagent.roster":
+            if lacksRoster { throw BotFailure.rejected(-32601) }
+            return .object(["sessions": .array(roster[params["profile"]?.text ?? ""] ?? [])])
         case "profiles.list": return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
         case "session.delete": return .object([:])
         case "projects.tree":

@@ -574,6 +574,11 @@ the pushed list's title, say "Reconnecting…" after 800 ms (a tap runs the wait
 reconnect now) or, at once whenever the device is offline, "Offline · showing last known
 status". The line stays away when the offline cache's banner or a refusal shown over the
 rows already explains them.
+Each list read also reads `subagent.roster` once per listed Profile (#1730), never on the
+busy re-read or a timer: a row idle in `session.active_list` whose stored id or lineage root
+the roster lists with live children or background processes shows Working, while a failed
+read, a -32601 (never asked again on that socket), a close, a Profile switch or the offline
+cache drops those marks.
 
 The session list lifts loaded rows whose state is Input into a "Needs you" group above
 Scheduled (#1393), by the same states the labels show, last known ones included; a search
