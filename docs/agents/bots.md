@@ -256,7 +256,10 @@ which both gateways send for credits, a slow agent start, a dropped model switch
 question, a plugin's `post_message` and `/login`'s sign-in link. They are kept by `key` (else
 `id`), newest last; a known key is replaced in place and a clear withdraws it. A `ttl` notice
 shows only from a live frame and hides after its `ttl_ms` on one scheduled task; the others also
-come back from a replay, in order, and stay until cleared or dismissed. A dismissed key stays
+come back from every replay, in order, a rebuilding one's too (so a first open shows them), and
+stay until cleared or dismissed. The live frame that reveals a gap still applies, since the
+rebuild replays only what follows it, and a new runtime drops the old one's notices and timers.
+A dismissed key stays
 hidden until the host sends new text for it. `HostNoticeRow` shows the newest above the composer
 (its `detail` on a tap) and says how many wait behind it; never a transcript row, the error line
 or a haptic. Nothing is cached: leaving the chat drops them and their timers.

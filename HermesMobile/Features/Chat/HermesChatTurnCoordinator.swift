@@ -1512,11 +1512,9 @@ struct HermesLostTurn: Equatable {
             if compactionPending, payload["kind"].text == "compacted" { pendingCompactionDidFinish() }
         case "btw.complete", "background.complete", "session.control.update":
             sideTasks.receive(frame)
-        case "notification.show":
+        case "notification.show", "notification.clear":
             // About the session, not a message in it: never a row, the error line or a turn (#1746).
-            hostNotices.show(payload, live: live)
-        case "notification.clear":
-            hostNotices.clear(payload)
+            hostNotices.receive(frame, live: live)
         default:
             // `thinking.delta` is spinner text and `reasoning.available` carries the answer
             // itself: neither is reasoning. The working row already says Hermes is working.
@@ -2270,7 +2268,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationWillReplay(newRuntime: Bool) {
         requests.willReplay()
-        if newRuntime { activity.dropPlan() }
+        // The old runtime's notices go with their timers: a dead runtime never clears them (#1746).
+        if newRuntime { activity.dropPlan(); hostNotices.removeAll() }
     }
 
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
@@ -2282,6 +2281,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         // After lost frames the snapshot that follows rebuilds instead, and what the replay
         // carried of the running reply places the deltas that raced it.
         guard !lostFrames else {
+            // The session's standing notices still apply, in order; only the transcript rebuilds.
+            frames.forEach { hostNotices.receive($0, live: false) }
             replayedReply = Self.replyText(frames)
             return
         }
@@ -2331,8 +2332,10 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversation(didReceive frame: BotJSON, afterGap: Bool) {
         guard !afterGap else {
-            // A side frame needs no order: it applies before the rebuild the gap asks for.
+            // A side frame needs no order: it applies before the rebuild the gap asks for, and the
+            // rebuild's replay starts after it. A host notice too (#1746).
             sideTasks.receive(frame)
+            hostNotices.receive(frame, live: true)
             return rebuildAfterGap()
         }
         apply(frame, live: true)

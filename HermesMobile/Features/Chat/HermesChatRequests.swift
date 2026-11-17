@@ -794,8 +794,21 @@ import Observation
         }
     }
 
+    /// One of the session's frames, live (as it happened) or from a replay: applies it when it is
+    /// a `notification.show` or `notification.clear`, and says whether it was one. The coordinator
+    /// sends every replay through here, a transcript rebuild's too, and the live frame after a gap.
+    @discardableResult
+    func receive(_ frame: BotJSON, live: Bool) -> Bool {
+        switch frame["type"].text {
+        case "notification.show": show(frame["payload"], live: live)
+        case "notification.clear": clear(frame["payload"])
+        default: return false
+        }
+        return true
+    }
+
     /// One `notification.show` payload; `live` is a frame as it happened, not a replay's.
-    func show(_ payload: BotJSON, live: Bool) {
+    private func show(_ payload: BotJSON, live: Bool) {
         guard let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
         let expires = payload["kind"].text == "ttl"
         guard live || !expires else { return }
@@ -818,7 +831,7 @@ import Observation
     }
 
     /// One `notification.clear` payload: the host withdrew the notice with its `key`.
-    func clear(_ payload: BotJSON) {
+    private func clear(_ payload: BotJSON) {
         guard let key = Self.nonEmpty(payload["key"]) else { return }
         dismissed[key] = nil
         remove(key)
@@ -830,7 +843,7 @@ import Observation
         remove(notice.id)
     }
 
-    /// Drops every notice, for a chat that now shows another session.
+    /// Drops every notice, for a chat that now shows another session or runtime.
     func removeAll() {
         expiries.values.forEach { $0.cancel() }
         expiries = [:]; dismissed = [:]
