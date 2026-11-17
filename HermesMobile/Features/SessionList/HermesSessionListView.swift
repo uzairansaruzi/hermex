@@ -89,6 +89,10 @@ struct HermesSessionListView: View {
     /// Counts the home's search requests, each of which scrolls the header back (`HomeHeaderScroll`)
     /// and, in a split, shows the sidebar that holds it.
     @State private var searchRequests = 0
+    /// The Profile and key of each chat with an unsent draft, read while Draft is picked and each
+    /// time a chat closes (`DraftRead`).
+    @State private var draftRows: Set<ChatDraftStore.DraftRow> = []
+    @State private var draftReads = 0
     @State private var wasBackgrounded = false
     /// A new id asks for an App Store rating at `ratingMoment`, if the list is quiet then.
     @State private var ratingRequestID: UUID?
@@ -138,6 +142,10 @@ struct HermesSessionListView: View {
     private var selectedProjectID: String? {
         get { navigation.selectedProjectID }
         nonmutating set { navigation.selectedProjectID = newValue }
+    }
+    private var statusFilter: HermesSessionStatusFilter {
+        get { navigation.statusFilter }
+        nonmutating set { navigation.statusFilter = newValue }
     }
     private var searchText: String {
         get { navigation.searchText }
@@ -208,7 +216,7 @@ struct HermesSessionListView: View {
                 searchText: searchText,
                 sessions: groups.ordinary,
                 emptyTitle: emptyTitle,
-                emptyDescription: isSearching ? String(localized: "Try another search or project filter.") : nil,
+                emptyDescription: emptyDescription,
                 isSearchActive: false,
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
@@ -332,6 +340,11 @@ struct HermesSessionListView: View {
             deleteProject: { project in Task { _ = await viewModel.delete(project) } }
         ))
         .task { await viewModel.openHermes(modelContext: modelContext) }
+        .task(id: DraftRead(filter: statusFilter, chatCloses: draftReads)) {
+            guard statusFilter == .draft else { return }
+            let rows = await ChatDraftStore.shared.hermesSessionDraftKeys(server: entry.server, connectionID: entry.connection.id)
+            if !Task.isCancelled { draftRows = rows }
+        }
         // A link arriving while a chat, screen or sheet covers the rows pops and closes them, so
         // what it opens or says shows here.
         // Only with a link: `covers` is observed, and its setter runs for any mutating call.
@@ -370,6 +383,8 @@ struct HermesSessionListView: View {
         }
         .onChange(of: covers.chat) { old, new in
             if case .session(_, let key)? = old?.target, new?.id != old?.id { viewModel.noteHermesReturn(from: key) }
+            // A closed chat may have left or emptied a draft.
+            if old != nil, new?.id != old?.id { draftReads += 1 }
             if let new, new.id != old?.id { SessionOpenSignpost.begin(sessionID: new.id.uuidString) }
             // A Shortcut text's chat closing lets the next waiting text open (#1402).
             if let old, new?.id != old.id { shortcutReview.end(old.id) }
@@ -683,11 +698,16 @@ struct HermesSessionListView: View {
     /// included, when Settings hides them (#1585), as on a webui list, and so do rows with a
     /// source chip when this server hides CLI and messaging sessions (#1674).
     private var scheduledSessionGroups: ScheduledSessionGroups {
+        viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID,
+                                         automatedVisibility: automatedVisibility, statusFilter: statusFilter,
+                                         draftRows: draftRows)
+    }
+
+    private var automatedVisibility: AutomatedSessionVisibility {
         var automated = AutomatedSessionVisibility.showAll
         automated.showsCron = showsCronSessions
         automated.showsCli = showsCliSessions
-        return viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID,
-                                                automatedVisibility: automated)
+        return automated
     }
 
     /// ⌘F: a phone's rows come forward from what covers them, then the search opens, the home
@@ -705,13 +725,25 @@ struct HermesSessionListView: View {
 
     private var emptyTitle: String {
         if isSearching { return String(localized: "No matching sessions") }
+        switch statusFilter {
+        case .working: return String(localized: "No working chats")
+        case .unread: return String(localized: "No unread chats")
+        case .draft: return String(localized: "No drafts")
+        case .all: break
+        }
         return selectedProjectID == nil ? String(localized: "No sessions yet") : String(localized: "No sessions in this project")
+    }
+
+    private var emptyDescription: String? {
+        if isSearching { return String(localized: "Try another search or project filter.") }
+        return statusFilter == .all ? nil : String(localized: "Only chats already loaded are filtered.")
     }
 
     /// The pushed list's Profile menu, named for what it lists.
     private var profileMenu: some View {
         Menu {
             profilePicker
+            statusSection
         } label: {
             // A Profile name is the user's own text, never a catalog key.
             if viewModel.hermesShowsAllProfiles {
@@ -727,10 +759,50 @@ struct HermesSessionListView: View {
     private var profileFilter: some View {
         Menu {
             profilePicker
+            statusSection
         } label: {
-            Label("Filter", systemImage: "line.3.horizontal.decrease")
+            // Filled while a status filter narrows the rows.
+            Label("Filter", systemImage: statusFilter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
         }
-        .accessibilityValue(viewModel.hermesShowsAllProfiles ? Text("All Profiles") : Text(verbatim: profile ?? ""))
+        .accessibilityValue(Text(verbatim: filterValue))
+    }
+
+    /// What the Filter button reads out: the listed Profile, then the status when one is picked.
+    private var filterValue: String {
+        let listed = viewModel.hermesShowsAllProfiles ? String(localized: "All Profiles") : (profile ?? "")
+        return statusFilter == .all ? listed : listed + ", " + statusFilter.title
+    }
+
+    /// One status at a time, picking it again goes back to All, and Mark All as Read for the unread
+    /// chats in the Profile and lane shown, whatever the search or status. It names its count
+    /// before the tap and is off while nothing in scope can be marked.
+    @ViewBuilder private var statusSection: some View {
+        let unread = viewModel.unreadRowsInScope(selectedProjectID: selectedProjectID, automatedVisibility: automatedVisibility)
+        Section {
+            ForEach(HermesSessionStatusFilter.choices, id: \.self) { status in
+                Toggle(isOn: Binding(get: { statusFilter == status }, set: { _ in pickStatus(status) })) {
+                    Text(verbatim: status.title)
+                }
+            }
+            Button("Mark \(unread.count) Chats as Read", systemImage: "checkmark.circle") { markAllRead(unread) }
+                .disabled(unread.isEmpty)
+        }
+    }
+
+    private func pickStatus(_ picked: HermesSessionStatusFilter) {
+        statusFilter = statusFilter == picked ? .all : picked
+    }
+
+    /// Says how many chats the host took, in the toast and to VoiceOver; nothing when it took none.
+    private func markAllRead(_ rows: [SessionSummary]) {
+        Task {
+            let marked = await viewModel.markAllHermesRead(rows: rows)
+            guard marked > 0 else { return }
+            let message = String(localized: "Marked \(marked) chats as read")
+            actionToast.show(ActionToast(message: message, systemImage: "checkmark.circle.fill",
+                                         accessibilityLabel: message, tone: .success))
+            AccessibilityNotification.Announcement(message).post()
+        }
     }
 
     /// Every Profile's sessions, each row tagged with its Profile (#709), or one Profile's. Picking
@@ -754,6 +826,7 @@ struct HermesSessionListView: View {
     }
 
     private func pickProfile(_ picked: String?) {
+        statusFilter = .all
         Task {
             if let picked { await viewModel.selectHermesProfile(picked) } else { await viewModel.showAllHermesProfiles() }
         }
@@ -1246,6 +1319,13 @@ private struct SearchScope: Hashable {
     let showingScheduled: Bool
 }
 
+/// What the draft read runs for: it reads while Draft is picked, again each time a chat closes,
+/// and a newer one cancels the read in flight.
+private struct DraftRead: Hashable {
+    let filter: HermesSessionStatusFilter
+    let chatCloses: Int
+}
+
 /// Scrolls the home's list back to its header on each search request, since a scrolled list has
 /// recycled the header and its field: the iPhone Duo rail's Search and ⌘F work from any row, even
 /// with search already open.
@@ -1325,14 +1405,35 @@ private struct SessionsToolbarTitle: View {
     }
 }
 
-/// Keeps where a list is, for whoever outlives the list: what covers its rows, its project lane
-/// and its search. The Hermes home keeps one per Sessions side, so these survive what rebuilds
+/// What a Hermes list's rows are narrowed to by what they need from the user. One at a time,
+/// not saved: view state like the lane, reset when another Profile is picked. It filters the
+/// rows loaded so far and never fetches more.
+enum HermesSessionStatusFilter: Equatable, CaseIterable {
+    case all, working, unread, draft
+
+    /// The statuses the Filter menu offers; `all` is picking one again.
+    static let choices: [HermesSessionStatusFilter] = [.working, .unread, .draft]
+
+    var title: String {
+        switch self {
+        case .all: return String(localized: "All")
+        case .working: return String(localized: "Working")
+        case .unread: return String(localized: "Unread")
+        case .draft: return String(localized: "Draft")
+        }
+    }
+}
+
+/// Keeps where a list is, for whoever outlives the list: what covers its rows, its project lane,
+/// its status filter and its search. The Hermes home keeps one per Sessions side, so these survive what rebuilds
 /// the list: a size-class change or the `[Bots | Sessions]` switch. A list a chat pushed keeps
 /// its own.
 @Observable final class HermesSessionListNavigation {
     var covers: HermesSessionListCovers
     /// The project lane the list shows; nil shows every session.
     var selectedProjectID: String?
+    /// The status the rows are narrowed to; `.all` narrows nothing.
+    var statusFilter = HermesSessionStatusFilter.all
     var searchText: String
     /// The home's header has grown its search pill into a field (`SessionsHeader`); on a pushed
     /// list, its native search is presented.

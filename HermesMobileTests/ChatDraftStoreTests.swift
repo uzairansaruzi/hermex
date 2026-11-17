@@ -1342,6 +1342,28 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(actual?.botSubmissionUncertain, expected?.botSubmissionUncertain, file: file, line: line)
     }
 
+    /// The Sessions list's Draft filter reads a connection's non-empty Hermes session drafts: not an
+    /// emptied composer, a session not created yet, or another server's or connection's.
+    func testHermesSessionDraftKeysListOnlyThisConnectionsNonEmptyStoredSessionDrafts() async {
+        let server = URL(string: "https://hermes.example")!
+        let other = URL(string: "https://other.example")!
+        let connection = UUID(), otherConnection = UUID()
+        let typed = ChatDraft(text: "half-typed")
+        let store = ChatDraftStore(persistence: RecordingChatDraftPersistence(initialDrafts: [
+            .hermesSession(server: server, connectionID: connection, profile: "default", key: "root"): typed,
+            .hermesSession(server: server, connectionID: connection, profile: "research", key: "other"): typed,
+            .hermesSession(server: server, connectionID: connection, profile: "default", key: "emptied"): ChatDraft(),
+            .hermesSession(server: server, connectionID: connection, profile: "default", key: nil, cwd: "/launch"): typed,
+            .hermesSession(server: other, connectionID: connection, profile: "default", key: "elsewhere"): typed,
+            .hermesSession(server: server, connectionID: otherConnection, profile: "default", key: "theirs"): typed,
+            .session(server: server, sessionID: "webui"): typed,
+        ]), debounceDuration: .seconds(10))
+
+        let keys = await store.hermesSessionDraftKeys(server: server, connectionID: connection)
+
+        XCTAssertEqual(keys, [.init(profile: "default", key: "root"), .init(profile: "research", key: "other")])
+    }
+
     private func temporaryDirectory() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("ChatDraftStoreTests-\(UUID().uuidString)", isDirectory: true)
