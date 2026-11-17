@@ -846,10 +846,11 @@ struct HermesSessionListView: View {
             .disabled(viewModel.isLoadingMoreSessions)
             .frame(maxWidth: .infinity, minHeight: 44)
             .sessionsScreenListRow()
-            // A status filter never fetches on its own: the row stays, and a tap loads.
+            // A status filter never fetches on its own, on appearing or when the rows change:
+            // the row stays, and a tap loads.
             .onAppear { if statusFilter == .all { Task { await loadMore() } } }
             .onChange(of: viewModel.sessions.count) {
-                guard let selectedProjectID else { return }
+                guard statusFilter == .all, let selectedProjectID else { return }
                 Task { await viewModel.fillHermesLane(selectedProjectID) }
             }
             .id(selectedProjectID)
