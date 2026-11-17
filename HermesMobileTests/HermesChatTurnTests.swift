@@ -199,6 +199,68 @@ import SwiftUI
         XCTAssertEqual(chat.model.runEndTrigger, 0)
     }
 
+    // MARK: Compaction (#1734)
+
+    /// A recorded auto-compaction: the working row reads "Compacting context" from the first
+    /// `compacting`, through the "Compacting context" marker line, until `compacted`.
+    func testACompactionMidTurnShowsFromCompactingUntilCompacted() async throws {
+        let frames = try recorded("turn-compaction-frames")
+        let chat = await openChat(runtime: try XCTUnwrap(frames[0]["params"]["session_id"].text))
+        let kinds = frames.map { $0["params"]["payload"]["kind"].text }
+        let start = try XCTUnwrap(kinds.firstIndex(of: "compacting"))
+        let end = try XCTUnwrap(kinds.firstIndex(of: "compacted"))
+        frames[...start].forEach(chat.receive)
+        XCTAssertTrue(chat.model.isCompacting)
+        frames[(start + 1)..<end].forEach(chat.receive)
+        XCTAssertTrue(chat.model.isCompacting, "a second compacting line keeps it")
+        chat.receive(frames[end])
+        XCTAssertFalse(chat.model.isCompacting)
+        XCTAssertNotNil(chat.model.activeStreamID, "the turn goes on")
+    }
+
+    /// A compaction whose `compacted` never came ends with the turn the host reports over.
+    func testTheTurnsEndClearsACompactionWhoseEndNeverCame() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "status.update", ["kind": .string("compacting"), "text": .string("Compacting context")]))
+        XCTAssertTrue(chat.model.isCompacting)
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        XCTAssertFalse(chat.model.isCompacting)
+    }
+
+    /// A recorded compaction that made no progress sends no `compacted`: the turn's next
+    /// output shows it went on, as Desktop reads it.
+    func testTheTurnsNextOutputClearsACompactionThatSentNoEnd() async throws {
+        let frames = try recorded("turn-compaction-frames", key: "unended")
+        let chat = await openChat(runtime: try XCTUnwrap(frames[0]["params"]["session_id"].text))
+        let output = try XCTUnwrap(frames.firstIndex { $0["params"]["type"].text == "thinking.delta" })
+        frames[..<output].forEach(chat.receive)
+        XCTAssertTrue(chat.model.isCompacting)
+        chat.receive(frames[output])
+        XCTAssertFalse(chat.model.isCompacting)
+    }
+
+    /// A reattach can miss `compacted`: the line goes with the old socket.
+    func testAReattachDropsACompactionItCannotSeeEnd() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "status.update", ["kind": .string("compacting"), "text": .string("Compacting context")]))
+        XCTAssertTrue(chat.model.isCompacting)
+        await reattach(chat, resume(running: true), latest: 2)
+        XCTAssertFalse(chat.model.isCompacting)
+        XCTAssertNotNil(chat.model.activeStreamID, "the running turn is still shown")
+    }
+
+    /// An in-process `/compress` pins `compressing` and always clears it with its `ready`, which
+    /// the host sends as `{kind: "status", text: "ready"}` (`_status_update` with no text).
+    func testACompressPinnedStatusEndsWithItsReady() async {
+        let chat = await openChat()
+        chat.receive(event(1, "status.update", ["kind": .string("compressing"), "text": .string("compressing 10 messages")]))
+        XCTAssertTrue(chat.model.isCompacting)
+        chat.receive(event(2, "status.update", ["kind": .string("status"), "text": .string("ready")]))
+        XCTAssertFalse(chat.model.isCompacting)
+    }
+
     // MARK: Sending
 
     func testSendSubmitsAQueuedPromptOnceAndShowsIt() async {
@@ -1915,12 +1977,12 @@ import SwiftUI
         return .object(params)
     }
 
-    private func recorded(_ name: String) throws -> [BotJSON] {
+    private func recorded(_ name: String, key: String = "frames") throws -> [BotJSON] {
         guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
             throw XCTSkip("The source tree is not present (physical device or remote runner).")
         }
         let capture = try JSONDecoder().decode(BotJSON.self, from: data)
-        return try XCTUnwrap(capture.list ?? capture["frames"].list)
+        return try XCTUnwrap(capture.list ?? capture[key].list)
     }
 
     private func event(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:], runtime: String = "runtime") -> BotJSON {

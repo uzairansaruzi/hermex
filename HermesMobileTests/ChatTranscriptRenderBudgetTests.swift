@@ -188,6 +188,7 @@ private struct BudgetTranscriptHost: View {
             hidesRunStatusAccessibility: false,
             showsThinkingAndToolCards: true,
             workingRowStartedAt: nil,
+            isCompacting: false,
             requestWithdrawal: nil,
             showsScrollToBottomButton: false,
             shouldFollowLatestMessage: false,

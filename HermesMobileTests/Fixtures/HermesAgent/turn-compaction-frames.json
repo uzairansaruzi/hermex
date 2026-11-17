@@ -1,0 +1,191 @@
+{
+  "source": "Recorded live for #1734 from a scratch copy of scripts/local-hermes (hermes serve) at the pinned hermes-agent commit, with compression.threshold_tokens lowered and the stub model reporting prompt usage so a short chat auto-compacts. Not written by scripts/capture-hermes-fixtures. `frames` is a turn whose compaction finished; `unended` one whose compaction made no progress and so sent no `compacted`. Each list is one turn from its message.start: ids are replaced, seq renumbered from 1, and payloads trimmed to the fields Hermex reads.",
+  "hermes_agent_sha": "3b421578588243f920886e6fe79a6faa87ea026e",
+  "frames": [
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "message.start",
+        "session_id": "fixture-runtime",
+        "seq": 1,
+        "payload": {}
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "status.update",
+        "session_id": "fixture-runtime",
+        "seq": 2,
+        "payload": {
+          "kind": "compacting",
+          "text": "📦 Preflight compression: ~12,319 tokens >= 12,000 threshold. This may take a moment."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "status.update",
+        "session_id": "fixture-runtime",
+        "seq": 3,
+        "payload": {
+          "kind": "compacting",
+          "text": "🗜️ Compacting context — summarizing earlier conversation so I can continue..."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "status.update",
+        "session_id": "fixture-runtime",
+        "seq": 4,
+        "payload": {
+          "kind": "compacted",
+          "text": "✓ Context compaction complete — continuing turn..."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "thinking.delta",
+        "session_id": "fixture-runtime",
+        "seq": 5,
+        "payload": {
+          "text": "(◔_◔) contemplating..."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "thinking.delta",
+        "session_id": "fixture-runtime",
+        "seq": 6,
+        "payload": {
+          "text": ""
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "message.complete",
+        "session_id": "fixture-runtime",
+        "seq": 7,
+        "payload": {
+          "status": "complete",
+          "text": "Noted."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "session.info",
+        "session_id": "fixture-runtime",
+        "seq": 8,
+        "payload": {
+          "running": false
+        }
+      }
+    }
+  ],
+  "unended": [
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "message.start",
+        "session_id": "fixture-runtime",
+        "seq": 1,
+        "payload": {}
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "status.update",
+        "session_id": "fixture-runtime",
+        "seq": 2,
+        "payload": {
+          "kind": "compacting",
+          "text": "📦 Preflight compression: ~15,017 tokens >= 4,000 threshold. This may take a moment."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "status.update",
+        "session_id": "fixture-runtime",
+        "seq": 3,
+        "payload": {
+          "kind": "compacting",
+          "text": "🗜️ Compacting context — summarizing earlier conversation so I can continue..."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "thinking.delta",
+        "session_id": "fixture-runtime",
+        "seq": 4,
+        "payload": {
+          "text": "◉_◉ analyzing..."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "thinking.delta",
+        "session_id": "fixture-runtime",
+        "seq": 5,
+        "payload": {
+          "text": ""
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "message.complete",
+        "session_id": "fixture-runtime",
+        "seq": 6,
+        "payload": {
+          "status": "complete",
+          "text": "Noted."
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "session.info",
+        "session_id": "fixture-runtime",
+        "seq": 7,
+        "payload": {
+          "running": false
+        }
+      }
+    }
+  ]
+}
