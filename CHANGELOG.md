@@ -7,7 +7,7 @@ Security sections per release.
 
 ## [Unreleased]
 
-## [2.2.0] - Unreleased
+## [2.2.0] - 2026-11-17
 
 Agents can now show you what they made. An HTML report renders right in a
 Hermes chat, in your theme, and `svg` and `mermaid` code blocks open as
