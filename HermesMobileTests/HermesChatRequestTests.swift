@@ -1065,7 +1065,156 @@ import XCTest
         XCTAssertEqual(chat.requests.withdrawal?.message, "Approval timed out, so it didn't run.")
     }
 
+    // MARK: Theme requests (#1727)
+
+    /// "Switch to dark mode": `set_theme`'s `theme.apply` turns the app dark and is answered at
+    /// once with what was applied, with no card and no wait.
+    func testAThemeApplyTurnsTheAppDarkAndAnswersWhatItApplied() async throws {
+        keepAppearance()
+        let chat = await openChat()
+        chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
+        let answered = expectation(description: "theme.apply answered")
+        chat.host.expect(answered, onNext: "request.answer")
+        chat.receive(request("theme.apply", id: "srq-t1", ["mode": .string("dark")]))
+        XCTAssertTrue(chat.requests.open.isEmpty)
+        XCTAssertFalse(chat.model.isWaitingForUser)
+        await fulfillment(of: [answered], timeout: 2)
+        let sent = try XCTUnwrap(chat.writes("request.answer").first)
+        XCTAssertEqual(chat.writes("request.answer").count, 1)
+        XCTAssertEqual(sent["id"], .string("srq-t1"))
+        let value = try themeAnswer(sent)
+        XCTAssertEqual(value["success"], .bool(true))
+        XCTAssertEqual(value["applied"]["mode"], .string("dark"))
+        XCTAssertEqual(UserDefaults.standard.string(forKey: AppTheme.storageKey), AppTheme.dark.rawValue)
+    }
+
+    /// "Make the accent green": `theme.apply` stores Hermex's green swatch where Settings >
+    /// Appearance keeps the accent.
+    func testAThemeApplyStoresTheAccentSwatch() async throws {
+        keepAppearance()
+        UserDefaults.standard.removeObject(forKey: AppAppearanceSettings.accentHexKey)
+        let chat = await openChat()
+        chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
+        let answered = expectation(description: "theme.apply answered")
+        chat.host.expect(answered, onNext: "request.answer")
+        chat.receive(request("theme.apply", id: "srq-t3", ["accent": .string("green")]))
+        await fulfillment(of: [answered], timeout: 2)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: AppAppearanceSettings.accentHexKey), "#4CC96B")
+    }
+
+    /// "Use a layout called focus": Hermex has no layouts, so the whole request is refused and
+    /// nothing the user set changes.
+    func testAThemeApplyWithALayoutIsRefusedAndChangesNothing() async throws {
+        keepAppearance()
+        UserDefaults.standard.set(AppTheme.light.rawValue, forKey: AppTheme.storageKey)
+        UserDefaults.standard.set("#FF5C5C", forKey: AppAppearanceSettings.accentHexKey)
+        let chat = await openChat()
+        chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
+        let answered = expectation(description: "theme.apply answered")
+        chat.host.expect(answered, onNext: "request.answer")
+        chat.receive(request("theme.apply", id: "srq-t2", ["mode": .string("dark"), "accent": .string("green"),
+                                                           "layout": .string("focus")]))
+        await fulfillment(of: [answered], timeout: 2)
+        let value = try themeAnswer(try XCTUnwrap(chat.writes("request.answer").first))
+        XCTAssertEqual(value["success"], .bool(false))
+        XCTAssertNotNil(value["error"].text)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: AppTheme.storageKey), AppTheme.light.rawValue)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: AppAppearanceSettings.accentHexKey), "#FF5C5C")
+    }
+
+    /// "Let me pick an accent": the phone has no picker card, so `theme.pick` is answered at once
+    /// with `said`, which tells the agent to ask in the chat, never with a cancel.
+    func testAThemePickIsAnsweredAtOnceWithSaid() async throws {
+        let chat = await openChat()
+        chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
+        let answered = expectation(description: "theme.pick answered")
+        chat.host.expect(answered, onNext: "request.answer")
+        chat.receive(request("theme.pick", id: "srq-p1", ["picker": .string("accent")]))
+        XCTAssertFalse(chat.model.isWaitingForUser)
+        await fulfillment(of: [answered], timeout: 2)
+        let sent = try XCTUnwrap(chat.writes("request.answer").first)
+        XCTAssertEqual(sent["id"], .string("srq-p1"))
+        XCTAssertEqual(sent["result"]?.fields?.keys.sorted(), ["said"])
+        XCTAssertFalse(sent["result"]?["said"].text?.isEmpty ?? true)
+    }
+
+    /// A gateway Webapp answers `request.answer` for a theme request with `expired` and lets it
+    /// time out (captured at the pin), so a canonical chat answers with the response frame.
+    func testACanonicalThemePickGoesAsTheResponseFrame() async throws {
+        let chat = await openChat(canonical: [])
+        let answered = expectation(description: "theme.pick response frame")
+        chat.host.expect(answered, onNext: "")
+        chat.receive(request("theme.pick", id: "srq-p6", ["picker": .string("accent")], runtime: "tip"))
+        await fulfillment(of: [answered], timeout: 2)
+        let response = try XCTUnwrap(chat.host.requests.first { $0["id"].text == "srq-p6" })
+        XCTAssertEqual(response["result"].fields?.keys.sorted(), ["said"])
+        XCTAssertEqual(chat.writes("request.answer"), [])
+    }
+
+    /// A theme request the socket delivers again, or a replay brings back after its answer, is
+    /// never answered twice.
+    func testTheSameThemeRequestIsAnsweredOnce() async throws {
+        let chat = await openChat()
+        chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
+        let first = expectation(description: "first answer")
+        chat.host.expect(first, onNext: "request.answer")
+        let pick = request("theme.pick", id: "srq-p2", ["picker": .string("layout")])
+        chat.receive(pick)
+        chat.receive(pick)
+        await fulfillment(of: [first], timeout: 2)
+        chat.receive(pick)
+        let next = expectation(description: "the next request's answer")
+        chat.host.expect(next, onNext: "request.answer")
+        chat.receive(request("theme.pick", id: "srq-p3", ["picker": .string("accent")]))
+        await fulfillment(of: [next], timeout: 2)
+        XCTAssertEqual(chat.writes("request.answer").map { $0["id"] }, [.string("srq-p2"), .string("srq-p3")])
+    }
+
+    /// A theme request raised while the chat was away comes back in `open_requests`: it is
+    /// answered on return instead of leaving the session waiting, and a later attach that still
+    /// lists it doesn't answer it again.
+    func testARestoredThemeRequestIsAnsweredOnceAndNeverWaits() async throws {
+        let chat = await openChat()
+        chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
+        chat.model.suspendStreamForBackground()
+        let pick = request("theme.pick", id: "srq-p4", ["picker": .string("accent")])
+        chat.host.always("session.events.since", .init(result: replay(openRequests: [pick])))
+        chat.host.always("session.resume", .init(result: resume(openRequests: [pick])))
+        let answered = expectation(description: "restored theme.pick answered")
+        chat.host.expect(answered, onNext: "request.answer")
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertTrue(chat.requests.open.isEmpty)
+        XCTAssertFalse(chat.model.isWaitingForUser)
+        await fulfillment(of: [answered], timeout: 2)
+
+        chat.model.suspendStreamForBackground()
+        await chat.model.reconnectStreamIfNeeded()
+        let next = expectation(description: "the next request's answer")
+        chat.host.expect(next, onNext: "request.answer")
+        chat.receive(request("theme.pick", id: "srq-p5", ["picker": .string("accent")]))
+        await fulfillment(of: [next], timeout: 2)
+        XCTAssertEqual(chat.writes("request.answer").map { $0["id"] }, [.string("srq-p4"), .string("srq-p5")])
+    }
+
     // MARK: Fixture
+
+    /// Puts back the app-wide appearance a theme test may change.
+    private func keepAppearance() {
+        let defaults = UserDefaults.standard
+        let keys = [AppTheme.storageKey, AppAppearanceSettings.accentHexKey]
+        let saved = keys.map { defaults.object(forKey: $0) }
+        // `theme.apply` also restyles the connected scenes, so they go back with the settings.
+        addTeardownBlock { @MainActor in
+            for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) }
+            AppAppearanceSettings.applyStoredToConnectedScenes()
+        }
+    }
+
+    /// A `theme.apply` answer's `value`, decoded from the JSON text the tool hands the model.
+    private func themeAnswer(_ sent: [String: BotJSON]) throws -> BotJSON {
+        let text = try XCTUnwrap(sent["result"]?["value"].text)
+        return try JSONDecoder().decode(BotJSON.self, from: Data(text.utf8))
+    }
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")

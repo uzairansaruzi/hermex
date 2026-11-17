@@ -386,6 +386,15 @@ earlier keeps the old note until the host reaps it. Hermex owns `append`: a user
 Hermex sessions goes in `platform_hints.gui.replace`, which the host puts before it. Text a user
 put in `platform_hints.hermex.replace` for a 2.0 build no longer applies; move it to `gui`.
 
+On a gateway Webapp, `gui` also gives the agent the `desktop_ui` toolset
+(`gateway/session_policy.py`, `toolsets.py`): `set_theme`, `show_tip` and `gui_tour`, which the
+pin defers behind `tool_search`. `hermes serve` adds it only for `desktop`
+(`tui_gateway/agent_factory.py` `_gui_surface_toolsets`), so there a Hermex agent's `set_theme`
+is refused before any request (captured at the pin, #1727). The note says Hermex has no tours, tips, panes or layouts
+and that `set_theme` changes only light, dark and the accent (#1727); the chat answers
+`set_theme`'s requests itself (`bots.md` § blocking requests). Changing the note's text rewrites
+every Profile's copy on its next sign-in check.
+
 ## Handshake
 
 Every socket, reconnects included, runs the same handshake before any other RPC:

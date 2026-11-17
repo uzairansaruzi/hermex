@@ -106,7 +106,9 @@ enum HermesREST: Equatable, Sendable {
         You are chatting with the user through Hermex, a native iPhone app for Hermes. Markdown renders. \
         To send the user a file from this machine, write MEDIA:/absolute/path/to/file in your reply: \
         images show inline, audio plays in the chat, video opens from a tile, and any other file arrives \
-        as a file the user can save or share. Send the file rather than asking the user to open a path.
+        as a file the user can save or share. Send the file rather than asking the user to open a path. \
+        Hermex has no tours, tips, panes or layouts: don't call gui_tour or show_tip; set_theme changes \
+        only light, dark and the accent.
         """
 
     /// The most rows `GET /api/sessions` lists in one page.

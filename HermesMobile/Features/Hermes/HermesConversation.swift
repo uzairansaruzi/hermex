@@ -58,8 +58,10 @@ enum HermesRequestAnswer: Equatable {
     /// One `clarify.lock` per batch question id, in order, or one `request.answer {answer}`
     /// for a single question's unkeyed answer.
     case questions([BotQuestionAnswer])
-    /// A credential prompt's `request.answer {value}`; empty skips.
+    /// A credential prompt's `request.answer {value}`; empty skips. Also `theme.apply`'s JSON text.
     case value(String)
+    /// `theme.pick`'s `request.answer {said}` (#1727).
+    case said(String)
 }
 
 /// What a `HermesConversation` asks of the screen model that owns it. The engine calls
@@ -425,6 +427,8 @@ extension HermesConversationOwner {
             // The host tolerates a late answer to a prompt it already dropped and says so
             // rather than erroring; nothing was applied.
             return try await proxy(.value(value))["status"].text == "expired" ? .alreadyResolved : .answered
+        case .said(let said):
+            return try await proxy(.said(said))["status"].text == "expired" ? .alreadyResolved : .answered
         case .questions(let answers):
             for answer in answers {
                 let reply: BotJSON

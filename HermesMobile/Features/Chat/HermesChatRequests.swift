@@ -14,7 +14,9 @@ import Observation
 /// question, a sudo or secret prompt and a Desktop task get a card; a Desktop task's is only
 /// shown, never answered, since a reply from here would take the request from Desktop, which
 /// answers it. Password-vault prompts and unknown methods get no card and are never answered.
-/// Any open request still means the session waits for someone. Credential and setup values
+/// Any open request still means the session waits for someone. `set_theme`'s `theme.apply` and
+/// `theme.pick` are the exception (#1727): answered at once without a tap, they never join the
+/// list (`HermesThemeRequest`). Credential and setup values
 /// pass straight to the dispatch and are never kept.
 ///
 /// A connection operation is an event plus an RPC, not a server request: `connection.request`
@@ -94,6 +96,9 @@ import Observation
     /// The envelope on screen when the chat last left a live connection, so a cancel in the
     /// replay on return still leaves its note. The next replay consumes it.
     @ObservationIgnored private var envelopeShownWhenLeft: BotRequestWithdrawal.Envelope?
+    /// The theme requests this chat took to answer, by envelope id, so neither a repeated frame
+    /// nor an attach that still lists one answers it twice. Kept across attaches.
+    @ObservationIgnored private var themeRequestsTaken: Set<String> = []
 
     init(engine: HermesConversation) {
         self.engine = engine
@@ -496,7 +501,8 @@ import Observation
     /// A live request envelope for this runtime: added, or replacing the one with its id. It
     /// takes a withdrawn card's slot.
     func receive(_ envelope: BotJSON) {
-        guard let request = BotServerRequest(envelope), request.sessionID == engine.runtime else { return }
+        guard let request = BotServerRequest(envelope), request.sessionID == engine.runtime,
+              !answersTheme(envelope) else { return }
         revision += 1
         if let index = open.firstIndex(where: { $0.id == request.id }) {
             if case .approval(let old)? = open[index].pending, old.requestID != request.pending?.requestID {
@@ -685,11 +691,46 @@ import Observation
         return connectionResolution
     }
 
-    /// Resume omits an empty `open_requests`; replay always carries it. One entry per id.
+    /// Resume omits an empty `open_requests`; replay always carries it. One entry per id. A
+    /// theme request is answered instead.
     private func restore(_ rows: BotJSON) {
         var seen = Set<String>()
-        open = (rows.list ?? []).compactMap(BotServerRequest.init)
+        open = (rows.list ?? []).filter { !answersTheme($0) }.compactMap(BotServerRequest.init)
             .filter { $0.sessionID == engine.runtime && seen.insert($0.id).inserted }
         retainPendingSummaries()
+    }
+
+    /// True when `envelope` is a theme request for this runtime, which is answered here instead
+    /// of joining `open`: `theme.apply` changes the app's appearance first, as Settings does.
+    /// Each envelope id is answered once (but see `.stale` below), with no card to check against
+    /// and nothing shown on failure: a refusal or a lost reply leaves the host to time the request out. A `.stale`
+    /// answer forgets the id so the next attach that lists it answers it. A response frame goes
+    /// stale only before it is sent, but a `request.answer` is also re-checked after its reply,
+    /// so that answer may already have gone out: the host has then resolved the request, the
+    /// second answer changes nothing there, and the same theme applies again.
+    private func answersTheme(_ envelope: BotJSON) -> Bool {
+        guard let method = envelope["method"].text, HermesThemeRequest.methods.contains(method) else { return false }
+        let params = envelope["params"]
+        guard let id = envelope["id"].text, !id.isEmpty, let runtime = engine.runtime,
+              params["session_id"].text == runtime else { return true }
+        guard themeRequestsTaken.insert(id).inserted else { return true }
+        let answer: HermesRequestAnswer
+        if method == "theme.apply" {
+            let change = HermesThemeRequest.apply(params)
+            change.store(in: .standard)
+            AppAppearanceSettings.applyStoredToConnectedScenes()
+            answer = .value(change.answer)
+        } else {
+            answer = .said(HermesThemeRequest.said(params))
+        }
+        let action = HermesAnswerAction(generation: engine.generation, runtime: runtime, requestID: id)
+        Task { [weak self, engine] in
+            do {
+                _ = try await engine.answer(answer, action) {}
+            } catch BotFailure.stale {
+                self?.themeRequestsTaken.remove(id)
+            } catch {}
+        }
+        return true
     }
 }
