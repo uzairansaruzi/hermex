@@ -37,11 +37,9 @@ import Observation
     private(set) var effort: String?
     private(set) var fast: Bool?
     private(set) var pendingModel: ModelCatalogOption?
-    /// The model the user just picked in this chat, until the host reports it active, a refusal
-    /// or a cancelled confirmation drops it, or the pick is replaced.
-    private var pickedModel: ModelCatalogOption?
-    /// Called once, from a catalog read, when the host reports `pickedModel` as the live model.
-    /// That read can finish inside the pick's own `apply`, so a caller that sends more defers it.
+    /// Called from inside a pick's `apply` when the host's reply to that pick says it runs now
+    /// (at once, or once confirmed) and the catalog read after it shows it live; never for a pick
+    /// the host defers. The pick is still applying, so a caller that sends more defers it.
     @ObservationIgnored var onPickedModelActive: ((ModelCatalogOption) -> Void)?
     /// A canonical pick the host deferred to the running response's end, kept apart from
     /// `pendingModel` (a display state `session.info` clears) until the host asks to confirm it.
@@ -88,7 +86,7 @@ import Observation
         if lastContext?.connectionID != context.connectionID || lastContext?.profile != context.profile {
             pendingModel = nil; refused = []; errorMessage = nil
         }
-        if lastContext?.runtime != context.runtime { pendingModel = nil; pickedModel = nil; deferredModel = nil; heldConfirmation = nil }
+        if lastContext?.runtime != context.runtime { pendingModel = nil; deferredModel = nil; heldConfirmation = nil }
         lastContext = context
         catalog = HermesModelCatalog(.null); effort = nil; fast = nil
         self.context = context; self.wire = wire; self.mutate = mutate
@@ -122,7 +120,6 @@ import Observation
             // Desktop may replace/cancel the queued choice, or the next turn may
             // resolve an alias to a canonical model. Do not keep an obsolete badge.
             self.pendingModel = nil
-            pickedModel = nil
         }
         // `info.model` can be the queued choice. Only model.options reads the live
         // agent's model/provider; never use the display mirror for the active tick.
@@ -157,11 +154,6 @@ import Observation
             if let pendingModel, catalog.active?.matchesSelection(modelID: pendingModel.id, providerID: pendingModel.providerID) == true {
                 self.pendingModel = nil
             }
-            if let picked = pickedModel,
-               catalog.active?.matchesSelection(modelID: picked.id, providerID: picked.providerID) == true {
-                pickedModel = nil
-                onPickedModelActive?(picked)
-            }
         } catch {
             guard context == owner, revision == readRevision, !Task.isCancelled else { return }
             // A -32601 needs nothing here: the connection has recorded it. A lost connection is
@@ -176,7 +168,7 @@ import Observation
         return Action(context: context, change: change, expectedModel: catalog.active)
     }
 
-    func cancelConfirmation() { confirmation = nil; pickedModel = nil }
+    func cancelConfirmation() { confirmation = nil }
     func confirm() async {
         guard let pending = confirmation else { return }
         await confirm(pending)
@@ -223,7 +215,6 @@ import Observation
                 errorMessage = String(localized: "This model identifier cannot be safely sent to this host."); return
             }
             call = .configSet(sessionID: runtime, profile: profile, setting: .model(value: value, confirmExpensive: confirmed))
-            pickedModel = option
             if mutate != nil, let provider = option.providerID {
                 canonicalModel = .model(id: option.id, provider: provider, confirm: token)
             }
@@ -262,6 +253,8 @@ import Observation
                     pendingModel = result["status"].text == "deferred" ? option : nil
                     deferredModel = pendingModel
                     await reload()
+                    // The applied edit's receipt carries no `status`; `deferred` waits for the turn.
+                    if result["status"] == .null { announce(option, for: action) }
                 } else { throw BotSettingFailure.unknownOutcome }
             case .model(let option):
                 guard result["key"].text == "model", result["scope"].text == "session",
@@ -272,6 +265,7 @@ import Observation
                 } else if result["confirm_required"].flag == false {
                     pendingModel = result["deferred"].flag == true ? option : nil
                     await reload()
+                    if result["deferred"].flag != true { announce(option, for: action) }
                 } else { throw BotSettingFailure.unknownOutcome }
             case .effort(let value):
                 guard result["key"].text == "reasoning", result["value"].text == value else { throw BotSettingFailure.unknownOutcome }
@@ -282,7 +276,6 @@ import Observation
             }
         } catch {
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
-            if case .model = action.change { pickedModel = nil }
             if isRefused(error) { refused.insert(call.method) }
             if error is HermesFenceRefusal {
                 // The session changed first; nothing applied, and the next pick carries its new fences.
@@ -291,6 +284,13 @@ import Observation
             else if !dispatched || isUnsupported(error) { errorMessage = error.localizedDescription }
             else { errorMessage = BotSettingFailure.unknownOutcome.localizedDescription }
         }
+    }
+
+    /// Tells `onPickedModelActive` about `option` when the catalog read after its reply shows it live.
+    private func announce(_ option: ModelCatalogOption, for action: Action) {
+        guard context == action.context, activeAction == action.id,
+              catalog.active?.matchesSelection(modelID: option.id, providerID: option.providerID) == true else { return }
+        onPickedModelActive?(option)
     }
 
     private func allowed(_ change: Change) -> Bool {

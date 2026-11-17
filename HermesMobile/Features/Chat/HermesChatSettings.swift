@@ -141,28 +141,38 @@ enum HermesProfilePreference {
         controls.onPickedModelActive = { [weak self] option in self?.applyPreset(for: option) }
     }
 
-    /// Sends the Thinking level and then Fast remembered for `option` (#1750), once the host
-    /// reports it as this chat's model. A value equal to the current one, a level the model's
-    /// ladder lacks, and Fast on a model that hides it are skipped. It runs after the pick's own
-    /// write finishes, and each send is remembered again through the ordinary `select`.
+    /// Sends the Thinking level and then Fast remembered for `option` (#1750), right after the
+    /// host ran this chat's pick of it at once (a deferred pick applies none). A value equal to
+    /// the current one, a level the model's ladder lacks, and Fast on a model that hides it are
+    /// skipped; Fast is skipped too once the chat reattached or another model took over. It runs
+    /// after the pick's own write finishes, and each send is remembered through the ordinary `select`.
     private func applyPreset(for option: ModelCatalogOption) {
         let store = ModelPresetStore(server: engine.server)
         guard let preset = store.preset(for: option.favoriteKey) else { return }
+        let context = controls.context
         presetApplication = Task { [weak self] in
-            guard let self, controls.catalog.active?.favoriteKey == option.favoriteKey else { return }
+            guard let self, liveModelKey == option.favoriteKey else { return }
             if let effort = preset.effort, effort != controls.effort, showsEffort, effortLevels.contains(effort) {
                 _ = await select(effort: effort)
             }
             if let fast = preset.fast, fast != controls.fast, controls.showsFast,
-               controls.catalog.active?.favoriteKey == option.favoriteKey {
+               controls.context == context, liveModelKey == option.favoriteKey {
                 _ = await select(fast: fast)
             }
         }
     }
 
+    /// The catalog's live model, unless the latest `session.info` names another one: another
+    /// client switched the session, and the catalog has not been read since.
+    private var liveModelKey: ModelFavoriteKey? {
+        guard let active = controls.catalog.active else { return nil }
+        if let reported = latestInfo?["model"].text, reported != active.id { return nil }
+        return active.favoriteKey
+    }
+
     /// Remembers `record` against the live model after the host confirmed a change to it.
     private func remember(_ record: (ModelPresetStore, ModelFavoriteKey) -> Void) {
-        guard let key = controls.catalog.active?.favoriteKey else { return }
+        guard let key = liveModelKey else { return }
         record(ModelPresetStore(server: engine.server), key)
     }
 
