@@ -54,8 +54,7 @@ import Observation
     /// a write, so a caller that sends more defers it, and calls `finishPick` once it sends.
     @ObservationIgnored var onPickActive: (() -> Void)?
     /// The model the latest `session.info` named, and a count of the times it changed, against
-    /// the count of the latest catalog read that started after it and showed that model live. A
-    /// dashboard names a queued pick before it runs it, so a read showing another model leaves it unread.
+    /// the count the latest catalog read started after.
     @ObservationIgnored private var reportedModel: String?
     @ObservationIgnored private var reportSerial = 0
     @ObservationIgnored private var readSerial = 0
@@ -183,9 +182,7 @@ import Observation
             guard context == owner, revision == readRevision, !Task.isCancelled else { return }
             guard result["providers"].list != nil else { throw BotFailure.unsupported }
             catalog = HermesModelCatalog(result)
-            if reportedModel.map({ catalog.active?.matchesSelection(modelID: $0, providerID: nil) == true }) ?? true {
-                readSerial = serial
-            }
+            readSerial = serial
             if let pendingModel, catalog.active?.matchesSelection(modelID: pendingModel.id, providerID: pendingModel.providerID) == true {
                 self.pendingModel = nil
             }
@@ -305,7 +302,7 @@ import Observation
                     pendingModel = result["status"].text == "deferred" ? option : nil
                     deferredModel = pendingModel
                     pick = Pick(model: option, from: action.expectedModel)
-                    await reload(); droppedRead = false
+                    await reload()
                 } else { throw BotSettingFailure.unknownOutcome }
             case .model(let option):
                 guard result["key"].text == "model", result["scope"].text == "session",
@@ -316,7 +313,7 @@ import Observation
                 } else if result["confirm_required"].flag == false {
                     pendingModel = result["deferred"].flag == true ? option : nil
                     pick = Pick(model: option, from: action.expectedModel)
-                    await reload(); droppedRead = false
+                    await reload()
                 } else { throw BotSettingFailure.unknownOutcome }
             case .effort(let value):
                 guard result["key"].text == "reasoning", result["value"].text == value else { throw BotSettingFailure.unknownOutcome }

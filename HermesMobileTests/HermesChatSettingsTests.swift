@@ -455,27 +455,6 @@ import Observation
         XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.sonnet.favoriteKey))
     }
 
-    /// A dashboard names another client's queued pick before it runs it: a level picked once the
-    /// next turn runs that model is remembered for it, not for the model the catalog read first.
-    func testALevelPickedAfterAnotherClientsQueuedPickRunsIsRememberedForIt() async throws {
-        let chat = await openChat()
-        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
-        let queued = expectation(description: "queued read")
-        chat.host.expect(queued, onNext: "model.options")
-        chat.receive(event(1, "session.info", ["running": .bool(false), "model": .string("claude-opus")]))
-        await fulfillment(of: [queued], timeout: 5)
-        await waitUntil("queued") { !controls.isLoading }
-
-        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
-        chat.receive(event(2, "session.info", ["running": .bool(true), "model": .string("claude-opus")]))
-        await waitUntil("switched") { controls.catalog.active?.id == "claude-opus" && !controls.isLoading }
-
-        chat.host.next("config.set", .init(result: Self.effortReply("high")))
-        _ = await chat.model.selectReasoningEffort("high")
-        XCTAssertEqual(ModelPresetStore(server: Self.server).preset(for: Self.opus.favoriteKey)?.effort, "high")
-        XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.sonnet.favoriteKey))
-    }
-
     /// A pick still waiting on its confirmation is dropped with the connection: when another
     /// client then moves the chat to that model, the reconnect applies no preset.
     func testAnUnconfirmedPickAppliesNoPresetAfterAReconnect() async throws {
