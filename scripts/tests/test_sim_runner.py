@@ -43,6 +43,7 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.lookup_status = 0
         self.terminate_status = 3
         self.timeout_operation = None
+        self.ran_tests = {"BotLiveActivityTests": ["testA()"], "X": ["testA()"]}
         # CI runs these on Linux, which has no hw.memsize; default to a large Mac.
         self.host_bytes = 32 * 1024 ** 3
 
@@ -77,6 +78,12 @@ class SimulatorRunnerTests(unittest.TestCase):
             if self.xcodebuild_runs <= self.stalled_runs:
                 raise runner.HandshakeStall
             return 65 if self.is_hung_run() else self.exit_code
+        elif command[:5] == ["xcrun", "xcresulttool", "get", "test-results", "tests"]:
+            suites = [dict(nodeType="Test Suite", name=suite, children=[
+                dict(nodeType="Test Case", name=case, nodeIdentifier=suite + "/" + case)
+                for case in cases]) for suite, cases in self.ran_tests.items()]
+            output.write_text(json.dumps({"testNodes": [dict(nodeType="Test Plan", children=[
+                dict(nodeType="Unit test bundle", name="HermesMobileTests", children=suites)])]}))
         elif command[:3] == ["xcrun", "xcresulttool", "get"]:
             if self.is_hung_run():
                 summary = dict(passedTests=0, failedTests=1, skippedTests=0, testFailures=[
@@ -92,13 +99,13 @@ class SimulatorRunnerTests(unittest.TestCase):
     def is_hung_run(self):
         return self.xcodebuild_runs <= self.hung_runs
 
-    def invoke(self, checkout="one/hermex", extra=()):
+    def invoke(self, checkout="one/hermex", extra=(), output=None):
         with patch.object(runner, "__file__", str(self.home / checkout / "scripts/test-sim")), \
                 patch.object(runner.Path, "home", return_value=self.home), \
                 patch.object(runner, "run", side_effect=self.fake_run), \
                 patch.object(runner, "host_memory", return_value=self.host_bytes), \
                 patch.object(sys, "argv", ["test-sim", "SIM-A", *extra]), \
-                redirect_stdout(io.StringIO()):
+                redirect_stdout(output or io.StringIO()):
             return runner.main()
 
     def test_serial_signed_build_and_focused_selection(self):
@@ -338,6 +345,21 @@ class SimulatorRunnerTests(unittest.TestCase):
                 self.timeout_operation = "bootstatus" if case == "never became ready" else None
                 self.invoke(extra=extra)
                 self.assertEqual(self.device["state"], expected)
+
+    def test_a_selection_that_ran_no_tests_is_not_a_pass(self):
+        # BotPendingRequestTests.swift holds BotPendingRequestParsingTests, so the file
+        # name selects nothing while the other selection still passes.
+        selection = ("--only", "HermesMobileTests/BotLiveActivityTests",
+                     "--only", "HermesMobileTests/BotPendingRequestTests")
+        output = io.StringIO()
+        code = self.invoke(extra=selection, output=output)
+        self.assertEqual(code, 2)
+        self.assertIn("HermesMobileTests/BotPendingRequestTests", output.getvalue())
+        for selected in ("HermesMobileTests", "HermesMobileTests/BotLiveActivityTests",
+                         "HermesMobileTests/BotLiveActivityTests/testA",
+                         "HermesMobileTests/BotLiveActivityTests/testA()"):
+            with self.subTest(selected=selected):
+                self.assertEqual(self.invoke(extra=("--only", selected)), 0)
 
     def test_failed_results_cannot_be_reported_as_success(self):
         self.failed = 1
