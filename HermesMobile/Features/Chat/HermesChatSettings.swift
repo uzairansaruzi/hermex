@@ -138,7 +138,17 @@ enum HermesProfilePreference {
         mentions = BotMentions(roster: [], excluding: profile)
         if let openedBot { bots = [openedBot] }
         if loadsAvatars { avatars = BotAvatarStore.shared.images(connectionID: engine.connection.id) }
-        controls.onPickedModelActive = { [weak self] option in self?.applyPreset(for: option) }
+        controls.onPickedModelActive = { [weak self] option in self?.pickRan(option) }
+    }
+
+    /// The host ran this chat's pick of `option` at once. A session whose agent is not built yet
+    /// reports no `session.info` for it, so the latest one is brought up to the model it now runs.
+    private func pickRan(_ option: ModelCatalogOption) {
+        if var fields = latestInfo?.fields {
+            fields["model"] = .string(option.id)
+            latestInfo = .object(fields)
+        }
+        applyPreset(for: option)
     }
 
     /// Sends the Thinking level and then Fast remembered for `option` (#1750), right after the

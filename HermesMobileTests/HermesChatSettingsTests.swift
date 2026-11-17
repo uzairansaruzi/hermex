@@ -345,6 +345,42 @@ import Observation
         XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.sonnet.favoriteKey))
     }
 
+    /// A session whose agent the host has not built yet runs the pick at once without a
+    /// `session.info`; the preset still goes out, and later levels are remembered for the new model.
+    func testAPickWithoutAModelReportStillAppliesAndRemembers() async throws {
+        let chat = await openChat()
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.receive(event(1, "session.info", ["model": .string("claude-sonnet"), "fast": .bool(false)]))
+        await waitUntil("info") { chat.model.hermesSettings?.controls.fast == false }
+        chat.host.next("config.set", .init(result: Self.modelReply()))
+        chat.host.next("config.set", .init(result: Self.effortReply("high")))
+        chat.host.next("config.set", .init(result: Self.fastReply("fast")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model"), .string("reasoning")])
+        _ = await chat.model.selectFastMode(true)
+        XCTAssertEqual(ModelPresetStore(server: Self.server).preset(for: Self.opus.favoriteKey),
+                       ModelPreset(effort: "high", fast: true))
+    }
+
+    /// A canonical host's applied model edit (a receipt without `status`) applies the preset.
+    func testACanonicalPickAppliedAtOnceAppliesItsPreset() async throws {
+        let chat = await openChat(canonical: true)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("session.mutate", .init(result: try settingsFixture("model")["result"], before: [
+            .object(["session_id": .string("tip"), "seq": .number(1), "type": .string("session.info"),
+                     "payload": .object(["model": .string("claude-opus"), "provider": .string("anthropic")])])
+        ]))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("reasoning")])
+    }
+
     /// A pick the host asks to confirm applies its preset once the confirmed resend runs at once.
     func testAConfirmedPickAppliesItsPreset() async throws {
         let chat = await openChat()
