@@ -21,15 +21,6 @@ import Observation
         let change: Change
         let expectedModel: ModelCatalogOption?
     }
-    /// A model pick the host accepted in this chat, at once or for later, until the host runs it.
-    /// `keepsEffort` and `keepsFast` turn off once the user changes that setting meanwhile.
-    struct Pick: Equatable {
-        let model: ModelCatalogOption
-        /// The model the host ran when the pick went out; any third model replaces the pick.
-        let from: ModelCatalogOption?
-        var keepsEffort = true
-        var keepsFast = true
-    }
     struct Confirmation: Identifiable {
         let action: Action
         let message: String
@@ -46,18 +37,12 @@ import Observation
     private(set) var effort: String?
     private(set) var fast: Bool?
     private(set) var pendingModel: ModelCatalogOption?
-    /// The pick waiting for the host to run it (#1750). It ends when a catalog read shows that
-    /// model and the caller takes it (`finishPick`), a read shows a third model, a newer pick
-    /// goes out, the host asks to confirm it, or the controls disconnect.
-    @ObservationIgnored private(set) var pick: Pick?
-    /// Called from each catalog read that shows `pick`'s model live. That read can finish inside
-    /// a write, so a caller that sends more defers it, and calls `finishPick` once it sends.
-    @ObservationIgnored var onPickActive: (() -> Void)?
-    /// The model the latest `session.info` named, and a count of the times it changed, against
-    /// the count the latest catalog read started after.
-    @ObservationIgnored private var reportedModel: String?
-    @ObservationIgnored private var reportSerial = 0
-    @ObservationIgnored private var readSerial = 0
+    /// The model the user just picked in this chat, until the host reports it active, a refusal
+    /// or a cancelled confirmation drops it, or the pick is replaced.
+    private var pickedModel: ModelCatalogOption?
+    /// Called once, from a catalog read, when the host reports `pickedModel` as the live model.
+    /// That read can finish inside the pick's own `apply`, so a caller that sends more defers it.
+    @ObservationIgnored var onPickedModelActive: ((ModelCatalogOption) -> Void)?
     /// A canonical pick the host deferred to the running response's end, kept apart from
     /// `pendingModel` (a display state `session.info` clears) until the host asks to confirm it.
     private var deferredModel: ModelCatalogOption?
@@ -95,17 +80,6 @@ import Observation
     var mayChangeEffort: Bool { mayChangeModel && supportsEffort }
     var mayChangeFast: Bool { mayChangeModel && showsFast }
 
-    /// Whether a `session.info` should read the catalog again: a pick waits for its model, or the
-    /// host named a model since the last read.
-    var awaitsRead: Bool { pick != nil || reportSerial != readSerial }
-
-    /// The live model a Thinking or Fast change lands on; nil while that is unclear, as while a
-    /// pick waits or before the catalog is read again after the host named another model.
-    var confirmedModel: ModelCatalogOption? {
-        guard pick == nil, pendingModel == nil, reportSerial == readSerial else { return nil }
-        return catalog.active
-    }
-
     var mayChangeModel: Bool { context != nil && !isApplying && !isLoading && !unavailable.contains("model.options") && !unavailable.contains("config.set") && catalog.active != nil }
 
     /// `mutate` is set on a canonical host, whose model is a session edit rather than `config.set`.
@@ -114,7 +88,7 @@ import Observation
         if lastContext?.connectionID != context.connectionID || lastContext?.profile != context.profile {
             pendingModel = nil; refused = []; errorMessage = nil
         }
-        if lastContext?.runtime != context.runtime { pendingModel = nil; deferredModel = nil; heldConfirmation = nil }
+        if lastContext?.runtime != context.runtime { pendingModel = nil; pickedModel = nil; deferredModel = nil; heldConfirmation = nil }
         lastContext = context
         catalog = HermesModelCatalog(.null); effort = nil; fast = nil
         self.context = context; self.wire = wire; self.mutate = mutate
@@ -137,20 +111,18 @@ import Observation
         context = nil; wire = nil; mutate = nil
         readTask?.cancel(); readTask = nil; readAgain = false; readRevision += 1
         confirmation = nil; activeAction = nil; isApplying = false; isLoading = false
-        consumed.removeAll(); pick = nil
+        consumed.removeAll()
     }
 
     /// A `session.info`'s effort and Fast mode.
     func snapshot(_ info: BotJSON) {
         effort = info["reasoning_effort"].text
         fast = info["fast"].flag
-        if let model = info["model"].text, !model.isEmpty, model != reportedModel {
-            reportedModel = model; reportSerial += 1
-        }
         if let pendingModel, let reported = info["model"].text, reported != pendingModel.id {
             // Desktop may replace/cancel the queued choice, or the next turn may
             // resolve an alias to a canonical model. Do not keep an obsolete badge.
             self.pendingModel = nil
+            pickedModel = nil
         }
         // `info.model` can be the queued choice. Only model.options reads the live
         // agent's model/provider; never use the display mirror for the active tick.
@@ -172,7 +144,7 @@ import Observation
     func reload() async {
         guard let owner = context, let wire else { return }
         readRevision += 1
-        let revision = readRevision, serial = reportSerial
+        let revision = readRevision
         isLoading = true
         defer { if context == owner && revision == readRevision { isLoading = false } }
         let call = HermesCall.modelOptions(sessionID: owner.runtime, profile: owner.profile)
@@ -182,14 +154,13 @@ import Observation
             guard context == owner, revision == readRevision, !Task.isCancelled else { return }
             guard result["providers"].list != nil else { throw BotFailure.unsupported }
             catalog = HermesModelCatalog(result)
-            readSerial = serial
             if let pendingModel, catalog.active?.matchesSelection(modelID: pendingModel.id, providerID: pendingModel.providerID) == true {
                 self.pendingModel = nil
             }
-            if let pick {
-                if catalog.active?.matchesSelection(modelID: pick.model.id, providerID: pick.model.providerID) == true {
-                    onPickActive?()
-                } else if catalog.active?.favoriteKey != pick.from?.favoriteKey { self.pick = nil }
+            if let picked = pickedModel,
+               catalog.active?.matchesSelection(modelID: picked.id, providerID: picked.providerID) == true {
+                pickedModel = nil
+                onPickedModelActive?(picked)
             }
         } catch {
             guard context == owner, revision == readRevision, !Task.isCancelled else { return }
@@ -205,10 +176,7 @@ import Observation
         return Action(context: context, change: change, expectedModel: catalog.active)
     }
 
-    func cancelConfirmation() { confirmation = nil }
-
-    /// Ends the waiting pick once its model's preset goes out, or has nothing to send.
-    func finishPick() { pick = nil }
+    func cancelConfirmation() { confirmation = nil; pickedModel = nil }
     func confirm() async {
         guard let pending = confirmation else { return }
         await confirm(pending)
@@ -234,7 +202,7 @@ import Observation
         guard let option = deferredModel, payload["status"].text == "confirmation_required",
               let token = payload["confirm"].text, !token.isEmpty, payload["payload"]["model"].text == option.id
         else { return }
-        deferredModel = nil; pick = nil
+        deferredModel = nil
         confirmation = Confirmation(action: Action(context: context, change: .model(option), expectedModel: catalog.active),
                                     message: payload["confirm_message"].text ?? String(localized: "Confirm this model change?"),
                                     token: token)
@@ -255,7 +223,7 @@ import Observation
                 errorMessage = String(localized: "This model identifier cannot be safely sent to this host."); return
             }
             call = .configSet(sessionID: runtime, profile: profile, setting: .model(value: value, confirmExpensive: confirmed))
-            pick = nil
+            pickedModel = option
             if mutate != nil, let provider = option.providerID {
                 canonicalModel = .model(id: option.id, provider: provider, confirm: token)
             }
@@ -265,17 +233,10 @@ import Observation
             call = .configSet(sessionID: runtime, profile: profile, setting: .fast(enabled))
         }
         errorMessage = nil; confirmation = nil; isApplying = true; activeAction = action.id
-        // A read started before this write must not overwrite its authoritative response; one a
-        // pick or a newly named model waits on is read again once the write ends.
-        var droppedRead = isLoading
+        // A read started before this write must not overwrite its authoritative response.
         readRevision += 1; isLoading = false
         var dispatched = false
-        defer {
-            if activeAction == action.id {
-                isApplying = false; activeAction = nil
-                if droppedRead, awaitsRead { refresh() }
-            }
-        }
+        defer { if activeAction == action.id { isApplying = false; activeAction = nil } }
         do {
             let check: () throws -> Void = { [weak self] in
                 guard let self, self.context == action.context, self.activeAction == action.id,
@@ -288,7 +249,6 @@ import Observation
             if let canonicalModel, let mutate { result = try await mutate(canonicalModel, check) }
             else { result = try await wire.call(call, validateDispatch: check) }
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
-            droppedRead = droppedRead || isLoading
             readRevision += 1; isLoading = false
             switch action.change {
             case .model(let option) where canonicalModel != nil:
@@ -301,7 +261,6 @@ import Observation
                 } else if result["operation"].text == "model" {
                     pendingModel = result["status"].text == "deferred" ? option : nil
                     deferredModel = pendingModel
-                    pick = Pick(model: option, from: action.expectedModel)
                     await reload()
                 } else { throw BotSettingFailure.unknownOutcome }
             case .model(let option):
@@ -312,20 +271,18 @@ import Observation
                     confirmation = Confirmation(action: action, message: result["confirm_message"].text ?? result["warning"].text ?? String(localized: "Confirm this model change?"))
                 } else if result["confirm_required"].flag == false {
                     pendingModel = result["deferred"].flag == true ? option : nil
-                    pick = Pick(model: option, from: action.expectedModel)
                     await reload()
                 } else { throw BotSettingFailure.unknownOutcome }
             case .effort(let value):
                 guard result["key"].text == "reasoning", result["value"].text == value else { throw BotSettingFailure.unknownOutcome }
                 effort = value
-                pick?.keepsEffort = false
             case .fast(let enabled):
                 guard result["key"].text == "fast", result["value"].text == (enabled ? "fast" : "normal") else { throw BotSettingFailure.unknownOutcome }
                 fast = enabled
-                pick?.keepsFast = false
             }
         } catch {
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
+            if case .model = action.change { pickedModel = nil }
             if isRefused(error) { refused.insert(call.method) }
             if error is HermesFenceRefusal {
                 // The session changed first; nothing applied, and the next pick carries its new fences.
