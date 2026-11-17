@@ -532,6 +532,7 @@ private struct DrawableFenceViewButton: View {
         switch fence {
         case .svg: "View image"
         case .mermaid: "View diagram"
+        case .html: "View page"
         }
     }
 
@@ -539,6 +540,7 @@ private struct DrawableFenceViewButton: View {
         switch fence {
         case .svg: "SVG"
         case .mermaid: "Mermaid"
+        case .html: "HTML"
         }
     }
 }

@@ -26,6 +26,16 @@ final class HTMLReportTests: XCTestCase {
         XCTAssertEqual(DrawableFence(language: "mermaid", isStreaming: false), .mermaid)
         XCTAssertNil(DrawableFence(language: "svg", isStreaming: true))
         XCTAssertNil(DrawableFence(language: "python", isStreaming: false))
+        XCTAssertEqual(DrawableFence(language: "html", isStreaming: false), .html)
+        XCTAssertEqual(DrawableFence(language: "htm", isStreaming: false), .html)
+        XCTAssertNil(DrawableFence(language: "html", isStreaming: true))
+        XCTAssertNil(DrawableFence(language: "htm", isStreaming: true))
+    }
+
+    func testAnHTMLFenceOpensItsSourceAsThePageAndAnEmptyOneFails() {
+        let source = "<!doctype html><html><body><h1>Hi</h1></body></html>"
+        XCTAssertEqual(DrawableFence.html.page(for: "\n\(source)\n", width: 390), source)
+        XCTAssertNil(DrawableFence.html.page(for: " \n ", width: 390))
     }
 
     func testAnSVGThatCannotDrawOpensTheFailureState() {
