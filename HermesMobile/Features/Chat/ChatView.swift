@@ -2209,7 +2209,8 @@ struct ChatView: View {
             .padding(.bottom, composerHeight + 8 + clarificationFootprintHeight)
             .zIndex(8)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerAccessoryVisibleItemCount)
-            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
+            // Keyed to the kind, so the compacting line (#1734) swaps words without animating.
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation?.kind)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
