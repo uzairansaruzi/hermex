@@ -260,6 +260,30 @@ def print_summary(result, output):
     return summary
 
 
+def unmatched_selections(result, selections, output):
+    """The --only identifiers that ran no test. xcodebuild skips an identifier
+    that names nothing, such as a file name whose class is called differently,
+    and the other selections still pass."""
+    if run(["xcrun", "xcresulttool", "get", "test-results", "tests",
+            "--path", str(result), "--compact"], output, 30):
+        raise RunnerError("Cannot list the tests that ran; inspect the result bundle.")
+    ran = set()
+
+    def collect(node, bundle):
+        if node.get("nodeType") in ("Unit test bundle", "UI test bundle"):
+            bundle = node.get("name")
+            ran.add(bundle)
+        elif node.get("nodeType") == "Test Case" and bundle:
+            suite, _, case = str(node.get("nodeIdentifier", "")).rpartition("/")
+            ran.update((bundle + "/" + suite, bundle + "/" + suite + "/" + case.removesuffix("()")))
+        for child in node.get("children", []):
+            collect(child, bundle)
+
+    for node in json.loads(output.read_text()).get("testNodes", []):
+        collect(node, None)
+    return [test for test in selections if test.removesuffix("()") not in ran]
+
+
 def failure_excerpt(log):
     if log.exists():
         with log.open(errors="replace") as source:
@@ -373,6 +397,10 @@ def main():
                 return 1
             if not summary or summary.get("failedTests") != 0 or not summary.get("passedTests"):
                 raise RunnerError("Cannot confirm a passing test run; inspect the result bundle.")
+            unmatched = args.only and unmatched_selections(result, args.only, run_dir / "tests.json")
+            if unmatched:
+                raise RunnerError("--only matched no tests: " + ", ".join(unmatched)
+                                  + ". Name the test class, not its file.")
             print("PASS\nResult: " + str(result), flush=True)
             return 0
     except subprocess.TimeoutExpired:
