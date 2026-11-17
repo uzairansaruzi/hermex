@@ -220,7 +220,8 @@ enum SlashCommandCatalog {
     /// `session.compress`, and `/clear` opens a new chat in this one's place (#1050). `/sessions`
     /// and `/resume` open the Sessions list, or a session by its title (#1053). `/branch` and
     /// `/fork` are `session.branch`, and open the branch on top (#1051). `/workspace` is the folder
-    /// chip's pick, and `/interrupt` is Stop and send (#1673).
+    /// chip's pick, and `/interrupt` is Stop and send (#1673). `/rollback` lists, compares and
+    /// restores the host's checkpoints through `rollback.*`, which a Webapp runs (#1728).
     static let hermesCommands: [SlashCommand] = ["new", "stop", "model", "workspace", "reasoning", "personality", "title",
                                                  "goal", "btw", "background", "bg", "interrupt", "retry", "undo",
                                                  "compress", "compact", "branch", "fork"].compactMap(command(named:)) + [
@@ -248,6 +249,13 @@ enum SlashCommandCatalog {
             description: String(localized: "Skip approvals in this chat, or ask again"),
             noEcho: true,
             handler: .serverSide(.yolo)
+        ),
+        SlashCommand(
+            name: "rollback",
+            description: String(localized: "List, compare or restore the agent’s file checkpoints"),
+            argHint: "[diff N | N [file]]",
+            noEcho: true,
+            handler: .serverSide(.rollback)
         )
     ]
 

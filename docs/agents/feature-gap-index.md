@@ -61,7 +61,7 @@ and name the remaining paths.
 | `/api/commands/exec` | n-a | — | exec | Dropped by owner — must not resurface; needs product framing |
 | `/api/updates/summary` | n-a | — | admin | Dropped by owner — undocumented; fires a server LLM call |
 | `/api/session/import` | n-a | — | — | JSON import unused; CLI import (`/api/session/import_cli`) shipped |
-| `/api/rollback/` | roadmap | P3 | write | Git checkpoint list/diff/restore |
+| `/api/rollback/` | roadmap | P3 | write | Git checkpoint list/diff/restore; ships for Hermes as `/rollback` (#1728) |
 | `/api/session/usage` | roadmap | P2 | read | Session token usage — mostly covered by the context ring |
 | `/api/session/toolsets` | roadmap | P4 | write | Advanced session maintenance |
 | `/api/session/draft` | roadmap | P4 | write | Advanced session maintenance |

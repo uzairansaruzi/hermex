@@ -1547,6 +1547,10 @@ struct ChatView: View {
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
             ))
+            .modifier(HermesRollbackConfirmationModifier(
+                pending: viewModel.pendingHermesRollback, onCancel: viewModel.cancelHermesRollback,
+                onConfirm: confirmHermesRollback
+            ))
             // A Hermes chat's folder change asks first, in Move to Project's words (#1117).
             .alert(
                 Text(verbatim: viewModel.pendingHermesFolder.map { String(localized: "Move to \($0.lastPathComponentFallback)?") } ?? ""),
@@ -3060,6 +3064,15 @@ struct ChatView: View {
         Task {
             let result = await viewModel.confirmHermesPersonality(name)
             handleSlashExecutionResult(result, parsedCommand: SlashCommandCatalog.command(named: "personality"),
+                                       submittedDraft: "", submittedDraftRevision: draftRevision, consumesDraft: false)
+        }
+    }
+
+    /// Sends a confirmed `/rollback` restore (#1728). Its command already left the composer.
+    private func confirmHermesRollback(_ request: HermesRollbackRequest) {
+        Task {
+            let result = await viewModel.confirmHermesRollback(request)
+            handleSlashExecutionResult(result, parsedCommand: SlashCommandCatalog.hermesCommand(named: "rollback"),
                                        submittedDraft: "", submittedDraftRevision: draftRevision, consumesDraft: false)
         }
     }
@@ -4913,6 +4926,36 @@ private struct HermesPersonalityConfirmationModifier: ViewModifier {
         } message: {
             Text(message)
         }
+    }
+}
+
+/// What a Hermes chat's `/rollback N [file]` asks first (#1728): the checkpoint by its time and
+/// the host's reason, and what the restore overwrites.
+private struct HermesRollbackConfirmationModifier: ViewModifier {
+    let pending: HermesRollbackRequest?
+    let onCancel: () -> Void
+    let onConfirm: (HermesRollbackRequest) -> Void
+
+    func body(content: Content) -> some View {
+        content.alert(
+            Text(verbatim: pending.map { String(localized: "Restore checkpoint \($0.checkpoint.number)?") } ?? ""),
+            isPresented: Binding(get: { pending != nil }, set: { if !$0 { onCancel() } }),
+            presenting: pending
+        ) { request in
+            Button("Cancel", role: .cancel) { onCancel() }
+            Button("Restore", role: .destructive) { onConfirm(request) }
+        } message: { request in
+            Text(verbatim: Self.message(request))
+        }
+    }
+
+    private static func message(_ request: HermesRollbackRequest) -> String {
+        let checkpoint = [ChatViewModel.checkpointTime(request.checkpoint.timestamp), request.checkpoint.message]
+            .filter { !$0.isEmpty }.joined(separator: " · ")
+        let consequence = request.filePath.map {
+            String(localized: "\($0) goes back to how it was at this checkpoint. Its current content is overwritten.")
+        } ?? String(localized: "Files the agent changed since this checkpoint go back to how they were. Edits you made yourself are kept. If the newest turn made these changes, it is removed from the chat.")
+        return checkpoint.isEmpty ? consequence : "\(checkpoint)\n\n\(consequence)"
     }
 }
 

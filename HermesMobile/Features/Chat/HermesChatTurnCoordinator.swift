@@ -1078,6 +1078,25 @@ struct HermesLostTurn: Equatable {
         delegate?.hermesReplaceTranscript(historyTranscript())
     }
 
+    /// A confirmed `/rollback` restore (#1728) of `filePath`, or of the whole tree when nil, to
+    /// the checkpoint `hash`. A whole-tree restore that rewound the newest turn
+    /// (`history_removed`) reads the newest rows again and they replace the transcript, as
+    /// `undo()` does, on either host. Throws as `undo()` does.
+    func restoreCheckpoint(_ hash: String, filePath: String?) async throws -> HermesRollbackOutcome {
+        let attempt = engine.generation
+        let outcome = try await slashCommands.restoreCheckpoint(hash, filePath: filePath)
+        guard outcome.success, filePath == nil, outcome.historyRemoved > 0 else { return outcome }
+        // A turn-end refresh still reading would bring back the rows the host just rewound.
+        historyRefresh?.cancel()
+        activity.newestTurnWasUndone()
+        turnBase = nil
+        await readNewestRows(attempt: attempt)
+        guard attempt == engine.generation, isIdle else { return outcome }
+        if let historyFailure { throw historyFailure }
+        delegate?.hermesReplaceTranscript(historyTranscript())
+        return outcome
+    }
+
     /// What `/compress` did (#1050).
     enum Compression: Equatable {
         /// The host compacted the history, and the newest page replaced the transcript. The
@@ -1794,7 +1813,7 @@ struct HermesLostTurn: Equatable {
         let attempt = engine.generation, turns = turnsStarted
         historyRefresh?.cancel()
         historyRefresh = Task { [weak self] in
-            guard let fresh = try? await self?.newestRows(attempt: attempt), let self,
+            guard let fresh = try? await self?.newestRows(attempt: attempt), let self, !Task.isCancelled,
                   attempt == self.engine.generation, turns == self.turnsStarted, self.isIdle else { return }
             var merged = self.history
             merged.mergeNewest(fresh.rows, reachedStart: fresh.reachedStart)

@@ -2005,7 +2005,22 @@ Send resolves a draft that opens with `/name` in this order:
    (#1053) go back to the Sessions list under the chat, or push one in the chat's
    Profile; `/resume <name>` opens the one session the list's search finds titled exactly
    `<name>` (ignoring case), and otherwise the list searching `<name>`. `/branch` and `/fork`
-   (#1051) branch the whole session as above.
+   (#1051) branch the whole session as above. `/rollback` (#1728) is the runtime's
+   `rollback.list`, `rollback.diff` and `rollback.restore {session_id, hash, file_path?}`,
+   never `slash.exec`, which a gateway's Webapp refuses for it. `/rollback` lists the
+   checkpoints, `/rollback diff N` reads the list again and shows that checkpoint's stat and
+   diff, and `/rollback N [file]` reads the list again, asks first with that checkpoint's time
+   and message, and sends its hash. Both send the hash, never the number, so a checkpoint
+   taken meanwhile can't shift it, and a number or hash the list doesn't hold sends nothing:
+   the host answers an unknown hash's diff empty, as if nothing changed. `--all` gets the
+   usage notice: the host's default keeps the user's hand edits. A whole-tree restore is
+   refused while a turn runs (4009, or a Webapp's 4001 `session_busy`) and in a Bot Chat,
+   and holds Send while it is out, as `/undo` does; when its `history_removed` is above 0 the
+   newest rows are read again and replace the transcript, as after `/undo`. Only a 4001 that
+   says the host no longer holds the runtime (a dashboard's `session not found`, a Webapp's
+   `not_found` or `runtime_retired`) reattaches; any other 4001, such as
+   `unsupported_terminal_backend`, shows the host's reason. `enabled: false` says
+   checkpoints are off on the host.
 2. **Held until a later slice of #702** (`hermesHeldNames`): commands that would move between
    chats behind the phone's back show a notice naming #702 and send nothing. None is held now.
 3. **A catalog skill**: `command.dispatch` expands it and `message` is submitted.
