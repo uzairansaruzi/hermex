@@ -82,8 +82,10 @@ enum HermesRequestAnswer: Equatable {
     /// it belongs to the session: the Sessions owner waits for the first accepted prompt.
     func conversationDidIdentify(root: String)
     /// The identity resume reached `runtime`; the replay is next. `newRuntime` when it is
-    /// not the runtime the last attach reached, so no turn carried over.
-    func conversationWillReplay(newRuntime: Bool)
+    /// not the runtime the last attach reached, so no turn carried over. `newEpoch` when the
+    /// replay epoch is not the last attach's: a host restart, which on a canonical host keeps the
+    /// session's id, so whatever the old lifetime published is gone from the host.
+    func conversationWillReplay(newRuntime: Bool, newEpoch: Bool)
     /// The `session.events.since` reply and the events after the cursor, in order. When
     /// `replayWasReset` some were lost: rebuild from the snapshot that follows.
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON])
@@ -114,7 +116,7 @@ enum HermesRequestAnswer: Equatable {
 extension HermesConversationOwner {
     func conversationDidFollowReplacedChat() {}
     func conversationDidIdentify(root: String) {}
-    func conversationWillReplay(newRuntime: Bool) {}
+    func conversationWillReplay(newRuntime: Bool, newEpoch: Bool) {}
     func conversationDidConnect(runtime: String, attempt: Int) async throws {}
     func conversationDidFailToAttach(_ error: Error) {}
     func conversation(didHold frame: BotJSON) {}
@@ -485,13 +487,14 @@ extension HermesConversationOwner {
             guard let foundKey = attachedKey(first), let foundRuntime = first["session_id"].text, !foundRuntime.isEmpty,
                   let foundEpoch = wire.speaksCanonicalProtocol ? canonicalEpoch : wire.replayEpoch
             else { throw BotFailure.wrongIdentity }
-            replayWasReset = epoch != foundEpoch || runtime != foundRuntime
+            let newEpoch = epoch != foundEpoch
+            replayWasReset = newEpoch || runtime != foundRuntime
             let newRuntime = runtime != foundRuntime
             if replayWasReset { sequence = 0 }
             if newRuntime { executionGeneration = nil; revision = nil }
             runtime = foundRuntime; epoch = foundEpoch; storedKey = foundKey
             adoptFences(revision: first["revision"].integer, generation: first["execution_generation"].integer)
-            owner?.conversationWillReplay(newRuntime: newRuntime)
+            owner?.conversationWillReplay(newRuntime: newRuntime, newEpoch: newEpoch)
             let replay = try await request(.sessionEventsSince(profile: target.profile, sessionID: foundRuntime,
                                                                lastSeen: sequence, replayEpoch: foundEpoch), attempt: attempt)
             let missed = try reconcile(replay)

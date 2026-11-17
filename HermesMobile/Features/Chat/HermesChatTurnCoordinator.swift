@@ -2266,10 +2266,12 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
     }
 
-    func conversationWillReplay(newRuntime: Bool) {
+    func conversationWillReplay(newRuntime: Bool, newEpoch: Bool) {
         requests.willReplay()
-        // The old runtime's notices go with their timers: a dead runtime never clears them (#1746).
-        if newRuntime { activity.dropPlan(); hostNotices.removeAll() }
+        if newRuntime { activity.dropPlan() }
+        // A new runtime or a host restart (a canonical session keeps its id, under a new epoch):
+        // the old lifetime's notices go with their timers, since nothing will clear them (#1746).
+        if newRuntime || newEpoch { hostNotices.removeAll() }
     }
 
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {

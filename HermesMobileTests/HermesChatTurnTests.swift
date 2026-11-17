@@ -382,6 +382,38 @@ import SwiftUI
         XCTAssertEqual(notices.shown?.text, "A plugin says bye")
     }
 
+    /// A canonical session keeps its id across a host restart; only its replay epoch is new, and
+    /// the new epoch replays nothing. The old lifetime's notices and timers go, since nothing
+    /// will ever clear them.
+    func testACanonicalSessionUnderANewEpochDropsTheOldNoticesAndTimers() async {
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true, noticeTimer: timer.timer)
+        let notices = chat.turn.hostNotices
+        chat.receive(event(1, "notification.show", ["text": .string("Sign in at https://example.com/device"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("login:1")], runtime: "tip"))
+        chat.receive(event(2, "notification.show", ["text": .string("Large model"), "level": .string("warn"), "kind": .string("ttl"),
+                                                    "ttl_ms": .number(8000), "key": .string("model.large_notice")], runtime: "tip"))
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0, truncated: true, epoch: "epoch-2")))
+        chat.host.always("session.resume", .init(result: canonicalSnapshot(epoch: "epoch-2")))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertTrue(notices.notices.isEmpty)
+        XCTAssertTrue(timer.tasks[0].isCancelled)
+    }
+
+    /// Frames lost within the same lifetime rebuild the transcript but keep the notices: the host
+    /// still holds them.
+    func testAGapInTheSameLifetimeKeepsTheNotices() async {
+        let chat = await openChat()
+        chat.receive(event(1, "notification.show", ["text": .string("Credit access paused"), "level": .string("error"),
+                                                    "kind": .string("sticky"), "key": .string("credits.depleted")]))
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
+        chat.receive(event(3, "message.start"))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
+        XCTAssertEqual(chat.turn.hostNotices.shown?.text, "Credit access paused")
+    }
+
     // MARK: Sending
 
     func testSendSubmitsAQueuedPromptOnceAndShowsIt() async {
@@ -2091,10 +2123,10 @@ import SwiftUI
     }
 
     /// A canonical host's snapshot of session `tip`, whose id is its runtime: `pending` and
-    /// `prompts` as given, under generation `generation`.
+    /// `prompts` as given, under generation `generation` and replay epoch `epoch`.
     private func canonicalSnapshot(running: Bool = false, generation: Int = 1, pending: [BotJSON] = [],
-                                   prompts: [BotJSON] = []) -> BotJSON {
-        .object(["session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
+                                   prompts: [BotJSON] = [], epoch: String = "epoch") -> BotJSON {
+        .object(["session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string(epoch),
                  "subscription_id": .string("sub-1"), "execution_generation": .number(Double(generation)), "revision": .number(2),
                  "running": .bool(running), "messages": .array([]), "pending": .array(pending), "prompts": .array(prompts),
                  "info": .object(["profile_name": .string("default")])])
