@@ -853,6 +853,10 @@ struct HermesSessionListView: View {
                 guard statusFilter == .all, let selectedProjectID else { return }
                 Task { await viewModel.fillHermesLane(selectedProjectID) }
             }
+            // Back on All with the row already in view, it loads as appearing would have.
+            .onChange(of: statusFilter) {
+                if statusFilter == .all { Task { await loadMore() } }
+            }
             .id(selectedProjectID)
     }
 
