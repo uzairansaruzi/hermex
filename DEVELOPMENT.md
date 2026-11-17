@@ -141,8 +141,8 @@ scripts/test-sim <simulator-udid>
 Choose local coverage using `AGENTS.md` § Verifying: slices run affected tests,
 and PR CI, which runs every retained test with one simulator worker, is the
 full-suite gate. `--only` limits execution, but still builds the app and test
-target. Each `--only` must name a test class or method: one that ran no tests, such
-as a file name whose class is called something else, stops the run instead of
+target. Each `--only` must select at least one test: one that ran none, such as a
+file name whose class is called something else, stops the run instead of
 passing on the other selections.
 
 The build dominates a focused run: 191 affected tests execute in seconds inside a

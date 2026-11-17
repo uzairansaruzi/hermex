@@ -400,7 +400,7 @@ def main():
             unmatched = args.only and unmatched_selections(result, args.only, run_dir / "tests.json")
             if unmatched:
                 raise RunnerError("--only matched no tests: " + ", ".join(unmatched)
-                                  + ". Name the test class, not its file.")
+                                  + ". Check the spelling, and use the class name, which can differ from its file's.")
             print("PASS\nResult: " + str(result), flush=True)
             return 0
     except subprocess.TimeoutExpired:
