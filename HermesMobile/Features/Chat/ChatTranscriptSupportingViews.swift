@@ -1444,8 +1444,9 @@ struct PinnedLocalNoticeStack: View {
 }
 
 /// The newest of the host's notices on a Hermes session (#1746), above the composer like
-/// `ShortcutTextNotice`: a level symbol and tint, the host's text as sent up to two lines with its
-/// links tappable, and a close button. A notice with `detail` shows it on a tap. VoiceOver reads
+/// `ShortcutTextNotice`: a level symbol and tint, the host's text as sent with its links tappable,
+/// and a close button. A notice with `detail` shows two lines and the full `detail` on a tap; one
+/// without shows its whole text, since nothing else would reveal the rest. VoiceOver reads
 /// the level, the whole text, and how many more notices wait behind it.
 struct HostNoticeRow: View {
     let notice: HermesHostNotices.Notice
@@ -1498,7 +1499,8 @@ struct HostNoticeRow: View {
         let text = Text(notice.linkedText)
             .font(AppFont.footnote())
             .foregroundStyle(.appPrimary)
-            .lineLimit(2)
+            // Two lines when a tap opens the full `detail`; otherwise the text is all there is.
+            .lineLimit(notice.detail == nil ? nil : 2)
             .fixedSize(horizontal: false, vertical: true)
         if notice.detail != nil {
             text
