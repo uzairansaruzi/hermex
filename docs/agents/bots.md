@@ -251,6 +251,16 @@ cache's copy) that opens `HermesDelegatedWorkView`. A history row with
 `display_kind: "async_delegation_complete"` draws as `HermesDelegationCompletionCard`; live, it
 arrives with the newest rows the delivery's turn re-reads when it ends.
 
+Its host notices are `HermesHostNotices` (#1746): `notification.show` and `notification.clear`,
+which both gateways send for credits, a slow agent start, a dropped model switch, the low-disk
+question, a plugin's `post_message` and `/login`'s sign-in link. They are kept by `key` (else
+`id`), newest last; a known key is replaced in place and a clear withdraws it. A `ttl` notice
+shows only from a live frame and hides after its `ttl_ms` on one scheduled task; the others also
+come back from a replay, in order, and stay until cleared or dismissed. A dismissed key stays
+hidden until the host sends new text for it. `HostNoticeRow` shows the newest above the composer
+(its `detail` on a tap) and says how many wait behind it; never a transcript row, the error line
+or a haptic. Nothing is cached: leaving the chat drops them and their timers.
+
 Its host requests are `HermesChatRequests` (#1011, #1141), on the Bot request model below and
 the engine's `answer`. Each takes the clarification's slot above the composer, collapsible
 to its bar while the transcript stays readable. An approval shows as `ApprovalRequestInset`

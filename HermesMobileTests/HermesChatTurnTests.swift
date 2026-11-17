@@ -261,6 +261,94 @@ import SwiftUI
         XCTAssertFalse(chat.model.isCompacting)
     }
 
+    // MARK: Host notices (#1746)
+
+    /// The recorded dropped model switch: a live `ttl` notice shows and hides once its `ttl_ms` is
+    /// up. A same-key show replaces it, and the first one's timer then hides nothing.
+    func testALiveTTLNoticeShowsUntilItsTimeIsUp() async throws {
+        let frames = try recorded("turn-notice-frames")
+        let payload = frames[1]["params"]["payload"]
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(runtime: try XCTUnwrap(frames[0]["params"]["session_id"].text), noticeTimer: timer.timer)
+        let notices = chat.turn.hostNotices
+        frames.forEach(chat.receive)
+        XCTAssertEqual(notices.shown?.text, payload["text"].text)
+        XCTAssertEqual(notices.shown?.level, .warning)
+        XCTAssertEqual(timer.delays, [.milliseconds(try XCTUnwrap(payload["ttl_ms"].integer))])
+        XCTAssertNil(chat.model.sendErrorMessage, "a notice never takes the error line")
+        XCTAssertTrue(chat.model.messages.isEmpty, "a notice is not a transcript row")
+
+        chat.receive(event(3, "notification.show", ["text": .string("Could not switch model: still unknown"), "level": .string("warn"),
+                                                    "kind": .string("ttl"), "ttl_ms": .number(12000),
+                                                    "key": .string("model_switch.dropped")], runtime: "fixture-runtime"))
+        XCTAssertEqual(notices.notices.map(\.text), ["Could not switch model: still unknown"], "the same key replaces it")
+        timer.fire(0)
+        XCTAssertEqual(notices.shown?.text, "Could not switch model: still unknown", "the replaced notice's timer hides nothing")
+        timer.fire(1)
+        XCTAssertNil(notices.shown)
+    }
+
+    /// A replay brings back the session's standing notices in order, so a later clear still wins,
+    /// but never a `ttl` one, which may have expired long ago.
+    func testAReplayRestoresStandingNoticesButNoExpiredOne() async throws {
+        let recorded = try recorded("turn-notice-frames")[1]["params"]
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(noticeTimer: timer.timer)
+        chat.model.suspendStreamForBackground()
+        var old = recorded.fields ?? [:]
+        old["session_id"] = .string("runtime"); old["seq"] = .number(1)
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 4, events: [
+            .object(old),
+            event(2, "notification.show", ["text": .string("Sign in at https://example.com/device"), "level": .string("info"),
+                                           "kind": .string("sticky"), "key": .string("login:1")]),
+            event(3, "notification.show", ["text": .string("Still starting the agent"), "level": .string("info"),
+                                           "kind": .string("agent"), "key": .string("agent.build_slow")]),
+            event(4, "notification.clear", ["key": .string("agent.build_slow")])
+        ])))
+        chat.host.always("session.resume", .init(result: resume(running: false)))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.hostNotices.notices.map(\.text), ["Sign in at https://example.com/device"])
+        XCTAssertTrue(timer.delays.isEmpty)
+    }
+
+    /// Each show keeps its key's place: a newer key shows on top, and the older one's update stays
+    /// behind it, waiting.
+    func testAShowWithAKnownKeyReplacesThatNoticeInPlace() async {
+        let chat = await openChat()
+        let notices = chat.turn.hostNotices
+        chat.receive(event(1, "notification.show", ["text": .string("You've used 50% of your cap"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("credits.usage")]))
+        chat.receive(event(2, "notification.show", ["text": .string("⚠ Low disk"), "level": .string("warn"), "kind": .string("sticky"),
+                                                    "key": .string("sessions.auto_prune"), "detail": .string("Turn on auto-prune?")]))
+        chat.receive(event(3, "notification.show", ["text": .string("You've used 75% of your cap"), "level": .string("warn"),
+                                                    "kind": .string("sticky"), "key": .string("credits.usage")]))
+        XCTAssertEqual(notices.notices.map(\.text), ["You've used 75% of your cap", "⚠ Low disk"])
+        XCTAssertEqual(notices.shown?.detail, "Turn on auto-prune?")
+        XCTAssertEqual(notices.waitingCount, 1)
+    }
+
+    /// The host's clear withdraws its key. A dismissed key stays hidden until the host shows it
+    /// with new text, and dismissing the newest shows the one behind it.
+    func testAClearWithdrawsANoticeAndADismissHidesItUntilNewText() async throws {
+        let chat = await openChat()
+        let notices = chat.turn.hostNotices
+        chat.receive(event(1, "notification.show", ["text": .string("Credit access paused"), "level": .string("error"),
+                                                    "kind": .string("sticky"), "key": .string("credits.depleted")]))
+        chat.receive(event(2, "notification.show", ["text": .string("A plugin says hi"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("plugin-message:p:1")]))
+        chat.receive(event(3, "notification.clear", ["key": .string("credits.depleted")]))
+        XCTAssertEqual(notices.notices.map(\.text), ["A plugin says hi"])
+
+        notices.dismiss(try XCTUnwrap(notices.shown))
+        XCTAssertNil(notices.shown)
+        chat.receive(event(4, "notification.show", ["text": .string("A plugin says hi"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("plugin-message:p:1")]))
+        XCTAssertNil(notices.shown, "the same text stays dismissed")
+        chat.receive(event(5, "notification.show", ["text": .string("A plugin says bye"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("plugin-message:p:1")]))
+        XCTAssertEqual(notices.shown?.text, "A plugin says bye")
+    }
+
     // MARK: Sending
 
     func testSendSubmitsAQueuedPromptOnceAndShowsIt() async {
@@ -1790,7 +1878,8 @@ import SwiftUI
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil, lineageRoot: String? = nil,
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
                           rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
-                          botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil) async -> Chat {
+                          botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil,
+                          noticeTimer: HermesHostNotices.Timer? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -1807,7 +1896,8 @@ import SwiftUI
                                         target: target ?? .session(profile: profile, key: key), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
                                              isNetworkAvailable: { true },
-                                             ratingPromptState: ratingPromptState ?? isolatedRatingState())
+                                             ratingPromptState: ratingPromptState ?? isolatedRatingState(),
+                                             noticeTimer: noticeTimer)
         let liveActivity = TitleRecordingLiveActivity()
         let model = ChatViewModel(
             session: SessionSummary(profile: profile), server: URL(string: "https://hermes.example")!,
@@ -2040,6 +2130,23 @@ import SwiftUI
         }
         return .object(reply)
     }
+}
+
+/// A host notice timer the test fires by hand: each scheduled expiry, in order.
+@MainActor private final class ManualNoticeTimer {
+    private(set) var delays: [Duration] = []
+    private var expiries: [@MainActor () -> Void] = []
+
+    var timer: HermesHostNotices.Timer {
+        { [self] delay, expire in
+            delays.append(delay)
+            expiries.append(expire)
+            return Task {}
+        }
+    }
+
+    /// Runs the `index`th expiry, as its delay running out would.
+    func fire(_ index: Int) { expiries[index]() }
 }
 
 /// Records the session titles a chat pushes to the Live Activity.

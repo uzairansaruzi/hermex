@@ -473,6 +473,7 @@ struct ChatView: View {
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
+    @State private var hostNoticeHeight: CGFloat = 0
     @State private var composerIsFocused = false
     @State private var didHydrateDraft = false
     /// Whether this chat has already asked the server for its skills on the
@@ -2155,6 +2156,20 @@ struct ChatView: View {
     private var composerAccessoryStack: some View {
         if composerAccessoryVisibleItemCount > 0 {
             VStack(spacing: composerAccessoryVerticalSpacing) {
+                // The host's newest notice about the session (#1746), farthest from the composer.
+                if let hostNotices = viewModel.hermesHostNotices, let notice = hostNotices.shown {
+                    HostNoticeRow(notice: notice, waitingCount: hostNotices.waitingCount) {
+                        hostNotices.dismiss(notice)
+                    }
+                    .id(notice.id)
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        hostNoticeHeight = height
+                    }
+                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
+
                 if !composerLocalNotices.isEmpty {
                     PinnedLocalNoticeStack(notices: composerLocalNotices)
                         .allowsHitTesting(false)
@@ -2216,12 +2231,15 @@ struct ChatView: View {
             // Keyed to the kind, so the compacting line (#1734) swaps words without animating.
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation?.kind)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsHostNotice)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
         }
     }
 
     private var showsShortcutNotice: Bool { showsShortcutProvenance || waitingShortcut != nil }
+
+    private var showsHostNotice: Bool { viewModel.hermesHostNotices?.shown != nil }
 
     /// Where the draft's added text came from while its notice shows: the draft holds that text,
     /// or a removal of its hidden characters can still be undone, even one that took all of it.
@@ -2745,6 +2763,9 @@ struct ChatView: View {
 
     private var composerAccessorySpacerHeight: CGFloat {
         var height = pinnedNoticeSpacerHeight
+        if showsHostNotice {
+            height += hostNoticeHeight
+        }
         if activeRunStatusPresentation != nil {
             // The measured pill plus one accessory gap: 36 pt at the default
             // size, and a full wrapped pill at accessibility sizes.
@@ -2769,6 +2790,9 @@ struct ChatView: View {
 
     private var composerAccessoryVisibleItemCount: Int {
         var count = 0
+        if showsHostNotice {
+            count += 1
+        }
         if !composerLocalNotices.isEmpty {
             count += 1
         }

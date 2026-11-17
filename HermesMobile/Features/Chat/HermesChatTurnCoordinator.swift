@@ -230,6 +230,8 @@ struct HermesLostTurn: Equatable {
     /// Host requests open on this runtime (#1011, #1141): an approval, a question, a credential
     /// prompt, a Desktop task, a connection operation.
     let requests: HermesChatRequests
+    /// The host's notices about the session, shown above the composer (#1746).
+    let hostNotices: HermesHostNotices
     /// The session's goal, `/btw` question and `/background` tasks (#1013).
     let sideTasks: HermesChatSideTasks
     /// The composer's model and Profile chips (#1015).
@@ -364,13 +366,15 @@ struct HermesLostTurn: Equatable {
     /// A `.canonicalChat`, or a Bot Chat row opened by its key with its `botChatRoot`, is a Bot Chat.
     /// A session's draft goes under its `lineageRoot` when given (`HermesSessionChat.lineageRoot`).
     /// `previewLimit` caps a preview's download; a test passes less than the 25 MB.
+    /// `noticeTimer` hides an expiring host notice; a test fires it by hand.
     init(engine: HermesConversation, botChatRoot: String? = nil, lineageRoot: String? = nil,
          openedBot: BotProfile? = nil,
          liveActivities: (any AgentLiveActivityManaging)? = nil,
          writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
          previewLimit: Int = BotArtifactBuffer.maximumBytes,
-         ratingPromptState: RatingPromptState? = nil) {
+         ratingPromptState: RatingPromptState? = nil,
+         noticeTimer: HermesHostNotices.Timer? = nil) {
         self.engine = engine
         self.previewLimit = previewLimit
         self.ratingPromptState = ratingPromptState ?? .shared
@@ -380,6 +384,7 @@ struct HermesLostTurn: Equatable {
         self.writeBotAvatar = writeBotAvatar
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
+        hostNotices = HermesHostNotices(timer: noticeTimer)
         sideTasks = HermesChatSideTasks(engine: engine)
         settings = HermesChatSettings(engine: engine, loadsAvatars: policy == .botChat, openedBot: openedBot)
         slashCommands = HermesSlashCommands(engine: engine, policy: policy)
@@ -1507,6 +1512,11 @@ struct HermesLostTurn: Equatable {
             if compactionPending, payload["kind"].text == "compacted" { pendingCompactionDidFinish() }
         case "btw.complete", "background.complete", "session.control.update":
             sideTasks.receive(frame)
+        case "notification.show":
+            // About the session, not a message in it: never a row, the error line or a turn (#1746).
+            hostNotices.show(payload, live: live)
+        case "notification.clear":
+            hostNotices.clear(payload)
         default:
             // `thinking.delta` is spinner text and `reasoning.available` carries the answer
             // itself: neither is reasoning. The working row already says Hermes is working.
@@ -2240,6 +2250,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         turnBase = nil; screenUse = nil
         finish(.cancelled)
         sideTasks.forgetChat()
+        hostNotices.removeAll()
         forgetHistoryUntilRebuild()
         delegate?.hermesBotChatWasReplaced()
     }
