@@ -83,8 +83,9 @@ enum HermesRequestAnswer: Equatable {
     func conversationDidIdentify(root: String)
     /// The identity resume reached `runtime`; the replay is next. `newRuntime` when it is
     /// not the runtime the last attach reached, so no turn carried over. `newEpoch` when the
-    /// replay epoch is not the last attach's: a host restart, which on a canonical host keeps the
-    /// session's id, so whatever the old lifetime published is gone from the host.
+    /// replay epoch is not the last attach's: a host restart, or the host ending a session nobody
+    /// watched for its orphan grace (5 minutes by default). A canonical session keeps its id
+    /// through either, so whatever the old lifetime published is gone from the host.
     func conversationWillReplay(newRuntime: Bool, newEpoch: Bool)
     /// The `session.events.since` reply and the events after the cursor, in order. When
     /// `replayWasReset` some were lost: rebuild from the snapshot that follows.

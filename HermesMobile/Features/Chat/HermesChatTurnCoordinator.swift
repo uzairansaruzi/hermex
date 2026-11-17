@@ -2269,8 +2269,9 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationWillReplay(newRuntime: Bool, newEpoch: Bool) {
         requests.willReplay()
         if newRuntime { activity.dropPlan() }
-        // A new runtime or a host restart (a canonical session keeps its id, under a new epoch):
-        // the old lifetime's notices go with their timers, since nothing will clear them (#1746).
+        // A new runtime or a new epoch (a host restart, or the host ending a session nobody watched
+        // for its orphan grace; a canonical session keeps its id): the old lifetime's notices go
+        // with their timers, since nothing will clear them (#1746).
         if newRuntime || newEpoch { hostNotices.removeAll() }
     }
 

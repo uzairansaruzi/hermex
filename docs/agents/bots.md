@@ -258,8 +258,9 @@ question, a plugin's `post_message` and `/login`'s sign-in link. They are kept b
 shows only from a live frame and hides after its `ttl_ms` on one scheduled task; the others also
 come back from every replay, in order, a rebuilding one's too (so a first open shows them), and
 stay until cleared or dismissed. The live frame that reveals a gap still applies, since the
-rebuild replays only what follows it. A new runtime or replay epoch (a host restart; a canonical
-session keeps its id) drops the old lifetime's notices and timers; a gap within one epoch keeps them.
+rebuild replays only what follows it. A new runtime or replay epoch (a host restart, or the host ending a
+session nobody watched for its orphan grace, 5 minutes by default; a canonical session keeps its id)
+drops the old lifetime's notices and timers; a gap or a cut-short replay within one epoch keeps them.
 A dismissed key stays
 hidden until the host sends new text for it. `HostNoticeRow` shows the newest above the composer
 (its `detail` on a tap) and says how many wait behind it; never a transcript row, the error line

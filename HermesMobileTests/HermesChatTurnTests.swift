@@ -382,9 +382,9 @@ import SwiftUI
         XCTAssertEqual(notices.shown?.text, "A plugin says bye")
     }
 
-    /// A canonical session keeps its id across a host restart; only its replay epoch is new, and
-    /// the new epoch replays nothing. The old lifetime's notices and timers go, since nothing
-    /// will ever clear them.
+    /// A canonical session keeps its id across a new epoch (a host restart, or the host ending a
+    /// session nobody watched for its orphan grace, 5 minutes by default), and the new epoch
+    /// replays nothing. The old lifetime's notices and timers go, since nothing will clear them.
     func testACanonicalSessionUnderANewEpochDropsTheOldNoticesAndTimers() async {
         let timer = ManualNoticeTimer()
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true, noticeTimer: timer.timer)
