@@ -554,6 +554,26 @@ import Observation
         XCTAssertEqual(state("approve"), .approval)
     }
 
+    /// A roster entry for a row the list hasn't loaded yet marks that row once Load more brings it
+    /// in, with no further roster read (#1730).
+    func testBackgroundWorkMarksARowLoadMoreBringsIn() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page(rows(0..<100)), 100: page(rows(100..<101))]
+        wire.roster["default"] = [rosterEntry("s0", subagents: 1), rosterEntry("s100", background: 1)]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        func state(_ id: String) -> SessionRowAttentionState? {
+            list.sessions.first { $0.sessionId == id }.flatMap { list.attentionState(for: $0) }
+        }
+
+        await list.openHermes()
+        await waitUntil("roster read") { state("s0") == .working }
+        await list.loadMoreHermesSessions()
+
+        XCTAssertEqual(state("s100"), .working)
+        XCTAssertEqual(wire.calls.filter { $0.method == "subagent.roster" }.count, 1)
+    }
+
     /// The roster is read with each list read and never by the busy re-read: ticks of
     /// `statusPollInterval` send no further roster call, and a `sessions.changed` sends one (#1730).
     func testTheRosterIsReadOncePerListRead() async {

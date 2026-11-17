@@ -138,8 +138,9 @@ final class SessionListViewModel {
     /// have an entry, and the map is reassigned only when a value actually
     /// changes so rows do not invalidate on every poll tick.
     private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
-    /// Listed Hermes sessions, by session key or lineage root, whose host still runs delegated
-    /// children or background processes after the turn ended (#1730). Kept apart from
+    /// Stored session ids the host's last `subagent.roster` lists with delegated children or
+    /// background processes still running (#1730), loaded or not, so a row Load more or a search
+    /// brings in later matches by its session key or lineage root. Kept apart from
     /// `attentionStatesBySessionID` so it never keeps the busy re-read going.
     private(set) var hermesBackgroundWork: Set<String> = []
     /// True while a Hermes list's states are only the last ones known (#1374): kept through a
@@ -2440,9 +2441,9 @@ final class SessionListViewModel {
         hermesRosterTask = Task { [weak self] in await self?.readHermesRoster(wire, profiles: profiles, serial: serial) }
     }
 
-    /// Marks the listed rows whose stored id, or lineage root, has live children or background
-    /// processes. Any failed read clears the marks, so the rows show the live states alone; a host
-    /// without the method is never asked again on this socket.
+    /// Keeps every stored id the roster lists with live children or background processes. Any
+    /// failed read clears the marks, so the rows show the live states alone; a host without the
+    /// method is never asked again on this socket.
     private func readHermesRoster(_ wire: any BotTransport, profiles: [String], serial: Int) async {
         let replies = await withTaskGroup(of: Result<BotJSON, Error>.self) { group in
             for profile in profiles {
@@ -2469,8 +2470,7 @@ final class SessionListViewModel {
                 return setHermesBackgroundWork([])
             }
         }
-        let listed = Set(sessions.flatMap { [$0.sessionId, $0.hermes?.lineageRoot].compactMap { $0 } })
-        setHermesBackgroundWork(working.intersection(listed))
+        setHermesBackgroundWork(working)
     }
 
     /// Drops the roster's marks and any read still out, which would describe another socket or Profile.
