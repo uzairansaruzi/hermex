@@ -375,6 +375,12 @@ struct HermesSessionListView: View {
         // the list would stay on one project with no way back. Checked on appear too, for a
         // switch flipped while this list was gone.
         .onChange(of: showsProjects, initial: true) { if !showsProjects { selectedProjectID = nil } }
+        // Any other Profile starts from all rows, however it came: the menu, a chat's Profile chip,
+        // /sessions or /resume, or the host dropping the Profile. The first answer to a list opened
+        // without a Profile isn't a change.
+        .onChange(of: ProfileScope(profile: viewModel.hermesProfile, showsAll: viewModel.hermesShowsAllProfiles)) { old, new in
+            if old.profile != nil || old.showsAll != new.showsAll { statusFilter = .all }
+        }
         // A lane the host no longer lists (deleted here or on Desktop, or another Profile's) clears.
         .onChange(of: viewModel.projects) {
             if let selectedProjectID, !viewModel.projects.contains(where: { $0.projectId == selectedProjectID }) {
@@ -773,20 +779,10 @@ struct HermesSessionListView: View {
         return statusFilter == .all ? listed : listed + ", " + statusFilter.title
     }
 
-    /// One status at a time, picking it again goes back to All, and Mark All as Read for the unread
-    /// chats in the Profile and lane shown, whatever the search or status. It names its count
-    /// before the tap and is off while nothing in scope can be marked.
-    @ViewBuilder private var statusSection: some View {
-        let unread = viewModel.unreadRowsInScope(selectedProjectID: selectedProjectID, automatedVisibility: automatedVisibility)
-        Section {
-            ForEach(HermesSessionStatusFilter.choices, id: \.self) { status in
-                Toggle(isOn: Binding(get: { statusFilter == status }, set: { _ in pickStatus(status) })) {
-                    Text(verbatim: status.title)
-                }
-            }
-            Button("Mark \(unread.count) Chats as Read", systemImage: "checkmark.circle") { markAllRead(unread) }
-                .disabled(unread.isEmpty)
-        }
+    private var statusSection: some View {
+        HermesStatusFilterSection(viewModel: viewModel, selectedProjectID: selectedProjectID,
+                                  automatedVisibility: automatedVisibility, statusFilter: statusFilter,
+                                  pick: pickStatus, markAll: markAllRead)
     }
 
     private func pickStatus(_ picked: HermesSessionStatusFilter) {
@@ -826,7 +822,6 @@ struct HermesSessionListView: View {
     }
 
     private func pickProfile(_ picked: String?) {
-        statusFilter = .all
         Task {
             if let picked { await viewModel.selectHermesProfile(picked) } else { await viewModel.showAllHermesProfiles() }
         }
@@ -851,7 +846,8 @@ struct HermesSessionListView: View {
             .disabled(viewModel.isLoadingMoreSessions)
             .frame(maxWidth: .infinity, minHeight: 44)
             .sessionsScreenListRow()
-            .onAppear { Task { await loadMore() } }
+            // A status filter never fetches on its own: the row stays, and a tap loads.
+            .onAppear { if statusFilter == .all { Task { await loadMore() } } }
             .onChange(of: viewModel.sessions.count) {
                 guard let selectedProjectID else { return }
                 Task { await viewModel.fillHermesLane(selectedProjectID) }
@@ -1317,6 +1313,39 @@ private struct SearchScope: Hashable {
     let showsAll: Bool
     let text: String
     let showingScheduled: Bool
+}
+
+/// The Profile a list shows, or every one.
+private struct ProfileScope: Equatable {
+    let profile: String?
+    let showsAll: Bool
+}
+
+/// The Filter menu's status choices and Mark All as Read. Its own view, so that reading the unread
+/// marks to count the chats in scope invalidates only this section, not the list's body.
+private struct HermesStatusFilterSection: View {
+    let viewModel: SessionListViewModel
+    let selectedProjectID: String?
+    let automatedVisibility: AutomatedSessionVisibility
+    let statusFilter: HermesSessionStatusFilter
+    let pick: (HermesSessionStatusFilter) -> Void
+    let markAll: ([SessionSummary]) -> Void
+
+    /// One status at a time, picking it again goes back to All. Mark All as Read covers the unread
+    /// chats in the Profile and lane shown, whatever the search or status; it names its count before
+    /// the tap and is off while nothing in scope can be marked or a Mark All is still writing.
+    var body: some View {
+        let unread = viewModel.unreadRowsInScope(selectedProjectID: selectedProjectID, automatedVisibility: automatedVisibility)
+        Section {
+            ForEach(HermesSessionStatusFilter.choices, id: \.self) { status in
+                Toggle(isOn: Binding(get: { statusFilter == status }, set: { _ in pick(status) })) {
+                    Text(verbatim: status.title)
+                }
+            }
+            Button("Mark \(unread.count) Chats as Read", systemImage: "checkmark.circle") { markAll(unread) }
+                .disabled(unread.isEmpty || viewModel.isMarkingAllRead)
+        }
+    }
 }
 
 /// What the draft read runs for: it reads while Draft is picked, again each time a chat closes,

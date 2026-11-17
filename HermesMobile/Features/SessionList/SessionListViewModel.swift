@@ -788,10 +788,17 @@ final class SessionListViewModel {
         }
     }
 
+    /// True while `markAllHermesRead` has writes out; another one starts nothing.
+    private(set) var isMarkingAllRead = false
+
     /// Marks each unread row of `rows` read on the host through the same write as a single row's
     /// Mark as Read, four at a time, and returns how many the host took. A refused write shows its
     /// row unread again.
     func markAllHermesRead(rows: [SessionSummary]) async -> Int {
+        // Rows past the first four still read unread until their turn, so a repeat would write them twice.
+        guard !isMarkingAllRead else { return 0 }
+        isMarkingAllRead = true
+        defer { isMarkingAllRead = false }
         let targets = rows.filter { isUnread($0) && canToggleUnread($0) }
         var confirmed = 0
         await withTaskGroup(of: Bool.self) { group in

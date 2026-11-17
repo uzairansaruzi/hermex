@@ -1153,6 +1153,35 @@ import Observation
         XCTAssertEqual(wire.unreadWrites.count, 6)
     }
 
+    /// A second Mark All while the first still writes starts nothing: the rows the first has not
+    /// reached still read unread, and writing them twice would count them twice.
+    func testMarkAllAsReadIgnoresARepeatWhileItsWritesAreOut() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page((0..<6).map { HermesSessionRow(id: "u\($0)", lastActive: Double(10 - $0), unread: true) })]
+        let list = makeList(wire)
+        await list.openHermes()
+        wire.holdsUnread = true
+        let rows = list.unreadRowsInScope(selectedProjectID: nil)
+
+        let first = Task { await list.markAllHermesRead(rows: rows) }
+        await waitUntil("four writes out") { wire.unreadWrites.count == 4 }
+        let second = Task { await list.markAllHermesRead(rows: list.unreadRowsInScope(selectedProjectID: nil)) }
+        // One main-queue turn: a repeat's writes would be on the wire now.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertEqual(wire.unreadWrites.count, 4)
+
+        wire.holdsUnread = false
+        wire.release()
+        let firstMarked = await first.value
+        let secondMarked = await second.value
+
+        XCTAssertEqual(firstMarked, 6)
+        XCTAssertEqual(secondMarked, 0)
+        XCTAssertEqual(wire.unreadWrites.count, 6, "no row is written twice")
+    }
+
     // MARK: Fixture
 
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",
