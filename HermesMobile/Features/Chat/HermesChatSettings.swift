@@ -125,6 +125,8 @@ enum HermesProfilePreference {
     private var reportedEffort: (requested: String, sent: String)?
     /// The latest `session.info`, applied again once an attach reconnects the controls.
     @ObservationIgnored private var latestInfo: BotJSON?
+    /// The latest remembered-setting sends (#1750), for a caller that must wait for them.
+    @ObservationIgnored private(set) var presetApplication: Task<Void, Never>?
     private let engine: HermesConversation
 
     /// `openedBot` is the roster row a Bot Chat opened from: with the pictures the shared store
@@ -136,6 +138,32 @@ enum HermesProfilePreference {
         mentions = BotMentions(roster: [], excluding: profile)
         if let openedBot { bots = [openedBot] }
         if loadsAvatars { avatars = BotAvatarStore.shared.images(connectionID: engine.connection.id) }
+        controls.onPickedModelActive = { [weak self] option in self?.applyPreset(for: option) }
+    }
+
+    /// Sends the Thinking level and then Fast remembered for `option` (#1750), once the host
+    /// reports it as this chat's model. A value equal to the current one, a level the model's
+    /// ladder lacks, and Fast on a model that hides it are skipped. It runs after the pick's own
+    /// write finishes, and each send is remembered again through the ordinary `select`.
+    private func applyPreset(for option: ModelCatalogOption) {
+        let store = ModelPresetStore(server: engine.server)
+        guard let preset = store.preset(for: option.favoriteKey) else { return }
+        presetApplication = Task { [weak self] in
+            guard let self, controls.catalog.active?.favoriteKey == option.favoriteKey else { return }
+            if let effort = preset.effort, effort != controls.effort, showsEffort, effortLevels.contains(effort) {
+                _ = await select(effort: effort)
+            }
+            if let fast = preset.fast, fast != controls.fast, controls.showsFast,
+               controls.catalog.active?.favoriteKey == option.favoriteKey {
+                _ = await select(fast: fast)
+            }
+        }
+    }
+
+    /// Remembers `record` against the live model after the host confirmed a change to it.
+    private func remember(_ record: (ModelPresetStore, ModelFavoriteKey) -> Void) {
+        guard let key = controls.catalog.active?.favoriteKey else { return }
+        record(ModelPresetStore(server: engine.server), key)
     }
 
     /// The model the chip shows: a pick waiting for the running response, else the
@@ -247,7 +275,9 @@ enum HermesProfilePreference {
     func select(effort: String) async -> Bool {
         guard effortLevels.contains(effort), let action = controls.prepare(.effort(effort)) else { return false }
         await controls.apply(action)
-        return controls.errorMessage == nil && controls.effort == effort
+        let applied = controls.errorMessage == nil && controls.effort == effort
+        if applied { remember { $0.record(effort: effort, for: $1) } }
+        return applied
     }
 
     // MARK: Fast
@@ -265,7 +295,9 @@ enum HermesProfilePreference {
     func select(fast enabled: Bool) async -> Bool {
         guard enabled != controls.fast, let action = controls.prepare(.fast(enabled)) else { return false }
         await controls.apply(action)
-        return controls.errorMessage == nil && controls.fast == enabled
+        let applied = controls.errorMessage == nil && controls.fast == enabled
+        if applied { remember { $0.record(fast: enabled, for: $1) } }
+        return applied
     }
 
     // MARK: Personality
