@@ -125,6 +125,10 @@ enum HermesProfilePreference {
     private var reportedEffort: (requested: String, sent: String)?
     /// The latest `session.info`, applied again once an attach reconnects the controls.
     @ObservationIgnored private var latestInfo: BotJSON?
+    /// The model the latest `session.info` that named one reported, or this chat's pick the host
+    /// ran at once; a frame without a model leaves it. Cleared with the connection, which every
+    /// attach, on a new runtime or not, drops before it reads the session again.
+    @ObservationIgnored private var reportedModel: String?
     /// The latest remembered-setting sends (#1750), for a caller that must wait for them.
     @ObservationIgnored private(set) var presetApplication: Task<Void, Never>?
     private let engine: HermesConversation
@@ -142,12 +146,9 @@ enum HermesProfilePreference {
     }
 
     /// The host ran this chat's pick of `option` at once. A session whose agent is not built yet
-    /// reports no `session.info` for it, so the latest one is brought up to the model it now runs.
+    /// reports no `session.info` for it, so the reported model is brought up to the one it now runs.
     private func pickRan(_ option: ModelCatalogOption) {
-        if var fields = latestInfo?.fields {
-            fields["model"] = .string(option.id)
-            latestInfo = .object(fields)
-        }
+        reportedModel = option.id
         applyPreset(for: option)
     }
 
@@ -172,11 +173,11 @@ enum HermesProfilePreference {
         }
     }
 
-    /// The catalog's live model, unless the latest `session.info` names another one: another
-    /// client switched the session, and the catalog has not been read since.
+    /// The catalog's live model, unless the host last reported another one: another client
+    /// switched the session, and the catalog has not been read since.
     private var liveModelKey: ModelFavoriteKey? {
         guard let active = controls.catalog.active else { return nil }
-        if let reported = latestInfo?["model"].text, reported != active.id { return nil }
+        if let reportedModel, reportedModel != active.id { return nil }
         return active.favoriteKey
     }
 
@@ -239,12 +240,13 @@ enum HermesProfilePreference {
         }
     }
 
-    func disconnect() { controls.disconnect() }
+    func disconnect() { reportedModel = nil; controls.disconnect() }
 
     /// A `session.info` frame, or an attach's `session.resume` info. Once a turn ends with a
     /// pick still waiting on it, the catalog is read again for the model the host now runs.
     func apply(info: BotJSON, idle: Bool) {
         latestInfo = info
+        if let model = info["model"].text, !model.isEmpty { reportedModel = model }
         controls.snapshot(info)
         reportedEffort = info["reasoning_effort"].text.map { ($0, info["reasoning_effort_wire"].text ?? "") }
         if idle, controls.pendingModel != nil { controls.refresh() }

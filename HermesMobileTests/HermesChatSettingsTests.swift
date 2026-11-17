@@ -381,6 +381,20 @@ import Observation
         XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("reasoning")])
     }
 
+    /// A `session.info` that leaves out the model keeps another client's switch in view: a level
+    /// picked after it is still not remembered for the old model.
+    func testAModelLessInfoAfterAnotherClientsSwitchStillRemembersNothingForTheOldModel() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.receive(event(1, "session.info", ["model": .string("claude-opus"), "reasoning_effort": .string("low")]))
+        chat.receive(event(2, "session.info", ["running": .bool(false), "reasoning_effort": .string("medium")]))
+        await waitUntil("info") { controls.effort == "medium" }
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+
+        _ = await chat.model.selectReasoningEffort("high")
+        XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.sonnet.favoriteKey))
+    }
+
     /// A pick the host asks to confirm applies its preset once the confirmed resend runs at once.
     func testAConfirmedPickAppliesItsPreset() async throws {
         let chat = await openChat()
