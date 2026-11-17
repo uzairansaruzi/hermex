@@ -1203,8 +1203,10 @@ import XCTest
         let defaults = UserDefaults.standard
         let keys = [AppTheme.storageKey, AppAppearanceSettings.accentHexKey]
         let saved = keys.map { defaults.object(forKey: $0) }
-        addTeardownBlock {
+        // `theme.apply` also restyles the connected scenes, so they go back with the settings.
+        addTeardownBlock { @MainActor in
             for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) }
+            AppAppearanceSettings.applyStoredToConnectedScenes()
         }
     }
 
