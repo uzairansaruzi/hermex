@@ -186,10 +186,14 @@ struct HermesCheckpoint: Equatable {
     /// The rows of one `rollback.list` reply; nil while the host takes none (`enabled: false`).
     static func list(_ reply: BotJSON) -> [HermesCheckpoint]? {
         guard reply["enabled"].flag != false else { return nil }
-        return (reply["checkpoints"].list ?? []).enumerated().compactMap { index, row in
+        // Numbered after rows without a hash are dropped, so a shown number is the one `named` finds.
+        let rows = (reply["checkpoints"].list ?? []).compactMap { row -> (hash: String, row: BotJSON)? in
             guard let hash = row["hash"].text, !hash.isEmpty else { return nil }
-            return HermesCheckpoint(number: index + 1, hash: hash, timestamp: row["timestamp"].text ?? "",
-                                    message: row["message"].text ?? "")
+            return (hash, row)
+        }
+        return rows.enumerated().map { index, entry in
+            HermesCheckpoint(number: index + 1, hash: entry.hash, timestamp: entry.row["timestamp"].text ?? "",
+                             message: entry.row["message"].text ?? "")
         }
     }
 
@@ -226,7 +230,10 @@ enum HermesRollbackCommand: Equatable {
             guard words.count == 2 else { return nil }
             self = .diff(words[1])
         default:
-            self = .restore(words[0], filePath: words.count > 1 ? words.dropFirst().joined(separator: " ") : nil)
+            // The path is kept as typed after the checkpoint, so repeated spaces in a name survive.
+            let text = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rest = text.drop { !$0.isWhitespace }.drop { $0.isWhitespace }
+            self = .restore(words[0], filePath: rest.isEmpty ? nil : String(rest))
         }
     }
 }

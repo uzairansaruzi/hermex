@@ -1086,6 +1086,8 @@ struct HermesLostTurn: Equatable {
         let attempt = engine.generation
         let outcome = try await slashCommands.restoreCheckpoint(hash, filePath: filePath)
         guard outcome.success, filePath == nil, outcome.historyRemoved > 0 else { return outcome }
+        // A turn-end refresh still reading would bring back the rows the host just rewound.
+        historyRefresh?.cancel()
         activity.newestTurnWasUndone()
         turnBase = nil
         await readNewestRows(attempt: attempt)
@@ -1811,7 +1813,7 @@ struct HermesLostTurn: Equatable {
         let attempt = engine.generation, turns = turnsStarted
         historyRefresh?.cancel()
         historyRefresh = Task { [weak self] in
-            guard let fresh = try? await self?.newestRows(attempt: attempt), let self,
+            guard let fresh = try? await self?.newestRows(attempt: attempt), let self, !Task.isCancelled,
                   attempt == self.engine.generation, turns == self.turnsStarted, self.isIdle else { return }
             var merged = self.history
             merged.mergeNewest(fresh.rows, reachedStart: fresh.reachedStart)

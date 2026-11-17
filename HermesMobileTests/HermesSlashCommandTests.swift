@@ -331,6 +331,24 @@ import Observation
 
     // MARK: Rollback (#1728)
 
+    /// A one-file restore keeps the path as typed after the checkpoint, so a name with repeated
+    /// spaces restores that file and not a different one.
+    func testARollbackFilePathKeepsItsSpaces() {
+        XCTAssertEqual(HermesRollbackCommand("1 dir/my  notes.txt"), .restore("1", filePath: "dir/my  notes.txt"))
+    }
+
+    /// The number a listed checkpoint shows is the one `/rollback N` restores, even when the host
+    /// lists a row without a hash before it.
+    func testAListedNumberNamesTheCheckpointItShows() throws {
+        let reply = BotJSON.object(["enabled": .bool(true), "checkpoints": .array([
+            .object(["message": .string("no hash")]),
+            .object(["hash": .string("abcdef0123"), "message": .string("before write_file")])
+        ])])
+        let listed = try XCTUnwrap(HermesCheckpoint.list(reply))
+        let shown = try XCTUnwrap(listed.first)
+        XCTAssertEqual(HermesCheckpoint.named(String(shown.number), in: listed)?.hash, "abcdef0123")
+    }
+
     /// `/rollback` reads the runtime's checkpoints with `rollback.list` and lists them as a notice,
     /// never through the host's own `/rollback`, which a Webapp refuses.
     func testRollbackListsTheRuntimesCheckpoints() async throws {
