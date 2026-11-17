@@ -229,7 +229,7 @@ private struct ChatMarkdownView: View {
 /// math language (`math`/`latex`/`tex`) and the body parses as math; otherwise
 /// renders it as a normal syntax-highlighted code block. A math fence whose
 /// body SwiftMath can't parse falls back to the code block too, so nothing is
-/// lost. A settled `svg` or `mermaid` fence's code block gains a View button
+/// lost. A settled `svg`, `mermaid` or `html` fence's code block gains a View button
 /// (`DrawableFence`).
 private struct MathFenceOrCodeBlock: View {
     let language: String?
