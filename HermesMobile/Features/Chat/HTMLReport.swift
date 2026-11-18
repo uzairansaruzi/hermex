@@ -20,13 +20,15 @@ enum HTMLReport {
     }
 }
 
-/// A code fence that draws as a picture (#1649): `svg`, or `mermaid` through the bundled Pele
-/// engine (`MermaidDiagram`). A settled one gains a View button in its header that opens the
-/// drawing in the report sheet, in the report's sandbox. Nothing draws in the transcript, and
-/// the code block stays, so the source is never lost.
+/// A code fence that shows as a picture or page (#1649, #1748): `svg`, `mermaid` through the
+/// bundled Pele engine (`MermaidDiagram`), or `html` (`htm` too). A settled one gains a View
+/// button in its header that opens the drawing or page in the report sheet, in the report's
+/// sandbox. Nothing renders in the transcript, and the code block stays, so the source is never
+/// lost.
 enum DrawableFence {
     case svg
     case mermaid
+    case html
 
     /// The fence's kind when it offers View; nil for any other language, and for a streaming
     /// fence, whose source is still incomplete.
@@ -35,12 +37,14 @@ enum DrawableFence {
         switch MarkdownHighlightPolicy.normalizedLanguage(from: language) {
         case "svg": self = .svg
         case "mermaid": self = .mermaid
+        case "html": self = .html
         default: return nil
         }
     }
 
     /// The sheet's page for the fence's source, or nil when it can't draw, so the sheet shows its
-    /// failure state rather than a blank page. A diagram lays out to fit `width`, the sheet's.
+    /// failure state rather than a blank page. A diagram lays out to fit `width`, the sheet's. An
+    /// `html` fence's source is the page as it is, with no card: the page brings its own layout.
     /// It runs the diagram engine, so call it off the main actor.
     func page(for source: String, width: CGFloat) -> String? {
         let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,6 +54,8 @@ enum DrawableFence {
             return Self.card(source)
         case .mermaid:
             return MermaidDiagram.svg(for: source, maxWidth: width - Self.cardInsets).map(Self.card)
+        case .html:
+            return source.isEmpty ? nil : source
         }
     }
 
