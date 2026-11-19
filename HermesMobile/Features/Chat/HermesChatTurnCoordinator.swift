@@ -1455,7 +1455,8 @@ struct HermesLostTurn: Equatable {
         case "session.info":
             applyInfo(payload)
         case "session.updated":
-            followDeferredPick(frame)
+            // A canonical host asking to confirm, or refusing, the model pick it deferred (#1604, #1771).
+            settings.controls.receiveDeferredPickUpdate(payload)
         case "message.complete":
             // A queued admission a canonical host withdrew before it ran settles without a
             // generation: no turn ran, so the running one goes on.
@@ -1514,7 +1515,7 @@ struct HermesLostTurn: Equatable {
         case "notification.show", "notification.clear":
             // About the session, not a message in it: never a row, the error line or a turn (#1746).
             hostNotices.receive(frame, live: live)
-            followDeferredPick(frame)
+            endDeferredPick(on: frame)
         default:
             // `thinking.delta` is spinner text and `reasoning.available` carries the answer
             // itself: neither is reasoning. The working row already says Hermes is working.
@@ -2285,7 +2286,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         // carried of the running reply places the deltas that raced it.
         guard !lostFrames else {
             // The session's standing notices still apply, in order; only the transcript rebuilds.
-            frames.forEach { hostNotices.receive($0, live: false); followDeferredPick($0) }
+            frames.forEach { hostNotices.receive($0, live: false); endDeferredPick(on: $0) }
             replayedReply = Self.replyText(frames)
             return
         }
@@ -2339,7 +2340,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
             // rebuild's replay starts after it. A host notice too (#1746).
             sideTasks.receive(frame)
             hostNotices.receive(frame, live: true)
-            followDeferredPick(frame)
+            endDeferredPick(on: frame)
             return rebuildAfterGap()
         }
         apply(frame, live: true)
@@ -2347,12 +2348,12 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationDidLoseFrames() { rebuildAfterGap() }
 
-    /// The host's word on the model pick it deferred, applied in order or around a rebuild: a
-    /// canonical `session.updated` asking to confirm or refusing it (#1604, #1771), or a
-    /// dashboard's `model_switch.dropped` notice at the next turn's start.
-    private func followDeferredPick(_ frame: BotJSON) {
+    /// The host's word that the model pick it deferred won't run (#1771), in order or around a
+    /// rebuild: a canonical `session.updated` refusing it, or a dashboard's `model_switch.dropped`
+    /// notice at the next turn's start. A confirmation ask is taken in order only.
+    private func endDeferredPick(on frame: BotJSON) {
         switch frame["type"].text {
-        case "session.updated": settings.controls.receiveDeferredPickUpdate(frame["payload"])
+        case "session.updated": settings.controls.receiveDeferredPickRefusal(frame["payload"])
         case "notification.show" where frame["payload"]["key"].text == "model_switch.dropped":
             settings.controls.dropDeferredPick()
         default: break

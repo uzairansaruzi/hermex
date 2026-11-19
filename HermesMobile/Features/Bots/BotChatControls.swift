@@ -178,9 +178,19 @@ import Observation
         model != nil && model == deferredPick?.model.id
     }
 
-    /// The host refused or dropped the pick it deferred: a canonical `session.updated` refusal
-    /// naming it, or a dashboard's `model_switch.dropped` notice at the next turn's start.
+    /// The host dropped the pick it deferred: a dashboard's `model_switch.dropped` notice at the
+    /// next turn's start.
     func dropDeferredPick() { deferredPick = nil }
+
+    /// Ends the wait when `payload`, a canonical `session.updated`, refused the deferred pick, and
+    /// says whether it did. Safe around a rebuild, unlike the confirmation ask, which the
+    /// reattach's `connect` would clear.
+    @discardableResult func receiveDeferredPickRefusal(_ payload: BotJSON) -> Bool {
+        guard payload["operation"].text == "model", payload["status"].text == "refused",
+              let refused = payload["target_model"].text, refused == deferredPick?.model.id else { return false }
+        deferredPick = nil; heldConfirmation = nil
+        return true
+    }
 
     /// Ends the deferred pick once the catalog, read with nothing else in flight, shows it live
     /// (telling `onPickedModelActive`) or shows a model that is neither it nor the one it replaces.
@@ -220,11 +230,7 @@ import Observation
     /// asks for it as it would have at once, its token kept for the confirmed resend. Or it
     /// refused it (`status: refused` naming it as `target_model`), which ends the wait.
     func receiveDeferredPickUpdate(_ payload: BotJSON) {
-        if payload["operation"].text == "model", payload["status"].text == "refused",
-           let refused = payload["target_model"].text, refused == deferredPick?.model.id {
-            deferredPick = nil; heldConfirmation = nil
-            return
-        }
+        if receiveDeferredPickRefusal(payload) { return }
         guard let context else {
             if deferredPick != nil { heldConfirmation = payload }
             return
