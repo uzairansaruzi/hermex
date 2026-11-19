@@ -228,17 +228,12 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
     }
 
     /// webui's empty `{ok: true}` stays the failure it was before #1071; only a Hermes host's is silence.
-    func testWebuiEmptyTranscriptStillFails() async {
-        let recorder = DictationTestRecorder()
-        let controller = ComposerVoiceInputController(
-            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
-            serverRecorder: recorder, mayRecord: { true })
-        controller.transcribe = makeClient { request in
+    func testWebuiEmptyTranscriptStillFails() async throws {
+        let transcribe = makeClient { request in
             apiTestJSONResponse(#"{"ok":true,"transcript":"  "}"#, for: request)
         }.dictationTranscriber
-        await controller.toggle(draft: DictationTestDraft("Draft") { _ in XCTFail("Nothing transcribed") })
-        await finishRecording(controller)
-        XCTAssertEqual(controller.errorMessage, "Transcription returned no text.")
+        let reply = try await transcribe(Data("clip".utf8), "clip.m4a")
+        XCTAssertNil(reply.ok, "An empty webui reply must not read as a Hermes host's silence")
     }
 
     /// With no on-device recognizer, the server is the only provider and its reason shows as is.

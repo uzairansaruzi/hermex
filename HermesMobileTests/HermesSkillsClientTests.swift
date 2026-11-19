@@ -4,11 +4,6 @@ import XCTest
 /// Skills on a Hermes host (#1069): `HermesSkillsClient` against a scripted host whose replies
 /// are the shapes `scripts/local-hermes` answered at the pin (0.21.5, ca678285).
 @MainActor final class HermesSkillsClientTests: XCTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
-
     func testTheListIsTheProfilesBareArrayWithEnabledReadAsDisabled() async throws {
         let client = Self.client { request in
             request.url?.path == "/api/skills" ? .json(200, .array([

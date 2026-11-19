@@ -290,11 +290,6 @@ final class ChatScrollPolicyTests: XCTestCase {
 /// still runs the latest closure.
 @MainActor
 final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
-    override class func setUp() {
-        super.setUp()
-        MainActor.assumeIsolated { warmUpSoftwareKeyboard() }
-    }
-
     func testDisclosureReadersSkipOwnerPassesAndRunTheLatestHandler() throws {
         let probe = EnvironmentStabilityProbe()
         let window = host(DisclosureOwner(probe: probe))

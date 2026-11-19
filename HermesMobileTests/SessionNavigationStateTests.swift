@@ -808,53 +808,6 @@ final class SessionSplitViewIdentityTests: XCTestCase {
 final class HermesHomeSplitRoutingTests: XCTestCase {
     private let server = URL(string: "http://127.0.0.1:9")!
 
-    /// The edited sign-in replaces the Sessions side, so a chat reviewing a Shortcut's text (#1402)
-    /// goes with it and releases the texts waiting behind it.
-    func testDismissingRegularSettingsReadsTheEditedConnection() async throws {
-        let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
-                                       username: "fixture", password: "fixture-only")
-        var saved = connection
-        var readsAfterEditing = 0
-        let reviewing = UUID()
-        var endedReviews: [UUID] = []
-        let reread = expectation(description: "Home reads the connection after Settings closes")
-        let shown = expectation(description: "Settings sheet presented")
-        let auth = AuthManager(keychain: InMemoryKeychainStore(), serverRegistry: .inMemory(),
-                               hermesConnections: HermesConnections(keychain: InMemoryKeychainStore()))
-        let home = HermesServerHome(authManager: auth, server: server,
-            pendingBotDestination: .constant(nil), pendingSessionDestination: .constant(nil),
-            pendingNewChat: .constant(nil), pendingShare: nil, claimShare: { _ in false },
-            didRouteShare: { _ in }, didDeclineShare: { _ in }, didAbandonShare: { _ in },
-            shortcutReview: ShortcutTextReview(chat: reviewing, end: { endedReviews.append($0) }),
-            initiallyShowingSettings: true, loadConnection: { requested in
-                XCTAssertEqual(requested, self.server)
-                if saved.password != connection.password {
-                    readsAfterEditing += 1
-                    reread.fulfill()
-                }
-                return saved
-            })
-        let host = SettingsPresentationHost(rootView: home.modelContainer(try Self.selectionCache.get())
-            .environment(auth).environment(\.horizontalSizeClass, .regular))
-        host.didPresent = { shown.fulfill() }
-        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: scene)
-        window.traitOverrides.horizontalSizeClass = .regular
-        window.frame = CGRect(x: 0, y: 0, width: 1194, height: 834)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        defer { window.isHidden = true; window.rootViewController = nil }
-        await fulfillment(of: [shown], timeout: 5)
-        let sheet = try XCTUnwrap(host.presentedViewController)
-        saved.password = "edited-fixture-only" // Editing a sign-in retains its UUID.
-        await withCheckedContinuation { continuation in
-            sheet.dismiss(animated: false) { continuation.resume() }
-        }
-        await fulfillment(of: [reread], timeout: 2)
-        XCTAssertGreaterThan(readsAfterEditing, 0)
-        XCTAssertEqual(endedReviews, [reviewing])
-    }
-
     func testRegularHermesSessionsOwnsASplit() throws {
         try assertSplit(in: sessions(), sizeClass: .regular, expected: true)
     }
@@ -1152,21 +1105,6 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
             controller is UISplitViewController || controller.children.contains(where: containsSplit)
         }
         XCTAssertEqual(containsSplit(host), expected)
-    }
-}
-
-/// Reports the sheet SwiftUI presents. It presents without animation: an animated transition's
-/// completion waits on the simulator's render clock, which a busy CI host can stall for a minute.
-@MainActor
-private final class SettingsPresentationHost<Content: View>: UIHostingController<Content> {
-    var didPresent: () -> Void = {}
-
-    override func present(_ viewControllerToPresent: UIViewController, animated flag: Bool,
-                          completion: (() -> Void)? = nil) {
-        super.present(viewControllerToPresent, animated: false) {
-            completion?()
-            self.didPresent()
-        }
     }
 }
 

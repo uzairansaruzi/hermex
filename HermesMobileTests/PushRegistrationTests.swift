@@ -1185,28 +1185,17 @@ final class PushRegistrationTests: XCTestCase {
                                                     streamID: "1000.0", startedAt: .now, server: serverA,
                                                     pushSessionID: "tip")
         let leftover = manager.leftover(id: "persisted", attributes: attributes, isFinished: false)
-        let deleting = expectation(description: "DELETE entered")
-        var release: CheckedContinuation<Void, Never>?
-        wire.deleteHold = {
-            await withCheckedContinuation { continuation in
-                release = continuation
-                deleting.fulfill()
-            }
+        // The chat takes the turn over while the leftover's DELETE is in flight.
+        wire.deleteHold = { @MainActor [serverA] in
+            manager.startSession(sessionID: "hermes:default:root", server: serverA, destinationURL: nil, pushSessionID: "tip",
+                                 sessionTitle: "Run", turn: "1000.0", startedAt: .now)
         }
-        let settling = Task { () -> (ended: [LeftoverLiveActivityAction], reclaimed: [String]) in
-            var ended: [LeftoverLiveActivityAction] = []
-            var reclaimed: [String] = []
-            await manager.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { [] }, isFinished: { _ in false },
-                                 adopt: { _ in false }, end: { ended.append($1) }, reclaimed: { reclaimed.append($0.id) })
-            return (ended, reclaimed)
-        }
-        await fulfillment(of: [deleting], timeout: 2)
-        manager.startSession(sessionID: "hermes:default:root", server: serverA, destinationURL: nil, pushSessionID: "tip",
-                             sessionTitle: "Run", turn: "1000.0", startedAt: .now)
-        release?.resume()
-        let result = await settling.value
-        XCTAssertEqual(result.ended, [])
-        XCTAssertEqual(result.reclaimed, ["persisted"])
+        var ended: [LeftoverLiveActivityAction] = []
+        var reclaimed: [String] = []
+        await manager.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { [] }, isFinished: { _ in false },
+                             adopt: { _ in false }, end: { ended.append($1) }, reclaimed: { reclaimed.append($0.id) })
+        XCTAssertEqual(ended, [])
+        XCTAssertEqual(reclaimed, ["persisted"])
         XCTAssertEqual(pushKeys.pushTarget(for: attributes)?.sessionID, "tip", "the chat's key stays recorded")
     }
 

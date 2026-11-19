@@ -738,11 +738,6 @@ final class ComposerDropRouteTests: XCTestCase {
 
 @MainActor
 final class ComposerFocusTransitionTests: XCTestCase {
-    override class func setUp() {
-        super.setUp()
-        MainActor.assumeIsolated { warmUpSoftwareKeyboard() }
-    }
-
     private final class AppearingController: UIViewController {
         var onAppearance: (() -> Void)?
 
@@ -756,30 +751,27 @@ final class ComposerFocusTransitionTests: XCTestCase {
         }
     }
 
-    func testHostedSuccessfulSendDismissesButFailureAndNewerFocusKeepEditing() throws {
-        for (success, revision, expectedFocus) in [(true, 1, false), (false, 1, true), (true, 2, true)] {
-            let state = ComposerPresentationHarnessState()
-            let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
-            let window = try show(host)
-            defer { cleanUp(window) }
-            let editor = try XCTUnwrap(findEditor(in: host.view))
-            XCTAssertTrue(editor.becomeFirstResponder())
-            let draft = state.text
-            if let focus = ChatSendFocusPolicy.focusAfterSubmission(
-                succeeded: success, dismissKeyboard: true, wasFocused: true,
-                submittedRevision: 1, currentRevision: revision, hasNewDraft: false
-            ) { state.isFocused = focus }
-            host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
-            host.view.layoutIfNeeded()
-            let settled = expectation(description: "queued focus update")
-            Task { @MainActor in
-                await Task.yield()
-                settled.fulfill()
-            }
-            wait(for: [settled], timeout: 5)
-            XCTAssertEqual(editor.isFirstResponder, expectedFocus)
-            XCTAssertEqual(state.text, draft)
+    /// A successful send's blur reaches the real editor. Which sends dismiss is
+    /// `ChatComposerSendGateTests`' job.
+    func testHostedSuccessfulSendDismissesTheEditor() throws {
+        let state = ComposerPresentationHarnessState()
+        let host = UIHostingController(rootView: ComposerPresentationHarness(state: state, updateRevision: 0))
+        let window = try show(host)
+        defer { cleanUp(window) }
+        let editor = try XCTUnwrap(findEditor(in: host.view))
+        XCTAssertTrue(editor.becomeFirstResponder())
+        let draft = state.text
+        state.isFocused = false
+        host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
+        host.view.layoutIfNeeded()
+        let settled = expectation(description: "queued focus update")
+        Task { @MainActor in
+            await Task.yield()
+            settled.fulfill()
         }
+        wait(for: [settled], timeout: 5)
+        XCTAssertFalse(editor.isFirstResponder)
+        XCTAssertEqual(state.text, draft)
     }
 
     func testHostedQueuedSendBlurCannotDismissNewerEditingSession() throws {

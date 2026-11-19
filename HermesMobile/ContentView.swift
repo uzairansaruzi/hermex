@@ -698,7 +698,6 @@ struct HermesServerHome: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Bindable var authManager: AuthManager
     let server: URL
-    private let loadConnection: @MainActor (URL) -> BotConnection?
     @Binding var pendingBotDestination: BotDestination?
     @Binding var pendingSessionDestination: HermesSessionDestination?
     @Binding var pendingNewChat: HermesNewChatDestination?
@@ -729,13 +728,9 @@ struct HermesServerHome: View {
          didRouteShare: @escaping (SharedImportReservation) -> Void,
          didDeclineShare: @escaping (SharedImportReservation) -> Void,
          didAbandonShare: @escaping (SharedImportReservation) -> Void,
-         shortcutReview: ShortcutTextReview = ShortcutTextReview(),
-         initiallyShowingSettings: Bool = false,
-         loadConnection: @escaping @MainActor (URL) -> BotConnection? = { try? BotConnectionStore().load(server: $0) }) {
+         shortcutReview: ShortcutTextReview = ShortcutTextReview()) {
         self.authManager = authManager
         self.server = server
-        self.loadConnection = loadConnection
-        _settings = State(initialValue: initiallyShowingSettings ? .pushed : nil)
         _pendingBotDestination = pendingBotDestination
         _pendingSessionDestination = pendingSessionDestination
         _pendingNewChat = pendingNewChat
@@ -747,7 +742,7 @@ struct HermesServerHome: View {
         self.didAbandonShare = didAbandonShare
         self.shortcutReview = shortcutReview
         _inbox = State(initialValue: BotInbox(server: server))
-        _sessions = State(initialValue: loadConnection(server).map { HermesSessionsSide(server: server, connection: $0) })
+        _sessions = State(initialValue: (try? BotConnectionStore().load(server: server)).map { HermesSessionsSide(server: server, connection: $0) })
     }
 
     var body: some View {
@@ -855,7 +850,7 @@ struct HermesServerHome: View {
     /// A new list only when the saved record changed: a sign-in changed in Settings keeps its UUID.
     /// The old list's chats go with it, so one reviewing a Shortcut's text (#1402) lets the next open.
     private func readConnection() {
-        let saved = loadConnection(server)
+        let saved = try? BotConnectionStore().load(server: server)
         guard saved != sessions?.entry.connection else { return }
         if let reviewing = shortcutReview.chat { shortcutReview.end(reviewing) }
         sessions = saved.map { HermesSessionsSide(server: server, connection: $0) }

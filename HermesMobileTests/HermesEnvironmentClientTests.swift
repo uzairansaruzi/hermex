@@ -4,11 +4,6 @@ import XCTest
 /// A Profile's `.env` keys on a Hermes host (#1318): `HermesEnvironmentClient` against a scripted
 /// host whose replies are the shapes a 0.21.5 host (pin ca678285) answered.
 @MainActor final class HermesEnvironmentClientTests: XCTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
-
     func testTheListLeavesOutChannelKeysAndShowsOnlyTheHostsMask() async throws {
         let client = Self.client { request in
             request.url?.path == "/api/env" ? .json(200, .object([

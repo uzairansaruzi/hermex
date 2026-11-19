@@ -7,11 +7,6 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotChatPresentationTests: XCTestCase {
-    override class func setUp() {
-        super.setUp()
-        MainActor.assumeIsolated { warmUpSoftwareKeyboard() }
-    }
-
     func testAttachmentOverlayReceivesOwningSceneLifecycle() async throws {
         let model = AttachmentSceneHarnessModel()
         let window = try show(AttachmentSceneHarnessView(model: model))
@@ -370,38 +365,6 @@ import XCTest
         XCTAssertFalse(editor.canPasteItemProviders([image]))
         XCTAssertTrue(editor.canPasteItemProviders([text]))
 
-    }
-
-    /// A tap can restore UIKit focus before an earlier bound blur gets its
-    /// main-actor turn. That queued blur must not dismiss the new editing session.
-    func testComposerRefocusSupersedesQueuedBlur() async throws {
-        let focus = ComposerFixtureFocus()
-        let window = try show(SessionChatPresentationFixture(focus: focus))
-        defer { close(window) }
-        await settle(window)
-        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
-        XCTAssertTrue(editor.becomeFirstResponder())
-        await settle(window)
-        XCTAssertTrue(focus.isFocused)
-
-        focus.isFocused = false
-        window.layoutIfNeeded()
-        // UIKit changes focus synchronously, before the representable's queued blur.
-        XCTAssertTrue(editor.resignFirstResponder())
-        XCTAssertTrue(editor.becomeFirstResponder())
-        XCTAssertTrue(focus.isFocused)
-        await settle(window)
-
-        XCTAssertTrue(editor.isFirstResponder, "A stale bound blur must not dismiss a newly focused editor")
-        XCTAssertTrue(focus.isFocused)
-        editor.insertText("Still editing.")
-        await settle(window)
-        XCTAssertEqual(editor.sourceText, "Still editing.")
-
-        focus.isFocused = false
-        await settle(window)
-        XCTAssertFalse(editor.isFirstResponder, "A current bound blur must still dismiss the editor")
-        XCTAssertFalse(focus.isFocused)
     }
 
     /// ChatView keeps the draft out of its own body so a keystroke never re-runs

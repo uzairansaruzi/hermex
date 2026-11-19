@@ -4,11 +4,6 @@ import XCTest
 /// Tasks on a Hermes host (#1040): `HermesCronClient` against a scripted host whose replies
 /// are the shapes `scripts/local-hermes` answered at the pin (0.21.5, ca678285).
 @MainActor final class HermesCronClientTests: XCTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
-
     func testTheListIsEveryProfilesJobsFromABareArray() async throws {
         let client = HermesCronFixture.client { request in
             request.url?.path == "/api/cron/jobs" ? .json(200, .array([
@@ -423,10 +418,6 @@ extension CronManagementViewModelTests {
     private let server = URL(string: "https://hermes.example")!
     private let clock = RunNowClock()
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     /// The host ran the Task before replying: the reply is the outcome, and nothing is read.
     func testATriggerReplyIsTheOutcome() async throws {

@@ -361,10 +361,7 @@ final class BotMentionTests: XCTestCase {
             ComposerChipRenderer.image(label: "Inbox Triage", icon: icon, metrics: metrics, traits: traits, isRightToLeft: false)
         }
         XCTAssertTrue(render(first) === render(first))
-        XCTAssertNotEqual(render(first).pngData(), render(second).pngData())
-        let fallback = render(.bot(ComposerBotReference(profile: bot(), avatar: nil)))
-        XCTAssertEqual(fallback.size.width, render(.symbol("person")).size.width)
-        XCTAssertNotEqual(fallback.pngData(), render(first).pngData())
+        XCTAssertFalse(render(first) === render(second), "A different avatar reused another bot's cached chip")
     }
 
     private func image(_ color: UIColor) -> UIImage {

@@ -7,7 +7,8 @@ import XCTest
 /// the app's saved servers, credentials and sessions. As the bundle's principal class
 /// (`INFOPLIST_KEY_NSPrincipalClass`) it snapshots all three when the bundle starts and puts them
 /// back when it finishes, for `scripts/test-sim`, Xcode and CI alike. A run killed before it
-/// finishes leaves whatever the tests wrote.
+/// finishes leaves whatever the tests wrote. It also starts each test from the same shared
+/// state, whichever test ran before it.
 final class TestHostStateGuard: NSObject, XCTestObservation {
     /// Nil when the Keychain could not be read, so the restore leaves it alone.
     private var keychainItems: [[String: Any]]?
@@ -23,6 +24,13 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
         keychainItems = Self.genericPasswords(returningData: true)
         cookies = HTTPCookieStorage.shared.cookies ?? []
         defaults = Bundle.main.bundleIdentifier.flatMap(UserDefaults.standard.persistentDomain(forName:))
+    }
+
+    /// Every test starts on an empty scripted host, since requests an earlier test or class
+    /// sent would otherwise count as this test's, and on a warm keyboard.
+    func testCaseWillStart(_ testCase: XCTestCase) {
+        HermesHostFixture.reset()
+        MainActor.assumeIsolated { XCTestCase.warmUpSoftwareKeyboard() }
     }
 
     func testBundleDidFinish(_ testBundle: Bundle) {

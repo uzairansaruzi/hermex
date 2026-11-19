@@ -305,10 +305,6 @@ enum AgentMemoryDrift {
     private static let notes = home + "/memories/MEMORY.md"
     private static let user = home + "/memories/USER.md"
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     func testLoadReadsTheProfilesFilesFromItsListRowAndTheHostsLimits() async throws {
         let host = MemoryHost(files: [Self.notes: "Prefers short PRs\n§\nBuilds in Swift 5"], soul: "Be direct.")

@@ -5,11 +5,6 @@ import XCTest
 /// gateway (2bd378ed) answered on `scripts/local-hermes --gateway`: the migrate plan, the `.env`
 /// removal, and the migration's start.
 @MainActor final class ServeEveryProfileTests: XCTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
-
     /// The owner's case: `dev` holds `default`'s Telegram token. Keeping the bot on `dev` removes
     /// it from `default` only, the cleared plan offers the migration, and the wait ends once the
     /// restarted gateway serves every Profile.

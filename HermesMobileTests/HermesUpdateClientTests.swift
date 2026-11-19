@@ -7,10 +7,6 @@ import XCTest
 @MainActor final class HermesUpdateClientTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     private func connection(_ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> HermesConnection {
         let record = BotConnection(id: UUID(), name: "Host", address: server, username: "user", password: "secret")

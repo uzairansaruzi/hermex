@@ -9,10 +9,6 @@ import XCTest
     private let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                        username: "user", password: "secret")
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     func testTwoPluginsWithOneNameAreToggledByKeyOnTheSelectedProfile() async throws {
         let host = hostWithPlugins([row("image_gen/fal", name: "fal"), row("video_gen/fal", name: "fal")])
