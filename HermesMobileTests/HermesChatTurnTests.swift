@@ -261,6 +261,159 @@ import SwiftUI
         XCTAssertFalse(chat.model.isCompacting)
     }
 
+    // MARK: Host notices (#1746)
+
+    /// The recorded dropped model switch: a live `ttl` notice shows and hides once its `ttl_ms` is
+    /// up. A same-key show replaces it, and the first one's timer then hides nothing.
+    func testALiveTTLNoticeShowsUntilItsTimeIsUp() async throws {
+        let frames = try recorded("turn-notice-frames")
+        let payload = frames[1]["params"]["payload"]
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(runtime: try XCTUnwrap(frames[0]["params"]["session_id"].text), noticeTimer: timer.timer)
+        let notices = chat.turn.hostNotices
+        frames.forEach(chat.receive)
+        XCTAssertEqual(notices.shown?.text, payload["text"].text)
+        XCTAssertEqual(notices.shown?.level, .warning)
+        XCTAssertEqual(timer.delays, [.milliseconds(try XCTUnwrap(payload["ttl_ms"].integer))])
+        XCTAssertNil(chat.model.sendErrorMessage, "a notice never takes the error line")
+        XCTAssertTrue(chat.model.messages.isEmpty, "a notice is not a transcript row")
+
+        chat.receive(event(3, "notification.show", ["text": .string("Could not switch model: still unknown"), "level": .string("warn"),
+                                                    "kind": .string("ttl"), "ttl_ms": .number(12000),
+                                                    "key": .string("model_switch.dropped")], runtime: "fixture-runtime"))
+        XCTAssertEqual(notices.notices.map(\.text), ["Could not switch model: still unknown"], "the same key replaces it")
+        timer.fire(0)
+        XCTAssertEqual(notices.shown?.text, "Could not switch model: still unknown", "the replaced notice's timer hides nothing")
+        timer.fire(1)
+        XCTAssertNil(notices.shown)
+    }
+
+    /// Opening a chat replays the session's standing notices in order, so a later clear still
+    /// wins, but never a `ttl` one, which may have expired long ago. The first attach always
+    /// rebuilds the transcript, and the notices still apply.
+    func testOpeningAChatRestoresStandingNoticesButNoExpiredOne() async throws {
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(replay: try standingNoticeReplay(latest: 4), noticeTimer: timer.timer)
+        XCTAssertEqual(chat.turn.hostNotices.notices.map(\.text), ["Sign in at https://example.com/device"])
+        XCTAssertTrue(timer.delays.isEmpty)
+    }
+
+    /// A reattach whose replay was cut short rebuilds the transcript; what the replay holds of the
+    /// notices still applies.
+    func testAReattachWithATruncatedReplayStillRestoresStandingNotices() async throws {
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(noticeTimer: timer.timer)
+        chat.model.suspendStreamForBackground()
+        chat.host.next("session.events.since", .init(result: try standingNoticeReplay(latest: 4, truncated: true)))
+        chat.host.always("session.resume", .init(result: resume(running: false)))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.hostNotices.notices.map(\.text), ["Sign in at https://example.com/device"])
+        XCTAssertTrue(timer.delays.isEmpty)
+    }
+
+    /// A live clear that arrives after lost frames still withdraws its notice: the rebuild it
+    /// starts replays only what follows it.
+    func testAClearArrivingAfterAGapStillWithdrawsItsNotice() async {
+        let chat = await openChat()
+        chat.receive(event(1, "notification.show", ["text": .string("Credit access paused"), "level": .string("error"),
+                                                    "kind": .string("sticky"), "key": .string("credits.depleted")]))
+        XCTAssertNotNil(chat.turn.hostNotices.shown)
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
+        chat.receive(event(3, "notification.clear", ["key": .string("credits.depleted")]))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
+        XCTAssertNil(chat.turn.hostNotices.shown)
+    }
+
+    /// A new runtime for the session drops the old one's notices and timers: a dead runtime never
+    /// sends their clears, and an old timer never hides the new runtime's notice.
+    func testANewRuntimeDropsTheOldRuntimesNoticesAndTimers() async {
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(noticeTimer: timer.timer)
+        let notices = chat.turn.hostNotices
+        chat.receive(event(1, "notification.show", ["text": .string("Still starting the agent"), "level": .string("info"),
+                                                    "kind": .string("agent"), "key": .string("agent.build_slow")]))
+        chat.receive(event(2, "notification.show", ["text": .string("Large model"), "level": .string("warn"), "kind": .string("ttl"),
+                                                    "ttl_ms": .number(8000), "key": .string("model.large_notice")]))
+        await reattach(chat, resume(running: false, runtime: "runtime-2"))
+        XCTAssertTrue(notices.notices.isEmpty)
+        XCTAssertTrue(timer.tasks[0].isCancelled)
+
+        chat.receive(event(1, "notification.show", ["text": .string("Large model again"), "level": .string("warn"), "kind": .string("ttl"),
+                                                    "ttl_ms": .number(8000), "key": .string("model.large_notice")], runtime: "runtime-2"))
+        timer.fire(0)
+        XCTAssertEqual(notices.shown?.text, "Large model again", "the old runtime's timer hides nothing")
+    }
+
+    /// Each show keeps its key's place: a newer key shows on top, and the older one's update stays
+    /// behind it, waiting.
+    func testAShowWithAKnownKeyReplacesThatNoticeInPlace() async {
+        let chat = await openChat()
+        let notices = chat.turn.hostNotices
+        chat.receive(event(1, "notification.show", ["text": .string("You've used 50% of your cap"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("credits.usage")]))
+        chat.receive(event(2, "notification.show", ["text": .string("⚠ Low disk"), "level": .string("warn"), "kind": .string("sticky"),
+                                                    "key": .string("sessions.auto_prune"), "detail": .string("Turn on auto-prune?")]))
+        chat.receive(event(3, "notification.show", ["text": .string("You've used 75% of your cap"), "level": .string("warn"),
+                                                    "kind": .string("sticky"), "key": .string("credits.usage")]))
+        XCTAssertEqual(notices.notices.map(\.text), ["You've used 75% of your cap", "⚠ Low disk"])
+        XCTAssertEqual(notices.shown?.detail, "Turn on auto-prune?")
+        XCTAssertEqual(notices.waitingCount, 1)
+    }
+
+    /// The host's clear withdraws its key. A dismissed key stays hidden until the host shows it
+    /// with new text, and dismissing the newest shows the one behind it.
+    func testAClearWithdrawsANoticeAndADismissHidesItUntilNewText() async throws {
+        let chat = await openChat()
+        let notices = chat.turn.hostNotices
+        chat.receive(event(1, "notification.show", ["text": .string("Credit access paused"), "level": .string("error"),
+                                                    "kind": .string("sticky"), "key": .string("credits.depleted")]))
+        chat.receive(event(2, "notification.show", ["text": .string("A plugin says hi"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("plugin-message:p:1")]))
+        chat.receive(event(3, "notification.clear", ["key": .string("credits.depleted")]))
+        XCTAssertEqual(notices.notices.map(\.text), ["A plugin says hi"])
+
+        notices.dismiss(try XCTUnwrap(notices.shown))
+        XCTAssertNil(notices.shown)
+        chat.receive(event(4, "notification.show", ["text": .string("A plugin says hi"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("plugin-message:p:1")]))
+        XCTAssertNil(notices.shown, "the same text stays dismissed")
+        chat.receive(event(5, "notification.show", ["text": .string("A plugin says bye"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("plugin-message:p:1")]))
+        XCTAssertEqual(notices.shown?.text, "A plugin says bye")
+    }
+
+    /// A canonical session keeps its id across a new epoch (a host restart, or the host ending a
+    /// session nobody watched for its orphan grace, 5 minutes by default), and the new epoch
+    /// replays nothing. The old lifetime's notices and timers go, since nothing will clear them.
+    func testACanonicalSessionUnderANewEpochDropsTheOldNoticesAndTimers() async {
+        let timer = ManualNoticeTimer()
+        let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true, noticeTimer: timer.timer)
+        let notices = chat.turn.hostNotices
+        chat.receive(event(1, "notification.show", ["text": .string("Sign in at https://example.com/device"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("login:1")], runtime: "tip"))
+        chat.receive(event(2, "notification.show", ["text": .string("Large model"), "level": .string("warn"), "kind": .string("ttl"),
+                                                    "ttl_ms": .number(8000), "key": .string("model.large_notice")], runtime: "tip"))
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0, truncated: true, epoch: "epoch-2")))
+        chat.host.always("session.resume", .init(result: canonicalSnapshot(epoch: "epoch-2")))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertTrue(notices.notices.isEmpty)
+        XCTAssertTrue(timer.tasks[0].isCancelled)
+    }
+
+    /// Frames lost within the same lifetime rebuild the transcript but keep the notices: the host
+    /// still holds them.
+    func testAGapInTheSameLifetimeKeepsTheNotices() async {
+        let chat = await openChat()
+        chat.receive(event(1, "notification.show", ["text": .string("Credit access paused"), "level": .string("error"),
+                                                    "kind": .string("sticky"), "key": .string("credits.depleted")]))
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
+        chat.receive(event(3, "message.start"))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
+        XCTAssertEqual(chat.turn.hostNotices.shown?.text, "Credit access paused")
+    }
+
     // MARK: Sending
 
     func testSendSubmitsAQueuedPromptOnceAndShowsIt() async {
@@ -1790,12 +1943,13 @@ import SwiftUI
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil, lineageRoot: String? = nil,
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
                           rpcDeadline: Duration = .seconds(30), canonical: Bool = false,
-                          botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil) async -> Chat {
+                          botChatRoot: String? = nil, ratingPromptState: RatingPromptState? = nil,
+                          replay: BotJSON? = nil, noticeTimer: HermesHostNotices.Timer? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
         host.always("session.resume", .init(result: snapshot ?? resume(running: false, runtime: runtime, key: key, profile: profile)))
-        host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
+        host.always("session.events.since", .init(result: replay ?? BotFixtureWire.replay(latest: 0)))
         // The reduced reply `session.create` gives a session that has not started.
         host.always("session.create", .init(result: .object([
             "session_id": .string(runtime), "stored_session_id": .string(key), "message_count": .number(0),
@@ -1807,7 +1961,8 @@ import SwiftUI
                                         target: target ?? .session(profile: profile, key: key), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, lineageRoot: lineageRoot,
                                              isNetworkAvailable: { true },
-                                             ratingPromptState: ratingPromptState ?? isolatedRatingState())
+                                             ratingPromptState: ratingPromptState ?? isolatedRatingState(),
+                                             noticeTimer: noticeTimer)
         let liveActivity = TitleRecordingLiveActivity()
         let model = ChatViewModel(
             session: SessionSummary(profile: profile), server: URL(string: "https://hermes.example")!,
@@ -1853,6 +2008,21 @@ import SwiftUI
         ["revision": .number(Double(revision)), "todos": .array(statuses.enumerated().map { index, status in
             .object(["id": .string("\(prefix)-\(index)"), "content": .string("\(prefix) \(index + 1)"), "status": .string(status)])
         })]
+    }
+
+    /// A replay of runtime `runtime` holding the recorded `ttl` notice, a `/login` link, and a slow
+    /// agent start the host then cleared.
+    private func standingNoticeReplay(latest: Int, truncated: Bool = false) throws -> BotJSON {
+        var expired = try recorded("turn-notice-frames")[1]["params"].fields ?? [:]
+        expired["session_id"] = .string("runtime"); expired["seq"] = .number(Double(latest - 3))
+        return BotFixtureWire.replay(latest: latest, truncated: truncated, events: [
+            .object(expired),
+            event(latest - 2, "notification.show", ["text": .string("Sign in at https://example.com/device"), "level": .string("info"),
+                                                    "kind": .string("sticky"), "key": .string("login:1")]),
+            event(latest - 1, "notification.show", ["text": .string("Still starting the agent"), "level": .string("info"),
+                                                    "kind": .string("agent"), "key": .string("agent.build_slow")]),
+            event(latest, "notification.clear", ["key": .string("agent.build_slow")])
+        ])
     }
 
     /// Leaves and comes back: the replay holds nothing past `latest`, and every snapshot is `snapshot`.
@@ -1953,10 +2123,10 @@ import SwiftUI
     }
 
     /// A canonical host's snapshot of session `tip`, whose id is its runtime: `pending` and
-    /// `prompts` as given, under generation `generation`.
+    /// `prompts` as given, under generation `generation` and replay epoch `epoch`.
     private func canonicalSnapshot(running: Bool = false, generation: Int = 1, pending: [BotJSON] = [],
-                                   prompts: [BotJSON] = []) -> BotJSON {
-        .object(["session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string("epoch"),
+                                   prompts: [BotJSON] = [], epoch: String = "epoch") -> BotJSON {
+        .object(["session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string(epoch),
                  "subscription_id": .string("sub-1"), "execution_generation": .number(Double(generation)), "revision": .number(2),
                  "running": .bool(running), "messages": .array([]), "pending": .array(pending), "prompts": .array(prompts),
                  "info": .object(["profile_name": .string("default")])])
@@ -2040,6 +2210,31 @@ import SwiftUI
         }
         return .object(reply)
     }
+}
+
+/// A host notice timer the test fires by hand: each scheduled expiry, in order.
+@MainActor private final class ManualNoticeTimer {
+    private(set) var delays: [Duration] = []
+    /// Each expiry's task, which waits until it is cancelled.
+    private(set) var tasks: [Task<Void, Never>] = []
+    private var expiries: [@MainActor () -> Void] = []
+    /// Keeps each task's stream open, so the task waits rather than ends.
+    private var streams: [AsyncStream<Void>.Continuation] = []
+
+    var timer: HermesHostNotices.Timer {
+        { [self] delay, expire in
+            delays.append(delay)
+            expiries.append(expire)
+            let (never, open) = AsyncStream<Void>.makeStream()
+            streams.append(open)
+            let task = Task { for await _ in never {} }
+            tasks.append(task)
+            return task
+        }
+    }
+
+    /// Runs the `index`th expiry, as its delay running out would.
+    func fire(_ index: Int) { expiries[index]() }
 }
 
 /// Records the session titles a chat pushes to the Live Activity.

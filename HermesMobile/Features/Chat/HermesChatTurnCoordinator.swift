@@ -230,6 +230,8 @@ struct HermesLostTurn: Equatable {
     /// Host requests open on this runtime (#1011, #1141): an approval, a question, a credential
     /// prompt, a Desktop task, a connection operation.
     let requests: HermesChatRequests
+    /// The host's notices about the session, shown above the composer (#1746).
+    let hostNotices: HermesHostNotices
     /// The session's goal, `/btw` question and `/background` tasks (#1013).
     let sideTasks: HermesChatSideTasks
     /// The composer's model and Profile chips (#1015).
@@ -364,13 +366,15 @@ struct HermesLostTurn: Equatable {
     /// A `.canonicalChat`, or a Bot Chat row opened by its key with its `botChatRoot`, is a Bot Chat.
     /// A session's draft goes under its `lineageRoot` when given (`HermesSessionChat.lineageRoot`).
     /// `previewLimit` caps a preview's download; a test passes less than the 25 MB.
+    /// `noticeTimer` hides an expiring host notice; a test fires it by hand.
     init(engine: HermesConversation, botChatRoot: String? = nil, lineageRoot: String? = nil,
          openedBot: BotProfile? = nil,
          liveActivities: (any AgentLiveActivityManaging)? = nil,
          writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
          previewLimit: Int = BotArtifactBuffer.maximumBytes,
-         ratingPromptState: RatingPromptState? = nil) {
+         ratingPromptState: RatingPromptState? = nil,
+         noticeTimer: HermesHostNotices.Timer? = nil) {
         self.engine = engine
         self.previewLimit = previewLimit
         self.ratingPromptState = ratingPromptState ?? .shared
@@ -380,6 +384,7 @@ struct HermesLostTurn: Equatable {
         self.writeBotAvatar = writeBotAvatar
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
+        hostNotices = HermesHostNotices(timer: noticeTimer)
         sideTasks = HermesChatSideTasks(engine: engine)
         settings = HermesChatSettings(engine: engine, loadsAvatars: policy == .botChat, openedBot: openedBot)
         slashCommands = HermesSlashCommands(engine: engine, policy: policy)
@@ -1507,6 +1512,9 @@ struct HermesLostTurn: Equatable {
             if compactionPending, payload["kind"].text == "compacted" { pendingCompactionDidFinish() }
         case "btw.complete", "background.complete", "session.control.update":
             sideTasks.receive(frame)
+        case "notification.show", "notification.clear":
+            // About the session, not a message in it: never a row, the error line or a turn (#1746).
+            hostNotices.receive(frame, live: live)
         default:
             // `thinking.delta` is spinner text and `reasoning.available` carries the answer
             // itself: neither is reasoning. The working row already says Hermes is working.
@@ -2240,6 +2248,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         turnBase = nil; screenUse = nil
         finish(.cancelled)
         sideTasks.forgetChat()
+        hostNotices.removeAll()
         forgetHistoryUntilRebuild()
         delegate?.hermesBotChatWasReplaced()
     }
@@ -2257,9 +2266,13 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
     }
 
-    func conversationWillReplay(newRuntime: Bool) {
+    func conversationWillReplay(newRuntime: Bool, newEpoch: Bool) {
         requests.willReplay()
         if newRuntime { activity.dropPlan() }
+        // A new runtime or a new epoch (a host restart, or the host ending a session nobody watched
+        // for its orphan grace; a canonical session keeps its id): the old lifetime's notices go
+        // with their timers, since nothing will clear them (#1746).
+        if newRuntime || newEpoch { hostNotices.removeAll() }
     }
 
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
@@ -2271,6 +2284,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         // After lost frames the snapshot that follows rebuilds instead, and what the replay
         // carried of the running reply places the deltas that raced it.
         guard !lostFrames else {
+            // The session's standing notices still apply, in order; only the transcript rebuilds.
+            frames.forEach { hostNotices.receive($0, live: false) }
             replayedReply = Self.replyText(frames)
             return
         }
@@ -2320,8 +2335,10 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversation(didReceive frame: BotJSON, afterGap: Bool) {
         guard !afterGap else {
-            // A side frame needs no order: it applies before the rebuild the gap asks for.
+            // A side frame needs no order: it applies before the rebuild the gap asks for, and the
+            // rebuild's replay starts after it. A host notice too (#1746).
             sideTasks.receive(frame)
+            hostNotices.receive(frame, live: true)
             return rebuildAfterGap()
         }
         apply(frame, live: true)

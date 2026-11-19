@@ -1,0 +1,33 @@
+{
+  "source": "Recorded live for #1746 from scripts/local-hermes (hermes serve) at the pinned hermes-agent commit, in a disposable session that was closed and deleted after. A model switch queued while a turn waited on its approval (`config.set model` naming a provider that does not exist) was applied at the next turn's start, failed, and the host sent this `notification.show` (`tui_gateway/session_compression.py` `_apply_pending_model_switch`). `session.events.since` replayed the same frame. Not written by scripts/capture-hermes-fixtures. The list is that turn from its message.start: ids are replaced, seq renumbered from 1, message.start's payload is emptied and the notice's payload is as sent.",
+  "hermes_agent_sha": "3b421578588243f920886e6fe79a6faa87ea026e",
+  "frames": [
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "message.start",
+        "session_id": "fixture-runtime",
+        "seq": 1,
+        "payload": {}
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "event",
+      "params": {
+        "type": "notification.show",
+        "session_id": "fixture-runtime",
+        "seq": 2,
+        "payload": {
+          "text": "Could not switch model: Unknown provider 'nonexistent-provider-1746'. Check 'hermes model' for available providers, or define it in config.yaml under 'providers:'.",
+          "level": "warn",
+          "kind": "ttl",
+          "ttl_ms": 12000,
+          "key": "model_switch.dropped",
+          "id": "model_switch.dropped"
+        }
+      }
+    }
+  ]
+}

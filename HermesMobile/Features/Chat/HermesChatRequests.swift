@@ -734,3 +734,157 @@ import Observation
         return true
     }
 }
+
+/// The host's out-of-band notices on a Hermes session (#1746): `notification.show` and
+/// `notification.clear`, which credits, a slow agent start, a dropped model switch, the low-disk
+/// question, a plugin's `post_message` and `/login`'s sign-in link arrive as. They are about the
+/// session, not messages in it: never a transcript row, an error line or a haptic. The chat shows
+/// the newest above the composer (`HostNoticeRow`).
+///
+/// Notices are kept by the host's `key`, else its `id`, newest last; a show with a known key
+/// replaces that notice in place, and `notification.clear` withdraws it. A `ttl` notice is shown
+/// only from a live frame, so a replay never brings back an expired one, and hides after its
+/// `ttl_ms` with one scheduled task. Every other kind stays until cleared or dismissed, from a
+/// replay too. A dismissed key stays hidden until the host shows it with new text. Everything is
+/// in memory: leaving the chat drops it and cancels its timers.
+@MainActor @Observable final class HermesHostNotices {
+    struct Notice: Equatable, Identifiable {
+        enum Level: Equatable { case info, warning, error, success }
+        /// The host's `key`, else its `id`; a local one when it sent neither.
+        let id: String
+        let text: String
+        /// `text` with its web links tappable, built once here rather than in a view body.
+        let linkedText: AttributedString
+        let level: Level
+        /// The full text behind a short `text` (the low-disk question), shown on a tap.
+        let detail: String?
+        /// Tells this show from a later one with the same key, so an old timer never hides it.
+        fileprivate let serial: Int
+    }
+
+    /// Runs `expire` once `delay` has passed. Tests pass one they fire by hand.
+    typealias Timer = @MainActor (_ delay: Duration, _ expire: @escaping @MainActor () -> Void) -> Task<Void, Never>
+
+    /// Newest last.
+    private(set) var notices: [Notice] = []
+    /// The notice the chat shows: the newest.
+    var shown: Notice? { notices.last }
+    /// How many notices wait behind `shown`.
+    var waitingCount: Int { max(notices.count - 1, 0) }
+
+    @ObservationIgnored private let timer: Timer
+    @ObservationIgnored private var expiries: [String: Task<Void, Never>] = [:]
+    /// The text each dismissed key had; the same text shown again stays hidden.
+    @ObservationIgnored private var dismissed: [String: String] = [:]
+    @ObservationIgnored private var serial = 0
+
+    /// `timer` defaults to `sleeping`.
+    init(timer: Timer? = nil) {
+        self.timer = timer ?? Self.sleeping
+    }
+
+    deinit {
+        expiries.values.forEach { $0.cancel() }
+    }
+
+    static let sleeping: Timer = { delay, expire in
+        Task { @MainActor in
+            guard (try? await Task.sleep(for: delay)) != nil else { return }
+            expire()
+        }
+    }
+
+    /// One of the session's frames, live (as it happened) or from a replay: applies it when it is
+    /// a `notification.show` or `notification.clear`, and says whether it was one. The coordinator
+    /// sends every replay through here, a transcript rebuild's too, and the live frame after a gap.
+    @discardableResult
+    func receive(_ frame: BotJSON, live: Bool) -> Bool {
+        switch frame["type"].text {
+        case "notification.show": show(frame["payload"], live: live)
+        case "notification.clear": clear(frame["payload"])
+        default: return false
+        }
+        return true
+    }
+
+    /// One `notification.show` payload; `live` is a frame as it happened, not a replay's.
+    private func show(_ payload: BotJSON, live: Bool) {
+        guard let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
+        let expires = payload["kind"].text == "ttl"
+        guard live || !expires else { return }
+        let id = Self.nonEmpty(payload["key"]) ?? Self.nonEmpty(payload["id"]) ?? UUID().uuidString
+        guard dismissed[id] != text else { return }
+        dismissed[id] = nil
+        expiries.removeValue(forKey: id)?.cancel()
+        serial += 1
+        let notice = Notice(id: id, text: text, linkedText: Self.linked(text), level: Self.level(payload["level"].text),
+                            detail: Self.nonEmpty(payload["detail"]), serial: serial)
+        if let index = notices.firstIndex(where: { $0.id == id }) {
+            notices[index] = notice
+        } else {
+            notices.append(notice)
+        }
+        if expires, let milliseconds = payload["ttl_ms"].integer, milliseconds > 0 {
+            let serial = notice.serial
+            expiries[id] = timer(.milliseconds(milliseconds)) { [weak self] in self?.expire(id, serial: serial) }
+        }
+    }
+
+    /// One `notification.clear` payload: the host withdrew the notice with its `key`.
+    private func clear(_ payload: BotJSON) {
+        guard let key = Self.nonEmpty(payload["key"]) else { return }
+        dismissed[key] = nil
+        remove(key)
+    }
+
+    /// The user closed `notice`: its key stays hidden until the host shows it with new text.
+    func dismiss(_ notice: Notice) {
+        dismissed[notice.id] = notice.text
+        remove(notice.id)
+    }
+
+    /// Drops every notice, for a chat that now shows another session or runtime.
+    func removeAll() {
+        expiries.values.forEach { $0.cancel() }
+        expiries = [:]; dismissed = [:]
+        if !notices.isEmpty { notices = [] }
+    }
+
+    private func expire(_ id: String, serial: Int) {
+        guard notices.first(where: { $0.id == id })?.serial == serial else { return }
+        remove(id)
+    }
+
+    private func remove(_ id: String) {
+        expiries.removeValue(forKey: id)?.cancel()
+        if let index = notices.firstIndex(where: { $0.id == id }) { notices.remove(at: index) }
+    }
+
+    private static func nonEmpty(_ value: BotJSON) -> String? {
+        guard let text = value.text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    private static func level(_ value: String?) -> Notice.Level {
+        switch value {
+        case "warn": .warning
+        case "error": .error
+        case "success": .success
+        default: .info
+        }
+    }
+
+    /// `text` as sent, with each web address a link.
+    private static func linked(_ text: String) -> AttributedString {
+        var linked = AttributedString(text)
+        let range = NSRange(text.startIndex..., in: text)
+        linkDetector?.enumerateMatches(in: text, range: range) { match, _, _ in
+            guard let match, let url = match.url, ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                  let found = Range(match.range, in: text), let span = Range(found, in: linked) else { return }
+            linked[span].link = url
+        }
+        return linked
+    }
+
+    private static let linkDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+}

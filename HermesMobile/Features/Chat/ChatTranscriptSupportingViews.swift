@@ -1443,6 +1443,106 @@ struct PinnedLocalNoticeStack: View {
     }
 }
 
+/// The newest of the host's notices on a Hermes session (#1746), above the composer like
+/// `ShortcutTextNotice`: a level symbol and tint, the host's text as sent with its links tappable,
+/// and a close button. A notice with `detail` shows two lines and the full `detail` on a tap; one
+/// without shows up to six lines, since nothing else would reveal the rest. VoiceOver reads
+/// the level, the whole text, and how many more notices wait behind it.
+struct HostNoticeRow: View {
+    let notice: HermesHostNotices.Notice
+    /// How many notices wait behind this one.
+    let waitingCount: Int
+    let dismiss: () -> Void
+    @State private var showsDetail = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+
+            message
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityValue(waitingCount > 0 ? Text("\(waitingCount) more") : Text(verbatim: ""))
+
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(AppFont.footnote(weight: .semibold))
+                    .foregroundStyle(.appSecondary)
+                    .frame(minWidth: 28, minHeight: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(12)
+        .background(.appMaterial(.ultraThinMaterial))
+        .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
+                .stroke(Color(.appSeparator).opacity(0.45), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+        .accessibilityElement(children: .contain)
+        .alert(Text(verbatim: notice.text), isPresented: $showsDetail) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(verbatim: notice.detail ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var message: some View {
+        let text = Text(notice.linkedText)
+            .font(AppFont.footnote())
+            .foregroundStyle(.appPrimary)
+            // Two lines when a tap opens the full `detail`; otherwise the text is all there is, so
+            // it gets room for a host warning's hint, bounded so a long one never pushes the
+            // composer off screen.
+            .lineLimit(notice.detail == nil ? 6 : 2)
+            .fixedSize(horizontal: false, vertical: true)
+        if notice.detail != nil {
+            text
+                .contentShape(Rectangle())
+                .onTapGesture { showsDetail = true }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction(named: Text("Details")) { showsDetail = true }
+        } else {
+            text
+        }
+    }
+
+    private var symbol: String {
+        switch notice.level {
+        case .info: "info.circle.fill"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
+        case .success: "checkmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch notice.level {
+        case .info: Color(.appTextSecondary)
+        case .warning: .orange
+        case .error: .red
+        case .success: .green
+        }
+    }
+
+    private var accessibilityLabel: Text {
+        switch notice.level {
+        case .info: Text("Notice: \(notice.text)")
+        case .warning: Text("Warning: \(notice.text)")
+        case .error: Text("Error: \(notice.text)")
+        case .success: Text("Success: \(notice.text)")
+        }
+    }
+}
+
 /// Characters that can hide or reorder what a prompt says to the agent without showing in the
 /// composer (#1402): bidi embeddings, overrides and isolates, zero-width space, word joiner,
 /// byte-order mark and Unicode tags. Joiners and marks text needs to read right (emoji ZWJ,

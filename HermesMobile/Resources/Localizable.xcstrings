@@ -3087,6 +3087,118 @@
         }
       }
     },
+    "Notice: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تنبيه: %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hinweis: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aviso: %@"
+          }
+        },
+        "fa" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اطلاعیه: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Avis : %@"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הודעה: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Avviso: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "お知らせ：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "알림: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Melding: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Powiadomienie: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Notificação: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Уведомление: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bildirim: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اطلاع: %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "通知：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "通知：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "通知：%@"
+          }
+        }
+      }
+    },
     "Run without approval prompts" : {
       "localizations" : {
         "ar" : {
@@ -3424,6 +3536,118 @@
       }
     },
     "Subscription limits from Usage in Hermex." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Abo-Limits aus der Nutzung in Hermex." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Límites de la suscripción desde Uso en Hermex." } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "محدودیت‌های اشتراک از بخش مصرف در Hermex." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Limites d’abonnement issues de l’utilisation dans Hermex." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Limiti dell’abbonamento da Utilizzo in Hermex." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Limity subskrypcji z Użycia w Hermex." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Limites da assinatura do Uso no Hermex." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Abonnementslimieten uit Gebruik in Hermex." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex’teki Kullanım’dan abonelik limitleri." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Лимиты подписки из раздела «Использование» в Hermex." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermexの使用状況から取得したサブスクリプションの上限。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "来自 Hermex 用量的订阅限额。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex 사용량의 구독 한도." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "حدود الاشتراك من الاستخدام في Hermex." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מגבלות המינוי מתוך השימוש ב-Hermex." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex میں استعمال سے سبسکرپشن کی حدیں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "來自 Hermex 用量的訂閱限額。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "來自 Hermex 用量的訂閱限額。" } } } },
+    "Success: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تم بنجاح: %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Erfolg: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Éxito: %@"
+          }
+        },
+        "fa" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "موفق: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Succès : %@"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הצלחה: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riuscito: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "成功：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "성공: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gelukt: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sukces: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sucesso: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Успешно: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Başarılı: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "کامیابی: %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "成功：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "成功：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "成功：%@"
+          }
+        }
+      }
+    },
     "The host runs without approval prompts, so this chat can't turn YOLO off." : {
       "localizations" : {
         "ar" : {
@@ -25273,6 +25497,118 @@
       }
     },
     "Workspace search unavailable" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Suche im Arbeitsbereich nicht verfügbar" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Búsqueda en el espacio de trabajo no disponible" } }, "fa" : { "stringUnit" : { "state" : "needs_review", "value" : "جستجوی فضای کاری در دسترس نیست" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Recherche dans l’espace de travail indisponible" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Ricerca nel workspace non disponibile" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wyszukiwanie w obszarze roboczym niedostępne" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Busca no espaço de trabalho indisponível" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zoeken in workspace niet beschikbaar" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Çalışma alanında arama kullanılamıyor" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Поиск в рабочей области недоступен" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ワークスペースを検索できません" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法搜索工作区" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "작업 공간 검색을 사용할 수 없음" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "البحث في مساحة العمل غير متاح" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "החיפוש בסביבת העבודה לא זמין" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ورک اسپیس میں تلاش دستیاب نہیں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法搜尋工作區" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法搜尋工作區" } } } },
+    "Warning: %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تحذير: %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Warnung: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Advertencia: %@"
+          }
+        },
+        "fa" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "هشدار: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Avertissement : %@"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אזהרה: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Attenzione: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "警告：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "경고: %@"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Waarschuwing: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ostrzeżenie: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aviso: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Предупреждение: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Uyarı: %@"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انتباہ: %@"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "警告：%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "警告：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "警告：%@"
+          }
+        }
+      }
+    },
     "changed %lld files" : {
       "localizations" : {
         "ar" : {
