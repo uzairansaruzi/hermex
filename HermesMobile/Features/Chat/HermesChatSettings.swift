@@ -181,10 +181,11 @@ enum HermesProfilePreference {
         return active.favoriteKey
     }
 
-    /// Remembers `record` against the live model after the host confirmed a change to it.
-    private func remember(_ record: (ModelPresetStore, ModelFavoriteKey) -> Void) {
-        guard let key = liveModelKey else { return }
-        record(ModelPresetStore(server: engine.server), key)
+    /// Remembers `record` against `model`, the live model when the change was sent, once the host
+    /// confirmed it; nothing when another model took over while it was on its way.
+    private func remember(_ model: ModelFavoriteKey?, _ record: (ModelPresetStore, ModelFavoriteKey) -> Void) {
+        guard let model, model == liveModelKey else { return }
+        record(ModelPresetStore(server: engine.server), model)
     }
 
     /// The model the chip shows: a pick waiting for the running response, else the
@@ -296,9 +297,10 @@ enum HermesProfilePreference {
     /// Sends `effort` for this chat only; false when it can't go now or the host refused it.
     func select(effort: String) async -> Bool {
         guard effortLevels.contains(effort), let action = controls.prepare(.effort(effort)) else { return false }
+        let model = liveModelKey
         await controls.apply(action)
         let applied = controls.errorMessage == nil && controls.effort == effort
-        if applied { remember { $0.record(effort: effort, for: $1) } }
+        if applied { remember(model) { $0.record(effort: effort, for: $1) } }
         return applied
     }
 
@@ -316,9 +318,10 @@ enum HermesProfilePreference {
     /// it. The chip takes the mode only from a reply naming it.
     func select(fast enabled: Bool) async -> Bool {
         guard enabled != controls.fast, let action = controls.prepare(.fast(enabled)) else { return false }
+        let model = liveModelKey
         await controls.apply(action)
         let applied = controls.errorMessage == nil && controls.fast == enabled
-        if applied { remember { $0.record(fast: enabled, for: $1) } }
+        if applied { remember(model) { $0.record(fast: enabled, for: $1) } }
         return applied
     }
 
