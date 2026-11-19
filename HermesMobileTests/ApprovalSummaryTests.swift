@@ -26,7 +26,7 @@ import Observation
     }
 
     /// A card that leaves (its `.task` cancelled) and returns while loading keeps its one request.
-    func testACardThatLeavesAndReturnsWhileLoadingKeepsItsOneRequest() async {
+    func testACardThatLeavesAndReturnsWhileLoadingKeepsItsOneRequest() async throws {
         let summaries = ApprovalSummaries(), key = key()
         let started = expectation(description: "summary started")
         var calls = 0
@@ -40,7 +40,7 @@ import Observation
         first.cancel()
         await summaries.show(key) { calls += 1; return "A second request" }
         XCTAssertEqual(summaries.states[key], .loading, "leaving the screen isn't answering")
-        reply?.resume(returning: "Removes the draft file.")
+        try XCTUnwrap(reply, "The summary never started").resume(returning: "Removes the draft file.")
         await first.value
         XCTAssertEqual(summaries.states[key], .ready("Removes the draft file."))
         XCTAssertEqual(calls, 1)
