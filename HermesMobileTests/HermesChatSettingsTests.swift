@@ -418,11 +418,11 @@ import Observation
         XCTAssertEqual(chat.writes("config.set").last?["value"], .string("high"))
     }
 
-    /// A pick the dashboard defers applies no preset, then or later. In the order the pin sends:
-    /// the reply says `deferred`; the response's end reports the queued model in `session.info`
-    /// while `model.options` still runs the old one; the next turn's `session.info` reports it
-    /// running, and its end's read finds it live.
-    func testADeferredDashboardPickAppliesNoPreset() async throws {
+    /// A pick the dashboard defers applies its preset once the host runs it (#1771). In the order
+    /// the pin sends: the reply says `deferred`; the response's end reports the queued model in
+    /// `session.info` while `model.options` still runs the old one, so nothing goes; the next
+    /// turn's `session.info` reports it running and its read finds it live.
+    func testADeferredDashboardPickAppliesItsPresetWhenTheNextTurnRunsIt() async throws {
         let chat = await openChat()
         let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
         ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
@@ -430,45 +430,180 @@ import Observation
         chat.receive(event(1, "session.info", ["fast": .bool(false), "running": .bool(true)]))
         await waitUntil("info") { controls.fast == false }
         chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
-        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        chat.host.next("config.set", .init(result: Self.effortReply("high")))
+        chat.host.next("config.set", .init(result: Self.fastReply("fast")))
         _ = await chat.model.selectComposerModel(Self.opus)
 
+        let ended = expectation(description: "turn-end read")
+        chat.host.expect(ended, onNext: "model.options")
         chat.receive(event(2, "session.info", ["model": .string("claude-opus"), "fast": .bool(false), "running": .bool(false)]))
-        chat.receive(event(3, "session.info", ["model": .string("claude-opus"), "fast": .bool(false), "running": .bool(true)]))
+        await fulfillment(of: [ended], timeout: 5)
+        await waitUntil("read") { !controls.isLoading }
+        XCTAssertNil(chat.turn.settings.presetApplication, "the host still runs claude-sonnet")
+
         chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
-        chat.receive(event(4, "session.info", ["model": .string("claude-opus"), "fast": .bool(false), "running": .bool(false)]))
-        await waitUntil("live") { controls.catalog.active?.id == "claude-opus" }
-        await chat.turn.settings.presetApplication?.value
-        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model")])
+        chat.receive(event(3, "session.info", ["model": .string("claude-opus"), "fast": .bool(false), "running": .bool(true)]))
+        await waitUntil("preset") { controls.fast == true }
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model"), .string("reasoning"), .string("fast")])
+        XCTAssertEqual(chat.writes("config.set").map { $0["value"] }.dropFirst(), [.string("high"), .string("fast")])
     }
 
-    /// A pick a canonical host defers applies no preset, then or later. In the order the pin sends:
-    /// the edit answers `deferred`; the response's end reports the old model, then the turn
-    /// boundary reports the new one in `session.info` and `session.updated`; a later read finds it live.
-    func testADeferredCanonicalPickAppliesNoPreset() async throws {
+    /// A pick a canonical host defers applies its preset once the host commits it (#1771). In the
+    /// order the pin sends: the edit answers `deferred`; the response's end reports the old model,
+    /// then the claim boundary reports the new one in `session.info`, whose read finds it live.
+    func testADeferredCanonicalPickAppliesItsPresetWhenTheHostCommitsIt() async throws {
         let chat = await openChat(canonical: true)
         let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
         ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
-        chat.host.next("session.mutate", .init(result: .object(["session_id": .string("tip"), "operation": .string("model"),
-                                                                "status": .string("deferred"), "model": .string("claude-opus"),
-                                                                "revision": .number(2)])))
+        chat.host.next("session.mutate", .init(result: Self.deferredEdit))
         chat.host.always("config.set", .init(result: Self.effortReply("high")))
         _ = await chat.model.selectComposerModel(Self.opus)
 
-        func frame(_ seq: Int, _ type: String, _ payload: [String: BotJSON]) -> BotJSON {
-            .object(["session_id": .string("tip"), "seq": .number(Double(seq)), "type": .string(type), "payload": .object(payload)])
-        }
-        chat.receive(frame(1, "session.info", ["model": .string("claude-sonnet"), "running": .bool(true)]))
-        chat.receive(frame(2, "session.info", ["running": .bool(false)]))
-        chat.receive(frame(3, "session.info", ["model": .string("claude-opus"), "provider": .string("anthropic")]))
-        chat.receive(frame(4, "session.updated", ["operation": .string("model"), "model": .string("claude-opus"),
-                                                  "provider": .string("anthropic"), "revision": .number(3),
-                                                  "execution_generation": .number(2)]))
+        chat.receive(Self.frame(1, "session.info", ["model": .string("claude-sonnet"), "running": .bool(true)]))
+        chat.receive(Self.frame(2, "session.info", ["running": .bool(false)]))
         chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
-        await controls.reload()
-        XCTAssertEqual(controls.catalog.active?.id, "claude-opus")
-        await chat.turn.settings.presetApplication?.value
+        chat.receive(Self.frame(3, "session.info", ["model": .string("claude-opus"), "provider": .string("anthropic")]))
+        await waitUntil("preset") { controls.effort == "high" }
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("reasoning")])
+    }
+
+    /// A canonical pick answered `deferred` that the host commits before the read after its answer
+    /// gets its preset from that read: the frame naming it may already have come and gone.
+    func testADeferredPickAlreadyLiveInTheReadAfterItsAnswerAppliesItsPreset() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("session.mutate", .init(result: Self.deferredEdit))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await waitUntil("preset") { controls.effort == "high" }
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("reasoning")])
+    }
+
+    /// A newer pick the host asks to confirm ends the wait for the one it deferred: when that one
+    /// lands meanwhile, no preset goes out to clear the open confirmation.
+    func testANewerPickAskingToConfirmEndsTheDeferredPicksWait() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
+        _ = await chat.model.selectComposerModel(Self.opus)
+        let hermes = ModelCatalogOption(id: "hermes-4-70b", displayName: "hermes-4-70b", providerID: "nous")
+        chat.host.next("config.set", .init(result: Self.modelReply(confirm: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(hermes)
+        XCTAssertNotNil(controls.confirmation)
+
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await readCatalog(controls, on: chat.host)
+        XCTAssertNil(chat.turn.settings.presetApplication)
+        XCTAssertNotNil(controls.confirmation)
+        XCTAssertEqual(chat.writes("config.set").count, 2)
+    }
+
+    /// A deferred pick a canonical host refuses at the claim boundary (`session.updated`
+    /// `status: refused`) applies no preset when that model later goes live.
+    func testACanonicalDeferredPickTheHostRefusesAppliesNoPreset() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("session.mutate", .init(result: Self.deferredEdit))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        chat.receive(Self.frame(1, "session.updated", ["operation": .string("model"), "status": .string("refused"),
+                                                       "reason": .string("model_resolution_failed"),
+                                                       "target_model": .string("claude-opus"), "model": .string("claude-sonnet")]))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await readCatalog(controls, on: chat.host)
+        XCTAssertNil(chat.turn.settings.presetApplication)
         XCTAssertEqual(chat.writes("config.set"), [])
+    }
+
+    /// A deferred pick a dashboard drops at the next turn's start (its `model_switch.dropped`
+    /// notice) applies no preset when that model later goes live.
+    func testADashboardDeferredPickTheHostDropsAppliesNoPreset() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        chat.receive(event(1, "notification.show", ["key": .string("model_switch.dropped"), "level": .string("warn"),
+                                                   "text": .string("Stayed on claude-sonnet.")]))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await readCatalog(controls, on: chat.host)
+        XCTAssertNil(chat.turn.settings.presetApplication)
+        XCTAssertEqual(chat.writes("config.set").count, 1)
+    }
+
+    /// A drop that arrives after a gap in the frames still ends the wait, ahead of the rebuild.
+    func testADropArrivingAfterAGapStillEndsTheDeferredPicksWait() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        chat.receive(event(1, "session.info", ["running": .bool(true)]))
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
+        chat.receive(event(3, "notification.show", ["key": .string("model_switch.dropped"), "level": .string("warn"),
+                                                   "text": .string("Stayed on claude-sonnet.")]))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await readCatalog(controls, on: chat.host)
+        XCTAssertNil(chat.turn.settings.presetApplication)
+        XCTAssertEqual(chat.writes("config.set").count, 1)
+    }
+
+    /// A canonical host's ask to confirm its deferred pick that arrives after a gap in the frames
+    /// shows once the rebuild's reattach reconnects the controls.
+    func testADeferredPicksConfirmationArrivingAfterAGapShowsAfterTheRebuild() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.host.next("session.mutate", .init(result: Self.deferredEdit))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        chat.receive(Self.frame(1, "session.info", ["running": .bool(true)]))
+        chat.receive(Self.frame(3, "session.updated", [
+            "status": .string("confirmation_required"), "confirm_required": .bool(true), "confirm": .string("t9"),
+            "confirm_message": .string("Opus costs about 5x more."),
+            "payload": .object(["model": .string("claude-opus"), "provider": .string("anthropic")])]))
+        await waitUntil("asked") { controls.confirmation != nil }
+        XCTAssertEqual(controls.confirmation?.token, "t9")
+    }
+
+    /// A deferred pick another model replaces before it runs ends without a preset: a read that
+    /// shows a third model drops it, so the pick's model going live later sends nothing.
+    func testADeferredPickReplacedByAThirdModelAppliesNoPreset() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        // As the model picker reads it on opening.
+        chat.host.always("model.options", .init(result: Self.catalog(active: "hermes-4-70b", provider: "nous")))
+        await controls.reload()
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await readCatalog(controls, on: chat.host)
+        XCTAssertEqual(controls.catalog.active?.id, "claude-opus")
+        XCTAssertNil(chat.turn.settings.presetApplication)
+        XCTAssertEqual(chat.writes("config.set").count, 1)
+    }
+
+    /// Reads the catalog as a `session.info` does (`refresh`) and waits for the read to end.
+    private func readCatalog(_ controls: BotChatControls, on host: BotSocketHost) async {
+        let read = expectation(description: "catalog read")
+        host.expect(read, onNext: "model.options")
+        controls.refresh()
+        await fulfillment(of: [read], timeout: 5)
+        await waitUntil("read") { !controls.isLoading }
     }
 
     /// A successful effort or Fast pick is remembered for the live model only.
@@ -991,6 +1126,16 @@ import Observation
         .object(["key": .string("model"), "value": .string("claude-opus"), "scope": .string("session"),
                  "confirm_required": .bool(confirm), "confirm_message": .string("Opus costs about 5x more."),
                  "deferred": .bool(deferred)])
+    }
+
+    /// A canonical host's answer to a model edit it deferred past the running response.
+    private static let deferredEdit: BotJSON = .object([
+        "session_id": .string("tip"), "operation": .string("model"), "status": .string("deferred"),
+        "model": .string("claude-opus"), "revision": .number(2)])
+
+    /// A canonical host's event frame on the chat's session.
+    private static func frame(_ seq: Int, _ type: String, _ payload: [String: BotJSON]) -> BotJSON {
+        .object(["session_id": .string("tip"), "seq": .number(Double(seq)), "type": .string(type), "payload": .object(payload)])
     }
 
     private static func effortReply(_ value: String) -> BotJSON {

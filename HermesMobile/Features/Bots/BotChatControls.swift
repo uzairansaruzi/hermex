@@ -37,14 +37,18 @@ import Observation
     private(set) var effort: String?
     private(set) var fast: Bool?
     private(set) var pendingModel: ModelCatalogOption?
-    /// Called from inside a pick's `apply` when the host's reply to that pick says it runs now
-    /// (at once, or once confirmed) and the catalog read after it shows it live; never for a pick
-    /// the host defers. The pick is still applying, so a caller that sends more defers it.
+    /// Called once for a pick of this chat's the host runs: from inside the pick's `apply` when
+    /// the host runs it at once (or once confirmed), and for a deferred pick (`deferredPick`) from
+    /// the first catalog read that shows it live. A caller that sends more defers it.
     @ObservationIgnored var onPickedModelActive: ((ModelCatalogOption) -> Void)?
-    /// A canonical pick the host deferred to the running response's end, kept apart from
-    /// `pendingModel` (a display state `session.info` clears) until the host asks to confirm it.
-    private var deferredModel: ModelCatalogOption?
-    /// The host's ask to confirm `deferredModel` that a reattach replayed before these controls
+    /// A pick the host deferred past the running response (#1771), with the model it ran when the
+    /// pick went out, kept apart from `pendingModel` (a display state `session.info` clears). A
+    /// canonical host commits it at the claim boundary right after the response, a dashboard when
+    /// the next turn starts. It ends when a catalog read shows it live (`settleDeferredPick`) or
+    /// shows a third model, when the host asks to confirm it, refuses or drops it, when a newer
+    /// pick is answered, or on another runtime.
+    private var deferredPick: (model: ModelCatalogOption, from: ModelCatalogOption?)?
+    /// The host's ask to confirm `deferredPick` that a reattach replayed before these controls
     /// reconnected; shown once they do, on the same chat.
     private var heldConfirmation: BotJSON?
     private(set) var confirmation: Confirmation?
@@ -86,14 +90,14 @@ import Observation
         if lastContext?.connectionID != context.connectionID || lastContext?.profile != context.profile {
             pendingModel = nil; refused = []; errorMessage = nil
         }
-        if lastContext?.runtime != context.runtime { pendingModel = nil; deferredModel = nil; heldConfirmation = nil }
+        if lastContext?.runtime != context.runtime { pendingModel = nil; deferredPick = nil; heldConfirmation = nil }
         lastContext = context
         catalog = HermesModelCatalog(.null); effort = nil; fast = nil
         self.context = context; self.wire = wire; self.mutate = mutate
         await reload()
         if self.context == context, let held = heldConfirmation {
             heldConfirmation = nil
-            receiveDeferredConfirmation(held)
+            receiveDeferredPickUpdate(held)
         }
     }
 
@@ -134,7 +138,9 @@ import Observation
                 self.readAgain = false
                 await self.reload()
             } while self.readAgain && !Task.isCancelled
-            if !Task.isCancelled { self.readTask = nil }
+            guard !Task.isCancelled else { return }
+            self.readTask = nil
+            self.settleDeferredPick()
         }
     }
 
@@ -143,7 +149,10 @@ import Observation
         readRevision += 1
         let revision = readRevision
         isLoading = true
-        defer { if context == owner && revision == readRevision { isLoading = false } }
+        defer {
+            if context == owner && revision == readRevision { isLoading = false }
+            settleDeferredPick()
+        }
         let call = HermesCall.modelOptions(sessionID: owner.runtime, profile: owner.profile)
         guard !unavailable.contains(call.method) else { return }
         do {
@@ -160,6 +169,47 @@ import Observation
             // the conversation's to report, and its reattach reads the catalog again.
             if isRefused(error) { refused.insert(call.method) }
             else if !isUnsupported(error), error as? BotFailure != .transport { errorMessage = error.localizedDescription }
+        }
+    }
+
+    /// Whether `model`, as a `session.info` names it, is the deferred pick still waiting to run:
+    /// the frame that may report it running is a reason to read the catalog again.
+    func awaitsDeferredPick(named model: String?) -> Bool {
+        model != nil && model == deferredPick?.model.id
+    }
+
+    /// The host dropped the pick it deferred: a dashboard's `model_switch.dropped` notice at the
+    /// next turn's start.
+    func dropDeferredPick() { deferredPick = nil }
+
+    /// A canonical `session.updated` about the deferred pick that arrived around a rebuild: a
+    /// refusal ends the wait at once, and an ask to confirm it is held for the reattach's `connect`,
+    /// which would clear a confirmation shown now. Any other edit leaves a held ask alone.
+    func holdDeferredPickUpdate(_ payload: BotJSON) {
+        if receiveDeferredPickRefusal(payload) { return }
+        if deferredPick != nil, payload["status"].text == "confirmation_required" { heldConfirmation = payload }
+    }
+
+    /// Ends the wait when `payload`, a canonical `session.updated`, refused the deferred pick, and
+    /// says whether it did.
+    private func receiveDeferredPickRefusal(_ payload: BotJSON) -> Bool {
+        guard payload["operation"].text == "model", payload["status"].text == "refused",
+              let refused = payload["target_model"].text, refused == deferredPick?.model.id else { return false }
+        deferredPick = nil; heldConfirmation = nil
+        return true
+    }
+
+    /// Ends the deferred pick once the catalog, read with nothing else in flight, shows it live
+    /// (telling `onPickedModelActive`) or shows a model that is neither it nor the one it replaces.
+    /// Called as each read, read loop and write ends; one still running skips it.
+    private func settleDeferredPick() {
+        guard let pick = deferredPick, context != nil, readTask == nil, !isLoading, !isApplying,
+              let active = catalog.active else { return }
+        if active.matchesSelection(modelID: pick.model.id, providerID: pick.model.providerID) {
+            deferredPick = nil
+            onPickedModelActive?(pick.model)
+        } else if active.favoriteKey != pick.from?.favoriteKey {
+            deferredPick = nil
         }
     }
 
@@ -182,19 +232,21 @@ import Observation
         await apply(pending.action, confirmed: true, token: pending.token)
     }
 
-    /// A canonical host asked, at the end of the running response, to confirm the pick it had
-    /// deferred (`session.updated` with a `confirmation_required` model edit, #1604): the sheet
-    /// asks for it as it would have at once, its token kept for the confirmed resend.
-    func receiveDeferredConfirmation(_ payload: BotJSON) {
+    /// A canonical host's `session.updated` about the pick it deferred. At the end of the running
+    /// response it may ask to confirm it (a `confirmation_required` model edit, #1604): the sheet
+    /// asks for it as it would have at once, its token kept for the confirmed resend. Or it
+    /// refused it (`status: refused` naming it as `target_model`), which ends the wait.
+    func receiveDeferredPickUpdate(_ payload: BotJSON) {
+        if receiveDeferredPickRefusal(payload) { return }
         guard let context else {
-            if deferredModel != nil { heldConfirmation = payload }
+            if deferredPick != nil { heldConfirmation = payload }
             return
         }
         // The event is the edit's own answer plus `payload`, the selection it deferred.
-        guard let option = deferredModel, payload["status"].text == "confirmation_required",
+        guard let option = deferredPick?.model, payload["status"].text == "confirmation_required",
               let token = payload["confirm"].text, !token.isEmpty, payload["payload"]["model"].text == option.id
         else { return }
-        deferredModel = nil
+        deferredPick = nil
         confirmation = Confirmation(action: Action(context: context, change: .model(option), expectedModel: catalog.active),
                                     message: payload["confirm_message"].text ?? String(localized: "Confirm this model change?"),
                                     token: token)
@@ -227,7 +279,9 @@ import Observation
         // A read started before this write must not overwrite its authoritative response.
         readRevision += 1; isLoading = false
         var dispatched = false
-        defer { if activeAction == action.id { isApplying = false; activeAction = nil } }
+        defer {
+            if activeAction == action.id { isApplying = false; activeAction = nil; settleDeferredPick() }
+        }
         do {
             let check: () throws -> Void = { [weak self] in
                 guard let self, self.context == action.context, self.activeAction == action.id,
@@ -241,6 +295,8 @@ import Observation
             else { result = try await wire.call(call, validateDispatch: check) }
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
             readRevision += 1; isLoading = false
+            // The host answered a newer pick: it replaced the one it deferred, or asks first.
+            if case .model = action.change { deferredPick = nil }
             switch action.change {
             case .model(let option) where canonicalModel != nil:
                 // Nothing applied until the confirmed resend carries this token; a token another
@@ -251,7 +307,7 @@ import Observation
                         ?? String(localized: "Confirm this model change?"), token: token)
                 } else if result["operation"].text == "model" {
                     pendingModel = result["status"].text == "deferred" ? option : nil
-                    deferredModel = pendingModel
+                    deferredPick = pendingModel.map { ($0, action.expectedModel) }
                     await reload()
                     // The applied edit's receipt carries no `status`; `deferred` waits for the turn.
                     if result["status"] == .null { announce(option, for: action) }
@@ -264,6 +320,7 @@ import Observation
                     confirmation = Confirmation(action: action, message: result["confirm_message"].text ?? result["warning"].text ?? String(localized: "Confirm this model change?"))
                 } else if result["confirm_required"].flag == false {
                     pendingModel = result["deferred"].flag == true ? option : nil
+                    deferredPick = pendingModel.map { ($0, action.expectedModel) }
                     await reload()
                     if result["deferred"].flag != true { announce(option, for: action) }
                 } else { throw BotSettingFailure.unknownOutcome }
