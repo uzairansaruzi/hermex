@@ -814,7 +814,8 @@ import Observation
         wire.onDisconnect?(BotFailure.transport)
         wire.pageFailure = .rejected(503)
         list.reconnectNow()
-        await waitUntil("the read failed") { wire.connects == 2 && wire.pageFailure == nil }
+        // The drop that closes the socket also arms the reconnect the next tap runs.
+        await waitUntil("the read failed") { wire.connects == 2 && wire.closes == 2 }
         XCTAssertTrue(list.isHermesReconnecting)
 
         wire.pageFailure = .rejected(403)
@@ -1710,6 +1711,8 @@ import Observation
     private(set) var attached = false
     private(set) var searches: [(query: String, profile: String)] = []
     private(set) var connects = 0
+    /// Every `close()`: the list drops the socket only once it has given up on it.
+    private(set) var closes = 0
     private(set) var pageReads: [(profile: String, offset: Int)] = []
     private(set) var answeredPages = 0
     private(set) var unreadWrites: [UnreadWrite] = []
@@ -1739,7 +1742,7 @@ import Observation
         if let connectFailure { throw connectFailure }
         attached = true
     }
-    func close() {}
+    func close() { closes += 1 }
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let params = try call.params()
