@@ -183,10 +183,11 @@ import Observation
     func dropDeferredPick() { deferredPick = nil }
 
     /// A canonical `session.updated` about the deferred pick that arrived around a rebuild: a
-    /// refusal ends the wait at once, and anything else is held for the reattach's `connect`,
-    /// which would clear a confirmation shown now.
+    /// refusal ends the wait at once, and an ask to confirm it is held for the reattach's `connect`,
+    /// which would clear a confirmation shown now. Any other edit leaves a held ask alone.
     func holdDeferredPickUpdate(_ payload: BotJSON) {
-        if !receiveDeferredPickRefusal(payload), deferredPick != nil { heldConfirmation = payload }
+        if receiveDeferredPickRefusal(payload) { return }
+        if deferredPick != nil, payload["status"].text == "confirmation_required" { heldConfirmation = payload }
     }
 
     /// Ends the wait when `payload`, a canonical `session.updated`, refused the deferred pick, and
