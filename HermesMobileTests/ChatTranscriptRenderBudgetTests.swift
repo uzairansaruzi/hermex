@@ -404,19 +404,25 @@ final class ChatTranscriptReflowTests: XCTestCase {
         let hosted = try hostHermesHome(openChatOn: model)
         let window = hosted.window
         defer { window.isHidden = true; window.rootViewController = nil }
-        await settle(window) { self.transcriptScrollView(in: window) != nil }
-        let compact = transcriptScrollView(in: window)
+        /// The chat's transcript, once it has laid out the last reply.
+        func transcript() -> UIScrollView? {
+            transcriptScrollView(in: window).flatMap { scrollView in
+                replies(in: scrollView).contains { text(of: $0)?.hasPrefix("Answer 19.") == true } ? scrollView : nil
+            }
+        }
+        await settle(window) { transcript() != nil }
+        let compact = try XCTUnwrap(transcript())
 
         window.traitOverrides.horizontalSizeClass = .regular
         window.frame = CGRect(x: 0, y: 0, width: 932, height: 844)
-        // The rebuilt transcript, with the last reply laid out at the bottom.
+        // The rebuilt transcript, at the bottom.
         await settle(window) {
-            guard let scrollView = self.transcriptScrollView(in: window), scrollView !== compact else { return false }
-            return self.reply(startingWith: "Answer 19.", in: window) != nil && self.distanceFromBottom(of: scrollView) <= 2
+            guard let scrollView = transcript(), scrollView !== compact else { return false }
+            return self.distanceFromBottom(of: scrollView) <= 2
         }
 
         XCTAssertTrue(model.followLatch.isFollowing)
-        let scrollView = try XCTUnwrap(transcriptScrollView(in: window))
+        let scrollView = try XCTUnwrap(transcript())
         XCTAssertFalse(scrollView === compact, "The chat wasn't rebuilt in the regular branch")
         XCTAssertEqual(distanceFromBottom(of: scrollView), 0, accuracy: 2, "The follower left the live edge")
     }
