@@ -1176,6 +1176,120 @@ import Observation
         XCTAssertEqual(covers.open(share, on: entry, listed: "default", isLive: true), .nothing)
     }
 
+    // MARK: Status filter and Mark All as Read (#1733)
+
+    private func launchLane(sessionIDs: [String]) -> BotJSON {
+        .object(["projects": .array([.object([
+            "id": .string("p_1"), "label": .string("Launch"), "path": .string("/launch"), "isAuto": .bool(false),
+            "isNoProject": .bool(false), "sessionCount": .number(Double(sessionIDs.count)),
+            "sessionIds": .array(sessionIDs.map { .string($0) })
+        ])])])
+    }
+
+    /// Unread keeps the unread rows of the lane the list shows; Working and Draft narrow the same
+    /// way, and All shows the lane again. A chat opened from a draft's row keys by its lineage root.
+    func testTheStatusFiltersKeepOnlyMatchingRowsInTheLane() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([
+            HermesSessionRow(id: "a", lastActive: 5, unread: true), HermesSessionRow(id: "b", lastActive: 4, unread: false),
+            HermesSessionRow(id: "c", lastActive: 3, unread: true), HermesSessionRow(id: "tip", lastActive: 2, lineageRootID: "root"),
+        ])]
+        wire.projectTree = launchLane(sessionIDs: ["a", "b", "tip"])
+        wire.active = [live("b", "streaming"), live("c", "streaming")]
+        let list = makeList(wire)
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+        func ids(_ filter: HermesSessionStatusFilter, drafts: Set<ChatDraftStore.DraftRow> = []) -> [String] {
+            list.visibleSessions(searchText: "", selectedProjectID: "p_1", statusFilter: filter, draftRows: drafts)
+                .compactMap(\.sessionId)
+        }
+
+        XCTAssertEqual(ids(.unread), ["a"], "c is unread but outside the lane")
+        XCTAssertEqual(ids(.working), ["b"])
+        XCTAssertEqual(ids(.draft, drafts: [.init(profile: "default", key: "root"), .init(profile: "research", key: "a")]), ["tip"])
+        XCTAssertEqual(ids(.all), ["a", "b", "tip"])
+    }
+
+    /// Mark All writes read for the unread rows of the list's scope only, never another lane's, and
+    /// says how many the host took. A refused write shows its row unread again.
+    func testMarkAllAsReadWritesOnlyTheScopesUnreadRowsAndCountsWhatTheHostTook() async throws {
+        let wire = HermesSessionListWire()
+        wire.pages = [
+            "default": [0: page([
+                HermesSessionRow(id: "a", lastActive: 6, unread: true), HermesSessionRow(id: "b", lastActive: 5, unread: true),
+                HermesSessionRow(id: "seen", lastActive: 4, unread: false), HermesSessionRow(id: "out", lastActive: 3, unread: true),
+            ])],
+            "research": [0: page([HermesSessionRow(id: "elsewhere", lastActive: 9, unread: true)])],
+        ]
+        wire.projectTree = launchLane(sessionIDs: ["a", "b", "seen"])
+        wire.failingUnreadKeys = ["b"]
+        let list = makeList(wire)
+        await list.openHermes()
+        let rows = list.unreadRowsInScope(selectedProjectID: "p_1")
+        XCTAssertEqual(Set(rows.compactMap(\.sessionId)), ["a", "b"])
+
+        let marked = await list.markAllHermesRead(rows: rows)
+
+        XCTAssertEqual(marked, 1)
+        XCTAssertEqual(Set(wire.unreadWrites), [.init(key: "a", profile: "default", unread: false),
+                                                .init(key: "b", profile: "default", unread: false)])
+        let state = Dictionary(uniqueKeysWithValues: list.sessions.map { ($0.sessionId!, list.isUnread($0)) })
+        XCTAssertEqual(state, ["a": false, "b": true, "seen": false, "out": true])
+    }
+
+    /// Four writes are out at a time; the rest start as those finish.
+    func testMarkAllAsReadSendsAtMostFourWritesAtOnce() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page((0..<6).map { HermesSessionRow(id: "u\($0)", lastActive: Double(10 - $0), unread: true) })]
+        let list = makeList(wire)
+        await list.openHermes()
+        wire.holdsUnread = true
+
+        let marking = Task { await list.markAllHermesRead(rows: list.unreadRowsInScope(selectedProjectID: nil)) }
+        await waitUntil("four writes out") { wire.unreadWrites.count == 4 }
+        // One main-queue turn: a fifth write would be on the wire now.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertEqual(wire.unreadWrites.count, 4)
+
+        wire.holdsUnread = false
+        wire.release()
+        let marked = await marking.value
+
+        XCTAssertEqual(marked, 6)
+        XCTAssertEqual(wire.unreadWrites.count, 6)
+    }
+
+    /// A second Mark All while the first still writes starts nothing: the rows the first has not
+    /// reached still read unread, and writing them twice would count them twice.
+    func testMarkAllAsReadIgnoresARepeatWhileItsWritesAreOut() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page((0..<6).map { HermesSessionRow(id: "u\($0)", lastActive: Double(10 - $0), unread: true) })]
+        let list = makeList(wire)
+        await list.openHermes()
+        wire.holdsUnread = true
+        let rows = list.unreadRowsInScope(selectedProjectID: nil)
+
+        let first = Task { await list.markAllHermesRead(rows: rows) }
+        await waitUntil("four writes out") { wire.unreadWrites.count == 4 }
+        let second = Task { await list.markAllHermesRead(rows: list.unreadRowsInScope(selectedProjectID: nil)) }
+        // One main-queue turn: a repeat's writes would be on the wire now.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        XCTAssertEqual(wire.unreadWrites.count, 4)
+
+        wire.holdsUnread = false
+        wire.release()
+        let firstMarked = await first.value
+        let secondMarked = await second.value
+
+        XCTAssertEqual(firstMarked, 6)
+        XCTAssertEqual(secondMarked, 0)
+        XCTAssertEqual(wire.unreadWrites.count, 6, "no row is written twice")
+    }
+
     // MARK: Fixture
 
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",
@@ -1539,7 +1653,7 @@ import Observation
 /// `session.delete`, `projects.tree` and the search (#1053). A test
 /// can park page reads, lane reads, read-mark writes or searches, and push gateway events.
 @MainActor @Observable final class HermesSessionListWire: BotTransport {
-    struct UnreadWrite: Equatable { let key: String; let profile: String; let unread: Bool }
+    struct UnreadWrite: Hashable { let key: String; let profile: String; let unread: Bool }
 
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
@@ -1572,6 +1686,8 @@ import Observation
     var holdsPages = false
     var holdsUnread = false
     var unreadFails = false
+    /// Session keys whose read-mark write is refused, while the others are taken.
+    var failingUnreadKeys: Set<String> = []
     /// Thrown by the next page read instead of its page.
     var pageFailure: BotFailure?
     /// The scheduled (cron) pages and search matches, read apart from the ordinary ones.
@@ -1694,6 +1810,7 @@ import Observation
         unreadWrites.append(UnreadWrite(key: key, profile: profile, unread: unread))
         if holdsUnread { await withCheckedContinuation { held.append($0) } }
         if unreadFails { throw BotFailure.rejected(500) }
+        if failingUnreadKeys.contains(key) { throw BotFailure.rejected(500) }
         return nil
     }
 

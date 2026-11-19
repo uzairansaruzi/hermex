@@ -207,7 +207,7 @@ final class SessionListViewModel {
     /// Read marks this phone wrote and shows ahead of the host's, by session id.
     private var hermesUnreadMarks: [String: HermesUnreadMark] = [:]
     /// Each session's latest read-mark write, which its next one waits for.
-    @ObservationIgnored private var hermesUnreadWrites: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var hermesUnreadWrites: [String: Task<Bool, Never>] = [:]
     @ObservationIgnored private var hermesWire: (any BotTransport)?
     /// `hermesWire` while its `connect()` is under way. Every read on it then fails with `.stale`,
     /// so a refresh, a Profile switch or a change waits for the open that connects it, which reads next.
@@ -308,18 +308,23 @@ final class SessionListViewModel {
         try? FileManager.default.removeItem(at: exportsRootDirectory)
     }()
 
-    /// The rows the list shows for this search, project filter, and automated
-    /// visibility: local matches sorted, then loaded remote content matches.
+    /// The rows the list shows for this search, project filter, automated visibility and Hermes
+    /// status filter (`draftRows` are the Profile and key of each chat with an unsent draft):
+    /// local matches sorted, then loaded remote content matches.
     func visibleSessions(
         searchText: String,
         selectedProjectID: String?,
-        automatedVisibility: AutomatedSessionVisibility = .showAll
+        automatedVisibility: AutomatedSessionVisibility = .showAll,
+        statusFilter: HermesSessionStatusFilter = .all,
+        draftRows: Set<ChatDraftStore.DraftRow> = []
     ) -> [SessionSummary] {
         visibleSessions(
             among: sessions,
             searchText: searchText,
             selectedProjectID: selectedProjectID,
-            automatedVisibility: automatedVisibility
+            automatedVisibility: automatedVisibility,
+            statusFilter: statusFilter,
+            draftRows: draftRows
         )
     }
 
@@ -348,7 +353,9 @@ final class SessionListViewModel {
         among candidates: [SessionSummary],
         searchText rawSearchText: String,
         selectedProjectID: String?,
-        automatedVisibility: AutomatedSessionVisibility
+        automatedVisibility: AutomatedSessionVisibility,
+        statusFilter: HermesSessionStatusFilter = .all,
+        draftRows: Set<ChatDraftStore.DraftRow> = []
     ) -> [SessionSummary] {
         let query = Self.normalizedSearchQuery(rawSearchText)
         // Every word must appear somewhere in the row, in any order and field.
@@ -357,7 +364,7 @@ final class SessionListViewModel {
         let projectFilteredSessions = baseSessions.filter { session in
             guard let selectedProjectID else { return true }
             return session.projectId == selectedProjectID
-        }
+        }.filter { matches($0, statusFilter, draftRows) }
         let localMatches = projectFilteredSessions.filter { session in
             guard !searchTerms.isEmpty else { return true }
             let searchableText = Self.searchableText(for: session)
@@ -370,7 +377,7 @@ final class SessionListViewModel {
         }
         if hermes != nil {
             return sortedLocalMatches + hermesSearchMatches(excluding: sortedLocalMatches, selectedProjectID: selectedProjectID)
-                .filter { automatedVisibility.shows($0) }
+                .filter { automatedVisibility.shows($0) && matches($0, statusFilter, draftRows) }
         }
 
         let localMatchIDs = Set(sortedLocalMatches.compactMap(\.sessionId))
@@ -389,20 +396,39 @@ final class SessionListViewModel {
         return sortedLocalMatches + Self.sortedSessions(remoteMatches)
     }
 
+    /// Whether `session` is in the status the Hermes list is narrowed to. Working is any live
+    /// state, Approval and Input included; a draft is keyed by the row's lineage root, as its chat is.
+    private func matches(_ session: SessionSummary, _ status: HermesSessionStatusFilter,
+                         _ draftRows: Set<ChatDraftStore.DraftRow>) -> Bool {
+        switch status {
+        case .all: return true
+        case .working: return attentionState(for: session) != nil
+        case .unread: return isUnread(session)
+        case .draft:
+            guard let root = session.hermes?.lineageRoot, let profile = Self.nonEmpty(session.profile) ?? hermesProfile
+            else { return false }
+            return draftRows.contains(.init(profile: profile, key: root))
+        }
+    }
+
     /// The visible rows grouped as the list shows them. A Hermes list showing the host's rows
     /// lifts the ones waiting for input into `needsYou` (#1393), by the same states their labels
     /// show, last known ones included (#1374); a search or the cache keeps list order.
     func scheduledSessionGroups(
         searchText: String,
         selectedProjectID: String?,
-        automatedVisibility: AutomatedSessionVisibility = .showAll
+        automatedVisibility: AutomatedSessionVisibility = .showAll,
+        statusFilter: HermesSessionStatusFilter = .all,
+        draftRows: Set<ChatDraftStore.DraftRow> = []
     ) -> ScheduledSessionGroups {
         let liftsWaiting = hermes != nil && !isViewingCachedData && Self.normalizedSearchQuery(searchText).isEmpty
         return ScheduledSessionGroups(
             partitioning: visibleSessions(
                 searchText: searchText,
                 selectedProjectID: selectedProjectID,
-                automatedVisibility: automatedVisibility
+                automatedVisibility: automatedVisibility,
+                statusFilter: statusFilter,
+                draftRows: draftRows
             ),
             totalScheduledCount: automatedVisibility.showsCron
                 ? (hermes != nil && !isViewingCachedData ? hermesScheduledTotal : sessions.filter { $0.isCronSession && $0.archived != true }.count)
@@ -748,7 +774,10 @@ final class SessionListViewModel {
     /// rows, deep links, push, App Intents and Live Activity navigation.
     /// A Hermes row is marked read on the host, so Desktop agrees.
     func beginViewing(_ session: SessionSummary) {
-        if session.hermes != nil { return setHermesUnread(false, session) }
+        if session.hermes != nil {
+            setHermesUnread(false, session)
+            return
+        }
         viewingSessionID = Self.nonEmpty(session.sessionId)
         markSeen(session)
     }
@@ -762,8 +791,55 @@ final class SessionListViewModel {
         returnRevision &+= 1
     }
 
+    /// The unread rows Mark All as Read covers: the listed Profile (every one while All Profiles
+    /// shows) in the selected lane, as the list shows them. Search and the status filter don't
+    /// change it, and a row whose mark isn't this list's to write is left out.
+    func unreadRowsInScope(selectedProjectID: String?,
+                           automatedVisibility: AutomatedSessionVisibility = .showAll) -> [SessionSummary] {
+        sessions.filter { session in
+            automatedVisibility.shows(session) && (selectedProjectID == nil || session.projectId == selectedProjectID)
+                && isUnread(session) && canToggleUnread(session)
+        }
+    }
+
+    /// True while `markAllHermesRead` has writes out; another one starts nothing.
+    private(set) var isMarkingAllRead = false
+
+    /// Marks each unread row of `rows` read on the host through the same write as a single row's
+    /// Mark as Read, four at a time, and returns how many the host took. A refused write shows its
+    /// row unread again.
+    func markAllHermesRead(rows: [SessionSummary]) async -> Int {
+        // Rows past the first four still read unread until their turn, so a repeat would write them twice.
+        guard !isMarkingAllRead else { return 0 }
+        isMarkingAllRead = true
+        defer { isMarkingAllRead = false }
+        let targets = rows.filter { isUnread($0) && canToggleUnread($0) }
+        var confirmed = 0
+        await withTaskGroup(of: Bool.self) { group in
+            var remaining = targets.makeIterator()
+            for _ in 0..<Self.maxConcurrentReadMarks {
+                guard let row = remaining.next() else { break }
+                group.addTask { await self.markHermesRead(row) }
+            }
+            while let taken = await group.next() {
+                if taken { confirmed += 1 }
+                if let row = remaining.next() { group.addTask { await self.markHermesRead(row) } }
+            }
+        }
+        return confirmed
+    }
+
+    private static let maxConcurrentReadMarks = 4
+
+    private func markHermesRead(_ session: SessionSummary) async -> Bool {
+        await setHermesUnread(false, session)?.value ?? false
+    }
+
     func toggleUnread(_ session: SessionSummary) {
-        if session.hermes != nil { return setHermesUnread(!isUnread(session), session) }
+        if session.hermes != nil {
+            setHermesUnread(!isUnread(session), session)
+            return
+        }
         guard canToggleUnread(session),
               let sessionID = Self.nonEmpty(session.sessionId),
               let timestamp = Self.messageTime(for: session)
@@ -2175,19 +2251,24 @@ final class SessionListViewModel {
     /// has landed, so the host takes them in the order they were made; a refused or lost write
     /// shows the host's again. A later write to the same session replaces this one's outcome.
     /// Nothing while the rows are cached: the socket may be up before the host's rows are in.
-    private func setHermesUnread(_ unread: Bool, _ session: SessionSummary) {
+    /// Returns the write, which says whether the host took it; nil when nothing was written.
+    @discardableResult
+    private func setHermesUnread(_ unread: Bool, _ session: SessionSummary) -> Task<Bool, Never>? {
         guard !isViewingCachedData, let wire = hermesWire, let key = Self.nonEmpty(session.sessionId),
-              let profile = Self.nonEmpty(session.profile) ?? hermesProfile else { return }
+              let profile = Self.nonEmpty(session.profile) ?? hermesProfile else { return nil }
         let mark = HermesUnreadMark(unread: unread)
         hermesUnreadMarks[key] = mark
         let earlier = hermesUnreadWrites[key]
-        hermesUnreadWrites[key] = Task { [weak self] in
-            await earlier?.value
+        let write = Task<Bool, Never> { [weak self] in
+            _ = await earlier?.value
             let written: Bool
             do { try await wire.updateSession(.unread(unread), key: key, profile: profile); written = true } catch { written = false }
-            guard let self, self.hermesUnreadMarks[key]?.id == mark.id else { return }
+            guard let self, self.hermesUnreadMarks[key]?.id == mark.id else { return written }
             if written { self.hermesUnreadMarks[key]?.settledBefore = self.hermesReadSerial + 1 } else { self.hermesUnreadMarks[key] = nil }
+            return written
         }
+        hermesUnreadWrites[key] = write
+        return write
     }
 
     /// Names each listed Profile on the socket, the read the host needs before it watches that

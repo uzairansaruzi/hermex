@@ -686,6 +686,26 @@ final class ChatDraftStore {
         return drafts[key]
     }
 
+    /// One Hermes session's draft, by the Profile and stored key its list row keys by.
+    struct DraftRow: Hashable, Sendable {
+        let profile: String
+        let key: String
+    }
+
+    /// The Profile and stored key of each non-empty draft of a Hermes session on `server` through
+    /// `connectionID`; the Sessions list's Draft filter reads it. A session not created yet has no
+    /// key and is left out. Reading doesn't refresh a draft's recency.
+    func hermesSessionDraftKeys(server: URL, connectionID: UUID) async -> Set<DraftRow> {
+        await loadIfNeeded()
+        let serverID = server.absoluteString
+        var rows: Set<DraftRow> = []
+        for (key, draft) in drafts where key.serverID == serverID && !draft.isEmpty {
+            guard case .hermesSession(connectionID, let profile, let stored?, _) = key.context else { continue }
+            rows.insert(DraftRow(profile: profile, key: stored))
+        }
+        return rows
+    }
+
     /// Updates the draft's typed text without disturbing its attachments or
     /// settings.
     func setDraft(_ text: String, for key: ChatDraftKey) {
