@@ -404,16 +404,27 @@ final class ChatTranscriptReflowTests: XCTestCase {
         let hosted = try hostHermesHome(openChatOn: model)
         let window = hosted.window
         defer { window.isHidden = true; window.rootViewController = nil }
-        await settle(window) { self.transcriptScrollView(in: window) != nil }
+        /// The chat's transcript, once it has laid out the last reply.
+        func transcript() -> UIScrollView? {
+            transcriptScrollView(in: window).flatMap { scrollView in
+                replies(in: scrollView).contains { text(of: $0)?.hasPrefix("Answer 19.") == true } ? scrollView : nil
+            }
+        }
+        await settle(window) { transcript() != nil }
+        let compact = try XCTUnwrap(transcript())
 
         window.traitOverrides.horizontalSizeClass = .regular
         window.frame = CGRect(x: 0, y: 0, width: 932, height: 844)
-        await settle(window) { self.replyAtReadingLine(in: window)?.hasPrefix("Answer 19.") == true }
+        // The rebuilt transcript, at the bottom.
+        await settle(window) {
+            guard let scrollView = transcript(), scrollView !== compact else { return false }
+            return self.distanceFromBottom(of: scrollView) <= 2
+        }
 
         XCTAssertTrue(model.followLatch.isFollowing)
-        let scrollView = try XCTUnwrap(transcriptScrollView(in: window))
-        let bottomOffset = scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom
-        XCTAssertEqual(scrollView.contentOffset.y, bottomOffset, accuracy: 2, "The follower left the live edge")
+        let scrollView = try XCTUnwrap(transcript())
+        XCTAssertFalse(scrollView === compact, "The chat wasn't rebuilt in the regular branch")
+        XCTAssertEqual(distanceFromBottom(of: scrollView), 0, accuracy: 2, "The follower left the live edge")
     }
 
     /// A split view can build a `ChatView` that appears and leaves while another stays on screen.
@@ -507,6 +518,11 @@ final class ChatTranscriptReflowTests: XCTestCase {
 
     private func reply(startingWith prefix: String, in window: UIWindow) -> ResponseSelectionInput? {
         replies(in: window).first { text(of: $0)?.hasPrefix(prefix) == true }
+    }
+
+    /// How far the scroll view's visible area ends above its content's bottom.
+    private func distanceFromBottom(of scrollView: UIScrollView) -> CGFloat {
+        abs(scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom - scrollView.contentOffset.y)
     }
 
     /// The text of the reply under the top of the transcript's visible area.
