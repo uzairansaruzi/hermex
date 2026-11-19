@@ -112,17 +112,20 @@ Open the closest few with `gh issue view <n> -R <owner>/<repo> --comments` and
 compare symptom, environment and diagnosis, not just the title. An issue closed as
 a duplicate points to the one it duplicates: decide on that one instead.
 
-Then compare the user's version with `gh release list -R uzairansaruzi/hermex -L 5`
-and read the notes of anything newer.
+Then compare the installed version of the component you chose in step 5 with that
+repo's releases (`gh release list -R <owner>/<repo> -L 5`) and read the notes of
+anything newer: the app version for Hermex, the release `hermes --version` printed
+for Hermes. The rules below mean that component's version.
 
 Tell the user what you searched and the closest matches, even when none fits. Then:
 
 - **An open issue matches**: comment there (step 8). Never file a second one.
-- **A closed issue matches and the user's version predates its fix**: say so plainly
-  and point them to the App Store or TestFlight update, or, when no release has the
+- **A closed issue matches and the installed version predates its fix**: say so
+  plainly and point them to the update (App Store or TestFlight for Hermex; for a
+  server, the update command for them to run), or, when no release has the
   fix yet, tell them it has merged and awaits a release. Nothing to file. If you don't
-  know their version, ask them to check Settings → About before you decide.
-- **A closed issue matches but the user already runs a version with its fix, or it
+  know the version, ask (Settings → About for the app) before you decide.
+- **A closed issue matches but the installed version already has its fix, or it
   was closed without one**: file a new issue and link the old one under `related`.
 - **Nothing matches**: file a new issue.
 
