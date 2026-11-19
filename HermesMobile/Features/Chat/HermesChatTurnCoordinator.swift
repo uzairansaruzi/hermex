@@ -1455,8 +1455,8 @@ struct HermesLostTurn: Equatable {
         case "session.info":
             applyInfo(payload)
         case "session.updated":
-            // A canonical host asking to confirm the model pick it deferred to this turn's end (#1604).
-            settings.controls.receiveDeferredConfirmation(payload)
+            // A canonical host asking to confirm, or refusing, the model pick it deferred (#1604, #1771).
+            settings.controls.receiveDeferredPickUpdate(payload)
         case "message.complete":
             // A queued admission a canonical host withdrew before it ran settles without a
             // generation: no turn ran, so the running one goes on.
@@ -1515,6 +1515,10 @@ struct HermesLostTurn: Equatable {
         case "notification.show", "notification.clear":
             // About the session, not a message in it: never a row, the error line or a turn (#1746).
             hostNotices.receive(frame, live: live)
+            // A dashboard dropped the model pick it had deferred, at the next turn's start (#1771).
+            if frame["type"].text == "notification.show", payload["key"].text == "model_switch.dropped" {
+                settings.controls.dropDeferredPick()
+            }
         default:
             // `thinking.delta` is spinner text and `reasoning.available` carries the answer
             // itself: neither is reasoning. The working row already says Hermes is working.

@@ -145,18 +145,21 @@ enum HermesProfilePreference {
         controls.onPickedModelActive = { [weak self] option in self?.pickRan(option) }
     }
 
-    /// The host ran this chat's pick of `option` at once. A session whose agent is not built yet
-    /// reports no `session.info` for it, so the reported model is brought up to the one it now runs.
+    /// The host ran this chat's pick of `option`, at once or once it landed after a response. A
+    /// session whose agent is not built yet reports no `session.info` for it, so the reported model
+    /// is brought up to the one it now runs.
     private func pickRan(_ option: ModelCatalogOption) {
         reportedModel = option.id
         applyPreset(for: option)
     }
 
     /// Sends the Thinking level and then Fast remembered for `option` (#1750), right after the
-    /// host ran this chat's pick of it at once (a deferred pick applies none). A value equal to
+    /// host ran this chat's pick of it: at once, or for a deferred pick once the catalog shows it
+    /// live (#1771), which on a dashboard is just after the next turn starts. A value equal to
     /// the current one, a level the model's ladder lacks, and Fast on a model that hides it are
     /// skipped; Fast is skipped too once the chat reattached or another model took over. It runs
-    /// after the pick's own write finishes, and each send is remembered through the ordinary `select`.
+    /// after the write or read that saw the model finishes, and each send is remembered through
+    /// the ordinary `select`.
     private func applyPreset(for option: ModelCatalogOption) {
         let store = ModelPresetStore(server: engine.server)
         guard let preset = store.preset(for: option.favoriteKey) else { return }
@@ -243,14 +246,16 @@ enum HermesProfilePreference {
 
     func disconnect() { reportedModel = nil; controls.disconnect() }
 
-    /// A `session.info` frame, or an attach's `session.resume` info. Once a turn ends with a
-    /// pick still waiting on it, the catalog is read again for the model the host now runs.
+    /// A `session.info` frame, or an attach's `session.resume` info. The catalog is read again for
+    /// the model the host now runs once a turn ends with a pick still waiting on it, and on each
+    /// frame naming a deferred pick, which may be the one reporting it running (#1771).
     func apply(info: BotJSON, idle: Bool) {
         latestInfo = info
         if let model = info["model"].text, !model.isEmpty { reportedModel = model }
+        let awaited = controls.awaitsDeferredPick(named: info["model"].text)
         controls.snapshot(info)
         reportedEffort = info["reasoning_effort"].text.map { ($0, info["reasoning_effort_wire"].text ?? "") }
-        if idle, controls.pendingModel != nil { controls.refresh() }
+        if (idle && controls.pendingModel != nil) || awaited { controls.refresh() }
     }
 
     /// Sends `option` for this session; false when it can't go now or the host refused it.
