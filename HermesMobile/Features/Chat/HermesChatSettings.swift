@@ -125,6 +125,12 @@ enum HermesProfilePreference {
     private var reportedEffort: (requested: String, sent: String)?
     /// The latest `session.info`, applied again once an attach reconnects the controls.
     @ObservationIgnored private var latestInfo: BotJSON?
+    /// The model the latest `session.info` that named one reported, or this chat's pick the host
+    /// ran at once; a frame without a model leaves it. Cleared with the connection, which every
+    /// attach, on a new runtime or not, drops before it reads the session again.
+    @ObservationIgnored private var reportedModel: String?
+    /// The latest remembered-setting sends (#1750), for a caller that must wait for them.
+    @ObservationIgnored private(set) var presetApplication: Task<Void, Never>?
     private let engine: HermesConversation
 
     /// `openedBot` is the roster row a Bot Chat opened from: with the pictures the shared store
@@ -136,6 +142,50 @@ enum HermesProfilePreference {
         mentions = BotMentions(roster: [], excluding: profile)
         if let openedBot { bots = [openedBot] }
         if loadsAvatars { avatars = BotAvatarStore.shared.images(connectionID: engine.connection.id) }
+        controls.onPickedModelActive = { [weak self] option in self?.pickRan(option) }
+    }
+
+    /// The host ran this chat's pick of `option` at once. A session whose agent is not built yet
+    /// reports no `session.info` for it, so the reported model is brought up to the one it now runs.
+    private func pickRan(_ option: ModelCatalogOption) {
+        reportedModel = option.id
+        applyPreset(for: option)
+    }
+
+    /// Sends the Thinking level and then Fast remembered for `option` (#1750), right after the
+    /// host ran this chat's pick of it at once (a deferred pick applies none). A value equal to
+    /// the current one, a level the model's ladder lacks, and Fast on a model that hides it are
+    /// skipped; Fast is skipped too once the chat reattached or another model took over. It runs
+    /// after the pick's own write finishes, and each send is remembered through the ordinary `select`.
+    private func applyPreset(for option: ModelCatalogOption) {
+        let store = ModelPresetStore(server: engine.server)
+        guard let preset = store.preset(for: option.favoriteKey) else { return }
+        let context = controls.context
+        presetApplication = Task { [weak self] in
+            guard let self, liveModelKey == option.favoriteKey else { return }
+            if let effort = preset.effort, effort != controls.effort, showsEffort, effortLevels.contains(effort) {
+                _ = await select(effort: effort)
+            }
+            if let fast = preset.fast, fast != controls.fast, controls.showsFast,
+               controls.context == context, liveModelKey == option.favoriteKey {
+                _ = await select(fast: fast)
+            }
+        }
+    }
+
+    /// The catalog's live model, unless the host last reported another one: another client
+    /// switched the session, and the catalog has not been read since.
+    private var liveModelKey: ModelFavoriteKey? {
+        guard let active = controls.catalog.active else { return nil }
+        if let reportedModel, reportedModel != active.id { return nil }
+        return active.favoriteKey
+    }
+
+    /// Remembers `record` against `model`, the live model when the change was sent, once the host
+    /// confirmed it; nothing when another model took over while it was on its way.
+    private func remember(_ model: ModelFavoriteKey?, _ record: (ModelPresetStore, ModelFavoriteKey) -> Void) {
+        guard let model, model == liveModelKey else { return }
+        record(ModelPresetStore(server: engine.server), model)
     }
 
     /// The model the chip shows: a pick waiting for the running response, else the
@@ -191,12 +241,13 @@ enum HermesProfilePreference {
         }
     }
 
-    func disconnect() { controls.disconnect() }
+    func disconnect() { reportedModel = nil; controls.disconnect() }
 
     /// A `session.info` frame, or an attach's `session.resume` info. Once a turn ends with a
     /// pick still waiting on it, the catalog is read again for the model the host now runs.
     func apply(info: BotJSON, idle: Bool) {
         latestInfo = info
+        if let model = info["model"].text, !model.isEmpty { reportedModel = model }
         controls.snapshot(info)
         reportedEffort = info["reasoning_effort"].text.map { ($0, info["reasoning_effort_wire"].text ?? "") }
         if idle, controls.pendingModel != nil { controls.refresh() }
@@ -246,8 +297,11 @@ enum HermesProfilePreference {
     /// Sends `effort` for this chat only; false when it can't go now or the host refused it.
     func select(effort: String) async -> Bool {
         guard effortLevels.contains(effort), let action = controls.prepare(.effort(effort)) else { return false }
+        let model = liveModelKey
         await controls.apply(action)
-        return controls.errorMessage == nil && controls.effort == effort
+        let applied = controls.errorMessage == nil && controls.effort == effort
+        if applied { remember(model) { $0.record(effort: effort, for: $1) } }
+        return applied
     }
 
     // MARK: Fast
@@ -264,8 +318,11 @@ enum HermesProfilePreference {
     /// it. The chip takes the mode only from a reply naming it.
     func select(fast enabled: Bool) async -> Bool {
         guard enabled != controls.fast, let action = controls.prepare(.fast(enabled)) else { return false }
+        let model = liveModelKey
         await controls.apply(action)
-        return controls.errorMessage == nil && controls.fast == enabled
+        let applied = controls.errorMessage == nil && controls.fast == enabled
+        if applied { remember(model) { $0.record(fast: enabled, for: $1) } }
+        return applied
     }
 
     // MARK: Personality

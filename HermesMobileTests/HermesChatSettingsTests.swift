@@ -317,6 +317,252 @@ import Observation
         XCTAssertEqual(chat.writes("config.set"), [])
     }
 
+    // MARK: Model presets (#1750)
+
+    /// Picking a model with a saved preset sends its Thinking level, then Fast, once the host ran
+    /// the pick at once: it reports the new model in `session.info` ahead of the reply, as the pin
+    /// does. The sends are remembered against the same model, not the one left.
+    func testPickingAModelWithAPresetSendsItsEffortThenFast() async throws {
+        let chat = await openChat()
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        ModelPresetStore(server: Self.server).record(fast: true, for: Self.opus.favoriteKey)
+        chat.receive(event(1, "session.info", ["fast": .bool(false)]))
+        await waitUntil("info") { chat.model.hermesSettings?.controls.fast == false }
+        chat.host.next("config.set", .init(result: Self.modelReply(), before: [
+            event(2, "session.info", ["model": .string("claude-opus"), "fast": .bool(false)])
+        ]))
+        chat.host.next("config.set", .init(result: Self.effortReply("high")))
+        chat.host.next("config.set", .init(result: Self.fastReply("fast")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model"), .string("reasoning"), .string("fast")])
+        XCTAssertEqual(chat.writes("config.set").map { $0["value"] }.dropFirst(),
+                       [.string("high"), .string("fast")])
+        XCTAssertEqual(ModelPresetStore(server: Self.server).preset(for: Self.opus.favoriteKey),
+                       ModelPreset(effort: "high", fast: true))
+        XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.sonnet.favoriteKey))
+    }
+
+    /// A session whose agent the host has not built yet runs the pick at once without a
+    /// `session.info`; the preset still goes out, and later levels are remembered for the new model.
+    func testAPickWithoutAModelReportStillAppliesAndRemembers() async throws {
+        let chat = await openChat()
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.receive(event(1, "session.info", ["model": .string("claude-sonnet"), "fast": .bool(false)]))
+        await waitUntil("info") { chat.model.hermesSettings?.controls.fast == false }
+        chat.host.next("config.set", .init(result: Self.modelReply()))
+        chat.host.next("config.set", .init(result: Self.effortReply("high")))
+        chat.host.next("config.set", .init(result: Self.fastReply("fast")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model"), .string("reasoning")])
+        _ = await chat.model.selectFastMode(true)
+        XCTAssertEqual(ModelPresetStore(server: Self.server).preset(for: Self.opus.favoriteKey),
+                       ModelPreset(effort: "high", fast: true))
+    }
+
+    /// A canonical host's applied model edit (a receipt without `status`) applies the preset.
+    func testACanonicalPickAppliedAtOnceAppliesItsPreset() async throws {
+        let chat = await openChat(canonical: true)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("session.mutate", .init(result: try settingsFixture("model")["result"], before: [
+            .object(["session_id": .string("tip"), "seq": .number(1), "type": .string("session.info"),
+                     "payload": .object(["model": .string("claude-opus"), "provider": .string("anthropic")])])
+        ]))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("reasoning")])
+    }
+
+    /// A `session.info` that leaves out the model keeps another client's switch in view: a level
+    /// picked after it is still not remembered for the old model.
+    func testAModelLessInfoAfterAnotherClientsSwitchStillRemembersNothingForTheOldModel() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.receive(event(1, "session.info", ["model": .string("claude-opus"), "reasoning_effort": .string("low")]))
+        chat.receive(event(2, "session.info", ["running": .bool(false), "reasoning_effort": .string("medium")]))
+        await waitUntil("info") { controls.effort == "medium" }
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+
+        _ = await chat.model.selectReasoningEffort("high")
+        XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.sonnet.favoriteKey))
+    }
+
+    /// A pick the host asks to confirm applies its preset once the confirmed resend runs at once.
+    func testAConfirmedPickAppliesItsPreset() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(confirm: true)))
+        chat.host.next("config.set", .init(result: Self.modelReply(), before: [
+            event(1, "session.info", ["model": .string("claude-opus")])
+        ]))
+        chat.host.next("config.set", .init(result: Self.effortReply("high")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        XCTAssertNil(chat.turn.settings.presetApplication, "nothing applies while the host asks")
+        // As the sheet's button does: it captures the confirmation, dismisses, then confirms it.
+        let shown = try XCTUnwrap(controls.confirmation)
+        controls.cancelConfirmation()
+        await controls.confirm(shown)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model"), .string("model"), .string("reasoning")])
+        XCTAssertEqual(chat.writes("config.set").last?["value"], .string("high"))
+    }
+
+    /// A pick the dashboard defers applies no preset, then or later. In the order the pin sends:
+    /// the reply says `deferred`; the response's end reports the queued model in `session.info`
+    /// while `model.options` still runs the old one; the next turn's `session.info` reports it
+    /// running, and its end's read finds it live.
+    func testADeferredDashboardPickAppliesNoPreset() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        ModelPresetStore(server: Self.server).record(fast: true, for: Self.opus.favoriteKey)
+        chat.receive(event(1, "session.info", ["fast": .bool(false), "running": .bool(true)]))
+        await waitUntil("info") { controls.fast == false }
+        chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        chat.receive(event(2, "session.info", ["model": .string("claude-opus"), "fast": .bool(false), "running": .bool(false)]))
+        chat.receive(event(3, "session.info", ["model": .string("claude-opus"), "fast": .bool(false), "running": .bool(true)]))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        chat.receive(event(4, "session.info", ["model": .string("claude-opus"), "fast": .bool(false), "running": .bool(false)]))
+        await waitUntil("live") { controls.catalog.active?.id == "claude-opus" }
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model")])
+    }
+
+    /// A pick a canonical host defers applies no preset, then or later. In the order the pin sends:
+    /// the edit answers `deferred`; the response's end reports the old model, then the turn
+    /// boundary reports the new one in `session.info` and `session.updated`; a later read finds it live.
+    func testADeferredCanonicalPickAppliesNoPreset() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("session.mutate", .init(result: .object(["session_id": .string("tip"), "operation": .string("model"),
+                                                                "status": .string("deferred"), "model": .string("claude-opus"),
+                                                                "revision": .number(2)])))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        func frame(_ seq: Int, _ type: String, _ payload: [String: BotJSON]) -> BotJSON {
+            .object(["session_id": .string("tip"), "seq": .number(Double(seq)), "type": .string(type), "payload": .object(payload)])
+        }
+        chat.receive(frame(1, "session.info", ["model": .string("claude-sonnet"), "running": .bool(true)]))
+        chat.receive(frame(2, "session.info", ["running": .bool(false)]))
+        chat.receive(frame(3, "session.info", ["model": .string("claude-opus"), "provider": .string("anthropic")]))
+        chat.receive(frame(4, "session.updated", ["operation": .string("model"), "model": .string("claude-opus"),
+                                                  "provider": .string("anthropic"), "revision": .number(3),
+                                                  "execution_generation": .number(2)]))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await controls.reload()
+        XCTAssertEqual(controls.catalog.active?.id, "claude-opus")
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set"), [])
+    }
+
+    /// A successful effort or Fast pick is remembered for the live model only.
+    func testAnEffortAndFastPickAreRemembered() async {
+        let chat = await openFastChat()
+        chat.host.always("config.set", .init(result: Self.effortReply("max")))
+        _ = await chat.model.selectReasoningEffort("max")
+        chat.host.always("config.set", .init(result: Self.fastReply("fast")))
+        _ = await chat.model.selectFastMode(true)
+        XCTAssertEqual(ModelPresetStore(server: Self.server).preset(for: Self.opus.favoriteKey),
+                       ModelPreset(effort: "max", fast: true))
+
+        chat.host.always("config.set", .init(error: 4002, message: "no"))
+        _ = await chat.model.selectReasoningEffort("low")
+        XCTAssertEqual(ModelPresetStore(server: Self.server).preset(for: Self.opus.favoriteKey)?.effort, "max",
+                       "a refused pick is not remembered")
+    }
+
+    /// Once another client switches the session's model, a level picked here is remembered for
+    /// neither model: the catalog still names the old one.
+    func testALevelPickedAfterAnotherClientSwitchedIsNotRememberedForTheOldModel() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.receive(event(1, "session.info", ["model": .string("claude-opus"), "reasoning_effort": .string("low")]))
+        await waitUntil("info") { controls.effort == "low" }
+        XCTAssertEqual(controls.catalog.active?.id, "claude-sonnet")
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+
+        let picked = await chat.model.selectReasoningEffort("high")
+        XCTAssertTrue(picked)
+        XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.sonnet.favoriteKey))
+        XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: Self.opus.favoriteKey))
+    }
+
+    /// When another model takes over while a preset's Thinking level is on its way, its Fast is
+    /// not sent to that model.
+    func testAModelChangedWhileThePresetEffortIsSentGetsNoFast() async throws {
+        let chat = await openChat()
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        ModelPresetStore(server: Self.server).record(fast: true, for: Self.opus.favoriteKey)
+        chat.receive(event(1, "session.info", ["fast": .bool(false)]))
+        await waitUntil("info") { chat.model.hermesSettings?.controls.fast == false }
+        chat.host.next("config.set", .init(result: Self.modelReply(), before: [
+            event(2, "session.info", ["model": .string("claude-opus"), "fast": .bool(false)])
+        ]))
+        chat.host.next("config.set", .init(result: Self.effortReply("high"), before: [
+            event(3, "session.info", ["model": .string("hermes-4-70b"), "fast": .bool(false)])
+        ]))
+        chat.host.next("config.set", .init(result: Self.fastReply("fast")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model"), .string("reasoning")])
+        let hermes = ModelCatalogOption(id: "hermes-4-70b", displayName: "hermes-4-70b", providerID: "nous")
+        XCTAssertNil(ModelPresetStore(server: Self.server).preset(for: hermes.favoriteKey))
+    }
+
+    /// An effort the new model's ladder lacks is not sent; Fast still is.
+    func testAPresetEffortTheModelDoesNotOfferIsNotSent() async {
+        let chat = await openChat()
+        ModelPresetStore(server: Self.server).record(effort: "none", for: Self.opus.favoriteKey)
+        ModelPresetStore(server: Self.server).record(fast: true, for: Self.opus.favoriteKey)
+        chat.receive(event(1, "session.info", ["fast": .bool(false)]))
+        await waitUntil("info") { chat.model.hermesSettings?.controls.fast == false }
+        chat.host.next("config.set", .init(result: Self.modelReply(), before: [
+            event(2, "session.info", ["model": .string("claude-opus"), "fast": .bool(false)])
+        ]))
+        chat.host.next("config.set", .init(result: Self.fastReply("fast")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("model"), .string("fast")])
+    }
+
+    /// A model that becomes active without a pick in this chat gets no preset, and a cancelled
+    /// confirmation leaves nothing to apply later.
+    func testAPresetIsNotAppliedWithoutAPickHere() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(confirm: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+        controls.cancelConfirmation()
+
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await controls.reload()
+        XCTAssertEqual(controls.catalog.active?.id, "claude-opus")
+        await chat.turn.settings.presetApplication?.value
+        XCTAssertEqual(chat.writes("config.set").count, 1)
+    }
+
     // MARK: Fast
 
     /// The Fast chip shows once `session.info` reports the mode, on a model whose capabilities
@@ -699,6 +945,8 @@ import Observation
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
     private static let opus = ModelCatalogOption(id: "claude-opus", displayName: "claude-opus", providerID: "anthropic")
+    private static let sonnet = ModelCatalogOption(id: "claude-sonnet", displayName: "claude-sonnet", providerID: "anthropic")
+    private static let server = URL(string: "https://hermes.example")!
 
     private static func command(_ name: String) -> SlashCommand { SlashCommandCatalog.command(named: name)! }
 
@@ -773,7 +1021,7 @@ import Observation
     /// `canonical` attaches stored session `tip` over a canonical socket (#1604), whose id is its
     /// runtime, at revision 2 and generation 1.
     private func openChat(target: ConversationTarget = .new(profile: "work"), canonical: Bool = false) async -> Chat {
-        addTeardownBlock { HermesHostFixture.reset() }
+        addTeardownBlock { HermesHostFixture.reset(); ModelPresetStore.remove(for: Self.server) }
         let host = BotSocketHost()
         host.always("session.create", .init(result: .object([
             "session_id": .string("runtime"), "stored_session_id": .string("tip")

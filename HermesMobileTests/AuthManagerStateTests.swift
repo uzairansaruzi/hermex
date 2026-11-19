@@ -379,19 +379,23 @@ final class AuthManagerStateTests: XCTestCase {
             for server in [first, second] {
                 ModelFavoritesStore.remove(for: server)
                 ModelRecentsStore.remove(for: server)
+                ModelPresetStore.remove(for: server)
             }
         }
         for server in [first, second] {
             ModelFavoritesStore(server: server).toggleFavorite(for: option)
             ModelRecentsStore(server: server).recordRecent(option)
+            ModelPresetStore(server: server).record(effort: "high", for: option.favoriteKey)
         }
 
         await manager.removeServer(bAccount)
 
         XCTAssertEqual(ModelFavoritesStore(server: second).favoriteKeys, [])
         XCTAssertEqual(ModelRecentsStore(server: second).recentKeys, [])
+        XCTAssertNil(ModelPresetStore(server: second).preset(for: option.favoriteKey))
         XCTAssertEqual(ModelFavoritesStore(server: first).favoriteKeys, [option.favoriteKey])
         XCTAssertEqual(ModelRecentsStore(server: first).recentKeys, [option.favoriteKey])
+        XCTAssertEqual(ModelPresetStore(server: first).preset(for: option.favoriteKey)?.effort, "high")
     }
 
     func testConfiguringASecondServerAddsItAndMakesItActive() async throws {

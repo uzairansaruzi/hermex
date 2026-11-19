@@ -37,6 +37,10 @@ import Observation
     private(set) var effort: String?
     private(set) var fast: Bool?
     private(set) var pendingModel: ModelCatalogOption?
+    /// Called from inside a pick's `apply` when the host's reply to that pick says it runs now
+    /// (at once, or once confirmed) and the catalog read after it shows it live; never for a pick
+    /// the host defers. The pick is still applying, so a caller that sends more defers it.
+    @ObservationIgnored var onPickedModelActive: ((ModelCatalogOption) -> Void)?
     /// A canonical pick the host deferred to the running response's end, kept apart from
     /// `pendingModel` (a display state `session.info` clears) until the host asks to confirm it.
     private var deferredModel: ModelCatalogOption?
@@ -249,6 +253,8 @@ import Observation
                     pendingModel = result["status"].text == "deferred" ? option : nil
                     deferredModel = pendingModel
                     await reload()
+                    // The applied edit's receipt carries no `status`; `deferred` waits for the turn.
+                    if result["status"] == .null { announce(option, for: action) }
                 } else { throw BotSettingFailure.unknownOutcome }
             case .model(let option):
                 guard result["key"].text == "model", result["scope"].text == "session",
@@ -259,6 +265,7 @@ import Observation
                 } else if result["confirm_required"].flag == false {
                     pendingModel = result["deferred"].flag == true ? option : nil
                     await reload()
+                    if result["deferred"].flag != true { announce(option, for: action) }
                 } else { throw BotSettingFailure.unknownOutcome }
             case .effort(let value):
                 guard result["key"].text == "reasoning", result["value"].text == value else { throw BotSettingFailure.unknownOutcome }
@@ -277,6 +284,13 @@ import Observation
             else if !dispatched || isUnsupported(error) { errorMessage = error.localizedDescription }
             else { errorMessage = BotSettingFailure.unknownOutcome.localizedDescription }
         }
+    }
+
+    /// Tells `onPickedModelActive` about `option` when the catalog read after its reply shows it live.
+    private func announce(_ option: ModelCatalogOption, for action: Action) {
+        guard context == action.context, activeAction == action.id,
+              catalog.active?.matchesSelection(modelID: option.id, providerID: option.providerID) == true else { return }
+        onPickedModelActive?(option)
     }
 
     private func allowed(_ change: Change) -> Bool {

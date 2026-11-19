@@ -37,6 +37,28 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(ModelFavoritesStore(server: first, defaults: defaults).favoriteKeys, [])
     }
 
+    /// Remembered Thinking and Fast stay with their server and model, and an unreadable blob is empty.
+    func testPresetsStayWithTheirServerAndAnUnreadableBlobIsEmpty() throws {
+        let first = try XCTUnwrap(URL(string: "https://a.test"))
+        let second = try XCTUnwrap(URL(string: "https://b.test"))
+        let key = ModelFavoriteKey(modelID: "gpt", providerID: "openai")
+
+        let store = ModelPresetStore(server: first, defaults: defaults)
+        store.record(effort: "high", for: key)
+        store.record(fast: true, for: key)
+
+        XCTAssertEqual(ModelPresetStore(server: first, defaults: defaults).preset(for: key), ModelPreset(effort: "high", fast: true))
+        XCTAssertNil(ModelPresetStore(server: second, defaults: defaults).preset(for: key))
+        XCTAssertNil(store.preset(for: ModelFavoriteKey(modelID: "gpt", providerID: "other")))
+
+        defaults.set(Data("not json".utf8), forKey: "hermes.mobile.modelPresets|https://a.test")
+        XCTAssertNil(store.preset(for: key))
+
+        store.record(effort: "low", for: key)
+        ModelPresetStore.remove(for: first, in: defaults)
+        XCTAssertNil(ModelPresetStore(server: first, defaults: defaults).preset(for: key))
+    }
+
     /// An upgrade keeps the old shared list on the first server read, and only there.
     func testTheOldSharedListMovesToTheFirstServerRead() throws {
         let first = try XCTUnwrap(URL(string: "https://a.test"))

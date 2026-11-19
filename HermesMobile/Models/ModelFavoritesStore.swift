@@ -172,6 +172,55 @@ struct ModelRecentsStore: @unchecked Sendable {
     }
 }
 
+/// The Thinking level and Fast setting last chosen for one model.
+struct ModelPreset: Codable, Equatable {
+    var effort: String?
+    var fast: Bool?
+}
+
+/// One server's remembered Thinking and Fast per model, applied when the model is picked in a
+/// Hermes chat (#1750). Local only: nothing is written to the host. An unreadable blob is empty.
+struct ModelPresetStore: @unchecked Sendable {
+    private static let baseKey = "hermes.mobile.modelPresets"
+
+    private let defaults: UserDefaults
+    private let storageKey: String
+
+    init(server: URL, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        storageKey = defaults.scopedModelListKey(base: Self.baseKey, server: server)
+    }
+
+    static func remove(for server: URL, in defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: UserDefaults.modelListKey(base: baseKey, server: server))
+    }
+
+    func preset(for key: ModelFavoriteKey) -> ModelPreset? { presets[key] }
+
+    func record(effort: String, for key: ModelFavoriteKey) {
+        var all = presets
+        all[key, default: ModelPreset()].effort = effort
+        save(all)
+    }
+
+    func record(fast: Bool, for key: ModelFavoriteKey) {
+        var all = presets
+        all[key, default: ModelPreset()].fast = fast
+        save(all)
+    }
+
+    private var presets: [ModelFavoriteKey: ModelPreset] {
+        guard let data = defaults.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode([ModelFavoriteKey: ModelPreset].self, from: data) else { return [:] }
+        return decoded
+    }
+
+    private func save(_ presets: [ModelFavoriteKey: ModelPreset]) {
+        guard let data = try? JSONEncoder().encode(presets) else { return }
+        defaults.set(data, forKey: storageKey)
+    }
+}
+
 private extension UserDefaults {
     static func modelListKey(base: String, server: URL) -> String {
         "\(base)|\(server.absoluteString)"
