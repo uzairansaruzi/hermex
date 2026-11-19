@@ -467,6 +467,42 @@ import Observation
         XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("reasoning")])
     }
 
+    /// A canonical pick answered `deferred` that the host commits before the read after its answer
+    /// gets its preset from that read: the frame naming it may already have come and gone.
+    func testADeferredPickAlreadyLiveInTheReadAfterItsAnswerAppliesItsPreset() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("session.mutate", .init(result: Self.deferredEdit))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+
+        _ = await chat.model.selectComposerModel(Self.opus)
+        await waitUntil("preset") { controls.effort == "high" }
+        XCTAssertEqual(chat.writes("config.set").map { $0["key"] }, [.string("reasoning")])
+    }
+
+    /// A newer pick the host asks to confirm ends the wait for the one it deferred: when that one
+    /// lands meanwhile, no preset goes out to clear the open confirmation.
+    func testANewerPickAskingToConfirmEndsTheDeferredPicksWait() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
+        _ = await chat.model.selectComposerModel(Self.opus)
+        let hermes = ModelCatalogOption(id: "hermes-4-70b", displayName: "hermes-4-70b", providerID: "nous")
+        chat.host.next("config.set", .init(result: Self.modelReply(confirm: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(hermes)
+        XCTAssertNotNil(controls.confirmation)
+
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await readCatalog(controls, on: chat.host)
+        XCTAssertNil(chat.turn.settings.presetApplication)
+        XCTAssertNotNil(controls.confirmation)
+        XCTAssertEqual(chat.writes("config.set").count, 2)
+    }
+
     /// A deferred pick a canonical host refuses at the claim boundary (`session.updated`
     /// `status: refused`) applies no preset when that model later goes live.
     func testACanonicalDeferredPickTheHostRefusesAppliesNoPreset() async throws {
@@ -514,8 +550,9 @@ import Observation
         chat.host.always("config.set", .init(result: Self.effortReply("high")))
         _ = await chat.model.selectComposerModel(Self.opus)
 
+        // As the model picker reads it on opening.
         chat.host.always("model.options", .init(result: Self.catalog(active: "hermes-4-70b", provider: "nous")))
-        await readCatalog(controls, on: chat.host)
+        await controls.reload()
         chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
         await readCatalog(controls, on: chat.host)
         XCTAssertEqual(controls.catalog.active?.id, "claude-opus")

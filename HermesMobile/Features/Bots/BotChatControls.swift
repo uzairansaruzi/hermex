@@ -95,7 +95,6 @@ import Observation
         catalog = HermesModelCatalog(.null); effort = nil; fast = nil
         self.context = context; self.wire = wire; self.mutate = mutate
         await reload()
-        settleDeferredPick()
         if self.context == context, let held = heldConfirmation {
             heldConfirmation = nil
             receiveDeferredPickUpdate(held)
@@ -150,7 +149,10 @@ import Observation
         readRevision += 1
         let revision = readRevision
         isLoading = true
-        defer { if context == owner && revision == readRevision { isLoading = false } }
+        defer {
+            if context == owner && revision == readRevision { isLoading = false }
+            settleDeferredPick()
+        }
         let call = HermesCall.modelOptions(sessionID: owner.runtime, profile: owner.profile)
         guard !unavailable.contains(call.method) else { return }
         do {
@@ -182,6 +184,7 @@ import Observation
 
     /// Ends the deferred pick once the catalog, read with nothing else in flight, shows it live
     /// (telling `onPickedModelActive`) or shows a model that is neither it nor the one it replaces.
+    /// Called as each read, read loop and write ends; one still running skips it.
     private func settleDeferredPick() {
         guard let pick = deferredPick, context != nil, readTask == nil, !isLoading, !isApplying,
               let active = catalog.active else { return }
@@ -263,7 +266,9 @@ import Observation
         // A read started before this write must not overwrite its authoritative response.
         readRevision += 1; isLoading = false
         var dispatched = false
-        defer { if activeAction == action.id { isApplying = false; activeAction = nil } }
+        defer {
+            if activeAction == action.id { isApplying = false; activeAction = nil; settleDeferredPick() }
+        }
         do {
             let check: () throws -> Void = { [weak self] in
                 guard let self, self.context == action.context, self.activeAction == action.id,
@@ -277,6 +282,8 @@ import Observation
             else { result = try await wire.call(call, validateDispatch: check) }
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
             readRevision += 1; isLoading = false
+            // The host answered a newer pick: it replaced the one it deferred, or asks first.
+            if case .model = action.change { deferredPick = nil }
             switch action.change {
             case .model(let option) where canonicalModel != nil:
                 // Nothing applied until the confirmed resend carries this token; a token another
