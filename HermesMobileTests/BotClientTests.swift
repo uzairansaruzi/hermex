@@ -367,7 +367,8 @@ import XCTest
         defer { client.close() }
 
         let calls: [HermesCall] = [
-            .subagentList(sessionID: "runtime"), .subagentTail(sessionID: "runtime", subagentID: "worker"), .sessionActiveList
+            .subagentList(sessionID: "runtime"), .subagentTail(sessionID: "runtime", subagentID: "worker"), .sessionActiveList,
+            .subagentRoster(profile: "default")
         ]
         for call in calls {
             let method = call.method
@@ -395,7 +396,7 @@ import XCTest
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
-        socket.withholdReply = { ["subagent.list", "session.active_list"].contains($0["method"].text) }
+        socket.withholdReply = { ["subagent.list", "session.active_list", "subagent.roster"].contains($0["method"].text) }
         let client = BotClient(connection: connection(), configuration: configuration,
                                rpcDeadline: .milliseconds(50)) { _ in socket }
         var disconnects = 0
@@ -404,7 +405,7 @@ import XCTest
         defer { client.close() }
 
         // The inbox's live-status read is optional the same way: a stall fails only it.
-        for call in [HermesCall.subagentList(sessionID: "runtime"), .sessionActiveList] {
+        for call in [HermesCall.subagentList(sessionID: "runtime"), .sessionActiveList, .subagentRoster(profile: "default")] {
             do {
                 _ = try await client.call(call)
                 XCTFail("Timed-out \(call.method) succeeded")

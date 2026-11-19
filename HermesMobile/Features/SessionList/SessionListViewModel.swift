@@ -138,6 +138,11 @@ final class SessionListViewModel {
     /// have an entry, and the map is reassigned only when a value actually
     /// changes so rows do not invalidate on every poll tick.
     private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
+    /// Stored session ids the host's last `subagent.roster` lists with delegated children or
+    /// background processes still running (#1730), loaded or not, so a row Load more or a search
+    /// brings in later matches by its session key or lineage root. Kept apart from
+    /// `attentionStatesBySessionID` so it never keeps the busy re-read going.
+    private(set) var hermesBackgroundWork: Set<String> = []
     /// True while a Hermes list's states are only the last ones known (#1374): kept through a
     /// lost socket or a failed status read, until a current status reply replaces them. Never
     /// on a webui list.
@@ -217,6 +222,9 @@ final class SessionListViewModel {
     /// list read's serial, so an older lane read could otherwise answer last and apply.
     @ObservationIgnored private var hermesProjectsSerial = 0
     @ObservationIgnored private var hermesStatusSerial = 0
+    /// Bumped by each `subagent.roster` read and by each clear, so only the newest read applies.
+    @ObservationIgnored private var hermesRosterSerial = 0
+    @ObservationIgnored private var hermesRosterTask: Task<Void, Never>?
     @ObservationIgnored private var hermesReloadTask: Task<Void, Never>?
     @ObservationIgnored private var hermesReloadWanted = false
     @ObservationIgnored private var hermesDebounceTask: Task<Void, Never>?
@@ -228,6 +236,8 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesReadsStatus = true
     /// False once the host answered `approval.pending` "method not found" (#1679).
     @ObservationIgnored private var hermesReadsApprovals = true
+    /// False once the host answered `subagent.roster` "method not found" (#1730).
+    @ObservationIgnored private var hermesReadsRoster = true
     /// A live-state read failed while a row was busy, so re-reads go on until one succeeds.
     @ObservationIgnored private var hermesRetriesStatus = false
     /// Sessions a chat opened from this list has just closed.
@@ -699,7 +709,11 @@ final class SessionListViewModel {
     /// The attention state a row should show, or nil while nothing is pending.
     func attentionState(for session: SessionSummary) -> SessionRowAttentionState? {
         guard let sessionID = Self.nonEmpty(session.sessionId) else { return nil }
-        return attentionStatesBySessionID[sessionID]
+        if let state = attentionStatesBySessionID[sessionID] { return state }
+        guard !hermesBackgroundWork.isEmpty else { return nil }
+        let working = hermesBackgroundWork.contains(sessionID)
+            || session.hermes.map { hermesBackgroundWork.contains($0.lineageRoot) } == true
+        return working ? .working : nil
     }
 
     /// A settled row is unread only when its server timestamp moved past the
@@ -1786,6 +1800,7 @@ final class SessionListViewModel {
         hermesWire = wire
         hermesReadsStatus = true
         hermesReadsApprovals = true
+        hermesReadsRoster = true
         if sessions.isEmpty { isLoading = !showCachedHermesSessions(provisional: true) }
         wire.onEvent = { [weak self, weak wire] event in
             guard let self, let wire, self.hermesWire === wire, self.hermesIsListening,
@@ -1826,6 +1841,7 @@ final class SessionListViewModel {
         hermesIsListening = false
         hermesDebounceTask?.cancel(); hermesDebounceTask = nil
         hermesStatusTask?.cancel(); hermesStatusTask = nil
+        hermesRosterTask?.cancel(); hermesRosterTask = nil
     }
 
     /// The list left the screen for good, or the app went to the background: it stops
@@ -1848,6 +1864,7 @@ final class SessionListViewModel {
         isLoading = false; isLoadingMoreSessions = false; isLoadingMoreScheduledSessions = false
         hermesWire?.close(); hermesWire = nil; hermesConnectingWire = nil
         hasReadHermes = false
+        clearHermesBackgroundWork()
         // Matches past the loaded pages change only when the host is searched again.
         if activeRemoteSearchQuery?.isEmpty == false { hermesSearchAwaitsConnect = true }
     }
@@ -1994,6 +2011,7 @@ final class SessionListViewModel {
             isLoading = false
             if isLoadingMoreSessions { isLoadingMoreSessions = false }
             if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
+            startHermesRosterRead(wire)
             startHermesStatusRead(wire)
             if !hermesShowsAllProfiles {
                 await readHermesProjects(wire, readSerial: serial)
@@ -2125,6 +2143,7 @@ final class SessionListViewModel {
         isCachedCopyProvisional = provisional
         errorMessage = nil; sessionLoadError = nil
         setHermesStates([:])
+        clearHermesBackgroundWork()
         clearHermesSearchMatches()
         if activeRemoteSearchQuery?.isEmpty == false { hermesSearchAwaitsConnect = true }
         return true
@@ -2220,6 +2239,7 @@ final class SessionListViewModel {
         clearHermesSearchMatches()
         errorMessage = nil; sessionLoadError = nil
         setHermesStates([:]); setHermesReconnecting(false)
+        clearHermesBackgroundWork()
         guard let wire = hermesWire else { return await openHermes() }
         isLoading = true
         // The open that is connecting watches and reads the Profile set above.
@@ -2245,6 +2265,7 @@ final class SessionListViewModel {
         projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false; archivedCount = nil
         clearHermesSearchMatches()
         setHermesStates([:]); setHermesReconnecting(false)
+        clearHermesBackgroundWork()
         isLoading = true
         return true
     }
@@ -2408,6 +2429,59 @@ final class SessionListViewModel {
         }
         if attentionStatesBySessionID.isEmpty && !hermesRetriesStatus { hermesStatusTask = nil }
         else { startHermesStatusRead(wire, after: hermes.statusPollInterval) }
+    }
+
+    /// Replaces any roster read in flight with one `subagent.roster` per listed Profile, all at once
+    /// (#1730). Only a list read starts it, never the busy re-read or a timer.
+    private func startHermesRosterRead(_ wire: any BotTransport) {
+        hermesRosterTask?.cancel(); hermesRosterTask = nil
+        guard hermesReadsRoster, hermesIsListening else { return }
+        hermesRosterSerial += 1
+        let serial = hermesRosterSerial, profiles = hermesListedProfiles
+        hermesRosterTask = Task { [weak self] in await self?.readHermesRoster(wire, profiles: profiles, serial: serial) }
+    }
+
+    /// Keeps every stored id the roster lists with live children or background processes. Any
+    /// failed read clears the marks, so the rows show the live states alone; a host without the
+    /// method is never asked again on this socket.
+    private func readHermesRoster(_ wire: any BotTransport, profiles: [String], serial: Int) async {
+        let replies = await withTaskGroup(of: Result<BotJSON, Error>.self) { group in
+            for profile in profiles {
+                group.addTask { @MainActor in
+                    do { return .success(try await wire.call(.subagentRoster(profile: profile))) } catch { return .failure(error) }
+                }
+            }
+            var replies: [Result<BotJSON, Error>] = []
+            for await reply in group { replies.append(reply) }
+            return replies
+        }
+        guard !Task.isCancelled, hermesWire === wire, serial == hermesRosterSerial else { return }
+        hermesRosterTask = nil
+        var working: Set<String> = []
+        for reply in replies {
+            switch reply {
+            case .success(let roster):
+                for entry in roster["sessions"].list ?? []
+                where (entry["subagents"].integer ?? 0) > 0 || (entry["background"].integer ?? 0) > 0 {
+                    if let id = Self.nonEmpty(entry["session_id"].text) { working.insert(id) }
+                }
+            case .failure(let error):
+                if error as? BotFailure == .rejected(-32601) { hermesReadsRoster = false }
+                return setHermesBackgroundWork([])
+            }
+        }
+        setHermesBackgroundWork(working)
+    }
+
+    /// Drops the roster's marks and any read still out, which would describe another socket or Profile.
+    private func clearHermesBackgroundWork() {
+        hermesRosterTask?.cancel(); hermesRosterTask = nil
+        hermesRosterSerial += 1
+        setHermesBackgroundWork([])
+    }
+
+    private func setHermesBackgroundWork(_ ids: Set<String>) {
+        if ids != hermesBackgroundWork { hermesBackgroundWork = ids }
     }
 
     /// The waiting runtimes behind each Input row of one `session.active_list` reply, by session

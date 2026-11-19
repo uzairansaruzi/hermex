@@ -167,6 +167,7 @@ final class HermesRequestTests: XCTestCase {
             (.slashExec(sessionID: "runtime", command: "/context all"), "slash.exec",
              ["session_id": .string("runtime"), "command": .string("/context all")]),
             (.subagentList(sessionID: "runtime"), "subagent.list", ["session_id": .string("runtime")]),
+            (.subagentRoster(profile: "triage"), "subagent.roster", ["profile": .string("triage")]),
             (.subagentTail(sessionID: "runtime", subagentID: "w1"), "subagent.tail",
              ["session_id": .string("runtime"), "subagent_id": .string("w1")]),
             (.subagentInterrupt(sessionID: "runtime", subagentID: "w1"), "subagent.interrupt",
