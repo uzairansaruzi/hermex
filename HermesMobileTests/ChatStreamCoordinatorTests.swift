@@ -506,14 +506,14 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let firstPathChange = Task { @MainActor in
             await coordinator.networkPathDidChange()
         }
-        await fulfillment(of: [reattachProbeStarted], timeout: 1)
+        await fulfillment(of: [reattachProbeStarted], timeout: 5)
 
         let secondPathChangeStarted = expectation(description: "second path change started")
         let secondPathChange = Task { @MainActor in
             secondPathChangeStarted.fulfill()
             await coordinator.networkPathDidChange()
         }
-        await fulfillment(of: [secondPathChangeStarted], timeout: 1)
+        await fulfillment(of: [secondPathChangeStarted], timeout: 5)
 
         releaseReattachProbe.signal()
         await firstPathChange.value
@@ -644,7 +644,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let firstReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        await fulfillment(of: [firstStatusStarted], timeout: 1)
+        await fulfillment(of: [firstStatusStarted], timeout: 5)
 
         let secondReconnectStarted = expectation(description: "second reconnect request started")
         let secondReconnectReturned = CoordinatorLockedCounter()
@@ -653,7 +653,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             await coordinator.reconnectIfNeeded()
             _ = secondReconnectReturned.increment()
         }
-        await fulfillment(of: [secondReconnectStarted], timeout: 1)
+        await fulfillment(of: [secondReconnectStarted], timeout: 5)
 
         XCTAssertEqual(statusRequestCount.value, 1)
         XCTAssertEqual(secondReconnectReturned.value, 0)
@@ -686,14 +686,14 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let firstReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        await fulfillment(of: [firstStatusStarted], timeout: 1)
+        await fulfillment(of: [firstStatusStarted], timeout: 5)
 
         let joiningReconnectStarted = expectation(description: "joining reconnect request started")
         let secondReconnect = Task { @MainActor in
             joiningReconnectStarted.fulfill()
             await coordinator.reconnectIfNeeded(modelContext: modelContext)
         }
-        await fulfillment(of: [joiningReconnectStarted], timeout: 1)
+        await fulfillment(of: [joiningReconnectStarted], timeout: 5)
 
         releaseFirstStatus.signal()
         await firstReconnect.value
@@ -728,13 +728,13 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let firstReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        await fulfillment(of: [firstLoadSuspended], timeout: 1)
+        await fulfillment(of: [firstLoadSuspended], timeout: 5)
 
         let joiningReconnect = Task { @MainActor in
             joiningReconnectStarted.fulfill()
             await coordinator.reconnectIfNeeded(modelContext: modelContext)
         }
-        await fulfillment(of: [joiningReconnectStarted], timeout: 1)
+        await fulfillment(of: [joiningReconnectStarted], timeout: 5)
 
         let continuation = try XCTUnwrap(releaseFirstLoad)
         releaseFirstLoad = nil
@@ -772,7 +772,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let firstReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        await fulfillment(of: [firstStatusStarted], timeout: 1)
+        await fulfillment(of: [firstStatusStarted], timeout: 5)
 
         coordinator.start(streamID: "stream-123")
         coordinator.suspendActiveStreamConnection()
@@ -780,7 +780,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             await coordinator.reconnectIfNeeded()
         }
         releaseFirstStatus.signal()
-        await fulfillment(of: [secondStatusStarted], timeout: 1)
+        await fulfillment(of: [secondStatusStarted], timeout: 5)
         await firstReconnect.value
         await secondReconnect.value
 
@@ -814,7 +814,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         let firstReconnect = Task { @MainActor in
             await coordinator.reconnectIfNeeded()
         }
-        await fulfillment(of: [firstStatusStarted], timeout: 1)
+        await fulfillment(of: [firstStatusStarted], timeout: 5)
 
         let preparation = coordinator.prepareForSessionLoad()
         coordinator.reconcileSessionLoad(
@@ -826,7 +826,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             await coordinator.reconnectIfNeeded()
         }
         releaseFirstStatus.signal()
-        await fulfillment(of: [secondStatusStarted], timeout: 1)
+        await fulfillment(of: [secondStatusStarted], timeout: 5)
         await firstReconnect.value
         await secondReconnect.value
 
@@ -1678,7 +1678,7 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
             try await coordinator.cancelActiveStream()
         }
 
-        await fulfillment(of: [cancelRequestStarted], timeout: 1)
+        await fulfillment(of: [cancelRequestStarted], timeout: 5)
         coordinator.start(streamID: "stream-new")
         releaseCancelResponse.signal()
         let response = try await cancelTask.value

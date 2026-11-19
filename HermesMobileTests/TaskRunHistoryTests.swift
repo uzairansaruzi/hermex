@@ -5,10 +5,6 @@ import XCTest
 /// which upstream makes non-obvious, and a slow run-output request landing
 /// after the user has moved on. A Hermes host's runs (#1042) are its run sessions.
 final class TaskRunHistoryTests: APIClientTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     // MARK: - Decoding
 

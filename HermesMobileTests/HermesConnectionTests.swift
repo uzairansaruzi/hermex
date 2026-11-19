@@ -10,10 +10,6 @@ import XCTest
                                           value: #"{"cf-access-client-id":"id.access","cf-access-client-secret":"secret"}"#)
     private let access = CustomHeader(name: "X-Access", value: "token")
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     func testConsumersShareOneSignInAndOneCookieJar() async throws {
         let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },

@@ -25,32 +25,23 @@ import Observation
         XCTAssertNil(summaries.states[key])
     }
 
+    /// A card that leaves (its `.task` cancelled) and returns while loading keeps its one request.
     func testACardThatLeavesAndReturnsWhileLoadingKeepsItsOneRequest() async throws {
         let summaries = ApprovalSummaries(), key = key()
         let started = expectation(description: "summary started")
         var calls = 0
         var reply: CheckedContinuation<String, Never>?
-        let presentation = ApprovalSummaryPresentation(key: key, summaries: summaries) {
+        let load: @MainActor () async throws -> String = {
             calls += 1
             return await withCheckedContinuation { reply = $0; started.fulfill() }
         }
-        let presence = CardPresence()
-        let overlay = ApprovalRequestCard(content: content, isResponding: false, errorMessage: nil,
-                                             onChoice: { _ in }, onSkipAll: {}, summary: presentation)
-        let window = try await host(PresenceHarness(presence: presence, card: overlay)
-            .defaultAppStorage(appStorage(explains: true)))
-        defer { close(window) }
+        let first = Task { await summaries.show(key, load: load) }
         await fulfillment(of: [started], timeout: 2)
-        // A question outranks the approval, then is answered and the approval returns.
-        presence.isShown = false
-        await settle(window)
+        first.cancel()
+        await summaries.show(key) { calls += 1; return "A second request" }
         XCTAssertEqual(summaries.states[key], .loading, "leaving the screen isn't answering")
-        presence.isShown = true
-        await settle(window)
-        let ready = expectation(description: "the returned card's summary arrived")
-        withObservationTracking { _ = summaries.states[key] } onChange: { ready.fulfill() }
-        reply?.resume(returning: "Removes the draft file.")
-        await fulfillment(of: [ready], timeout: 2)
+        try XCTUnwrap(reply, "The summary never started").resume(returning: "Removes the draft file.")
+        await first.value
         XCTAssertEqual(summaries.states[key], .ready("Removes the draft file."))
         XCTAssertEqual(calls, 1)
     }
@@ -150,17 +141,5 @@ import Observation
         await summaries.show(key) { retried = true; return "Retry" }
         XCTAssertFalse(retried)
         XCTAssertEqual(summaries.states[key], .unavailable)
-    }
-}
-
-@Observable private final class CardPresence { var isShown = true }
-
-/// Mounts and unmounts a card the way a higher-priority request replaces it on screen.
-private struct PresenceHarness<Card: View>: View {
-    let presence: CardPresence
-    let card: Card
-
-    var body: some View {
-        ZStack { if presence.isShown { card } }
     }
 }

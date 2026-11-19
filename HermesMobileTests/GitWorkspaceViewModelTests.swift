@@ -4,10 +4,6 @@ import SwiftUI
 
 /// View-model behaviour + diff parsing for the workspace-git feature (issue #312, Slice A).
 final class GitWorkspaceViewModelTests: APIClientTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     private func session(id: String) throws -> SessionSummary {
         let decoder = JSONDecoder()

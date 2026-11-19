@@ -4,10 +4,6 @@ import XCTest
 /// Request construction + tolerant decoding for the read-only workspace-git endpoints
 /// (issue #312, Slice A). Mirrors `APIClientWorkspaceFileTests`.
 final class APIClientGitTests: APIClientTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     private func query(_ request: URLRequest) throws -> [String: String?] {
         let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)

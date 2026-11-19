@@ -6,11 +6,6 @@ import XCTest
 /// `scripts/capture-hermes-fixtures --local` from `scripts/local-hermes` at the
 /// `HERMES_AGENT_TESTED_SHA` pin, or are rows in its shape.
 @MainActor final class HermesInsightsClientTests: XCTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
-
     /// The recorded window, one hidden session long: totals, its day and its model from the
     /// analytics routes, and messages from `insights.get`, whose count leaves hidden sessions out.
     /// Every read names the window and the Profile.

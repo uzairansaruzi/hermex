@@ -14,10 +14,6 @@ import XCTest
         clearSavedKanbanBoards()
     }
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     func testHandshakeShowsTheHostsEightColumnsWritableAndStreamsFromTheBoardsCursor() async {
         let stream = RecordingKanbanStream()

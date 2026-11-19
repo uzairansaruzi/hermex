@@ -77,10 +77,6 @@ final class APIClientTTSTests: APIClientTestCase {
     private let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                        username: "user", password: "secret")
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     /// The host's provider picks the format; every format comes back as its bytes.
     func testSpeechIsTheTextSpokenInTheProfilesVoice() async throws {

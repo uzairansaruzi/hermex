@@ -4,11 +4,6 @@ import XCTest
 /// A Hermes chat's workspace files (#1112): `HermesWorkspaceFileClient` against a scripted host
 /// whose replies are the shapes `hermes_cli/web_routers/files.py` answers at the pin (ca678285).
 @MainActor final class HermesWorkspaceFileClientTests: XCTestCase {
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
-
     // MARK: Listing
 
     /// The root lists the chat's folder; a subfolder is the folder plus its relative path, with a

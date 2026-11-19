@@ -8,10 +8,6 @@ import XCTest
     private let candidate = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                           username: "", password: "")
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     /// The expected value is Python's `urlsafe_b64encode(sha256(verifier))` without padding;
     /// it has both `-` and `_`, so it also pins the base64url alphabet.

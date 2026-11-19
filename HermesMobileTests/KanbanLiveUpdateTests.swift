@@ -9,10 +9,6 @@ final class KanbanLiveUpdateTests: XCTestCase {
         clearSavedKanbanBoards()
     }
 
-    override func tearDown() {
-        HermesHostFixture.reset()
-        super.tearDown()
-    }
 
     func testVisibleBoardStartsAtSnapshotCursorAndCoalescesEventBurst() async throws {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])

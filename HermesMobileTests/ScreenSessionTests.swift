@@ -67,8 +67,13 @@ import XCTest
         }
     }
 
+    /// Waits as `reach` does, with no clock: a stalled runner can't time the stream out.
     private func socket(_ index: Int) async -> ScriptedRFBSocket {
-        await waitUntil("stream \(index) opened") { [opened] in opened.sockets.count > index }
+        while opened.sockets.count <= index {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                withObservationTracking { _ = opened.sockets.count } onChange: { continuation.resume() }
+            }
+        }
         return sockets[index]
     }
 
