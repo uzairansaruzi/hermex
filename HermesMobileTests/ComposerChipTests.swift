@@ -761,15 +761,11 @@ final class ComposerFocusTransitionTests: XCTestCase {
         let editor = try XCTUnwrap(findEditor(in: host.view))
         XCTAssertTrue(editor.becomeFirstResponder())
         let draft = state.text
+        let blurred = XCTNSNotificationExpectation(name: UITextView.textDidEndEditingNotification, object: editor)
         state.isFocused = false
         host.rootView = ComposerPresentationHarness(state: state, updateRevision: 1)
         host.view.layoutIfNeeded()
-        let settled = expectation(description: "queued focus update")
-        Task { @MainActor in
-            await Task.yield()
-            settled.fulfill()
-        }
-        wait(for: [settled], timeout: 5)
+        wait(for: [blurred], timeout: 5)
         XCTAssertFalse(editor.isFirstResponder)
         XCTAssertEqual(state.text, draft)
     }

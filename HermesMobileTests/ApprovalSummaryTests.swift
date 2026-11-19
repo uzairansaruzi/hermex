@@ -38,7 +38,7 @@ import Observation
         let first = Task { await summaries.show(key, load: load) }
         await fulfillment(of: [started], timeout: 2)
         first.cancel()
-        await summaries.show(key, load: load)
+        await summaries.show(key) { calls += 1; return "A second request" }
         XCTAssertEqual(summaries.states[key], .loading, "leaving the screen isn't answering")
         reply?.resume(returning: "Removes the draft file.")
         await first.value
