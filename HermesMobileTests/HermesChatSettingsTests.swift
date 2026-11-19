@@ -540,6 +540,26 @@ import Observation
         XCTAssertEqual(chat.writes("config.set").count, 1)
     }
 
+    /// A drop that arrives after a gap in the frames still ends the wait, ahead of the rebuild.
+    func testADropArrivingAfterAGapStillEndsTheDeferredPicksWait() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        ModelPresetStore(server: Self.server).record(effort: "high", for: Self.opus.favoriteKey)
+        chat.host.next("config.set", .init(result: Self.modelReply(deferred: true)))
+        chat.host.always("config.set", .init(result: Self.effortReply("high")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        chat.receive(event(1, "session.info", ["running": .bool(true)]))
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
+        chat.receive(event(3, "notification.show", ["key": .string("model_switch.dropped"), "level": .string("warn"),
+                                                   "text": .string("Stayed on claude-sonnet.")]))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await readCatalog(controls, on: chat.host)
+        XCTAssertNil(chat.turn.settings.presetApplication)
+        XCTAssertEqual(chat.writes("config.set").count, 1)
+    }
+
     /// A deferred pick another model replaces before it runs ends without a preset: a read that
     /// shows a third model drops it, so the pick's model going live later sends nothing.
     func testADeferredPickReplacedByAThirdModelAppliesNoPreset() async throws {
