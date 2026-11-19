@@ -1186,8 +1186,8 @@ final class PushRegistrationTests: XCTestCase {
                                                     pushSessionID: "tip")
         let leftover = manager.leftover(id: "persisted", attributes: attributes, isFinished: false)
         // The chat takes the turn over while the leftover's DELETE is in flight.
-        wire.deleteHold = { @MainActor [serverA] in
-            manager.startSession(sessionID: "hermes:default:root", server: serverA, destinationURL: nil, pushSessionID: "tip",
+        wire.deleteHold = { @MainActor [weak manager, serverA] in
+            manager?.startSession(sessionID: "hermes:default:root", server: serverA, destinationURL: nil, pushSessionID: "tip",
                                  sessionTitle: "Run", turn: "1000.0", startedAt: .now)
         }
         var ended: [LeftoverLiveActivityAction] = []
