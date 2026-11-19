@@ -2348,12 +2348,12 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationDidLoseFrames() { rebuildAfterGap() }
 
-    /// The host's word that the model pick it deferred won't run (#1771), in order or around a
-    /// rebuild: a canonical `session.updated` refusing it, or a dashboard's `model_switch.dropped`
-    /// notice at the next turn's start. A confirmation ask is taken in order only.
+    /// The host's word on the model pick it deferred, around a rebuild or in order: a canonical
+    /// `session.updated` refusing it or asking to confirm it, the ask held for the reattach
+    /// (#1604, #1771), or a dashboard's `model_switch.dropped` notice at the next turn's start.
     private func endDeferredPick(on frame: BotJSON) {
         switch frame["type"].text {
-        case "session.updated": settings.controls.receiveDeferredPickRefusal(frame["payload"])
+        case "session.updated": settings.controls.holdDeferredPickUpdate(frame["payload"])
         case "notification.show" where frame["payload"]["key"].text == "model_switch.dropped":
             settings.controls.dropDeferredPick()
         default: break

@@ -182,10 +182,16 @@ import Observation
     /// next turn's start.
     func dropDeferredPick() { deferredPick = nil }
 
+    /// A canonical `session.updated` about the deferred pick that arrived around a rebuild: a
+    /// refusal ends the wait at once, and anything else is held for the reattach's `connect`,
+    /// which would clear a confirmation shown now.
+    func holdDeferredPickUpdate(_ payload: BotJSON) {
+        if !receiveDeferredPickRefusal(payload), deferredPick != nil { heldConfirmation = payload }
+    }
+
     /// Ends the wait when `payload`, a canonical `session.updated`, refused the deferred pick, and
-    /// says whether it did. Safe around a rebuild, unlike the confirmation ask, which the
-    /// reattach's `connect` would clear.
-    @discardableResult func receiveDeferredPickRefusal(_ payload: BotJSON) -> Bool {
+    /// says whether it did.
+    private func receiveDeferredPickRefusal(_ payload: BotJSON) -> Bool {
         guard payload["operation"].text == "model", payload["status"].text == "refused",
               let refused = payload["target_model"].text, refused == deferredPick?.model.id else { return false }
         deferredPick = nil; heldConfirmation = nil

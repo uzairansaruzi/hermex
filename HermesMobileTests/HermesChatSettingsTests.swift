@@ -560,6 +560,23 @@ import Observation
         XCTAssertEqual(chat.writes("config.set").count, 1)
     }
 
+    /// A canonical host's ask to confirm its deferred pick that arrives after a gap in the frames
+    /// shows once the rebuild's reattach reconnects the controls.
+    func testADeferredPicksConfirmationArrivingAfterAGapShowsAfterTheRebuild() async throws {
+        let chat = await openChat(canonical: true)
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.host.next("session.mutate", .init(result: Self.deferredEdit))
+        _ = await chat.model.selectComposerModel(Self.opus)
+
+        chat.receive(Self.frame(1, "session.info", ["running": .bool(true)]))
+        chat.receive(Self.frame(3, "session.updated", [
+            "status": .string("confirmation_required"), "confirm_required": .bool(true), "confirm": .string("t9"),
+            "confirm_message": .string("Opus costs about 5x more."),
+            "payload": .object(["model": .string("claude-opus"), "provider": .string("anthropic")])]))
+        await waitUntil("asked") { controls.confirmation != nil }
+        XCTAssertEqual(controls.confirmation?.token, "t9")
+    }
+
     /// A deferred pick another model replaces before it runs ends without a preset: a read that
     /// shows a third model drops it, so the pick's model going live later sends nothing.
     func testADeferredPickReplacedByAThirdModelAppliesNoPreset() async throws {
