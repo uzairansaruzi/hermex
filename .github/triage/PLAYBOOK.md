@@ -99,17 +99,32 @@ grounded in source beats guessing.
 
 ## 6. Check existing issues and releases
 
-Search open and closed issues on the repo you chose:
+Search open and closed issues on the repo you chose before you draft anything. One
+query in the user's words misses most duplicates, so run at least three: the error
+text, the feature or screen involved, and the symptom in plain words. Searches leave
+this machine, so first scrub every term as step 9 says. On Hermex, also search
+earlier agent reports:
 
     gh issue list -R <owner>/<repo> --state all --search "<terms>"
+    gh issue list -R uzairansaruzi/hermex --state all --label via-triage --search "<terms>"
+
+Open the closest few with `gh issue view <n> -R <owner>/<repo> --comments` and
+compare symptom, environment and diagnosis, not just the title. An issue closed as
+a duplicate points to the one it duplicates: decide on that one instead.
 
 Then compare the user's version with `gh release list -R uzairansaruzi/hermex -L 5`
-and read the notes of anything newer. If the fix already shipped, say so plainly and
-point them to the App Store or TestFlight update.
+and read the notes of anything newer.
 
-If an existing issue matches, offer to comment there with this user's environment and
-evidence instead of filing a new one. A confirmed duplicate with fresh evidence beats
-a second thread.
+Tell the user what you searched and the closest matches, even when none fits. Then:
+
+- **An open issue matches**: comment there (step 8). Never file a second one.
+- **A closed issue matches and the user's version predates its fix**: say so plainly
+  and point them to the App Store or TestFlight update, or, when no release has the
+  fix yet, tell them it has merged and awaits a release. Nothing to file. If you don't
+  know their version, ask them to check Settings → About before you decide.
+- **A closed issue matches but the user already runs a version with its fix, or it
+  was closed without one**: file a new issue and link the old one under `related`.
+- **Nothing matches**: file a new issue.
 
 ## 7. Offer outcomes
 
@@ -117,14 +132,35 @@ Present what you found, marking each claim as seen (a log line, a source line) o
 inferred. A log event that lines up in time is a candidate until the user confirms it
 matches what they saw, and a code path that could fail is not proof that it did.
 
-Then let the user choose: fix it now, file an issue, comment on an existing one, or
-nothing. For fixes, prefer server configuration and settings in the app; propose
-exact commands, explain them, and run them only with approval.
+Then let the user choose: fix it now, post where step 6 pointed, or nothing. For
+fixes, prefer server configuration and settings in the app; propose exact commands,
+explain them, and run them only with approval.
 
 Leave Hermex and Hermes source unpatched: a good issue with strong repro steps helps
 every user, a local patch helps one machine until the next update.
 
-## 8. Write the issue
+## 8. Post the comment or issue
+
+Check who `gh` is logged in as (`gh api user -q .login`). Then show the user the
+complete final text, where it will post, and that account, which may not be theirs,
+and get an explicit yes to exactly that. When `gh` is missing, signed in as
+someone else, or the user prefers their own account, give them a link and the text
+to paste instead.
+
+Remind the user to attach their screenshots after posting; you cannot attach them
+from here.
+
+### Comment on an existing issue
+
+Add what this user brings that the thread lacks; don't restate the original report.
+If they bring nothing new, don't comment: point them to the issue to follow it.
+Use the `### <field label>` headings from the form below, keeping only those with
+something new: usually Environment, how their steps differed, any diagnosis beyond
+what is already there, and Evidence. End with the "Triaged by" line.
+
+    gh issue comment <n> -R <owner>/<repo> --body-file <file>
+
+### File a new issue
 
 For an upstream repo, follow that repo's own issue template; the rest of this step is
 for Hermex. Fill Hermex's `via-triage` form, whose field ids are, in order:
@@ -142,11 +178,6 @@ Use a plain, specific title with no prefix. End the body with one line naming th
 agent and model that wrote it, for example
 `Triaged by Hermes Agent 0.22.2 using deepseek-v4.1-flash`.
 
-Show the user the complete final text and get an explicit yes before posting.
-
-To post, check who `gh` is logged in as (`gh api user -q .login`) and tell the user:
-the issue is posted under that account, which may not be theirs. With their yes:
-
     gh issue create -R uzairansaruzi/hermex --title "<title>" --body-file <file> \
       --label via-triage --label needs-triage
 
@@ -154,14 +185,10 @@ Write the body as the form would: one `### <field label>` heading per field. Git
 drops the labels when the account cannot label issues on this repo; the closing
 "Triaged by" line still marks the issue.
 
-When `gh` is missing, signed in as someone else, or the user prefers their own
-account, give them a prefilled link instead:
+For the prefilled link, use
 `https://github.com/uzairansaruzi/hermex/issues/new?template=via-triage.yml&title=…`
 with each field id as a URL-encoded query parameter. Keep the link under 8,000
 characters; drop `evidence` to the body they paste by hand if it is longer.
-
-Remind the user to attach their screenshots after the issue exists; you cannot attach
-them from here.
 
 ## 9. Redact
 
