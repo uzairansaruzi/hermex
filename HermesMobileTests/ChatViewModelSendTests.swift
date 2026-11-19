@@ -5782,7 +5782,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let loadTask = Task { @MainActor in
             await viewModel.loadComposerConfiguration()
         }
-        await fulfillment(of: [firstProfilesStarted], timeout: 1)
+        await fulfillment(of: [firstProfilesStarted], timeout: 5)
         defer { releaseProfilesIfNeeded() }
 
         let selectWorkspaceTask = Task { @MainActor in

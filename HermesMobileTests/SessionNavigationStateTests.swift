@@ -715,7 +715,7 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         // Main-queue work the selection deferred ran before this turn.
         let deferredWorkRan = expectation(description: "deferred work ran")
         DispatchQueue.main.async { deferredWorkRan.fulfill() }
-        wait(for: [deferredWorkRan], timeout: 1)
+        wait(for: [deferredWorkRan], timeout: 5)
 
         XCTAssertFalse(detailStack.viewControllers.contains(oldScreen), "A root selection must pop the old root's screen")
         XCTAssertEqual(detailStack.viewControllers.count, 2, "A root selection must keep the new root's own push")

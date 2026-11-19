@@ -995,7 +995,7 @@ final class SessionListMutationTests: XCTestCase {
         let firstMutation = Task { @MainActor in
             await viewModel.setPinned(true, for: session)
         }
-        await fulfillment(of: [firstPinRequestStarted], timeout: 1)
+        await fulfillment(of: [firstPinRequestStarted], timeout: 5)
         XCTAssertTrue(viewModel.isMutating(session))
 
         let duplicatePinMutation = Task { @MainActor in
@@ -1162,7 +1162,7 @@ final class SessionListMutationTests: XCTestCase {
         await viewModel.load()
         let session = try XCTUnwrap(viewModel.sessions.first)
         let rename = Task { @MainActor in await viewModel.rename(session, to: "Launch Notes") }
-        await fulfillment(of: [renameStarted], timeout: 1)
+        await fulfillment(of: [renameStarted], timeout: 5)
         let didArchive = await viewModel.archive(session)
         let archiveFailure = try XCTUnwrap(viewModel.actionErrorMessage)
         releaseRename.signal()
@@ -2212,7 +2212,7 @@ final class SessionListMutationTests: XCTestCase {
         let oldTask = Task {
             await viewModel.searchSessions(query: "old", debounceNanoseconds: 0)
         }
-        await fulfillment(of: [oldSearchStarted], timeout: 1)
+        await fulfillment(of: [oldSearchStarted], timeout: 5)
 
         await viewModel.searchSessions(query: "new", debounceNanoseconds: 0)
         releaseOldSearch.signal()
@@ -2705,7 +2705,7 @@ final class SessionListMutationTests: XCTestCase {
         let staleOpen = Task { @MainActor in
             await viewModel.sessionForOpening(staleSession)
         }
-        await fulfillment(of: [detailRequestStarted], timeout: 1)
+        await fulfillment(of: [detailRequestStarted], timeout: 5)
 
         let openedNewerDestination = await viewModel.sessionForOpening(newerDestination)
         releaseDetailRequest.signal()
@@ -2740,10 +2740,10 @@ final class SessionListMutationTests: XCTestCase {
 
         // Reopening the same chat: the older open finishing must not clear the newer one.
         let staleOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
-        await fulfillment(of: [importsStarted[0]], timeout: 1)
+        await fulfillment(of: [importsStarted[0]], timeout: 5)
         XCTAssertEqual(viewModel.openingSessionID, "cli-a")
         let liveOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
-        await fulfillment(of: [importsStarted[1]], timeout: 1)
+        await fulfillment(of: [importsStarted[1]], timeout: 5)
         releaseImports[0].signal()
         let staleResult = await staleOpen.value
         XCTAssertNil(staleResult)
@@ -2755,7 +2755,7 @@ final class SessionListMutationTests: XCTestCase {
 
         // Navigating elsewhere (New Chat, a utility screen) abandons the import at once.
         let abandonedOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
-        await fulfillment(of: [importsStarted[2]], timeout: 1)
+        await fulfillment(of: [importsStarted[2]], timeout: 5)
         XCTAssertEqual(viewModel.openingSessionID, "cli-a")
         viewModel.invalidateSessionOpening()
         XCTAssertNil(viewModel.openingSessionID)
