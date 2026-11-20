@@ -571,6 +571,7 @@ final class AuthManager {
         } else {
             try? keychain.delete(.customHeaders, scope: scope)
         }
+        try? keychain.delete(.customHeaders)
     }
 
     private func hydrateCustomHeaders(for server: URL) {
