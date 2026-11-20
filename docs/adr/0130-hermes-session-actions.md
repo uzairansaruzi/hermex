@@ -44,9 +44,9 @@ Lives in: `HermesMobile/Features/Settings/ArchivedSessionsViewModel.swift`
 
 Lives in: `HermesMobile/Features/Settings/ArchivedSessionsViewModel.swift`
 
-## Show no error for a stale archived page read, but do for a stale first read
+## Show no error for an archived page read whose task was cancelled
 
-`BotClient` throws `BotFailure.stale`, not `CancellationError`, when the task reading a page is cancelled, so `loadMore` drops `stale` silently, or a "load more" whose task ends shows "This action is no longer current" (#1782). Nothing is lost: `hasMore` still holds and the next "load more" reads the page. `loadHermes` drops a cancelled task by `Task.isCancelled` instead and still shows `stale` with the task live, because then the screen's client has gone dead: it closes that client, so the next load connects a new one, and the error stops an empty list looking like no archived sessions.
+`BotClient` throws `BotFailure.stale`, not `CancellationError`, when the task reading a page is cancelled, so `loadMore` and `loadHermes` drop a failure by `Task.isCancelled`, or a "load more" whose task ends shows "This action is no longer current" (#1782). Neither drops `stale` itself: with the task live it means the screen's client has gone dead, and the error is what tells the user to refresh rather than leave a "Load more" that does nothing or an empty list that looks like no archived sessions.
 
 Lives in: `HermesMobile/Features/Settings/ArchivedSessionsViewModel.swift`
 

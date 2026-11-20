@@ -151,7 +151,7 @@ final class ArchivedSessionsViewModel {
                 show(pages)
             } while self.pages.rows.count == shown && self.pages.hasMore
         } catch {
-            guard serial == readSerial, !error.isCancellation, error as? BotFailure != .stale else { return }
+            guard serial == readSerial, !Task.isCancelled, !error.isCancellation else { return }
             actionErrorMessage = hermesFailure(error)
         }
     }
