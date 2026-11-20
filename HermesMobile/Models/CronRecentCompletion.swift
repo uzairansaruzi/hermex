@@ -32,8 +32,17 @@ struct CronRecentCompletion: Decodable, Equatable, Identifiable {
     let sessionId: String?
     let messageCount: Int?
 
-    var didFail: Bool {
-        status == "error"
+    enum Outcome {
+        case completed, failed, stopped, unknown
+    }
+
+    var outcome: Outcome {
+        switch status {
+        case "ok": .completed
+        case "error", "delivery_failed": .failed
+        case "cancelled": .stopped
+        default: .unknown
+        }
     }
 
     var displayName: String {
