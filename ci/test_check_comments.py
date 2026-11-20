@@ -8,7 +8,7 @@ import check_comments
 
 
 class CheckCommentsTests(unittest.TestCase):
-    def test_counts_comments_and_leaves_strings_and_wait_annotations(self):
+    def test_counts_comments_and_leaves_strings_and_regexes(self):
         source = (
             "/// Doc.\n"
             "let url = \"https://example.com\" // trailing\n"
@@ -17,11 +17,18 @@ class CheckCommentsTests(unittest.TestCase):
             "let text = \"\"\"\n"
             "// inside a string\n"
             "\"\"\"\n"
-            "// test-wait: hangs until the caller\n"
-            "// cancels it\n"
-            "try await Task.sleep(for: .seconds(60)) // not the annotation\n"
+            "let quote = #\"\"\"#\n"
+            "// after a one-line raw string\n"
+            "let link = #/https?://example\\.com/#\n"
+            "let path = /a\"b\\/\\/c/ // after a regex\n"
+            "let half = total / 2 // after a division\n"
         )
-        self.assertEqual(check_comments.comment_lines(source), [1, 2, 3, 4, 10])
+        self.assertEqual(check_comments.comment_lines(source), [1, 2, 3, 4, 9, 11, 12])
+
+    def test_a_wait_annotation_is_kept_only_in_tests(self):
+        source = "// test-wait: hangs until cancelled\ntry await Task.sleep(for: .seconds(60))\n"
+        self.assertEqual(check_comments.comment_lines(source, waits=True), [])
+        self.assertEqual(check_comments.comment_lines(source), [1])
 
     def test_strip_deletes_comments_and_the_gaps_they_leave(self):
         source = (
@@ -34,6 +41,7 @@ class CheckCommentsTests(unittest.TestCase):
             "    // MARK: State\n"
             "\n"
             "    let url = \"https://example.com\" // trailing\n"
+            "    let/* between tokens */answer = 42\n"
             "\n"
             "    // Last.\n"
             "}\n"
@@ -43,12 +51,17 @@ class CheckCommentsTests(unittest.TestCase):
             "\n"
             "struct A {\n"
             "    let url = \"https://example.com\"\n"
+            "    let answer = 42\n"
             "}\n"
         ))
 
     def test_a_file_may_not_gain_comments(self):
         over, _ = check_comments.drift({"Old.swift": 3, "New.swift": 1}, {"Old.swift": 2})
         self.assertEqual(over, [("New.swift", 1, 0), ("Old.swift", 3, 2)])
+
+    def test_a_baseline_may_not_be_raised_past_the_target_branch(self):
+        raised, _ = check_comments.drift({"Old.swift": 3, "New.swift": 1}, {"Old.swift": 3})
+        self.assertEqual(raised, [("New.swift", 1, 0)])
 
     def test_removed_comments_have_to_be_locked_in(self):
         _, under = check_comments.drift({"Old.swift": 1}, {"Old.swift": 2, "Gone.swift": 4})

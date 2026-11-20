@@ -158,8 +158,6 @@ enum WebuiSessionTransfer {
         return body
     }
 
-    /// Whether `batch` fits one import's session, message and request-size limits, counting the
-    /// write identity `HermesREST.importSessions` adds to the body.
     nonisolated static func fits(_ batch: [Prepared], destination: String) -> Bool {
         guard batch.count <= sessionsPerImport, batch.reduce(0, { $0 + $1.messageCount }) <= messagesPerImport else { return false }
         let overhead = 32 + destination.utf8.count * 2 + max(0, batch.count - 1)
@@ -167,7 +165,6 @@ enum WebuiSessionTransfer {
         return batch.reduce(overhead) { $0 + $1.encoded.count } <= bytesPerImport
     }
 
-    /// One chat's export from the webui, converted off the main actor.
     @MainActor
     private static func export(_ id: String, from webui: APIClient) async -> Preparation {
         do {
@@ -178,8 +175,6 @@ enum WebuiSessionTransfer {
         }
     }
 
-    /// The host's reasons, at the pin, for a session over its own limits and for a payload over
-    /// the request's totals, which falls on whichever session crossed them.
     private static let sessionLimitReasons: Set<String> = [
         "messages exceeds the per-session import limit", "session exceeds the import size limit"
     ]
@@ -187,7 +182,6 @@ enum WebuiSessionTransfer {
         "import exceeds the total size limit", "messages exceeds the total import limit"
     ]
 
-    /// One run's outcomes and the import steps that settle them.
     @MainActor
     private final class Attempt {
         let hermes: any BotTransport
@@ -196,7 +190,6 @@ enum WebuiSessionTransfer {
         let willDispatch: @MainActor (Dispatch) async throws -> Void
         let progress: @MainActor (Int, Int) -> Void
         private(set) var outcomes: [String: Outcome] = [:]
-        /// Set when `willDispatch` failed: nothing more may be sent.
         private var stopped = false
 
         init(hermes: any BotTransport, profiles: [String], total: Int,
@@ -217,7 +210,6 @@ enum WebuiSessionTransfer {
             progress(outcomes.count, total)
         }
 
-        /// Rechecks `batch` in every Hermes Profile, then sends what is still missing.
         func importBatch(_ batch: [Prepared], into destination: String) async {
             guard !batch.isEmpty else { return }
             guard canSend else { return settle(batch.map(\.id), .notSent) }
@@ -234,10 +226,6 @@ enum WebuiSessionTransfer {
             await send(missing, into: destination)
         }
 
-        /// Sends one import of `batch`. A 400 or 413 wrote nothing, so the refused chats are
-        /// dropped, or the batch halved, and the rest sent again. Any other 4xx refuses the batch;
-        /// a 408, a 429, a write fence 409 (`HermesSessionFenceRefusal`, which the next run
-        /// relocates) or any other failure leaves it uncertain.
         private func send(_ batch: [Prepared], into destination: String) async {
             guard !batch.isEmpty else { return }
             guard canSend else { return settle(batch.map(\.id), .notSent) }
@@ -267,8 +255,6 @@ enum WebuiSessionTransfer {
             }
         }
 
-        /// After a 400: settles every chat the host named and sends the rest. A chat named for
-        /// the request's totals isn't at fault, so that batch is halved instead.
         private func resend(_ batch: [Prepared], into destination: String, after refusal: HermesSessionRefusal) async {
             var rest: [Prepared] = []
             var overTotals = false
@@ -287,14 +273,12 @@ enum WebuiSessionTransfer {
             if overTotals {
                 await split(rest, into: destination)
             } else if rest.count == batch.count {
-                // Nothing named matched a chat sent, so nothing can be dropped: report the refusal.
                 settle(batch.map(\.id), .rejected(reason: refusal.message))
             } else {
                 await send(rest, into: destination)
             }
         }
 
-        /// Sends `batch` as two halves; a single chat too large for any request is oversized.
         private func split(_ batch: [Prepared], into destination: String) async {
             guard batch.count > 1 else { return settle(batch.map(\.id), .oversized) }
             let half = batch.count / 2

@@ -837,8 +837,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
             failuresBeforePolling: 3
         ),
         sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { duration in
-            // test-wait: 5 ms debounces and reconnects run for real and longer delays never
-            // elapse in a test; tests wait on signals.
+            // test-wait: 5 ms debounces and reconnects run for real and longer delays never elapse in a test; tests wait on signals.
             try await Task.sleep(for: duration)
         }
     ) -> KanbanFeatureState {

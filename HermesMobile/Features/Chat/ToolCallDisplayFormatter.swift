@@ -332,7 +332,6 @@ private extension JSONValue {
             let text = ToolCallDisplayFormatter.normalizedDisplayString(value)
             return text.contains("\n") ? nil : text
         case .number(let value):
-            // Code-like values (ports, offsets, ids): no locale grouping.
             return Int64(exactly: value).map { String($0) } ?? "\(value)"
         case .bool(let value):
             return value ? "true" : "false"

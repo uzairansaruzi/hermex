@@ -374,8 +374,7 @@ import Observation
 
     private func attach(_ host: BotSocketHost, _ target: ConversationTarget,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
-                        // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
-                        // reaches one passes its own delay.
+                        // test-wait: a factory default; a reconnect waits 1 s or more, so a test that reaches one passes its own delay.
                         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) })
         -> (HermesConversation, RecordingOwner, BotClient) {
         addTeardownBlock { HermesHostFixture.reset() }
@@ -386,8 +385,7 @@ import Observation
 
     private func attach(_ wire: any BotTransport, _ target: ConversationTarget,
                         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
-                        // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
-                        // reaches one passes its own delay.
+                        // test-wait: a factory default; a reconnect waits 1 s or more, so a test that reaches one passes its own delay.
                         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) })
         -> (HermesConversation, RecordingOwner) {
         let conversation = HermesConversation(server: URL(string: "https://hermes.example")!, connection: record,

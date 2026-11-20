@@ -3,8 +3,8 @@
 
 Tests wait on expectations, observation (`waitUntil`) and scripted fixtures, never on
 elapsed time (CLAUDE.md § Verifying). This scans every Swift file under
-HermesMobileTests/, Support helpers included, outside comments and string literals, for
-the known forms:
+HermesMobileTests/, Support helpers included, outside comments, string literals and
+regex literals, for the known forms:
 
 - `Task.sleep`, `Thread.sleep`, `usleep(` and `RunLoop.main/current.run(…)`;
 - deadline loops: `while Date() < …` and `while <clock>.now < …`;
@@ -39,7 +39,9 @@ CALLS = [
 LOOP = re.compile(r"\b(while|repeat)\b")
 YIELD = re.compile(r"\bTask\s*\.\s*yield\s*\(")
 ANNOTATION = re.compile(r"test-wait:(.*)")
-TOKEN = re.compile(r'//|/\*|#*"|[()\[\]{}]')
+TOKEN = re.compile(r'//|/\*|#*"|#+/|/|[()\[\]{}]')
+REGEX_OPENERS = "=(,:[{;!&|?"
+REGEX_KEYWORDS = ("return", "in", "case", "try", "await")
 
 
 def line_finder(text):
@@ -49,8 +51,8 @@ def line_finder(text):
 
 
 def mask(source):
-    """Return `source` with comments and string literals blanked out (newlines kept),
-    and each line's comment text by line number."""
+    """Return `source` with comments, string literals and regex literals blanked out
+    (newlines kept), and each line's comment text by line number."""
     code, comments, _ = scan(source)
     return code, comments
 
@@ -76,6 +78,10 @@ def scan(source):
             hashes += 1
             index += 1
         multiline = source.startswith('"""', index)
+        if multiline and hashes:
+            line_end = source.find("\n", index)
+            if '"' + "#" * hashes in source[index + 1:length if line_end == -1 else line_end]:
+                multiline = False
         index += 3 if multiline else 1
         closer = ('"""' if multiline else '"') + "#" * hashes
         escape = "\\" + "#" * hashes
@@ -93,6 +99,34 @@ def scan(source):
                 return index
             index += 1
         return index
+
+    def regex_end(index):
+        """`index` is at a `/` or at the `#`s of `#/`; returns the index after the regex
+        literal that starts there, or None when a slash there is an operator."""
+        hashes = 0
+        while source[index + hashes] == "#":
+            hashes += 1
+        body = index + hashes + 1
+        if hashes:
+            close = source.find("/" + "#" * hashes, body)
+            return None if close == -1 else close + 1 + hashes
+        if body >= length or source[body] in " \t\n=":
+            return None
+        before = index - 1
+        while before >= 0 and source[before] in " \t\n":
+            before -= 1
+        if before >= 0 and source[before] not in REGEX_OPENERS:
+            word = re.search(r"[A-Za-z_]\w*$", source[max(0, before - 16):before + 1])
+            if not word or word.group() not in REGEX_KEYWORDS:
+                return None
+        while body < length and source[body] != "\n":
+            if source[body] == "\\":
+                body += 2
+            elif source[body] == "/":
+                return body + 1
+            else:
+                body += 1
+        return None
 
     def skip_code(index, until):
         """Masks code from `index` to the unmatched `until` (or the end); returns the index after it."""
@@ -129,6 +163,11 @@ def scan(source):
                 start = index
                 index = skip_string(index)
                 blank(start, index)
+            elif text.endswith("/"):
+                end = regex_end(index)
+                if end is not None:
+                    blank(index, end)
+                index = end or index + len(text)
             elif until is None:
                 index += 1
             elif text in "([{":

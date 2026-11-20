@@ -67,3 +67,9 @@ Lives in: `HermesMobile/Models/ToolCall.swift`
 `ApprovalScope` treats a key as a shell key when it is one `; `-joined part of the approval's description. That check runs last because the `execute_code` approval's description also mentions its key.
 
 Lives in: `HermesMobile/Models/Approval.swift`
+
+## Print numeric tool arguments without locale grouping
+
+A number in a tool call's arguments is a code-like value (a port, an offset, an id), so `ToolCallDisplayFormatter` prints it with `String(_:)` and no locale grouping.
+
+Lives in: `HermesMobile/Features/Chat/ToolCallDisplayFormatter.swift`

@@ -49,3 +49,9 @@ Lives in: `HermesMobile/Features/MoveToHermes/WebuiSessionTransfer.swift`, `Herm
 `WebuiSessionTransfer.importRow` converts one `GET /api/session/export?format=json` reply (redacted by the webui), or returns nil when it is not the chat `id` with its messages. It keeps the id and follows the webui's own state.db mapping (`api/state_sync.py`): the model and the token, cache and estimated-cost totals, dated by `created_at` so Insights counts them on their own days. It sends no title (titles are reconciled after, #1214), folder, pin or parent. Messages keep their role, content as exported (image parts included), tool calls and timestamps, and only user, assistant and tool messages are kept; a 0.21.5 host stored all of it, read back from one disposable import on 2026-10-11.
 
 Lives in: `HermesMobile/Features/MoveToHermes/WebuiSessionTransfer.swift`
+
+## Resend only what a refusal proves unwritten
+
+An import the host answers with a 400 or a 413 wrote nothing. So `WebuiSessionTransfer`'s `Attempt.send` drops the chats a 400 names (`resend`), or halves the batch on a 413 (`split`), and sends the rest again. A chat a 400 names for the request's totals isn't at fault, so that batch is halved instead of dropping it, and a 400 that names no chat that was sent is reported as the refusal it is. Any other 4xx refuses the batch. A 408, a 429, a write fence 409 (`HermesSessionFenceRefusal`, which the next run relocates) or any other failure may have written, so those chats stay uncertain and are not sent again.
+
+Lives in: `HermesMobile/Features/MoveToHermes/WebuiSessionTransfer.swift`

@@ -318,8 +318,7 @@ import Observation
     }
 
     private func openChat(pages: [Int: [BotJSON]], refusedFirst: Bool = false,
-                          // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
-                          // reaches one passes its own delay.
+                          // test-wait: a factory default; a reconnect waits 1 s or more, so a test that reaches one passes its own delay.
                           reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                           _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) async -> Chat {
         let host = BotSocketHost()
