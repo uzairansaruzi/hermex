@@ -7,9 +7,9 @@ listed with their comment-line count in ci/comment_baseline.txt, and that count 
 only go down. A file not listed there allows none. On a pull request the baseline is
 also held to the target branch's, so a PR cannot raise an allowance or add one.
 
-A `// test-wait: <reason>` line in HermesMobileTests/ is read by
-ci/check_test_waits.py, so it is not counted and `--strip` keeps it. One with no
-reason is a comment like any other.
+A `// test-wait: <reason>` line that ci/check_test_waits.py reads for a wait in
+HermesMobileTests/ is not counted and `--strip` keeps it. One with no reason, or
+beside no wait, is a comment like any other.
 
 PR CI runs the check in Tooling Tests; locally:
 
@@ -28,7 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from check_test_waits import ANNOTATION, line_finder, scan
+from check_test_waits import findings, line_finder, scan
 
 REPO = Path(__file__).resolve().parent.parent
 BASELINE = REPO / "ci" / "comment_baseline.txt"
@@ -40,17 +40,13 @@ def keeps_waits(path):
     return str(path).startswith(TESTS)
 
 
-def is_wait_annotation(comment):
-    """Whether `comment` is a `// test-wait:` line that gives a reason."""
-    reason = ANNOTATION.search(comment)
-    return comment.startswith("//") and bool(reason and reason.group(1).strip())
-
-
 def comment_spans(source, waits=False):
     """The (start, end) index range of every comment `--strip` would delete. With
-    `waits`, a `// test-wait: <reason>` line is an annotation and is left out."""
+    `waits`, the `// test-wait: <reason>` line annotating a wait is left out."""
+    line_of = line_finder(source)
+    annotated = {at for _, _, reason, at in findings(source) if reason} if waits else set()
     return [(start, end) for start, end in scan(source)[2]
-            if not (waits and is_wait_annotation(source[start:end]))]
+            if not (source.startswith("//", start) and line_of(start) in annotated)]
 
 
 def comment_lines(source, waits=False):
@@ -76,7 +72,7 @@ def blocks(source, waits=False):
 def strip(source, waits=False):
     """`source` without its comments. A line left empty goes, and so does the blank
     line it would otherwise leave doubled or stranded after an opening brace. A comment
-    that was all that separated two tokens leaves a space."""
+    between two tokens leaves exactly one space."""
     spans = comment_spans(source, waits)
     if not spans:
         return source
@@ -85,9 +81,11 @@ def strip(source, waits=False):
     for start, end in spans:
         out.append(source[cursor:start])
         newlines = source.count("\n", start, end)
-        joins = start > 0 and end < len(source) and not source[start - 1].isspace() and not source[end].isspace()
-        out.append("\n" * newlines if newlines or not joins else " ")
-        cursor = end
+        inline = not newlines and 0 < start and end < len(source)
+        joins = inline and not source[start - 1].isspace() and not source[end].isspace()
+        doubles = inline and source[start - 1] == " " and source[end] == " "
+        out.append("\n" * newlines if not joins else " ")
+        cursor = end + 1 if doubles else end
     out.append(source[cursor:])
     kept = []
     removed_above = False
@@ -194,10 +192,16 @@ def check():
     return 0
 
 
+def repo_path(path):
+    """`path` relative to the repo when it is inside it, however it was spelled."""
+    resolved = (REPO / path).resolve()
+    return str(resolved.relative_to(REPO) if resolved.is_relative_to(REPO) else resolved)
+
+
 def main(argv):
     if argv[1:2] == ["--update"]:
         return update()
-    paths = [str((REPO / path).resolve().relative_to(REPO)) for path in argv[2:]]
+    paths = [repo_path(path) for path in argv[2:]]
     if argv[1:2] == ["--list"]:
         for path in paths or swift_files():
             for first, last, text in blocks((REPO / path).read_text(encoding="utf-8"), keeps_waits(path)):

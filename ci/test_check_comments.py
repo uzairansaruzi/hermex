@@ -20,17 +20,20 @@ class CheckCommentsTests(unittest.TestCase):
             "\"\"\"\n"
             "let quote = #\"\"\"#\n"
             "// after a one-line raw string\n"
-            "let link = #/https?://example\\.com\\/#x//y/#\n"
+            "let link = #/https?://example\\.com\\\\\\/#x//y/#\n"
             "let path = /a\"b\\/\\/c/ // after a regex\n"
             "let half = total / 2 // after a division\n"
+            "let next = /* before a regex */ /a\\/\\// // after it\n"
         )
-        self.assertEqual(check_comments.comment_lines(source), [1, 2, 3, 4, 9, 11, 12])
+        self.assertEqual(check_comments.comment_lines(source), [1, 2, 3, 4, 9, 11, 12, 13])
+        self.assertEqual(check_comments.strip(source).split("\n")[-2], "let next = /a\\/\\//")
 
-    def test_a_wait_annotation_is_kept_only_in_tests(self):
+    def test_a_wait_annotation_is_kept_only_beside_a_wait_in_tests(self):
         source = (
             "// test-wait: hangs until cancelled\n"
             "try await Task.sleep(for: .seconds(60))\n"
-            "// test-wait:\n"
+            "// test-wait: beside no wait\n"
+            "let ready = true\n"
         )
         self.assertEqual(check_comments.comment_lines(source, waits=True), [3])
         self.assertEqual(check_comments.comment_lines(source), [1, 3])

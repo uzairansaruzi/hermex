@@ -100,6 +100,13 @@ def scan(source):
             index += 1
         return index
 
+    def escaped(index):
+        """Whether an odd run of backslashes ends just before `index`."""
+        run = 0
+        while index - run - 1 >= 0 and source[index - run - 1] == "\\":
+            run += 1
+        return run % 2 == 1
+
     def regex_end(index):
         """`index` is at a `/` or at the `#`s of `#/`; returns the index after the regex
         literal that starts there, or None when a slash there is an operator."""
@@ -109,14 +116,19 @@ def scan(source):
         body = index + hashes + 1
         if hashes:
             close = source.find("/" + "#" * hashes, body)
-            while close != -1 and source[close - 1] == "\\" and source[close - 2] != "\\":
+            while close != -1 and escaped(close):
                 close = source.find("/" + "#" * hashes, close + 1)
             return None if close == -1 else close + 1 + hashes
         if body >= length or source[body] in " \t\n=":
             return None
         before = index - 1
-        while before >= 0 and source[before] in " \t\n":
-            before -= 1
+        comment = len(spans) - 1
+        while before >= 0 and (source[before] in " \t\n" or (comment >= 0 and spans[comment][1] == before + 1)):
+            if source[before] in " \t\n":
+                before -= 1
+            else:
+                before = spans[comment][0] - 1
+                comment -= 1
         if before >= 0 and source[before] not in REGEX_OPENERS:
             word = re.search(r"[A-Za-z_]\w*$", source[max(0, before - 16):before + 1])
             if not word or word.group() not in REGEX_KEYWORDS:
@@ -229,14 +241,16 @@ def closes_repeat(code, index):
 
 
 def findings(source):
-    """Yield (line, kinds, reason) for every line that waits; `reason` is its annotation's,
-    "" for one without a reason, or None."""
+    """Yield (line, kinds, reason, annotated) for every line that waits; `reason` is its
+    annotation's, "" for one without a reason, or None, and `annotated` the line the
+    annotation is on. ci/check_comments.py keeps the comments on those lines."""
     code, comments = mask(source)
     lines = code.split("\n")
     line_of = line_finder(code)
 
     def annotation(line):
-        """The reason annotating `line`, "" for an empty one, or None."""
+        """The reason annotating `line` ("" for an empty one) and the line it is on,
+        or None twice."""
         candidates = [line]
         above = line - 1
         while above >= 1 and not lines[above - 1].strip() and above in comments:
@@ -246,8 +260,8 @@ def findings(source):
             for comment in comments.get(candidate, []):
                 match = ANNOTATION.search(comment)
                 if match:
-                    return match.group(1).strip()
-        return None
+                    return match.group(1).strip(), candidate
+        return None, None
 
     found = {}
     for kind, pattern in CALLS:
@@ -260,7 +274,7 @@ def findings(source):
         if body and YIELD.search(code, body[0], body[1]):
             found.setdefault(line_of(match.start()), []).append("Task.yield loop")
     for line in sorted(found):
-        yield line, ", ".join(found[line]), annotation(line)
+        yield (line, ", ".join(found[line]), *annotation(line))
 
 
 def check(root):
@@ -268,7 +282,7 @@ def check(root):
     report = []
     for path in sorted(Path(root).rglob("*.swift")):
         source = path.read_text(encoding="utf-8")
-        for line, kind, reason in findings(source):
+        for line, kind, reason, _ in findings(source):
             if reason:
                 continue
             try:
