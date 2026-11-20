@@ -1087,8 +1087,12 @@ import SwiftUI
         chat.host.expect(asked, onNext: "complete.path")
         let first = Task { await chat.model.loadFileChipReferences(draft: "see @README.md") }
         await fulfillment(of: [asked], timeout: 2)
-        let second = Task { await chat.model.loadFileChipReferences(draft: "see @README.md") }
-        await Task.yield()
+        let secondStarted = expectation(description: "the second pass starts behind the first")
+        let second = Task {
+            secondStarted.fulfill()
+            await chat.model.loadFileChipReferences(draft: "see @README.md")
+        }
+        await fulfillment(of: [secondStarted], timeout: 2)
 
         chat.receive(event(2, "session.info", ["terminal_backend": .string("docker")]))
         await first.value
