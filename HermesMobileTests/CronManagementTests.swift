@@ -292,8 +292,8 @@ final class CronManagementViewModelTests: XCTestCase {
                 return apiTestJSONResponse("""
                 {
                   "completions": [
-                    {"job_id": "job-a", "name": "Renamed", "status": "ok", "completed_at": 100.5},
-                    {"job_id": "job-gone", "name": "Deleted", "status": "error", "completed_at": 300, "message_count": 1e30},
+                    {"job_id": "job-a", "name": "Renamed", "completed_at": 100.5},
+                    {"job_id": "job-gone", "name": "Deleted", "status": "delivery_failed", "completed_at": 300, "message_count": 1e30},
                     {"job_id": "b-id", "name": "Backup", "status": "ok", "completed_at": "200", "message_count": "4"},
                     {"job_id": "no-time", "name": "Broken", "status": "ok", "completed_at": "soon"}
                   ],
@@ -311,7 +311,7 @@ final class CronManagementViewModelTests: XCTestCase {
         await viewModel.recentRunsTask?.value
 
         XCTAssertEqual(viewModel.recentRuns.map(\.jobId), ["job-gone", "b-id", "job-a"], "Newest first; the entry without a usable time is dropped.")
-        XCTAssertEqual(viewModel.recentRuns.map(\.didFail), [true, false, false])
+        XCTAssertEqual(viewModel.recentRuns.map(\.outcome), [.failed, .completed, .unknown])
         XCTAssertEqual(viewModel.recentRuns.map(\.messageCount), [nil, 4, nil], "Out-of-range and string counts decode without trapping.")
 
         XCTAssertEqual(viewModel.job(for: viewModel.recentRuns[2])?.name, "Digest", "Id wins over a stale name.")

@@ -46,13 +46,15 @@ import XCTest
                                                              "last_status": .string("ok")]),
             HermesCronFixture.job("failed", profile: "research", ["last_run_at": .string("2026-10-05T10:00:00.123456-04:00"),
                                                                   "last_status": .string("error")]),
+            HermesCronFixture.job("stopped", profile: "research", ["last_run_at": .string("2026-10-05T11:00:00-04:00"),
+                                                                   "last_status": .string("cancelled")]),
             HermesCronFixture.job("never", profile: "default")
         ])
 
         let recent = CronRecentCompletion.newestFirst(try XCTUnwrap(CronJobList(hermesJobs: jobs).recentRuns))
 
-        XCTAssertEqual(recent.map(\.jobId), ["failed", "ok"])
-        XCTAssertEqual(recent.map(\.didFail), [true, false])
+        XCTAssertEqual(recent.map(\.jobId), ["stopped", "failed", "ok"])
+        XCTAssertEqual(recent.map(\.outcome), [.stopped, .failed, .completed])
     }
 
     func testCreateSendsTheEditorsFieldsToTheTasksProfile() async throws {
