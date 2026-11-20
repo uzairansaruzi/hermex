@@ -41,7 +41,7 @@ YIELD = re.compile(r"\bTask\s*\.\s*yield\s*\(")
 ANNOTATION = re.compile(r"test-wait:(.*)")
 TOKEN = re.compile(r'//|/\*|#*"|#+/|/|[()\[\]{}]')
 REGEX_OPENERS = "=(,:[{;!&|?"
-REGEX_KEYWORDS = ("return", "in", "case", "try", "await")
+REGEX_KEYWORDS = ("return", "in", "case", "try", "await", "if", "guard", "while", "where", "else", "switch", "throw")
 
 
 def line_finder(text):

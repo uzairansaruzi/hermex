@@ -24,9 +24,10 @@ class CheckCommentsTests(unittest.TestCase):
             "let path = /a\"b\\/\\/c/ // after a regex\n"
             "let half = total / 2 // after a division\n"
             "let next = /* before a regex */ /a\\/\\// // after it\n"
+            "if /a\"b/.wholeMatch(in: value) != nil {} // after a condition\n"
         )
-        self.assertEqual(check_comments.comment_lines(source), [1, 2, 3, 4, 9, 11, 12, 13])
-        self.assertEqual(check_comments.strip(source).split("\n")[-2], "let next = /a\\/\\//")
+        self.assertEqual(check_comments.comment_lines(source), [1, 2, 3, 4, 9, 11, 12, 13, 14])
+        self.assertEqual(check_comments.strip(source).split("\n")[-3], "let next = /a\\/\\//")
 
     def test_a_wait_annotation_is_kept_only_beside_a_wait_in_tests(self):
         source = (
