@@ -1,9 +1,6 @@
 import Foundation
 import Observation
 
-/// Hermes Profile names as the host validates them: `[a-z0-9][a-z0-9_-]{0,63}`,
-/// never `default` or another reserved word. The slug is derived from the display
-/// name the user types, so the roster title and the folder name stay related.
 enum BotProfileName {
     static let reserved: Set<String> = ["hermes", "default", "test", "tmp", "root", "sudo"]
 
@@ -28,12 +25,6 @@ enum BotProfileName {
     }
 }
 
-/// One bot creation or duplication for one connection. Setup is three host writes
-/// in order: the Profile (`profiles.create`), its look (`profiles.configure`) and
-/// its canonical "Bot Chat" (`session.create` + `session.title`). Each step records
-/// its own outcome; Try Again repeats only the steps that are not done, and a
-/// step whose reply was lost re-reads the host before writing again, so a retry
-/// never mints a second Profile or a second chat.
 @MainActor @Observable final class BotCreator {
     enum Step: CaseIterable, Identifiable {
         case profile, look, chat
@@ -54,30 +45,19 @@ enum BotProfileName {
         var role = ""
         var appearance = BotProfileAppearance(look: [:], fallbackTitle: "")
         var model: ModelCatalogOption?
-        /// On: `share_auth`, the new bot reads the host's saved sign-ins and keys in
-        /// place. Off: `mirror_credentials: false`, the bot starts with none. Values
-        /// never travel to the phone either way.
         var sharesCredentials = true
-        /// New bots only: becomes the Profile's `SOUL.md` when it has text; empty
-        /// keeps the host's default. A duplicate copies the source's instead.
         var instructions = ""
-        /// New bots only: `no_skills`, so the host seeds only its essential skills.
-        /// The host refuses it with `clone_from`, since a copy brings the source's skills.
         var skipsBundledSkills = false
     }
 
     let server: URL
     let connection: BotConnection
-    /// The bot being duplicated, whose config, skills and instructions the host clones.
     let source: BotProfile?
     private(set) var draft: Draft
     private(set) var phase = Phase.editing
-    /// True while the socket and model inventory are being opened; Create waits for it.
     private(set) var isLoading = false
     private(set) var outcomes: [Step: Outcome] = [:]
     private(set) var modelGroups: [ModelCatalogGroup] = []
-    /// One-line note after a successful create when the host reports the bot
-    /// ended up without a model, so the user knows to finish setup.
     private(set) var note: String?
 
     private var taken: Set<String>
@@ -109,11 +89,8 @@ enum BotProfileName {
         self.draft = draft
     }
 
-    /// The Profile folder name the host will get; empty when the title yields none.
     var name: String { BotProfileName.slug(from: draft.title) }
     var nameIsTaken: Bool { taken.contains(name) }
-    /// True once a create attempt has written anything: the name is committed and
-    /// Try Again resumes the same bot instead of starting another.
     var hasStarted: Bool { !outcomes.isEmpty }
     var nameProblem: String? {
         let name = self.name
@@ -128,8 +105,6 @@ enum BotProfileName {
         phase == .editing && !isLoading && BotProfileName.isValid(name) && (hasStarted || !nameIsTaken)
     }
     var isDuplicate: Bool { source != nil }
-    /// True after a create that finished with something left to do: a look that
-    /// did not save or a bot with no model. The sheet stays up to say so.
     var needsAttention: Bool { note != nil || outcomes.values.contains { $0 != .done } }
 
     func setTitle(_ value: String) { draft.title = value; draft.appearance.title = value }
@@ -148,7 +123,6 @@ enum BotProfileName {
     }
     var holdsConnection: Bool { wire != nil }
 
-    /// "Describe It" under the default Profile: the new bot does not exist yet.
     func sendAvatarPrompt(_ prompt: String) async throws -> String {
         guard let client = wire else { throw BotFailure.stale }
         return try await BotAvatarGeneration.ask(prompt, profile: "default", transport: client, validateDispatch: validate(generation))
@@ -161,8 +135,6 @@ enum BotProfileName {
         draft.appearance.expression = expression == .neutral ? nil : expression.rawValue
     }
 
-    /// Opens the socket and reads the model inventory. A failure here leaves the
-    /// picker empty; the create itself reconnects if needed.
     func load() async {
         generation += 1
         let owner = generation
@@ -196,7 +168,6 @@ enum BotProfileName {
         }
     }
 
-    /// Runs the steps that are not done yet. Never called twice concurrently.
     func create() async {
         guard canCreate else { return }
         generation += 1
@@ -220,12 +191,8 @@ enum BotProfileName {
             phase = .created
             onCreated(name)
         } catch {
-            // A disconnect clears `wire` before the suspended call throws, so only the
-            // generation decides whether this attempt still owns the sheet.
             guard generation == owner else { return }
             if !(error is BotCreatorStop), let step = Step.allCases.first(where: { outcomes[$0] == nil }) {
-                // A dropped connection mid-write leaves that write's fate unknown; the
-                // next attempt re-reads the host before writing again.
                 outcomes[step] = error as? BotFailure == .transport ? .uncertain : .failed(error.localizedDescription)
             }
             phase = .editing
@@ -270,7 +237,6 @@ enum BotProfileName {
         }
     }
 
-    /// The look is cosmetic: a failure is reported but does not stop the chat step.
     private func configureLook(_ client: any BotTransport, owner: Int) async {
         if outcomes[.look] == .done { return }
         var look = draft.appearance
@@ -287,8 +253,6 @@ enum BotProfileName {
         }
     }
 
-    /// Adopt-before-mint, as Desktop: an existing "Bot Chat" row is the bot's chat
-    /// and is never duplicated. Only a confirmed absence creates one.
     private func ensureChat(_ client: any BotTransport, owner: Int) async throws {
         if outcomes[.chat] == .done { return }
         if try await findChat(client, owner: owner) { outcomes[.chat] = .done; return }
@@ -296,15 +260,11 @@ enum BotProfileName {
         let created = try await client.call(.sessionCreate(profile: name), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard let runtime = created["session_id"].text, !runtime.isEmpty else { throw BotFailure.unsupported }
-        // A canonical create already titled and hid it (#1603), and has no `session.title`.
         if client.speaksCanonicalProtocol { outcomes[.chat] = .done; return }
         do {
-            // The created row is lazy; the title write persists it so the roster and
-            // the phone's exact-title lookup find it before any prompt.
             _ = try await client.call(.sessionTitle(sessionID: runtime), validateDispatch: validate(owner))
             try ensureOwner(owner, client)
         } catch BotFailure.rejected(4022) {
-            // Another writer took the title in between; that chat is the bot's.
             try ensureOwner(owner, client)
             guard try await findChat(client, owner: owner) else { throw BotFailure.unsupported }
         }
@@ -340,5 +300,4 @@ enum BotProfileName {
     }
 }
 
-/// Ends a create after a step recorded its own failure message.
 private struct BotCreatorStop: Error {}

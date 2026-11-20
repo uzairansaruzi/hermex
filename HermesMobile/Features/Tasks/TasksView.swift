@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// A server's scheduled Tasks. A webui server's comes from the session list's sidebar; a
-/// Hermes host's from its inbox's + menu (#1040), where `client` is its `HermesCronClient`
-/// and a new Task starts in `newTaskProfile`.
 struct TasksView: View {
     let server: URL
     let onAPIError: (Error) -> Void
@@ -10,20 +7,12 @@ struct TasksView: View {
 
     @State private var viewModel: TasksViewModel
     @State private var isPresentingCreateTask = false
-    /// A failed list action's notice (#1410); Delete and Run Now still confirm with alerts.
     @State private var toast = ActionToastState()
     @State private var jobPendingDeletion: CronJob?
-    /// A paused Task whose Run Now would also resume it, while the user is asked.
     @State private var jobPendingRunConfirmation: CronJob?
-    /// Each row's Run Now on a Hermes host, which follows the run until the host's outcome
-    /// (#1041). Leaving the screen cancels them, which stops the reads and leaves the runs to
-    /// the host; the list read on return shows where they are.
     @State private var runNowTasks: [String: Task<Void, Never>] = [:]
-    /// "Ran Recently" shows a few rows until the user asks for the rest. View
-    /// state only: every fresh visit starts compact.
     @State private var isShowingAllRecentRuns = false
 
-    /// Rows "Ran Recently" shows before it needs a "Show all" row.
     private static let compactRecentRunCount = 3
 
     init(
@@ -68,8 +57,6 @@ struct TasksView: View {
                 }
             }
             .sheet(isPresented: $isPresentingCreateTask, onDismiss: {
-                // A failed create leaves its message behind for the sheet;
-                // it goes with the sheet.
                 viewModel.clearActionError()
             }) {
                 CronJobEditorSheet(
@@ -109,7 +96,6 @@ struct TasksView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 22)
             }
-            // The create sheet shows its own failure inline, and clears it when it closes.
             .onChange(of: viewModel.actionErrorMessage) { _, message in
                 guard let message, !isPresentingCreateTask else { return }
                 toast.show(.failure(message))
@@ -165,8 +151,6 @@ struct TasksView: View {
             if sections.isEmpty && viewModel.recentRuns.isEmpty && viewModel.schedulerStallAge == nil {
                 noMatchingTasks
             } else {
-                // The list stays mounted while the feed has rows, so switching
-                // to a filter with no tasks does not take "Ran Recently" away.
                 AppList {
                     schedulerNotice
                     recentRunsSection
@@ -216,8 +200,6 @@ struct TasksView: View {
         .background(.appMaterial(.bar))
     }
 
-    /// One line when a Hermes host's scheduler has stopped ticking (#1040), above
-    /// everything else and outside the filter, since no Task will fire until it is back.
     @ViewBuilder
     private var schedulerNotice: some View {
         if let age = viewModel.schedulerStallAge {
@@ -235,8 +217,6 @@ struct TasksView: View {
         }
     }
 
-    /// Cross-task recent completions, above the agenda and outside the filter.
-    /// Absent until the feed answers and whenever it is empty or failed.
     @ViewBuilder
     private var recentRunsSection: some View {
         let recentRuns = viewModel.recentRuns
@@ -253,8 +233,6 @@ struct TasksView: View {
                             TaskRecentRunRowView(completion: completion)
                         }
                     } else {
-                        // The feed named a job the list does not have: no link,
-                        // no chevron, and nothing that reads as a button.
                         TaskRecentRunRowView(completion: completion)
                     }
                 }
@@ -377,7 +355,6 @@ struct TasksView: View {
         )
     }
 
-    /// Shown once the create sheet has closed on the Task it saved.
     private var saveWarningBinding: Binding<Bool> {
         Binding(
             get: { viewModel.saveWarning != nil && !isPresentingCreateTask },

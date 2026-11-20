@@ -402,7 +402,6 @@ final class SessionListMutationTests: XCTestCase {
             case "/api/profile/switch":
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
                 XCTAssertEqual(body["name"] as? String, "work")
-                // No Set-Cookie: creation must carry the confirmed selection itself.
                 return apiTestJSONResponse(#"{"active":"work"}"#, for: request)
             case "/api/session/new":
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
@@ -473,8 +472,6 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertNil(viewModel.lastError)
     }
 
-    /// A view model whose server answers `/api/session/new` like upstream: it echoes
-    /// the request's `project_id` on the created session. `inspect` sees each body.
     @MainActor
     private func makeNewSessionViewModel(
         inspect: @escaping ([String: Any]) -> Void
@@ -539,7 +536,6 @@ final class SessionListMutationTests: XCTestCase {
                 name: "work", displayName: "Work", defaultModel: "confirmed-model"
             ))
 
-            // New Chat does not wait for the old refresh to finish.
             let created = await viewModel.createSession()
             XCTAssertEqual(created?.profile, "work")
             releaseRefresh.signal()
@@ -552,7 +548,6 @@ final class SessionListMutationTests: XCTestCase {
             XCTAssertNil(viewModel.activeProfileErrorMessage)
             XCTAssertFalse(viewModel.isLoadingActiveProfile)
 
-            // A subsequent read remains free to adopt a newer server selection.
             await viewModel.loadActiveProfile()
             XCTAssertEqual(viewModel.activeProfileName, "default")
         }
@@ -848,8 +843,6 @@ final class SessionListMutationTests: XCTestCase {
                     for: request
                 )
             case "/api/approval/pending", "/api/clarify/pending":
-                // The same tick also probes the streaming row's attention state
-                // (see SessionRowAttentionStateTests); nothing is pending here.
                 return apiTestJSONResponse(#"{"pending": null}"#, for: request)
             default:
                 XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
@@ -963,7 +956,6 @@ final class SessionListMutationTests: XCTestCase {
     @MainActor
     func testConcurrentSessionMutationsAreIgnoredWhileSameSessionIsInFlight() async throws {
         let firstPinRequestStarted = expectation(description: "first pin request started")
-        // Holds the first pin's reply until the mutations behind it have returned.
         let releaseFirstPin = DispatchSemaphore(value: 0)
         let requestCounts = LockedSessionMutationRequestCounts()
         let viewModel = try makeViewModel { request in
@@ -1131,8 +1123,6 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertFalse(viewModel.isRenamingSession)
     }
 
-    /// An archive that fails while a rename is saving keeps its toast; the rename that then
-    /// succeeds closes its sheet and must not take the archive's reason with it.
     @MainActor
     func testRowFailureDuringASuccessfulRenameStaysInTheListError() async throws {
         let renameStarted = expectation(description: "rename request started")
@@ -1430,7 +1420,6 @@ final class SessionListMutationTests: XCTestCase {
 
         XCTAssertEqual(projectIDs, ["project-new"])
         XCTAssertEqual(projectName, "Client Work")
-        // The existing session stays unassigned: no move request was made.
         XCTAssertNil(sessionProjectID)
         XCTAssertFalse(requestedPaths.contains("/api/session/move"))
         XCTAssertEqual(
@@ -1817,8 +1806,6 @@ final class SessionListMutationTests: XCTestCase {
         let viewModel = try makeArchivedViewModel { request in
             switch request.url?.path {
             case "/api/sessions":
-                // The archived screen must opt in to archived rows — without
-                // include_archived=1 the server returns none (issue #17).
                 let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
                 let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
                 XCTAssertEqual(query["include_archived"], "1")
@@ -1854,8 +1841,6 @@ final class SessionListMutationTests: XCTestCase {
         let viewModel = try makeArchivedViewModel { request in
             switch request.url?.path {
             case "/api/sessions":
-                // The archived screen must opt in to archived rows — without
-                // include_archived=1 the server returns none (issue #17).
                 let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
                 let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
                 XCTAssertEqual(query["include_archived"], "1")
@@ -1886,9 +1871,6 @@ final class SessionListMutationTests: XCTestCase {
 
     @MainActor
     func testArchivedSessionUnarchiveRejectionSurfacesServerMessage() async throws {
-        // Mirrors the live contract: subagent and read-only imported CLI sessions
-        // reject archive-state changes with HTTP 400 + an `error` message, which
-        // must reach the user verbatim rather than a generic failure (issue #17).
         let serverMessage = "Subagent sessions are view-only and cannot be archived from WebUI"
         let viewModel = try makeArchivedViewModel { request in
             switch request.url?.path {
@@ -1921,10 +1903,6 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
-    /// A `200` whose body says the archive did not happen must not count as
-    /// success: the list would show "Archived · Undo" for a session the server
-    /// kept, or drop the toast for an Undo the server refused (#865). Mirrors
-    /// the Archived screen's unarchive checks.
     @MainActor
     func testArchiveOkFalseResponseIsNotTreatedAsSuccess() async throws {
         let refusals: [(archived: Bool, body: String, message: String)] = [
@@ -1966,8 +1944,6 @@ final class SessionListMutationTests: XCTestCase {
         }
     }
 
-    /// Undo from the list's toast restores the session and reloads, so the row
-    /// comes back where it was (#865).
     @MainActor
     func testUnarchiveFromListSendsArchivedFalseAndReloadsRows() async throws {
         var loadCount = 0
@@ -1976,7 +1952,6 @@ final class SessionListMutationTests: XCTestCase {
             switch request.url?.path {
             case "/api/sessions":
                 loadCount += 1
-                // The first load follows the archive, so the session is hidden.
                 let json = loadCount == 1 ? #"{"sessions": []}"# : self.sessionListJSON(forLoadCount: 1)
                 return apiTestJSONResponse(json, for: request)
             case "/api/session/archive":
@@ -2002,10 +1977,6 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertNil(viewModel.actionErrorMessage)
     }
 
-    /// The copy is inserted from the duplicate response itself and survives a
-    /// list reload that hasn't caught up yet. The endpoint changed from
-    /// `/api/session/branch` to `/api/session/duplicate` (#25), which also
-    /// removed the follow-up detail fetch and the client-side title.
     @MainActor
     func testDuplicateInsertsTheCopyWhenTheReloadOmitsIt() async throws {
         var branchCount = 0
@@ -2148,7 +2119,6 @@ final class SessionListMutationTests: XCTestCase {
     @MainActor
     func testRemoteSessionSearchIgnoresStaleResultsWhenQueryChanges() async throws {
         let oldSearchStarted = expectation(description: "old search started")
-        // Holds the old search's reply until the new search has applied.
         let releaseOldSearch = DispatchSemaphore(value: 0)
         let viewModel = try makeViewModel { request in
             switch request.url?.path {
@@ -2225,9 +2195,6 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
-    /// The excerpt has to reach the row that displays it, which comes from the
-    /// local session list, not the search response — so it is looked up by
-    /// session ID and paired with the query that produced it.
     @MainActor
     func testRemoteSessionSearchExposesMatchPreviewPerSession() async throws {
         let viewModel = try makeViewModel { request in
@@ -2278,24 +2245,18 @@ final class SessionListMutationTests: XCTestCase {
             searchText: "Needle"
         )
         XCTAssertEqual(excerpt?.text, "...found the needle in the haystack...")
-        // The query is normalized, so the row bolds case-insensitively either way.
         XCTAssertEqual(excerpt?.query, "needle")
 
-        // An older server sends the row without a preview: no excerpt, no crash.
         XCTAssertNil(
             viewModel.searchExcerpt(for: SessionSummary(sessionId: "no-preview"), searchText: "needle")
         )
-        // A title match never gets an excerpt, even if the server sent one.
         XCTAssertNil(
             viewModel.searchExcerpt(for: SessionSummary(sessionId: "title-match"), searchText: "needle")
         )
 
-        // Scheduled sessions has its own search field and shares this view
-        // model. Its empty query must not inherit the sidebar's excerpts.
         XCTAssertNil(
             viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview"), searchText: "")
         )
-        // Nor may a different query on another screen borrow them.
         XCTAssertNil(
             viewModel.searchExcerpt(for: SessionSummary(sessionId: "with-preview"), searchText: "haystack")
         )
@@ -2306,11 +2267,8 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
-    // MARK: - Cron/CLI session classification (#256)
-
     func testCronSessionDetectedBySessionIdPrefix() {
         XCTAssertTrue(SessionSummary(sessionId: "cron_abc123").isCronSession)
-        // Case-insensitive.
         XCTAssertTrue(SessionSummary(sessionId: "CRON_abc123").isCronSession)
     }
 
@@ -2318,16 +2276,12 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(SessionSummary(sessionId: "s1", sourceTag: "cron").isCronSession)
         XCTAssertTrue(SessionSummary(sessionId: "s2", sessionSource: "cron").isCronSession)
         XCTAssertTrue(SessionSummary(sessionId: "s3", sourceLabel: "cron").isCronSession)
-        // Tolerates surrounding whitespace / casing from the server.
         XCTAssertTrue(SessionSummary(sessionId: "s4", sourceTag: "  Cron  ").isCronSession)
     }
 
     func testNonCronSessionsAreNotFlagged() {
-        // A `cron_` substring that is not a prefix must not match.
         XCTAssertFalse(SessionSummary(sessionId: "session_cron_x").isCronSession)
-        // Plain WebUI session with no automation markers.
         XCTAssertFalse(SessionSummary(sessionId: "s5", sessionSource: "webui").isCronSession)
-        // No source metadata at all (tolerant default → treated as normal).
         XCTAssertFalse(SessionSummary(sessionId: "s6").isCronSession)
     }
 
@@ -2738,7 +2692,6 @@ final class SessionListMutationTests: XCTestCase {
         }
         let external = SessionSummary(sessionId: "cli-a", title: "CLI", isCliSession: true)
 
-        // Reopening the same chat: the older open finishing must not clear the newer one.
         let staleOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
         await fulfillment(of: [importsStarted[0]], timeout: 5)
         XCTAssertEqual(viewModel.openingSessionID, "cli-a")
@@ -2753,7 +2706,6 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(liveResult?.sessionId, "cli-a")
         XCTAssertNil(viewModel.openingSessionID)
 
-        // Navigating elsewhere (New Chat, a utility screen) abandons the import at once.
         let abandonedOpen = Task { @MainActor in await viewModel.sessionForOpening(external) }
         await fulfillment(of: [importsStarted[2]], timeout: 5)
         XCTAssertEqual(viewModel.openingSessionID, "cli-a")
@@ -2813,11 +2765,6 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(requestedPaths.isEmpty)
     }
 
-    /// A Hermes row (#1048) offers pin, rename, archive, delete, Export as JSON, Move to Project
-    /// (#1052) and Duplicate (#1051), but a bot's Bot Chat no Duplicate; the host has no HTML
-    /// export, and Hermes deep links are #706.
-    /// A Hermes row's Copy Deeplink names its server and Profile, so the link opens that session
-    /// there (#1675). A Bot Chat gets none: its row opens its bot.
     func testAHermesRowOffersItsActionsAndAServerDeeplinkButNotHTML() throws {
         let server = try XCTUnwrap(URL(string: "https://hermes.example.com"))
         let row = HermesSessionRow(id: "20261005_101500_a1b2c3").summary(in: "default")
@@ -2840,10 +2787,6 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(SessionRowActionPolicy.exportFormats(for: webui), [.html, .json])
     }
 
-    /// A Hermes session always works in some folder, so its Move menu has no "No project", and
-    /// moves only into the user's own projects with a folder. An automatic per-repository
-    /// project has no record, so it offers neither rename nor delete (#1052). webui projects
-    /// are unchanged.
     func testHermesProjectMenusOfferNoRemoveAndKeepAutomaticProjectsReadOnly() {
         let hermesRow = HermesSessionRow(id: "a").summary(in: "default")
         let user = ProjectSummary(projectId: "p_1", name: "Launch", color: nil, hermes: .init(
@@ -3041,8 +2984,6 @@ final class SessionListMutationTests: XCTestCase {
 
         XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary-1"])
         XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["cron_1"])
-        // The badge is intentionally global even when rows are project-filtered:
-        // issue #125 requires the total number of non-archived scheduled sessions.
         XCTAssertEqual(groups.totalScheduledCount, 2)
     }
 
@@ -3131,13 +3072,11 @@ final class SessionListMutationTests: XCTestCase {
 
         await viewModel.load()
 
-        // Default keeps every row.
         XCTAssertEqual(
             Set(viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId)),
             ["normal-1", "cron_job_1", "tagged-cron", "cli-1", "normal-2"]
         )
 
-        // Hiding cron only removes cron rows; CLI and normal rows stay.
         XCTAssertEqual(
             Set(viewModel.visibleSessions(
                 searchText: "",
@@ -3147,7 +3086,6 @@ final class SessionListMutationTests: XCTestCase {
             ["normal-1", "cli-1", "normal-2"]
         )
 
-        // Hiding CLI only removes the CLI row; cron and normal rows stay.
         XCTAssertEqual(
             Set(viewModel.visibleSessions(
                 searchText: "",
@@ -3157,7 +3095,6 @@ final class SessionListMutationTests: XCTestCase {
             ["normal-1", "cron_job_1", "tagged-cron", "normal-2"]
         )
 
-        // Hiding both leaves only the normal WebUI sessions, newest first.
         XCTAssertEqual(
             viewModel.visibleSessions(
                 searchText: "",

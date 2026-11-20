@@ -1,24 +1,17 @@
 import SwiftUI
 
-/// The Changes sheet: the working tree's uncommitted files and, on a Hermes host, what the branch
-/// committed since its base (This Branch, #1386). Each opens every listed file in one `GitDiffView`
-/// at the tapped one. It only reads: writes live in the commit sheet and the Git menu.
 struct GitWorkspaceView: View {
     let onAPIError: (Error) -> Void
-    /// Forwarded to the diff surface so a line comment can land in the composer.
     let onAddToPrompt: ((String) -> Void)?
-    /// Forwarded to the diff surface's Back to Chat.
     let onReturnToChat: (() -> Void)?
 
     private let git: (any GitDataClient)?
     private let progress: ReviewProgressStore
     @State private var viewModel: GitWorkspaceViewModel
     @State private var openedReview: OpenedReview?
-    /// The latest Try Again load, cancelled by the next one and when the sheet closes.
     @State private var retryTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
 
-    /// The tapped file with the rows and range it was listed in.
     private struct OpenedReview: Identifiable {
         let file: GitFile
         let files: [GitFile]
@@ -28,8 +21,6 @@ struct GitWorkspaceView: View {
         var id: String { "\(scope)|\(file.id)" }
     }
 
-    /// `git` is the chat's repository client, shared with its toolbar menu; `progress` is the
-    /// chat's review progress, which each complete read of a scope prunes within that scope.
     init(
         git: (any GitDataClient)?,
         progress: ReviewProgressStore,
@@ -57,7 +48,6 @@ struct GitWorkspaceView: View {
                         Button("Done") { dismiss() }
                     }
                 }
-                // A switch cancels the other scope's read, which then publishes nothing.
                 .task(id: viewModel.scope) {
                     await viewModel.loadIfNeeded()
                     handleLastError()
@@ -180,8 +170,6 @@ struct GitWorkspaceView: View {
         .refreshable { await reload() }
     }
 
-    /// The branch's committed files. The host doesn't say which branch it took the base from, so
-    /// the header never names one.
     private func branchReviewContent(_ review: GitBranchReview) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
@@ -225,8 +213,6 @@ struct GitWorkspaceView: View {
         }
     }
 
-    /// The file count and totals, then the branch (`HEAD` when it has no name) with `accessory`
-    /// at its end, then `note`.
     private func summaryHeader(
         changed: Int,
         additions: Int,
@@ -292,7 +278,6 @@ struct GitWorkspaceView: View {
     }
 }
 
-/// "Detached", beside a detached HEAD's name.
 private struct GitDetachedChip: View {
     var body: some View {
         Text("Detached")
@@ -318,8 +303,6 @@ struct GitAheadBehindBadges: View {
     }
 }
 
-/// "+N −M" in green and red. `deletions: nil` hides the red count, for a
-/// change whose deletions are unknown (a written file's old content).
 struct DiffCountsLabel: View {
     let additions: Int
     let deletions: Int?
@@ -337,7 +320,6 @@ struct DiffCountsLabel: View {
         .accessibilityLabel(Self.spokenText(additions: additions, deletions: deletions))
     }
 
-    /// "3 added, 1 removed", or "3 added" when deletions are unknown.
     static func spokenText(additions: Int, deletions: Int?) -> String {
         let added = String(localized: "\(additions) added")
         guard let deletions else { return added }

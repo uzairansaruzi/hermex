@@ -7,7 +7,6 @@ final class ReviewDiffDefaultCollapseTests: XCTestCase {
                 additions: additions, deletions: deletions)
     }
 
-    /// A loaded diff with `changed` added lines surrounded by `context` unchanged lines.
     private func loadedRows(_ file: GitFile, changed: Int, context: Int = 0) throws -> [ReviewDiffRow] {
         let body = Array(repeating: " same", count: context) + Array(repeating: "+new", count: changed)
         let raw = "@@ -1,\(context) +1,\(context + changed) @@\n" + body.joined(separator: "\n")
@@ -20,7 +19,6 @@ final class ReviewDiffDefaultCollapseTests: XCTestCase {
         ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: state) })
     }
 
-    /// Folds `files` would get once each loads a small diff.
     private func foldsOnceLoaded(_ files: [GitFile], initialFile: GitFile?) throws -> Set<String> {
         var defaults = ReviewDiffDefaultCollapse(files: files, initialFile: initialFile)
         var collapsed: Set<String> = []
@@ -74,13 +72,11 @@ final class ReviewDiffDefaultCollapseTests: XCTestCase {
         var defaults = ReviewDiffDefaultCollapse(files: files, initialFile: source)
         var collapsed: Set<String> = []
         defaults.apply(rows(files, .loading), to: &collapsed)
-        // The user folds and reopens the not-yet-measured file while it loads.
         defaults.settle("src/Large.swift")
 
         let loaded = try loadedRows(source, changed: 2) + loadedRows(measured, changed: 900) + loadedRows(lockfile, changed: 900)
         defaults.apply(loaded, to: &collapsed)
         XCTAssertEqual(collapsed, ["Cargo.lock"])
-        // ...then opens the folded lockfile and refreshes.
         defaults.settle("Cargo.lock")
         collapsed.remove("Cargo.lock")
         defaults.apply(rows(files, .loading), to: &collapsed)
@@ -89,15 +85,12 @@ final class ReviewDiffDefaultCollapseTests: XCTestCase {
         XCTAssertEqual(collapsed, [])
     }
 
-    /// Loading, failed, binary and too-large notices read in the open: a default fold steps
-    /// aside for them on every load and refresh, and comes back with the next real diff.
     func testNoticesLiftOnlyADefaultFold() throws {
         let lockfile = file("Gemfile.lock")
         let snapshot = file("ui/__snapshots__/a.snap")
         let files = [lockfile, snapshot]
         var defaults = ReviewDiffDefaultCollapse(files: files, initialFile: nil)
         var collapsed: Set<String> = []
-        // The user folds the snapshot before anything loads: an explicit choice.
         defaults.settle("ui/__snapshots__/a.snap")
         collapsed.insert("ui/__snapshots__/a.snap")
 
@@ -107,7 +100,6 @@ final class ReviewDiffDefaultCollapseTests: XCTestCase {
         defaults.apply(loaded, to: &collapsed)
         XCTAssertEqual(collapsed, ["Gemfile.lock", "ui/__snapshots__/a.snap"])
 
-        // A refresh shows Loading… again, then fails.
         defaults.apply(rows(files, .loading), to: &collapsed)
         XCTAssertEqual(collapsed, ["ui/__snapshots__/a.snap"])
         defaults.apply(rows(files, .failed("Boom")), to: &collapsed)

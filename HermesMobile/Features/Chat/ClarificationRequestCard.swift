@@ -1,15 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// The clarification request pinned above the composer while the agent waits
-/// for an answer. The collapsed bar is the permanent footprint: its measured
-/// height feeds the transcript's bottom inset. The expanded card is an overlay
-/// that rises from the bar's bottom edge, so opening or closing it never moves
-/// the transcript. A new request always arrives expanded.
 struct ClarificationRequestInset: View {
     let prompt: ClarificationPromptState
-    /// Height between the chat's top safe edge and this inset's bottom edge.
-    /// The expanded card may use less, but never more.
     let maximumExpandedHeight: CGFloat
     let isResponding: Bool
     let isStopping: Bool
@@ -17,14 +10,11 @@ struct ClarificationRequestInset: View {
     let isHapticsEnabled: Bool
     let onSubmit: (String) -> Void
     let onStop: () -> Void
-    /// Collapsing hides the response field, so the keyboard goes with it.
     let onDismissKeyboard: () -> Void
-    /// The bar's height, the only part of this view that takes layout space.
     let onFootprintChange: (CGFloat) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isExpanded = true
-    // Lives here rather than in the card so a typed answer survives collapse.
     @State private var draftResponse = ""
 
     var body: some View {
@@ -41,10 +31,6 @@ struct ClarificationRequestInset: View {
             onFootprintChange(height)
         }
         .overlay(alignment: .bottom) {
-            // Clip window with its bottom edge on the bar's bottom edge: the
-            // opaque card slides its own height down through it, revealing the
-            // transcript and then the bar only where it has physically left.
-            // No crossfade, and nothing is drawn over the composer below.
             ZStack(alignment: .bottom) {
                 if isExpanded {
                     ClarificationRequestCard(
@@ -79,7 +65,6 @@ struct ClarificationRequestInset: View {
         }
     }
 
-    /// One announcement per request; re-renders and toggles stay silent.
     private func announceRequest() {
         guard UIAccessibility.isVoiceOverRunning else { return }
         let announcement = String(localized: "Input needed: \(ClarificationRequestBar.summary(for: prompt.question))")
@@ -87,17 +72,12 @@ struct ClarificationRequestInset: View {
     }
 }
 
-/// One-line footprint of a pending request: what is being asked, a way back
-/// into the card, and Stop for when the run should end instead.
 struct ClarificationRequestBar: View {
-    /// What the bar stands in for: a question or other input, or an approval,
-    /// which carries a warning accent and the count of open approvals (#1584).
     enum Kind: Equatable {
         case input
         case approval(pendingCount: Int)
     }
 
-    /// One line of what is asked (`summary(for:)`).
     let summary: String
     let isStopping: Bool
     let onExpand: () -> Void
@@ -107,8 +87,6 @@ struct ClarificationRequestBar: View {
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var stopButtonSize: CGFloat = 32
 
-    /// The first non-empty line of a question, so a multi-line prompt reads
-    /// as one line on the bar.
     static func summary(for question: String) -> String {
         question
             .split(whereSeparator: \.isNewline)
@@ -187,7 +165,6 @@ struct ClarificationRequestBar: View {
 
     private var isApproval: Bool { kind != .input }
 
-    /// The open approvals, or 0 for an input request.
     private var approvalCount: Int {
         if case .approval(let pendingCount) = kind { return pendingCount }
         return 0
@@ -225,7 +202,6 @@ struct ClarificationRequestCard: View {
         cardContent
             .frame(maxWidth: 560, alignment: .leading)
             .pendingRequestCardSurface(cornerRadius: ChatComposerMetrics.cardCornerRadius)
-            // Honor the clamped ideal height; hide only until base measurements settle.
             .fixedSize(horizontal: false, vertical: true)
             .opacity(hasMeasuredBaseContent ? 1 : 0)
             .allowsHitTesting(hasMeasuredBaseContent && canFit != false)
@@ -301,7 +277,6 @@ struct ClarificationRequestCard: View {
         }
     }
 
-    /// Only the question and choices scroll; a drag dismisses the keyboard interactively.
     private var scrollableBody: some View {
         let content = VStack(alignment: .leading, spacing: 14) {
             question
@@ -516,35 +491,21 @@ struct ClarificationRequestCard: View {
     }
 }
 
-/// A Hermes session's question, sudo or secret prompt, Desktop task or connection operation,
-/// pinned above the composer in the webui clarification's slot (#1011, #1141). The
-/// clarification bar is its footprint; the expanded card is the Bot request card, which
-/// already answers each of them: batch questions keyed by `qid`, masked credential fields,
-/// Skip, a connection's rows and Continue without, and a Desktop task's Stop. The card stays mounted while collapsed, so a
-/// half-typed answer survives, and slides through the bar's clip window like the webui card.
-/// Taller than the space above the composer, it scrolls. With no room for even a line of it,
-/// it falls back to the bar like the webui card, and expanding then puts the keyboard away.
 struct HermesRequestInset: View {
     let request: BotPendingRequest
     let identity: String
-    /// Height between the chat's top safe edge and this inset's bottom edge.
     let maximumExpandedHeight: CGFloat
     let isEnabled: Bool
     let isAnswering: Bool
     let isStopping: Bool
-    /// The connection card's verdict: inert after the host lost the operation, or a warning.
     let resolution: BotRequestResolution?
     let isHapticsEnabled: Bool
     let onAnswer: ([BotQuestionAnswer]) -> Void
     let onSkip: () -> Void
-    /// Sends a credential prompt's typed value. Empty is the host's skip.
     let onCredential: (String) -> Void
-    /// One row's answer, or Continue without, for a connection operation.
     let onConnection: (BotConnectionOperation.Answer) -> Void
-    /// The chat's Stop, from the bar and a Desktop task's card.
     let onStop: () -> Void
     let onDismissKeyboard: () -> Void
-    /// The bar's height, the only part of this view that takes layout space.
     let onFootprintChange: (CGFloat) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -583,14 +544,10 @@ struct HermesRequestInset: View {
         }
     }
 
-    /// The card's scroll viewport at most: the space under the collapse control.
     private var availableScrollHeight: CGFloat { maximumExpandedHeight - collapseButtonSize - 8 }
 
-    /// Room for at least a line of the card, as the webui card requires.
     private var canFit: Bool { availableScrollHeight >= minimumScrollHeight }
 
-    /// The collapse control over the card, and the card, which scrolls once it is taller than
-    /// the space left. Hidden until measured.
     private var card: some View {
         VStack(alignment: .trailing, spacing: 8) {
             collapseButton
@@ -627,8 +584,6 @@ struct HermesRequestInset: View {
         .accessibilityLabel("Collapse clarification")
     }
 
-    /// What the bar says is asked: the first question, the credential prompt's title, what
-    /// Desktop is doing, or the apps to connect.
     private var summary: String {
         switch request {
         case .question(let question): return ClarificationRequestBar.summary(for: question.questions.first?.prompt ?? "")
@@ -651,7 +606,6 @@ struct HermesRequestInset: View {
     }
 }
 
-/// Converts the safe gap into a body viewport, or nil to fall back to the collapsed bar.
 struct ClarificationRequestHeightPolicy {
     static let bodyHeightCap: CGFloat = 300
 

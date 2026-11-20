@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// A chat's review progress across reopened reviews (#1384), driven as `GitDiffView` drives it:
-/// open a review, land the loader's rows and patches, toggle, close, open again.
 @MainActor
 final class ReviewProgressStoreTests: XCTestCase {
     private func file(_ path: String) -> GitFile {
@@ -23,8 +21,6 @@ final class ReviewProgressStoreTests: XCTestCase {
         ReviewDiffProgress(files: files, initialFile: tapped, store: store, scope: scope)
     }
 
-    /// Lands every file's answer at once, as the loader's last publish does; a file missing from
-    /// `states` is still loading.
     private func land(_ review: inout ReviewDiffProgress, _ files: [GitFile], _ states: [String: ReviewDiffFileState]) {
         let inputs = files.map { ReviewDiffFileInput(file: $0, state: states[$0.id] ?? .loading) }
         var patches: [String: Int] = [:]

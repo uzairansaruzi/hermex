@@ -1,7 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Pure tree behaviour for the workspace file browser: ordering, lazy structure, search.
 final class FileTreeTests: XCTestCase {
 
     private func dir(_ name: String, path: String? = nil) -> WorkspaceEntry {
@@ -12,7 +11,6 @@ final class FileTreeTests: XCTestCase {
         WorkspaceEntry(name: name, path: path ?? name, type: "file", size: 1, isDirectory: false)
     }
 
-    /// src/{Chat/{ChatView.swift}, Util/{Math.swift}}, README.md — every directory listed.
     private func sampleTree() -> FileTree {
         var tree = FileTree()
         tree.setChildren([file("README.md"), dir("src")], of: FileTree.rootPath)
@@ -25,8 +23,6 @@ final class FileTreeTests: XCTestCase {
     private func paths(_ nodes: [VisibleFileTreeNode]) -> [String] {
         nodes.map(\.node.path)
     }
-
-    // MARK: - Structure
 
     func testSortsDirectoriesFirstThenNaturalOrder() {
         var tree = FileTree()
@@ -82,8 +78,6 @@ final class FileTreeTests: XCTestCase {
         XCTAssertFalse(tree.isLoaded("src/Util"))
     }
 
-    // MARK: - Flattening
-
     func testFlattenShowsChildrenOnlyOfExpandedDirectories() {
         let tree = sampleTree()
 
@@ -94,8 +88,6 @@ final class FileTreeTests: XCTestCase {
         XCTAssertEqual(paths(deep), ["src", "src/Chat", "src/Util", "src/Util/Math.swift", "README.md"])
         XCTAssertEqual(deep.map(\.depth), [0, 1, 1, 2, 0])
     }
-
-    // MARK: - Search
 
     func testSearchKeepsAncestorsOfMatchesAndTraversesCollapsedFolders() {
         let tree = sampleTree()

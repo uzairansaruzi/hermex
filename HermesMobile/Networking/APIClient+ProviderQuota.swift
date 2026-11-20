@@ -1,17 +1,5 @@
 import Foundation
 
-/// `GET /api/provider/quota?provider=<id>` — one provider's subscription limits
-/// or prepaid credits (#415). Shape verified against the live server on
-/// 2026-09-05 and upstream `api/providers.py` (`get_provider_quota`,
-/// `_serialize_account_usage_snapshot`, `_sanitize_openrouter_quota`).
-///
-/// The handler answers with one of two payload families and never fails the
-/// request: OAuth-backed providers carry `account_limits` (Codex, Anthropic),
-/// OpenRouter carries `quota`, and everything else answers with a non-`available`
-/// `status` and both null. `status` values seen live: `available`, `unsupported`,
-/// `unavailable`, `no_key`, `invalid_key`. Every field is optional so a partial
-/// or future payload decodes instead of throwing, and `pool` — the per-credential
-/// breakdown Hermex deliberately does not show — is ignored.
 struct ProviderQuotaResponse: Decodable, Equatable, Sendable {
     let ok: Bool?
     let provider: String?
@@ -71,8 +59,6 @@ struct ProviderQuotaResponse: Decodable, Equatable, Sendable {
     }
 }
 
-/// The OpenRouter credits family. All three numbers are null when the key has no
-/// spending cap, so a card renders from whichever ones arrived.
 struct ProviderQuotaCredits: Decodable, Equatable, Sendable {
     let limitRemaining: Double?
     let usage: Double?
@@ -98,9 +84,6 @@ struct ProviderQuotaCredits: Decodable, Equatable, Sendable {
     }
 }
 
-/// The account-limits family (`openai-codex`, `anthropic`). `available` is false
-/// whenever upstream attached an `unavailable_reason`, and `windows` is empty
-/// when the probe found nothing to report — both hide the card.
 struct ProviderAccountLimits: Decodable, Equatable, Sendable {
     let plan: String?
     let title: String?
@@ -150,9 +133,6 @@ struct ProviderAccountLimits: Decodable, Equatable, Sendable {
     }
 }
 
-/// One rate-limit window. `remaining_percent` is null whenever upstream could not
-/// read `used_percent`, which is why the bar is optional and the row still shows
-/// its label and reset time.
 struct ProviderQuotaWindow: Decodable, Equatable, Sendable {
     let label: String?
     let usedPercent: Double?
@@ -193,9 +173,6 @@ struct ProviderQuotaWindow: Decodable, Equatable, Sendable {
 }
 
 extension APIClient {
-    /// Reads one provider's quota. Pass `refresh: true` only from an explicit
-    /// user gesture — it bypasses the server's 45 s cache and re-probes the
-    /// upstream account, which can take several seconds.
     func providerQuota(provider: String, refresh: Bool = false) async throws -> ProviderQuotaResponse {
         try await send(endpoint: .providerQuota(provider: provider, refresh: refresh), method: "GET")
     }

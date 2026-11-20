@@ -1,23 +1,15 @@
 import SwiftUI
 
-/// The workspace file tree: folders open in place, search keeps matches with their parents,
-/// and a file row pushes its preview. With a `search`, a query also lists the host's matching
-/// files from folders not yet opened in a Workspace section above the tree's ("Open Folders")
-/// (#1389). A client for another workspace, as when a Hermes chat's folder moves, replaces the
-/// whole tree.
 struct FileBrowserView: View {
     let onAPIError: (Error) -> Void
-    /// Forwarded to each pushed preview's Comment…; nil outside a chat that can take a draft.
     let onAddToPrompt: ((String) -> Void)?
 
     private let files: (any WorkspaceFileClient)?
     private let search: FileWorkspaceSearch?
     @State private var viewModel: FileBrowserViewModel
     @State private var searchText = ""
-    /// Bumped by the Workspace section's Try Again, which runs the same query again.
     @State private var searchAttempt = 0
     @State private var openedFile: FileTreeNode?
-    /// The warm fetch handed over when `openedFile` was tapped; consumed by that preview only.
     @State private var openedFilePrefetch: Task<FileResponse, Error>?
 
     init(
@@ -54,7 +46,6 @@ struct FileBrowserView: View {
             )
             .id(node.id)
         }
-        // A file opened from the old workspace reads through the old client: close it.
         .onChange(of: files?.scope) {
             openedFile = nil
             openedFilePrefetch?.cancel()
@@ -77,10 +68,6 @@ struct FileBrowserView: View {
             : viewModel.workspaceSearchState(for: searchText, in: files?.scope, hiding: visibleNodes)
         let showsWorkspaceSection = workspaceSearch.map { $0 != .found([]) } ?? false
 
-        // A workspace search keeps the list up while the root loads or fails; the bar over
-        // it carries the root's progress, error and retry.
-        // A root neither loaded nor failed is still on its way, so the first frame shows progress
-        // rather than "No Files".
         if !viewModel.tree.isRootLoaded && viewModel.errorMessage == nil && !showsWorkspaceSection {
             ProgressView("Loading files...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -180,8 +167,6 @@ struct FileBrowserView: View {
         }
     }
 
-    /// The host's matches for the query (#1389): static "Searching…" until they land, an inline
-    /// Try Again when the search failed, else one row per file.
     private func workspaceSection(_ state: WorkspaceSearchState) -> some View {
         Section {
             switch state {
@@ -273,8 +258,6 @@ struct FileBrowserView: View {
         Task { await viewModel.select(path: node.path) }
     }
 
-    /// Opens a Workspace hit's preview without selecting it, which would list every folder
-    /// above it (#1233).
     private func open(_ match: ComposerFilePathSearch.Match) {
         guard let node = viewModel.openWorkspaceHit(match) else { return }
         openedFilePrefetch = nil
@@ -288,14 +271,12 @@ struct FileBrowserView: View {
     }
 }
 
-/// What re-runs the Workspace search: the query, the workspace it searches, and Try Again.
 private struct WorkspaceSearchKey: Equatable {
     let query: String
     let scope: String?
     let attempt: Int
 }
 
-/// One Workspace hit (#1389): the file's name over its folder, at the tree's top-level indent.
 private struct WorkspaceSearchRowView: View {
     let match: ComposerFilePathSearch.Match
     let onTap: () -> Void
@@ -341,8 +322,6 @@ private struct WorkspaceSearchRowView: View {
     }
 }
 
-/// One tree row: 42 pt tall, indented 18 pt per level, chevron for folders, child count once
-/// the folder has been listed. Press-down warms the file preview before the tap lands.
 private struct FileTreeRowView: View {
     let item: VisibleFileTreeNode
     let isExpanded: Bool
@@ -415,8 +394,6 @@ private struct FileTreeRowView: View {
         }
     }
 
-    /// Folders and symlinks are quiet grey symbols; a file shows the glyph for its type.
-    /// Everything sits at 17 pt so the column lines up.
     @ViewBuilder
     private var icon: some View {
         if node.isDirectory || node.isSymlink {
@@ -448,7 +425,6 @@ private struct FileTreeRowView: View {
     }
 }
 
-/// Highlights the row while pressed and reports press changes so the row can prefetch.
 private struct FileTreeRowButtonStyle: ButtonStyle {
     let isSelected: Bool
     let onPressChanged: (Bool) -> Void

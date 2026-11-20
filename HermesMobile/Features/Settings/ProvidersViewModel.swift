@@ -1,14 +1,9 @@
 import Foundation
 import Observation
 
-/// Backs the read-only Providers status screen (#26). Loads `GET /api/providers`
-/// once per appearance and exposes pure, testable presentation helpers — no
-/// write operations by design (key set/delete stays a server-side concern).
 @MainActor
 @Observable
 final class ProvidersViewModel {
-    /// Server order is preserved: upstream already sorts active-first, then
-    /// custom providers, then key-holders, then the rest.
     private(set) var providers: [ProviderSummary] = []
     private(set) var activeProviderID: String?
     private(set) var isLoading = false
@@ -16,10 +11,6 @@ final class ProvidersViewModel {
 
     private let client: APIClient
 
-    /// Monotonic token identifying the most recent `load()` call. `load()` has
-    /// three overlapping entry points (`.task`, `.refreshable`, "Try Again"), so
-    /// an older in-flight request must not overwrite a newer response or clear
-    /// `isLoading` while the newer request is still pending (#42 Codex review).
     private var loadGeneration = 0
 
     init(server: URL, client: APIClient? = nil) {
@@ -39,18 +30,13 @@ final class ProvidersViewModel {
             providers = response.providers ?? []
             activeProviderID = Self.normalizedProviderID(response.activeProvider)
         } catch is CancellationError {
-            // The owning view was dismissed (or the refresh gesture was torn
-            // down) mid-request — don't surface "cancelled" as a load error.
         } catch let error as URLError where error.code == .cancelled {
-            // Same cancellation, surfaced through URLSession.
         } catch APIError.network(let underlying) where (underlying as? URLError)?.code == .cancelled {
-            // Same cancellation, as `APIClient` wraps it.
         } catch {
             guard generation == loadGeneration else { return }
             errorMessage = error.localizedDescription
         }
 
-        // A newer load owns the loading state now — leave it alone.
         guard generation == loadGeneration else { return }
         isLoading = false
     }
@@ -65,11 +51,6 @@ final class ProvidersViewModel {
         return id == active
     }
 
-    // MARK: - Presentation helpers (pure, testable)
-
-    /// `active_provider` comes from config (`model.provider`) while entry `id`s are
-    /// canonical slugs — trim and lowercase both sides so cosmetic differences
-    /// don't hide the active badge.
     static func normalizedProviderID(_ raw: String?) -> String? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !trimmed.isEmpty
@@ -92,11 +73,6 @@ final class ProvidersViewModel {
         return String(localized: "Unknown provider")
     }
 
-    /// Short technical badge naming where a configured key came from. Collapses the
-    /// upstream `key_source` vocabulary (`env_file`/`env_var`/`env` → env,
-    /// `oauth`/`token` → OAuth, `config_yaml`/`config` → config); unknown future
-    /// values pass through verbatim rather than being hidden. `nil` when the
-    /// provider has no key — the badge only ever describes an existing credential.
     static func keySourceBadge(for provider: ProviderSummary) -> String? {
         guard provider.hasKey == true else {
             return nil
@@ -124,16 +100,10 @@ final class ProvidersViewModel {
         trimmedNonEmpty(provider.authError)
     }
 
-    /// Catalog size to advertise on the models disclosure: `models_total` reflects
-    /// the complete catalog even when `models` is trimmed to a featured subset, so
-    /// prefer it whenever it is larger than the visible list.
     static func modelCount(for provider: ProviderSummary) -> Int {
         max(provider.modelsTotal ?? 0, provider.models?.count ?? 0)
     }
 
-    /// Compact catalog count for a provider's disclosure, following the model
-    /// picker's convention: `shown / total` when the server trimmed the list,
-    /// the plain count otherwise. `nil` when the provider reports no models.
     static func modelCountLabel(for provider: ProviderSummary) -> String? {
         if let info = truncatedModelInfo(for: provider) {
             return "\(info.shown.formatted()) / \(info.total.formatted())"
@@ -143,8 +113,6 @@ final class ProvidersViewModel {
         return count > 0 ? count.formatted() : nil
     }
 
-    /// Non-nil only when the server trimmed the model list (`models_total` exceeds
-    /// the entries actually sent) — drives the "Showing X of Y models" footer.
     static func truncatedModelInfo(for provider: ProviderSummary) -> (shown: Int, total: Int)? {
         let shown = provider.models?.count ?? 0
 

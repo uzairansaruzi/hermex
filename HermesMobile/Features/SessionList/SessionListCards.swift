@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The slot at the top of a session list (webui and Hermes) that shows at most one card.
 struct SessionListCardSlot: View {
     let hasSharedImport: Bool
     @AppStorage(TipJar.completedResponseCountKey) private var completedResponses = 0
@@ -35,9 +34,6 @@ struct SessionListCardSlot: View {
     }
 }
 
-/// Asks whether to send a weekly usage report (#1662), or, once the report has gained fields,
-/// whether to send those too. Only an answer hides it: "See what's sent" opens the preview and
-/// leaves the card in place.
 struct UsageReportsCard: View {
     let question: UsageReportConsent.Question
     @State private var isShowingPreview = false
@@ -91,7 +87,6 @@ struct UsageReportsCard: View {
     }
 }
 
-/// Asks for support. Opening either link hides the card for good; the membership page sells any perks.
 struct TipJarCard: View {
     var body: some View {
         SessionListCardShell(
@@ -117,7 +112,6 @@ struct TipJarCard: View {
     }
 }
 
-/// Asks for a GitHub star. The app cannot see a star, so opening the link hides the card for good.
 struct GitHubStarCard: View {
     var body: some View {
         SessionListCardShell(
@@ -125,7 +119,6 @@ struct GitHubStarCard: View {
             title: "Star Hermex on GitHub",
             message: Text("Hermex is free and open source. A star costs nothing and helps more people find it."),
             faceShape: "star",
-            // The tip card's eyes, moved in from the star's arm.
             eyeLayout: .classic.centered(x: 0.06, y: 0)
         ) {
             SessionListCardButton(title: "Star on GitHub", systemImage: "star.fill", destination: AppConfig.repositoryURL)
@@ -134,7 +127,6 @@ struct GitHubStarCard: View {
     }
 }
 
-/// The yellow capsule button both cards lead with.
 private struct SessionListCardButton: View {
     let title: LocalizedStringKey
     var systemImage: String?
@@ -161,11 +153,9 @@ private struct SessionListCardButton: View {
 }
 
 private extension Color {
-    /// The cards' face (`#ffe000`) and their lead button, on every theme.
     static let sessionListCardYellow = Color(red: 1, green: 224 / 255, blue: 0)
 }
 
-/// The usage reports card's two answers, the same size: Allow in the face's yellow, No thanks in gray.
 private struct SessionListCardAnswerButton: View {
     let title: LocalizedStringKey
     var isProminent = false
@@ -186,8 +176,6 @@ private struct SessionListCardAnswerButton: View {
     }
 }
 
-/// The shell the session list cards share: a greeting face, title, "Not now" X, body and
-/// actions. Any link opened from `actions` hides a tip or star card for good.
 private struct SessionListCardShell<Actions: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isAppThemed) private var isThemed
@@ -200,11 +188,8 @@ private struct SessionListCardShell<Actions: View>: View {
     let card: SessionListCard
     let title: LocalizedStringKey
     let message: Text
-    /// A `BotAvatarShape` raw value for the yellow face.
     let faceShape: String
-    /// Nil keeps the shape's own eye placement.
     let eyeLayout: BotAvatarEyeLayout?
-    /// False for a card that leaves only by an answer.
     let hasCloseButton: Bool
     let actions: Actions
 
@@ -221,7 +206,6 @@ private struct SessionListCardShell<Actions: View>: View {
 
     private var state: SessionListCardState { SessionListCardState(card: card, defaults: .standard) }
 
-    // An answer removes the card from the slot, which ends `isVisible` and the greeting with it.
     private var canAnimate: Bool {
         isVisible && scenePhase == .active && !reduceMotion
     }
@@ -296,7 +280,6 @@ private struct SessionListCardShell<Actions: View>: View {
             .accessibilityHidden(true)
     }
 
-    /// "Not now": hides the card until the next feature release.
     private var closeButton: some View {
         Button {
             state.dismissFromCard()

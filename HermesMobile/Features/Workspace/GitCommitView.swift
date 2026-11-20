@@ -1,15 +1,8 @@
 import SwiftUI
 
-/// Advanced staging & commit sheet (issue #315, Slice C, surface C; Hermes #1115).
-///
-/// Lets the user select changed files, stage / unstage / discard them, generate or write
-/// a commit message, and commit (all staged) or commit only the selected paths — with an
-/// optional push afterwards. All write actions are disabled while the chat is streaming or
-/// viewing cached data; "Suggest message" stays available because it is a read-only call.
 struct GitCommitView: View {
     let writesDisabled: Bool
     let onAPIError: (Error) -> Void
-    /// Called after every successful commit so the host can refresh the toolbar badge.
     let onCommitted: () -> Void
 
     @State private var viewModel: GitCommitViewModel
@@ -18,7 +11,6 @@ struct GitCommitView: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.dismiss) private var dismiss
 
-    /// `git` is the chat's repository client, as its Git menu reads it.
     init(
         git: (any GitDataClient)?,
         writesDisabled: Bool,
@@ -82,9 +74,6 @@ struct GitCommitView: View {
         }
     }
 
-    /// Shown when the working tree is clean. Normally "No Changes", but a commit + push can
-    /// leave the tree clean while the push fails — the commit bar (the error's usual home)
-    /// is gone, so surface `actionErrorMessage` here instead of swallowing it.
     @ViewBuilder
     private var emptyState: some View {
         if let error = viewModel.actionErrorMessage {
@@ -267,10 +256,6 @@ struct GitCommitView: View {
         writesDisabled || viewModel.isBusy || viewModel.trimmedMessage.isEmpty
     }
 
-    /// True when discarding the targets can delete a file from disk — i.e. any new file:
-    /// untracked, or a staged add/rename (which discard turns into an untracked file to
-    /// delete once it is unstaged). Drives the stronger "deletes files" confirmation copy
-    /// and the `deleteUntracked` flag, so the server never rejects the discard.
     private var discardIncludesUntracked: Bool {
         let targets = viewModel.hasSelection
             ? viewModel.trackedFiles.filter { viewModel.isSelected($0) }
@@ -288,8 +273,6 @@ struct GitCommitView: View {
     }
 }
 
-/// One selectable changed-file row in the staging sheet, showing a selection checkbox,
-/// the file name + path, diff counts, and whether it is currently staged.
 private struct GitCommitFileRow: View {
     let file: GitFile
     let isSelected: Bool

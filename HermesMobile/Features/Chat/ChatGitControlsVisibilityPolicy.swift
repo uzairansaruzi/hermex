@@ -1,8 +1,3 @@
-/// Decides whether turn-end git controls belong in the chat transcript.
-///
-/// The Settings toggle is checked here with the existing workspace and turn
-/// conditions so every transcript git surface follows the same visibility rule.
-/// A repository without writes keeps the read-only recap and hides the commit button.
 enum ChatGitControlsVisibilityPolicy {
     static func showsInlineCommitButton(
         showsGitControls: Bool,

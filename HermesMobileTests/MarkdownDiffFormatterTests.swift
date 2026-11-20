@@ -6,8 +6,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         MarkdownDiffFormatter.parse(code).lines.map(\.kind)
     }
 
-    /// The design mock's two-file patch: a removed `--- TODO` SQL comment inside a counted
-    /// hunk is a deletion, and a context line whose leading space was trimmed still counts.
     func testMultiFileGitDiffCountsDashedLinesInsideCountedHunks() {
         let document = MarkdownDiffFormatter.parse("""
         diff --git a/Sources/Store/SessionStore.swift b/Sources/Store/SessionStore.swift
@@ -50,8 +48,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         XCTAssertEqual(document.lines[11].kind, .context, "a trimmed blank context line")
     }
 
-    /// Plain `diff -u` output has no `diff --git` line; the first hunk's counts end it,
-    /// so the next file's `---`/`+++` lines are headers, not a deletion and an addition.
     func testMultiFilePatchWithoutGitLinesEndsEachHunkByItsCounts() {
         let document = MarkdownDiffFormatter.parse("""
         --- a/one.txt
@@ -93,7 +89,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         """), [.hunk, .removed, .added, .fileHeader])
     }
 
-    /// Agent-written counts can be anything; an `Int.max` count must bound the hunk, not trap.
     func testMaximalHunkCountsDoNotOverflow() {
         XCTAssertEqual(kinds("""
         @@ -1,9223372036854775807 +1,9223372036854775807 @@
@@ -103,8 +98,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         """), [.hunk, .removed, .added, .removed])
     }
 
-    /// LLMs write a bare `@@`: no counts bound the hunk, so prefix rules apply and a
-    /// `--- `/`+++ ` pair reads as the next file's headers.
     func testBareHunkHeaderFallsBackToPrefixRules() {
         let document = MarkdownDiffFormatter.parse("""
         --- a/x
@@ -163,8 +156,6 @@ final class MarkdownDiffFormatterTests: XCTestCase {
         XCTAssertEqual(document.lines.map(\.text), ["@@ -1 +1 @@", "-a", "+b"])
     }
 
-    /// Only a settled diff or patch fence within the highlighter's size guards is styled;
-    /// everything else keeps today's plain code block.
     func testDocumentStylesOnlySettledDiffFencesWithinSizeGuards() {
         let diff = "@@ -1 +1 @@\n-a\n+b"
 

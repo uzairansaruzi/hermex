@@ -1,8 +1,6 @@
 import SwiftUI
 import UserNotifications
 
-/// Notifications (#1252): the active server's push setup, then the alerts that apply on this
-/// iPhone to every server.
 struct SettingsNotificationsPage: View {
     let server: URL
 
@@ -37,7 +35,6 @@ struct SettingsNotificationsPage: View {
                     if let notificationStatusText {
                         Text(notificationStatusText)
                     }
-                    // iOS never re-prompts after a denial, so the way back is iPhone Settings.
                     if notificationPermissionStatus == .denied,
                        let settingsURL = URL(string: UIApplication.openNotificationSettingsURLString) {
                         Link("Open Settings", destination: settingsURL)
@@ -45,7 +42,6 @@ struct SettingsNotificationsPage: View {
                 }
             }
         }
-        // Re-read on return from iPhone Settings so the footer and link drop a stale denial.
         .task(id: scenePhase) {
             if scenePhase == .active { await refreshNotificationPermissionStatus() }
         }
@@ -84,7 +80,6 @@ struct SettingsNotificationsPage: View {
         notificationStatusMessage = nil
     }
 
-    /// Shared with the chat's one-time offer, which turns the same preference on.
     private func enableResponseCompletionNotifications() async {
         let result = await ResponseCompletionNotificationService.enable()
         notificationPermissionStatus = result.authorizationStatus

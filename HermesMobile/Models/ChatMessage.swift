@@ -16,23 +16,11 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
     let contentParts: [JSONValue]?
     let reasoning: String?
     let attachments: [MessageAttachment]?
-    /// Display-only server semantics. Direct Bot snapshots use this to keep
-    /// durable system deliveries from impersonating user-authored messages;
-    /// `"steer"` marks a mid-turn steering hint. Unknown values fall back to
-    /// ordinary rendering.
     let displayKind: String?
     let displayMetadata: [String: JSONValue]?
     let turnTps: Double?
-    /// Server-measured wall-clock seconds for the whole turn, set on its final
-    /// assistant message (`_turnDuration`). Absent on older transcripts.
     let turnDuration: Double?
-    /// The host's durable `messages.id` for a Hermes session's settled row (a REST page's
-    /// `id`, which a rewind's `truncate_before_row_id` names), set by
-    /// `HermesTranscriptProjection` (#1047). Nil everywhere else, so it also tells a
-    /// Hermes session's settled rows from its live ones.
     let rowID: Int?
-    /// A Hermes session's settled row that compaction archived (the REST row's `active` is 0,
-    /// #1049). It shows above the compaction card, and the host can no longer cut there.
     let isCompacted: Bool
 
     init(
@@ -108,8 +96,6 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         reasoning = container.decodeLossyStringIfPresent(forKey: .reasoning)
         let decodedAttachments = Self.decodeAttachmentsTolerantly(from: container)
         attachments = Self.attachments(decodedAttachments, enrichedByMarkerIn: content)
-        // Both key spellings: the REST client decodes snake_case, while the
-        // SSE `done` payload's primary path uses a plain decoder.
         displayKind = container.decodeLossyStringIfPresent(forKey: .displayKind)
             ?? container.decodeLossyStringIfPresent(forKey: .displayKindSnake)
         displayMetadata = try? container.decodeIfPresent([String: JSONValue].self, forKey: .displayMetadata)
@@ -119,36 +105,20 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
         isCompacted = false
     }
 
-    // MARK: - Steering hints
-
-    /// `display_kind` value the server persists for a mid-turn steering hint.
     static let steerDisplayKind = "steer"
 
-    /// The exact out-of-band wrapper hermes-agent ≥ 2026.9.11 persists around
-    /// each mid-turn steer. Recognition requires this exact text; a bare
-    /// prefix match would misfire on user text that merely mentions it.
     private static let steerMarkerOpen = "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]"
     private static let steerMarkerClose = "[/OUT-OF-BAND USER MESSAGE]"
 
-    /// True for a steering hint: either the server flagged it with
-    /// `display_kind: "steer"`, or the content is exactly the out-of-band
-    /// marker block (older rows, or rows that lost the flag).
     var isSteerMessage: Bool {
         displayKind == Self.steerDisplayKind
             || (role == "user" && Self.isSteerWrappedContent(content))
     }
 
-    /// The steer text with the out-of-band wrapper stripped. For non-steer
-    /// messages this is the raw content.
     var steerText: String {
         Self.strippedSteerText(from: content) ?? content ?? ""
     }
 
-    /// Strips the `[OUT-OF-BAND USER MESSAGE …] … [/OUT-OF-BAND USER MESSAGE]`
-    /// wrapper hermes-agent ≥ 2026.9.11 persists around each mid-turn steer.
-    /// Returns nil unless the content is exactly a marker-wrapped block: the
-    /// first line is the exact opening marker and the last line is the exact
-    /// closing marker.
     static func strippedSteerText(from content: String?) -> String? {
         guard let content else { return nil }
         let lines = content
@@ -268,13 +238,10 @@ struct ChatMessage: Decodable, Equatable, Identifiable {
     private static func decodeAttachmentsTolerantly(
         from container: KeyedDecodingContainer<CodingKeys>
     ) -> [MessageAttachment]? {
-        // Fast path: direct array decode when every attachment is well-shaped.
         if let direct = try? container.decodeIfPresent([MessageAttachment].self, forKey: .attachments) {
             return direct
         }
 
-        // Fallback: decode as raw JSON values so one malformed attachment
-        // does not throw away the entire message array.
         guard let jsonValues = try? container.decodeIfPresent([JSONValue].self, forKey: .attachments) else {
             return nil
         }
@@ -298,9 +265,6 @@ enum TranscriptTurnClassifier {
         return "raw:\(max(0, messageOffset ?? 0) + index)"
     }
 
-    /// Whether a row opens a turn: a prompt with visible content, or a Hermes
-    /// async-delegation delivery, which the host runs as a turn of its own (#1706).
-    /// Steering hints ride along inside the active turn and never open one.
     static func isTurnBoundary(_ message: ChatMessage) -> Bool {
         if message.role == "delegation_completion" {
             return message.content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
@@ -313,17 +277,12 @@ enum TranscriptTurnClassifier {
         message.role == "user" && !hasVisibleUserContent(message)
     }
 
-    /// Turn key for messages before the first user boundary of the loaded page.
     static let initialTurnKey = "turn:start"
 
-    /// Key shared by every assistant message answering the user message at
-    /// `absoluteIndex` (loaded index plus page offset), so turn-scoped state
-    /// survives paging older messages in.
     static func userTurnKey(absoluteIndex: Int) -> String {
         "turn:user:\(absoluteIndex)"
     }
 
-    /// Key of the latest turn: the last user boundary's, or `initialTurnKey`.
     static func latestTurnKey(in messages: [ChatMessage], messageOffset: Int? = nil) -> String {
         guard let index = messages.lastIndex(where: isTurnBoundary) else { return initialTurnKey }
         return userTurnKey(absoluteIndex: max(0, messageOffset ?? 0) + index)
@@ -458,10 +417,6 @@ extension KeyedDecodingContainer {
 
         if let value = try? decodeIfPresent(Double.self, forKey: key),
            value.isFinite {
-            // Int(exactly:) instead of Int(_:), which traps on doubles outside
-            // Int range, so a huge server value decodes to nil instead of
-            // crashing (#62). Truncation toward zero matches Int(_:) for
-            // values that fit.
             return Int(exactly: value.rounded(.towardZero))
         }
 
@@ -480,7 +435,6 @@ extension KeyedDecodingContainer {
             return nil
         }
 
-        // Same out-of-range guard as the numeric branch above (#62).
         return Int(exactly: value.rounded(.towardZero))
     }
 

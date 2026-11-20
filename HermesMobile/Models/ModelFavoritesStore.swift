@@ -5,7 +5,6 @@ struct ModelFavoriteKey: Codable, Equatable, Hashable {
     let providerID: String?
 }
 
-// UserDefaults supports concurrent preference access; these stores are immutable wrappers around it.
 struct ModelFavoritesStore: @unchecked Sendable {
     private static let baseKey = "hermes.mobile.favoriteModels"
 
@@ -17,7 +16,6 @@ struct ModelFavoritesStore: @unchecked Sendable {
         self.storageKey = storageKey
     }
 
-    /// One server's favorites. A model's name means nothing on another server.
     init(server: URL, defaults: UserDefaults = .standard) {
         let key = defaults.scopedModelListKey(base: Self.baseKey, server: server)
         self.init(defaults: defaults, storageKey: key)
@@ -104,7 +102,6 @@ struct ModelRecentsStore: @unchecked Sendable {
         self.limit = limit
     }
 
-    /// One server's recent models.
     init(server: URL, defaults: UserDefaults = .standard) {
         let key = defaults.scopedModelListKey(base: Self.baseKey, server: server)
         self.init(defaults: defaults, storageKey: key)
@@ -172,14 +169,11 @@ struct ModelRecentsStore: @unchecked Sendable {
     }
 }
 
-/// The Thinking level and Fast setting last chosen for one model.
 struct ModelPreset: Codable, Equatable {
     var effort: String?
     var fast: Bool?
 }
 
-/// One server's remembered Thinking and Fast per model, applied when the model is picked in a
-/// Hermes chat (#1750). Local only: nothing is written to the host. An unreadable blob is empty.
 struct ModelPresetStore: @unchecked Sendable {
     private static let baseKey = "hermes.mobile.modelPresets"
 
@@ -226,9 +220,6 @@ private extension UserDefaults {
         "\(base)|\(server.absoluteString)"
     }
 
-    /// `server`'s key for a model list. The first server read after the lists became
-    /// per-server takes the old shared list, so the other servers start empty instead of
-    /// inheriting it.
     func scopedModelListKey(base: String, server: URL) -> String {
         let key = Self.modelListKey(base: base, server: server)
         if let shared = object(forKey: base) {

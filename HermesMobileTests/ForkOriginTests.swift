@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Only chats made by Fork From Here or `/branch` carry a "Forked from" row,
-/// titled from the parent the session list cached.
 final class ForkOriginTests: XCTestCase {
     private let fork = SessionSummary(sessionId: "child", sessionSource: "fork", parentSessionId: "parent")
 

@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A Hermes server's API Keys page (#1318), opened from its Settings page: the keys one Profile's
-/// `.env` sets, by category, each opening to be replaced or removed, and **+** to add another.
 struct APIKeysView: View {
     @State private var model: APIKeysModel
     @State private var sheet: APIKeySheet?
@@ -42,7 +40,6 @@ struct APIKeysView: View {
         }
     }
 
-    /// The Profile the page lists, with what its list covers.
     private func profileSection(_ profile: String) -> some View {
         ServerProfileRow(profiles: model.profiles, selection: profile,
                          footer: "Keys in this Profile's .env file. Keys the host gets from its environment or a sign-in still work but aren't listed.") { name in
@@ -102,7 +99,6 @@ struct APIKeysView: View {
     }
 }
 
-/// What the API Keys page presents, each naming the Profile it writes to.
 private enum APIKeySheet: Identifiable {
     case add(profile: String)
     case edit(HermesEnvKey, profile: String)
@@ -115,7 +111,6 @@ private enum APIKeySheet: Identifiable {
     }
 }
 
-/// One key's row: its title, the variable name under a provider's label, and `trailing`.
 struct APIKeyRow<Trailing: View>: View {
     let key: HermesEnvKey
     @ViewBuilder let trailing: Trailing

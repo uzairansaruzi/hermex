@@ -1,10 +1,6 @@
 import SwiftData
 import SwiftUI
 
-/// The Bots inbox: pushed from a webui server's session list, or the Bots side of a Hermes
-/// server's home (`HermesServerHome`), where it leads with the session list's header, whose
-/// avatar replaces the Bot connection gear, and takes the home's bar (`HermesHomeChrome`): the
-/// filter holds hidden bots and section order, and new chat makes a bot or a group chat.
 @MainActor struct BotsInboxView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -13,15 +9,11 @@ import SwiftUI
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     let server: URL
     private let home: HermesHome?
-    /// The bot a deep link named, resolved here because this is where the live roster
-    /// is. Cleared once this inbox has settled, whether or not it matched (#554).
     @Binding private var pendingDestination: BotDestination?
     @State private var inbox: BotInbox
     @State private var showingSearch = false
     @State private var searchedProfile: (connectionID: UUID, profileID: String)?
     @State private var showingSetup = false
-    /// True while the form is open to replace a password the host refused; it opens
-    /// with the password field focused.
     @State private var updatingSignIn = false
     @State private var revision = UUID()
     @State private var editSelection: BotProfileEditSelection?
@@ -32,26 +24,17 @@ import SwiftUI
     @State private var renamingRoom: BotGroupRoom?
     @State private var roomName = ""
     @State private var disbanding: BotGroupRoom?
-    /// The bot the "New Section" alert files, and the name being typed for it.
     @State private var filing: BotProfile?
     @State private var newSectionName = ""
     @State private var showingSectionOrder = false
     @State private var searchedRoom: BotRoomKey?
     @State private var searchedSequence: Int?
     @State private var roomSequence: Int?
-    /// One-line report for something that is no longer there: a disbanded room, or a
-    /// conversation a deep link named that the bot has since replaced.
     @State private var toast: String?
-    /// True once `open()` has returned at least once, so "no Bot connection" is a
-    /// settled answer to a held deep link rather than a not-loaded-yet one.
     @State private var hasSettled = false
-    /// The bot whose Screen is open (#1567), on the connection it opened with.
     @State private var screenTarget: BotScreenTarget?
-    /// The host answered a Screen's `display.*` with -32601, so the entries hide.
     @State private var hostLacksScreen = false
-    /// The server's Bot Screen switch.
     @AppStorage private var isScreenEnabled: Bool
-    /// The Profiles whose screen this iPhone still holds, for the banner.
     @State private var heldScreens: [String] = []
 
     init(
@@ -61,8 +44,6 @@ import SwiftUI
         self.init(server: server, pendingDestination: pendingDestination, home: nil, inbox: BotInbox(server: server))
     }
 
-    /// A Hermes server's home, which keeps `inbox` across its switch, so a switch back shows the
-    /// roster at once (#709). Its sign-in form is reached through Settings there.
     init(server: URL, pendingDestination: Binding<BotDestination?>, home: HermesHome?, inbox: BotInbox) {
         self.server = server
         self.home = home
@@ -71,7 +52,6 @@ import SwiftUI
         _isScreenEnabled = AppStorage(wrappedValue: false, BotScreenSettings.key(for: server))
     }
 
-    /// An inbox the caller built, such as one on scripted wires.
     init(server: URL, inbox: BotInbox) {
         self.server = server
         home = nil
@@ -168,12 +148,9 @@ import SwiftUI
             }
     }
 
-    /// The rows alone. The list, its sheets and its lifecycle each sit in their
-    /// own expression: together they were too much for the CI type-checker.
     private var list: some View {
         AppList(rows: .plain) {
             homeHeader
-            // Not gated on the switch: a hand-back that failed as it was turned off still needs a way out.
             if let connection = inbox.connection {
                 ForEach(heldScreens, id: \.self) { profile in
                     heldScreenRow(profile, connection)
@@ -182,13 +159,9 @@ import SwiftUI
             if inbox.connection != nil {
                 if let message = inbox.errorMessage ?? inbox.routeAdvice {
                     Text(message).font(AppFont.callout())
-                    // Reconnecting would only send the refused password again (#884).
                     if inbox.needsSignIn {
                         Button("Update sign-in", action: updateSignIn)
                     } else if inbox.needsAddress {
-                        // Reconnecting reaches the same listener (#1598). A Hermes server's address
-                        // is fixed, so its way out is another server; a webui's Bot connection
-                        // edits its own.
                         if let home {
                             Button("Add Server", action: home.avatar.addServer)
                         } else {
@@ -198,8 +171,6 @@ import SwiftUI
                         Button("Reconnect") { revision = UUID() }
                     }
                 } else if inbox.isLoadingRoster {
-                    // The first row speaks for the set, so VoiceOver hears one
-                    // "Loading bots" instead of nothing.
                     ForEach(0..<4, id: \.self) { index in
                         BotInboxSkeletonRow().listRowSeparator(.hidden).padding(.vertical, 12)
                             .accessibilityElement(children: .ignore)
@@ -214,18 +185,8 @@ import SwiftUI
                 }
                 let pinned = inbox.pinned
                 if !pinned.isEmpty {
-                    // Pinned chats sit above the list as large tiles: as many columns as
-                    // there are pinned chats, up to three, so one or two sit centered and
-                    // four or more wrap instead of being clipped away.
-                    // Top-aligned, so a tile with a status line under its name keeps its avatar
-                    // level with its neighbours'.
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: min(pinned.count, 3)), spacing: 24) {
                         ForEach(pinned) { chat in
-                            // The grid is one list row, and a row merges every
-                            // `.contextMenu` inside it into one, so holding any tile
-                            // lifted the whole grid with the first bot's menu. A Menu
-                            // with a primary action is its own control: tap opens
-                            // the chat, a hold shows this chat's menu.
                             switch chat {
                             case .bot(let profile):
                                 Menu { organizeMenu(profile) } label: {
@@ -245,7 +206,6 @@ import SwiftUI
                     .listRowSeparator(.hidden)
                 }
                 chatSections(inbox.sections)
-                // The home's filter holds this instead.
                 if home == nil && inbox.hiddenCount > 0 {
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
@@ -254,18 +214,15 @@ import SwiftUI
                     .listRowSeparator(.hidden)
                 }
             } else {
-                // The welcome is an overlay, so it has no list separators or disabled rows.
             }
         }
         .listStyle(.plain)
-        // A split view's sidebar paints gray behind a plain List; only its rows cover it.
         .scrollContentBackground(.hidden)
         .background(Color(.appCanvas))
         .overlay {
             if inbox.connection == nil {
                 GeometryReader { geometry in
                     ScrollView {
-                        // The home's header stays, so Settings and the server switcher do too.
                         VStack(spacing: 0) {
                             homeHeader
                             BotConnectionWelcomeView(isCovered: showingSetup) { showingSetup = true }
@@ -279,8 +236,6 @@ import SwiftUI
         .modifier(chrome)
     }
 
-    /// The session list's header, leading the home's Bots side. Its search opens the inbox's
-    /// search sheet.
     @ViewBuilder private var homeHeader: some View {
         if let home {
             SessionsHeader(logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
@@ -291,13 +246,11 @@ import SwiftUI
         }
     }
 
-    /// The home's chrome, or the pushed inbox's own toolbar.
     private var chrome: some ViewModifier {
         BotsInboxChrome(home: home, isOffline: inbox.connection == nil, search: { showingSearch = true },
                         openSetup: { showingSetup = true }, filter: { filterMenu }, newChat: { newChatMenu })
     }
 
-    /// New Bot and New Group Chat: the pushed inbox's + menu, and the home's new chat.
     private var newChatMenu: some View {
         Menu {
             Button("New Bot", systemImage: "plus.bubble") { creation = .new }
@@ -316,7 +269,6 @@ import SwiftUI
         .disabled(inbox.link != .live)
     }
 
-    /// The home's filter: hidden bots and groups, and the order of Desktop's sections.
     private var filterMenu: some View {
         Menu {
             Toggle(isOn: $inbox.showsHidden) {
@@ -331,16 +283,8 @@ import SwiftUI
         .disabled(inbox.connection == nil)
     }
 
-    /// Opens the bot a deep link named, once this inbox has a roster to resolve it
-    /// against. A connecting or retrying socket keeps the link pending, so a dropped
-    /// socket or a manual Reconnect still routes it. A replaced connection or a
-    /// Profile the server no longer has leaves the user on the inbox rather than
-    /// guessing (#554).
     private func openPendingDestination() {
         guard let destination = pendingDestination, destination.server == server else { return }
-        // A pushed screen closes the inbox socket. Return to the inbox before waiting
-        // for its roster, so its appearance task can reconnect and resolve the link,
-        // as when the Sessions list opens a Bot Chat it found (#1053).
         inbox.selection = BotInboxSelection()
         guard BotDeepLinkRouter.inboxCanAnswer(
             link: inbox.link, hasConnection: inbox.connection != nil, hasSettled: hasSettled
@@ -350,8 +294,6 @@ import SwiftUI
         if destination.opensScreen, let profile = inbox.selection.profile { openScreen(profile) }
     }
 
-    /// Resolve the selection again after the sheet closes so a refreshed roster
-    /// or changed connection cannot open an old bot under a new identity.
     private func openSearchSelection() {
         defer { searchedProfile = nil; searchedRoom = nil; searchedSequence = nil }
         if let key = searchedRoom, key.connectionID == inbox.connection?.id,
@@ -360,8 +302,6 @@ import SwiftUI
         inbox.selection.profile = inbox.profiles.first { $0.id == searched.profileID }
     }
 
-    /// The list under the tiles. Headers appear only when a named section is on
-    /// screen; without one the unfiled block reads as the flat list it always was.
     @ViewBuilder private func chatSections(_ sections: [BotInbox.ChatSection]) -> some View {
         let headed = sections.contains { $0.name != nil }
         ForEach(sections) { section in
@@ -369,7 +309,6 @@ import SwiftUI
                 Section {
                     chatRows(section.chats)
                 } header: {
-                    // A Desktop name is the user's own text, never a catalog key.
                     Group {
                         if let name = section.name { Text(verbatim: name) } else { Text("Other chats") }
                     }
@@ -402,9 +341,6 @@ import SwiftUI
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
         .contextMenu { organizeMenu(profile) }
-        // The same writes the long-press menu offers, one swipe away. No full
-        // swipe: Delete confirms and Pin is a server write, so nothing should fire
-        // from a flick.
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             Button {
                 Task { await inbox.setPinned(!profile.pinned, profile) }
@@ -415,8 +351,6 @@ import SwiftUI
             .disabled(!inbox.mayEdit(profile))
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            // Hide sits at the edge and Delete behind it, so the first thing a
-            // short swipe reaches is the reversible one.
             Button {
                 Task { await inbox.setHidden(!profile.hidden, profile) }
             } label: {
@@ -434,24 +368,14 @@ import SwiftUI
         .padding(.vertical, 12)
     }
 
-    /// Opens the sign-in form for a password the host refused. A chat or room returns
-    /// here first: its client is bound to the rejected sign-in, and the inbox reloads the
-    /// record when the form closes. Its callback calls `noteRejectedSignIn` before it
-    /// pops, so the inbox's reappearing `open()` does not send that password again.
     private func updateSignIn() {
         updatingSignIn = true; showingSetup = true
     }
 
-    /// The selected bot's canonical Bot Chat in the regular chat (#1146), where every bot route
-    /// lands. A refused password comes back here to the inbox's sign-in form.
     @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
         if let chat = inbox.selection.chat(server: server, connection: connection) {
             ChatView(hermesSession: chat, continuity: inbox.selection.chatContinuity)
             .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); inbox.selection.profile = nil; updateSignIn() })
-            // A composite rather than a concatenation: a Profile name and a
-            // conversation root are both arbitrary server strings, so joining them
-            // could let two destinations share one identity and keep the wrong
-            // conversation on screen.
             .id([profile.id, connection.id.uuidString, inbox.selection.conversation ?? ""])
             .onAppear { inbox.markSeen(profile); UsageReports.shared.record(.bots) }
             .onDisappear { inbox.noteReturn(from: profile) }
@@ -470,8 +394,6 @@ import SwiftUI
         }
     }
 
-    /// Kept as its own function with the flags read once: inlined in the list
-    /// builder, the row's menus and swipes were too much for the type-checker.
     private func roomRow(_ room: BotGroupRoom, key: BotRoomKey) -> some View {
         let pinned = inbox.isRoomPinned(room)
         let hidden = inbox.isRoomHidden(room)
@@ -505,9 +427,6 @@ import SwiftUI
         roomSequence = nil; inbox.selection.room = key
     }
 
-    /// The hardware-keyboard commands (`HermexCommands`) on the home's Bots side, acting as its
-    /// New Bot, search, tiles and rows do. An inbox the webui list pushed publishes none, so that
-    /// list keeps its own.
     private var sceneActions: HermexSceneActions? {
         guard home != nil else { return nil }
         return HermexSceneActions(
@@ -528,8 +447,6 @@ import SwiftUI
         )
     }
 
-    /// A takeover that outlived its Screen view: the bot stays paused until someone hands back, so
-    /// it stays in sight here. The name opens the Screen.
     private func heldScreenRow(_ profile: String, _ connection: BotConnection) -> some View {
         let bot = inbox.profiles.first { $0.id == profile }
         return HStack {
@@ -550,33 +467,26 @@ import SwiftUI
         }
     }
 
-    /// Whether the entries to a bot's Screen show: the server's switch is on, and the host hasn't
-    /// answered that it has no such method.
     private var canOpenScreen: Bool {
         isScreenEnabled && !hostLacksScreen
     }
 
-    /// Opens `profile`'s Screen; `takingOver` takes control once its picture is live (#1632).
     private func openScreen(_ profile: BotProfile, takingOver: Bool = false) {
         guard canOpenScreen, let connection = inbox.connection else { return }
         screenTarget = BotScreenTarget(profile: profile, connection: connection, takesOver: takingOver)
     }
 
-    /// The tiles, then the rows under them, as the list shows them, which it does only with a
-    /// connection. Read only on a key press, never in `body`.
     private var keyboardShortcutChats: [BotInbox.ChatRow] {
         guard inbox.connection != nil else { return [] }
         return inbox.pinned + inbox.sections.flatMap(\.chats)
     }
 
-    /// The open bot's or room's `ChatRow.id`, where Next and Previous Chat step from.
     private var selectedChatID: String? {
         if let profile = inbox.selection.profile { return BotInbox.ChatRow.bot(profile).id }
         guard let key = inbox.selection.room, let room = inbox.rooms.first(where: { $0.id == key.roomID }) else { return nil }
         return BotInbox.ChatRow.room(room).id
     }
 
-    /// Opens a tile or row as its tap does.
     private func open(_ chat: BotInbox.ChatRow) {
         switch chat {
         case .bot(let profile): inbox.selection.profile = profile
@@ -584,9 +494,6 @@ import SwiftUI
         }
     }
 
-    /// Pin and hide are this phone's own marks and always apply; Rename and
-    /// Disband go to the host and stay inert until the inbox is live and the
-    /// host offers them for this room.
     @ViewBuilder private func roomOrganizeMenu(_ room: BotGroupRoom) -> some View {
         Button {
             roomName = room.name; renamingRoom = room
@@ -610,9 +517,6 @@ import SwiftUI
         .disabled(!inbox.mayDisbandRoom(room))
     }
 
-    /// Pin, hide and the section write Desktop's own roster fields; all stay inert
-    /// until the inbox is live and no write for this bot is in flight. Screen writes nothing, so
-    /// it sits outside them.
     @ViewBuilder private func organizeMenu(_ profile: BotProfile) -> some View {
         if canOpenScreen {
             Button { openScreen(profile) } label: {
@@ -649,12 +553,9 @@ import SwiftUI
         .disabled(!inbox.mayEdit(profile))
     }
 
-    /// Desktop's "Move to section": every named section on the roster (the bot's own
-    /// one inert), a new one through an alert, and Remove only while the bot is filed.
     private func sectionMenu(_ profile: BotProfile) -> some View {
         Menu {
             ForEach(inbox.sectionNames) { section in
-                // A Desktop name is the user's own text, never a catalog key.
                 Button { Task { await inbox.moveToSection(profile, section) } } label: { Text(verbatim: section.name) }
                     .disabled(section.id == profile.sectionID && profile.sectionName != nil)
             }
@@ -673,8 +574,6 @@ import SwiftUI
 
 
 extension BotsInboxView {
-    /// The sheets, dialogs, navigation destinations and open/close lifecycle
-    /// the list carries. Split from `body` so the CI type-checker finishes.
     private func attachPresentations(to content: some View) -> some View {
         content
             .sheet(isPresented: Binding(get: { roomCreator != nil }, set: { if !$0 { roomCreator = nil } }), onDismiss: {
@@ -757,7 +656,6 @@ extension BotsInboxView {
                 deleting = nil
                 renamingRoom = nil; disbanding = nil; filing = nil
                 showingSectionOrder = false
-                // Another host answers for itself whether it has Screen.
                 screenTarget = nil; hostLacksScreen = false
             }
             .sheet(isPresented: $showingSectionOrder) {
@@ -779,8 +677,6 @@ extension BotsInboxView {
                         }
                 }
             }
-            // The subscription lives while the inbox is on screen and the app is not in the
-            // background; returning, refreshing and reconnecting all go through the same open().
             .task(id: revision) {
                 inbox.offlineCache = modelContext
                 await inbox.open(); hasSettled = true; openPendingDestination()
@@ -790,8 +686,6 @@ extension BotsInboxView {
             .onChange(of: pendingDestination) { openPendingDestination() }
             .refreshable { await inbox.open() }
             .onChange(of: scenePhase) {
-                // Control Center and banners (`.inactive`) keep the socket (#902); only an
-                // inbox the background closed reopens.
                 switch scenePhase {
                 case .background: inbox.close()
                 case .active where inbox.link == .idle: revision = UUID()
@@ -799,18 +693,12 @@ extension BotsInboxView {
                 }
             }
             .onDisappear { inbox.close() }
-            // A quiet reconnect holds while offline and runs as the network returns (#1372).
             .onChange(of: NetworkPathMonitor.shared.changeCount) { inbox.networkPathDidChange() }
     }
 }
 
-/// The inbox's title and toolbar. As a Hermes server's home it takes the home's bar. Pushed from
-/// the session list's Bots row, the back button and the toolbar are the whole header, so the
-/// pinned tiles sit at the top; the title still names the screen for VoiceOver and for a pushed
-/// chat's back button, with only its visible text removed.
 private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
     let home: HermesHome?
-    /// No Bot connection is saved, so there is nothing to search.
     let isOffline: Bool
     let search: () -> Void
     let openSetup: () -> Void
@@ -849,9 +737,6 @@ private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
     }
 }
 
-/// Places Desktop's named sections for this phone's inbox. Every drag saves the
-/// whole list at once; Reset to A–Z forgets the placement. The unfiled block is
-/// not listed because it always stays last, nor is a section the list never heads.
 private struct BotSectionOrderView: View {
     @Environment(\.dismiss) private var dismiss
     let inbox: BotInbox
@@ -886,14 +771,12 @@ private struct BotSectionOrderView: View {
     }
 }
 
-/// What the create sheet is for: a fresh bot or a copy of one on this connection.
 private enum BotCreationIntent: Identifiable {
     case new, duplicate(BotProfile)
     var id: String { source?.id ?? "" }
     var source: BotProfile? { if case .duplicate(let profile) = self { return profile }; return nil }
 }
 
-/// One open Screen: the bot, on the connection the entry saw, and whether the entry was Take Over.
 private struct BotScreenTarget: Identifiable {
     let profile: BotProfile
     let connection: BotConnection
@@ -907,8 +790,6 @@ private struct BotProfileEditSelection: Identifiable, Hashable {
     var id: String { connectionID.uuidString + "|" + profileID }
 }
 
-/// A pinned bot: the avatar large and centered with the name beneath it, and the
-/// live status word under the name while it has one.
 private struct BotHeroTile: View {
     let profile: BotProfile
     let avatar: UIImage?
@@ -923,10 +804,6 @@ private struct BotHeroTile: View {
                     Text(profile.name).font(AppFont.body()).foregroundStyle(.appSecondary).lineLimit(1)
                     if unread { BotUnreadDot() }
                 }
-                // The longer status, hidden, holds the line's place at this text size whether a
-                // status shows or not: statuses arrive after the tiles, and a tile changing height
-                // moved the whole list under the pinned bots. Two lines, so a long translation at
-                // a large size still reads whole.
                 BotLiveStatusLabel(status: .waiting, font: AppFont.footnote(weight: .semibold), isStale: false)
                     .lineLimit(2).multilineTextAlignment(.center).hidden().accessibilityHidden(true)
                     .overlay(alignment: .top) {
@@ -942,7 +819,6 @@ private struct BotHeroTile: View {
     }
 }
 
-/// A pinned room: the member avatars stacked large, the name beneath.
 private struct BotRoomHeroTile: View {
     let room: BotGroupRoom
     let roster: [BotProfile]
@@ -958,10 +834,6 @@ private struct BotRoomHeroTile: View {
     }
 }
 
-/// One roster row: avatar, name with an optional short Desktop description chip,
-/// the live status or else the last activity, then the canonical preview with a
-/// trailing unread mark. The avatar is decorative; VoiceOver reads the text as one
-/// element, status included.
 private struct BotInboxRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let profile: BotProfile
@@ -969,8 +841,6 @@ private struct BotInboxRow: View {
     let unread: Bool
     let status: BotLiveStatus?
     let statusIsStale: Bool
-    /// A description short enough to read as a role sits beside the name; a
-    /// longer one only stands in for the preview when the chat has none.
     private var chip: String? {
         guard let description = profile.description, description.count <= 24,
               profile.preview?.isEmpty == false else { return nil }
@@ -984,7 +854,6 @@ private struct BotInboxRow: View {
         HStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 44)
             VStack(alignment: .leading, spacing: 4) {
-                // At accessibility sizes the slot moves under the name, as in Sessions.
                 if dynamicTypeSize.isAccessibilitySize {
                     HStack(alignment: .firstTextBaseline, spacing: 8) { nameAndChip }
                     trailingSlot
@@ -1015,8 +884,6 @@ private struct BotInboxRow: View {
         }
     }
 
-    /// One line, one meaning, as in Sessions: the live status while the bot has one,
-    /// otherwise the last activity.
     @ViewBuilder private var trailingSlot: some View {
         if let status {
             BotLiveStatusLabel(status: status, font: AppFont.subheadline(weight: .semibold), isStale: statusIsStale)
@@ -1027,10 +894,6 @@ private struct BotInboxRow: View {
     }
 }
 
-/// A bot's live status as a still, tinted word: the Live Activity's translated
-/// "Working" and "Waiting for you" in the Sessions list's attention tints. It never
-/// animates; the word carries the meaning without the color. A last known status
-/// (#1374) is drawn secondary and read "Last known".
 private struct BotLiveStatusLabel: View {
     let status: BotLiveStatus
     let font: Font
@@ -1046,8 +909,6 @@ private struct BotLiveStatusLabel: View {
     }
 }
 
-/// Stand-in for a bot row while the first roster loads: the same avatar and text
-/// footprint, redacted. Static, so it costs nothing on screen.
 private struct BotInboxSkeletonRow: View {
     var body: some View {
         HStack(spacing: 14) {
@@ -1065,7 +926,6 @@ private struct BotInboxSkeletonRow: View {
     }
 }
 
-/// Static unread mark. It never animates; VoiceOver reads it as "Unread".
 private struct BotUnreadDot: View {
     var body: some View {
         Circle().fill(Color.accentColor).frame(width: 10, height: 10)
@@ -1073,8 +933,6 @@ private struct BotUnreadDot: View {
     }
 }
 
-/// Last-activity label in the roster's style: the time today, the weekday within
-/// the past week, otherwise the month and day.
 enum BotInboxDateLabel {
     static func text(for date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
         let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)

@@ -1,17 +1,9 @@
 import Foundation
 
-/// A Hermes Profile's project lanes from one `projects.tree` reply (#1052). A Hermes project is
-/// a set of host folders, and a session belongs to the project with the deepest folder its
-/// working folder sits in; the host derives that, so the list only reads it. Lanes are the
-/// user's projects, then the automatic per-repository ones the host groups the rest into, in
-/// the host's order. The "No project" bucket is not a lane: it is the unfiltered list. A node
-/// without an id is skipped, and unknown fields are ignored.
 struct HermesProjectTree: Equatable {
     static let noProjectID = "__no_project__"
 
     let projects: [ProjectSummary]
-    /// The lane that claims each session, by the session's `id` (a compression chain's tip,
-    /// as the list's rows name it).
     let owners: [String: String]
 
     init(reply: BotJSON) {
@@ -38,30 +30,18 @@ struct HermesProjectTree: Equatable {
     }
 }
 
-/// The host folders that complete a typed path in the Hermes create sheet's folder field
-/// (#1052), from `complete.path` outside any session.
 enum HermesFolderCompletion {
-    /// The most entries `complete.path` lists for one folder: files too, in name order with the
-    /// hidden ones first (`_dir_listing_items` at the pin).
     static let hostListingLimit = 30
 
-    /// What the folder field offers for one typed path.
     struct Suggestions: Equatable {
-        /// Each as the typed parent plus the folder's name and `/`, so the user can keep typing.
         var folders: [String] = []
-        /// The host's listing stopped at its limit before it reached a folder to offer, as in a
-        /// home folder with many hidden entries. Typing more of the name narrows the listing.
         var needsMoreTyping = false
     }
 
-    /// Whether `word` can be completed: a path from the host's root or home, so it never
-    /// depends on which folder the host picks when no session names one.
     static func completes(_ word: String) -> Bool {
         (word.hasPrefix("/") || word.hasPrefix("~/")) && !word.contains(where: \.isNewline)
     }
 
-    /// The folders under the typed path's parent whose names start with its last part. Hidden
-    /// folders show only once their leading `.` is typed.
     static func suggestions(from reply: BotJSON, typed word: String) -> Suggestions {
         guard let slash = word.lastIndex(of: "/") else { return Suggestions() }
         let parent = word[...slash]
@@ -78,10 +58,6 @@ enum HermesFolderCompletion {
 }
 
 extension HermesFolderCompletion {
-    /// The folders a Hermes chat's folder picker offers before anything is typed (#1117): the
-    /// chat's `current` folder, the user's project folders from `projects`, then the folders the
-    /// Profile's recent `sessions` worked in, each once. Automatic lanes are left out, as are
-    /// rows that name another Profile.
     static func choices(current: String?, projects: HermesProjectTree?, sessions: [HermesSessionRow],
                         profile: String) -> [String] {
         let projectFolders = (projects?.projects ?? []).compactMap { $0.hermes?.isAutomatic == false ? $0.hermes?.folder : nil }

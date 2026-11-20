@@ -2,14 +2,7 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// Contract tests for the riskiest streaming paths: disconnect → reconnect
-/// with replayed tokens, server restart mid-stream, and replay of content the
-/// client already rendered. Each test drives a real `ChatViewModel` (which
-/// owns the replay dedup from PR #211) and a real `ChatStreamCoordinator`
-/// through a full scripted wire sequence via `ScriptedSSEStreamingClient`.
 final class StreamReconnectContractTests: APIClientTestCase {
-    // MARK: - Scenario 1: reconnect with overlapping replayed tokens (#201 regression guard)
-
     @MainActor
     func testReconnectWithOverlappingReplayRendersEachTokenExactlyOnce() async throws {
         let streamClient = ScriptedSSEStreamingClient(connectionScripts: [
@@ -57,8 +50,6 @@ final class StreamReconnectContractTests: APIClientTestCase {
         XCTAssertEqual(assistantContents(of: viewModel), ["Alpha bravo "])
         XCTAssertTrue(viewModel.isActiveStreamConnectionSuspended)
 
-        // The transport error schedules an async reconnect; the status probe
-        // reports the stream inactive with a replay journal available.
         await waitUntil("the replay connection starts") { streamClient.startedURLs.count == 2 }
 
         let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
@@ -78,8 +69,6 @@ final class StreamReconnectContractTests: APIClientTestCase {
         XCTAssertEqual(streamClient.droppedEventCount, 0)
     }
 
-    // MARK: - Scenario 2: server restart mid-stream (no replay journal)
-
     @MainActor
     func testServerRestartMidStreamRecoversToConsistentCompletedState() async throws {
         let streamClient = ScriptedSSEStreamingClient(connectionScripts: [
@@ -97,7 +86,6 @@ final class StreamReconnectContractTests: APIClientTestCase {
                     for: request
                 )
             case "/api/chat/stream/status":
-                // A restarted server has neither the live stream nor its replay journal.
                 return apiTestJSONResponse(
                     #"{"active": false, "stream_id": "stream-123", "replay_available": false}"#,
                     for: request
@@ -138,8 +126,6 @@ final class StreamReconnectContractTests: APIClientTestCase {
         XCTAssertEqual(assistantContents(of: viewModel), ["Alpha bravo "])
         XCTAssertTrue(viewModel.isActiveStreamConnectionSuspended)
 
-        // The async reconnect probe finds the stream gone, refreshes the
-        // transcript, and completes the response from the server copy.
         await waitUntil("the response completes") { viewModel.activeStreamID == nil }
 
         XCTAssertEqual(streamClient.startedURLs.count, 1)
@@ -154,8 +140,6 @@ final class StreamReconnectContractTests: APIClientTestCase {
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(streamClient.droppedEventCount, 0)
     }
-
-    // MARK: - Scenario 3: replay arriving after the response already rendered locally
 
     @MainActor
     func testReplayAfterStreamAlreadyCompletedLocallyIsIgnoredCleanly() async throws {
@@ -200,9 +184,6 @@ final class StreamReconnectContractTests: APIClientTestCase {
 
         XCTAssertEqual(assistantContents(of: viewModel), ["Alpha bravo."])
 
-        // The app backgrounds after the full text rendered but before the
-        // completion events arrive; on foreground the replay re-sends the
-        // entire already-rendered response plus the completion.
         viewModel.suspendStreamForBackground()
         await viewModel.reconnectStreamIfNeeded()
 
@@ -399,8 +380,6 @@ final class StreamReconnectContractTests: APIClientTestCase {
             Data(json.utf8)
         )
     }
-
-    // MARK: - Helpers
 
     @MainActor
     private func makeViewModel(

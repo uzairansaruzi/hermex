@@ -2,21 +2,10 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// The card editor's height, shared by the Sessions, Bot Chat and Bot room
-/// composers. It grows with the text from `expandedMinimum` up to the text
-/// view's 160 pt measure cap. Where height is limited (iPhone landscape, or a
-/// short viewport above the keyboard) it holds a fixed minimum and scrolls inside,
-/// so the transcript or the composer's own controls stay visible. A nil size
-/// class counts as regular.
 enum ComposerTextInputHeight {
-    /// At least 72 pt of real text view, so a tap anywhere in the card lands
-    /// on the editor rather than dead space; about three lines at default size.
     static let expandedMinimum: CGFloat = 72
 
-    /// The chat viewport below which a full composer can overflow behind the keyboard: iPhone
-    /// Duo's displays leave about 300 pt, where a size class still says regular.
     static let shortViewportHeight: CGFloat = 360
-    /// About two lines, which keeps Send above the keyboard with an attachment in the card.
     static let shortViewportMinimum: CGFloat = 48
 
     static func expanded(measured: CGFloat, verticalSizeClass: UserInterfaceSizeClass?, isViewportShort: Bool) -> CGFloat {
@@ -26,8 +15,6 @@ enum ComposerTextInputHeight {
 }
 
 extension EnvironmentValues {
-    /// The chat viewport is below `ComposerTextInputHeight.shortViewportHeight`, so the composer
-    /// keeps to what it needs for sending.
     @Entry var composerViewportIsShort = false
 }
 
@@ -38,28 +25,17 @@ struct ComposerTextInputView: View {
     @Binding var inputHeight: CGFloat
     @Binding var measuredHeight: CGFloat
 
-    /// Compact in iPhone landscape, where the card editor stops growing, as it does in a short viewport.
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.composerViewportIsShort) private var viewportIsShort
     @AppStorage(SessionChatPreferences.returnSendsKey) private var returnSends = false
 
-    /// The chips the editor has drawn. The collapsed pill draws this same set
-    /// rather than deriving its own, because a trailing chip whose space was
-    /// deleted stays a chip only in the editor's history.
     @State private var renderedChips: [ComposerChipToken] = []
 
     let isDisabled: Bool
-    /// Pill mode: a single truncated line stands in for the editor and a tap
-    /// focuses it. The text view stays in the hierarchy (invisible) so focus and
-    /// the draft survive the pill-to-card morph without recreating it.
     let isCollapsed: Bool
     let keyboardCommands: ComposerKeyboardCommands
     let verticalPadding: CGFloat
-    /// The skills whose references the editor draws as chips. Empty until the
-    /// server's skill list has loaded, which leaves the draft as plain text.
     let chipSkills: [SkillSlashSuggestion]
-    /// The workspace files picked in this chat, whose `@path` references the
-    /// editor draws as chips.
     let chipFilePaths: Set<String>
     var chipBots: [String: ComposerBotReference] = [:]
     let quotes: [ComposerQuote]
@@ -67,21 +43,14 @@ struct ComposerTextInputView: View {
     let onPasteFileURLs: ([URL]) -> Void
     let onPasteImageProviders: ([NSItemProvider]) -> Void
     let onPasteImages: ([UIImage]) -> Void
-    /// A tap that landed on a chip's glyph.
     let onTapChip: (ComposerChipToken) -> Void
     let onTapQuote: (ComposerQuote) -> Void
     let onRemoveQuote: (UUID) -> Void
-    /// The chat's last sent message, for ↑ in an empty editor. Nil turns the
-    /// shortcut off.
     var recallLastSentText: (() -> String?)? = nil
-    /// Takes a paste past `ComposerLargePaste.threshold` as a file. Nil keeps
-    /// every paste inline and leaves Paste as Text out.
     var onPasteLargeText: ((String) -> Void)? = nil
 
     var placeholder = String(localized: "Ask anything...")
-    /// Text-only clients reject file/image paste and drop before invoking callbacks.
     var acceptsAttachments = true
-    /// The collapsed draft's side padding; a composer with controls beside the draft narrows it.
     var collapsedHorizontalPadding: CGFloat = 16
     private let collapsedLineHeight: CGFloat = 22
 
@@ -112,8 +81,6 @@ struct ComposerTextInputView: View {
                 acceptsAttachments: acceptsAttachments,
                 accessibilityLabel: placeholder
             )
-            // The card editor runs 72–160 pt with the text, and stays at 72 pt
-            // where height is limited, and the text scrolls inside it.
             .frame(height: isCollapsed
                 ? collapsedLineHeight
                 : ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass,
@@ -160,14 +127,6 @@ struct ComposerTextInputView: View {
     }
 }
 
-/// The draft as the collapsed pill draws it: one truncating line, with the same
-/// chips the editor bakes.
-///
-/// The pill is a stand-in rather than the editor itself — the real text view is
-/// still mounted but at `opacity(0)` — so it has to draw the references a second
-/// time. Both go through `ComposerChipRenderer`, so the collapsed and expanded
-/// composer cannot drift apart, and the renderer caches the picture so drawing
-/// it from `body` costs nothing on a re-render.
 private struct ComposerCollapsedDraft: View {
     let draft: String
     let chips: [ComposerChipToken]
@@ -188,9 +147,6 @@ private struct ComposerCollapsedDraft: View {
             .accessibilityLabel(Text(spokenDraft))
     }
 
-    /// The chips still inside this draft. The editor reports them a beat after
-    /// it draws, so a set that no longer fits the text the pill was handed is
-    /// dropped rather than drawn in the wrong place.
     private var tokens: [ComposerChipToken] {
         ComposerChipTextLine.validTokens(chips, in: draft)
     }
@@ -200,14 +156,10 @@ private struct ComposerCollapsedDraft: View {
         return ComposerChipTextLine.text(draft, tokens: tokens, style: chipStyle)
     }
 
-    /// VoiceOver reads a chip by its label, the way the editor's attachment does,
-    /// rather than announcing an image.
     private var spokenDraft: String {
         draft.isEmpty ? placeholder : ComposerChipTokenizer.spokenText(in: draft, tokens: tokens)
     }
 
-    /// Every trait a chip resolves a colour or a size from, or the pill asks the
-    /// cache for a picture drawn for someone else's settings.
     private var chipStyle: ComposerChipTextStyle {
         ComposerChipTextStyle(
             colorScheme: colorScheme,
@@ -269,9 +221,6 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.textContentType = .none
-        // The editor draws its own attachments and reads them back as draft
-        // text. Rich-text editing would let UIKit insert one it cannot read,
-        // which would reach the server as an object-replacement character.
         textView.allowsEditingTextAttributes = false
         textView.keyboardCommands = keyboardCommands
         textView.returnSends = returnSends
@@ -296,11 +245,6 @@ private struct ComposerTextView: UIViewRepresentable {
             textView.refreshChipsIfNeeded()
             context.coordinator.reportHeight(for: textView)
         }
-        // Mirror the chat RTL toggle onto the text view itself (#259): SwiftUI's
-        // layoutDirection environment does not propagate into a wrapped UITextView,
-        // so set the base direction directly so the cursor/empty-field rests on the
-        // trailing edge. `.natural` keeps the LTR default untouched, and per-run
-        // bidi still resolves mixed Arabic+Latin/URL content within the line.
         let isRTL = context.environment.layoutDirection == .rightToLeft
         textView.applyPresentationStyle(isRightToLeft: isRTL, isDisabled: isDisabled)
         textView.acceptsAttachments = acceptsAttachments
@@ -332,8 +276,6 @@ private struct ComposerTextView: UIViewRepresentable {
         context.coordinator.onDropImageProviders = onPasteImageProviders
         context.coordinator.applyBoundText(text, generation: selection.publishGeneration, to: textView)
         context.coordinator.syncSelection(selection, to: textView, expecting: text)
-        // Chips are redrawn last so they settle around the caret the composer
-        // just asked for rather than the one the edit happened to leave behind.
         context.coordinator.applyingBoundValue { textView.refreshChipsIfNeeded() }
         context.coordinator.publishRenderedChips(of: textView)
         context.coordinator.syncFocus(for: textView, shouldFocus: isFocused, isDisabled: isDisabled)
@@ -353,12 +295,8 @@ private struct ComposerTextView: UIViewRepresentable {
         var onDropImageProviders: ([NSItemProvider]) -> Void = { _ in }
         private var pendingFocusTarget: Bool?
         private var pendingEditingTarget: Bool?
-        /// Set while we push a bound value into the editor, so the delegate
-        /// callbacks it provokes do not write the bindings back mid-update.
         private var isApplyingBoundValue = false
         private var appliedSelectionRevision = 0
-        /// Publishes made to the bindings, matched against the generation the
-        /// bound value carries to spot one the parent has not caught up with.
         private var publishGeneration = 0
 
         init(
@@ -375,9 +313,6 @@ private struct ComposerTextView: UIViewRepresentable {
             self.onHeightChange = onHeightChange
         }
 
-        /// Reports the chips the editor settled on, so the collapsed pill draws
-        /// exactly what the expanded editor drew. Deferred, because a binding
-        /// cannot be written during a view update.
         func publishRenderedChips(of textView: ComposerChipTextView) {
             let chips = textView.renderedTokens
             guard renderedChips != chips else { return }
@@ -393,17 +328,6 @@ private struct ComposerTextView: UIViewRepresentable {
             }
         }
 
-        /// Pushes a parent-side draft change into the editor as an *edit* rather
-        /// than a wholesale assignment, so the change lands on the editor's undo
-        /// stack and the caret follows the insertion. Accepting a slash
-        /// completion is the case that matters: undo puts back what was typed.
-        ///
-        /// While an IME composition is marked, assigning text commits it
-        /// half-formed and splits characters such as 자 into ㅈㅏ (#312). A
-        /// binding that simply has not seen the marked text yet is not a real
-        /// change, so it is ignored; a deliberate clear or replacement still
-        /// applies. `generation` is the publish count the bound value was built
-        /// from, which is what tells those two apart when the value is empty.
         func applyBoundText(_ text: String, generation: Int, to textView: ComposerChipTextView) {
             let current = textView.sourceText
             guard current != text else { return }
@@ -423,9 +347,6 @@ private struct ComposerTextView: UIViewRepresentable {
             }
 
             applyingBoundValue {
-                // An empty editor has no typing attributes to insert with, so
-                // filling or emptying one stays a plain assignment; everything
-                // in between goes through the input system for its undo stack.
                 if textView.isEditable,
                    !current.isEmpty,
                    !text.isEmpty,
@@ -434,22 +355,12 @@ private struct ComposerTextView: UIViewRepresentable {
                     textView.replace(range, withText: edit.replacement)
                 }
 
-                // `replace` goes through the input system, which can normalize
-                // what it inserts, and a range that straddles a chip cannot be
-                // edited in place at all; rebuild rather than leave the editor
-                // out of sync.
                 if textView.sourceText != text {
                     textView.replaceDocument(with: text)
                 }
             }
         }
 
-        /// Keeps the editor's caret and the composer's idea of it in step.
-        ///
-        /// A caret the composer asked for is applied once, keyed on its
-        /// revision, so a later update replaying the same value cannot yank the
-        /// caret away from where the user has since put it. Every other pass
-        /// leaves the editor's own caret alone and reports it back.
         func syncSelection(
             _ selection: ComposerSelection,
             to textView: ComposerChipTextView,
@@ -461,13 +372,9 @@ private struct ComposerTextView: UIViewRepresentable {
                 appliedSelectionRevision = selection.revision
 
                 let clamped = Self.clamp(selection.range, toLengthOf: expectedText)
-                // Assigning `selectedRange` resets predictive text, so never
-                // assign a range the editor already holds.
                 if textView.sourceSelection != clamped {
                     applyingBoundValue { textView.sourceSelection = clamped }
                 }
-                // A resigned editor does not follow its own caret, and dictation
-                // writes into one the user can't scroll.
                 textView.scrollRangeToVisible(textView.selectedRange)
                 return
             }
@@ -475,8 +382,6 @@ private struct ComposerTextView: UIViewRepresentable {
             publishSelection(of: textView)
         }
 
-        /// Reports the caret the editor settled on. Deferred, because a binding
-        /// cannot be written during a view update.
         private func publishSelection(of textView: ComposerChipTextView) {
             let range = textView.sourceSelection
             guard selection.range != range else { return }
@@ -512,9 +417,6 @@ private struct ComposerTextView: UIViewRepresentable {
             isApplyingBoundValue = wasApplying
         }
 
-        /// Disabling a focused UITextView can synchronously ask its SwiftUI
-        /// hosting view for the next responder. Do that after updateUIView has
-        /// returned, otherwise the responder lookup re-enters the active graph.
         func syncEditing(for textView: UITextView, isDisabled: Bool) {
             let editable = !isDisabled
             guard textView.isEditable != editable || textView.isSelectable != editable else {
@@ -562,9 +464,6 @@ private struct ComposerTextView: UIViewRepresentable {
                     guard self.isFocused, textView.isEditable, textView.window != nil else { return }
                     textView.becomeFirstResponder()
                 } else if !self.isFocused, textView.isFirstResponder {
-                    // UIKit can begin a new editing session while this blur is
-                    // queued. Recheck the binding, just as the focus path does,
-                    // so an older request cannot dismiss the new session.
                     textView.resignFirstResponder()
                 }
             }
@@ -588,10 +487,6 @@ private struct ComposerTextView: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             guard !isApplyingBoundValue, let textView = textView as? ComposerChipTextView else { return }
 
-            // Text and caret travel together: publishing them in one update is
-            // what keeps the two consistent when the composer maps the caret
-            // back onto the draft to find the slash trigger. The generation
-            // rides along so a later update can be dated against this one.
             publishGeneration &+= 1
             text = textView.sourceText
             selection.range = textView.sourceSelection
@@ -599,9 +494,6 @@ private struct ComposerTextView: UIViewRepresentable {
             reportHeight(for: textView)
         }
 
-        /// Publishes pure caret moves — a tap, an arrow key, a selection drag.
-        /// Edits are left to `textViewDidChange`, which carries both halves, and
-        /// a live IME composition is left alone entirely.
         func textViewDidChangeSelection(_ textView: UITextView) {
             guard !isApplyingBoundValue, textView.markedTextRange == nil else { return }
             guard let textView = textView as? ComposerChipTextView else { return }
@@ -619,13 +511,10 @@ private struct ComposerTextView: UIViewRepresentable {
             shouldChangeTextIn range: NSRange,
             replacementText text: String
         ) -> Bool {
-            // Typing right after a chip would otherwise inherit the attachment's
-            // attributes and swallow the new characters into the image.
             (textView as? ComposerChipTextView)?.restoreTypingAttributes()
             return true
         }
 
-        /// Puts Paste as Text after Paste where the editor converts long pastes (#1381).
         func textView(
             _ textView: UITextView,
             editMenuForTextIn range: NSRange,
@@ -646,12 +535,6 @@ private struct ComposerTextView: UIViewRepresentable {
             return UIMenu(children: actions)
         }
 
-        // MARK: - Drops
-
-        /// Claims a drop only when the composer can route every item through the
-        /// attachment pipeline, so UIKit never inserts something the draft
-        /// cannot represent. Anything else is left to UIKit, which drops it in
-        /// as plain text.
         func textDroppableView(
             _ textDroppableView: UIView & UITextDroppable,
             proposalForDrop drop: UITextDropRequest
@@ -699,19 +582,10 @@ private struct ComposerTextView: UIViewRepresentable {
     }
 }
 
-/// How the composer routes a dropped set of items into the attachment pipeline.
-///
-/// All or nothing: an item the pipeline cannot take means UIKit keeps the whole
-/// drop, because a half-handled drop would leave the user with some of what they
-/// dragged and no way to tell which half went missing.
 struct ComposerDropRoute {
     let files: [NSItemProvider]
     let images: [NSItemProvider]
 
-    /// `nil` when any provider is neither a file nor an image.
-    ///
-    /// A provider that is both counts as a file, the same order `paste` uses: a
-    /// dropped PNG is a file the user picked, not a screenshot on the clipboard.
     init?(providers: [NSItemProvider]) {
         guard !providers.isEmpty else { return nil }
 
@@ -733,21 +607,14 @@ struct ComposerDropRoute {
     }
 }
 
-/// Hermes pastes longer than Hermes Desktop's limit become a `pasted-text.txt`
-/// attachment instead of filling the editor (#1381). ⌘⇧V and the edit menu's
-/// Paste as Text keep one inline.
 enum ComposerLargePaste {
-    /// Desktop's limit, counted in UTF-16 units as JavaScript counts a string.
     static let threshold = 3_000
     static let bypassTitle = String(localized: "Paste as Text")
 
-    /// Walks at most `threshold + 1` units, so a huge paste costs what a short one does.
     static func converts(_ text: String) -> Bool {
         !text.utf16.dropFirst(threshold).isEmpty
     }
 
-    /// `pasted-text.txt`, then `pasted-text-2.txt` and on: the first name `taken`
-    /// does not hold, compared without case.
     static func filename(avoiding taken: Set<String>) -> String {
         let taken = Set(taken.map { $0.lowercased() })
         var candidate = "pasted-text.txt"
@@ -759,29 +626,19 @@ enum ComposerLargePaste {
         return candidate
     }
 
-    /// Whether a staged attachment opens in `StagedPasteSheet` (#1456). A draft records
-    /// nothing else about where a file came from, so a local file the user named this way
-    /// opens there too; only its app-owned copy can change.
     static func isStagedPaste(_ attachment: PendingAttachment) -> Bool {
         attachment.path.isEmpty && attachment.draftFileName != nil && !attachment.isImage
             && attachment.name.wholeMatch(of: /pasted-text(-\d+)?\.txt/) != nil
     }
 }
 
-/// The hardware-keyboard commands the composer's editor offers (#1380), each titled by
-/// what it does right now. A nil command leaves its key alone. The editor refuses every
-/// one while it is locked or an IME composition is unfinished; each action rechecks its
-/// own gate when it runs.
 struct ComposerKeyboardCommands {
     struct Command {
         let title: String
         let perform: () -> Void
     }
 
-    /// ⌘↩: Send as a tap on the circle would. Never Stop.
     var send: Command?
-    /// ⌘⇧↩: the send-choice card's safe alternate to Send's behavior.
     var alternateSend: Command?
-    /// Esc: closes an open panel or card, or stops the running response.
     var escape: Command?
 }

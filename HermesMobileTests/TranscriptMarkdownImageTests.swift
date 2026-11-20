@@ -1,10 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Standard `![alt](path)` images in an assistant message become transcript media when
-/// they name a raster image on the server's filesystem. Containment is the server's job:
-/// `/api/media` owns the allow-list, and chat images live in its attachment store rather
-/// than in any workspace.
 final class TranscriptMarkdownImageTests: XCTestCase {
     private let workspace = "/Users/hermes/projects/app"
 
@@ -62,9 +58,6 @@ final class TranscriptMarkdownImageTests: XCTestCase {
         )
     }
 
-    /// The server keeps chat images in its own attachment store, outside every workspace,
-    /// so an image outside the workspace is the normal case rather than an attack. The
-    /// phone normalizes the path and `/api/media` decides what it will serve.
     func testResolvesImagesOutsideTheWorkspace() throws {
         let attachment = TranscriptMediaParser.segments(
             in: "![Image](file:///Users/hermes/.hermes/webui/attachments/abc/image_1788.jpg)",
@@ -122,9 +115,6 @@ final class TranscriptMarkdownImageTests: XCTestCase {
         }
     }
 
-    /// CommonMark allows nested and escaped delimiters, and macOS hands out duplicate
-    /// names like `build (1)`, so cutting at the first `)` would blank exactly the images
-    /// this is meant to show.
     func testHandlesNestedAndEscapedDelimiters() throws {
         let nested = TranscriptMediaParser.segments(
             in: "![Build (1)](/tmp/build(1)/shot.png) after",
@@ -144,7 +134,6 @@ final class TranscriptMarkdownImageTests: XCTestCase {
             "/tmp/a)b.png"
         )
 
-        // A backslash before a letter is a literal one, and POSIX allows it in a filename.
         let literal = TranscriptMediaParser.segments(
             in: #"![x](/tmp/a\b.png)"#,
             workspaceRoot: workspace

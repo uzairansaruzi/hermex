@@ -2,14 +2,8 @@ import XCTest
 import AppIntents
 @testable import HermesMobile
 
-/// Covers the New Chat App Intent plumbing (issue #337): the parameter-less deep-link URL,
-/// its round-trip detection, the router bridge an intent writes to, and the intent itself.
 final class AppIntentNewChatTests: XCTestCase {
 
-    // `AppIntentRouter` is a shared singleton, so reset its pending link around every
-    // test. Doing it in setUp/tearDown (rather than inline) guarantees a clean slate
-    // before each test and cleanup after every exit path — including a failed assertion
-    // or a thrown error mid-test — so router state can't leak between tests.
     override func setUp() async throws {
         try await super.setUp()
         await MainActor.run { AppIntentRouter.shared.pendingDeepLink = nil }
@@ -42,8 +36,6 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatURL)
     }
 
-    // MARK: - New Chat with Voice (issue #338)
-
     func testIsNewChatVoiceURLAcceptsItsOwnURL() throws {
         let url = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
         XCTAssertTrue(HermesDeepLink.isNewChatVoiceURL(url))
@@ -52,8 +44,6 @@ final class AppIntentNewChatTests: XCTestCase {
     func testVoiceAndPlainNewChatURLsDoNotAlias() throws {
         let voiceURL = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
         let plainURL = try XCTUnwrap(HermesDeepLink.newChatURL)
-        // The two intents must route distinctly: a voice URL is not a plain new-chat URL,
-        // and vice versa.
         XCTAssertFalse(HermesDeepLink.isNewChatURL(voiceURL))
         XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(plainURL))
     }
@@ -64,8 +54,6 @@ final class AppIntentNewChatTests: XCTestCase {
         _ = try await NewChatVoiceIntent().perform()
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatVoiceURL)
     }
-
-    // MARK: - On a Hermes server (#1180)
 
     private let hermes = URL(string: "https://hermes.example")!
     private let studio = URL(string: "https://studio.example:9119")!
@@ -121,8 +109,6 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertNil(links.hermesNewChat, "Its server was removed")
     }
 
-    // MARK: - New Chat with Content (#1402)
-
     @MainActor
     func testNewChatWithContentQueuesTheTextBeforeOpeningTheShareLink() throws {
         let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -138,8 +124,6 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(queued.sharedImport.shortcut, SharedShortcutDestination(server: studio, profile: "dev"))
     }
 
-    /// Troubleshoot with Hermes (#1476) queues through the same path, and its text keeps its origin
-    /// through the app-group inbox so the chat names Troubleshooting, not Shortcuts.
     @MainActor
     func testTroubleshootingTextKeepsItsOriginThroughTheInbox() throws {
         let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

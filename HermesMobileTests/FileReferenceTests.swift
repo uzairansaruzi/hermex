@@ -1,16 +1,12 @@
 import XCTest
 @testable import HermesMobile
 
-/// Chat link destinations that name a workspace file, resolved to the workspace-relative
-/// path and position the source viewer opens.
 final class FileReferenceTests: XCTestCase {
     private let root = "/Users/hermes/projects/app"
 
     private func parse(_ destination: String, root: String? = nil) -> FileReference? {
         FileReference.parse(destination, workspaceRoot: root ?? self.root)
     }
-
-    // MARK: - Accepted syntaxes
 
     func testFileURLWithLineAndColumnSuffix() {
         let reference = parse("file:///Users/hermes/projects/app/Sources/ChatView.swift:12:3")
@@ -55,9 +51,6 @@ final class FileReferenceTests: XCTestCase {
         XCTAssertEqual(parse("./a.swift", root: " /Users/hermes/projects/app/ "), FileReference(path: "a.swift", line: nil, column: nil))
     }
 
-    /// The transcript renderer builds a `URL` from the link destination and the chat
-    /// handler reads back `absoluteString`, which percent-encodes spaces and keeps
-    /// positions and fragments; the parser must accept what comes out of that trip.
     func testSurvivesTheURLRoundTripTheTranscriptRendererApplies() throws {
         let cases: [(destination: String, expected: FileReference)] = [
             ("./docs/release notes.md:3", FileReference(path: "docs/release notes.md", line: 3, column: nil)),
@@ -70,8 +63,6 @@ final class FileReferenceTests: XCTestCase {
             XCTAssertEqual(parse(url.absoluteString), expected, destination)
         }
     }
-
-    // MARK: - Rejections
 
     func testRejectsTraversalOutOfTheWorkspace() {
         XCTAssertNil(parse("../secrets.env"))

@@ -1,17 +1,6 @@
 import Foundation
 
-// Cron run transcripts arrive with the shell's terminal control bytes intact
-// (`\u{1b}[0;32m`). SwiftUI has no notion of them and renders the raw bytes as
-// garbage, so every surface that shows server-supplied run text — the Tasks
-// row, Task Detail's error line, the recent-run output — puts it through
-// `strippingANSIEscapes()` first.
 extension String {
-    /// Returns the string with ANSI/VT escape sequences removed.
-    ///
-    /// Recognises CSI (`ESC [ … final`), OSC (`ESC ] … BEL` or `ESC \`) and the
-    /// two-character escapes. A sequence that never terminates — the normal
-    /// result of a transcript truncated mid-escape — is dropped through the end
-    /// of the string rather than leaking its bytes into the UI.
     func strippingANSIEscapes() -> String {
         guard unicodeScalars.contains("\u{1B}") else { return self }
 
@@ -33,14 +22,12 @@ extension String {
 
             switch scalars[index] {
             case "[":
-                // CSI: parameter and intermediate bytes, then one final byte.
                 index += 1
                 while index < scalars.count, !(0x40...0x7E).contains(scalars[index].value) {
                     index += 1
                 }
                 if index < scalars.count { index += 1 }
             case "]":
-                // OSC: runs until BEL or the string terminator `ESC \`.
                 index += 1
                 while index < scalars.count {
                     if scalars[index] == "\u{07}" {
@@ -63,9 +50,6 @@ extension String {
         return String(output)
     }
 
-    /// The first meaningful line of a multi-line server transcript, escapes
-    /// stripped and clipped, for places that have room for one line only. The
-    /// full text stays reachable on Task Detail.
     func firstLineSummary(limit: Int = 120) -> String? {
         let stripped = strippingANSIEscapes()
         guard let line = stripped

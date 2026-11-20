@@ -3,24 +3,14 @@ import SwiftData
 import UIKit
 import StoreKit
 
-/// Refreshes the session list when the app returns from the background, so
-/// sessions started or finished elsewhere show without a pull. A return that
-/// lands while a load is running, or before the initial load has finished, is
-/// remembered and refreshed once the list is idle: that load may have started
-/// before backgrounding and would otherwise leave stale rows. Repeated returns
-/// coalesce to one refresh.
 struct SessionListForegroundRefresh: Equatable {
     private(set) var isPending = false
 
-    /// Called on a real background-to-active return. Returns true when the
-    /// list should refresh now; otherwise the return waits for `consumeIfReady`.
     mutating func appReturned(didCompleteInitialLoad: Bool, isLoading: Bool) -> Bool {
         isPending = true
         return consumeIfReady(didCompleteInitialLoad: didCompleteInitialLoad, isLoading: isLoading)
     }
 
-    /// Called when loading stops or the initial load completes. Returns true
-    /// once for a remembered return, as soon as the list is free to refresh.
     mutating func consumeIfReady(didCompleteInitialLoad: Bool, isLoading: Bool) -> Bool {
         guard isPending, didCompleteInitialLoad, !isLoading else { return false }
         isPending = false
@@ -28,23 +18,12 @@ struct SessionListForegroundRefresh: Equatable {
     }
 }
 
-/// Picks the screen for the archive Undo toast (#865). Each archive gets a
-/// number from `archiveStarted` when it starts. Once the server confirms it,
-/// `archiveConfirmed` returns the host for its toast, or nil for no toast:
-/// - Replies can land out of order, so an older archive never replaces a newer
-///   one's toast. A newer archive that showed no toast blocks nothing.
-/// - The toast shows on the screen the row was swiped on, if the user is still
-///   there. Otherwise it shows on the other session screen if that is showing,
-///   or nowhere. Either way the session is in Archived.
 struct SessionListArchiveToastRoute: Equatable {
-    /// On iPhone the Scheduled screen covers the list; on iPad it fills the
-    /// detail column beside the sidebar.
     enum Host: Equatable {
         case list
         case scheduled
     }
 
-    /// The screen the current toast belongs to.
     private(set) var host = Host.list
     private var startedCount = 0
     private var newestShown = 0
@@ -78,9 +57,6 @@ struct SessionListArchiveToastRoute: Equatable {
         return chosen
     }
 
-    /// Moves the toast to the session screen in front for a toast that isn't an
-    /// archive's, such as a failed action (#1410): Scheduled while it shows,
-    /// otherwise the list. An earlier archive's host may no longer be on screen.
     mutating func noticeShown(destination: SessionNavigationDestination?) {
         host = destination == .utility(.scheduled) ? .scheduled : .list
     }
@@ -98,8 +74,6 @@ struct SessionListView: View {
     private let openNextSharedImport: () -> Void
     @Binding private var pendingDeepLinkedSessionID: String?
     @Binding private var requestedNewChat: NewChatRequest?
-    /// The bot a deep link named. Non-nil flips this screen to the Bots inbox, which
-    /// resolves it against its live roster and clears it (#554).
     @Binding private var pendingBotDestination: BotDestination?
     @Binding private var pendingWebuiPush: WebuiPushDestination?
 
@@ -135,7 +109,6 @@ struct SessionListView: View {
     @State private var sidebarScrollPosition: String?
     @State private var didCompleteInitialLoad = false
     @State private var returnRefreshID: UUID?
-    /// Set while compact width pops back to the list on the way to Settings → Notifications.
     @State private var opensNotificationSettingsOnReturn = false
     @State private var actionToast = ActionToastState()
     @State private var archiveToastRoute = SessionListArchiveToastRoute()
@@ -158,9 +131,6 @@ struct SessionListView: View {
     @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsightsSection = true
     @AppStorage(SectionVisibilitySettings.activeProfileKey) private var showsActiveProfileSection = true
     @AppStorage(SectionVisibilitySettings.projectsKey) private var showsProjectsSection = true
-    // Per-server key (#19): the CLI toggle mirrors the active server's
-    // `show_cli_sessions`, so its cached value must not leak across servers.
-    // Configured in `init`, where the server URL is known.
     @AppStorage private var showsCliSessions: Bool
     @AppStorage private var showsClaudeCodeSessions: Bool
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
@@ -247,7 +217,6 @@ struct SessionListView: View {
                     request: { requestReview() }
                 )
             }
-            // Turning the gate off while the Bots inbox is open pops back to the list.
             .onChange(of: isBotModeEnabled) {
                 if !isBotModeEnabled, navigationState.destination == .utility(.bots) {
                     navigationState.clearDestination()
@@ -264,9 +233,6 @@ struct SessionListView: View {
                     .presentationDetents([.medium, .large])
                     .adaptiveFormPresentation()
                     .ignoresSafeArea()
-                    // The temp file lives in its own UUID directory (see
-                    // SessionListViewModel.export); remove the directory once
-                    // the share sheet is gone, shared and cancelled alike.
                     .onDisappear {
                         try? FileManager.default.removeItem(
                             at: item.fileURL.deletingLastPathComponent()
@@ -363,16 +329,9 @@ struct SessionListView: View {
                 .presentationDetents([.medium])
             }
             .sheet(isPresented: $isPresentingAddServer) {
-                // Reuse #17's add-server flow directly as a power-user shortcut.
-                // On success `addServer` switches the active server, which
-                // rebuilds this stack via ContentView's `.id(server)` (#283).
                 AddServerView(authManager: authManager)
             }
             .task {
-                // Start the session rows immediately so a slow direct session
-                // request cannot leave the sidebar empty. Deep-link resolution still
-                // owns navigation precedence and is awaited before stored selection
-                // restoration.
                 await SessionListInitialLoad.run(
                     resolvePendingDeepLink: {
                         await openPendingDeepLinkedSessionIfNeeded()
@@ -382,8 +341,6 @@ struct SessionListView: View {
                     },
                     restoreSelection: {
                         didCompleteInitialLoad = true
-                        // Ordered after the deep link so restoreIfNeeded() sees the
-                        // explicit destination and leaves the stored selection alone.
                         restoreLastSelectedSessionIfNeeded()
                     },
                     loadProjects: {
@@ -439,9 +396,6 @@ struct SessionListView: View {
                 openRequestedNewChatIfNeeded()
             }
             .onChange(of: showsProjectsSection) {
-                // The "All" button that clears a project filter lives in the
-                // Projects header, so hiding the section mid-filter would strand
-                // the list on one project with no way back (#189).
                 guard !showsProjectsSection else { return }
                 selectedProjectID = nil
             }
@@ -529,23 +483,13 @@ struct SessionListView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The navigation container plus bot-link routing. Kept off `body`'s modifier
-    /// chain, which is long enough that adding to it exceeds the type-checker's
-    /// budget on the CI toolchain.
     private var routedNavigationContainer: some View {
         navigationContainer
-            // Cold launch delivers the link before this view appears; a warm one after.
             .task { showBotsForPendingDestination() }
             .onChange(of: pendingBotDestination) { showBotsForPendingDestination() }
-            // Every chat below inherits this for its one-time notification offer (#863).
             .openNotificationSettings { showNotificationSettings() }
     }
 
-    /// Opens Settings → Notifications for a chat's one-time offer (#863). On compact
-    /// width a fork or a chat under Settings → Archived Sessions can sit above the
-    /// destination, and retargeting the destination leaves it on top. So compact pops
-    /// to the list first, and the list opens Notifications once it is back on screen.
-    /// Regular width pops the detail column on every root selection already.
     private func showNotificationSettings() {
         guard !usesSplit, navigationState.destination != nil else {
             selectDestination(.notificationSettings)
@@ -555,10 +499,6 @@ struct SessionListView: View {
         navigationState.clearDestination()
     }
 
-    /// A bot deep link opens this server's Bots inbox, which owns resolving it. Only
-    /// this view's own server routes: a link for another server switches servers
-    /// first, which rebuilds this view against it (#554). An inbox already on
-    /// screen resolves the link itself, so it is not pushed a second time.
     private func showBotsForPendingDestination() {
         guard isBotModeEnabled, let destination = pendingBotDestination, destination.server == server,
               navigationState.destination != .utility(.bots) else {
@@ -586,7 +526,6 @@ struct SessionListView: View {
                         navigationDestination(destination)
                     }
                     .onAppear {
-                        // The pop `showNotificationSettings` started has landed.
                         guard opensNotificationSettingsOnReturn else { return }
                         opensNotificationSettingsOnReturn = false
                         selectDestination(.notificationSettings)
@@ -602,8 +541,6 @@ struct SessionListView: View {
 
             content
 
-            // The Undo toast sits 10 pt above the Chat button, as wide as the
-            // column, and grows upward so the button never moves.
             VStack(alignment: .trailing, spacing: 10) {
                 if archiveToastRoute.host == .list {
                     ActionToastView(state: actionToast)
@@ -618,7 +555,6 @@ struct SessionListView: View {
             }
             .padding(.horizontal, 24)
         }
-        // The Move question waits for this list: hidden under a pushed chat or a closed sidebar.
         .onAppear { MoveToHermesNotices.shared.noteChatList(of: server.absoluteString, onScreen: true) }
         .onDisappear { MoveToHermesNotices.shared.noteChatList(of: server.absoluteString, onScreen: false) }
     }
@@ -730,7 +666,6 @@ struct SessionListView: View {
     }
 
     private var content: some View {
-        // Computed once per body: grouping filters and sorts every session.
         let groups = scheduledSessionGroups
         return AppList(rows: .plain) {
             header
@@ -812,22 +747,14 @@ struct SessionListView: View {
                 .accessibilityHidden(true)
         }
         .listStyle(.plain)
-        // On the List itself, not the navigation container: a refresh action
-        // set higher up is inherited by every ScrollView in pushed chats, which
-        // made the composer's attachment strip pullable.
         .refreshable {
             await refreshSessionsAndActiveProfile()
         }
-        // Let rows hug their content instead of the 44pt default minimum, so the
-        // single-line utility/disclosure rows aren't padded out and stay aligned
-        // with the tightly-packed navigation rows.
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .scrollPosition(id: $sidebarScrollPosition)
         .background(Color(.appCanvas))
         .scrollDismissesKeyboard(.interactively)
-        // Disclosure subrows are real List rows; drive their fold from the List
-        // so insert/remove animates. Value-based so it works with @AppStorage.
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: profilesAreExpanded)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: scheduledSessionsAreExpanded)
@@ -870,9 +797,6 @@ struct SessionListView: View {
             .foregroundStyle(newSessionButtonForegroundColor)
             .padding(.horizontal, 22)
             .frame(height: 58)
-            // Lock the hit region to the visible capsule so taps in the padding,
-            // rounded ends, and icon↔text gap start a new chat instead of falling
-            // through to the session row behind the FAB (issue #242).
             .contentShape(Capsule())
             .background {
                 if let fill = newSessionButtonSolidThemeFill {
@@ -922,10 +846,6 @@ struct SessionListView: View {
         )
     }
 
-    /// Bottom-of-list entry to the Archived screen (issue #17). Hidden while
-    /// searching, offline (cached data cannot fetch archived rows), and when the
-    /// server reports zero archived sessions or omits `archived_count` (older
-    /// server) — so the list is unchanged for users with nothing archived.
     private var showsArchivedEntry: Bool {
         guard !isSearchingSessions, !viewModel.isViewingCachedData else { return false }
         return (viewModel.archivedCount ?? 0) > 0
@@ -1023,11 +943,6 @@ struct SessionListView: View {
         )
     }
 
-    // The glass tint is dropped on the material/opaque fallback surfaces, so a
-    // themed button would otherwise show its contrast-picked foreground over a
-    // neutral material (e.g. black-on-dark for a light theme color). Draw a
-    // solid header-color fill there so the button stays themed and readable;
-    // the liquid-glass surface keeps tinting via `newSessionButtonGlassTint`.
     private var newSessionButtonSolidThemeFill: Color? {
         guard newSessionButtonUsesThemeColor, newSessionButtonSurface != .liquidGlass else {
             return nil
@@ -1083,8 +998,6 @@ struct SessionListView: View {
         )
     }
 
-    /// `toastHost` names the screen these rows are on, so an archive's Undo
-    /// toast shows where the row was swiped.
     private func sessionRowActions(toastHost: SessionListArchiveToastRoute.Host = .list) -> SessionListRowActions {
         SessionListRowActions(
             retryLoad: {
@@ -1164,9 +1077,6 @@ struct SessionListView: View {
         )
     }
 
-    /// Chat shortcuts walk the ordinary chat rows as they appear, after search
-    /// and the project filter, skipping Scheduled so ⌘1 does not depend on that
-    /// disclosure. Grouped only on a key press, never in `body`.
     private var keyboardShortcutChats: [SessionSummary] {
         scheduledSessionGroups.ordinary
     }
@@ -1176,8 +1086,6 @@ struct SessionListView: View {
         startOpeningSession(chat)
     }
 
-    /// Steps from the chat still opening, if any, so a second press during a
-    /// slow external import moves on instead of reopening the same chat.
     private func openAdjacentChatFromKeyboard(offset: Int) {
         guard let chat = ChatShortcutNavigation.adjacentChat(
             offset: offset,
@@ -1225,7 +1133,6 @@ struct SessionListView: View {
         returnRefreshID = UUID()
     }
 
-    /// Runs a foreground return that had to wait for a load to settle.
     private func refreshAfterForegroundReturnIfReady() {
         guard foregroundRefresh.consumeIfReady(
             didCompleteInitialLoad: didCompleteInitialLoad,
@@ -1251,7 +1158,6 @@ struct SessionListView: View {
         }
     }
 
-    /// One poll tick: checks the active rows' streams and attention probes.
     private func refreshActiveSessionRows(_ taskID: ActiveSessionMonitorTaskID) async {
         let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
             streamIDs: taskID.streamIDs,
@@ -1288,8 +1194,6 @@ struct SessionListView: View {
         handleLastError()
     }
 
-    /// Skipped while the list shows cached rows: the server was unreachable a
-    /// moment ago, so a projects request would only add a second error.
     private func loadProjectsIfLive() async {
         guard !viewModel.isViewingCachedData else { return }
         await viewModel.loadProjects()
@@ -1335,9 +1239,6 @@ struct SessionListView: View {
         }
     }
 
-    /// "Archived · Undo" after the server confirms an archive (#865), on the
-    /// host `archiveToastRoute` picked. A newer archive replaces the toast; the
-    /// first session stays in Archived.
     private func showArchiveUndoToast(for session: SessionSummary) {
         let message = String(localized: "Archived")
         actionToast.show(
@@ -1357,8 +1258,6 @@ struct SessionListView: View {
         )
     }
 
-    /// Restores the session in place. It does not reopen a chat the archive
-    /// closed; a failure shows as a failure toast.
     private func undoArchive(_ session: SessionSummary) async {
         let didUnarchive = await viewModel.unarchive(
             session,
@@ -1472,9 +1371,6 @@ struct SessionListView: View {
         didRoutePendingSharedImport(reservation)
     }
 
-    /// A push is resolved only on its server and against the live endpoint, so a
-    /// stale cache cannot open a deleted session. The task belongs to this view;
-    /// another tap, server switch or manual selection invalidates its result.
     private func openPendingWebuiPush() async {
         guard let destination = pendingWebuiPush, destination.server == server,
               authManager.state == .loggedIn(server: server), !Task.isCancelled else { return }
@@ -1492,16 +1388,11 @@ struct SessionListView: View {
             return
         }
         handleLastError()
-        // An expired cookie moves the app to sign-in. Keep the tap until the
-        // rebuilt, signed-in session list can retry its owning server's lookup.
         guard authManager.state == .loggedIn(server: server) else { return }
         pendingWebuiPush = nil
         if let session { selectSession(session) }
     }
 
-    /// Awaited (not fire-and-forget) so the cold-start `.task` can resolve it before
-    /// `restoreLastSelectedSessionIfNeeded()` — otherwise the restore races the deep
-    /// link's network load and wins with the previous session.
     private func openPendingDeepLinkedSessionIfNeeded() async {
         guard !Task.isCancelled else { return }
 
@@ -1522,10 +1413,6 @@ struct SessionListView: View {
         }
 
         let session = await viewModel.loadSessionForDeepLink(id: sessionID, modelContext: modelContext)
-        // Re-checked post-await: the view (and this task) may have been torn down —
-        // e.g. dismissed, or the active server changed under `.id(server)` — while
-        // the network load was in flight. Selecting or persisting for a session
-        // whose owning view no longer exists is stale work, not a real navigation.
         guard !Task.isCancelled else { return }
         if let session {
             selectSession(session)
@@ -1533,10 +1420,6 @@ struct SessionListView: View {
         handleLastError()
     }
 
-    /// Opens the New Chat composer in response to the "New Chat" App Intents (#337/#338),
-    /// mirroring the "+" button. Carries `autoStartsVoiceInput` so the voice variant begins
-    /// dictation once the composer appears. The request is cleared so it fires once per
-    /// invocation.
     private func openRequestedNewChatIfNeeded() {
         guard let request = requestedNewChat else { return }
         requestedNewChat = nil
@@ -1548,9 +1431,6 @@ struct SessionListView: View {
         )
     }
 
-    /// In-app New Chat (Chat button, iPad empty state, ⌘N). The route snapshots the
-    /// project filter at tap time so the new chat joins the project the user sees
-    /// (#875). System entry points (App Intents, deep links, shares) never inherit it.
     private func openNewChat() {
         selectDestination(PendingNewChatRoute(projectID: selectedProjectID))
     }
@@ -1593,14 +1473,12 @@ struct SessionListView: View {
 
     private func openSession(_ session: SessionSummary) async {
         let sessionToOpen = await viewModel.sessionForOpening(session, modelContext: modelContext)
-        // A failed open leaves `actionErrorMessage` set, which shows as a failure toast.
         guard !Task.isCancelled else { return }
 
         openingSignpostSessionID = nil
         if let sessionToOpen {
             selectSession(sessionToOpen)
         } else {
-            // No chat will show to end the failed-open interval.
             SessionOpenSignpost.end(sessionID: session.sessionId, messages: nil)
         }
     }
@@ -1631,9 +1509,6 @@ struct SessionListView: View {
 
 }
 
-/// Orders the session list's cold-start load. Restore needs only the session
-/// rows, so it runs as soon as they arrive and the pending deep link has
-/// resolved; projects and the active profile load afterwards, side by side.
 enum SessionListInitialLoad {
     @MainActor
     static func run(
@@ -1651,8 +1526,6 @@ enum SessionListInitialLoad {
         await loadProjectsAndActiveProfile(loadProjects: loadProjects, loadActiveProfile: loadActiveProfile)
     }
 
-    /// Runs the two loads concurrently; neither depends on the other. Also used
-    /// by every later refresh of the list.
     @MainActor
     static func loadProjectsAndActiveProfile(
         loadProjects: @escaping @MainActor () async -> Void,
@@ -1664,11 +1537,6 @@ enum SessionListInitialLoad {
     }
 }
 
-/// Runs the return refresh that `SessionListDestinationReturn` and
-/// `SessionListForegroundRefresh` request. It reloads the rows, then runs one
-/// poll tick when the poll was paused while a destination covered the compact
-/// list, so badges such as Approval do not stay as they were before the push
-/// until the restarted poll's first tick.
 enum SessionListReturnRefresh {
     @MainActor
     static func run(
@@ -1678,17 +1546,12 @@ enum SessionListReturnRefresh {
     ) async {
         await refreshSessions()
         guard !Task.isCancelled else { return }
-        // Read after the reload so the tick uses the rows that are streaming now.
         let taskID = monitorTaskID()
         guard taskID.needsTickOnReturn else { return }
         await refreshActiveRows(taskID)
     }
 }
 
-/// Refreshes the session list whenever the user leaves one destination for
-/// another, so a row reflects whatever just happened in the chat it opened
-/// (a rename, a `/clear`, new messages). Driven from the `destination`
-/// `onChange` in `SessionListView`.
 enum SessionListDestinationReturn {
     static func run(
         from oldValue: SessionNavigationDestination?,
@@ -1696,18 +1559,10 @@ enum SessionListDestinationReturn {
         suppressEmptyPlaceholders: () -> Void,
         refreshSessions: () -> Void
     ) {
-        // Nothing to refresh against before the first destination, and a
-        // destination that re-emits itself has no new server state to adopt.
         guard let oldValue, oldValue != newValue else { return }
-        // Replacing one pending new-chat route with another stays on the same
-        // screen, so it is not a return.
         if case .newChat = oldValue, case .newChat = newValue { return }
 
         if case .newChat = oldValue {
-            // Keep this synchronous so an empty Untitled placeholder cannot
-            // flash during the navigation transition. The refresh then adopts
-            // the server's latest metadata for a new chat that became
-            // contentful.
             suppressEmptyPlaceholders()
         }
         refreshSessions()
@@ -1748,16 +1603,9 @@ struct HermesHeaderLogo: View {
     }
 }
 
-/// A request from `ContentView` to open the New Chat composer. Carries whether voice
-/// dictation should auto-start (the "New Chat with Voice" App Intent, #338) and an optional
-/// profile name to pin the new session to (the "New Chat in <Profile>" App Intent, #339).
-/// A fresh `id` each time so a repeat invocation re-triggers navigation even if the previous
-/// value lingers.
 struct NewChatRequest: Equatable {
     let id: UUID
     let autoStartsVoiceInput: Bool
-    /// When set, the new session is created pinned to this profile; nil uses the server's
-    /// active profile (the plain "+" / "New Chat" behavior).
     let profileName: String?
 
     init(autoStartsVoiceInput: Bool = false, profileName: String? = nil) {
@@ -1771,13 +1619,9 @@ struct PendingNewChatRoute: Identifiable, Hashable {
     let id = UUID()
     let initialDraft: String
     let initialAttachments: [SharedAttachmentImport]
-    /// What the share this chat opened for left out, which its composer says once (#1401).
     let shareNotice: SharedSkipsNotice?
-    /// When true, the composer auto-starts voice dictation on appear (#338).
     let autoStartsVoiceInput: Bool
-    /// When set, the new session is created pinned to this profile (#339).
     let profileName: String?
-    /// When set, the new session is created in this project (#875).
     let projectID: String?
 
     init(
@@ -1807,16 +1651,13 @@ struct PendingNewChatRoute: Identifiable, Hashable {
 
 enum SessionListUtilityDestination: Hashable, Identifiable {
     case settings
-    /// Settings → Notifications on its own, for the chat's one-time offer (#863).
     case notificationSettings
-    /// The direct-Hermes Bots inbox, shown while Bot Mode (beta) is on.
     case bots
     case tasks
     case kanban
     case skills
     case memory
     case insights
-    /// Archived sessions screen (issue #17), also reachable from Settings.
     case archived
     case scheduled
 
@@ -1828,15 +1669,7 @@ private struct SessionSearchTaskID: Hashable {
     let isViewingCachedData: Bool
 }
 
-/// Identity for the session list's active-row poll. SwiftUI restarts the poll
-/// whenever this changes, and the poll runs only while `shouldPoll` holds.
-/// On compact width a pushed chat or utility screen covers the list, so the
-/// poll pauses until the user returns; `SessionListReturnRefresh` reloads the
-/// rows and runs one tick then. Scheduled sessions shows live rows from the same view model,
-/// so it keeps the poll running.
 struct ActiveSessionMonitorTaskID: Hashable {
-    /// Wait between polls. The open chat watches its own run over SSE, so the
-    /// list only needs badges and the Working-to-done switch reasonably fresh.
     static let pollInterval: Duration = .seconds(3)
 
     let streamIDs: [String]
@@ -1863,8 +1696,6 @@ struct ActiveSessionMonitorTaskID: Hashable {
         hasActiveRows && isListVisible && !isViewingCachedData
     }
 
-    /// Whether a return to the list needs an immediate tick. Only compact width
-    /// pauses the poll; the regular-width sidebar keeps polling throughout.
     var needsTickOnReturn: Bool {
         shouldPoll && !isRegularWidth
     }

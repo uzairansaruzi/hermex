@@ -3,8 +3,8 @@
 
 Tests wait on expectations, observation (`waitUntil`) and scripted fixtures, never on
 elapsed time (CLAUDE.md § Verifying). This scans every Swift file under
-HermesMobileTests/, Support helpers included, outside comments and string literals, for
-the known forms:
+HermesMobileTests/, Support helpers included, outside comments, string literals and
+regex literals, for the known forms:
 
 - `Task.sleep`, `Thread.sleep`, `usleep(` and `RunLoop.main/current.run(…)`;
 - deadline loops: `while Date() < …` and `while <clock>.now < …`;
@@ -39,7 +39,9 @@ CALLS = [
 LOOP = re.compile(r"\b(while|repeat)\b")
 YIELD = re.compile(r"\bTask\s*\.\s*yield\s*\(")
 ANNOTATION = re.compile(r"test-wait:(.*)")
-TOKEN = re.compile(r'//|/\*|#*"|[()\[\]{}]')
+TOKEN = re.compile(r'//|/\*|#*"|#+/|/|[()\[\]{}]')
+REGEX_OPENERS = "=(,:[{;!&|?"
+REGEX_KEYWORDS = ("return", "in", "case", "try", "await", "if", "guard", "while", "where", "else", "switch", "throw")
 
 
 def line_finder(text):
@@ -49,10 +51,18 @@ def line_finder(text):
 
 
 def mask(source):
-    """Return `source` with comments and string literals blanked out (newlines kept),
-    and each line's comment text by line number."""
+    """Return `source` with comments, string literals and regex literals blanked out
+    (newlines kept), and each line's comment text by line number."""
+    code, comments, _ = scan(source)
+    return code, comments
+
+
+def scan(source):
+    """`mask`, plus the (start, end) index range of every comment. ci/check_comments.py
+    counts and strips comments from those ranges."""
     out = list(source)
     comments = {}
+    spans = []
     length = len(source)
     line_of = line_finder(source)
 
@@ -68,6 +78,10 @@ def mask(source):
             hashes += 1
             index += 1
         multiline = source.startswith('"""', index)
+        if multiline and hashes:
+            line_end = source.find("\n", index)
+            if '"' + "#" * hashes in source[index + 1:length if line_end == -1 else line_end]:
+                multiline = False
         index += 3 if multiline else 1
         closer = ('"""' if multiline else '"') + "#" * hashes
         escape = "\\" + "#" * hashes
@@ -86,6 +100,48 @@ def mask(source):
             index += 1
         return index
 
+    def escaped(index):
+        """Whether an odd run of backslashes ends just before `index`."""
+        run = 0
+        while index - run - 1 >= 0 and source[index - run - 1] == "\\":
+            run += 1
+        return run % 2 == 1
+
+    def regex_end(index):
+        """`index` is at a `/` or at the `#`s of `#/`; returns the index after the regex
+        literal that starts there, or None when a slash there is an operator."""
+        hashes = 0
+        while source[index + hashes] == "#":
+            hashes += 1
+        body = index + hashes + 1
+        if hashes:
+            close = source.find("/" + "#" * hashes, body)
+            while close != -1 and escaped(close):
+                close = source.find("/" + "#" * hashes, close + 1)
+            return None if close == -1 else close + 1 + hashes
+        if body >= length or source[body] in " \t\n=":
+            return None
+        before = index - 1
+        comment = len(spans) - 1
+        while before >= 0 and (source[before] in " \t\n" or (comment >= 0 and spans[comment][1] == before + 1)):
+            if source[before] in " \t\n":
+                before -= 1
+            else:
+                before = spans[comment][0] - 1
+                comment -= 1
+        if before >= 0 and source[before] not in REGEX_OPENERS:
+            word = re.search(r"[A-Za-z_]\w*$", source[max(0, before - 16):before + 1])
+            if not word or word.group() not in REGEX_KEYWORDS:
+                return None
+        while body < length and source[body] != "\n":
+            if source[body] == "\\":
+                body += 2
+            elif source[body] == "/":
+                return body + 1
+            else:
+                body += 1
+        return None
+
     def skip_code(index, until):
         """Masks code from `index` to the unmatched `until` (or the end); returns the index after it."""
         depth = 0
@@ -99,6 +155,7 @@ def mask(source):
                 end = source.find("\n", index)
                 end = length if end == -1 else end
                 comments.setdefault(line_of(index), []).append(source[index + 2:end])
+                spans.append((index, end))
                 blank(index, end)
                 index = end
             elif text == "/*":
@@ -114,11 +171,17 @@ def mask(source):
                             break
                     else:
                         index += 1
+                spans.append((start, index))
                 blank(start, index)
             elif text.endswith('"'):
                 start = index
                 index = skip_string(index)
                 blank(start, index)
+            elif text.endswith("/"):
+                end = regex_end(index)
+                if end is not None:
+                    blank(index, end)
+                index = end or index + len(text)
             elif until is None:
                 index += 1
             elif text in "([{":
@@ -131,7 +194,7 @@ def mask(source):
                 depth -= 1
 
     skip_code(0, None)
-    return "".join(out), comments
+    return "".join(out), comments, spans
 
 
 def body_range(code, start):
@@ -178,14 +241,16 @@ def closes_repeat(code, index):
 
 
 def findings(source):
-    """Yield (line, kinds, reason) for every line that waits; `reason` is its annotation's,
-    "" for one without a reason, or None."""
+    """Yield (line, kinds, reason, annotated) for every line that waits; `reason` is its
+    annotation's, "" for one without a reason, or None, and `annotated` the line the
+    annotation is on. ci/check_comments.py keeps the comments on those lines."""
     code, comments = mask(source)
     lines = code.split("\n")
     line_of = line_finder(code)
 
     def annotation(line):
-        """The reason annotating `line`, "" for an empty one, or None."""
+        """The reason annotating `line` ("" for an empty one) and the line it is on,
+        or None twice."""
         candidates = [line]
         above = line - 1
         while above >= 1 and not lines[above - 1].strip() and above in comments:
@@ -195,8 +260,8 @@ def findings(source):
             for comment in comments.get(candidate, []):
                 match = ANNOTATION.search(comment)
                 if match:
-                    return match.group(1).strip()
-        return None
+                    return match.group(1).strip(), candidate
+        return None, None
 
     found = {}
     for kind, pattern in CALLS:
@@ -209,7 +274,7 @@ def findings(source):
         if body and YIELD.search(code, body[0], body[1]):
             found.setdefault(line_of(match.start()), []).append("Task.yield loop")
     for line in sorted(found):
-        yield line, ", ".join(found[line]), annotation(line)
+        yield (line, ", ".join(found[line]), *annotation(line))
 
 
 def check(root):
@@ -217,7 +282,7 @@ def check(root):
     report = []
     for path in sorted(Path(root).rglob("*.swift")):
         source = path.read_text(encoding="utf-8")
-        for line, kind, reason in findings(source):
+        for line, kind, reason, _ in findings(source):
             if reason:
                 continue
             try:

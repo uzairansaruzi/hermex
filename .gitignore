@@ -30,12 +30,15 @@ UPDATES.md
 .obsidian/
 docs/research/
 
-# Local agent tooling (per-machine caches, skills, session state)
+# Local agent tooling (per-machine caches, session state). Repo skills are
+# tracked in .agents/skills; .claude/skills links to them.
 node_modules/
 .codex-tmp/
-.agents/
+.agents/*
+!.agents/skills/
 .sc/
-.claude/
+.claude/*
+!.claude/skills
 .codex/
 .cursor/
 # App Store Connect credentials, release metadata, checkpoints, and tester exports

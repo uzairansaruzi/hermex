@@ -2,10 +2,6 @@ import CryptoKit
 import Foundation
 import Observation
 
-/// One visible room owns one socket. Closing invalidates replies before
-/// cancelling transport; backgrounding keeps the loaded window but stops all reads.
-/// A lost connection reconnects on its own a few times on backoff, at once when the network
-/// returns, and never while offline (#1372); it never resends a message or command.
 @MainActor @Observable final class BotRoomReader {
     enum Link: Equatable { case idle, connecting, live, stopped }
     let key: BotRoomKey
@@ -18,10 +14,6 @@ import Observation
     private(set) var status = BotRoomStatus(.null)
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
-    /// True after the host refused the saved username or password (`.rejected(401)`).
-    /// The room offers Update sign-in instead of Reconnect. It stays set for this
-    /// reader's life, because the reader only signs in with the record it was built
-    /// from; the fix goes through the inbox, which opens the room with a new reader.
     private(set) var needsSignIn = false
     private(set) var hasEarlier = false
     private(set) var loadingEarlier = false
@@ -43,9 +35,6 @@ import Observation
     private(set) var busy = false
     private(set) var awaitingStop = false
     private(set) var inactiveActions = Set<BotRoomAction.Identity>()
-    /// The last send, Stop or approval the room accepted, for the view's haptic.
-    /// Rooms play no turn completion: polled state cannot say which member's
-    /// work just finished, or when.
     private(set) var feedback: BotFeedback?
     struct Send: Equatable {
         let text: String
@@ -56,7 +45,6 @@ import Observation
             self.text = text; eventID = UUID().uuidString
             self.threadID = threadID ?? UUID().uuidString; contextThreadID = threadID
         }
-        /// Pinned gateway user_event_id: SHA256 of the client retry key.
         var serverEventID: String {
             "user:" + SHA256.hash(data: Data(eventID.utf8)).map { String(format: "%02x", $0) }.joined()
         }
@@ -100,11 +88,6 @@ import Observation
         }
     }
 
-    /// Room and profile share state, but each visible screen claims async ownership.
-    /// Navigation callbacks can arrive in either order; the old screen cannot close the new socket.
-    /// Once the host has refused this reader's password, a reopen only restores the saved
-    /// history and stops: the reader signs in with the record it was built from, so it
-    /// never sends that password again (#884).
     func open(owner: UUID? = nil, preservingLoadedHistory: Bool = false) async {
         viewOwner = owner
         suspend()
@@ -117,7 +100,6 @@ import Observation
             log = BotRoomLog(); events = []; threads = []; hasEarlier = false; hasRecentLog = false
         }
         recentOwner = cache.recent.begin(.init(key))
-        // Checked before `makeWire`, which can retire a newer shared connection.
         if needsSignIn {
             await historyRemoval?.value
             let cached = try? await cache.roomHistory(key)
@@ -177,7 +159,6 @@ import Observation
         } catch { fail(error, client) }
     }
 
-    /// Independently callable for scripted tests; the timer only schedules reads.
     func poll() async {
         guard let client = wire, link == .live else { return }
         do {
@@ -210,8 +191,6 @@ import Observation
         viewOwner = nil
     }
 
-    /// The device's network path changed: a reconnect waiting on its backoff runs now if the
-    /// network is back, or holds until it is. The room's screens call it while on screen.
     func networkPathDidChange() { reconnect.networkPathDidChange() }
 
     func suspend() {
@@ -239,8 +218,6 @@ import Observation
         link == .live && !uncertainDisband && !foreignAuthority && capabilities.authority != nil && room.authority == capabilities.authority
     }
     var showsComposer: Bool { !foreignAuthority }
-    /// A new room opens on its members instead of an empty transcript: live, with
-    /// no earlier history to load and no message from the user or a member yet.
     var showsWelcome: Bool { link == .live && !hasEarlier && !BotRoomEvent.hasConversation(in: events) }
     var showsStop: Bool { status.working || status.stopping > 0 || awaitingStop }
     var mayStop: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 && status.stoppable > 0 }
@@ -256,7 +233,6 @@ import Observation
     private func allows(_ method: String) -> Bool { canParticipate && capabilities.methods.contains(method) }
     func mayAct(_ action: BotRoomAction) -> Bool { !busy && isPendingAndAnswerable(action) }
 
-    /// Pending ownership outlives the temporary command lock on the room's buttons.
     private func isPendingAndAnswerable(_ action: BotRoomAction) -> Bool {
         action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
             && allows(action.method)
@@ -290,8 +266,6 @@ import Observation
                   result["tombstone"]["disbanded_at"].number != nil else { throw BotFailure.unsupported }
             self.finishDisband()
         })
-        // A disconnect may invalidate the write's continuation. Recover with reads
-        // only while still visible; background/close leaves link idle.
         if viewOwner == owner && uncertainDisband && link == .stopped { await open(owner: owner) }
     }
 
@@ -307,8 +281,6 @@ import Observation
         return false
     }
 
-    /// Overview sends start a thread; detail replies continue its current discussion.
-    /// Only the dedicated retry button reuses an uncertain send's id and payload.
     func send(retry: Bool = false, threadID: String? = nil) async {
         guard retry ? mayResend(in: threadID) : maySend(in: threadID) else { return }
         let request = retry ? uncertainSend(in: threadID)! : Send(text: draft(in: threadID), threadID: threadID)
@@ -375,8 +347,6 @@ import Observation
         })
     }
 
-    /// Ownership and the pending tuple are checked in BotClient's actual socket
-    /// write closure. A lost reply never starts another command.
     private func command(_ call: HermesCall, validate: @escaping () throws -> Void,
                          accept: (BotJSON) throws -> Void) async {
         guard let client = wire, allows(call.method), !busy else { sending = nil; return }
@@ -400,7 +370,6 @@ import Observation
                 commandMessage = rejection.localizedDescription
                 if rejection.reason == "authority_conflict" { foreignAuthority = true }
                 if rejection.expired { discardHistory(); close(); onExpired(); return }
-                // A rejected retry does not erase the uncertainty of the original send.
             } else if dispatched {
                 if let sending { uncertainSends[sending.contextThreadID ?? ""] = sending }
                 commandMessage = String(localized: "Outcome unknown. Reconnect to check the room. Commands are never resent automatically.")
@@ -412,8 +381,6 @@ import Observation
             do { if try await reconcileDisband(client) { return } }
             catch { fail(error, client); return }
         }
-        // Read after every acknowledgment or rejection (including 5118/5119).
-        // Inactive tuples stay inert even if a stale server snapshot repeats them.
         await poll()
     }
 
@@ -446,8 +413,6 @@ import Observation
         return updated.latestSeq
     }
 
-    /// History windows stop at their old boundary. Live/open replay drains all
-    /// pages, including pages containing only unknown kinds. Reject stalled cursors.
     private func readPages(_ client: any BotTransport, since: Int, through: Int? = nil) async throws -> [BotJSON] {
         var cursor = since
         var pages: [BotJSON] = []
@@ -463,9 +428,6 @@ import Observation
             guard next > cursor else { throw BotFailure.unsupported }
             cursor = next
         }
-        // Commit the complete contiguous window together. Saving earlier pages one
-        // at a time would temporarily leave a gap before the already-cached window.
-        // Storage is best-effort; failures never stop live reading.
         let projection = BotJSON.object([
             "events": .array(pages.flatMap { $0["events"].list ?? [] }),
             "cursor": pages.last?["cursor"] ?? .number(Double(since))
@@ -486,7 +448,6 @@ import Observation
         return moved
     }
 
-    /// Shows the disk history when `open` found no recent window to restore.
     private func restore(_ cached: BotHistoryCache.Snapshot?) {
         guard let cached, !hasRecentLog else { return }
         var restored = BotRoomLog()
@@ -496,8 +457,6 @@ import Observation
     }
 
     private func publishLog() {
-        // A poll can race the send acknowledgment. Do not publish our own pending
-        // message as sent until the RPC result has been validated.
         let pendingIDs = Set((Array(uncertainSends.values) + [sending].compactMap { $0 }).map(\.serverEventID))
         let visible = log.events.filter { event in
             event.kind != "message.user" || !pendingIDs.contains(event.eventID ?? "")
@@ -509,7 +468,6 @@ import Observation
     }
 
     private func saveRecentTranscript() {
-        // Pending send bubbles stay private until their acknowledgment is known.
         guard link == .live, !busy, !uncertainDisband, let recentOwner else { return }
         cache.recent.save(log.recentWindow(), for: .init(key), owner: recentOwner)
     }
@@ -518,7 +476,6 @@ import Observation
         let cache = cache, key = key
         cache.recent.remove { $0 == .init(key) }
         recentOwner = nil
-        // Deletion intentionally outlives the screen; it never mutates view state.
         historyRemoval = Task { try? await cache.removeRoom(key) }
     }
 
@@ -528,8 +485,6 @@ import Observation
         errorMessage = error.localizedDescription
         needsSignIn = error as? BotFailure == .rejected(401)
         if let failure = error as? BotRoomFailure, failure.expired { discardHistory(); close(); onExpired() }
-        // Only a lost connection or a passing refusal (a tunnel's 502, a rate limit) heals on
-        // its own; the screen that owns the room reopens it, keeping the loaded history.
         let heals = switch error as? BotFailure {
         case .transport: true
         case .rejected: BotConnectionAdvice.isRetryable(error)

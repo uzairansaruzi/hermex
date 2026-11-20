@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Every typed Hermes request keeps the exact wire shape the app sent before it
-/// was typed, including the fields it omits. Admission rules live in `BotClientTests`.
 final class HermesRequestTests: XCTestCase {
     func testPromptSubmitCarriesBoundedTitlePreviewOutsidePromptText() throws {
         let preview = String(repeating: "😀", count: 1_500)
@@ -145,7 +143,6 @@ final class HermesRequestTests: XCTestCase {
             (.configSet(sessionID: "runtime", profile: "triage", setting: .fast(false)), "config.set",
              ["session_id": .string("runtime"), "profile": .string("triage"), "scope": .string("session"),
               "key": .string("fast"), "value": .string("normal")]),
-            // The one Profile-wide write: no scope, which the host ignores for it.
             (.configSet(sessionID: "runtime", profile: "triage", setting: .personality("pirate")), "config.set",
              ["session_id": .string("runtime"), "profile": .string("triage"),
               "key": .string("personality"), "value": .string("pirate")]),
@@ -210,8 +207,6 @@ final class HermesRequestTests: XCTestCase {
         }
     }
 
-    /// Slash commands go out one typed line at a time, and completion only at a command's
-    /// argument stage (#1036).
     func testSlashCallsAdmitOnlyOneNamedLine() {
         XCTAssertNoThrow(try HermesCall.slashExec(sessionID: "runtime", command: "/context").params())
         XCTAssertNoThrow(try HermesCall.slashExec(sessionID: "runtime", command: "/queue hi there").params())
@@ -228,9 +223,6 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesCall.completeSlash(text: "/approvals ", sessionID: "").params())
     }
 
-    /// The host hands a Git write's `file` to git as a pathspec, where `*` matches other files and
-    /// `.`, a blank or no file the whole tree (#1115): a file goes out literal, and one that isn't a
-    /// single path inside the repository is refused before anything is sent.
     func testAGitWriteNamesOneExactFile() throws {
         let base = URL(string: "https://hermes.example")!
         for file in ["", " ", " \n", ".", "./", "a/./b", "a/..", "../a", "/a", "a//b"] {
@@ -246,13 +238,8 @@ final class HermesRequestTests: XCTestCase {
         }
     }
 
-    /// The host rewrites a branch name before `git switch` (`_sanitize_branch`), so a name it
-    /// would change, which could reach another branch, is refused before anything is sent (#1116),
-    /// as is a new branch's through hermex-push (#1236).
     func testABranchSwitchSendsOnlyANameTheHostKeeps() throws {
         let base = URL(string: "https://hermes.example")!
-        // A decomposed accent (U+0301) or zero-width joiner is stripped by the host, so "cafe\u{301}"
-        // would switch to "cafe"; the precomposed "café" and other letters and numerals pass.
         for name in ["", "feat+x", "my branch", "-x", "x/", ".x", "a..b", "a//b", "a--b", "a@{1}", "x~1",
                      "cafe\u{301}", "a\u{200D}b", "x\u{903}"] {
             XCTAssertThrowsError(try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base), name)
@@ -264,7 +251,6 @@ final class HermesRequestTests: XCTestCase {
         for name in ["dev", "feature/x-1", "release_2.0", "caf\u{E9}", "x\u{663}", "\u{216B}", "\u{2B0}x"] {
             let request = try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base)
             let body = try JSONDecoder().decode(BotJSON.self, from: XCTUnwrap(request.httpBody))
-            // String equality is canonical, so compare scalars: the name goes out unnormalized.
             guard case .object(let fields) = body, case .string(let sent) = fields["branch"] else { return XCTFail(name) }
             XCTAssertEqual(fields["path"], .string("/r"))
             XCTAssertEqual(Array(sent.unicodeScalars), Array(name.unicodeScalars), name)

@@ -1,7 +1,5 @@
 import Foundation
 
-/// The setup pages behind onboarding's "I don't have one yet" (#1540): the agent setup prompt,
-/// then joining a private network. Their Continue ends on the Add Server sheet.
 enum OnboardingFlowPolicy {
     static let setupPageCount = 2
     static let agentPromptPageIndex = 0
@@ -65,21 +63,16 @@ Verify in this order:
 Reply with the exact address, username, password, and both check results, plus any remaining action required on my iPhone. Do not include `config.yaml` or the secret.
 """
 
-    /// Step 1 opens on the Hermes prompt; Hermes Web UI is one tap away.
     static let initialSetupPrompt: OnboardingSetupPrompt = .hermes
 
     static let tailscaleAppStoreURL = URL(string: "itms-apps://apps.apple.com/us/app/tailscale/id1470499037")!
 
     static let tailscaleAppStoreFallbackURL = URL(string: "https://apps.apple.com/us/app/tailscale/id1470499037")!
 
-    /// Where Continue goes from setup page `page`: the next one, or nil after the last, which
-    /// opens the Add Server sheet.
     static func page(after page: Int) -> Int? {
         page + 1 < setupPageCount ? page + 1 : nil
     }
 
-    /// Continue needs the prompt that is shown copied, or its reminder skipped with Continue
-    /// Anyway: copying or skipping one prompt and swapping to the other asks again.
     static func shouldShowCopyReminder(
         page: Int,
         shownPrompt: OnboardingSetupPrompt,
@@ -107,7 +100,6 @@ Reply with the exact address, username, password, and both check results, plus a
     }
 }
 
-/// The setup prompts step 1 offers; the page shows one at a time.
 enum OnboardingSetupPrompt: Hashable {
     case hermes
     case webUI
@@ -135,7 +127,6 @@ enum OnboardingSetupPrompt: Hashable {
         }
     }
 
-    /// The link under the prompt card that swaps to `alternative`.
     var switchTitle: String {
         switch self {
         case .hermes: String(localized: "Using Hermes Web UI instead?")
@@ -143,7 +134,6 @@ enum OnboardingSetupPrompt: Hashable {
         }
     }
 
-    /// The copy reminder's message when Continue is tapped before this prompt is copied.
     var copyReminderMessage: String {
         switch self {
         case .hermes:

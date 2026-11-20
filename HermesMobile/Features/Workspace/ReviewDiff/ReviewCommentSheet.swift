@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The Comment… sheet on the diff and source surfaces: names the captured lines and
-/// takes an optional note. Add hands the note to the host, which turns its own
-/// `ReviewCommentComposer` context into draft Markdown, so a context the host already
-/// dropped (a refresh) adds nothing. Cancel and swipe-down add nothing either.
 struct ReviewCommentSheet: View {
     let context: ReviewCommentContext
     let onAdd: (String) -> Void
@@ -60,8 +56,6 @@ struct ReviewCommentSheet: View {
     }
 }
 
-/// The selection bar's quiet state once this surface has added comments and nothing
-/// is selected. Back to Chat shows only when the host can close back to the chat.
 struct ReviewCommentStatusBar: View {
     let addedCount: Int
     let onReturnToChat: (() -> Void)?

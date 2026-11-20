@@ -1,27 +1,14 @@
 import Foundation
 
-/// Reduces a reasoning block to the one-line preview its collapsed log row
-/// shows: `summary(for:)` for a settled block, `latestThought(in:)` while it
-/// streams. Pure so the selection and cut rules are unit-testable.
 enum ReasoningSummaryFormatter {
     static let characterLimit = 80
-    /// Newlines never count toward the limit, so a hard cap on characters read
-    /// keeps a newline-heavy block from being rescanned in full on every chunk.
     static let scanLimit = characterLimit * 4
-    /// How much of a live stream's end `latestThought(in:)` reads.
     static let tailLimit = 2_000
 
-    /// The settled preview: the block's beginning with common markdown stripped,
-    /// newline runs collapsed and cut with an ellipsis. Reads at most
-    /// `scanLimit` characters.
     static func summary(for text: String) -> String {
         oneLine(stripMarkup(text.prefix(scanLimit)))
     }
 
-    /// The live preview: the newest completed `**heading**` line, else the first
-    /// sentence of the newest paragraph, stripped and cut like `summary(for:)`.
-    /// Reads only the last `tailLimit` characters, so a long stream costs the
-    /// same on every chunk.
     static func latestThought(in text: String) -> String {
         let lines = completeTail(of: text)
             .split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
@@ -42,9 +29,6 @@ enum ReasoningSummaryFormatter {
         return oneLine(stripped[..<(sentenceEnd(in: stripped) ?? stripped.endIndex)])
     }
 
-    /// The last `tailLimit` characters. When that cuts a line, the cut-off
-    /// leading line (or sentence, for one long line) is dropped if anything
-    /// follows it, so a fragment never reads as a whole paragraph.
     private static func completeTail(of text: String) -> Substring {
         let tail = text.suffix(tailLimit)
         guard tail.startIndex > text.startIndex,
@@ -56,8 +40,6 @@ enum ReasoningSummaryFormatter {
         return restart.map { tail[$0...] } ?? tail
     }
 
-    /// The text of a line that opens with a closed `**…**` span, which may be
-    /// followed by more text.
     private static func boldHeading(_ line: Substring) -> Substring? {
         let trimmed = line.drop(while: \.isWhitespace)
         guard trimmed.hasPrefix("**") else { return nil }
@@ -66,8 +48,6 @@ enum ReasoningSummaryFormatter {
         return content[..<close.lowerBound]
     }
 
-    /// The index just past the first sentence terminator. `. ! ?` end a sentence
-    /// only before whitespace or the end, so `v1.2` and `a.b` stay whole.
     private static func sentenceEnd(in text: Substring) -> Substring.Index? {
         var index = text.startIndex
         while index < text.endIndex {
@@ -85,8 +65,6 @@ enum ReasoningSummaryFormatter {
         return nil
     }
 
-    /// Drops each line's leading quote, heading and list markers, then its
-    /// inline markup.
     private static func stripMarkup(_ text: Substring) -> String {
         text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
             .map { stripInlineMarkup(stripLeadingMarkers($0)) }
@@ -112,10 +90,6 @@ enum ReasoningSummaryFormatter {
         return rest
     }
 
-    /// Removes backticks and `*` emphasis runs, and reduces `[label](url)` to
-    /// its label. A code span's text is kept as written, a `*` between spaces
-    /// (`2 * 3`) or within an ASCII word (`2*3`) stays, and underscores are never
-    /// touched, so identifiers like `retry_policy` survive.
     private static func stripInlineMarkup(_ line: Substring) -> String {
         let characters = Array(line)
         var result = ""
@@ -169,8 +143,6 @@ enum ReasoningSummaryFormatter {
         return result
     }
 
-    /// The start of the next backtick run of exactly `length` before `limit`,
-    /// which closes a code span the way CommonMark pairs them (``a `b` c``).
     private static func closingBackticks(
         in characters: [Character], from start: Int, length: Int, limit: Int
     ) -> Int? {
@@ -187,8 +159,6 @@ enum ReasoningSummaryFormatter {
         return nil
     }
 
-    /// The `)` closing a link target that starts at `start`, past any balanced
-    /// pairs inside it, as in `https://example.com/a_(b)`.
     private static func closingParenthesis(in characters: [Character], from start: Int) -> Int? {
         var depth = 0
         for index in start..<characters.count {
@@ -205,8 +175,6 @@ enum ReasoningSummaryFormatter {
         return nil
     }
 
-    /// Newline runs collapse to a single space and anything past the limit is
-    /// cut with an ellipsis.
     private static func oneLine(_ text: some StringProtocol) -> String {
         var result = ""
         var count = 0

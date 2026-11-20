@@ -4,37 +4,14 @@ import Foundation
 import Network
 import SwiftUI
 
-/// Signs a Hermes host in through the system browser (#708), as RFC 8252 describes for a
-/// native app: a loopback listener on `127.0.0.1`, the host's `/auth/native/authorize` in an
-/// ephemeral `ASWebAuthenticationSession`, and PKCE. The host brokers its own provider's
-/// pages (an OIDC IdP, or its `/login` form for a password provider) and redirects to the
-/// listener with a single-use code, which `HermesConnection.signIn(browserCode:verifier:)`
-/// trades for tokens. The onboarding and Add Server form and a Hermes server's sign-in form
-/// use it for a host whose status offers it (`HermesSignInMethod.offered(by:)`): on its own,
-/// or picked over the host's password (#1539).
-///
-/// Checked on a phone against a 0.21.5 host in the slice 8.1 spike: the HTTPS hop to the
-/// loopback port is never upgraded to HTTPS, the listener survives the app being suspended
-/// while the user is in a password manager, and the ephemeral session shows no "wants to
-/// use … to sign in" alert. A listener iOS reclaims shows a "can't connect" page in the
-/// sheet; closing it and signing in again recovers.
 @MainActor enum HermesBrowserSignIn {
-    /// The scheme the listener's `302` bounces to, which closes the sheet. It needs no
-    /// registration: the session watches for it.
     static let callbackScheme = "hermexsignin"
-    /// Shows the host's authorize page and returns once the sheet closes on the callback
-    /// scheme. The views make it from their `webAuthenticationSession`; tests script it.
     struct Presenter {
         let present: @MainActor (URL) async throws -> Void
 
-        /// A form that can't show a browser, which a browser host's sign-in then refuses.
         static let unavailable = Presenter { _ in throw BotFailure.browserSignInFailed }
     }
 
-    /// Runs one browser sign-in for `http`, a connection not yet saved, and leaves it signed
-    /// in as a browser sign-in's connection (`http.connection`), which the caller saves.
-    /// Closing the sheet throws `CancellationError`; a sheet that closed without a matching
-    /// callback, or a code the host no longer accepts, throws `.browserSignInFailed`.
     static func signIn(_ http: HermesConnection, presenter: Presenter) async throws {
         let verifier = randomURLSafe(32), state = randomURLSafe(16)
         let listener = HermesLoopbackListener(bounce: "\(callbackScheme)://done", state: state)
@@ -46,8 +23,6 @@ import SwiftUI
         do {
             try await presenter.present(url)
         } catch where listener.code == nil {
-            // An error after the code arrived is only the sheet closing; without one, the
-            // user closed it, the form's task was cancelled, or it never showed.
             if error is CancellationError || (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
                 throw CancellationError()
             }
@@ -57,10 +32,6 @@ import SwiftUI
         try await http.signIn(browserCode: code, verifier: verifier)
     }
 
-    /// `/auth/native/authorize` on `base` with every query value fully percent-encoded,
-    /// since some proxies' filters refuse an unencoded `redirect_uri=http://…`. No
-    /// `provider`: the host picks its only interactive provider itself and shows its own
-    /// chooser when it has several.
     static func authorizeURL(base: URL, challenge: String, redirect: String, state: String) throws -> URL {
         guard var parts = URLComponents(url: base.appendingPathComponent("auth/native/authorize"),
                                         resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
@@ -74,7 +45,6 @@ import SwiftUI
         return url
     }
 
-    /// The S256 PKCE challenge for `verifier`: its SHA-256, base64url without padding.
     static func challenge(for verifier: String) -> String {
         base64url(Data(SHA256.hash(data: Data(verifier.utf8))))
     }
@@ -92,7 +62,6 @@ import SwiftUI
             .replacingOccurrences(of: "=", with: "")
     }
 
-    /// Everything outside RFC 3986's unreserved characters, percent-encoded.
     private static func encoded(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
@@ -101,8 +70,6 @@ import SwiftUI
 }
 
 extension HermesBrowserSignIn.Presenter {
-    /// Shows the authorize page in `session`, ephemeral, so the sheet keeps no cookies and
-    /// asks nothing before it opens.
     init(_ session: WebAuthenticationSession) {
         self.init { url in
             _ = try await session.authenticate(using: url, callback: .customScheme(HermesBrowserSignIn.callbackScheme),
@@ -111,18 +78,11 @@ extension HermesBrowserSignIn.Presenter {
     }
 }
 
-/// The loopback receiver for one browser sign-in, from the 8.1 spike: binds `127.0.0.1` on
-/// an ephemeral port, keeps the first `GET /callback` whose `state` matches, and answers
-/// every callback `302 <bounce>` so the custom-scheme bounce closes the sheet. Everything
-/// runs on the main queue, so `code` is set before the bounce goes out, and nothing here is
-/// touched from another thread.
 final class HermesLoopbackListener: @unchecked Sendable {
-    /// The code from the first callback carrying the expected `state`.
     private(set) var code: String?
     private var listener: NWListener?
     private let bounce: String
     private let state: String
-    /// Whether `start` has answered.
     private var started = false
 
     init(bounce: String, state: String) {
@@ -130,7 +90,6 @@ final class HermesLoopbackListener: @unchecked Sendable {
         self.state = state
     }
 
-    /// Binds loopback on an ephemeral port and returns it once the listener is ready.
     func start() async throws -> NWEndpoint.Port {
         let params = NWParameters.tcp
         params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
@@ -164,7 +123,6 @@ final class HermesLoopbackListener: @unchecked Sendable {
         listener = nil
     }
 
-    /// The most a request may send before its request line ends.
     private static let requestLineLimit = 16_384
 
     private func accept(_ connection: NWConnection) {
@@ -172,7 +130,6 @@ final class HermesLoopbackListener: @unchecked Sendable {
         receive(on: connection, buffered: Data())
     }
 
-    /// Reads until the request line is complete, however TCP splits it.
     private func receive(on connection: NWConnection, buffered: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: Self.requestLineLimit) { [weak self] data, _, isComplete, error in
             guard let self else { connection.cancel(); return }
@@ -187,8 +144,6 @@ final class HermesLoopbackListener: @unchecked Sendable {
         }
     }
 
-    /// The request target of `request`'s request line (`GET <target> HTTP/1.1`), or nil
-    /// until that line has ended.
     static func requestTarget(in request: Data) -> String? {
         guard let end = request.firstRange(of: Data("\r\n".utf8)) else { return nil }
         let line = String(decoding: request[..<end.lowerBound], as: UTF8.self)

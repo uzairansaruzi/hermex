@@ -1,6 +1,5 @@
 import Foundation
 
-/// Native preview downloads are bounded even when the host omits Content-Length.
 struct BotArtifactBuffer {
     static let maximumBytes = 25 * 1024 * 1024
     let limit: Int
@@ -14,7 +13,6 @@ struct BotArtifactBuffer {
     }
 }
 
-/// A redirect can point at a login page or another host. Neither is an artifact.
 final class BotArtifactRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
@@ -23,12 +21,6 @@ final class BotArtifactRedirectGuard: NSObject, URLSessionTaskDelegate, @uncheck
     }
 }
 
-/// Reads one artifact from a `HermesREST.downloadArtifact` request, or one `HermesREST.speak`
-/// reply, on the session `HermesConnection.authorized` passes in; a remote MEDIA document's
-/// preview (#145) reads on the cookie-less `APIClient.sharedPublicMediaSession`. No webui endpoint. `limit` caps a preview's bytes; nil reads the whole file, as an export does
-/// (#1112). An empty body is a failed read unless `allowsEmpty`, which whole-file reads pass
-/// (a workspace file's or a MEDIA file's Save and Share): an empty file is a real file there,
-/// but never a real image or speech.
 enum BotArtifactDownload {
     static func data(session: URLSession, request: URLRequest,
                      limit: Int? = BotArtifactBuffer.maximumBytes, allowsEmpty: Bool = false) async throws -> Data {
@@ -38,8 +30,6 @@ enum BotArtifactDownload {
         guard response.statusCode == 200 else {
             if response.statusCode == 401 { throw BotFailure.rejected(401) }
             let detail = [400, 403].contains(response.statusCode) ? await refusalDetail(bytes) : nil
-            // Hermes explains its own 403, such as a path outside a locked files root, and the
-            // reason can name a path. One with no reason is the proxy in front of it.
             if response.statusCode == 403, detail == nil { throw BotFailure.rejected(403) }
             if response.statusCode == 400, detail == "Path points to a directory" { throw BotArtifactFailure.folder }
             throw BotArtifactFailure.unavailable
@@ -62,9 +52,6 @@ enum BotArtifactDownload {
         return buffer.data
     }
 
-    /// A refusal's `detail`, such as `fs_download`'s of a folder (`_fs_regular_file` in
-    /// `hermes_cli/web_routers/files.py` at the `HERMES_AGENT_TESTED_SHA` pin). Reads at most
-    /// 1 KiB; an unreadable body has none.
     private static func refusalDetail(_ bytes: URLSession.AsyncBytes) async -> String? {
         var body = Data()
         do {

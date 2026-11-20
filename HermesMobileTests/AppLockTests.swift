@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The app lock's rules (#885), driven through the scene inputs `AppLockSceneDelegate`
-/// forwards, with a fake authenticator and a hand-moved clock. The lock window's level,
-/// the app switcher snapshot and VoiceOver need a device (the PR's manual test).
 @MainActor
 final class AppLockTests: XCTestCase {
     private let authenticator = FakeAppLockAuthenticator()
@@ -41,7 +38,6 @@ final class AppLockTests: XCTestCase {
     func testInactiveThenActiveNeverLocks() async {
         let lock = await unlockedLock()
 
-        // Control Center, Notification Center or a system sheet, however long it stays up.
         lock.sceneWillResignActive()
         clock.advance(by: .seconds(600))
         lock.sceneDidBecomeActive()
@@ -62,7 +58,6 @@ final class AppLockTests: XCTestCase {
         XCTAssertFalse(lock.isCovered)
         XCTAssertFalse(lock.showsLockWindow)
 
-        // Locked too: the lock window shows the icon alone, not the Unlock button.
         lock.sceneWillResignActive()
         lock.sceneDidEnterBackground()
         clock.advance(by: .seconds(61))
@@ -75,7 +70,6 @@ final class AppLockTests: XCTestCase {
 
     func testItsOwnPromptNeverShowsTheCover() async {
         let lock = makeLock(enabled: true)
-        // The Face ID sheet makes the scene inactive; success arrives before it is active again.
         authenticator.duringPrompt = { lock.sceneWillResignActive() }
         authenticator.answers = [true]
         await lock.sceneDidBecomeActive()?.value
@@ -95,7 +89,6 @@ final class AppLockTests: XCTestCase {
         await lock.sceneDidBecomeActive()?.value
         XCTAssertTrue(lock.isLocked, "A cancel or failure keeps the lock up")
 
-        // The Face ID sheet's own inactive/active pair isn't a return from the background.
         lock.sceneWillResignActive()
         XCTAssertNil(lock.sceneDidBecomeActive(), "No prompt loop after a cancel")
         XCTAssertEqual(authenticator.reasons.count, 1)
@@ -141,7 +134,6 @@ final class AppLockTests: XCTestCase {
         XCTAssertFalse(off.isEnabled)
         XCTAssertFalse(off.capability.hasPasscode)
 
-        // Nothing can authenticate once the passcode is gone, and the owner removed it.
         let on = makeLock(enabled: true)
         await on.setEnabled(false)
         XCTAssertFalse(on.isEnabled)
@@ -177,8 +169,6 @@ final class AppLockTests: XCTestCase {
         XCTAssertEqual(presence.viewer, viewer)
     }
 
-    // MARK: - Helpers
-
     private func makeLock(enabled: Bool, defaults: UserDefaults? = nil) -> AppLock {
         let defaults = defaults ?? makeDefaults()
         defaults.set(enabled, forKey: AppLock.enabledKey)
@@ -186,7 +176,6 @@ final class AppLockTests: XCTestCase {
         return AppLock(defaults: defaults, authenticator: authenticator, now: { clock.now })
     }
 
-    /// A lock that is on, cold-launched and unlocked by its automatic prompt.
     private func unlockedLock() async -> AppLock {
         let lock = makeLock(enabled: true)
         authenticator.answers = [true]
@@ -205,9 +194,7 @@ final class AppLockTests: XCTestCase {
 @MainActor
 private final class FakeAppLockAuthenticator: AppLockAuthenticator {
     var capabilityValue = AppLockCapability(method: .faceID, hasPasscode: true)
-    /// Answers for the next prompts, in order; an empty queue fails like a cancel.
     var answers: [Bool] = []
-    /// Runs while a prompt is up, as the system sheet would.
     var duringPrompt: (() -> Void)?
     private(set) var reasons: [String] = []
 

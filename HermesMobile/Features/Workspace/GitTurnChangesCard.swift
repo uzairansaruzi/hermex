@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// Turn-end "File changes" recap card shown under the latest assistant turn for git
-/// workspaces (issue #316, Slice D, surface B). The per-file list is derived from the
-/// turn's tool-call metadata and joined to one range's rows for counts/chips
-/// (`TurnFileChangeAggregator`). The card is collapsible (default expanded); the header
-/// "Open diff" opens the turn's files in the diff surface and each file row opens that surface
-/// at the file. The host owns the actual sheet presentation. A Hermes card names the range it
-/// counted under its header, with what that range includes one tap away (#1392).
 struct GitTurnChangesCard: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -15,9 +8,7 @@ struct GitTurnChangesCard: View {
     @State private var showsRangeInfo = false
 
     let summary: TurnFileChangeSummary
-    /// Open the diff sheet for every changed file in the turn (header "Open diff").
     let onOpenAll: () -> Void
-    /// Open a single file's diff (per-row tap). Only called for rows with a status match.
     let onOpenFile: (GitFile) -> Void
 
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
@@ -86,7 +77,6 @@ struct GitTurnChangesCard: View {
         .padding(.vertical, 8)
     }
 
-    /// The range's name, and the info button whose popover says what it includes.
     private func rangeCaption(_ scope: GitReviewScope) -> some View {
         let isTurnRange = if case .since = scope { true } else { false }
         return HStack(spacing: 5) {
@@ -97,7 +87,6 @@ struct GitTurnChangesCard: View {
             Button {
                 showsRangeInfo = true
             } label: {
-                // A 44 pt hit area around the caption-sized glyph, without moving the row.
                 Image(systemName: "info.circle")
                     .font(AppFont.caption())
                     .foregroundStyle(.tint)

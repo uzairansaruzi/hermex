@@ -1,13 +1,6 @@
 import SwiftUI
 
-/// The surfaces a pending approval or clarification card is built from, shared
-/// by the Sessions cards and the Bot one. Placement differs per surface: the
-/// Sessions clarification pins above the composer, the Bot card sits in the
-/// transcript. What the user reads and taps does not.
 extension View {
-    /// Opaque on purpose: these cards float over live transcript text, and a
-    /// translucent surface would render the request on top of whatever message
-    /// happens to sit underneath.
     func pendingRequestCardSurface(cornerRadius: CGFloat) -> some View {
         background(
             Color(.appSurface),
@@ -19,12 +12,10 @@ extension View {
         )
     }
 
-    /// The recessed block a question or a command sits in, inside a card.
     func pendingRequestBlockSurface() -> some View {
         modifier(PendingRequestBlockSurface())
     }
 
-    /// The free-text response field's surface, including its padding.
     func pendingRequestFieldSurface() -> some View {
         modifier(PendingRequestFieldSurface())
     }
@@ -38,10 +29,6 @@ extension View {
                         .stroke(Color(.appSeparator), lineWidth: 1)
                 )
         } else if #available(iOS 26.0, *) {
-            // Fixed corner radius (not .capsule): a capsule's radius grows with the
-            // button's height, so on tall multi-line options the curved ends bow
-            // inward and clip the text. A fixed radius keeps the outline clear of
-            // the label at any line count and matches the fallbacks below.
             glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
         } else {
             background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -53,8 +40,6 @@ extension View {
     }
 }
 
-/// The round submit control beside a response field: filled while there is
-/// something to send, recessed when there is not, and a spinner in flight.
 struct PendingRequestSubmitButton: View {
     let isBusy: Bool
     let canSubmit: Bool
@@ -63,7 +48,6 @@ struct PendingRequestSubmitButton: View {
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var size: CGFloat = 40
 
-    /// Also the response field's caret colour, so the pair reads as one control.
     static func fill(canSubmit: Bool, colorScheme: ColorScheme) -> Color {
         guard canSubmit else {
             return colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.12)

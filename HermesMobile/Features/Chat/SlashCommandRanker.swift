@@ -1,11 +1,5 @@
 import Foundation
 
-/// The searchable text of one autocomplete candidate.
-///
-/// `name` is what the user types (`model`, `claude-code`), `label` the
-/// human-readable title when it differs from the name, and the two description
-/// fields the supporting copy. Only `name` and `label` are matched fuzzily,
-/// because a loose subsequence hit deep inside a sentence is noise.
 struct SlashRankableFields: Sendable {
     var name: String
     var label: String?
@@ -20,22 +14,11 @@ struct SlashRankableFields: Sendable {
     }
 }
 
-/// Lower-is-better ranking for the slash-command popover.
-///
-/// Each field scores the query on how strongly it matched — exact, prefix, word
-/// boundary, contains, or (names only) fuzzy subsequence — and a candidate keeps
-/// its best, i.e. lowest, field score. Field bases are staggered so any name hit
-/// beats any label hit, which beats any description hit. Callers pass their own
-/// field mapping to `rank`, which returns the best `limit` candidates.
 enum SlashCommandRanker {
-    /// Upper bound on rendered rows, so a large skill catalog cannot flood the popover.
     static let resultLimit = 20
 
-    /// Characters that start a new word inside a slug or a title.
     private static let boundaryMarkers: Set<Character> = ["-", "_", "/"]
 
-    /// A field's score base plus its dedicated fuzzy score; `nil` fuzzy disables
-    /// subsequence matching for that field.
     private struct FieldWeight {
         let base: Int
         let fuzzy: Int?
@@ -46,15 +29,10 @@ enum SlashCommandRanker {
     private static let shortDescriptionWeight = FieldWeight(base: 20, fuzzy: nil)
     private static let descriptionWeight = FieldWeight(base: 30, fuzzy: nil)
 
-    /// The best score across every field, or `nil` when nothing matched.
-    /// An empty query matches everything at the top score.
     static func score(_ fields: SlashRankableFields, matching query: String) -> Int? {
         score(fields, normalizedQuery: normalized(query))
     }
 
-    /// Returns the best `limit` items for `query`, ordered by score, then label,
-    /// then name. An empty query keeps the caller's own order untouched, so a
-    /// curated command list still reads the way it was written.
     static func rank<Item>(
         _ items: [Item],
         matching query: String,
@@ -82,16 +60,11 @@ enum SlashCommandRanker {
             )
         }
 
-        // `sorted` is unstable, which is fine: two entries only compare equal
-        // when their score, label, and name all match, and then their order is
-        // not something the user can tell apart.
         return matches
             .sorted { $0.sorts(before: $1) }
             .prefix(limit)
             .map(\.item)
     }
-
-    // MARK: - Scoring
 
     private struct RankedItem<Item> {
         let item: Item
@@ -99,7 +72,6 @@ enum SlashCommandRanker {
         let label: String
         let name: String
 
-        /// Strictly-before, so equally ranked candidates keep their input order.
         func sorts(before other: RankedItem<Item>) -> Bool {
             if score != other.score { return score < other.score }
             if label != other.label { return label < other.label }
@@ -135,7 +107,6 @@ enum SlashCommandRanker {
         return fuzzy
     }
 
-    /// True when the needle starts a word inside the field, e.g. `code` in `claude-code`.
     private static func hasBoundaryPrefix(_ field: String, _ needle: String) -> Bool {
         var searchStart = field.startIndex
         while let marker = field[searchStart...].firstIndex(where: boundaryMarkers.contains) {
@@ -147,7 +118,6 @@ enum SlashCommandRanker {
         return false
     }
 
-    /// True when every needle character appears in the field, in order.
     private static func isSubsequence(_ needle: String, of field: String) -> Bool {
         var iterator = field.makeIterator()
         for character in needle {
@@ -163,9 +133,6 @@ enum SlashCommandRanker {
         return true
     }
 
-    /// Case folding is plain `lowercased()` on purpose: command names and skill
-    /// slugs are ASCII, and locale-sensitive folding would make ranking depend
-    /// on the device language.
     private static func normalized(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }

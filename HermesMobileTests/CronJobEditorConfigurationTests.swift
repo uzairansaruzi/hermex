@@ -1,10 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Pins the rules behind the Task editor's Model and Profile rows: model and
-/// provider always move together, "Server default" is a real value, a selection
-/// the server no longer offers stays visible, and no load failure is allowed to
-/// disturb the rest of the draft. The Skills row has its own suite below.
 final class CronJobEditorConfigurationTests: APIClientTestCase {
     private func option(_ id: String, provider: String?) -> ModelCatalogOption {
         ModelCatalogOption(id: id, displayName: id, providerID: provider)
@@ -21,8 +17,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         ]
     }
 
-    // MARK: Model selection writes both fields
-
     func testServerDefaultClearsBothTheModelAndTheProvider() {
         var draft = CronJobEditorDraft(model: "gpt-5", provider: "openai")
 
@@ -30,14 +24,11 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
 
         XCTAssertEqual(draft.model, "")
         XCTAssertEqual(draft.provider, "")
-        // Blank is what the server reads as "inherit"; the literal string is not.
         XCTAssertNil(draft.trimmedModel)
         XCTAssertNil(draft.trimmedProvider)
     }
 
     func testSelectingAModelWithoutAProviderDoesNotLeaveTheOldProviderBehind() {
-        // A stale provider paired with a new model is exactly the mismatch the
-        // combined picker exists to prevent.
         var draft = CronJobEditorDraft(model: "gpt-5", provider: "openai")
 
         draft.applyModelSelection(option("llama3", provider: nil))
@@ -46,11 +37,7 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         XCTAssertEqual(draft.provider, "")
     }
 
-    // MARK: Profile selection leaves the model alone
-
     func testSelectingAProfileNeverPrefillsTheModel() {
-        // Upstream fills the model in from the profile only while it is blank,
-        // so prefilling here would suppress the server's own snapshot.
         var draft = CronJobEditorDraft()
 
         draft.applyProfileSelection("work")
@@ -59,8 +46,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         XCTAssertEqual(draft.model, "")
         XCTAssertEqual(draft.provider, "")
     }
-
-    // MARK: The row's current selection
 
     func testAModelMissingFromTheCatalogStillResolvesToADisplayableSelection() {
         let selection = CronJobModelSelection.resolve(
@@ -74,8 +59,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         XCTAssertEqual(selection?.providerID, "openai")
     }
 
-    // MARK: The .cronJob picker preset
-
     func testTheTasksPickersCustomEntryNeedsBothAModelAndAProviderID() {
         XCTAssertNil(
             ModelPickerSheet.customOption(modelID: "gpt-5", providerID: "  ", configuration: .cronJob)
@@ -85,8 +68,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
             ModelCatalogOption(id: "gpt-5", displayName: "gpt-5", providerID: "openai")
         )
     }
-
-    // MARK: Loading
 
     @MainActor
     func testTheEditorLoadsTheCatalogAndTheProfileList() async {
@@ -144,7 +125,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         var draft = CronJobEditorDraft(prompt: "Report", schedule: "0 9 * * *", model: "gpt-5", provider: "openai")
         let loader = CronJobEditorConfigurationLoader(server: URL(string: "https://example.test")!, client: client)
 
-        // Loading never throws out of the sheet; it lands in the loader.
         await loader.load()
 
         XCTAssertNotNil(loader.modelsErrorMessage)
@@ -152,7 +132,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         XCTAssertEqual(loader.profiles.map(\.normalizedName), ["work"])
         XCTAssertNil(draft.validationMessage)
 
-        // With no catalog, a hand-typed model and provider still commit.
         let custom = ModelPickerSheet.customOption(
             modelID: "gpt-5-mini",
             providerID: "openai",
@@ -184,7 +163,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
 
         XCTAssertNotNil(loader.profilesErrorMessage)
         XCTAssertTrue(loader.profiles.isEmpty)
-        // The saved value survives the failure and still gets a checked row.
         XCTAssertEqual(draft.profile, "work")
         XCTAssertEqual(
             CronJobProfilePickerSheet
@@ -212,13 +190,8 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
     }
 }
 
-/// Pins the Task editor's Skills picker: the selection round-trips through the
-/// draft's comma-separated storage, a saved skill the server no longer lists
-/// stays removable, and a failed list still allows a name to be added by hand.
 final class CronJobSkillsPickerTests: APIClientTestCase {
     func testTogglingASkillAddsItToTheEndAndRemovesItAgain() {
-        // Newly selected goes on the end rather than re-sorting a list the user
-        // just read.
         let added = CronJobEditorDraft.togglingSkill("research", in: ["writing"])
         XCTAssertEqual(added, ["writing", "research"])
 
@@ -261,8 +234,6 @@ final class CronJobSkillsPickerTests: APIClientTestCase {
         let loader = CronJobEditorConfigurationLoader(server: URL(string: "https://example.test")!, client: client)
         await loader.loadSkills()
 
-        // A disabled skill would be ignored by the run, so the picker does not
-        // offer it.
         XCTAssertEqual(loader.skills.compactMap(\.name), ["writing"])
         XCTAssertNil(loader.skillsErrorMessage)
     }
@@ -292,8 +263,6 @@ final class CronJobSkillsPickerTests: APIClientTestCase {
             ["writing"]
         )
 
-        // Upstream does not validate `skills`, so a name can still be added by
-        // hand while the list is unavailable.
         draft.applySkillSelection(CronJobEditorDraft.togglingSkill("research", in: draft.skills))
         XCTAssertEqual(draft.skills, ["writing", "research"])
 

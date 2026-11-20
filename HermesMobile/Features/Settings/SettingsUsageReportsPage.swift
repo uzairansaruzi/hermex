@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Settings › About › Usage Reports (#1662): the device-wide switch, what it sends, and what
-/// turning it off can't undo.
 struct SettingsUsageReportsPage: View {
     @AppStorage(UsageReports.Keys.acceptedVersion) private var acceptedVersion: Int?
 
@@ -28,7 +26,6 @@ struct SettingsUsageReportsPage: View {
     }
 }
 
-/// The preview as the consent card's sheet, in the format the card asks for.
 struct UsageReportPreviewSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -44,11 +41,7 @@ struct UsageReportPreviewSheet: View {
     }
 }
 
-/// Every field of a usage report, grouped like the wire format (#1659). Before consent it is a
-/// labelled example: real device, server and report values, sample weekly counts. After
-/// consent it is this week so far, from the builder the sender uses.
 struct UsageReportPreview: View {
-    /// Shows the newest format, which the consent card asks for, rather than the accepted one.
     var asking = false
     @AppStorage(UsageReports.Keys.acceptedVersion) private var acceptedVersion: Int?
     @Environment(\.scenePhase) private var scenePhase
@@ -84,11 +77,9 @@ struct UsageReportPreview: View {
             }
         }
         .settingsPage(String(localized: "What’s Sent"))
-        // A return to the app may be in a new week, which the foreground send has just rolled over.
         .task(id: PreviewKey(acceptedVersion: acceptedVersion, isActive: scenePhase == .active)) {
             guard scenePhase == .active else { return }
             let preview = await UsageReports.shared.preview(asking: asking)
-            // A newer key (an answer, a return to the app) has its own task; a stale one doesn't overwrite it.
             guard !Task.isCancelled else { return }
             report = preview
         }
@@ -166,12 +157,10 @@ struct UsageReportPreview: View {
         let isActive: Bool
     }
 
-    /// A row whose value is the report's own text, shown exactly as sent.
     private func value(_ title: LocalizedStringKey, _ value: String) -> some View {
         LabeledContent(title) { Text(verbatim: value) }
     }
 
-    /// A weekly section's header, tagged Sample on the example.
     private func header(_ title: LocalizedStringKey) -> some View {
         HStack(spacing: 6) {
             Text(title)
@@ -187,7 +176,6 @@ struct UsageReportPreview: View {
         }
     }
 
-    /// Every flag the report carries for the card, each on its own.
     private static func summary(_ card: UsageCardTally) -> String {
         var parts = [card.shown ? String(localized: "Shown") : String(localized: "Not shown")]
         if card.dismissed { parts.append(String(localized: "closed")) }

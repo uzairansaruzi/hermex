@@ -11,50 +11,30 @@ enum CronJobListMutation: Equatable {
 final class TasksViewModel {
     private(set) var jobs: [CronJob] = []
     private(set) var runningJobs: [String: Double] = [:]
-    /// Server-provided deliver targets; `nil` while unknown or when the
-    /// endpoint is unavailable (the editor then falls back to free text).
     private(set) var deliveryOptions: [CronDeliveryOption]?
-    /// Newest-first recent completions across every job. Empty until the feed
-    /// answers, and stays empty on any feed failure; never gates `isLoading`.
     private(set) var recentRuns: [CronRecentCompletion] = []
-    /// The in-flight feed request, so a reload cancels the one before it and
-    /// tests can wait for the feed without polling.
     private(set) var recentRunsTask: Task<Void, Never>?
-    /// True from the start: the screen loads as it appears, and until then "none" would be a guess
-    /// that drew the empty state for a frame before the spinner.
     private(set) var isLoading = true
     private(set) var isMutating = false
     private(set) var errorMessage: String?
     private(set) var actionErrorMessage: String?
-    /// What the server said about a Task it saved anyway: a Hermes host whose scheduler
-    /// could not register a new one (#1040).
     private(set) var saveWarning: String?
     private(set) var lastError: Error?
 
-    /// Selected segment. View state only: never persisted, never carried
-    /// between servers.
     var filter: TaskFilter = .all
 
-    /// Jobs with a row action in flight, so a row cannot be double-fired and
-    /// can show that it is waiting on the server.
     private(set) var pendingActionJobIDs: Set<String> = []
-    /// Bumped by every change applied to a row, so a list read sent before one can't put
-    /// back what it replaced (#1041).
     private var rowChanges = 0
-    /// Numbers the list reads, so one that lands after a newer read was shown is dropped.
     private var readsSent = 0
     private var newestReadShown = 0
 
-    /// One read of the list, taken when its request goes out.
     private struct ListRead {
         let number: Int
         let rowChanges: Int
     }
 
     private let server: URL
-    /// The server's Tasks, shared with the detail screens and editors this list opens.
     let client: any CronDataClient
-    /// The clock a row's Run Now waits on between list reads (#1041); tests script it.
     private let sleep: @MainActor @Sendable (Duration) async throws -> Void
 
     init(
@@ -95,9 +75,6 @@ final class TasksViewModel {
         return ListRead(number: readsSent, rowChanges: rowChanges)
     }
 
-    /// Shows one read of the list: a load's, or one a row's Run Now made on a Hermes host
-    /// while it followed the run (#1041). A read that went out before a row changed, or
-    /// before a read already shown, is dropped: it can only put older state back.
     private func show(_ list: CronJobList, from read: ListRead) {
         guard read.rowChanges == rowChanges, read.number > newestReadShown else { return }
         newestReadShown = read.number
@@ -108,17 +85,11 @@ final class TasksViewModel {
         }
     }
 
-    /// Optional endpoint: failure must not break the task list, and a nil result keeps the
-    /// editor's free-text deliver fallback. A server that scopes targets by Profile has the
-    /// editor read them for the Task's own (#1040).
     private func listDeliveryOptions() async -> [CronDeliveryOption]? {
         guard !client.cronFeatures.isProfileScoped else { return nil }
         return (try? await client.cronDeliveryOptions(profile: nil))?.platforms
     }
 
-    /// The longest any enabled Task's Profile has gone without a scheduler tick, when that is
-    /// past three missed 60 s ticks: a Hermes host whose scheduler has stopped (#1040). Nil
-    /// while every scheduler is ticking, or none reports.
     var schedulerStallAge: Double? {
         jobs.filter { $0.enabled != false }
             .compactMap(\.schedulerHeartbeatAge)
@@ -130,13 +101,6 @@ final class TasksViewModel {
         saveWarning = nil
     }
 
-    /// Fetches the recent-runs feed on its own task so a slow or missing
-    /// endpoint never holds the task list in its loading state. A reload
-    /// cancels the previous fetch, so a late answer cannot overwrite a newer
-    /// one, and a failed refresh keeps the last good feed, the same way the
-    /// task list keeps its jobs when its own reload fails. The task holds
-    /// `self` weakly, so a screen that is gone by the time the feed answers
-    /// is never written to.
     private func refreshRecentRuns() {
         recentRunsTask?.cancel()
         recentRunsTask = Task { [weak self, client] in
@@ -146,9 +110,6 @@ final class TasksViewModel {
         }
     }
 
-    /// The loaded job a recent run belongs to, or `nil` when the feed names a
-    /// job the list does not have. Matches on id first; `/api/crons` has shipped
-    /// with `id` null before, in which case the name is all there is.
     func job(for completion: CronRecentCompletion) -> CronJob? {
         if let jobID = completion.jobId, let job = jobs.first(where: { $0.jobId == jobID }) {
             return job
@@ -166,8 +127,6 @@ final class TasksViewModel {
         Set(runningJobs.keys)
     }
 
-    /// The filtered, grouped agenda. `now` is injected so tests can pin the
-    /// clock that decides today/tomorrow/this week.
     func sections(now: Date = .now, calendar: Calendar = .current) -> [TaskAgendaSection] {
         TaskAgenda.sections(
             jobs: jobs,
@@ -245,17 +204,6 @@ final class TasksViewModel {
         }
     }
 
-    // MARK: - Row actions
-
-    // Row actions delegate to `TaskDetailViewModel` so the list and the detail
-    // screen can never drift apart on what a mutation means. Nothing is applied
-    // optimistically: the server's response is what moves the row, so a row
-    // never claims a state the server has not confirmed.
-
-    /// Runs `job` now. A Hermes host's Run Now follows the run on the list until the host's
-    /// outcome (#1041), and the rows show each list it reads, unless the list changed while
-    /// that read was out. The caller's task owns the follow, so cancelling it, as the screen
-    /// does when it goes away, stops the reads.
     func runNow(_ job: CronJob) async {
         var elapsed: Double?
         guard let jobID = await perform(job, action: { detail in
@@ -269,9 +217,6 @@ final class TasksViewModel {
             elapsed = detail.runningElapsed
             return didRun
         }) else { return }
-        // webui accepted the run, so the job belongs in "Now" until the next status poll
-        // replaces this with a real elapsed time. A Hermes host has given its outcome, with
-        // the job's own running state.
         runningJobs[jobID] = elapsed
     }
 
@@ -288,9 +233,6 @@ final class TasksViewModel {
         _ = await perform(job, action: { await $0.delete() })
     }
 
-    /// Runs one Task Detail mutation for `job` and folds the result back into
-    /// the list. Returns the job's id on success, `nil` on failure or when the
-    /// job has no id to mutate.
     @discardableResult
     private func perform(
         _ job: CronJob,
@@ -315,7 +257,6 @@ final class TasksViewModel {
         lastError = detail.lastError
 
         guard succeeded else {
-            // A Run Now the screen stopped following has not failed.
             if !Task.isCancelled {
                 actionErrorMessage = detail.actionErrorMessage ?? String(localized: "Could not update task.")
             }

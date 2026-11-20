@@ -71,8 +71,6 @@ final class ChatMessageMetaTests: XCTestCase {
         XCTAssertEqual(terminalIDs(messages, messageOffset: 40), ["transcript:41"])
     }
 
-    // MARK: - Helpers
-
     private func terminalIDs(
         _ messages: [ChatMessage],
         messageOffset: Int? = nil,

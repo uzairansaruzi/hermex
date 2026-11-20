@@ -1,30 +1,7 @@
 import Foundation
 import SwiftData
 
-/// The offline cache of a Hermes server's Sessions list and transcripts (#1054), in the webui
-/// cache's tables, so sign-out, server removal and Clear Offline Cache (`clearCache(for:)`) take
-/// them with the server's other rows.
-///
-/// A session is keyed `<server>|hermes|<Profile>|<lineage root>`, the list's identity, and keeps
-/// the tip it opens by as `sessionID`. A message is keyed `<server>|hermes|<Profile>|<lineage
-/// root>|row|<row id>`, with the scope `hermes|<Profile>|<lineage root>` as its `sessionID`. Each
-/// Profile has its own store, so the same id in two never collides.
-///
-/// The list and a transcript arrive a page at a time, so no write sweeps what a page left out. A
-/// session goes when this phone deleted or archived it, when a walk from the list's first page
-/// reached its end without it, or by the TTL. A message goes when a newest read no longer holds
-/// it inside the row ids that read covered, from its oldest row on (a rewind or undo), or by
-/// the TTL or the cap.
-///
-/// A bot's Bot Chat (#1144) caches only its transcript, never a list row, under the scope
-/// `hermes-bot|<connection>|<Profile>|<canonical root>`: the root `identify` finds is its
-/// identity, which a compaction that moves its stored key leaves in place. A webui server's
-/// list reads and sweeps every session row of its server, so the chat finds its root again
-/// from its message rows, not from a session row. An archived Bot Chat keeps its own copy under
-/// `hermes-bot-archive|<connection>|<Profile>|<root>`, so it never becomes its bot's preview
-/// or goes when its bot's chat finds another root.
 extension CacheStore {
-    /// A Hermes session's scope: the message rows' `sessionID`, and the tail of every key.
     static func hermesScope(profile: String, lineageRoot: String) -> String {
         "hermes|\(profile)|\(lineageRoot)"
     }
@@ -37,25 +14,18 @@ extension CacheStore {
         "\(serverURL.absoluteString)|\(scope)|row|\(rowID)"
     }
 
-    /// A bot's Bot Chat's scope on the connection `connectionID`: the message rows' `sessionID`.
     static func hermesBotChatScope(connectionID: UUID, profile: String, root: String) -> String {
         hermesBotChatScopePrefix(connectionID: connectionID, profile: profile) + root
     }
 
-    /// An archived Bot Chat's own scope on `connectionID`, under its row's lineage root.
     static func hermesArchivedBotChatScope(connectionID: UUID, profile: String, root: String) -> String {
         hermesBotChatScopePrefix(connectionID: connectionID, profile: profile, archived: true) + root
     }
 
-    /// Every Bot Chat scope of `profile` on `connectionID`, or of every Profile when nil.
     private static func hermesBotChatScopePrefix(connectionID: UUID, profile: String?, archived: Bool = false) -> String {
         "\(archived ? "hermes-bot-archive" : "hermes-bot")|\(connectionID.uuidString)|" + (profile.map { "\($0)|" } ?? "")
     }
 
-    // MARK: Sessions
-
-    /// `profile`'s unexpired cached sessions on `serverURL`, or every Profile's when nil (#709),
-    /// latest activity first, as the host lists them; the list puts pinned rows first itself.
     @MainActor
     static func cachedHermesSessions(
         serverURL: URL,
@@ -69,11 +39,6 @@ extension CacheStore {
             .sorted { ($0.lastMessageAt ?? $0.createdAt ?? 0) > ($1.lastMessageAt ?? $1.createdAt ?? 0) }
     }
 
-    /// Upserts the Hermes list rows read so far, `rows` of `profile`'s list, without removing
-    /// one they lack, unless `reachedEnd`: the walk then saw the whole list from its first page,
-    /// so a cached row it lacks was deleted or archived elsewhere. Archived rows and Bot Chats
-    /// are never cached. An unchanged row is rewritten only once `CachePolicy.rowRefreshInterval`
-    /// has passed, so a list that reads again on every change dirties only what changed.
     @MainActor
     static func cacheHermesSessions(
         _ rows: [SessionSummary],
@@ -113,7 +78,6 @@ extension CacheStore {
         try saveAndTrim(context, now: cachedAt)
     }
 
-    /// Removes a session this phone deleted or archived, with its transcript.
     @MainActor
     static func removeHermesSession(lineageRoot: String, profile: String, serverURL: URL, in context: ModelContext) throws {
         let key = hermesSessionKey(serverURL: serverURL, profile: profile, lineageRoot: lineageRoot)
@@ -126,8 +90,6 @@ extension CacheStore {
         try context.save()
     }
 
-    /// The lineage root of `profile`'s cached row whose tip is `key`, so a chat opened by its key
-    /// reads and writes the transcript under the list's identity. Nil when no cached row has it.
     @MainActor
     static func hermesLineageRoot(forKey key: String, profile: String, serverURL: URL, in context: ModelContext) throws -> String? {
         let serverURLString = serverURL.absoluteString
@@ -138,8 +100,6 @@ extension CacheStore {
         return try context.fetch(descriptor).first { $0.cacheKey.hasPrefix(prefix) }?.lineageRoot
     }
 
-    /// Every cached session of `profile` on `serverURL`, or of every Profile when nil, expired
-    /// ones included.
     @MainActor
     private static func hermesSessionRows(serverURL: URL, profile: String?, in context: ModelContext) throws -> [CachedSession] {
         let serverURLString = serverURL.absoluteString
@@ -151,9 +111,6 @@ extension CacheStore {
         return try context.fetch(descriptor)
     }
 
-    // MARK: Transcripts
-
-    /// The newest `limit` unexpired cached messages of a Hermes session, oldest first.
     @MainActor
     static func cachedHermesMessages(
         serverURL: URL,
@@ -167,8 +124,6 @@ extension CacheStore {
                                  in: context, limit: limit, now: now)
     }
 
-    /// The newest `limit` unexpired cached messages under `scope`, a session's or a Bot Chat's,
-    /// oldest first.
     @MainActor
     static func cachedHermesMessages(
         serverURL: URL,
@@ -180,8 +135,6 @@ extension CacheStore {
         try cachedHermesTranscript(serverURL: serverURL, scope: scope, in: context, limit: limit, now: now).messages
     }
 
-    /// `cachedHermesMessages` with the ids of the rows that anchor their turn's tool or
-    /// reasoning cards (`CachedMessage.anchorsWork`).
     @MainActor
     static func cachedHermesTranscript(
         serverURL: URL,
@@ -203,12 +156,6 @@ extension CacheStore {
                 Set(rows.compactMap { $0.anchorsWork == true ? $0.messageId : nil }))
     }
 
-    /// Upserts a Hermes session's settled history as the chat holds it, `messages` in its
-    /// order: the rows held, back from the newest. Rows without a `rowID` (the running turn's,
-    /// the chat's own) are skipped. A cached row not held here, from an older page an earlier
-    /// visit read, keeps its place before them, unless it sits in the part the last newest read
-    /// covered (`newestCoverage`): after the first of that read's rows the cache holds, or
-    /// anywhere once it reached the first row. Then the host cut it, and it goes.
     @MainActor
     static func cacheHermesMessages(
         _ messages: [ChatMessage],
@@ -223,8 +170,6 @@ extension CacheStore {
                                 scope: hermesScope(profile: profile, lineageRoot: lineageRoot), in: context, cachedAt: cachedAt)
     }
 
-    /// `cacheHermesMessages` under `scope`, a session's or a Bot Chat's. `workAnchorIDs` are
-    /// the rows that anchor their turn's tool or reasoning cards.
     @MainActor
     static func cacheHermesMessages(
         _ messages: [ChatMessage],
@@ -256,17 +201,12 @@ extension CacheStore {
                                           sortIndex: start + offset, cacheKey: rowKey, cachedAt: cachedAt)
                 context.insert(cachedRow)
             }
-            // Written only on a change, so an unchanged row stays clean.
             let anchorsWork = row.message.messageId.map(workAnchorIDs.contains) ?? false
             if (cachedRow.anchorsWork ?? false) != anchorsWork { cachedRow.anchorsWork = anchorsWork }
         }
         try saveAndTrim(context, now: cachedAt)
     }
 
-    /// Drops the rows cached under `scope` that the newest read covered and no longer holds, as
-    /// `cacheHermesMessages` does, without writing the read's rows or touching what stays. A Bot
-    /// Chat's read prunes the other copy of the same root, its bot's or an archive's, so an undo
-    /// one chat saw can't come back offline in the other.
     @MainActor
     static func dropHermesMessagesTheHostCut(
         from messages: [ChatMessage],
@@ -281,9 +221,6 @@ extension CacheStore {
         try context.save()
     }
 
-    /// Deletes the rows under `scope` outside `held` in the part the newest read covered: after
-    /// the first of its rows the cache holds, or anywhere once it reached the first row. Returns
-    /// the cached rows by key and the sort index after the older rows that stay.
     @MainActor
     private static func dropHermesMessagesTheHostCut(
         keeping held: Set<String>,
@@ -299,7 +236,6 @@ extension CacheStore {
         let cachedByKey = Dictionary(cached.map { ($0.cacheKey, $0) }, uniquingKeysWith: { first, _ in first })
         let key = { (id: Int) in hermesMessageKey(serverURL: serverURL, scope: scope, rowID: id) }
 
-        // Where the newest read's part starts in the cache's order.
         let covered: Int? = switch newestCoverage {
         case .all?: Int.min
         case .from(let ids)?: ids.lazy.compactMap { cachedByKey[key($0)]?.sortIndex }.first
@@ -316,10 +252,6 @@ extension CacheStore {
         return (cachedByKey, start)
     }
 
-    // MARK: Bot Chat
-
-    /// The canonical root of the Bot Chat transcript cached for `profile` on `connectionID`, so
-    /// the chat shows it before its attach finds the root. Nil when none is cached.
     @MainActor
     static func cachedHermesBotChatRoot(
         serverURL: URL,
@@ -340,8 +272,6 @@ extension CacheStore {
         return try context.fetch(descriptor).first.map { String($0.sessionID.dropFirst(prefix.count)) }
     }
 
-    /// Removes the Bot Chat transcripts cached for `profile` on `connectionID` under any root but
-    /// `root`: the attach found another canonical root, a Bot Chat made again.
     @MainActor
     static func removeHermesBotChats(
         exceptRoot root: String,
@@ -354,9 +284,6 @@ extension CacheStore {
         try removeHermesBotChats(serverURL: serverURL, prefix: prefix, except: prefix + root, in: context)
     }
 
-    /// Removes one deleted Bot Chat's transcript under `root`, its bot's copy and its archive's
-    /// both, keeping every other root and Profile. A chat's write already under way can't put it
-    /// back (`hermesCacheEpoch`).
     @MainActor
     static func removeHermesBotChatRoot(_ root: String, serverURL: URL, connectionID: UUID, profile: String, in context: ModelContext) throws {
         revokeHermesWriters(serverURL: serverURL)
@@ -369,9 +296,6 @@ extension CacheStore {
         try context.save()
     }
 
-    /// Removes the Bot Chat transcripts cached on `connectionID`, archived ones' included, only
-    /// `profile`'s when given: a deleted Profile's, or a discarded connection's. A chat's write
-    /// already under way can't put them back (`hermesCacheEpoch`).
     @MainActor
     static func removeHermesBotChats(serverURL: URL, connectionID: UUID, profile: String? = nil, in context: ModelContext) throws {
         revokeHermesWriters(serverURL: serverURL)
@@ -384,7 +308,6 @@ extension CacheStore {
     @MainActor
     private static func removeHermesBotChats(serverURL: URL, prefix: String, except kept: String?, in context: ModelContext) throws {
         let serverURLString = serverURL.absoluteString
-        // No scope is empty, so an empty `kept` keeps nothing.
         let kept = kept ?? ""
         try context.delete(model: CachedMessage.self, where: #Predicate {
             $0.serverURLString == serverURLString && $0.sessionID.starts(with: prefix) && $0.sessionID != kept
@@ -392,21 +315,13 @@ extension CacheStore {
         try context.save()
     }
 
-    // MARK: Writers
-
-    /// Each server's Hermes cache epoch. Clearing the server's cache, or removing a Profile's or
-    /// connection's Bot Chats, moves it on, so a write that began before can't put back what
-    /// went (#628).
     @MainActor private static var hermesEpochs: [String: Int] = [:]
 
-    /// The epoch a Hermes chat takes at each attach, before its reads. The chat writes to the
-    /// cache only while it is still the server's.
     @MainActor
     static func hermesCacheEpoch(serverURL: URL) -> Int {
         hermesEpochs[serverURL.absoluteString, default: 0]
     }
 
-    /// Ends every Hermes chat's writes to `serverURL`'s cache until its next attach.
     @MainActor
     static func revokeHermesWriters(serverURL: URL) {
         hermesEpochs[serverURL.absoluteString, default: 0] &+= 1

@@ -17,7 +17,6 @@ struct SessionNavigationState: Equatable {
     private(set) var destination: SessionNavigationDestination? {
         didSet { chatContinuity = ChatContinuity() }
     }
-    /// The open chat's, for the `ChatView` of whichever width is showing it (#1528).
     private(set) var chatContinuity = ChatContinuity()
     private(set) var lastSelectedSessionID: String?
     private(set) var rootRevision = 0
@@ -64,7 +63,6 @@ struct SessionNavigationState: Equatable {
         }
     }
 
-    /// Explicit list navigation must also discard the previous restore target.
     mutating func openSessionList() {
         rootRevision += 1
         clearDestination()
@@ -90,11 +88,6 @@ struct SessionNavigationState: Equatable {
         deepLinkedSessionLoadID = nil
     }
 
-    /// Restores only when no explicit route already won. Deep links, shared drafts,
-    /// and App Intent requests therefore take precedence over the stored selection.
-    /// A pending or in-flight deep link (not yet resolved into a destination) also
-    /// blocks the restore, so its network load is never pre-empted by the stored
-    /// selection; the stored ID is kept for a later restore.
     mutating func restoreIfNeeded(
         from sessions: [SessionSummary],
         clearsMissingSelection: Bool = true,
@@ -118,8 +111,6 @@ struct SessionNavigationState: Equatable {
         destination = .session(session)
     }
 
-    /// Invalidates both the visible detail and stored restoration target when the
-    /// removed session is the selected or most recently selected session.
     mutating func remove(sessionID: String?) {
         guard let sessionID = Self.normalized(sessionID) else { return }
 
@@ -140,18 +131,11 @@ struct SessionNavigationState: Equatable {
     }
 }
 
-/// Resolves the hardware-keyboard chat shortcuts (⌘1–⌘9, Next and Previous
-/// Chat) against a list's chat rows in on-screen order: the webui list's and
-/// Hermes Sessions' ordinary sessions, and the Bots inbox's tiles then rows.
 enum ChatShortcutNavigation {
-    /// The chat at a 1-based list position, or nil when the list is shorter.
     static func chat<Row>(atPosition position: Int, in chats: [Row]) -> Row? {
         chats.indices.contains(position - 1) ? chats[position - 1] : nil
     }
 
-    /// The chat `offset` rows from the one whose `id` is selected, wrapping at
-    /// the ends. Without a selection in the list, next starts at the first chat
-    /// and previous at the last.
     static func adjacentChat<Row: Identifiable>(
         offset: Int,
         from selectedID: Row.ID?,
@@ -190,8 +174,6 @@ enum SessionNavigationPersistence {
     }
 }
 
-/// Device-local last-seen server timestamps for session rows. The server URL
-/// scopes equal session IDs on different configured servers independently.
 struct SessionUnreadStore {
     var defaults: UserDefaults = .standard
 

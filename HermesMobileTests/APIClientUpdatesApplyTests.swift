@@ -7,7 +7,6 @@ final class APIClientUpdatesApplyTests: APIClientTestCase {
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/api/updates/apply")
 
-            // Confirm the body targets the webui repo (issue #180 scope).
             let body = apiTestBodyData(from: request)
             let decodedBody = try XCTUnwrap(body.flatMap {
                 try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
@@ -59,9 +58,6 @@ final class APIClientUpdatesApplyTests: APIClientTestCase {
     }
 
     func testSuccessWithStashConflictStillCountsAsApplying() throws {
-        // The server updated and is restarting (ok + restart_scheduled), but set
-        // local changes aside in a stash. That's still a success the app should
-        // recover from — not a hard failure.
         let response = try decodeApply("""
         {
           "ok": true,
@@ -88,7 +84,6 @@ final class APIClientUpdatesApplyTests: APIClientTestCase {
     }
 
     func testTolerantDecodingIgnoresUnknownAndMissingFields() throws {
-        // Unknown future keys and an otherwise-empty payload must not crash.
         let response = try decodeApply("""
         { "future_key": "ignored", "nested": { "anything": [1, 2, 3] } }
         """)

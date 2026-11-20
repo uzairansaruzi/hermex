@@ -1,28 +1,16 @@
 import Foundation
 
-/// Which files a multi-file review folds by default: lockfiles, generated output, and changes
-/// of more than `maxChangedLines` added and deleted lines, so the real edits come first.
-/// A default fold covers only a loaded diff: loading, binary, too-large and failed notices
-/// read in the open. A header tap or viewed toggle settles the file, so no later load or
-/// refresh folds or unfolds it again.
-///
-/// `ReviewDiffProgress` builds this as a review opens, settles the files the user already chose
-/// for, calls `apply(_:to:)` on every publish, and `settle(_:)` on every user toggle.
 struct ReviewDiffDefaultCollapse {
     static let maxChangedLines = 400
 
     private enum Default {
-        /// Folds whenever its loaded diff is showing.
         case fold
-        /// Its status counts were missing, so the first loaded diff decides.
         case measure
     }
 
-    /// Files the user hasn't toggled whose default folds them, or hasn't been measured yet.
     private var defaults: [String: Default] = [:]
 
     init(files: [GitFile], initialFile: GitFile?) {
-        // A single file, or the one the user tapped, is what they came to read.
         guard files.count > 1 else { return }
         for file in files where file.id != initialFile?.id {
             if Self.isGenerated(file.displayPath) {
@@ -35,17 +23,12 @@ struct ReviewDiffDefaultCollapse {
         }
     }
 
-    /// Records the user's own collapse or viewed choice; no default touches the file again.
     mutating func settle(_ fileID: String) {
         defaults[fileID] = nil
     }
 
-    /// Folds or unfolds each defaulted file for the latest full row list: folded while its
-    /// loaded diff shows, open while it shows a notice. A file awaiting measurement is
-    /// decided by its first loaded diff, counting added and deleted lines, not context.
     mutating func apply(_ rows: [ReviewDiffRow], to collapsedFileIDs: inout Set<String>) {
         guard !defaults.isEmpty else { return }
-        // Rows arrive grouped by file, each group led by its header.
         var end = rows.startIndex
         while end < rows.endIndex {
             let start = end

@@ -12,25 +12,17 @@ struct TranscriptMediaPreviewItem: Identifiable, Equatable {
     }
 }
 
-/// The active session's workspace root, read by the transcript to resolve the relative
-/// forms of `![alt](path)` (`./`, `../`, `~/`). It is a base, not a boundary: absolute
-/// paths and `file:` URLs need no root, and `/api/media` owns the allow-list that decides
-/// what the server will actually serve.
 extension EnvironmentValues {
     var chatWorkspaceRoot: String? {
         get { self[ChatWorkspaceRootKey.self] }
         set { self[ChatWorkspaceRootKey.self] = newValue }
     }
 
-    /// A Hermes session's replies resolve bare relative images (`out/chart.png`) against
-    /// `chatWorkspaceRoot` too (#1679); webui leaves them to the Markdown renderer.
     var resolvesBareMediaPaths: Bool {
         get { self[BareMediaPathsKey.self] }
         set { self[BareMediaPathsKey.self] = newValue }
     }
 
-    /// Hermes sessions opt into document previews without changing the webui
-    /// transcript's download-only file rows.
     var previewsHermesDocuments: Bool {
         get { self[HermesDocumentPreviewKey.self] }
         set { self[HermesDocumentPreviewKey.self] = newValue }
@@ -91,9 +83,6 @@ struct TranscriptMediaContentView: View {
                         onPreviewMedia: onPreviewMedia,
                         isStreaming: isStreaming
                     )
-                    // Pin other media LTR so it keeps its leading-edge anchor inside an RTL
-                    // message (#259); the text segments above still follow the chat
-                    // direction, and so does a Hermes document's preview row.
                     if previewsHermesDocuments
                         && (reference.isHermesDocumentCandidate || reference.isHTMLReportCandidate)
                         && onPreviewMedia != nil && loadMediaData != nil {
@@ -192,7 +181,6 @@ private struct TranscriptMediaThumbnailView: View {
                         && (reference.isHermesDocumentCandidate || reference.isHTMLReportCandidate)
                         ? onPreviewMedia.map { preview in { preview(reference) } } : nil
                 )
-                // A streaming reply keeps the card; the report renders once the reply settles.
                 if HTMLReport.rendersInline(reference, loader: htmlReportLoader, isStreaming: isStreaming),
                    let htmlReportLoader, let onPreviewMedia {
                     TranscriptHTMLReportView(
@@ -453,9 +441,6 @@ private struct TranscriptMediaAudioExportView: View {
     }
 }
 
-/// A MEDIA file's row: its download button exports the whole file. With `onPreview` (a
-/// Hermes document, #145) the rest of the row opens the capped native preview instead, so a
-/// file over the preview cap still saves and shares from here.
 private struct TranscriptMediaFileExportView: View {
     let reference: TranscriptMediaReference
     let loadMediaData: () async -> Data?
@@ -686,8 +671,6 @@ private struct TranscriptMediaUnavailableChip: View {
     }
 }
 
-/// Identifies a linked image in `TranscriptImageCache`, scoped by server and
-/// session so identical `MEDIA:` paths can't bypass the session-aware fetch.
 struct TranscriptMediaImageCacheKey: Hashable {
     let namespace: String
     let referenceID: String
@@ -697,8 +680,6 @@ struct TranscriptMediaImageCacheKey: Hashable {
         referenceID = reference.id
     }
 
-    /// The shared cache's key. The kind prefix keeps it apart from attachment
-    /// keys; the length prefix keeps the namespace boundary fixed.
     var cacheKey: String {
         "media|\(namespace.utf8.count)|\(namespace)|\(referenceID)"
     }

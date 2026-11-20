@@ -2,9 +2,6 @@ import Observation
 import XCTest
 @testable import HermesMobile
 
-/// The Plugins screen on a Hermes host (#1582): `PluginsModel` and the real client over a scripted
-/// socket, with replies in the shapes `scripts/local-hermes` and a live host answered at the pin
-/// (bf0203a7, 0.22.5).
 @MainActor final class PluginsModelTests: XCTestCase {
     private let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                        username: "user", password: "secret")
@@ -44,7 +41,7 @@ import XCTest
         await model.select("default")
         XCTAssertEqual(model.plugins.map(\.key), ["google_meet"])
 
-        http.gateway.dropSocket() // dev's read fails only now, after the switch
+        http.gateway.dropSocket()
         await earlier.value
         XCTAssertEqual(model.state, .loaded(model.plugins))
         XCTAssertEqual(model.plugins.map(\.key), ["google_meet"])
@@ -147,7 +144,7 @@ import XCTest
         host.next("plugins.manage", .init(result: list([row("disk-cleanup"), row("google_meet")])))
         await model.apply(plugin, turningOn: true)
 
-        http.gateway.dropSocket() // the refresh ends only now, after the toggle
+        http.gateway.dropSocket()
         await refresh.value
         XCTAssertEqual(model.plugins.map(\.isEnabled), [true, true], "the toggle holds, and the refresh still lands")
     }
@@ -385,7 +382,7 @@ import XCTest
         let sent = expectation(description: "the removal reached the host")
         host.expect(sent, onNext: "plugins.manage")
         model.confirmPendingRemoval()
-        model.pendingRemoval = nil // what the alert's binding does as it closes
+        model.pendingRemoval = nil
         await fulfillment(of: [sent], timeout: 5)
 
         let params = try XCTUnwrap(host.requests.last { $0["params"]["action"].text == "remove" })["params"]
@@ -505,7 +502,7 @@ import XCTest
             let sent = updates(on: host).count
 
             model.accept(review)
-            await model.load() // a round trip, so anything accepting queued has gone out by now
+            await model.load()
 
             XCTAssertEqual(model.updateReview, review, verdict)
             XCTAssertEqual(updates(on: host).count, sent, verdict)
@@ -523,7 +520,7 @@ import XCTest
 
         await model.select("dev")
         model.accept(shown)
-        await model.load() // a round trip, so anything accepting queued has gone out by now
+        await model.load()
 
         XCTAssertNil(model.updateReview)
         XCTAssertEqual(updates(on: host).count, sent, "a switch ended it, and an answer can't reach another Profile")
@@ -606,8 +603,6 @@ import XCTest
         XCTAssertFalse(try XCTUnwrap(HermesPlugin(row)).hasUpdate, "its own page and the app's pin update it")
     }
 
-    // MARK: Fixtures
-
     private var profiles: BotJSON {
         .object(["profiles": .array([
             .object(["name": .string("default"), "is_default": .bool(true)]), .object(["name": .string("dev")])
@@ -625,7 +620,6 @@ import XCTest
         PluginsModel(client: HermesPluginsClient(http: host.connection(record)))
     }
 
-    /// Lets the accepted update's reply land, which opens the next review.
     private func waitForReview(on model: PluginsModel) async {
         let reviewed = expectation(description: "the next review opened")
         reviewed.assertForOverFulfill = false
@@ -644,7 +638,6 @@ import XCTest
                                                    "file": .string("a.py"), "line": .number(3)])])])
     }
 
-    /// Accepts `review` and waits for what that sends to reach the host.
     private func accepting(_ review: PluginsModel.UpdateReview, on model: PluginsModel, host: BotSocketHost) async {
         let sent = expectation(description: "the accepted update reached the host")
         host.expect(sent, onNext: "plugins.manage")

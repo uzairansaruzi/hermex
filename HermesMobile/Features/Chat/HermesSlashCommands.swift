@@ -1,18 +1,10 @@
 import Foundation
 import Observation
 
-/// What a Hermes host's `commands.catalog` lists (#1036): its registry, quick and plugin
-/// commands with their aliases, and its skills. The host lists aliases only in `canon`, and
-/// skills only in `skills`, so a command row is a `pairs` row whose key `canon` knows.
 struct HermesSlashCatalog: Equatable {
-    /// The host's commands in its own order, aliases attached. Never a skill.
     private(set) var commands: [AgentCommand] = []
-    /// Every command name and alias, lowercased and without its `/`, to its canonical name.
     private(set) var canonical: [String: String] = [:]
-    /// The host's skills that no command shadows (`BotSlashCatalog.skills`).
     private(set) var skills: [SkillSlashSuggestion] = []
-    /// The names and aliases, lowercased, whose argument the host completes: every command
-    /// the host runs, so neither Hermex's own nor a held one.
     private(set) var hostArgumentNames: Set<String> = []
 
     init() {}
@@ -40,10 +32,8 @@ struct HermesSlashCatalog: Equatable {
         }
     }
 
-    /// The canonical name `name` (a command or one of its aliases) runs, or nil.
     func command(named name: String) -> String? { canonical[name.lowercased()] }
 
-    /// A `/name` key's name: one word, no slash.
     private static func name(_ key: String?) -> String? {
         guard let key = key?.trimmingCharacters(in: .whitespacesAndNewlines), key.hasPrefix("/") else { return nil }
         let name = String(key.dropFirst())
@@ -52,27 +42,16 @@ struct HermesSlashCatalog: Equatable {
     }
 }
 
-/// What a Hermes chat in `ChatView` lets the user do (#1145). A bot's Bot Chat is that bot's one
-/// conversation (#1127 decision 3): nothing in it starts or opens another chat, renames it,
-/// branches it or rewinds it, and its Profile chip picks no other Profile. Its side commands
-/// (`/btw`, `/background`, `/goal`, `/yolo`, `/compress`) run as in any session. The slash
-/// commands, the message menu and the composer all read this one value.
 enum HermesChatPolicy: Equatable {
     case session
-    /// A bot's Bot Chat: its canonical chat, or a Bot Chat row opened by its key.
     case botChat
 
-    /// A Bot Chat's own target is `.canonicalChat`; a session target is one only when opened from
-    /// a Bot Chat row, which names its `botChatRoot`.
     init(target: ConversationTarget, botChatRoot: String? = nil) {
         if case .canonicalChat = target { self = .botChat } else { self = botChatRoot == nil ? .session : .botChat }
     }
 
-    /// Why `/name` (typed, after any alias resolved to `canonical`) does not run here, or nil
-    /// when it does. A refused command is also left out of the composer's panel.
     func refusal(typed name: String, canonical: String) -> String? {
         guard self == .botChat else { return nil }
-        // `/reset` and `/fork` are the host's aliases, named too for a catalog not read yet.
         switch canonical.lowercased() {
         case "new", "reset":
             return String(localized: "A bot keeps one chat, so /\(name) can’t start another.")
@@ -91,43 +70,26 @@ enum HermesChatPolicy: Equatable {
         }
     }
 
-    /// Edit, Regenerate and Fork From Here; Retry under a failed turn stays.
     var offersHistoryActions: Bool { self == .session }
-    /// The Profile chip starts a new chat in the Profile it picks.
     var picksProfile: Bool { self == .session }
-    /// The host delivers `@`mentions only in a Bot Chat (`tools/bot_mode_dm.py`).
     var offersMentions: Bool { self == .botChat }
 }
 
-/// Where a typed `/name` goes in a Hermes chat (#1036), in this order.
 enum HermesSlashRoute: Equatable {
-    /// Not in this chat (`HermesChatPolicy`): the copy says why, and nothing is sent.
     case refused(String)
-    /// One of Hermex's own commands (`SlashCommandCatalog.hermesCommands`), by its handler.
     case appOwned(SlashCommand)
-    /// Held until #702 slice 2.3: it would rewrite history or move chats behind the phone's back.
     case held
-    /// A host skill: `command.dispatch` expands it into the prompt that is sent.
     case skill(SkillSlashSuggestion)
-    /// Any other command or alias the catalog lists: `slash.exec` runs the typed line.
     case host
-    /// Not a command this host knows: sent as typed.
     case text
 }
 
-/// What the host made of a slash command (`slash.exec`, or `command.dispatch` for a skill).
 enum HermesSlashReply: Equatable {
-    /// Shown as a notice; nothing is sent.
     case notice(String)
-    /// `message` goes out as a prompt, once, after `notice`. `shown` is its transcript row.
     case send(message: String, shown: String, notice: String?)
-    /// `message` goes into the composer, after `notice`.
     case prefill(message: String, notice: String?)
-    /// Run `/target` instead, with the typed argument.
     case alias(target: String)
 
-    /// Reads one reply, or nil for a shape this app does not know. `typed` is the line the
-    /// user ran, which a skill's prompt row shows when the host names no `display`.
     init?(_ reply: BotJSON, typed: String) {
         let notice = Self.nonEmpty(reply["notice"].text)
         let message = Self.nonEmpty(reply["message"].text)
@@ -140,8 +102,6 @@ enum HermesSlashReply: Equatable {
             self = .notice(parts.filter { !$0.isEmpty }.joined(separator: "\n\n"))
         case "send", "skill":
             guard let message else { return nil }
-            // A skill's message is the expanded skill, never shown; the host projects the
-            // typed line over it once stored.
             let shown = Self.nonEmpty(reply["display"].text) ?? (reply["type"].text == "skill" ? typed : message)
             self = .send(message: message, shown: shown, notice: notice)
         case "prefill":
@@ -155,7 +115,6 @@ enum HermesSlashReply: Equatable {
         }
     }
 
-    /// Terminal output as a code block, so its line breaks and columns survive Markdown.
     static func verbatim(_ output: String) -> String {
         let trimmed = output.trimmingCharacters(in: .newlines)
         guard !trimmed.trimmingCharacters(in: .whitespaces).isEmpty else { return "" }
@@ -170,23 +129,16 @@ enum HermesSlashReply: Equatable {
     }
 }
 
-/// One checkpoint a Hermes host's `rollback.list` names (#1728): a snapshot of the chat's
-/// folder the host took before the agent changed files there.
 struct HermesCheckpoint: Equatable {
-    /// Its place in the list, newest first, from 1: what `/rollback N` names.
     let number: Int
     let hash: String
-    /// When the host took it, as the host wrote it (ISO 8601).
     let timestamp: String
-    /// Why the host took it.
     let message: String
 
     var shortHash: String { String(hash.prefix(8)) }
 
-    /// The rows of one `rollback.list` reply; nil while the host takes none (`enabled: false`).
     static func list(_ reply: BotJSON) -> [HermesCheckpoint]? {
         guard reply["enabled"].flag != false else { return nil }
-        // Numbered after rows without a hash are dropped, so a shown number is the one `named` finds.
         let rows = (reply["checkpoints"].list ?? []).compactMap { row -> (hash: String, row: BotJSON)? in
             guard let hash = row["hash"].text, !hash.isEmpty else { return nil }
             return (hash, row)
@@ -197,8 +149,6 @@ struct HermesCheckpoint: Equatable {
         }
     }
 
-    /// The checkpoint `ref` names in `list`, read as the host reads it (`tools/checkpoint_refs.py`):
-    /// a list number without a leading zero, else the start of a hash, at least 4 characters.
     static func named(_ ref: String, in list: [HermesCheckpoint]) -> HermesCheckpoint? {
         if !ref.isEmpty, ref.allSatisfy({ $0.isASCII && $0.isNumber }), !ref.hasPrefix("0"), let number = Int(ref), list.indices.contains(number - 1) {
             return list[number - 1]
@@ -209,16 +159,11 @@ struct HermesCheckpoint: Equatable {
     }
 }
 
-/// What `/rollback`'s argument asks for (#1728), read as Hermes Desktop reads it.
 enum HermesRollbackCommand: Equatable {
     case list
-    /// What changed since a checkpoint, by its number or hash as typed.
     case diff(String)
-    /// A restore of one file, or of the whole tree when `filePath` is nil.
     case restore(String, filePath: String?)
 
-    /// Nil for a usage error. `--all` would overwrite the user's own edits too, so it is one:
-    /// a phone keeps the host's default, which keeps them.
     init?(_ argument: String) {
         let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.contains("--all") else { return nil }
@@ -230,7 +175,6 @@ enum HermesRollbackCommand: Equatable {
             guard words.count == 2 else { return nil }
             self = .diff(words[1])
         default:
-            // The path is kept as typed after the checkpoint, so repeated spaces in a name survive.
             let text = argument.trimmingCharacters(in: .whitespacesAndNewlines)
             let rest = text.drop { !$0.isWhitespace }.drop { $0.isWhitespace }
             self = .restore(words[0], filePath: rest.isEmpty ? nil : String(rest))
@@ -238,24 +182,16 @@ enum HermesRollbackCommand: Equatable {
     }
 }
 
-/// A `/rollback` restore waiting for the user to confirm it (#1728): the checkpoint the list
-/// named when the user ran it, and the one file, if any.
 struct HermesRollbackRequest: Equatable {
     let checkpoint: HermesCheckpoint
     let filePath: String?
 }
 
-/// What a `rollback.restore` did (#1728). A restore the host could not do is `success` false
-/// with its `error` sentence, not a refusal.
 struct HermesRollbackOutcome: Equatable {
     let success: Bool
     let error: String?
-    /// The files a whole-tree restore put back, when the host says.
     let restoredFiles: [String]
-    /// The files a whole-tree restore left alone because the user edited them.
     let skippedUserEdits: [String]
-    /// The rows a whole-tree restore rewound from the session's history (the newest turn's
-    /// prompt and every row after it), 0 when it rewound none.
     let historyRemoved: Int
 
     init(_ reply: BotJSON) {
@@ -267,7 +203,6 @@ struct HermesRollbackOutcome: Equatable {
     }
 }
 
-/// The host's suggestions for a command's argument (`complete.slash`), for `text`.
 struct HermesSlashCompletion: Equatable {
     struct Item: Equatable, Identifiable {
         let text: String
@@ -276,36 +211,22 @@ struct HermesSlashCompletion: Equatable {
         var id: String { text }
     }
 
-    /// The draft up to the caret these answer.
     let text: String
     let items: [Item]
-    /// Where in `text`, in Unicode scalars, a picked item's text replaces the rest.
     let replaceFrom: Int
 
-    /// What these suggestions keep: `text` up to `replaceFrom`.
     private var head: String {
         String(String.UnicodeScalarView(text.unicodeScalars.prefix(max(0, replaceFrom))))
     }
 
-    /// Whether these suggestions still fit `current`, the draft up to the caret now: it keeps
-    /// their head, and only the word being completed follows it.
     func applies(to current: String) -> Bool {
         current.hasPrefix(head) && !current.unicodeScalars.dropFirst(head.unicodeScalars.count)
             .contains { CharacterSet.whitespacesAndNewlines.contains($0) }
     }
 
-    /// The draft up to the caret with `item` in place of the word being completed.
     func applying(_ item: Item) -> String { head + item.text }
 }
 
-/// A Hermes session's slash commands in the main chat (#1036). `HermesChatTurnCoordinator`
-/// owns it and reads the catalog on each connect. The panel ranks the catalog on the phone;
-/// only a command's argument stage asks the host (`complete.slash`), debounced, and only the
-/// newest reply is kept. Everything lives with the chat: nothing is cached or persisted.
-///
-/// Hermex runs its own commands (`SlashCommandCatalog.hermesCommands`) and holds the ones
-/// that wait on #702; every other catalog command runs on the host through `slash.exec`, a
-/// skill through `command.dispatch`, each once.
 @MainActor @Observable final class HermesSlashCommands {
     private(set) var catalog = HermesSlashCatalog() {
         didSet {
@@ -313,24 +234,17 @@ struct HermesSlashCompletion: Equatable {
             if catalog.skills != oldValue.skills { onSkills(catalog.skills) }
         }
     }
-    /// What the composer's panel offers: Hermex's own commands first, then the catalog's, both
-    /// without what the chat's policy refuses.
     private(set) var scope: SlashCommandScope
-    /// The catalog's commands the panel lists: those the chat's policy does not refuse.
     var commands: [AgentCommand] {
         guard policy == .botChat else { return catalog.commands }
         return catalog.commands.filter { command in
             command.name.map { policy.refusal(typed: $0, canonical: $0) == nil } ?? true
         }
     }
-    /// The newest argument suggestions; nil while none apply.
     private(set) var completion: HermesSlashCompletion?
-    /// How long typing must pause before an argument is completed. Tests shorten it.
     @ObservationIgnored var completionDelay: Duration = .milliseconds(150)
     @ObservationIgnored private var completionRevision = 0
-    /// The host reaped the runtime (4001): reattach to the stored key.
     @ObservationIgnored var onNeedsReattach: () -> Void = {}
-    /// The catalog's skills changed, so the chat can draw sent `/skill` text as chips (#1679).
     @ObservationIgnored var onSkills: ([SkillSlashSuggestion]) -> Void = { _ in }
     let policy: HermesChatPolicy
     private let engine: HermesConversation
@@ -343,8 +257,6 @@ struct HermesSlashCompletion: Equatable {
         }, isHermes: true)
     }
 
-    /// Reads the catalog for `runtime`. A reply for an attach that is no longer current is
-    /// dropped; a failed read keeps the last list, empty until one answers.
     func connect(runtime: String, attempt: Int) async {
         guard engine.generation == attempt, engine.connectionState == .connected,
               let reply = try? await engine.request(.commandsCatalog(sessionID: runtime), attempt: attempt)
@@ -352,8 +264,6 @@ struct HermesSlashCompletion: Equatable {
         catalog = HermesSlashCatalog(reply)
     }
 
-    /// Where `/name` goes. What the chat's policy refuses, Hermex's own commands and the held
-    /// ones resolve without a catalog; an alias resolves to its command first.
     func route(_ name: String) -> HermesSlashRoute {
         let typed = name.lowercased()
         let canonical = catalog.command(named: typed)?.lowercased() ?? typed
@@ -368,19 +278,12 @@ struct HermesSlashCompletion: Equatable {
         return catalog.command(named: typed) == nil ? .text : .host
     }
 
-    // MARK: Running
-
-    /// Runs one typed line on the host. Throws `NotSent` when it never went out, and the
-    /// host's refusal as `BotSettingFailure`.
     func run(_ line: String) async throws -> HermesSlashReply {
         let reply = try await write { .slashExec(sessionID: $0, command: line) }
         guard let parsed = HermesSlashReply(reply, typed: line) else { throw BotFailure.unsupported }
         return parsed
     }
 
-    /// `/title` (#1048): renames the session on its runtime and returns the title the host
-    /// kept. A title in use or too long throws the host's message as `BotSettingFailure`. A
-    /// canonical host renames with a fenced `rename` edit (#1603).
     func rename(_ title: String) async throws -> String {
         let reply = engine.wire.speaksCanonicalProtocol
             ? try await mutate(.rename(title))
@@ -388,7 +291,6 @@ struct HermesSlashCompletion: Equatable {
         return reply["title"].text.flatMap { $0.isEmpty ? nil : $0 } ?? title
     }
 
-    /// Expands `skill` with `argument` into the prompt to send.
     func expand(_ skill: SkillSlashSuggestion, argument: String, typed: String) async throws -> HermesSlashReply {
         let reply = try await write { .commandDispatch(name: skill.name, argument: argument, sessionID: $0) }
         guard reply["type"].text == "skill", let parsed = HermesSlashReply(reply, typed: typed) else {
@@ -397,32 +299,21 @@ struct HermesSlashCompletion: Equatable {
         return parsed
     }
 
-    // MARK: Rollback (#1728)
-
-    /// The runtime's checkpoints, newest first; nil while its host takes none.
     func checkpoints() async throws -> [HermesCheckpoint]? {
         HermesCheckpoint.list(try await write(reattachesOn: Self.isGoneRuntime) { .rollbackList(runtime: $0) })
     }
 
-    /// What changed since the checkpoint `hash`: the host's stat and diff. Send a hash the list
-    /// named: a host answers an unknown one with an empty diff, not a refusal.
     func checkpointDiff(_ hash: String) async throws -> (stat: String, diff: String) {
         let reply = try await write(reattachesOn: Self.isGoneRuntime) { .rollbackDiff(runtime: $0, hash: hash) }
         return (reply["stat"].text ?? "", reply["diff"].text ?? "")
     }
 
-    /// Restores `filePath`, or the whole tree when nil, to the checkpoint `hash`. Sent once.
     func restoreCheckpoint(_ hash: String, filePath: String?) async throws -> HermesRollbackOutcome {
         HermesRollbackOutcome(try await write(reattachesOn: Self.isGoneRuntime) {
             .rollbackRestore(runtime: $0, hash: hash, filePath: filePath)
         })
     }
 
-    /// A `rollback.*` refusal that means the host no longer holds the runtime, so the chat
-    /// reattaches: a dashboard's 4001 `session not found` (`tui_gateway/session_registry.py`
-    /// `_sess_nowait`), a Webapp's 4001 `not_found` or `runtime_retired` (`authorize`). Every
-    /// other 4001 on these calls, such as `session_busy` or `unsupported_terminal_backend`, is the
-    /// host's answer about this runtime.
     static func isGoneRuntime(_ error: Error) -> Bool {
         if case BotSettingFailure.rejected(4001, let reason) = error {
             return ["session not found", "not_found", "runtime_retired"].contains(reason)
@@ -430,8 +321,6 @@ struct HermesSlashCompletion: Equatable {
         return false
     }
 
-    /// One write bound to the attached runtime. Throws `NotSent` when it never went out; an
-    /// error `reattachesOn` names, a reaped runtime by default, also reattaches.
     private func write(reattachesOn isReaped: (Error) -> Bool = HermesChatSideTasks.isReaped,
                        _ call: (String) -> HermesCall) async throws -> BotJSON {
         guard engine.connectionState == .connected, let runtime = engine.runtime else {
@@ -446,7 +335,6 @@ struct HermesSlashCompletion: Equatable {
         }
     }
 
-    /// One canonical edit bound to the attached runtime (#1603). Throws `NotSent` when it never went out.
     private func mutate(_ operation: HermesCall.SessionMutation.Operation) async throws -> BotJSON {
         guard engine.connectionState == .connected, let runtime = engine.runtime else {
             throw HermesChatTurnCoordinator.NotSent(underlying: BotFailure.transport)
@@ -459,11 +347,6 @@ struct HermesSlashCompletion: Equatable {
         }
     }
 
-    // MARK: Argument completion
-
-    /// Completes the argument in `text` (the draft up to the caret) after a pause in typing;
-    /// nil clears it. Cancelling the calling task drops the request, so only the newest
-    /// call's reply is ever kept.
     func complete(_ text: String?) async {
         completionRevision += 1
         let revision = completionRevision

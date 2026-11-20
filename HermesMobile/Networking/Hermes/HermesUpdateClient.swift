@@ -1,15 +1,8 @@
 import Foundation
 
-/// Settings' update rows on a Hermes host (#1075): the host's update check, `hermes update`
-/// started from the phone, and the reads that follow it through the dashboard's restart. The
-/// signed-in reads go over the sign-in the server's Bot screens share, which signs in again on
-/// the restarted dashboard's first 401 (its session key is new); `health` is public, so it
-/// answers while no sign-in can. Every reply decodes tolerantly: a field the host omits or
-/// renames reads as unknown.
 @MainActor final class HermesUpdateClient {
     private let http: HermesConnection
 
-    /// Updates for `server`'s saved connection, on the sign-in its Bot screens share.
     convenience init(saved connection: BotConnection, server: URL) {
         self.init(http: HermesConnections.shared.connection(for: connection, server: server))
     }
@@ -20,8 +13,6 @@ import Foundation
         HermesUpdateCheck(try Self.json(try await http.data(.updateCheck(force: force))))
     }
 
-    /// Starts the update, or joins the one already running. The host refuses an install that
-    /// can't update itself in place with 200 and `ok: false`; any other status throws.
     func start() async throws -> HermesUpdateStart {
         let reply = try Self.json(try await http.data(.updateApply))
         guard reply["ok"].flag == true else {
@@ -30,13 +21,10 @@ import Foundation
         return .started(pid: reply["pid"].integer)
     }
 
-    /// The update action's status. A host without the action answers 404, thrown as
-    /// `BotFailure.rejected(404)`.
     func status() async throws -> HermesUpdateStatus {
         HermesUpdateStatus(try Self.json(try await http.data(.updateStatus)))
     }
 
-    /// The latest receipt's summary, or nil when no update has run (404).
     func receipt() async throws -> HermesUpdateReceipt? {
         do {
             let reply = try Self.json(try await http.data(.updateReceipt))
@@ -44,8 +32,6 @@ import Foundation
         } catch BotFailure.rejected(404) { return nil }
     }
 
-    /// The release the running dashboard reports, read without signing in; nil when it
-    /// answers without one. Throws when it doesn't answer.
     func health() async throws -> String? {
         try Self.json(try await http.publicData(.health))["version"].text
     }
@@ -55,30 +41,19 @@ import Foundation
     }
 }
 
-/// `GET /api/hermes/update/check`: whether the install is behind, and whether the dashboard
-/// can update it in place (`can_apply`, git installs only). Others carry the command to run on
-/// the host. A containerised host answers `managed-runtime`, whose `update_command` is a
-/// sentence rather than a command.
 struct HermesUpdateCheck: Equatable {
     let installMethod: String?
-    /// The host's release with any build suffix, such as `0.21.5+6146.g46904a3`.
     let currentVersion: String?
-    /// Commits behind: 0 when current, -1 for an unknown count, nil when the check couldn't run.
     let behind: Int?
     let updateAvailable: Bool
     let canApply: Bool
     let updateCommand: String?
-    /// The host's guidance, such as why the check couldn't run.
     let message: String?
-    /// What the check offers this build, which can be newer than its release channel.
     let offer: Offer
 
     enum Offer: Equatable {
-        /// A newer release, or nothing new, by `update_available`.
         case update, nothing
-        /// `rollback_to`: the only release on offer is older, and applying it moves back.
         case moveBack
-        /// `held`: the host keeps this build, which is newer than the release on offer.
         case held
     }
 
@@ -99,21 +74,15 @@ struct HermesUpdateCheck: Equatable {
                   offer: json["rollback_to"].text != nil ? .moveBack : json["held"].text != nil ? .held : nil)
     }
 
-    /// The command for the user to run on the host, or nil when there is none to copy.
     var hostCommand: String? {
         installMethod == "managed-runtime" ? nil : updateCommand.flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 
-/// `POST /api/hermes/update`'s answer.
 enum HermesUpdateStart: Equatable {
-    /// The update started, or was already running; `pid` is its process on the host.
     case started(pid: Int?)
-    /// The host can't update this install in place: its reason and the command to run there.
     case refused(error: String?, message: String?, command: String?)
 
-    /// The refused command for the user to copy, or nil when there is none: a containerised
-    /// host's is a sentence.
     var hostCommand: String? {
         guard case .refused(let error, _, let command) = self, error != "dashboard_update_managed_externally",
               let command, !command.isEmpty else { return nil }
@@ -121,13 +90,9 @@ enum HermesUpdateStart: Equatable {
     }
 }
 
-/// The summary of an update receipt, the host's durable record of its latest `hermes update`,
-/// written when the run finishes, including refused and failed runs, and kept across the
-/// dashboard's restart. A run in progress is not in it until it finishes.
 struct HermesUpdateReceipt: Equatable {
     enum Outcome: Equatable {
         case running, success, partial, failed, refused
-        /// A value this build doesn't know, read as a failure.
         case other(String)
 
         init(_ value: String) {
@@ -143,17 +108,13 @@ struct HermesUpdateReceipt: Equatable {
     }
 
     let outcome: Outcome?
-    /// When the run started, by the host's clock; tells one run's receipt from the next.
     let startedAt: String?
-    /// The release the update installed; nil when the host couldn't read it.
     let postVersion: String?
 
     init(outcome: Outcome?, startedAt: String?, postVersion: String? = nil) {
         self.outcome = outcome; self.startedAt = startedAt; self.postVersion = postVersion
     }
 
-    /// Reads the compact summary (`post_version`) or the full receipt (`post_update.version`);
-    /// nil for anything that isn't an object.
     init?(_ json: BotJSON) {
         guard json.fields != nil else { return nil }
         self.init(outcome: json["outcome"].text.map(Outcome.init), startedAt: json["started_at"].text,
@@ -161,15 +122,10 @@ struct HermesUpdateReceipt: Equatable {
     }
 }
 
-/// `GET /api/actions/hermes-update/status`. After the dashboard restarts it no longer tracks
-/// the process: `running` is false, `pid` is null, and `exit_code` comes from the log's
-/// completion marker or from the latest receipt, which can be an earlier run's.
 struct HermesUpdateStatus: Equatable {
     let running: Bool
     let exitCode: Int?
-    /// The update process while this dashboard still tracks it; nil after a restart.
     let pid: Int?
-    /// The tail of the host's update log.
     let lines: [String]
     let receipt: HermesUpdateReceipt?
 

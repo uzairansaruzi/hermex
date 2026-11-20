@@ -6,9 +6,6 @@ import OSLog
 import Speech
 import UIKit
 
-/// Uploads one finished dictation recording (its bytes and file name) to the server's
-/// speech-to-text and returns the reply. A webui server's is `APIClient.dictationTranscriber`;
-/// a Hermes chat's is `HermesTranscription.transcriber(for:)`, bound to its Profile (#1071).
 typealias ComposerTranscriber = @MainActor (Data, String) async throws -> TranscribeResponse
 
 @MainActor
@@ -35,9 +32,7 @@ final class ComposerVoiceInputController {
     }
     private(set) var errorMessage: String?
     private(set) var liveTranscript = ""
-    /// When the current capture began, for the dictation row's timer.
     private(set) var captureStartedAt: Date?
-    /// Held apart from the controller so only the waveform redraws for each level.
     @ObservationIgnored let levelMeter = ComposerVoiceLevelMeter()
 
     private let speechRecognizerFactory: (Locale) -> (any ComposerSpeechRecognizing)?
@@ -59,7 +54,6 @@ final class ComposerVoiceInputController {
     @ObservationIgnored private var transcriptionTask: Task<Void, Never>?
     @ObservationIgnored private var toggleTask: Task<Void, Never>?
     @ObservationIgnored private var meteringTask: Task<Void, Never>?
-    /// The on-device tap's latest level. The tap runs on the audio thread.
     @ObservationIgnored private let onDeviceDecibels = OSAllocatedUnfairLock<Float?>(initialState: nil)
     private var activeTranscriptionID: UUID?
     @ObservationIgnored private let recordingLease = ComposerDictationLease.live()
@@ -74,7 +68,6 @@ final class ComposerVoiceInputController {
     private let mayRecord: @MainActor () -> Bool
     private let logger = Logger.hermesVoiceInput
 
-    /// The server's speech-to-text; nil when the server has none, which leaves only on-device.
     @ObservationIgnored var transcribe: ComposerTranscriber?
     @ObservationIgnored var providerPreference = ComposerSTTProviderPreference.defaultValue
 
@@ -127,8 +120,6 @@ final class ComposerVoiceInputController {
         state == .requestingPermission
     }
 
-    /// Queue UI input under the same ownership as capture, so teardown can cancel
-    /// even a microphone tap whose task has not started executing yet.
     @discardableResult
     func scheduleToggle(
         draftState: @escaping () -> ComposerVoiceDraftState,
@@ -143,8 +134,6 @@ final class ComposerVoiceInputController {
         return task
     }
 
-    /// `draftState` is read when capture starts and again before every write, so
-    /// the closure must return the composer's live values, not a captured copy.
     func toggle(
         draftState: @escaping () -> ComposerVoiceDraftState,
         updateDraft: @escaping (ComposerVoiceDraftUpdate) -> Void
@@ -157,8 +146,6 @@ final class ComposerVoiceInputController {
         }
     }
 
-    /// Scene inactivity stops capture immediately. A server clip remains owned by this
-    /// composer until it returns unlocked, or explicit teardown discards it.
     func suspend() {
         toggleTask?.cancel()
         toggleTask = nil
@@ -211,8 +198,6 @@ final class ComposerVoiceInputController {
         }
     }
 
-    /// The dictation row's cancel: drops the recording and takes back any words
-    /// already written, leaving the draft as it was before the mic was tapped.
     func cancel() {
         if let draftState, let updateDraft, let restored = draftUpdateSession.restoredDraft(current: draftState()) {
             updateDraft(restored)
@@ -414,14 +399,6 @@ final class ComposerVoiceInputController {
         return String(localized: "On-device speech recognition is not available for the current locale.")
     }
 
-    // MARK: - Server STT
-
-    // Mono AAC tuned for server speech-to-text (#1355). At 44.1 kHz a 32 kbps
-    // encode spreads its bits over a band speech models discard, and server STT
-    // dropped noticeably more words than on an Opus voice note of the same
-    // speech. 24 kHz keeps the speech band and 48 kbps there matched the voice
-    // note. ~22 MB/hour still lets recording run until the user stops it; past
-    // the upload ceiling (~55 minutes) the byte guard below takes over.
     static let serverRecordingSettings: [String: Any] = [
         AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
         AVSampleRateKey: serverRecordingSampleRate,
@@ -432,9 +409,6 @@ final class ComposerVoiceInputController {
     static let serverRecordingSampleRate = 24_000.0
     static let serverRecordingBitrate = 48_000
     static let serverRecordingFileExtension = "m4a"
-    // Leave 1 MiB below the server's configurable 20 MiB default for the
-    // multipart envelope. A lower custom limit still uses the existing fallback.
-    // A Hermes host takes up to 25 MiB of decoded audio (#1071).
     static let maximumServerRecordingUploadBytes = 19 * 1_024 * 1_024
 
     static func serverRecordingFileSize(at url: URL) throws -> Int {
@@ -445,7 +419,6 @@ final class ComposerVoiceInputController {
         return size
     }
 
-    /// Returns `nil` before reading an oversized recording into memory.
     static func loadServerRecordingForUpload(
         fileSize: Int,
         dataLoader: () throws -> Data
@@ -555,9 +528,6 @@ final class ComposerVoiceInputController {
             }
 
             let transcript = response.transcript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            // An empty transcript the transcriber reports as a success is silence: a Hermes
-            // host's `{ok: true, transcript: ""}` (#1071). Nothing to insert, nothing failed.
-            // webui's transcriber drops `ok` from an empty reply, so webui still fails it.
             guard !transcript.isEmpty || (response.ok == true && response.error == nil) else {
                 await fallbackFromServerFailure(
                     recordingURL: recordingURL,
@@ -801,9 +771,6 @@ final class ComposerVoiceInputController {
         }
     }
 
-    /// Writes one result into the span this dictation owns. Returns false when the
-    /// draft changed underneath it: the draft and caret stay as they are, and no
-    /// later result is written.
     @discardableResult
     private func writeTranscript(_ transcript: String) -> Bool {
         guard let draftState, let updateDraft else { return true }
@@ -823,9 +790,6 @@ final class ComposerVoiceInputController {
         updateDraft = nil
     }
 
-    // MARK: - Metering
-
-    /// Samples the mic for the waveform, only while a capture runs.
     private func startMetering() {
         meteringTask?.cancel()
         levelMeter.reset()
@@ -914,9 +878,6 @@ final class ComposerVoiceInputController {
         }
     }
 
-    /// The on-device recognizer for the first dictation locale candidate that
-    /// has a model, cached for the controller's lifetime. Live dictation and
-    /// the server-failure file fallback both record through this pick.
     private func onDeviceSpeechRecognizerForRecording() -> (any ComposerSpeechRecognizing)? {
         if let speechRecognizer {
             return speechRecognizer.supportsOnDeviceRecognition ? speechRecognizer : nil
@@ -1059,33 +1020,20 @@ enum VoiceInputFailureLogCategory: String {
     case audioStartup
 }
 
-/// Chooses the dictation language. `Locale.current` (app language plus device
-/// region) stays first so users whose dictation already works keep the same
-/// recognizer; the user's preferred languages and `en-US` cover regions whose
-/// pairing has no on-device model, such as `en_PK`.
 enum ComposerSpeechLocalePolicy {
     static let preferredLanguageLimit = 3
     static let lastResortIdentifier = "en-US"
 
-    /// `current`, then the first few distinct preferred languages, then `en-US`,
-    /// deduplicated by normalized identifier. Duplicates of `current` (usually
-    /// the first preferred language) do not use up a preferred-language slot.
     static func candidates(current: Locale, preferredLanguages: [String]) -> [Locale] {
         let leading = distinct([current.identifier] + preferredLanguages).prefix(1 + preferredLanguageLimit)
         return distinct(leading + [lastResortIdentifier]).map(Locale.init(identifier:))
     }
 
-    /// Walks `candidates` in order and returns the first `recognizer` result.
-    /// `recognizer` is called only for candidates listed in `supportedLocales`,
-    /// with the supported locale itself, and returns nil when that locale has
-    /// no on-device model. An exact identifier match wins over a language plus
-    /// region match, so `hi-IN` never resolves to `hi-IN-translit`.
     static func firstAvailable<Recognizer>(
         in candidates: [Locale],
         supportedLocales: Set<Locale>,
         recognizer: (Locale) -> Recognizer?
     ) -> Recognizer? {
-        // Sorted so collisions resolve the same way on every launch.
         let supported = supportedLocales.sorted { $0.identifier < $1.identifier }
         let byExactIdentifier = Dictionary(
             supported.map { (exactIdentifier($0.identifier), $0) },
@@ -1105,10 +1053,6 @@ enum ComposerSpeechLocalePolicy {
         return nil
     }
 
-    /// Language plus region, lowercased: `en_US`, `en-US`, and `en_US@rg=pkzzzz`
-    /// all normalize to `en-us`, and `zh-Hans-CN` to `zh-cn`, because
-    /// `SFSpeechRecognizer.supportedLocales()` lists Chinese without a script.
-    /// An identifier without a region (`en`) keeps its exact form.
     static func normalizedIdentifier(_ identifier: String) -> String {
         let language = Locale(identifier: identifier).language
         if let code = language.languageCode?.identifier, let region = language.region?.identifier {
@@ -1117,7 +1061,6 @@ enum ComposerSpeechLocalePolicy {
         return exactIdentifier(identifier)
     }
 
-    /// The identifier without any `@…` keywords, with `-` separators, lowercased.
     private static func exactIdentifier(_ identifier: String) -> String {
         let base = identifier.split(separator: "@", maxSplits: 1).first.map(String.init) ?? identifier
         return base.replacingOccurrences(of: "_", with: "-").lowercased()
@@ -1177,22 +1120,17 @@ enum ComposerVoiceInputPreflight {
     }
 }
 
-/// The draft as the composer holds it right now.
 struct ComposerVoiceDraftState {
     let text: String
     let selection: ComposerSelection
 }
 
-/// One accepted dictation write: the new draft and where the caret goes in it.
 struct ComposerVoiceDraftUpdate: Equatable {
     let text: String
     let caret: NSRange
 }
 
 enum ComposerVoiceDraftComposer {
-    /// Replaces `range` with the trimmed transcript, leaving everything outside it
-    /// alone, and puts the caret after what it wrote. Nil when `range` is out of
-    /// bounds or splits a composed character.
     static func replacing(_ range: NSRange, in text: String, with transcript: String) -> ComposerVoiceDraftUpdate? {
         let draft = text as NSString
         guard range.location >= 0, range.length >= 0, range.upperBound <= draft.length,
@@ -1215,13 +1153,9 @@ enum ComposerVoiceDraftComposer {
         )
     }
 
-    /// A bounded spacing policy, not script detection: word-like text gets a space
-    /// from its neighbour, except beside Chinese or Japanese text, after opening
-    /// punctuation and before closing punctuation. No transcript locale is assumed.
     private static func needsSpace(between left: Character, and right: Character) -> Bool {
         guard !isUnspacedScript(left), !isUnspacedScript(right) else { return false }
         let endsWord = left.isLetter || left.isNumber || left.isSymbol || ".,;:!?)]}\u{201D}\u{2019}\u{2026}".contains(left)
-        // `/`, `@` and `#` start the chips and references a draft can hold.
         let startsWord = right.isLetter || right.isNumber || right.isSymbol || "/@#([{\u{201C}\u{2018}".contains(right)
         return endsWord && startsWord
     }
@@ -1229,13 +1163,13 @@ enum ComposerVoiceDraftComposer {
     private static func isUnspacedScript(_ character: Character) -> Bool {
         guard let scalar = character.unicodeScalars.first else { return false }
         switch scalar.value {
-        case 0x2E80...0x303F, // CJK radicals, symbols and punctuation
-             0x3040...0x30FF, // Hiragana, Katakana
-             0x3400...0x4DBF, // CJK extension A
-             0x4E00...0x9FFF, // CJK unified ideographs
-             0xF900...0xFAFF, // CJK compatibility ideographs
-             0xFF00...0xFFEF, // Halfwidth and fullwidth forms
-             0x20000...0x3FFFF: // CJK supplementary planes
+        case 0x2E80...0x303F,
+             0x3040...0x30FF,
+             0x3400...0x4DBF,
+             0x4E00...0x9FFF,
+             0xF900...0xFAFF,
+             0xFF00...0xFFEF,
+             0x20000...0x3FFFF:
             return true
         default:
             return false
@@ -1251,13 +1185,6 @@ enum ComposerVoiceDraftComposer {
     }
 }
 
-/// The span of the draft one dictation owns.
-///
-/// Every result replaces that span rather than rebuilding the draft from a base
-/// string, and only while the draft is still exactly what this session last left.
-/// Voice writes never publish a generation, so a user edit, including an edit
-/// undone back to identical text, is what moves it. A write from anywhere else
-/// shows up in the text. A caret that merely moved does not stop dictation.
 struct ComposerVoiceDraftUpdateSession {
     private struct Ownership {
         let original: ComposerVoiceDraftUpdate
@@ -1281,8 +1208,6 @@ struct ComposerVoiceDraftUpdateSession {
         ownership = nil
     }
 
-    /// The draft with `transcript` in the owned span, or nil when the draft is no
-    /// longer this session's to write.
     mutating func update(for transcript: String, current: ComposerVoiceDraftState) -> ComposerVoiceDraftUpdate? {
         guard var ownership, Self.isUnchanged(current, since: ownership),
               let update = ComposerVoiceDraftComposer.replacing(ownership.range, in: current.text, with: transcript)
@@ -1294,8 +1219,6 @@ struct ComposerVoiceDraftUpdateSession {
         return update
     }
 
-    /// The draft from before this session's first write, or nil when nothing was
-    /// written or the draft has since moved on.
     func restoredDraft(current: ComposerVoiceDraftState) -> ComposerVoiceDraftUpdate? {
         guard let ownership, Self.isUnchanged(current, since: ownership),
               current.text != ownership.original.text
@@ -1309,7 +1232,6 @@ struct ComposerVoiceDraftUpdateSession {
     }
 }
 
-/// The dictation row's waveform: recent mic levels, newest last.
 @MainActor
 @Observable
 final class ComposerVoiceLevelMeter {
@@ -1328,7 +1250,6 @@ final class ComposerVoiceLevelMeter {
         levels.append(Self.level(decibels: decibels))
     }
 
-    /// Maps decibels to 0...1, on a square root so quiet speech still shows.
     private static func level(decibels: Float?) -> Float {
         guard let decibels, decibels.isFinite, decibels > noiseFloorDecibels else { return 0 }
         guard decibels < 0 else { return 1 }
@@ -1336,7 +1257,6 @@ final class ComposerVoiceLevelMeter {
         return ((pow(10, decibels / 20) - floor) / (1 - floor)).squareRoot()
     }
 
-    /// One audio buffer's level. Runs on the audio thread.
     nonisolated static func decibels(of buffer: AVAudioPCMBuffer) -> Float? {
         guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return nil }
         let count = Int(buffer.frameLength)
@@ -1354,9 +1274,6 @@ private extension Logger {
     )
 }
 
-/// A recording-only lease. Permission prompts, deferred clips and transcription never
-/// hold it. The UIKit adapter below is separate so restoration can be tested without
-/// changing the test host's orientation or idle timer.
 @MainActor
 final class ComposerDictationLease {
     private let readIdle: () -> Bool
@@ -1421,8 +1338,6 @@ final class ComposerDictationLease {
            scene.session.persistentIdentifier == lockedSceneID, let lockedOrientation {
             return lockedOrientation
         }
-        // Matches Info.plist's normal iPhone/iPad policy. UIKit still intersects
-        // this with the presented controller's supported orientations.
         return window?.traitCollection.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
     }
 
@@ -1433,8 +1348,6 @@ final class ComposerDictationLease {
     }
 }
 
-/// The part of `SFSpeechRecognizer` dictation uses, so tests can stand in a
-/// recognizer without the simulator's speech service.
 protocol ComposerSpeechRecognizing: AnyObject {
     var supportsOnDeviceRecognition: Bool { get }
     func recognitionTask(
@@ -1445,12 +1358,9 @@ protocol ComposerSpeechRecognizing: AnyObject {
 
 extension SFSpeechRecognizer: ComposerSpeechRecognizing {}
 
-/// Owns the physical server-STT recorder and its audio session. The controller owns
-/// the returned file, including retention across inactivity and eventual deletion.
 @MainActor
 protocol ComposerServerRecording: AnyObject {
     var onFinish: (() -> Void)? { get set }
-    /// The mic's current level, or nil when the recorder has none to report.
     var decibels: Float? { get }
     func start() throws -> URL
     func stop()

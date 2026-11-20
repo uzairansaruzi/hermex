@@ -1,9 +1,6 @@
 import StoreKit
 import SwiftUI
 
-/// A Hermes server's Sessions list (#1046): the server, its saved connection, and the Profile the
-/// list opens on, searching `query` when a chat's `/resume` opened it (#1053). The home's list
-/// (#709) opens on no Profile, which takes the server's pick or the host's `current`.
 struct HermesSessionListEntry: Hashable, Identifiable {
     let id = UUID()
     let server: URL
@@ -15,23 +12,6 @@ struct HermesSessionListEntry: Hashable, Identifiable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// A Hermes server's sessions in one Profile, or in every Profile with each row tagged (#709)
-/// (#1046): the webui list's rows, live states and row menu, on a `SessionListViewModel` with a
-/// Hermes backend. It is the Sessions side of the Hermes home (#709), where `home` gives it the
-/// home's chrome and its Tasks, Kanban, Skills, Memory and Usage rows, or pushed from a chat's
-/// `/sessions`; a home owns a sidebar and detail at regular width, while a pushed list
-/// stays in its caller's stack. Its socket listens while it is on screen, rests
-/// while a chat covers it, and closes when it leaves or the app goes to the background. Rows
-/// rename, pin, archive (with Undo and an Archived screen), delete and export as JSON (#1048), and
-/// duplicate (#1051).
-/// Its project rows are the host's folder-based project lanes (#1052): a pick filters the list to
-/// one lane, and a row's Move to Project changes the session's working folder. Its search (#1053)
-/// filters the loaded rows at once and then adds the host's matches, which reach past the loaded
-/// pages; a bot's Bot Chat among them opens in that bot. Every page it reads goes to the offline
-/// cache (#1054), which it shows, read-only, while it connects, and under the offline banner while
-/// the host can't be reached.
-/// As the home's list it opens the session a link named (#1176), as that session's row would, and
-/// a Shortcut's new session (#1180) and a share (#1181), as New Session would.
 struct HermesSessionListView: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -43,7 +23,6 @@ struct HermesSessionListView: View {
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
-    /// CLI and Messaging Sessions, this server's own switch (#1674).
     @AppStorage private var showsCliSessions: Bool
     @AppStorage(SessionSidebarDisclosureSettings.scheduledSessionsAreExpandedKey)
     private var scheduledSessionsAreExpanded = SessionSidebarDisclosureSettings.defaultScheduledSessionsAreExpanded
@@ -59,53 +38,33 @@ struct HermesSessionListView: View {
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     private let entry: HermesSessionListEntry
     private let home: HermesHome?
-    /// The session a link named, held by `ContentView` until this list looks it up.
     @Binding private var pendingLink: HermesSessionDestination?
-    /// The new session a Shortcut asked for, held by `ContentView` until this list can open it.
     @Binding private var pendingNewChat: HermesNewChatDestination?
-    /// The Usage screen a Limits widget's tap asked for (#1409), held until this list reads the host.
     @Binding private var pendingUsage: HermesUsageDestination?
-    /// The share `ContentView` reserved, and how this list tells it the share is moving, let go
-    /// (opened, or discarded after it failed), kept queued or cut short.
     private let pendingShare: SharedImportReservation?
     private let claimShare: (SharedImportReservation) -> Bool
     private let didRouteShare: (SharedImportReservation) -> Void
     private let didDeclineShare: (SharedImportReservation) -> Void
     private let didAbandonShare: (SharedImportReservation) -> Void
-    /// The Shortcut texts behind the one a chat here shows (#1402).
     private let shortcutReview: ShortcutTextReview
-    /// Whether the home's own Settings or Add Server covers the list, read when a rating request
-    /// checks it.
     private let isCoveredByHome: () -> Bool
-    /// Moving `pendingShare` into its new session's draft; leaving cancels it.
     @State private var shareTransfer: Task<Void, Never>?
-    /// A share whose move failed, still claimed, until the user discards it or the alert closes (#1196).
     @State private var failedShare: HermesShareFailure?
     @State private var viewModel: SessionListViewModel
-    /// What covers the rows, the project lane and the search, kept by the list's owner.
     @State private var navigation: HermesSessionListNavigation
     @State private var actionToast = ActionToastState()
     @FocusState private var isSearchFieldFocused: Bool
-    /// Counts the home's search requests, each of which scrolls the header back (`HomeHeaderScroll`)
-    /// and, in a split, shows the sidebar that holds it.
     @State private var searchRequests = 0
-    /// The Profile and key of each chat with an unsent draft, read while Draft is picked and each
-    /// time a chat closes (`DraftRead`).
     @State private var draftRows: Set<ChatDraftStore.DraftRow> = []
     @State private var draftReads = 0
     @State private var wasBackgrounded = false
-    /// A new id asks for an App Store rating at `ratingMoment`, if the list is quiet then.
     @State private var ratingRequestID: UUID?
     @State private var ratingMoment: RatingPromptMoment = .coldLaunch
 
-    /// The list a chat's `/sessions` pushed.
     init(entry: HermesSessionListEntry) {
         self.init(entry: entry, model: Self.model(for: entry), home: nil)
     }
 
-    /// The Sessions side of the Hermes home, on a `model` the home keeps across its switch, so a
-    /// switch back shows the last rows at once (#709), and opening the session `pendingLink` names,
-    /// the new session `pendingNewChat` asks for and `pendingShare`.
     init(entry: HermesSessionListEntry, model: SessionListViewModel, home: HermesHome?,
          navigation: HermesSessionListNavigation? = nil,
          pendingLink: Binding<HermesSessionDestination?> = .constant(nil),
@@ -156,7 +115,6 @@ struct HermesSessionListView: View {
         nonmutating set { navigation.isSearchExpanded = newValue }
     }
 
-    /// The list's view model, reading `entry`'s server through its saved connection.
     static func model(for entry: HermesSessionListEntry) -> SessionListViewModel {
         let server = entry.server
         return SessionListViewModel(server: server, hermes: HermesSessionListSource(
@@ -225,15 +183,11 @@ struct HermesSessionListView: View {
                 suppressEmptyState: !groups.scheduled.isEmpty || !groups.needsYou.isEmpty,
                 showsErrorOverRows: true
             )
-            // A search reads the host's whole list, so it pages nothing in.
             if showsLoadMore && !isSearching { loadMoreRow }
-            // The cache holds no archived rows to show, and the Archived screen lists one Profile.
-            // Hidden once the host counts none; shown without a count until it answers (#1679).
             if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles && viewModel.archivedCount != 0 { archivedRow }
         }
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 0)
-        // A split view's sidebar paints gray behind a plain List; only its rows cover it.
         .scrollContentBackground(.hidden)
         .background(Color(.appCanvas))
         .modifier(chrome)
@@ -252,13 +206,10 @@ struct HermesSessionListView: View {
                 .padding(.bottom, 22)
         }
         .refreshable { await viewModel.refreshHermes(modelContext: modelContext) }
-        // Debounced inside; a new query or Profile cancels the search in flight.
         .task(id: SearchScope(profile: profile, showsAll: viewModel.hermesShowsAllProfiles, text: searchText, showingScheduled: covers.showingScheduled)) {
             guard !covers.showingScheduled else { return }
             await viewModel.searchSessions(query: searchText)
         }
-        // View all shares the list's search, so beside the rows a new sidebar query or Profile
-        // closes it and the sidebar's own search runs.
         .onChange(of: SearchScope(profile: profile, showsAll: viewModel.hermesShowsAllProfiles, text: searchText, showingScheduled: false)) {
             if usesSplit && covers.showingScheduled { covers.showingScheduled = false }
         }
@@ -277,7 +228,6 @@ struct HermesSessionListView: View {
                 .themedPageBackground()
                 .presentationDetents([.medium, .large])
                 .ignoresSafeArea()
-                // Each export has its own temp directory (`SessionListViewModel.export`).
                 .onDisappear { try? FileManager.default.removeItem(at: item.fileURL.deletingLastPathComponent()) }
         }
         .sheet(item: $navigation.covers.creatingProject, onDismiss: {
@@ -319,9 +269,6 @@ struct HermesSessionListView: View {
         } message: { move in
             Text(verbatim: move.message)
         }
-        // Discard is the only action: kept, the same files would fail the same way. The share stays
-        // claimed meanwhile; the alert closing any other way (a Cancel iOS adds, Escape, leaving)
-        // queues it again instead.
         .alert(failedShare?.share.sharedImport.shortcut.map(\.origin.cantOpenTitle) ?? Text("Couldn’t Add Shared Files"),
                isPresented: Binding(get: { failedShare != nil }, set: { if !$0 { queueFailedShareAgain() } }),
                presenting: failedShare) { failure in
@@ -345,16 +292,10 @@ struct HermesSessionListView: View {
             let rows = await ChatDraftStore.shared.hermesSessionDraftKeys(server: entry.server, connectionID: entry.connection.id)
             if !Task.isCancelled { draftRows = rows }
         }
-        // A link arriving while a chat, screen or sheet covers the rows pops and closes them, so
-        // what it opens or says shows here.
-        // Only with a link: `covers` is observed, and its setter runs for any mutating call.
         .onChange(of: pendingLink, initial: true) { if pendingLink != nil { covers.accept(pendingLink, on: entry.server) } }
         .task(id: pendingLink) { await openPendingLink() }
         .onChange(of: pendingUsage, initial: true) { if pendingUsage != nil { covers.bringForward() } }
         .task(id: UsageReadiness(link: pendingUsage, isLive: viewModel.isHermesLive)) { await openPendingUsage() }
-        // A Shortcut's new session and a share bring the rows forward at once, and open once the
-        // list has read the host live, whichever Profile the request names. A share reserved while
-        // another moves into its draft opens once that move ends.
         .onChange(of: NewChatReadiness(request: pendingNewChat, share: pendingShare?.reservationID, profile: profile,
                                        isLive: viewModel.isHermesLive, isTransferringShare: shareTransfer != nil),
                   initial: true) {
@@ -367,21 +308,12 @@ struct HermesSessionListView: View {
             shareTransfer = nil
             queueFailedShareAgain()
             actionToast.dismiss()
-            // A pushed chat only covers a compact list; a split's list leaves for good (a side or
-            // server switch, a layout change), so it closes even beside a chat.
             if usesSplit { viewModel.closeHermes() } else { covers.listDisappeared(viewModel) }
         }
-        // Hiding Projects in Settings clears its lane, since "All" lives in the hidden header and
-        // the list would stay on one project with no way back. Checked on appear too, for a
-        // switch flipped while this list was gone.
         .onChange(of: showsProjects, initial: true) { if !showsProjects { selectedProjectID = nil } }
-        // Any other Profile starts from all rows, however it came: the menu, a chat's Profile chip,
-        // /sessions or /resume, or the host dropping the Profile. The first answer to a list opened
-        // without a Profile isn't a change.
         .onChange(of: ProfileScope(profile: viewModel.hermesProfile, showsAll: viewModel.hermesShowsAllProfiles)) { old, new in
             if old.profile != nil || old.showsAll != new.showsAll { statusFilter = .all }
         }
-        // A lane the host no longer lists (deleted here or on Desktop, or another Profile's) clears.
         .onChange(of: viewModel.projects) {
             if let selectedProjectID, !viewModel.projects.contains(where: { $0.projectId == selectedProjectID }) {
                 self.selectedProjectID = nil
@@ -389,10 +321,8 @@ struct HermesSessionListView: View {
         }
         .onChange(of: covers.chat) { old, new in
             if case .session(_, let key)? = old?.target, new?.id != old?.id { viewModel.noteHermesReturn(from: key) }
-            // A closed chat may have left or emptied a draft.
             if old != nil, new?.id != old?.id { draftReads += 1 }
             if let new, new.id != old?.id { SessionOpenSignpost.begin(sessionID: new.id.uuidString) }
-            // A Shortcut text's chat closing lets the next waiting text open (#1402).
             if let old, new?.id != old.id { shortcutReview.end(old.id) }
             ratingRequestID = nil
             if old != nil, new == nil { requestRating(at: .returnedToSessionList) }
@@ -408,15 +338,12 @@ struct HermesSessionListView: View {
             }
             switch scenePhase {
             case .background: viewModel.closeHermes()
-            // Control Center and banners (`.inactive`) keep the socket; only a closed list reopens.
             case .active where covers.reopensOnForeground(usesSplit: usesSplit) && !viewModel.isHermesConnected:
                 Task { await viewModel.openHermes(modelContext: modelContext) }
             default: break
             }
         }
-        // A lost list reconnects as the network returns rather than on its backoff (#1372).
         .onChange(of: NetworkPathMonitor.shared.changeCount) { viewModel.networkPathDidChange() }
-        // A foreground return reopens the socket first, so the check waits for the list to be live.
         .task(id: RatingCheck(request: ratingRequestID, isLive: viewModel.isHermesLive)) {
             guard ratingRequestID != nil, viewModel.isHermesLive else { return }
             await RatingPromptState.shared.requestWhenQuiet(
@@ -428,24 +355,19 @@ struct HermesSessionListView: View {
                     }
                     return isQuietSessionListVisible
                 },
-                // Nil, so this moment is skipped, unless the host reads idle now.
                 loadSessions: { await viewModel.hermesHostIsIdle() == true ? [] : nil },
                 request: { requestReview() }
             )
-            // One check per moment: a later reconnect doesn't ask again.
             if !Task.isCancelled { ratingRequestID = nil }
         }
     }
 
-    /// Only the home list asks; a list a chat's `/sessions` pushed never does.
     private func requestRating(at moment: RatingPromptMoment) {
         guard home != nil else { return }
         ratingMoment = moment
         ratingRequestID = UUID()
     }
 
-    /// The home's rows on screen with nothing over them or pending, so a rating request
-    /// interrupts nothing. Whether the host is running anything is read fresh (`hermesHostIsIdle`).
     private var isQuietSessionListVisible: Bool {
         home != nil && scenePhase == .active && viewModel.isHermesLive && !isCoveredByHome()
             && covers.chat == nil && !covers.isCoveredByScreen
@@ -465,8 +387,6 @@ struct HermesSessionListView: View {
         covers.selectedSessionID
     }
 
-    /// Clears the way for a root selection, which also supersedes a Limits widget's Usage link
-    /// still waiting on the host (#1409).
     private func prepareRootSelection() {
         pendingUsage = nil
         if usesSplit { covers.bringForward() }
@@ -489,10 +409,7 @@ struct HermesSessionListView: View {
 
     private var compactSessionRows: some View {
         sessionRows
-        // Keyed by the chat, so a Profile picked in an empty chat replaces its screen (#1015).
         .navigationDestination(item: $navigation.covers.chat) { chat in
-            // `/sessions` and `/resume` in the chat come back here, in the chat's Profile, searching
-            // what they name.
             ChatView(hermesSession: covers.building(chat), onReplace: { replace(chat, with: $0) }, onOpenSessions: { opened in
                 self.covers.chat = nil
                 if let listed = opened.profile, listed != profile || viewModel.hermesShowsAllProfiles {
@@ -537,8 +454,6 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// The model keeps this past any one view, and `navigation` keeps the model through
-    /// `chatContinuity`, so it holds neither `navigation` nor the view strongly.
     private func identifyChat(_ chat: HermesSessionChat) -> (ChatDraftKey) -> Void {
         { [weak navigation, id = chat.id] in navigation?.covers.identifyChat(id, draftKey: $0) }
     }
@@ -564,7 +479,6 @@ struct HermesSessionListView: View {
             InsightsView(client: entry.client, profile: entry.client.profile, limitsScope: entry.limitsScope,
                          onAPIError: { _ in }).id(entry.id)
         } else if covers.showingKanban {
-            // Keyed by the Profile, so picking another in the sidebar moves Only Mine with it.
             KanbanView(server: entry.server, hermes: HermesConnections.shared.connection(for: entry.connection, server: entry.server),
                        mine: profile)
                 .id(profile)
@@ -578,8 +492,6 @@ struct HermesSessionListView: View {
             } description: {
                 Text("Choose a session from the sidebar or start a new chat.")
             } actions: {
-                // Waits for the live list, like a Shortcut's new chat (#1180), so it can't open
-                // a chat while the list is offline or reconnecting.
                 Button("New Chat", action: openNewSession)
                     .buttonStyle(.appProminent)
                     .disabled(!canOpenNewSession || !viewModel.isHermesLive)
@@ -587,20 +499,14 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// View all of the Profile's scheduled sessions, pushed on a phone and the detail beside the rows.
     private var scheduledSessions: some View {
         ScheduledSessionsView(viewModel: viewModel, showsCronSessions: showsCronSessions,
                               showsMessageCount: showsMessageCount, showsWorkspace: showsWorkspace,
                               selectedSessionID: nil, actions: actions, actionToast: actionToast)
     }
 
-    /// The listed Profile, and the one New Session opens in; nil until a home list without a
-    /// pick has asked the host.
     private var profile: String? { viewModel.hermesProfile ?? entry.profile }
 
-    /// The home's Tasks, Kanban, Skills, Memory and Usage rows, as Settings shows them (#709), and
-    /// the project lanes of the one listed Profile unless Settings hides them (#1585). A search
-    /// drops the links but keeps the lanes, so the lane it searches in stays in view and can change.
     private var sectionVisibility: SidebarSectionVisibility {
         let isHome = home != nil && !isSearchExpanded
         return SidebarSectionVisibility(
@@ -610,8 +516,6 @@ struct HermesSessionListView: View {
         )
     }
 
-    /// Pushes a home row's screen: Tasks, Skills, Memory and Usage on the listed Profile (the one
-    /// New Session opens in, on a list of every Profile), Kanban for the whole host.
     private func open(_ destination: SessionListUtilityDestination) {
         prepareRootSelection()
         let server = entry.server, connection = entry.connection
@@ -631,15 +535,12 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// The home's chrome, or the pushed list's own title and toolbar.
     private var chrome: some ViewModifier {
         HermesSessionListChrome(home: home, searchText: $navigation.searchText, isSearchPresented: $navigation.isSearchExpanded,
                                 connection: viewModel.hermesConnection, reconnectNow: viewModel.reconnectNow,
                                 openSearch: openSearch, profileMenu: { profileMenu }, filter: { profileFilter }, newSession: { newSessionButton })
     }
 
-    /// The header's search, ⌘F, and the iPhone Duo rail's Search. Focus waits a turn for a scrolled
-    /// list to bring the header's field back (`HomeHeaderScroll`).
     private func openSearch() {
         withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) { isSearchExpanded = true }
         if home != nil { searchRequests += 1 }
@@ -660,12 +561,8 @@ struct HermesSessionListView: View {
             .disabled(!canOpenNewSession)
     }
 
-    /// New Session needs the live list and a Profile to open in.
     private var canOpenNewSession: Bool { !viewModel.isViewingCachedData && profile != nil }
 
-    /// New Session and ⌘N, started in the selected project lane's folder (#1671). Guarded again
-    /// here, so a stale menu can't pass the disabled button. Shortcuts, shares and App Intents open
-    /// their own chats and never inherit the lane, as on webui.
     private func openNewSession() {
         guard canOpenNewSession, let profile else { return }
         let cwd = viewModel.hermesNewSessionFolder(lane: showsProjects ? selectedProjectID : nil)
@@ -673,8 +570,6 @@ struct HermesSessionListView: View {
         covers.chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile, cwd: cwd))
     }
 
-    /// The hardware-keyboard commands (`HermexCommands`) for this list, the home's Sessions side or
-    /// a pushed `/sessions`, acting as its New Session button, search and rows do.
     private var sceneActions: HermexSceneActions {
         HermexSceneActions(
             canCreateNewChat: canOpenNewSession,
@@ -683,7 +578,6 @@ struct HermesSessionListView: View {
             openChat: { position in
                 if let session = ChatShortcutNavigation.chat(atPosition: position, in: keyboardShortcutSessions) { actions.open(session) }
             },
-            // A row opens its chat at once, so a second press steps on from it.
             openAdjacentChat: { offset in
                 if let session = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedSessionID, in: keyboardShortcutSessions) {
                     actions.open(session)
@@ -692,17 +586,11 @@ struct HermesSessionListView: View {
         )
     }
 
-    /// Chat shortcuts walk Needs you, then the ordinary rows, as they appear after search and the
-    /// project lane, skipping Scheduled so ⌘1 does not depend on that disclosure. Grouped only on
-    /// a key press, never in `body`.
     private var keyboardShortcutSessions: [SessionSummary] {
         let groups = scheduledSessionGroups
         return groups.needsYou + groups.ordinary
     }
 
-    /// The rows the list shows, in its sections. Cron sessions drop out everywhere, Scheduled
-    /// included, when Settings hides them (#1585), as on a webui list, and so do rows with a
-    /// source chip when this server hides CLI and messaging sessions (#1674).
     private var scheduledSessionGroups: ScheduledSessionGroups {
         viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID,
                                          automatedVisibility: automatedVisibility, statusFilter: statusFilter,
@@ -716,8 +604,6 @@ struct HermesSessionListView: View {
         return automated
     }
 
-    /// ⌘F: a phone's rows come forward from what covers them, then the search opens, the home
-    /// header's field or the pushed list's native one. Focus drops first so it can land again.
     private func openSearchFromKeyboard() {
         isSearchFieldFocused = false
         if !usesSplit { covers.bringForward() }
@@ -745,13 +631,11 @@ struct HermesSessionListView: View {
         return statusFilter == .all ? nil : String(localized: "Only chats already loaded are filtered.")
     }
 
-    /// The pushed list's Profile menu, named for what it lists.
     private var profileMenu: some View {
         Menu {
             profilePicker
             statusSection
         } label: {
-            // A Profile name is the user's own text, never a catalog key.
             if viewModel.hermesShowsAllProfiles {
                 Text("All Profiles").lineLimit(1)
             } else {
@@ -761,19 +645,16 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// The home's filter button, which holds the same picker.
     private var profileFilter: some View {
         Menu {
             profilePicker
             statusSection
         } label: {
-            // Filled while a status filter narrows the rows.
             Label("Filter", systemImage: statusFilter == .all ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
         }
         .accessibilityValue(Text(verbatim: filterValue))
     }
 
-    /// What the Filter button reads out: the listed Profile, then the status when one is picked.
     private var filterValue: String {
         let listed = viewModel.hermesShowsAllProfiles ? String(localized: "All Profiles") : (profile ?? "")
         return statusFilter == .all ? listed : listed + ", " + statusFilter.title
@@ -789,7 +670,6 @@ struct HermesSessionListView: View {
         statusFilter = statusFilter == picked ? .all : picked
     }
 
-    /// Says how many chats the host took, in the toast and to VoiceOver; nothing when it took none.
     private func markAllRead(_ rows: [SessionSummary]) {
         Task {
             let marked = await viewModel.markAllHermesRead(rows: rows)
@@ -801,16 +681,11 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// Every Profile's sessions, each row tagged with its Profile (#709), or one Profile's. Picking
-    /// a Profile lists it and makes it the server's pick, which the composer's Profile chip shares
-    /// (#1015); All Profiles keeps the pick for New Session. Checked toggles rather than a
-    /// Picker: a menu Picker shows only an option's first line, dropping the model (#1679).
     @ViewBuilder private var profilePicker: some View {
         let listed = viewModel.hermesProfiles.isEmpty ? [profile].compactMap(\.self) : viewModel.hermesProfiles
         let picked = viewModel.hermesShowsAllProfiles ? nil : profile
         Section {
             Toggle(isOn: Binding(get: { picked == nil }, set: { _ in pickProfile(nil) })) { Text("All Profiles") }
-            // Each Profile's model under its name, shown as written (#1679).
             ForEach(listed, id: \.self) { name in
                 Toggle(isOn: Binding(get: { picked == name }, set: { _ in pickProfile(name) })) {
                     Text(verbatim: name)
@@ -827,18 +702,11 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// More pages may hold rows this list shows: any, or the selected lane's that the host
-    /// named and the loaded pages lack.
     private var showsLoadMore: Bool {
         guard viewModel.hasMoreSessions else { return false }
         return selectedProjectID.map(viewModel.hermesLaneIsShort) ?? true
     }
 
-    /// The list's end: the next page loads as it comes into view, or in a lane every page
-    /// until the lane is whole, and a tap tries again after a failed one. Keyed by the lane,
-    /// so picking another lane loads its pages too. A lane picked while another page was
-    /// loading starts its own once that page's rows are in; a failed page changes no rows, so
-    /// it never retries on its own.
     private var loadMoreRow: some View {
         Button("Load more") { Task { await loadMore() } }
             .font(AppFont.subheadline())
@@ -846,14 +714,11 @@ struct HermesSessionListView: View {
             .disabled(viewModel.isLoadingMoreSessions)
             .frame(maxWidth: .infinity, minHeight: 44)
             .sessionsScreenListRow()
-            // A status filter never fetches on its own, on appearing or when the rows change:
-            // the row stays, and a tap loads.
             .onAppear { if statusFilter == .all { Task { await loadMore() } } }
             .onChange(of: viewModel.sessions.count) {
                 guard statusFilter == .all, let selectedProjectID else { return }
                 Task { await viewModel.fillHermesLane(selectedProjectID) }
             }
-            // Back on All with the row already in view, it loads as appearing would have.
             .onChange(of: statusFilter) {
                 if statusFilter == .all { Task { await loadMore() } }
             }
@@ -865,7 +730,6 @@ struct HermesSessionListView: View {
         else { await viewModel.loadMoreHermesSessions() }
     }
 
-    /// The Profile's archived sessions, hidden Bot Chats included, where they are restored.
     private var archivedRow: some View {
         Button {
             prepareRootSelection()
@@ -901,11 +765,6 @@ struct HermesSessionListView: View {
         .sessionsScreenListRow()
     }
 
-    /// Opening a row, Mark as Read or Unread, and the row actions `SessionRowActionPolicy`
-    /// offers a Hermes row; Duplicate opens the copy (#1051). Move to Project asks first,
-    /// and its New Project starts on the session's folder, then asks to move it there if it
-    /// was saved on another. A bot's Bot Chat, which only a search lists, opens in that bot
-    /// through the app's bot route, as a notification's tap does (#1053).
     private var actions: SessionListRowActions {
         SessionListRowActions(
             retryLoad: { Task { await viewModel.openHermes(modelContext: modelContext) } },
@@ -914,7 +773,6 @@ struct HermesSessionListView: View {
                     AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
                     return
                 }
-                // A row of every Profile's cache, before the host settled one, opens in its own.
                 guard let listed = profile ?? session.profile,
                       let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: listed) else { return }
                 viewModel.beginViewing(session)
@@ -950,12 +808,6 @@ struct HermesSessionListView: View {
         )
     }
 
-    /// Opens the session the held link names on this list's server (#1176), the way its row
-    /// opens, over the rows it brings forward, or says why nothing opened: gone, or in more than one Profile. A room's session
-    /// opens nothing. A moved webui server's link that no Profile has opens on that webui server
-    /// instead (`MovedWebuiRoute.fallback`), never one whose lookup failed. A lookup that fails (an unreachable host, a store the host can't read) drops
-    /// the link quietly, except a refused sign-in or a list that left mid-lookup: the server's
-    /// sign-out or switch routes the held link again.
     private func openPendingLink() async {
         guard let link = pendingLink, link.server == entry.server else { return }
         let wire = BotClient(saved: entry.connection, server: entry.server)
@@ -969,7 +821,6 @@ struct HermesSessionListView: View {
             return
         }
         guard !Task.isCancelled, pendingLink == link else { return }
-        // Anything opened during the lookup closes too.
         covers.accept(link, on: entry.server)
         pendingLink = nil
         switch outcome {
@@ -983,7 +834,6 @@ struct HermesSessionListView: View {
                 covers.chat = opened
             }
         case .gone:
-            // A moved webui server's link opens on that server when no Profile here has it (#1217).
             if let fallback = MovedWebuiRoute.fallback(for: link) {
                 AppIntentRouter.shared.requestDeepLink(fallback)
                 return
@@ -997,9 +847,6 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// Opens Usage for the Profile a Limits widget's tap names (#1409) once the list reads the host
-    /// live, and only while the host still has that Profile on this server and connection;
-    /// otherwise drops the link and leaves the rows as they are.
     private func openPendingUsage() async {
         guard let link = pendingUsage, viewModel.isHermesLive else { return }
         let profiles = await viewModel.readHostProfiles()
@@ -1011,23 +858,15 @@ struct HermesSessionListView: View {
         covers.insights = HermesInsightsEntry(server: entry.server, connection: entry.connection, profile: link.profile)
     }
 
-    /// Opens the new session a Shortcut asked for (#1180) over whatever covers the rows.
     private func openPendingNewChat() {
         if covers.open(pendingNewChat, on: entry, listed: profile, isLive: viewModel.isHermesLive) { pendingNewChat = nil }
     }
 
-    /// Shows `replacement` in `chat`'s place (a Profile picked in an empty chat, `/clear`). A
-    /// Shortcut text's review goes with it (#1402), so the next waiting text doesn't open over it.
     private func replace(_ chat: HermesSessionChat, with replacement: HermesSessionChat) {
         shortcutReview.replace(chat.id, replacement.id)
         covers.chat = replacement
     }
 
-    /// Opens a share (#1181) as a new session over whatever covers the rows (#1212), once `transfer`
-    /// has moved it into that session's draft and let it go. A Shortcut's text that names a Profile
-    /// (#1402) first asks the host for its Profiles: the list's own may be from before a chat paused
-    /// it. A Profile the host no longer has offers Discard; a host that doesn't answer keeps the text
-    /// queued.
     private func openPendingShare() {
         guard shareTransfer == nil, let share = pendingShare,
               let opening = covers.open(share, on: entry, listed: profile, isLive: viewModel.isHermesLive) else {
@@ -1043,7 +882,6 @@ struct HermesSessionListView: View {
             case .chat?:
                 move(share, into: chat)
             case .missingProfile(let name)?:
-                // No other Profile takes its text unasked.
                 guard claimShare(share) else { return }
                 let server = home?.title ?? entry.server.host ?? entry.server.absoluteString
                 failedShare = HermesShareFailure(
@@ -1055,11 +893,6 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// Claims `share` for its move into `chat`'s draft, so no home, here or on another server,
-    /// starts a second one, then opens the chat. A Shortcut's text holds later ones back while its
-    /// chat shows (#1402). A transfer that fails stays claimed and says why, offering Discard
-    /// (#1196); closing the alert otherwise, or leaving, keeps it queued. One cut short by leaving
-    /// hands it back for the next try.
     private func move(_ share: SharedImportReservation, into chat: HermesSessionChat) {
         guard claimShare(share) else { return }
         let isShortcut = share.sharedImport.shortcut != nil
@@ -1089,8 +922,6 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// Hands back a failed share the user didn't discard, so it is offered again next time.
-    /// Discard clears `failedShare` first, so the alert's dismissal after it does nothing.
     private func queueFailedShareAgain() {
         guard let failedShare else { return }
         self.failedShare = nil
@@ -1109,7 +940,6 @@ struct HermesSessionListView: View {
         }
     }
 
-    /// "Archived · Undo" once the host confirms (#865); Undo restores the row in place.
     private func archive(_ session: SessionSummary) async {
         guard await viewModel.archive(session, animation: mutationAnimation) else { return }
         covers.closeChat(for: session)
@@ -1130,7 +960,6 @@ struct HermesSessionListView: View {
         ))
     }
 
-    /// "Moved · Undo" once the host confirms; Undo moves the session back to the folder it left.
     private func move(_ move: HermesProjectMove) async {
         guard let previous = await viewModel.moveHermesSession(move.session, toFolder: move.folder) else { return }
         let message = String(localized: "Moved")
@@ -1143,7 +972,6 @@ struct HermesSessionListView: View {
         ))
     }
 
-    /// Opens the copy once the host has it (#1051).
     private func duplicate(_ session: SessionSummary) async {
         guard let profile, let copy = await viewModel.duplicate(session),
               let opened = copy.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) else { return }
@@ -1165,29 +993,17 @@ struct HermesSessionListView: View {
     }
 }
 
-/// How the Hermes home's Sessions list takes a share (#1181) or a Shortcut's text (#1402).
 enum HermesShareOpening: Equatable {
-    /// A new session in New Session's Profile, or the Shortcut's, which opens once its draft holds
-    /// the share.
     case chat(HermesSessionChat)
-    /// Nothing in the share survived staging, or a Shortcut's text expired: it is consumed without
-    /// a chat, as on webui.
     case nothing
-    /// The Shortcut named a Profile the host no longer lists.
     case missingProfile(String)
 }
 
 extension SharedImportReservation {
-    /// What `entry`'s Sessions list opens for this share, in `listed`, the Profile its New Session
-    /// uses; nil until the list `isLive`, having read the host and showing no offline cache, as a
-    /// Shortcut's new session does. A Shortcut's text opens only on its own server, in its
-    /// Profile when it named one, which `confirmingProfile` then checks with the host; one held
-    /// past its lifetime, as when its server couldn't be reached, opens nothing.
     @MainActor func hermesOpening(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesShareOpening? {
         guard let shortcut = sharedImport.shortcut else {
             guard var chat = HermesNewChatDestination(server: entry.server, profile: nil)
                 .chat(on: entry, listed: listed, isLive: isLive) else { return nil }
-            // Its composer says what the share left out, once the share is in its draft (#1401).
             chat.shareNotice = SharedSkipsNotice(sharedImport.skipped)
             let isEmpty = HermesShareDraft.composerDraft(from: sharedImport.draft).isEmpty && sharedImport.attachments.isEmpty
             return isEmpty ? .nothing : .chat(chat)
@@ -1198,9 +1014,6 @@ extension SharedImportReservation {
             .chat(on: entry, listed: listed, isLive: isLive).map { .chat($0) }
     }
 
-    /// `chat` once the host's Profiles, which `readProfiles` reads now, include the one a
-    /// Shortcut's text named (#1402); `.missingProfile` when they don't, and nil when the host
-    /// didn't answer. Any other share is `chat` as it is.
     @MainActor func confirmingProfile(of chat: HermesSessionChat,
                                       readProfiles: () async -> [String]?) async -> HermesShareOpening? {
         guard let named = sharedImport.shortcut?.profile else { return .chat(chat) }
@@ -1208,22 +1021,12 @@ extension SharedImportReservation {
         return profiles.contains(named) ? .chat(chat) : .missingProfile(named)
     }
 
-    /// Moves the share into `chat`'s draft, then lets it go with `route` (`ContentView` consumes
-    /// it), even when the caller was cancelled after the draft took it: the draft owns it from then
-    /// on. A failure rethrows and leaves the share reserved, for the caller to discard or queue.
     @MainActor func transfer(into chat: HermesSessionChat, drafts: ChatDraftStore = .shared,
                              route: (Self) -> Void) async throws {
         try await moveIntoDraft(of: chat, drafts: drafts)
         route(self)
     }
 
-    /// Moves the share into `chat`'s new-session draft, which the chat opens on: its text after
-    /// any unsent text, its files after any staged ones, each as a Hermes send takes it
-    /// (`BotAttachmentUpload.prepare`, Bot Chat's limits). A file Hermes can't take now (its size,
-    /// no room left in the draft, or one that can't be read) throws its reason and moves nothing, so the
-    /// whole share stays recoverable. Once it returns the draft owns the share, under its occurrence
-    /// id, so a retry or replay adds nothing while the same content shared again later is added;
-    /// a throw leaves the draft as it was.
     @MainActor func moveIntoDraft(of chat: HermesSessionChat, drafts: ChatDraftStore = .shared) async throws {
         let key = chat.target.draftKey(server: chat.server, connectionID: chat.connection.id, lineageRoot: chat.lineageRoot)
         let draft = await drafts.draft(for: key)
@@ -1251,12 +1054,10 @@ extension SharedImportReservation {
             }
             try Task.checkCancellation()
         }
-        // A Shortcut's text goes in exactly as it ran (#1402); a share's is trimmed for the composer.
         let text = sharedImport.shortcut == nil ? HermesShareDraft.composerDraft(from: sharedImport.draft) : sharedImport.draft
         try await drafts.appendShare(occurrenceID, text: text, files: files, to: key,
                                      maximumFileBytes: BotAttachmentUpload.maximumFileBytes,
                                      origin: sharedImport.shortcut?.origin) { attachments in
-            // A composer open on this draft may have added files since the check above.
             guard attachments.count <= HermexAttachmentPickerPolicy.maximumBotAttachments,
                   attachments.reduce(0, { $0 + ($1.size ?? BotAttachmentUpload.maximumFileBytes) })
                     <= BotAttachmentUpload.maximumTotalBytes else { throw BotAttachmentFailure.limit }
@@ -1264,9 +1065,6 @@ extension SharedImportReservation {
     }
 }
 
-/// A share the Hermes home couldn't move into a new session's draft (#1196), and why, in words for
-/// someone who shared from another app. Nothing in a queued share can be changed, so most failures
-/// would repeat on every try; the user discards it and shares again.
 struct HermesShareFailure {
     let share: SharedImportReservation
     let reason: String
@@ -1280,7 +1078,6 @@ struct HermesShareFailure {
         self.share = share
         switch error {
         case BotAttachmentFailure.limit, ChatDraftStorageError.attachmentLimit:
-            // Counts the files already waiting in the new session's draft too.
             reason = String(localized: "You can attach up to 8 files per message, 25 MB each and 50 MB total. Share fewer or smaller files and try again.")
         case BotAttachmentFailure.unreadable:
             reason = String(localized: "One of the files couldn’t be read.")
@@ -1290,8 +1087,6 @@ struct HermesShareFailure {
     }
 }
 
-/// What a Shortcut's new session and a share wait on: the request or share, New Session's
-/// Profile, the list's live read of the host, and the end of an earlier share's move.
 private struct NewChatReadiness: Equatable {
     let request: HermesNewChatDestination?
     let share: String?
@@ -1300,19 +1095,16 @@ private struct NewChatReadiness: Equatable {
     let isTransferringShare: Bool
 }
 
-/// A Limits widget's Usage link, and whether the list has read the host it waits on.
 private struct UsageReadiness: Equatable {
     let link: HermesUsageDestination?
     let isLive: Bool
 }
 
-/// A rating request, checked again once the list is live.
 private struct RatingCheck: Hashable {
     let request: UUID?
     let isLive: Bool
 }
 
-/// What a search runs against: a new query, Profile or All Profiles cancels the one in flight.
 private struct SearchScope: Hashable {
     let profile: String?
     let showsAll: Bool
@@ -1320,14 +1112,11 @@ private struct SearchScope: Hashable {
     let showingScheduled: Bool
 }
 
-/// The Profile a list shows, or every one.
 private struct ProfileScope: Equatable {
     let profile: String?
     let showsAll: Bool
 }
 
-/// The Filter menu's status choices and Mark All as Read. Its own view, so that reading the unread
-/// marks to count the chats in scope invalidates only this section, not the list's body.
 private struct HermesStatusFilterSection: View {
     let viewModel: SessionListViewModel
     let selectedProjectID: String?
@@ -1336,9 +1125,6 @@ private struct HermesStatusFilterSection: View {
     let pick: (HermesSessionStatusFilter) -> Void
     let markAll: ([SessionSummary]) -> Void
 
-    /// One status at a time, picking it again goes back to All. Mark All as Read covers the unread
-    /// chats in the Profile and lane shown, whatever the search or status; it names its count before
-    /// the tap and is off while nothing in scope can be marked or a Mark All is still writing.
     var body: some View {
         let unread = viewModel.unreadRowsInScope(selectedProjectID: selectedProjectID, automatedVisibility: automatedVisibility)
         Section {
@@ -1353,16 +1139,11 @@ private struct HermesStatusFilterSection: View {
     }
 }
 
-/// What the draft read runs for: it reads while Draft is picked, again each time a chat closes,
-/// and a newer one cancels the read in flight.
 private struct DraftRead: Hashable {
     let filter: HermesSessionStatusFilter
     let chatCloses: Int
 }
 
-/// Scrolls the home's list back to its header on each search request, since a scrolled list has
-/// recycled the header and its field: the iPhone Duo rail's Search and ⌘F work from any row, even
-/// with search already open.
 private struct HomeHeaderScroll: ViewModifier {
     static let headerID = "home-header"
     let requests: Int
@@ -1374,18 +1155,12 @@ private struct HomeHeaderScroll: ViewModifier {
     }
 }
 
-/// The Sessions list's title and toolbar. As the Hermes home's Sessions side it takes the home's
-/// bar, with the Profile filter and New Session at its ends, and searches from its header; pushed,
-/// it is titled "Sessions", with the home's reconnect line under the title (#1374), its Profile
-/// menu and New Session at the top right and a search field under them, which
-/// `isSearchPresented` activates (⌘F).
 private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSession: View>: ViewModifier {
     let home: HermesHome?
     @Binding var searchText: String
     @Binding var isSearchPresented: Bool
     let connection: HomeConnectionStatus.Facts
     let reconnectNow: () -> Void
-    /// The home's search button, which grows the header's field.
     let openSearch: () -> Void
     let profileMenu: ProfileMenu
     let filter: Filter
@@ -1424,7 +1199,6 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
     }
 }
 
-/// The pushed Sessions list's title, with the home's reconnect line under it (#1374).
 private struct SessionsToolbarTitle: View {
     let connection: HomeConnectionStatus.Facts
     let reconnectNow: () -> Void
@@ -1439,13 +1213,9 @@ private struct SessionsToolbarTitle: View {
     }
 }
 
-/// What a Hermes list's rows are narrowed to by what they need from the user. One at a time,
-/// not saved: view state like the lane, reset when another Profile is picked. It filters the
-/// rows loaded so far and never fetches more.
 enum HermesSessionStatusFilter: Equatable, CaseIterable {
     case all, working, unread, draft
 
-    /// The statuses the Filter menu offers; `all` is picking one again.
     static let choices: [HermesSessionStatusFilter] = [.working, .unread, .draft]
 
     var title: String {
@@ -1458,19 +1228,11 @@ enum HermesSessionStatusFilter: Equatable, CaseIterable {
     }
 }
 
-/// Keeps where a list is, for whoever outlives the list: what covers its rows, its project lane,
-/// its status filter and its search. The Hermes home keeps one per Sessions side, so these survive what rebuilds
-/// the list: a size-class change or the `[Bots | Sessions]` switch. A list a chat pushed keeps
-/// its own.
 @Observable final class HermesSessionListNavigation {
     var covers: HermesSessionListCovers
-    /// The project lane the list shows; nil shows every session.
     var selectedProjectID: String?
-    /// The status the rows are narrowed to; `.all` narrows nothing.
     var statusFilter = HermesSessionStatusFilter.all
     var searchText: String
-    /// The home's header has grown its search pill into a field (`SessionsHeader`); on a pushed
-    /// list, its native search is presented.
     var isSearchExpanded = false
 
     init(_ covers: HermesSessionListCovers = HermesSessionListCovers(), searchText: String = "") {
@@ -1479,10 +1241,6 @@ enum HermesSessionStatusFilter: Equatable, CaseIterable {
     }
 }
 
-/// What covers a Hermes Sessions list's rows: the chat a row opened, the screens it pushed, and
-/// its sheets and confirmations. A session link (#1176) for the list's server, a Shortcut's new
-/// session (#1180) or a share (#1181) clears them all, so its chat, or why it can't open, shows on
-/// the list itself; a closed chat keeps its draft in the draft store.
 struct HermesSessionListCovers {
     var chat: HermesSessionChat? {
         didSet {
@@ -1492,7 +1250,6 @@ struct HermesSessionListCovers {
         }
     }
     private var chatDraftKey: ChatDraftKey?
-    /// The open chat's, for the `ChatView` of whichever width is showing it (#1528).
     private(set) var chatContinuity = ChatContinuity()
     var renaming: SessionSummary?
     var deleting: SessionSummary?
@@ -1503,44 +1260,29 @@ struct HermesSessionListCovers {
     var renamingProject: ProjectSummary?
     var deletingProject: ProjectSummary?
     var moving: HermesProjectMove?
-    /// The Move to Project a project created from a row's Move menu still needs, asked once the
-    /// sheet is gone.
     var movingAfterCreation: HermesProjectMove?
-    /// The Tasks, Skills, Memory or Usage screen a home row pushed, and whether Kanban is pushed.
     var tasks: HermesTasksEntry?
     var skills: HermesSkillsEntry?
     var memory: HermesMemoryEntry?
     var insights: HermesInsightsEntry?
     var showingKanban = false
 
-    /// A screen this list pushed covers it, so the socket stays closed until it returns.
     var isCoveredByScreen: Bool {
         showingScheduled || showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
     }
 
-    /// Whether coming back to the foreground reopens a closed list: its rows, or View all's, are on
-    /// screen. A split's sidebar always shows them; a phone's are hidden under a chat or another screen.
     func reopensOnForeground(usesSplit: Bool) -> Bool {
         usesSplit || (chat == nil && (showingScheduled || !isCoveredByScreen))
     }
 
-    /// The rows left a phone's screen. A chat over them pauses the list's events and keeps its socket.
-    /// View all shows these same rows and opens the list as it appears, so the list stays live
-    /// whichever of the two SwiftUI runs first (on the simulator, View all's appearance).
-    /// Anything else closes the list.
     @MainActor func listDisappeared(_ list: SessionListViewModel) {
         if chat != nil { list.pauseHermes() } else if !showingScheduled { list.closeHermes() }
     }
 
-    /// View all left a phone's screen. A chat it opened, or anything else that covers it while it
-    /// is still pushed, pauses the list's events. Popped back to the list, which opens them as it
-    /// appears, they stay live, in either order.
     @MainActor func scheduledDisappeared(_ list: SessionListViewModel) {
         if chat != nil || showingScheduled { list.pauseHermes() }
     }
 
-    /// Re-root the detail, including a second pick of the same Library screen after it pushed.
-    /// The existing generation advances when a root selection clears the previous covers.
     var detailIdentity: String {
         let destination = chat?.id.uuidString ?? tasks?.id.uuidString ?? skills?.id.uuidString
             ?? memory?.id.uuidString ?? insights?.id.uuidString
@@ -1548,20 +1290,13 @@ struct HermesSessionListCovers {
         return "\(generation)|\(destination)"
     }
 
-    /// Counts the links that brought the rows forward, so work started before one (an export)
-    /// doesn't cover them again when it finishes.
     private(set) var generation = 0
 
-    /// Brings the rows forward for `link` when it names `server`, the list's own.
     mutating func accept(_ link: HermesSessionDestination?, on server: URL) {
         guard link?.server == server else { return }
         bringForward()
     }
 
-    /// Opens a Shortcut's new session for `entry`'s server (#1180) over everything on the rows,
-    /// once `HermesNewChatDestination.chat(on:listed:isLive:)` can. The rows come forward first,
-    /// so a chat that paused the list closes and the list, appearing again, reads the host the
-    /// request waits on. True once it opened.
     @MainActor mutating func open(_ request: HermesNewChatDestination?, on entry: HermesSessionListEntry, listed: String?,
                                   isLive: Bool) -> Bool {
         guard let request, request.server == entry.server else { return false }
@@ -1571,18 +1306,12 @@ struct HermesSessionListCovers {
         return true
     }
 
-    /// Takes a share for `entry`'s list (#1181) as `open(_:on:listed:isLive:)` takes a Shortcut's
-    /// new session: the rows come forward first, so a chat that kept the list closed across the trip
-    /// to the sharing app closes, and the list, appearing again, reads the host the share waits on
-    /// (#1212). The chat's draft stays in the draft store. What the share opens, once it can.
     @MainActor mutating func open(_ share: SharedImportReservation, on entry: HermesSessionListEntry, listed: String?,
                                   isLive: Bool) -> HermesShareOpening? {
         bringForward()
         return share.hermesOpening(on: entry, listed: listed, isLive: isLive)
     }
 
-    /// The accepted first prompt gives a New Session its durable identity without replacing
-    /// its live view. A late callback from a chat that has since closed cannot select it again.
     mutating func identifyChat(_ id: UUID, draftKey: ChatDraftKey) {
         guard let chat, chat.id == id, draftKey.serverID == chat.server.absoluteString,
               case .hermesSession(let connectionID, let profile, .some, _) = draftKey.context,
@@ -1590,9 +1319,6 @@ struct HermesSessionListCovers {
         chatDraftKey = draftKey
     }
 
-    /// `chat` for a view that builds it now. A New Session the host has named reopens by its key,
-    /// so a rebuild (a size-class change, a side switch) shows that session instead of starting
-    /// another, and New Chat with Voice doesn't dictate again. A live chat's view keeps its model.
     func building(_ chat: HermesSessionChat) -> HermesSessionChat {
         guard chat.id == self.chat?.id, case .new(let profile, _, _) = chat.target,
               case .hermesSession(_, _, let key?, _)? = chatDraftKey?.context else { return chat }
@@ -1610,8 +1336,6 @@ struct HermesSessionListCovers {
 
     var selectedSessionID: String? { chat?.lineageRoot ?? selectedSessionKey }
 
-    /// A confirmed row mutation can originate in search, outside the loaded pages.
-    /// Only its own selected chat closes; a newer selection is left alone.
     mutating func closeChat(for row: SessionSummary) {
         guard let chat, let key = selectedSessionKey,
               row.profile == chat.target.profile,
@@ -1619,22 +1343,17 @@ struct HermesSessionListCovers {
         self.chat = nil
     }
 
-    /// Closes everything over the rows, so what opens next shows on the list itself.
     mutating func bringForward() {
         let next = generation + 1
         self = Self()
         generation = next
     }
 
-    /// Shows an export's share sheet unless a link brought the rows forward since it started at
-    /// `generation`.
     mutating func present(_ export: SessionExportShareItem, startedAt generation: Int) {
         if generation == self.generation { exported = export }
     }
 }
 
-/// The Tasks screen a home row pushed on a Hermes host (#1040, #709), with the client it reads
-/// through and the Profile a new Task starts in.
 struct HermesTasksEntry: Hashable, Identifiable {
     let id = UUID()
     let server: URL
@@ -1645,8 +1364,6 @@ struct HermesTasksEntry: Hashable, Identifiable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// The Skills screen a home row pushed on a Hermes host (#1069, #709), with the client for the
-/// Profile it lists.
 struct HermesSkillsEntry: Hashable, Identifiable {
     let id = UUID()
     let client: HermesSkillsClient
@@ -1655,8 +1372,6 @@ struct HermesSkillsEntry: Hashable, Identifiable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// The Memory screen a home row pushed on a Hermes host (#1073, #709), with the client it reads
-/// the Profile's memory through.
 struct HermesMemoryEntry: Hashable, Identifiable {
     let id = UUID()
     let server: URL
@@ -1666,12 +1381,9 @@ struct HermesMemoryEntry: Hashable, Identifiable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// The Usage screen a home row pushed on a Hermes host (#1074, #709), with the client for the
-/// Profile it reads.
 struct HermesInsightsEntry: Hashable, Identifiable {
     let id = UUID()
     let client: HermesInsightsClient
-    /// Where its limits go for the Limits widget (#1409).
     let limitsScope: ProviderLimitsPublisher.Scope
 
     @MainActor init(server: URL, connection: BotConnection, profile: String) {
@@ -1683,18 +1395,11 @@ struct HermesInsightsEntry: Hashable, Identifiable {
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// A project sheet opened for a new Hermes project (#1052), on `folder` (the session's own when
-/// it came from a row's Move menu).
 struct HermesProjectCreation: Identifiable {
     let id = UUID()
     let folder: String
-    /// The session whose Move menu opened the sheet; nil from the list's New Project.
     var session: SessionSummary?
 
-    /// The Move to Project that puts `session` in the project just saved on `folder`, which asks
-    /// first as any other does. Nil from the list's New Project, or when the session works in
-    /// `folder` itself, which makes it the project's. A session under `folder` is asked too: a
-    /// project on a deeper folder may still claim it.
     func move(intoProjectNamed name: String, savedOn folder: String, isBusy: Bool) -> HermesProjectMove? {
         guard let session, session.workspace != folder else { return nil }
         return HermesProjectMove(session: session, projectName: name.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -1702,13 +1407,10 @@ struct HermesProjectCreation: Identifiable {
     }
 }
 
-/// A Move to Project waiting on its confirmation (#1052), with copy that says what it does: Hermes
-/// works in the project's folder from then on, and no file moves. A busy session moves mid-turn.
 struct HermesProjectMove: Identifiable {
     let session: SessionSummary
     let projectName: String
     let folder: String
-    /// A reply runs, or waits on an answer, in the session.
     let isBusy: Bool
 
     var id: String { session.id }
@@ -1721,18 +1423,11 @@ struct HermesProjectMove: Identifiable {
 }
 
 extension SessionSummary {
-    /// The Hermes session this row opens (#1046): its own `id`, which on a legacy compression
-    /// chain is the tip, in the row's Profile, else the listed one. Nil for a webui row.
     func hermesTarget(listedIn profile: String) -> ConversationTarget? {
         guard hermes != nil, let key = sessionId, !key.isEmpty else { return nil }
         return .session(profile: self.profile.flatMap { $0.isEmpty ? nil : $0 } ?? profile, key: key)
     }
 
-    /// The chat this Hermes row opens on `connection`, carrying the parent the row names, so a
-    /// branch shows its "Forked from" row (#1051), and its lineage root, which the chat caches
-    /// under. A Bot Chat row (Archived), or a legacy chain's "Bot Chat (continued)" tip, opens as
-    /// the bot's chat, with its pill and rules (#1145), and carries its root, so it shows its bot's
-    /// cached transcript offline (#1144). Nil for a webui row.
     func hermesChat(on server: URL, connection: BotConnection, listedIn profile: String) -> HermesSessionChat? {
         hermesTarget(listedIn: profile).map {
             HermesSessionChat(server: server, connection: connection, target: $0, parentKey: parentSessionId,
@@ -1741,8 +1436,6 @@ extension SessionSummary {
         }
     }
 
-    /// The bot whose Bot Chat this row is (#1053): the Sessions list opens it there, so one chat
-    /// never has two screens and two read marks. Nil for any other row.
     func hermesBot(on server: URL, connectionID: UUID) -> BotDestination? {
         guard hermes?.isBotChat == true, let profile, !profile.isEmpty else { return nil }
         return BotDestination(server: server, connectionID: connectionID, profile: profile)

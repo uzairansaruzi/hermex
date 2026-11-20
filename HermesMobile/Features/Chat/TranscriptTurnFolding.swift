@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// How the most recent response run ended, keyed to the turn it answered. The
-/// view model records one when a stream finishes so the settled turn's fold
-/// row can read "You stopped after 8s" and failed or stopped turns start open.
 struct TranscriptTurnRunOutcome: Equatable {
     enum Ending: Equatable {
         case completed
@@ -20,7 +17,6 @@ struct TranscriptTurnRunOutcome: Equatable {
     }
 }
 
-/// One settled turn collapsed behind a single row.
 struct TranscriptTurnFold: Equatable, Identifiable {
     enum Label: Equatable {
         case worked(elapsed: String?)
@@ -41,30 +37,19 @@ struct TranscriptTurnFold: Equatable, Identifiable {
     }
 
     let turnKey: String
-    /// Transcript row that draws the fold row above its content: the first row
-    /// of the turn with something to hide.
     let hostRenderID: String
     let label: Label
 
     var id: String { turnKey }
 }
 
-/// What one transcript row does about folding, resolved against the set of
-/// turns the user has expanded.
 struct TranscriptTurnFoldRowState: Equatable {
-    /// Non-nil on the host row, which draws the fold row.
     let fold: TranscriptTurnFold?
     let isExpanded: Bool
     let hidesBubble: Bool
     let hidesActivity: Bool
 }
 
-/// Folding of settled turns: a pure presentation layer over the displayed
-/// transcript. A turn keeps its first and last text reply visible; every other
-/// entry (reasoning, tool rows, interim replies) hides behind one row labelled
-/// with the elapsed time. The turn a stream is answering, and any turn holding
-/// the streaming message, never folds. Cache, message actions, and stream
-/// recovery see none of this.
 struct TranscriptTurnFolds: Equatable {
     private struct Membership: Equatable {
         let foldIndex: Int
@@ -78,12 +63,6 @@ struct TranscriptTurnFolds: Equatable {
 
     static let none = TranscriptTurnFolds()
 
-    /// - Parameters:
-    ///   - activityAnchorIDs: anchors whose reasoning or tool groups are rendered.
-    ///     Pass an empty set when thinking and tool cards are hidden, so a turn
-    ///     with nothing visible to hide gets no row.
-    ///   - rendersBubble: whether a transcript message draws a bubble at all;
-    ///     activity-only assistant shells do not.
     static func derive(
         transcriptMessages: [TranscriptMessage],
         messages: [ChatMessage],
@@ -186,7 +165,6 @@ struct TranscriptTurnFolds: Equatable {
         return result
     }
 
-    /// Nil for rows outside any fold.
     func rowState(for renderID: String, expandedTurnKeys: Set<String>) -> TranscriptTurnFoldRowState? {
         guard let membership = membershipByRenderID[renderID] else { return nil }
 
@@ -200,9 +178,6 @@ struct TranscriptTurnFolds: Equatable {
         )
     }
 
-    /// Server-measured `_turnDuration` first; the client-measured run for the
-    /// turn that just finished next; the gap from the user message to the
-    /// turn's last message last. Nil when none of those exist.
     private static func elapsedSeconds(
         rows: [ChatMessage],
         startTimestamp: Double?,
@@ -227,9 +202,6 @@ struct TranscriptTurnFolds: Equatable {
     }
 }
 
-/// The 44 pt row a settled turn folds behind: elapsed label in monospaced
-/// digits, a chevron, and a bottom hairline. Tapping toggles the turn through
-/// the transcript's disclosure handler so the row stays put while it animates.
 struct TranscriptTurnFoldRowView: View {
     let fold: TranscriptTurnFold
     let isExpanded: Bool
@@ -271,14 +243,8 @@ struct TranscriptTurnFoldRowView: View {
     }
 }
 
-/// Keeps a chat's turn folds and end-of-turn rows between body passes (#1417). Both walk the
-/// whole loaded history, and a text-only reveal tick re-renders the chat without changing
-/// either, so they are derived again only when `Inputs` change.
 @MainActor
 final class TranscriptStructureMemo {
-    /// Everything the folds and end-of-turn rows depend on. `structureRevision`
-    /// (`ChatViewModel.transcriptStructureRevision`) stands in for the transcript rows,
-    /// messages, page offset and reasoning cards.
     struct Inputs: Equatable {
         let structureRevision: Int
         let activityAnchorIDs: Set<String>

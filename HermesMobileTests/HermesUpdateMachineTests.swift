@@ -1,10 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// An update of a Hermes host from Settings (#1075), as scripted sequences of what the host
-/// answers, in the shapes `scripts/local-hermes` answered at the pin (0.21.5, ca678285).
 final class HermesUpdateMachineTests: XCTestCase {
-    /// The receipt an earlier update left on the host.
     private let earlier = HermesUpdateReceipt(outcome: .success, startedAt: "2026-10-01T09:00:00+00:00", postVersion: "0.21.5")
     private let pid = 4242
 
@@ -16,13 +13,10 @@ final class HermesUpdateMachineTests: XCTestCase {
         .status(HermesUpdateStatus(running: true, pid: pid, lines: lines, receipt: earlier))
     }
 
-    /// After the dashboard restarted: it no longer tracks the process, and reports an exit
-    /// code from the log marker or a receipt, which can be an earlier run's.
     private func respawned(_ receipt: HermesUpdateReceipt?, exitCode: Int? = 0, lines: [String] = []) -> HermesUpdateMachine.Event {
         .status(HermesUpdateStatus(running: false, exitCode: exitCode, pid: nil, lines: lines, receipt: receipt))
     }
 
-    /// Feeds `steps` to a run that started at zero, and records the state after each.
     private func play(_ steps: [(seconds: Int, event: HermesUpdateMachine.Event)],
                       into machine: inout HermesUpdateMachine) -> [HermesUpdateMachine.State] {
         steps.map { step in
@@ -64,7 +58,6 @@ final class HermesUpdateMachineTests: XCTestCase {
 
         let states = play([
             (3, respawned(nil, exitCode: nil)),
-            // Exit 0 inferred from the earlier run's receipt after the restart: not this run's.
             (6, respawned(earlier, exitCode: 0)),
             (9, respawned(receipt(.success)))
         ], into: &machine)
@@ -131,17 +124,14 @@ final class HermesUpdateMachineTests: XCTestCase {
     }
 
     func testTimeTheAppWasntWatchingCountsAsOneRead() {
-        // Locked for 12 minutes while the update finished: the first read decides.
         var locked = newRun()
         let states = play([(3, running()), (723, respawned(receipt(.success))), (726, .health(version: "0.22.0"))], into: &locked)
         XCTAssertEqual(states, [.applying, .applying, .done(version: "0.22.0")], "Not still running at the ceiling")
 
-        // A read in flight when the app was suspended fails on resume: one read, not 2 minutes' silence.
         var suspended = newRun()
         let silent = play([(3, running()), (303, .unreachable), (306, running())], into: &suspended)
         XCTAssertEqual(silent, [.applying, .recovering, .applying])
 
-        // The same holds for a dashboard on the old release, waited on across a gap.
         var away = newRun()
         let back = play([(3, respawned(receipt(.success))), (6, .health(version: "0.21.5")), (400, .health(version: "0.21.5"))],
                         into: &away)

@@ -1,14 +1,8 @@
 import Foundation
 
-/// One `GET /api/sessions` page (`HermesREST.sessionList`, #1046). Ordinary paging ignores
-/// `total`; the source-scoped cron list uses it only for its count badge. A row that can't be
-/// read is skipped, yet still counts in `count`, so it never ends paging early. A page without
-/// its `sessions` list is a failed read, not an empty Profile.
 struct HermesSessionPage: Decodable, Equatable {
     let rows: [HermesSessionRow]
-    /// How many rows the host sent, readable or not.
     let count: Int
-    /// Source-scoped total, used only by the scheduled section badge, never to end paging.
     let total: Int?
 
     init(rows: [HermesSessionRow], count: Int? = nil, total: Int? = nil) {
@@ -32,26 +26,17 @@ struct HermesSessionPage: Decodable, Equatable {
     }
 }
 
-/// One session row of a Hermes Profile's list. Every field but `id` is optional, and unknown
-/// ones are ignored. A row's identity is its `_lineage_root_id`, which only a legacy
-/// compression chain carries, else its `id`; it is opened and changed by `id`, that chain's tip.
 struct HermesSessionRow: Decodable, Equatable {
     let id: String
     let source: String?
-    /// The client that made a `local` row (`cli`, `tui`, `acp`, or `desktop` for Hermex's own),
-    /// which `source` alone doesn't tell (#1674).
     let createdSource: String?
-    /// Changed in place by a rename this phone made (#1048), as are `pinned` and `archived`.
     var title: String?
-    /// The first prompt, flattened onto one line and cut at 60 characters with `...`.
     let preview: String?
     let lastActive: Double?
     let startedAt: Double?
     var pinned: Bool?
     var archived: Bool?
-    /// The host's read mark. A session no client has marked reads as read.
     let unread: Bool?
-    /// Hidden from the list, as a bot's Bot Chat is; only the Archived screen shows such a row.
     let hidden: Bool?
     let model: String?
     let cwd: String?
@@ -62,23 +47,14 @@ struct HermesSessionRow: Decodable, Equatable {
 
     var identity: String { lineageRootID ?? id }
 
-    /// A bot's canonical Bot Chat (#1048): hidden, under its exact title.
     var isBotChat: Bool { hidden == true && title == HermesCall.botChatTitle }
 
-    /// The Bot Chat root this row's chat caches under, reading its bot's Bot Chat's copy of it
-    /// while it has none of its own (#1144): an `isBotChat` row's identity, or the root of a legacy compression chain the host
-    /// lists under its tip's "Bot Chat (continued)" title, keeping the root's `hidden`. Nil
-    /// for any other row.
     var botChatRoot: String? {
         guard hidden == true else { return nil }
         if title == HermesCall.botChatTitle { return identity }
         return title == HermesCall.botChatTitle + " (continued)" ? lineageRootID : nil
     }
 
-    /// A group room's session (#1127): hidden, titled `Group: <room id>`, or Desktop's older
-    /// `Group: <name> · …`. No screen lists or opens one (#1146): the host refuses a prompt into a
-    /// room it runs (4122), and a Desktop room would fall out of step. A search result carries no
-    /// `hidden`, so there the title alone tells.
     var isRoomSession: Bool { hidden != false && title?.hasPrefix("Group: ") == true }
 
     enum CodingKeys: String, CodingKey {
@@ -105,7 +81,6 @@ struct HermesSessionRow: Decodable, Equatable {
         guard let id = row.decodeLossyStringIfPresent(forKey: .id), !id.isEmpty else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "A session row without an id"))
         }
-        // `Date(timeIntervalSince1970:)` takes NaN and infinity and traps later, in formatting.
         let time = { (key: CodingKeys) in row.decodeLossyDoubleIfPresent(forKey: key).flatMap { $0.isFinite ? $0 : nil } }
         let root = row.decodeLossyStringIfPresent(forKey: .lineageRootID)
         self.init(
@@ -121,12 +96,6 @@ struct HermesSessionRow: Decodable, Equatable {
         )
     }
 
-    /// The row as the session list shows it, in `profile` unless the row names its own. Its
-    /// title and preview drop the reference lines a Hermex send appends
-    /// (`MessageAttachment.hermesTitle`); the host keeps its own text. A Bot Chat names its bot's
-    /// Profile, as "Bot Chat · <Profile>", since every bot's has the same title. `project` is the
-    /// project lane that claims it (`HermesProjectTree`, #1052). Its `sessionSource` names who
-    /// made it, a `local` row's creator in place of `local` (#1674).
     func summary(in profile: String, project: String? = nil) -> SessionSummary {
         let profile = self.profile.flatMap { $0.isEmpty ? nil : $0 } ?? profile
         let origin = source == "local" ? createdSource.flatMap { $0.isEmpty ? nil : $0 } ?? source : source
@@ -141,10 +110,6 @@ struct HermesSessionRow: Decodable, Equatable {
     }
 }
 
-/// One `GET /api/sessions/search` reply (#1053): a Profile's matches for one query, id matches
-/// first, then message-content matches, one per compression lineage, archived and hidden
-/// sessions included, except a room's (`HermesSessionRow.isRoomSession`). A result that can't be
-/// read is skipped; a reply without `results` is a failed read.
 struct HermesSessionSearch: Decodable, Equatable {
     let results: [HermesSessionSearchResult]
 
@@ -165,15 +130,9 @@ struct HermesSessionSearch: Decodable, Equatable {
     }
 }
 
-/// One search match: the session as a list row, and the message text it matched on.
 struct HermesSessionSearchResult: Decodable, Equatable {
-    /// Opened by `session_id`, the lineage's tip, and merged with the list's rows by
-    /// `lineage_root`. The reply has no `pinned`, `unread`, `hidden` or `cwd`.
     let row: HermesSessionRow
-    /// A content match's FTS `snippet()`: the message's text with `>>>` and `<<<` around each
-    /// match and `...` where it was cut. Nil for an id match, whose snippet is only its preview.
     let snippet: String?
-    /// Who wrote a content match's message (`user`, `assistant`); nil for an id match.
     let role: String?
 
     init(row: HermesSessionRow, snippet: String? = nil, role: String? = nil) {
@@ -198,34 +157,21 @@ struct HermesSessionSearchResult: Decodable, Equatable {
         let title = result.decodeLossyStringIfPresent(forKey: .title)
         row = HermesSessionRow(
             id: id, title: title, preview: result.decodeLossyStringIfPresent(forKey: .preview),
-            // A content match without the session's row has no `last_active`.
             lastActive: time(.lastActive) ?? time(.sessionStarted), startedAt: time(.startedAt) ?? time(.sessionStarted),
             archived: result.decodeLossyBoolIfPresent(forKey: .archived),
-            // Without `hidden`, the title is the tell: a bot's canonical Bot Chat is the session
-            // under that exact title, and the host refuses renaming it.
             hidden: title == HermesCall.botChatTitle ? true : nil,
             model: result.decodeLossyStringIfPresent(forKey: .model), messageCount: result.decodeLossyIntIfPresent(forKey: .messageCount),
             profile: nonEmpty(.profile), parentSessionID: nonEmpty(.parentSessionID), lineageRootID: nonEmpty(.lineageRoot), source: nonEmpty(.source)
         )
-        // An id match has no `role`; its snippet repeats the preview or says "Session ID: …".
         role = nonEmpty(.role)
         snippet = role == nil ? nil : nonEmpty(.snippet)
     }
 }
 
-/// A Hermes Profile's list across the pages read so far (#1046). Every page repeats each pinned
-/// row its own rows missed, archived ones included, and rows shift between pages as sessions
-/// move, so a row is kept once, by identity, and an archived one never. The Archived screen's
-/// pages (#1048) keep only archived rows, since their back-fill brings unarchived pinned ones, and
-/// leave a room's session out (#1146).
 struct HermesSessionPages: Equatable {
-    /// True for the Archived screen's pages.
     let archived: Bool
     private(set) var rows: [HermesSessionRow] = []
-    /// Where the next page starts. A row that leaves moves the host's later rows up one, so it
-    /// moves back one too; for a back-filled pinned row that only re-reads a row.
     private(set) var nextOffset = 0
-    /// False once a page shows the list's end.
     private(set) var hasMore = true
     private var identities: Set<String> = []
     private(set) var total: Int?
@@ -235,15 +181,10 @@ struct HermesSessionPages: Equatable {
         self.archived = archived
     }
 
-    /// Adds the page read at `nextOffset`. One shorter than a full page ends the list. The
-    /// back-filled pinned rows can't be told from the page's own, so a page at least that long
-    /// reads on, unless it brought no new row, which also ends a list whose pinned rows alone
-    /// would fill every page.
     mutating func append(_ page: HermesSessionPage) {
         total = page.total
         var added = 0
         for row in page.rows where (row.archived == true) == archived && identities.insert(row.identity).inserted {
-            // Still new to the list, so a page of rooms alone does not end it.
             added += 1
             if !row.isRoomSession { rows.append(row) }
         }
@@ -251,12 +192,8 @@ struct HermesSessionPages: Equatable {
         hasMore = page.count >= HermesREST.sessionPageSize && added > 0
     }
 
-    /// The row this phone changed, opened and changed by `id` (#1048).
     func row(_ id: String) -> HermesSessionRow? { rows.first { $0.id == id } }
 
-    /// Shows a change this phone wrote before the next read does: a pin or title in place, and
-    /// an archive or restore as the row leaving these pages. Returns the row as it was and where
-    /// it stood, so a refused write can put it back.
     mutating func apply(_ change: HermesSessionChange, to id: String) -> (row: HermesSessionRow, index: Int)? {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return nil }
         let before = rows[index]
@@ -269,7 +206,6 @@ struct HermesSessionPages: Equatable {
         return (before, index)
     }
 
-    /// Drops the row with `id`, as a delete the host confirmed does.
     mutating func remove(_ id: String) {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
         identities.remove(rows.remove(at: index).identity)
@@ -277,8 +213,6 @@ struct HermesSessionPages: Equatable {
         nextOffset = max(nextOffset - 1, 0)
     }
 
-    /// Puts `row` back as it was, where it stood: in place of the row with its identity, else at
-    /// `index`.
     mutating func restore(_ row: HermesSessionRow, at index: Int) {
         if let current = rows.firstIndex(where: { $0.identity == row.identity }) { rows[current] = row; return }
         rows.insert(row, at: min(index, rows.count))
@@ -288,24 +222,17 @@ struct HermesSessionPages: Equatable {
     }
 }
 
-/// The Sessions list's pages, by Profile (#709): one Profile's, or every Profile's for "All
-/// Profiles". The host lists one Profile at a time, so a merged list holds back each row older
-/// than the oldest row some Profile with more pages has read: that Profile's next page could
-/// still hold a newer one, and showing the older row now would let the page land above it.
 struct HermesProfilePages: Equatable {
     private var pages: [String: HermesSessionPages] = [:]
 
-    /// The pages read of `profile`'s list; none yet when it was never read.
     subscript(profile: String) -> HermesSessionPages {
         get { pages[profile] ?? HermesSessionPages() }
         set { pages[profile] = newValue }
     }
 
-    /// More of some Profile's sessions wait on the host.
     var hasMore: Bool { pages.values.contains(where: \.hasMore) }
     var totalCount: Int { pages.values.reduce(0) { $0 + $1.totalCount } }
 
-    /// The rows to show, each with the Profile whose list holds it, in each list's order.
     var rows: [(profile: String, row: HermesSessionRow)] {
         let frontier = pages.count > 1 ? self.frontier : nil
         return pages.keys.sorted().flatMap { profile in
@@ -316,12 +243,10 @@ struct HermesProfilePages: Equatable {
         }
     }
 
-    /// The Profile whose list holds the row `id`.
     func profile(holding id: String) -> String? {
         pages.first { $0.value.row(id) != nil }?.key
     }
 
-    /// Shows a change this phone wrote in the list that holds `id`, as `HermesSessionPages.apply`.
     mutating func apply(_ change: HermesSessionChange, to id: String) -> (profile: String, row: HermesSessionRow, index: Int)? {
         guard let profile = profile(holding: id), let before = pages[profile]?.apply(change, to: id) else { return nil }
         return (profile, before.row, before.index)
@@ -332,8 +257,6 @@ struct HermesProfilePages: Equatable {
         pages[profile]?.remove(id)
     }
 
-    /// The newest of the oldest unpinned rows each Profile with more pages has read; nil when
-    /// none has more. A Profile whose pages hold only pinned rows holds nothing back.
     private var frontier: Double? {
         pages.values.filter(\.hasMore).compactMap { $0.rows.filter { $0.pinned != true }.map(Self.recency).min() }.max()
     }
@@ -342,12 +265,6 @@ struct HermesProfilePages: Equatable {
 }
 
 extension SessionRowAttentionState {
-    /// A Hermes list's row states from one `session.active_list` reply (#1046), by the stored
-    /// session each runtime runs (`session_key`). `waiting` (an open approval, question or other
-    /// request) reads as Input, since the item can't say which, until the list's
-    /// `approval.pending` read finds an approval (#1679); `starting`, `working` and
-    /// `streaming` as Working; idle, `resuming` and unknown states as nothing. Of several runtimes
-    /// on one session, Input wins. The list's `is_active` is a 300-second guess and is never read.
     static func hermesStates(_ items: [BotJSON]) -> [String: SessionRowAttentionState] {
         var states: [String: SessionRowAttentionState] = [:]
         for item in items {

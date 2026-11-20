@@ -39,7 +39,6 @@ struct BotSessionControl: Identifiable, Equatable {
     }
 }
 
-/// Kept separate from connection failures so a rejected setting preserves the host's explanation.
 enum BotSettingFailure: Error, LocalizedError {
     case rejected(Int, String), unknownOutcome
     var errorDescription: String? {

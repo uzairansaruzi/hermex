@@ -42,7 +42,6 @@ final class ReviewDiffSelectionTests: XCTestCase {
         XCTAssertFalse(selection.isAwaitingRangeEnd)
     }
 
-    /// A comment left empty lands exactly as the old "Add to prompt" snippet did (#399).
     func testUncommentedSnippetIsPathLineRangeAndFencedDiff() {
         var selection = ReviewDiffSelection()
         selection.longPress(rowID: "f:line:0", fileID: "f")
@@ -89,8 +88,6 @@ final class ReviewDiffSelectionTests: XCTestCase {
         )
     }
 
-    /// Comments from two files land after what the user typed, in the order added,
-    /// each a paragraph of its own, and the bar counts them.
     func testCommentsAppendToTheDraftInOrder() throws {
         var composer = ReviewCommentComposer()
         var draft = "Can you tighten these up?"

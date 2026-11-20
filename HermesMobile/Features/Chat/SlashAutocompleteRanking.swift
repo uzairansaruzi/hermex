@@ -1,9 +1,6 @@
 import Foundation
 
-/// Everything the popover draws for one query.
 struct SlashAutocompleteResults: Equatable, Sendable {
-    /// The pass that produced these rows. Comparing it against the current pass
-    /// is how the view knows whether they still describe what the user typed.
     var input: SlashAutocompleteRanking
     var commands: [SlashCommand] = []
     var skills: [SkillSlashSuggestion] = []
@@ -19,41 +16,27 @@ struct SlashAutocompleteResults: Equatable, Sendable {
     }
 }
 
-/// The inputs one ranking pass needs. Held as a value so the view can hand it to
-/// `.task(id:)` and, for a large catalog, to a background task.
 struct SlashAutocompleteRanking: Equatable, Sendable {
     enum Mode: Equatable, Sendable {
-        /// The `/` trigger at the start of the draft: built-in commands, skills,
-        /// and agent commands.
         case commands
-        /// The `/` trigger mid-sentence, where only a skill can work.
         case skillsOnly
-        /// The `/skills <query>` trigger.
         case skillSubArgs
-        /// A sub-argument list that filters synchronously and needs no ranking.
         case inactive
     }
 
-    /// Up to this many candidates, ranking costs microseconds and belongs
-    /// inline; past it the work is worth a hop off the main actor.
     private static let inlineRankingLimit = 128
 
     let mode: Mode
     let query: String
     let skills: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
-    /// The app's own commands, listed first (`SlashCommandScope.builtins`).
     var builtins = SlashCommandCatalog.allCommands
-    /// Whether an agent command's aliases find it, as in a Hermes chat (#1036).
     var matchesAliases = false
 
-    /// True when this pass is cheap enough to run wherever it is asked for.
     var ranksInline: Bool {
         skills.count + agentCommands.count <= Self.inlineRankingLimit
     }
 
-    /// Ranks off the main actor once the catalog is big enough for the work to
-    /// show up as typing lag.
     func rankedResults() async -> SlashAutocompleteResults {
         guard !ranksInline else { return results() }
 
@@ -98,9 +81,6 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable, Sendable {
     let argHint: String?
     let aliases: [String]
 
-    /// The server's own description, or `nil`. Ranking uses this rather than
-    /// `description` so the "Agent command" placeholder, which every command
-    /// without a description shares, never matches a query.
     private let serverDescription: String?
 
     var id: String { name.lowercased() }
@@ -120,9 +100,6 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable, Sendable {
         aliases = command.aliases ?? []
     }
 
-    /// The agent commands worth showing for `query`, best first, skipping any
-    /// name in `excludedNames` and any duplicate. `matchingAliases` ranks each
-    /// command by its best name or alias, so `/ctx` finds `/context` (#1036).
     static func matching(
         _ query: String,
         in commands: [AgentCommand],
@@ -145,7 +122,6 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable, Sendable {
             }
         }
 
-        // One entry per name and alias, then each command once, at its best entry.
         let entries = candidates.flatMap { suggestion in
             ([suggestion.name] + suggestion.aliases).map { (suggestion: suggestion, name: $0) }
         }

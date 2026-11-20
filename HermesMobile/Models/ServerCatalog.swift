@@ -3,9 +3,6 @@ import Foundation
 struct ChatStartResponse: Decodable, Equatable {
     let streamId: String?
     let sessionId: String?
-    /// Unix epoch seconds for when the server started this turn
-    /// (`pending_started_at`), matching the value `/api/sessions/<id>` reports
-    /// while the turn is in flight. Absent on servers that do not send it.
     let pendingStartedAt: Double?
     let error: String?
 
@@ -24,9 +21,6 @@ struct ChatStartResponse: Decodable, Equatable {
         error = container.decodeLossyStringIfPresent(forKey: .error)
     }
 
-    /// When the turn this response opened really started: the server's
-    /// `pending_started_at` when it reported one, else the local moment the
-    /// client sent. Used to seed the run's "Working for" counter.
     func runStartedAt(sentAt: Date) -> Date {
         guard let pendingStartedAt, pendingStartedAt > 0 else { return sentAt }
         return Date(timeIntervalSince1970: pendingStartedAt)
@@ -47,19 +41,7 @@ struct ChatStreamStatusResponse: Decodable, Equatable {
     let journal: RunJournalStatus?
 }
 
-/// The server's run-journal summary, surfaced on `/api/chat/stream/status` so a
-/// reconciled Live Activity can be finalized with the run's real outcome (#267).
-/// Every field is optional: the `journal` block is absent when the server has no
-/// summary for a stream, and `terminalState`'s vocabulary may grow upstream — so
-/// we decode tolerantly and never crash on an unknown value.
 struct RunJournalStatus: Decodable, Equatable {
-    /// Whether the server logged a genuine terminal event for the run. Decoded to
-    /// mirror the journal payload shape (#267 acceptance criterion named both
-    /// fields); outcome mapping reads `terminalState` only. Kept because it is not
-    /// redundant with `terminalState`: a run the server force-marks
-    /// `"lost-worker-bookkeeping"` reports `terminal == false`, so this stays
-    /// available for any future consumer that must tell a real terminal event from
-    /// a bookkeeping one.
     let terminal: Bool?
     let terminalState: String?
 }
@@ -71,20 +53,10 @@ struct ChatSteerResponse: Decodable, Equatable {
     let error: String?
 }
 
-/// What became of a steer, independent of the transport that carried it.
-/// `APIClient.steerChat` maps webui's `{accepted, fallback}` reply here, so the
-/// Hermes gateway (#701) only needs a new mapping. No case stops the run.
 enum ChatSteerOutcome {
-    /// The agent took the hint into the running turn.
     case delivered
-    /// The run can't take steers (webui's gateway backend); the message waits
-    /// for the next turn.
     case serverQueued
-    /// The session has no live run any more; the message goes out as a normal send.
     case runEnded
-    /// Anything else. `transportError` is set when the request itself failed
-    /// (network, HTTP status, or an unreadable reply), so an expired login can
-    /// still sign out.
     case refused(transportError: Error?)
 }
 
@@ -180,12 +152,6 @@ struct AgentCommand: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// `GET /api/providers` — read-only provider status (#26). Shape verified against
-/// the live server (2026-07-02) and upstream `api/providers.py::get_providers()`
-/// @ `312d3fab`: standard entries carry the full field set, while entries derived
-/// from `custom_providers` in config.yaml (`is_custom == true`) omit `is_oauth`,
-/// `auth_error`, `is_self_hosted`, `base_url`, and `is_plugin_provider` — so every
-/// field stays optional and decoding never fails on a partial entry.
 struct ProvidersResponse: Decodable, Equatable {
     let providers: [ProviderSummary]?
     let activeProvider: String?
@@ -207,9 +173,6 @@ struct ProvidersResponse: Decodable, Equatable {
     }
 }
 
-/// One provider entry from `GET /api/providers`. `keySource` vocabulary upstream:
-/// `env_file`, `env_var`, `config_yaml`, `oauth`, `none` — plus `env`, `config`,
-/// and `token` from the live-auth fallback probe. Unknown values are kept verbatim.
 struct ProviderSummary: Decodable, Equatable, Sendable {
     let id: String?
     let displayName: String?
@@ -223,8 +186,6 @@ struct ProviderSummary: Decodable, Equatable, Sendable {
     let keySource: String?
     let authError: String?
     let models: [ProviderModel]?
-    /// Size of the provider's complete catalog. May exceed `models.count` when the
-    /// server trims the list to a featured subset (e.g. large Nous Portal accounts).
     let modelsTotal: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -291,9 +252,6 @@ struct ProviderSummary: Decodable, Equatable, Sendable {
     }
 }
 
-/// A model entry inside a provider's `models` list. Upstream normally emits
-/// `{ "id": …, "label": … }` objects, but the docs historically described bare
-/// model-ID strings — both shapes decode.
 struct ProviderModel: Decodable, Equatable, Sendable {
     let id: String?
     let label: String?
@@ -322,10 +280,6 @@ struct ProviderModel: Decodable, Equatable, Sendable {
     }
 }
 
-/// `GET /api/settings` (the saved-settings body `POST /api/settings` echoes the
-/// same shape back). The server returns ~75 keys; we decode only the ones with
-/// a consumer or near-term use (#19). Every field is optional and lossy-decoded
-/// — servers omit keys freely and we never crash on an unexpected shape.
 struct SettingsResponse: Decodable, Equatable {
     let botName: String?
     let webuiVersion: String?
@@ -376,7 +330,6 @@ struct SettingsResponse: Decodable, Equatable {
         passwordAuthEnabled = container.decodeLossyBoolIfPresent(forKey: .passwordAuthEnabled)
         passkeysEnabled = container.decodeLossyBoolIfPresent(forKey: .passkeysEnabled)
         passwordlessEnabled = container.decodeLossyBoolIfPresent(forKey: .passwordlessEnabled)
-        // Preferences must be strings; malformed values behave like omitted settings.
         ttsVoice = try? container.decode(String.self, forKey: .ttsVoice)
         ttsEngine = try? container.decode(String.self, forKey: .ttsEngine)
     }
@@ -387,9 +340,6 @@ struct DefaultModelResponse: Decodable, Equatable {
     let model: String?
 }
 
-/// `GET /api/updates/check`. Every field is optional: older servers, the
-/// `{ "disabled": true }` opt-out payload, and failed/`stale_check` responses
-/// all omit different keys, and we never crash on a shape we don't expect.
 struct UpdatesCheckResponse: Decodable, Equatable {
     let webui: UpdateTargetInfo?
     let agent: UpdateTargetInfo?
@@ -410,25 +360,16 @@ struct UpdateTargetInfo: Decodable, Equatable {
 }
 
 extension UpdatesCheckResponse {
-    /// What the Settings screen should show for the webui repo. `.unavailable`
-    /// means "show the version only, no indicator" — the server turned the check
-    /// off, errored, returned a stale result, or omitted the webui block.
     enum WebUIUpdateState: Equatable {
         case upToDate
         case updateAvailable(behind: Int)
         case unavailable
     }
 
-    /// The fully-distinguished result of a *manual* (forced) update check (#308).
-    /// Unlike `webuiUpdateState`, this keeps `disabled` and `error` apart so the
-    /// "Check for updates" popup can word each case for the user — the passive
-    /// inline note treats both as "no indicator" and collapses them together.
     enum ForcedCheckOutcome: Equatable {
         case updateAvailable(behind: Int)
         case upToDate
-        /// Update checks are turned off on this server (`{ "disabled": true }`).
         case disabled
-        /// The check failed, returned a stale result, or omitted the webui block.
         case error
     }
 
@@ -452,9 +393,6 @@ extension UpdatesCheckResponse {
         return .upToDate
     }
 
-    /// The passive inline indicator's coarser view of the same check. Derived from
-    /// `forcedCheckOutcome` so the two never drift: both "off" and "errored"
-    /// collapse to `.unavailable` (show the version only, with no indicator).
     var webuiUpdateState: WebUIUpdateState {
         switch forcedCheckOutcome {
         case let .updateAvailable(behind):
@@ -467,11 +405,6 @@ extension UpdatesCheckResponse {
     }
 }
 
-/// `POST /api/updates/apply`. Tolerant: every field is optional because the
-/// server returns a different mix of keys per outcome — success (`ok`,
-/// `restart_scheduled`), restart-blocked (`restart_blocked` + active counts),
-/// merge conflict (`conflict`), diverged history (`diverged`), or a generic
-/// failure — and may add more over time. We never crash on an unexpected shape.
 struct UpdatesApplyResponse: Decodable, Equatable {
     let ok: Bool?
     let message: String?
@@ -486,21 +419,13 @@ struct UpdatesApplyResponse: Decodable, Equatable {
 }
 
 extension UpdatesApplyResponse {
-    /// How the Settings screen should react to an apply attempt.
     enum Outcome: Equatable {
-        /// Server accepted the update and is restarting; poll until it returns.
         case applying
-        /// Active chat/agent work blocked the restart. Not a failure — surface
-        /// the server's message and let the user retry once work finishes.
         case restartBlocked
-        /// The update could not be applied (merge conflict, diverged history,
-        /// unreachable remote, or a generic `ok: false`).
         case failed
     }
 
     var outcome: Outcome {
-        // A restart-blocked response always carries `ok: false`, so check the
-        // blocked flag first to avoid mislabelling it as a hard failure.
         if restartBlocked == true {
             return .restartBlocked
         }
@@ -512,7 +437,6 @@ extension UpdatesApplyResponse {
         return .failed
     }
 
-    /// The server's human-readable message, or `fallback` when it omitted one.
     func displayMessage(default fallback: String) -> String {
         guard let trimmed = message?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty
@@ -529,12 +453,7 @@ struct ReasoningStatusResponse: Decodable, Equatable {
     let showReasoning: Bool?
     let reasoningEffort: String?
     let effort: String?
-    /// Model-aware effort vocabulary from `GET /api/reasoning` (`supported_efforts`).
-    /// `nil` on older servers that don't send the field — callers must fall back
-    /// to the static effort list (issue #18).
     let supportedEfforts: [String]?
-    /// `supports_reasoning_effort` — `false` means the resolved model has no
-    /// effort control at all (hide the picker). `nil` on older servers.
     let supportsReasoningEffort: Bool?
     let error: String?
 
@@ -542,8 +461,6 @@ struct ReasoningStatusResponse: Decodable, Equatable {
         reasoningEffort ?? effort
     }
 
-    /// `supported_efforts` trimmed, lowercased, de-duplicated, order preserved.
-    /// Stays `nil` when the server omitted the field (legacy fallback signal).
     var normalizedSupportedEfforts: [String]? {
         guard let supportedEfforts else { return nil }
         var seen = Set<String>()
@@ -605,8 +522,6 @@ struct ProfileCreateResponse: Decodable, Equatable {
     let error: String?
 }
 
-/// Mirrors the upstream profile-name rule (`^[a-z0-9][a-z0-9_-]{0,63}$`) so the
-/// create form can validate before hitting the server.
 enum ProfileNameRules {
     static func isValid(_ name: String) -> Bool {
         guard let first = name.first, name.count <= 64 else { return false }
@@ -618,8 +533,6 @@ enum ProfileNameRules {
         ("a"..."z").contains(character) || ("0"..."9").contains(character)
     }
 
-    /// Mirrors the upstream base-URL rule for profile creation: when provided,
-    /// the value must start with `http://` or `https://` (server 400s otherwise).
     static func isValidBaseURL(_ value: String) -> Bool {
         value.hasPrefix("http://") || value.hasPrefix("https://")
     }
@@ -700,11 +613,6 @@ struct ModelCatalogGroup: Identifiable, Equatable, Sendable {
     let providerID: String?
     let models: [ModelCatalogOption]
     let extraModels: [ModelCatalogOption]
-    /// All models in the group, including the overflow tail the server
-    /// exposes as `extra_models` (visible `models` + searchable `extraModels`),
-    /// de-duplicated by `id` to keep ForEach identity unique. Stored rather
-    /// than computed because the picker reads it many times per body pass, and
-    /// OpenRouter or Nous tails run to hundreds of models.
     let allModels: [ModelCatalogOption]
 
     init(
@@ -746,24 +654,11 @@ struct ModelCatalogOption: Identifiable, Equatable, Hashable, Sendable {
 }
 
 extension String {
-    /// The model id without the `@provider:` prefix the server adds to models
-    /// that belong to a provider other than the active one
-    /// (`_apply_provider_prefix`, `api/config.py:2279` @ 399cd7ab — verified on
-    /// the live deployment, where `openai-codex` is active and its models are
-    /// bare while `@deepseek:` and `@gemini:` ones are prefixed).
-    ///
-    /// The same model is therefore spelled differently depending on which
-    /// provider happens to be active, so a saved default written under one
-    /// spelling stopped matching the catalog under the other and the picker
-    /// showed no checkmark at all.
     var bareModelID: String {
         guard hasPrefix("@"), let separator = lastIndex(of: ":") else { return self }
         return String(self[index(after: separator)...])
     }
 
-    /// The provider named by an `@provider:` prefix, if there is one. The
-    /// provider may itself contain colons, so the final separator begins the
-    /// model id.
     var modelIDProviderPrefix: String? {
         guard hasPrefix("@"), let separator = lastIndex(of: ":") else { return nil }
         let provider = self[index(after: startIndex)..<separator]
@@ -783,26 +678,9 @@ extension ModelCatalogOption {
                 == normalizedModelID(modelID, providerID: selectionProvider)
         else { return false }
 
-        // A provider named on either side has to agree, so two providers
-        // offering the same bare id can't be confused — this deployment really
-        // does serve `@gemini:gemini-2.5-flash` and `@google:gemini-2.5-flash`
-        // side by side. The `@provider:` prefix counts as naming one.
         guard let selectionProvider else {
-            // A selection that names no provider is the active provider's
-            // spelling, because the prefix is exactly what the server adds to
-            // everyone else. Matching it against a prefixed option would tick
-            // every provider that happens to offer the same bare id.
             return id.modelIDProviderPrefix == nil
         }
-        // Same rule in the other direction. An option carrying no provider at
-        // all cannot be shown to belong to the named one, and guessing "yes"
-        // here is the exact mirror of the double-checkmark bug the selection
-        // side above was just fixed for. This also restores what the original
-        // `self.providerID == providerID` comparison did before the prefix
-        // normalization was added, so it is not a new restriction.
-        //
-        // `parseModelOptions` fills `providerID` from the group's `provider_id`,
-        // so this is only reachable if a server returns a group without one.
         guard let optionProvider else { return false }
         return optionProvider == selectionProvider
     }
@@ -819,8 +697,6 @@ extension Collection where Element == ModelCatalogOption {
     func firstMatchingSelection(modelID: String?, providerID: String?) -> ModelCatalogOption? {
         guard let modelID, !modelID.isEmpty else { return nil }
 
-        // Prefer the identical spelling; only then fall back to the normalized
-        // comparison, so an exact match is never lost to a same-named model.
         if let exact = first(where: { $0.id == modelID && (providerID == nil || $0.providerID == providerID) }) {
             return exact
         }
@@ -843,9 +719,6 @@ extension ModelsResponse {
     }
 }
 
-/// Response of `GET /api/models/live`: the uncached model list for one provider.
-/// Shape: `{"provider": "<id>", "models": [{"id", "label"}], "count": <int>}`;
-/// the server echoes back the provider it resolved when none was requested.
 struct ModelsLiveResponse: Decodable, Equatable {
     let provider: String?
     let models: [JSONValue]?
@@ -853,13 +726,11 @@ struct ModelsLiveResponse: Decodable, Equatable {
 }
 
 extension ModelsLiveResponse {
-    /// Provider id with whitespace-only values normalized away.
     var normalizedProvider: String? {
         let trimmed = provider?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == false ? trimmed : nil
     }
 
-    /// Models parsed from the live payload, attributed to the echoed provider.
     var liveOptions: [ModelCatalogOption] {
         guard let models else { return [] }
         return ModelCatalogParser.parseModelOptions(
@@ -870,10 +741,6 @@ extension ModelsLiveResponse {
 }
 
 extension Array where Element == ModelCatalogGroup {
-    /// Replaces the matching provider group's models with the live list (live is
-    /// authoritative for that provider, covering both additions and removals).
-    /// Returns `self` unchanged when the provider matches no group or the live
-    /// list is empty, so an odd live response can never blank out the cached picker.
     func mergingLiveModels(from response: ModelsLiveResponse) -> [ModelCatalogGroup] {
         guard let provider = response.normalizedProvider else { return self }
 

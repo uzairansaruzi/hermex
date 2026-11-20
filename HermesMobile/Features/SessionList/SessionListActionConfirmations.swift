@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A session list's delete confirmations, and its failed actions handed to `showFailure`, which
-/// shows them as failure toasts rather than alerts (#1410), since nothing needs the user's answer.
 struct SessionActionConfirmations: ViewModifier {
     @Bindable var viewModel: SessionListViewModel
     let showFailure: (String) -> Void

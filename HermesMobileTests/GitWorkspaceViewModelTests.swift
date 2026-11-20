@@ -2,7 +2,6 @@ import XCTest
 import SwiftUI
 @testable import HermesMobile
 
-/// View-model behaviour + diff parsing for the workspace-git feature (issue #312, Slice A).
 final class GitWorkspaceViewModelTests: APIClientTestCase {
 
     private func session(id: String) throws -> SessionSummary {
@@ -28,8 +27,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
     }
     """
 
-    // MARK: - Loading
-
     @MainActor
     func testLoadExcludesIgnoredFilesFromCountsAndTotals() async throws {
         let client = makeClient { request in
@@ -52,7 +49,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
     @MainActor
     func testDifferentSessionsHaveIndependentState() async throws {
-        // One handler that answers per session_id; two view models, each scoped to its session.
         let client = makeClient { request in
             let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
             let sessionID = components?.queryItems?.first { $0.name == "session_id" }?.value
@@ -126,7 +122,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
-    /// A webui read that answers no `git` at all ends as a retryable failure, never a spinner.
     @MainActor
     func testAStatusReadWithoutAnAnswerOffersTryAgain() async throws {
         let client = makeClient { request in apiTestJSONResponse(#"{"git": null}"#, for: request) }
@@ -136,8 +131,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
         XCTAssertTrue(viewModel.showsStatusFailure)
     }
-
-    // MARK: - Toolbar availability
 
     @MainActor
     func testAvailabilityShowsOnlyWhenGitInfoConfirmsRepository() async throws {
@@ -260,8 +253,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
     @MainActor
     func testAvailabilityLoadsBranchesAndCheckoutRefreshesSharedState() async throws {
-        // Stateful mock: the server reflects the new current branch on every read after a
-        // checkout, so the post-checkout branch reload sees "feature", not stale "main".
         var currentBranch = "main"
         let client = makeClient { request in
             switch request.url?.path {
@@ -362,11 +353,8 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
             stashingChanges: true
         )
 
-        // The branch switch itself succeeded, so the outcome stays .success...
         XCTAssertEqual(outcome, .success)
         XCTAssertEqual(viewModel.currentBranchName, "feature")
-        // ...but the restore failure must surface so the UI can alert the user that
-        // their stashed changes were not re-applied.
         XCTAssertEqual(viewModel.actionErrorMessage, "CONFLICT: stash could not be restored")
     }
 
@@ -378,12 +366,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertTrue(GitWriteAvailability(isStreaming: false, isViewingCachedData: true).fetchDisabled)
     }
 
-    // MARK: - Hermes repository (#1114)
-
-    /// Changes rows come from `review/list` (counts, status letter, staged) joined by path with
-    /// `status.files`' flags, which the host lists in its own order. The badge reads the branch,
-    /// ahead/behind and dirty count from the status, and a Hermes chat has writes and branches
-    /// but, without hermex-push's routes, no fetch or pull.
     @MainActor
     func testHermesChangesJoinReviewRowsWithStatusFlagsByPath() async throws {
         let git = HermesGitHost.client { request in
@@ -423,10 +405,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(changes.status?.branch, "feature/x")
     }
 
-    /// The host caps `status.files` at 200 but lists every change in `review/list`, so a change
-    /// past the cap is still a row, and the list isn't marked truncated. Such a row takes untracked
-    /// and conflicted from its status letter. Whether a staged one also has worktree edits is
-    /// unknown, so it opens its whole change against HEAD, never only the staged half.
     @MainActor
     func testHermesRowsPastTheStatusCapStayListedWithTheirWholeChange() async throws {
         let capped = (0..<200).map { String(format: "f%03d.txt", $0) }
@@ -461,8 +439,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(DiffHunk.parse(diff?.diff ?? "").map(\.additions), [2])
     }
 
-    /// A `review/list` answer without its file list says nothing about which files are gone, so
-    /// the chat's review progress keeps them; an empty list is a clean tree and forgets them.
     @MainActor
     func testAHermesChangeListWithoutItsFilesForgetsNoReviewProgress() async throws {
         var listed: BotJSON = .null
@@ -482,8 +458,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(progress.files(in: git.reviewScope), [:])
     }
 
-    /// A status read whose sheet stopped waiting (it closed, or a newer retry replaced it) answers
-    /// into nothing, so it can't forget choices made in a sheet opened since.
     @MainActor
     func testACancelledLoadForgetsNoReviewProgress() async throws {
         let git = ParkedStatusGitClient()
@@ -506,9 +480,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(changes.status)
     }
 
-    /// Before the first commit `file-diff` (`git diff HEAD`) is empty, so a staged new file past
-    /// the cap shows its current content as all additions, worktree edits included, as webui shows
-    /// an untracked file; a binary one reads as binary.
     @MainActor
     func testAHermesStagedFileBeforeTheFirstCommitShowsItsCurrentContent() async throws {
         let capped = (0..<200).map { String(format: "f%03d.txt", $0) }
@@ -546,9 +517,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(image?.binary, true)
     }
 
-    /// Hermes tools name files relative to the chat's folder or absolutely, while rows are relative
-    /// to the repository root. From `Sources`, the turn's `App.swift` is `Sources/App.swift`, not
-    /// the root's `App.swift`, and an absolute path picks its own row, so the card opens that diff.
     @MainActor
     func testAHermesTurnCardFindsSubfolderFilesByTheirRepositoryPath() async throws {
         let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
@@ -575,8 +543,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(diff?.diff, HermesGitHost.diffText(for: "Sources/App.swift"))
     }
 
-    /// A tool path is anchored to the chat's folder and its dot segments collapsed, as the host
-    /// resolves it, so `../README.md` from `Sources` is the root's README, not `Sources/README.md`.
     @MainActor
     func testAHermesTurnCardFollowsDotSegmentsFromTheChatsFolder() async throws {
         let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
@@ -600,9 +566,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesGitHost.requests.last.map { HermesGitHost.query($0, "file") }, "README.md")
     }
 
-    /// The host resolves symlinks in the root it returns (`/private/tmp/app` on a Mac) but keeps
-    /// the folder as configured (`/tmp/app/Sources`). The folder still maps into the root, so the
-    /// turn's `App.swift` is `Sources/App.swift`, not the root's `App.swift`.
     @MainActor
     func testAHermesTurnCardMapsAFolderSpelledThroughASymlink() async throws {
         let root = "/private/tmp/app"
@@ -629,8 +592,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
                        "/api/git/review/diff path=\(root) file=Sources/App.swift scope=uncommitted staged=false")
     }
 
-    /// A folder outside a repository hides Git without asking for its status, and the Changes
-    /// sheet shows its non-repository state. A repository the agent then creates shows at turn end.
     @MainActor
     func testAHermesFolderOutsideARepositoryHidesGitUntilOneAppears() async throws {
         var root: String?
@@ -655,8 +616,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(availability.status?.trackedFiles.map(\.displayPath), ["a.txt"])
     }
 
-    /// Each folder's client resolves its own root, once: a refresh reuses it, and a chat moved to
-    /// another folder (which gets a new client) asks again and reads the new repository.
     @MainActor
     func testEachHermesFolderResolvesItsOwnRootOnce() async throws {
         let other = "/Users/agent/projects/other"
@@ -680,17 +639,12 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(moved.currentBranchName, "other-main")
     }
 
-    // MARK: - This Branch (#1386)
-
-    /// `review/list?scope=branch`'s answer: `files` changed since `base`, or none with a null base
-    /// when the host found no base branch.
     private static func branchReply(base: String?, files: [String] = []) -> HermesHostFixture.Reply {
         .json(200, .object(["base": base.map(BotJSON.string) ?? .null, "files": .array(files.map {
             .object(["path": .string($0), "added": .number(1), "removed": .number(0), "status": .string("M"), "staged": .bool(false)])
         })]))
     }
 
-    /// Only a Hermes repository offers This Branch: webui has no branch range.
     @MainActor
     func testOnlyAHermesRepositoryOffersThisBranch() async throws {
         let hermes = GitWorkspaceViewModel(git: HermesGitHost.client { HermesGitHost.repositoryReply($0) })
@@ -704,9 +658,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertFalse(webui.showsScopePicker)
     }
 
-    /// A failed read, first or a refresh, stays a retryable failure, never an empty range; an empty
-    /// answer without a base means no base branch was found, and one with a base that nothing was
-    /// committed since.
     @MainActor
     func testThisBranchTellsAFailureFromNoBaseAndFromAnEmptyRange() async throws {
         var list: HermesHostFixture.Reply = .json(500, .object(["detail": .string("boom")]))
@@ -738,7 +689,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNotNil(changes.branchErrorMessage)
     }
 
-    /// A refresh that answers first wins: the older read's late rows never replace it.
     @MainActor
     func testAnOlderBranchReadLandingLateIsDiscarded() async throws {
         nonisolated(unsafe) var lists = 0
@@ -761,8 +711,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(changes.branchReview?.files.map(\.displayPath), ["new.swift"])
     }
 
-    /// Leaving This Branch mid-read cancels it, as the sheet's `.task(id:)` does: it shows no
-    /// error, and coming back reads the branch again.
     @MainActor
     func testABranchReadCancelledByAScopeSwitchIsReadAgainOnReturn() async throws {
         nonisolated(unsafe) var lists = 0
@@ -788,8 +736,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(changes.branchReview?.files.map(\.displayPath), ["a.swift"])
     }
 
-    /// Branch progress lives under its own key: the working tree's status never prunes it, and a
-    /// branch read forgets only the branch files it no longer lists.
     @MainActor
     func testBranchReviewProgressIsKeptApartFromUncommittedProgress() async throws {
         let git = HermesGitHost.client { request in
@@ -810,11 +756,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(Array(progress.files(in: branchScope).keys), ["kept.swift"])
     }
 
-    // MARK: - A turn's range (#1392)
-
-    /// The latest turn's card joins its range since the base its send read, so a file the agent
-    /// committed keeps its counts and opens. It waits for that read; an older base's read landing
-    /// late is dropped; a failed read falls back to the uncommitted status and says so.
     @MainActor
     func testTheTurnCardJoinsItsRangeForTheLatestBaseAndFallsBackOnFailure() async throws {
         let workspace = HermesWorkspaceFileClientTests.context(cwd: HermesGitHost.repository)
@@ -858,8 +799,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(fallback.files.map(\.displayPath), ["Other.swift"])
     }
 
-    /// A branch switch or pull moves the tree the latest turn's range compares with, so the card's
-    /// counts are read again, once per action; a fetch moves nothing and reads nothing.
     @MainActor
     func testASwitchOrPullReadsTheTurnRangeAgain() async throws {
         nonisolated(unsafe) var current = "main"
@@ -898,8 +837,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesGitHost.requests.filter { HermesGitHost.query($0, "scope") == "lastTurn" }.count, 3)
     }
 
-    /// A turn's range keeps its review progress under its own base: the working tree's status never
-    /// prunes it, and another turn's base starts afresh.
     @MainActor
     func testATurnRangeKeepsItsReviewProgressApart() async throws {
         let git = HermesGitHost.client { HermesGitHost.repositoryReply($0) }
@@ -914,7 +851,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(progress.files(in: git.progressScope(.since(base: "3333"), base: nil)), [:])
     }
 
-    /// `review/list?scope=lastTurn`'s answer: tracked `files` changed since `base`.
     private static func turnReply(base: String, files: [(path: String, added: Int, removed: Int)]) -> HermesHostFixture.Reply {
         .json(200, .object(["base": .string(base), "files": .array(files.map {
             .object(["path": .string($0.path), "added": .number(Double($0.added)), "removed": .number(Double($0.removed)),
@@ -922,10 +858,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         })]))
     }
 
-    // MARK: - Pull request (#1391)
-
-    /// The pull-request read runs apart from the status: a host whose `gh` hangs still shows the
-    /// Changes count, and the link appears once the read answers.
     @MainActor
     func testASlowPullRequestReadNeverHoldsTheChangesCount() async throws {
         let git = HermesGitHost.client { request in
@@ -947,8 +879,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 1)
     }
 
-    /// The link belongs to the branch it was read on: when a turn leaves the repository on another
-    /// branch, it goes at once, before the new branch's read answers.
     @MainActor
     func testAnotherBranchDropsThePullRequestAtOnce() async throws {
         var branch = "main"
@@ -975,8 +905,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
     }
 
-    /// A switch drops the previous branch's link once the host confirms it, while the reads after
-    /// it are still out, and shows the new branch's link once they answer.
     @MainActor
     func testASwitchDropsThePreviousPullRequestBeforeItsRereads() async throws {
         nonisolated(unsafe) var branch = "main"
@@ -989,7 +917,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
             case "/api/git/review/ship-info":
                 return Self.pullRequest(branch == "main" ? 42 : 43, "OPEN")
             case "/api/git/status" where branch == "dev":
-                // The switch reads the status itself; the info read after it is the second.
                 statusReadsOnDev += 1
                 if statusReadsOnDev == 2 { return .park }
                 return Self.branchHost(request, branch: branch)
@@ -1016,8 +943,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(availability.pullRequest?.number, 43)
     }
 
-    /// A read still out when the chat goes off screen never lands, and the menu reads again once
-    /// the chat is back.
     @MainActor
     func testLeavingTheChatCancelsThePullRequestRead() async throws {
         nonisolated(unsafe) var parks = true
@@ -1043,8 +968,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(availability.pullRequest?.number, 43)
     }
 
-    /// A switch that finishes after the chat goes off screen reads no pull request until the chat
-    /// is back.
     @MainActor
     func testASwitchFinishingOffScreenReadsNoPullRequest() async throws {
         nonisolated(unsafe) var branch = "main"
@@ -1076,7 +999,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
     }
 
-    /// A read still out when the chat moves to another folder never shows its link there.
     @MainActor
     func testAPullRequestAnsweringAfterAFolderChangeShowsNothing() async throws {
         let git = HermesGitHost.client { request in
@@ -1096,8 +1018,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(availability.pullRequest)
     }
 
-    /// Opening the menu again within the minute reads nothing new, but a push reads the pull
-    /// request again at once, since pushing can change it.
     @MainActor
     func testAPushRereadsTheFreshPullRequest() async throws {
         var state = "OPEN"
@@ -1119,7 +1039,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
     }
 
-    /// A read that fails takes the link away rather than leaving the last one up.
     @MainActor
     func testAFailedPullRequestReadDropsTheLink() async throws {
         var fails = false
@@ -1143,8 +1062,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         HermesGitHost.shipInfo(["url": .string("https://github.com/o/r/pull/\(number)"), "state": .string(state),
                                 "number": .number(Double(number))])
     }
-
-    // MARK: - Diff parsing
 
     func testDiffParserDropsPreambleAndClassifiesLines() {
         let raw = """
@@ -1208,17 +1125,12 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(hunks[0].lines.map(\.kind), [.deletion, .addition])
     }
 
-    // MARK: - Quick commit pipeline (issue #315, Slice C)
-
-    /// Status with a single committable file, used to seed the availability/commit VMs.
     private static let statusWithOneFile = """
     {"git":{"is_git":true,"branch":"main","totals":{"changed":1},"files":[
       {"path":"a.swift","status":"M","unstaged":true,"additions":3,"deletions":1}
     ]}}
     """
 
-    /// Status flagged `truncated` (server capped the list at 500 changed files). Reports a
-    /// non-empty list so `hasCommittableChanges` is true and only the truncation blocks the commit.
     private static let truncatedStatus = """
     {"git":{"is_git":true,"branch":"main","totals":{"changed":501},"truncated":true,"files":[
       {"path":"a.swift","status":"M","unstaged":true,"additions":3,"deletions":1}
@@ -1308,8 +1220,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
         let outcome = await vm.quickCommit(push: true)
 
-        // The commit already landed, so a push failure must NOT collapse to .failure:
-        // the SHA is reported, the push error is surfaced, and the badge/status refresh runs.
         guard case .success(let result) = outcome else { return XCTFail("Expected success, got \(outcome)") }
         XCTAssertEqual(result.shortSHA, "abc1234")
         XCTAssertFalse(result.didPush, "Push failed, so didPush stays false.")
@@ -1339,9 +1249,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
     @MainActor
     func testQuickCommitBlocksWhenStatusTruncated() async throws {
-        // >500 changed files → server truncates the status list, so the client only knows the
-        // first 500. Quick-commit must refuse (no stage/commit/push) instead of silently
-        // committing a partial set. Both the plain Commit and Commit & Push rows are blocked.
         for push in [true, false] {
             var paths: [String] = []
             let client = commitPipelineClient(truncated: true) { paths.append($0) }
@@ -1373,8 +1280,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(vm.commitPhase)
         XCTAssertEqual(vm.actionErrorMessage?.contains("Writes disabled"), true)
     }
-
-    // MARK: - Advanced staging sheet view model (GitCommitViewModel)
 
     private func commitSheetClient(
         suggestSelectedMessage: String = "selected msg",
@@ -1462,9 +1367,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
         let ok = await vm.commit(push: true)
 
-        // Commit landed; a push failure must still run the success cleanup so the caller
-        // (GitCommitView) calls onCommitted() and the toolbar refreshes — while the sheet
-        // banner reports that only the push failed.
         XCTAssertTrue(ok, "A push failure after a successful commit still returns true.")
         XCTAssertEqual(vm.lastCommitSHA, "abc1234")
         XCTAssertEqual(vm.committedRevision, 1, "committedRevision still bumps so the toolbar refreshes.")
@@ -1503,9 +1405,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
     @MainActor
     func testCommitSheetDiscardUnstagesStagedFilesFirst() async throws {
-        // The server's discard only restores the worktree, leaving the index intact, so a
-        // staged change would survive. The sheet must unstage staged targets before
-        // discarding (and in that order) for the discard to actually take effect.
         var calls: [String] = []
         let stagedStatus = """
         {"git":{"is_git":true,"branch":"main","totals":{"changed":1},"files":[
@@ -1536,11 +1435,7 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
     }
 }
 
-// MARK: - Hermes writes (#1115)
-
 extension GitWorkspaceViewModelTests {
-    /// Push names the repository root. The host would skip a detached HEAD without a word, so
-    /// one is refused with webui's copy and never sent; the status is read again either way.
     @MainActor
     func testAHermesPushSendsTheRootAndRefusesADetachedHead() async throws {
         nonisolated(unsafe) var detached = false
@@ -1566,8 +1461,6 @@ extension GitWorkspaceViewModelTests {
                              "The refusal reads the head, then the status again")
     }
 
-    /// A Hermes repository's commit sheet on the host `script` answers, its messages written by
-    /// `writeMessage`.
     @MainActor
     private func hermesCommitSheet(
         writeMessage: HermesGitClient.MessageWriter? = nil,
@@ -1578,7 +1471,6 @@ extension GitWorkspaceViewModelTests {
         return sheet
     }
 
-    /// One edited, one staged and one untracked file, as the host lists them.
     private static func threeChanges(_ request: URLRequest, conflicted: Bool = false) -> HermesHostFixture.Reply? {
         HermesGitHost.repositoryReply(request, rows: [
             ("a.swift", 1, 0, "M", false), ("b.swift", 2, 1, "M", true), ("c.txt", 1, 0, conflicted ? "U" : "?", false)
@@ -1588,8 +1480,6 @@ extension GitWorkspaceViewModelTests {
         ])
     }
 
-    /// Stage, unstage and discard act on the selection, or everything, one file per request,
-    /// and the list is read at each write, for the rows it acts on, and again after it.
     @MainActor
     func testTheHermesSheetStagesUnstagesAndDiscardsTheSelectionAndRefreshes() async throws {
         let sheet = await hermesCommitSheet { Self.threeChanges($0) }
@@ -1610,8 +1500,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertFalse(sheet.hasSelection, "A discarded file leaves the selection")
     }
 
-    /// Staging a conflicted file would mark it resolved, and webui refuses to discard or commit
-    /// one, so none of them is sent.
     @MainActor
     func testAHermesConflictRefusesStageDiscardAndCommit() async throws {
         let sheet = await hermesCommitSheet { Self.threeChanges($0, conflicted: true) }
@@ -1632,8 +1520,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
-    /// The host stages everything for a commit with nothing staged, so one is refused; with
-    /// something staged it commits, never pushing in the same call, and shows HEAD's short sha.
     @MainActor
     func testAHermesCommitNeedsSomethingStagedAndShowsItsSha() async throws {
         nonisolated(unsafe) var staged = false
@@ -1656,8 +1542,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, [#"commit "fix(app): keep the row""#])
     }
 
-    /// The host commits the whole index, so Commit Selected unstages everything, stages the
-    /// selection, checks something is staged, commits, then stages the other staged files again.
     @MainActor
     func testAHermesCommitSelectedKeepsTheOtherStagedFilesStaged() async throws {
         let sheet = await hermesCommitSheet { Self.threeChanges($0) }
@@ -1672,8 +1556,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertFalse(sheet.hasSelection)
     }
 
-    /// A commit that fails partway puts the staged files back as they were, says so without
-    /// git's output, and reads the status again.
     @MainActor
     func testAHermesCommitSelectedRestoresTheStagedFilesWhenTheCommitFails() async throws {
         let sheet = await hermesCommitSheet { request in
@@ -1695,8 +1577,6 @@ extension GitWorkspaceViewModelTests {
                        "The remembered staged files, then the status after the failure")
     }
 
-    /// Suggest sends `commit-context`'s diff and recent subjects, or the selected files' whole
-    /// changes; Regenerate also sends the last suggestion to avoid.
     @MainActor
     func testAHermesSuggestionSendsWhatWouldCommitAndAvoidsTheLastOne() async throws {
         nonisolated(unsafe) var asked: [(diff: String, recent: String, avoid: String?)] = []
@@ -1721,8 +1601,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertFalse(sheet.messageWasTruncated)
     }
 
-    /// One tap on a Hermes repository stages every change a file at a time, writes a message for
-    /// it, commits and reports the sha.
     @MainActor
     func testAHermesQuickCommitStagesEachFileThenCommits() async throws {
         let git = HermesGitHost.client(writeMessage: { _, _, _ in "chore: tidy" }) { Self.threeChanges($0) }
@@ -1737,19 +1615,12 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, ["stage a.swift", "stage c.txt", #"commit "chore: tidy""#])
     }
 
-    // MARK: Review fixes
-
-    /// One edited file and one staged file that `stagedAlso` describes: also edited in the
-    /// worktree (`true`), or past the status cap, where that is unknown (`nil`).
     private static func partlyStaged(_ request: URLRequest, stagedAlso unstaged: Bool?) -> HermesHostFixture.Reply? {
         HermesGitHost.repositoryReply(request, rows: [("a.swift", 1, 0, "M", false), ("b.swift", 2, 1, "M", true)],
                                       flags: [("a.swift", false, true, false, false)]
                                           + (unstaged.map { [("b.swift", true, $0, false, false)] } ?? []))
     }
 
-    /// `git add` can put back only a whole file, so Commit Selected is refused before it changes
-    /// the index while a staged file outside the selection also has worktree edits, or may have
-    /// (past the status cap): restoring it would stage those too.
     @MainActor
     func testAHermesCommitSelectedRefusesAPartlyStagedFileBeforeAnythingIsSent() async throws {
         for unstaged in [true, nil] as [Bool?] {
@@ -1767,8 +1638,6 @@ extension GitWorkspaceViewModelTests {
         }
     }
 
-    /// Before the first commit the host can't unstage everything, so Commit Selected is refused
-    /// up front, and the index stays as it was.
     @MainActor
     func testAHermesCommitSelectedBeforeTheFirstCommitIsRefusedUpFront() async throws {
         let sheet = await hermesCommitSheet { request in
@@ -1785,15 +1654,12 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
-    /// The three changes' reply, except a 400 for `route`, or only for its requests naming `file`.
     private static func failing(_ request: URLRequest, route: String, file: String? = nil) -> HermesHostFixture.Reply? {
         let body = apiTestBodyData(from: request).flatMap { try? JSONDecoder().decode(BotJSON.self, from: $0) }
         let fails = request.url?.path == route && (file == nil || body?["file"].text == ":(literal)" + (file ?? ""))
         return fails ? .json(400, .object(["detail": .string("index.lock exists")])) : threeChanges(request)
     }
 
-    /// A Commit Selected whose commit lands but which can't stage the other staged files again
-    /// keeps the commit and its sha, and says the staging wasn't put back.
     @MainActor
     func testAHermesCommitSelectedSaysWhenItCouldNotStageTheOtherFilesAgain() async throws {
         let sheet = await hermesCommitSheet { request in
@@ -1810,8 +1676,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, ["unstage (all)", "stage a.swift", #"commit "feat(app): add a""#, "stage b.swift"])
     }
 
-    /// A Commit Selected that fails before its commit, and then can't stage the files again
-    /// either, says both, not only that the commit failed.
     @MainActor
     func testAHermesCommitSelectedSaysWhenItCouldNotPutTheStagedFilesBack() async throws {
         let sheet = await hermesCommitSheet { request in
@@ -1831,8 +1695,6 @@ extension GitWorkspaceViewModelTests {
                                               "unstage (all)", "stage b.swift"])
     }
 
-    /// A quick commit whose turn starts while its message is being written stops before the
-    /// commit: the chat's turn owns the repository now.
     @MainActor
     func testAHermesQuickCommitStopsWhenATurnStartsDuringItsMessage() async throws {
         let chat = HermesGitChatStub()
@@ -1851,12 +1713,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, ["stage a.swift", "stage c.txt"])
     }
 
-    // MARK: Review fixes, round 2
-
-    /// Commit Selected clears the whole index and promises to put back every staged file, so each
-    /// one it remembers must name one file. The host trims a tracked file's name, so ` a.txt` and
-    /// `a.txt` both list as `a.txt`: staging that path again couldn't reach both, and the
-    /// sequence is refused before it changes anything.
     @MainActor
     func testAHermesCommitSelectedRefusesStagedFilesItCouldNotPutBack() async throws {
         let sheet = await hermesCommitSheet { request in
@@ -1874,8 +1730,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
-    /// A Commit Selected whose first reset reaches the host but whose reply is lost may have
-    /// cleared the index: it puts the staged files back before it reports the failure.
     @MainActor
     func testAHermesCommitSelectedPutsTheStagedFilesBackWhenTheResetsReplyIsLost() async throws {
         nonisolated(unsafe) var bStaged = true
@@ -1908,8 +1762,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertNotNil(sheet.actionErrorMessage)
     }
 
-    /// A quick commit still running when the chat leaves the folder (`retire()`) finishes without
-    /// a result to show: no later phase, no push, and nothing for the toast.
     @MainActor
     func testAHermesQuickCommitFinishingAfterAFolderChangeShowsNothing() async throws {
         let git = HermesGitHost.client(writeMessage: { _, _, _ in "chore: tidy" }) { request in
@@ -1931,7 +1783,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, ["stage a.swift", "stage c.txt", #"commit "chore: tidy""#])
     }
 
-    /// A push still running when the chat leaves the folder finishes without a result to show.
     @MainActor
     func testAHermesPushFinishingAfterAFolderChangeShowsNothing() async throws {
         let git = HermesGitHost.client { request in
@@ -1952,8 +1803,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertNil(availability.lastActionMessage)
     }
 
-    /// While a quick commit waits for its message, the commit sheet on the same repository is busy
-    /// and sends nothing, so the quick commit commits what it staged.
     @MainActor
     func testTheHermesSheetWritesNothingWhileAQuickCommitWaitsForItsMessage() async throws {
         let reference = SheetReference()
@@ -1985,8 +1834,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertFalse(commitSheet.isBusy)
     }
 
-    /// While the commit sheet commits, the Git menu's quick commit and push are disabled and send
-    /// nothing.
     @MainActor
     func testAHermesQuickCommitAndPushWaitForTheSheetsCommit() async throws {
         let git = HermesGitHost.client(writeMessage: { _, _, _ in "chore: tidy" }) { request in
@@ -2017,16 +1864,11 @@ extension GitWorkspaceViewModelTests {
     }
 }
 
-/// The commit sheet a test's message writer reaches, set once both exist.
 @MainActor private final class SheetReference {
     var sheet: GitCommitViewModel?
 }
 
-// MARK: - Hermes branches (#1116)
-
 extension GitWorkspaceViewModelTests {
-    /// A Hermes chat on `branch` whose host lists local `main` and `dev` and the remote-only
-    /// `origin/feature/x`, with no uncommitted change unless `dirty`.
     private static func branchHost(_ request: URLRequest, branch: String, dirty: Bool = false) -> HermesHostFixture.Reply? {
         HermesGitHost.repositoryReply(request, branch: branch,
                                       rows: dirty ? [("notes.txt", 1, 0, "?", false)] : [],
@@ -2034,7 +1876,6 @@ extension GitWorkspaceViewModelTests {
                                       branches: [("main", false), ("dev", false), ("origin/feature/x", true)])
     }
 
-    /// `branchHost` with `b.swift` staged, so the commit sheet has something to commit.
     private static func stagedBranchHost(_ request: URLRequest) -> HermesHostFixture.Reply? {
         HermesGitHost.repositoryReply(request, branch: "main",
                                       rows: [("b.swift", 2, 1, "M", true)],
@@ -2042,11 +1883,6 @@ extension GitWorkspaceViewModelTests {
                                       branches: [("main", false), ("dev", false)])
     }
 
-    // MARK: - Hermes sync through hermex-push (#1236)
-
-    /// With the plugin's routes listed, Fetch and Pull run at the root and read the status again,
-    /// and New Branch creates from HEAD on a dirty tree, switching the branch label. A switch to an
-    /// existing branch with uncommitted changes is still refused, never offered the stash.
     @MainActor
     func testAHermesChatWithThePluginFetchesPullsAndCreatesABranch() async throws {
         nonisolated(unsafe) var current = "main"
@@ -2081,8 +1917,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, ["fetch", "pull", "branch feature/y"])
     }
 
-    /// Without the plugin's routes (an old plugin answers the default `/capabilities` without
-    /// them), sync stays hidden and a stray Fetch or Pull sends nothing.
     @MainActor
     func testAHermesChatWithoutThePluginRoutesHidesSync() async throws {
         let git = HermesGitHost.client { request in
@@ -2102,8 +1936,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
-    /// A gate read that failed at load is asked again by the next refresh (a turn's end), so sync
-    /// shows once the host answers, without reopening the chat. An open gate isn't read again.
     @MainActor
     func testAHermesSyncGateThatFailedAtLoadOpensOnTheNextRefresh() async throws {
         nonisolated(unsafe) var failing = true
@@ -2124,8 +1956,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/plugins/hermex-push/capabilities" }.count, 2)
     }
 
-    /// A pull the host refuses (diverged, auth, timeout) shows the write-failure copy, never git's
-    /// output, and reads the repository again.
     @MainActor
     func testAFailedHermesPullShowsTheGenericCopyAndRefreshes() async throws {
         let git = HermesGitHost.client { request in
@@ -2147,10 +1977,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertGreaterThan(HermesGitHost.requests.filter { $0.url?.path == "/api/git/status" }.count, statusReads)
     }
 
-    /// The picker lists the host's local branches, then its remote-only ones, and switches to
-    /// either. A remote row goes out by its short name, which `git switch` makes a tracking
-    /// branch of, once a fresh branch list shows the name is only its; the status and branches
-    /// are read again after each switch.
     @MainActor
     func testAHermesSwitchSendsARemoteBranchByItsShortNameAndRefreshes() async throws {
         nonisolated(unsafe) var current = "main"
@@ -2184,8 +2010,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertNil(availability.actionErrorMessage)
     }
 
-    /// Any uncommitted change, an untracked file included, blocks the switch rather than let
-    /// `git switch` carry it across (Decision, 2026-10-08): nothing is sent and the picker says why.
     @MainActor
     func testAHermesSwitchWithUncommittedChangesIsRefused() async throws {
         let git = HermesGitHost.client { Self.branchHost($0, branch: "main", dirty: true) }
@@ -2200,7 +2024,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(availability.currentBranchName, "main")
     }
 
-    /// A switch is a write the chat owns, as #1115's are: refused while its turn runs.
     @MainActor
     func testAHermesSwitchWaitsForTheRunningTurn() async throws {
         let chat = HermesGitChatStub()
@@ -2217,8 +2040,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
-    /// A switch shares the repository's write lock (#1115): while the commit sheet commits, the
-    /// picker is disabled and a switch sends nothing.
     @MainActor
     func testAHermesSwitchWaitsForTheSheetsCommit() async throws {
         let git = HermesGitHost.client(writeMessage: { _, _, _ in "chore: tidy" }) { request in
@@ -2247,11 +2068,8 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(availability.currentBranchName, "main")
     }
 
-    /// While a switch runs, the commit sheet is busy and the Git menu's push is refused: neither
-    /// writes under it.
     @MainActor
     func testTheHermesSheetAndPushWaitForASwitch() async throws {
-        // The sheet loads a staged file; the switch's own status read finds the tree clean.
         nonisolated(unsafe) var staged = true
         let git = HermesGitHost.client { request in
             if request.url?.path == "/api/git/branch/switch" { return .park }
@@ -2283,8 +2101,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertFalse(sheet.isBusy)
     }
 
-    /// A failed switch reads the repository again; if the chat leaves the folder during that
-    /// read, the failure belongs to the old repository and has nothing to show (`.retired`).
     @MainActor
     func testAFailedHermesSwitchRetiredDuringItsRefreshShowsNothing() async throws {
         nonisolated(unsafe) var branchReads = 0
@@ -2314,7 +2130,6 @@ extension GitWorkspaceViewModelTests {
     }
 }
 
-/// A repository whose status read waits until the test answers it; nothing else is called.
 @MainActor
 private final class ParkedStatusGitClient: GitDataClient {
     let reviewScope = "repository"

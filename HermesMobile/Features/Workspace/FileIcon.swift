@@ -1,11 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// The glyph that stands for a file wherever its name is shown: the file tree and file
-/// chips. Each case is an image in the `FileIcons` asset folder (Pierre's file-tree
-/// icons plus T3 Code's additions, see README). Resolution order is an exact filename
-/// (`package.json`, `Dockerfile`), then `tsconfig.*.json`, then the longest matching
-/// extension chain (`env.local` before `local`), then the plain document glyph.
 enum FileIcon: String, CaseIterable {
     case agents, astro, babel, bash, biome, browserslist, bun, c, claude, cpp, css
     case database, docker, eslint, font, git, go, graphql, html, image, javascript, json
@@ -18,8 +13,6 @@ enum FileIcon: String, CaseIterable {
     var image: Image { Image(assetName) }
     var uiImage: UIImage? { UIImage(named: assetName) }
 
-    /// Resolves the icon for a filename or path. A trailing `:line[:column]` is ignored so
-    /// a chat reference like `main.swift:12` resolves like `main.swift`.
     static func resolve(_ nameOrPath: String) -> FileIcon {
         var basename = nameOrPath.split(separator: "/").last.map(String.init) ?? nameOrPath
         if let match = basename.firstMatch(of: /:\d+(?::\d+)?$/) {
@@ -42,9 +35,6 @@ enum FileIcon: String, CaseIterable {
         return .default
     }
 
-    // MARK: - Tables
-
-    /// Exact lowercased filenames.
     private static let iconByName: [String: FileIcon] = [
         ".babelrc": .babel, ".babelrc.json": .babel,
         ".bash_profile": .bash, ".bashrc": .bash, ".zprofile": .bash, ".zshenv": .bash, ".zshrc": .bash,
@@ -88,7 +78,6 @@ enum FileIcon: String, CaseIterable {
         "webpack.config.mjs": .webpack, "webpack.config.ts": .webpack,
     ]
 
-    /// Lowercased extension chains, longest match first (`env.local` before `local`).
     private static let iconByExtension: [String: FileIcon] = [
         "7z": .zip, "bz2": .zip, "gz": .zip, "jar": .zip, "rar": .zip, "tar": .zip, "tgz": .zip, "zip": .zip,
         "astro": .astro,

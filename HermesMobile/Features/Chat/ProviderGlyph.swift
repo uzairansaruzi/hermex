@@ -112,10 +112,6 @@ enum ProviderGlyphKind: String, CaseIterable, Sendable {
         }
     }
 
-    /// Upstream keeps adding suffixed variants of existing providers
-    /// (`opencode-free`, `alibaba-coding-plan`, `kimi-coding-cn`, `qwen-oauth`).
-    /// When no exact alias matches, a known family prefix inherits the family
-    /// glyph so a new suffix never ships bare. Exact aliases always win.
     private static let familyPrefixes: [(prefix: String, kind: ProviderGlyphKind)] = [
         ("alibaba", .alibaba),
         ("qwen", .alibaba),
@@ -142,8 +138,6 @@ enum ProviderGlyphKind: String, CaseIterable, Sendable {
         self == .anthropic || self == .openAI
     }
 
-    /// These marks encode their shape with multiple colors or negative space;
-    /// template rendering would collapse them into an unreadable solid tile.
     var usesOriginalColors: Bool {
         switch self {
         case .alibaba, .gmi, .lmStudio, .mistral, .moonshot, .nous, .nvidia, .stepFun, .xiaomi:
@@ -154,8 +148,6 @@ enum ProviderGlyphKind: String, CaseIterable, Sendable {
     }
 }
 
-/// A bundled Logo.dev provider mark. Unknown/custom providers intentionally
-/// render no placeholder so an unrecognized server value never looks branded.
 struct ProviderGlyph: View {
     let providerID: String?
 

@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Search has its own presentation lifetime. Browsing the roster never opens a
-/// conversation; only choosing a bot asks the inbox to navigate after dismissal. Messages in a
-/// bot's chat are searched on the host (#1146); room messages come from this iPhone's cache.
 @MainActor struct BotSearchView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
@@ -17,9 +14,7 @@ import SwiftUI
     @State private var botHits: [BotInbox.BotChatHit] = []
     @State private var hitRequest: SearchRequest?
     @State private var searchError = false
-    /// Why the host's search of the bots' chats failed.
     @State private var botSearchError: String?
-    /// The saved-message search and the host's bot-chat search finish separately.
     @State private var isSearching = false
     @State private var isSearchingBots = false
     let cache: BotHistoryCache
@@ -98,7 +93,6 @@ import SwiftUI
                                     onSelect(profile)
                                     dismiss()
                                 } label: {
-                                    // An id match names no message, so it shows as the bot.
                                     if let isFromUser = hit.isFromUser {
                                         botChatResult(hit, isFromUser: isFromUser, profile: profile)
                                     } else {
@@ -108,7 +102,6 @@ import SwiftUI
                                 .buttonStyle(.plain)
                             }
                         }
-                        // One "Searching…" at a time: the saved messages' first, then the host's.
                         if isSearchingBots && !isSearching { status("Searching…") }
                         else if let botSearchError, hitRequest == request {
                             Text(verbatim: botSearchError).font(AppFont.callout()).foregroundStyle(.appSecondary)
@@ -209,7 +202,6 @@ import SwiftUI
             .frame(maxWidth: .infinity, alignment: .leading).padding(20)
     }
 
-    /// A bot's chat the host matched (#1146): who wrote the message, and the host's snippet.
     private func botChatResult(_ hit: BotInbox.BotChatHit, isFromUser: Bool, profile: BotProfile) -> some View {
         HStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: inbox.avatars[profile.id], size: 44)
@@ -252,9 +244,6 @@ import SwiftUI
         .contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
 
-    /// Searches room messages saved on this iPhone, showing them as soon as the cache answers, then
-    /// each bot's chat on the host (#1146), whose hits and error arrive on their own. The cache's
-    /// bot rows are left out: a bot's chat is the host's to search.
     private func searchMessages() async {
         let captured = request
         hits = []; botHits = []; hitRequest = captured; searchError = false; botSearchError = nil

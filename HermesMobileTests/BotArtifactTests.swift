@@ -79,7 +79,7 @@ import UniformTypeIdentifiers
         await fulfillment(of: [started], timeout: 2)
         task.cancel()
         do { _ = try await task.value; XCTFail("Cancelled download returned bytes") }
-        catch { /* URLSession and AsyncBytes may report different cancellation errors. */ }
+        catch {  }
         await fulfillment(of: [stopped], timeout: 2)
     }
 

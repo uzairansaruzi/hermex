@@ -215,8 +215,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canSaveMediaToPhotos)
     }
 
-    /// On a Hermes chat a MEDIA path downloads from the host (#1112), by the path the reply wrote,
-    /// with the chat's Profile and stored key; webui's `/api/media` is never asked.
     func testAHermesChatDownloadsMediaThroughItsHost() async throws {
         defer { HermesHostFixture.reset() }
         let webui = TranscriptMediaPreviewRequestRecorder()
@@ -248,8 +246,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         viewModel.cleanupTemporaryFiles()
     }
 
-    /// A Hermes MEDIA file past the preview cap (25 MB) shows no preview but keeps Save and Share,
-    /// which download the whole file by the same path.
     func testAHermesMediaFilePastThePreviewCapStillExportsWhole() async throws {
         defer { HermesHostFixture.reset() }
         let size = 5
@@ -383,7 +379,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
 
     private static let baseURL = URL(string: "https://example.test")!
 
-    /// A webui chat's media client on `client`; none without a session ID.
     private static func webui(_ sessionID: String?, _ client: APIClient) -> WebUIWorkspaceFileClient? {
         sessionID.map { WebUIWorkspaceFileClient(sessionID: $0, workspace: nil, server: baseURL, apiClient: client) }
     }

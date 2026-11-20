@@ -6,7 +6,6 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         var sessionID: String
         var sessionTitle: String
         var schemaVersion = 1
-        // The wire value stays open-ended; only presentation maps known statuses.
         var rawStatus: String
         var tool: String?
         var toolCalls: Int?
@@ -36,13 +35,7 @@ struct AgentRunActivityAttributes: ActivityAttributes {
         var isStale: Bool
         var isFinal: Bool
         var errorSummary: String?
-        /// A bot's bounded work summary ("Plan 2 of 5", "2 workers"): counts only, never
-        /// reply text, so it is safe on a locked phone. Nil for a webui session, and
-        /// optional so an activity persisted by an older build still decodes (#489).
         var chips: [String]?
-        /// False only for a relay state that arrived without `updated_at`: its
-        /// `updatedAt` is then just when it was decoded, so nothing may present it
-        /// as the time of the last update (#644). Re-encoding keeps it false.
         var updateTimeIsKnown = true
 
         init(
@@ -87,9 +80,6 @@ struct AgentRunActivityAttributes: ActivityAttributes {
             let unixStart = try c.decodeIfPresent(Double.self, forKey: .pushStartedAt)
             startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
                 ?? unixStart.map(Date.init(timeIntervalSince1970:)) ?? .distantPast
-            // The relay stamps `updated_at` with its send time. A state without one
-            // (an older relay) freezes the final timer at receipt time rather than
-            // showing a zero-length completed run.
             let unixUpdate = try c.decodeIfPresent(Double.self, forKey: .pushUpdatedAt)
             let knownUpdate = try c.decodeIfPresent(Date.self, forKey: .updatedAt)
                 ?? unixUpdate.map(Date.init(timeIntervalSince1970:))
@@ -138,11 +128,6 @@ struct AgentRunActivityAttributes: ActivityAttributes {
             try c.encodeIfPresent(chips, forKey: .chips)
         }
 
-        /// What a webui activity shows in place of reply text (#644): its counts, then
-        /// how fresh the state is, or where the reply is once the run completed. Only a
-        /// real update time is shown; an unknown one is left out rather than guessed.
-        /// An update from the run's first moments would only repeat the elapsed timer,
-        /// as it does for a whole turn without tools, so it is left out too.
         var detailChips: [AgentRunDetailChip] {
             let counts = (chips ?? []).map(AgentRunDetailChip.text)
             if isFinal { return status == .complete ? counts + [.openReply] : counts }
@@ -150,12 +135,8 @@ struct AgentRunActivityAttributes: ActivityAttributes {
             return updateTimeIsKnown && addsToTimer ? counts + [.updated(updatedAt)] : counts
         }
 
-        /// How long after the run's start an update must land before "Updated … ago"
-        /// says something the elapsed timer does not.
         static let freshnessAfterStart: TimeInterval = 10
 
-        /// Pushes omit identity and freshness flags: immutable attributes and
-        /// ActivityKit's stale-date clock supply those to every widget surface.
         func presented(attributes: AgentRunActivityAttributes, systemIsStale: Bool) -> Self {
             var value = self
             if value.sessionID.isEmpty { value.sessionID = attributes.sessionID }
@@ -171,25 +152,10 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     var sessionTitle: String
     var streamID: String?
     var startedAt: Date
-    /// Set when a bot owns this activity: the tap target and the avatar. Nil for a
-    /// webui session, and for an activity persisted by a build older than #489.
     var bot: AgentRunActivityBot?
-    /// The configured server a webui run or a Hermes session belongs to, so its relay
-    /// registration finds that server's push pairing (#566). Nil for a bot, whose
-    /// destination names the server, and for an activity persisted by an older build.
     var server: URL?
-    /// A Hermes session's tap target (#1179): its session link, precomputed by the app
-    /// (`HermesDeepLink.sessionURL(for:)`). Nil for a webui run, a bot, and an activity
-    /// persisted by an older build.
     var destinationURL: URL?
-    /// The stored session key a Hermes session's relay pushes come under when the activity
-    /// started (#1179). A legacy compression can move it mid-turn; the app then registers
-    /// the token under the new key. Nil for a webui run and a bot, and for an older build's.
     var pushSessionID: String?
-    /// True when the activity asked ActivityKit for a push token: only then can the relay
-    /// drive it after a relaunch, so a Hermes session's activity started before its server
-    /// paired is settled against the host instead (#1179). Nil otherwise, and for an older
-    /// build's; a bot's always asks.
     var requestedPush: Bool?
 
     init(sessionID: String, sessionTitle: String, streamID: String? = nil, startedAt: Date,
@@ -207,36 +173,21 @@ struct AgentRunActivityAttributes: ActivityAttributes {
     }
 }
 
-/// One chip in an activity's detail row. The widget renders `updated` as system-drawn
-/// relative time, so the row stays current without the app repainting it.
 enum AgentRunDetailChip: Hashable {
     case text(String)
     case updated(Date)
     case openReply
 }
 
-/// The bot behind a Live Activity (#489). `key` stands in for the session id, so an
-/// activity is only ever reused by the same bot on the same Bot connection: equal
-/// Profile names on two connections get different keys. The widget sees only this
-/// value; the typed `BotDestination` it was built from stays in the main app.
 struct AgentRunActivityBot: Codable, Hashable {
-    /// `bot:<connection UUID>:<Profile name>`.
     let key: String
-    /// The `hermes-agent://bot?...` route a tap opens.
     let destinationURL: URL
-    /// File name of the rendered avatar in `AgentRunActivityAvatarFile.directory`,
-    /// or nil when none could be written; the widget then keeps the status dot.
     var avatarFile: String?
-    /// Stored agent session ID (`session_key`, the resolved compression tip) used
-    /// by plugin hooks and the relay. Never the gateway runtime ID or chat root.
     var pushSessionID: String? = nil
 
-    /// One activity per bot turn: a reconnect inside the turn reuses it, the next turn does not.
     func streamID(turn: String) -> String { "\(key)#\(turn)" }
 }
 
-/// Where the app leaves a bot's rendered avatar for the widget: one small PNG in the
-/// shared app group, since a Live Activity cannot carry image data in its state.
 enum AgentRunActivityAvatarFile {
     static var directory: URL? {
         guard let group = Bundle.main.object(forInfoDictionaryKey: "HermesAppGroupIdentifier") as? String,
@@ -246,7 +197,6 @@ enum AgentRunActivityAvatarFile {
     }
 
     static func url(named name: String?) -> URL? {
-        // A bare file name only: the attribute is never allowed to walk out of the directory.
         guard let name, !name.isEmpty, !name.contains("/") else { return nil }
         return directory?.appendingPathComponent(name)
     }
@@ -299,10 +249,6 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
     }
 }
 
-/// What the Dynamic Island's compact trailing side shows (#1398). Working says
-/// nothing: the leading glyph already names the phase. Asks and outcomes are
-/// decided before staleness, so a stale approval still asks; only stale work
-/// reads as the latest status.
 enum AgentRunCompactPresentation: Equatable {
     case working, approval, clarification, waiting, complete, failed, cancelled, staleWork
 
@@ -331,9 +277,6 @@ enum AgentRunActivitySanitizer {
     static let maximumSessionTitleCharacters = 42
     static let maximumActivityCharacters = 64
     static let maximumExcerptCharacters = 140
-    /// How much of a reply callers hand `responseExcerpt`. The excerpt is a prefix,
-    /// and this much text still normalizes to well past it, so reading the whole
-    /// reply on every token or frame would only repeat work (#676).
     static let maximumExcerptSourceLength = 2_048
     static let maximumToolLabelCharacters = 28
     static let maximumChips = 3
@@ -630,16 +573,10 @@ enum AgentRunActivityStateReducer {
     }
 }
 
-/// Stale Bot copy on the Lock Screen and expanded island (#813).
-/// Approval and clarification keep that ask after the socket drops. Every other
-/// stale Bot still says it is disconnected. Fresh Bots and webui runs return nil,
-/// so each surface keeps its own lead.
 enum AgentRunStaleBotPresentation {
     struct Copy: Equatable {
         var lead: String
         var action: String
-        /// True only for the two pending asks. The expanded counts line adds
-        /// `action` then; other stale Bots keep the lead and their counts.
         var isPendingInput: Bool
     }
 
@@ -657,15 +594,12 @@ enum AgentRunStaleBotPresentation {
         }
     }
 
-    /// Existing counts, plus exactly one action while the Bot is stale.
     static func lockScreenChips(state: AgentRunActivityAttributes.ContentState, isBot: Bool) -> [String] {
         let counts = state.chips ?? []
         guard let stale = presentation(state: state, isBot: isBot) else { return counts }
         return counts + [stale.action]
     }
 
-    /// The activity lead, then its counts. A pending ask also names how to answer.
-    /// Reply text stays out of this line.
     static func expandedCountsLine(state: AgentRunActivityAttributes.ContentState, isBot: Bool) -> String {
         let stale = presentation(state: state, isBot: isBot)
         var parts = [stale?.lead ?? state.currentActivity] + (state.chips ?? [])
@@ -675,8 +609,6 @@ enum AgentRunStaleBotPresentation {
         return parts.joined(separator: " · ")
     }
 
-    /// A stale Bot waiting on approval or clarification keeps that ask on both
-    /// surfaces instead of letting reply text replace it.
     static func prefersWaitingAnswer(state: AgentRunActivityAttributes.ContentState, isBot: Bool) -> Bool {
         presentation(state: state, isBot: isBot)?.isPendingInput == true
     }

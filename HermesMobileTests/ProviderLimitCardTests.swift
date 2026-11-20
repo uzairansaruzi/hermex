@@ -1,17 +1,8 @@
 import XCTest
 @testable import HermesMobile
 
-/// The Usage screen's provider limit cards (#415): the pure presentation
-/// helpers, the card builder, the provider selection rule, and the promise that
-/// a failing or slow quota probe never disturbs the analytics on the same
-/// screen.
-///
-/// Every time-sensitive assertion passes an explicit `now` and an explicit
-/// locale, so nothing here depends on the clock or the runner's region.
 final class ProviderLimitCardTests: XCTestCase {
     private let enUS = Locale(identifier: "en_US")
-
-    // MARK: - Pure helpers
 
     func testResetCountdownAcrossMinutesHoursDaysAndThePast() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -32,8 +23,6 @@ final class ProviderLimitCardTests: XCTestCase {
             providerLimitResetText(now.addingTimeInterval(27 * 3600), now: now, locale: enUS),
             "Resets in 1d 3h"
         )
-        // Past, and inside the last minute, both read as imminent rather than
-        // counting down to zero or going negative.
         XCTAssertEqual(providerLimitResetText(now.addingTimeInterval(-60), now: now, locale: enUS), "Resets soon")
         XCTAssertEqual(providerLimitResetText(now.addingTimeInterval(30), now: now, locale: enUS), "Resets soon")
         XCTAssertNil(providerLimitResetText(nil, now: now, locale: enUS))
@@ -44,16 +33,12 @@ final class ProviderLimitCardTests: XCTestCase {
             providerQuotaDate("2026-09-06T07:55:41Z"),
             Date(timeIntervalSince1970: 1_788_681_341)
         )
-        // Microsecond precision, which ISO8601DateFormatter does not take
-        // directly — the fraction is dropped rather than losing the row.
         let fractional = try? XCTUnwrap(providerQuotaDate("2026-09-06T02:56:37.848820Z"))
         XCTAssertEqual(fractional?.timeIntervalSince1970 ?? 0, 1_788_663_397, accuracy: 1)
         XCTAssertNil(providerQuotaDate(nil))
         XCTAssertNil(providerQuotaDate("   "))
         XCTAssertNil(providerQuotaDate("not a date"))
     }
-
-    // MARK: - Card building
 
     func testAccountLimitsCardKeepsWindowsInOrder() throws {
         let response = try decodeQuota(APIClientProviderQuotaTests.codexPayload)
@@ -67,7 +52,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertEqual(card.rows.map(\.amount), ["100% left", "2% left"])
         XCTAssertEqual(card.rows[1].fraction ?? 0, 0.02, accuracy: 0.0001)
         XCTAssertEqual(card.rows[0].resetAt, providerQuotaDate("2026-09-06T07:55:41Z"))
-        // The account payload carries its own timestamp; the client's is unused.
         XCTAssertEqual(card.updatedAt, providerQuotaDate("2026-09-06T02:56:37.848820Z"))
     }
 
@@ -137,7 +121,6 @@ final class ProviderLimitCardTests: XCTestCase {
             #"{"status": "unavailable", "display_name": "Anthropic", "account_limits": null}"#,
             #"{"status": "no_key", "display_name": "OpenRouter", "quota": null}"#,
             #"{"status": "invalid_key", "display_name": "OpenRouter", "quota": null}"#,
-            // Available, but with nothing worth drawing.
             #"{"status": "available", "display_name": "Anthropic", "account_limits": {"available": true, "windows": []}}"#,
             #"{"status": "available", "display_name": "OpenRouter", "quota": {"limit_remaining": null, "usage": null, "limit": null}}"#
         ]
@@ -150,8 +133,6 @@ final class ProviderLimitCardTests: XCTestCase {
             )
         }
     }
-
-    // MARK: - Selection rule
 
     func testSelectionKeepsActiveProviderFirstAndOnlyKeyedCandidates() {
         let selection = providerQuotaSelection(from: ProvidersResponse(
@@ -179,9 +160,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertEqual(selection, ["openai-codex", "openrouter"])
     }
 
-    /// The active provider is always probed when it holds a key, even when it is
-    /// not one of the three Hermex knows about — the server is the authority on
-    /// what it can answer for.
     func testSelectionAlwaysProbesTheKeyedActiveProvider() {
         let selection = providerQuotaSelection(from: ProvidersResponse(
             providers: [
@@ -193,8 +171,6 @@ final class ProviderLimitCardTests: XCTestCase {
 
         XCTAssertEqual(selection, ["openai", "anthropic"])
     }
-
-    // MARK: - View model
 
     @MainActor
     func testLoadLimitsBuildsCardsInSelectionOrder() async throws {
@@ -275,8 +251,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertNil(viewModel.lastError)
     }
 
-    /// A quota probe that never answers must not hold up — or corrupt — the
-    /// analytics load that runs beside it.
     @MainActor
     func testSlowQuotaProbeDoesNotDelayOrDisturbAnalytics() async throws {
         let client = QuotaStubClient(
@@ -306,8 +280,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertEqual(viewModel.limitCards.map(\.id), ["openrouter"])
     }
 
-    /// The generation guard: a superseded load must not repaint the cards a
-    /// newer one already produced.
     @MainActor
     func testSupersededLoadDiscardsItsCards() async throws {
         let client = QuotaStubClient(
@@ -323,7 +295,6 @@ final class ProviderLimitCardTests: XCTestCase {
         let stale = Task { await viewModel.loadLimits() }
         await client.waitForHeldQuota()
 
-        // A second load starts while the first is still parked on its probe.
         client.holdsQuota = false
         await viewModel.loadLimits()
         XCTAssertEqual(viewModel.limitCards.map(\.id), ["openrouter"])
@@ -332,15 +303,9 @@ final class ProviderLimitCardTests: XCTestCase {
         await stale.value
 
         XCTAssertEqual(viewModel.limitCards.map(\.id), ["openrouter"])
-        // The stale probe answered last and still did not get to write.
         XCTAssertEqual(client.quotaCallCount, 2)
     }
 
-    // MARK: - Refresh failures (#1408)
-
-    /// A tunnel blip on refresh must not look like a vanished subscription: a
-    /// thrown probe and an `unavailable` answer both keep the card as it was,
-    /// marked stale until a good refresh replaces it.
     @MainActor
     func testFailedRefreshKeepsTheLastCardAndMarksItStale() async throws {
         let client = QuotaStubClient(
@@ -395,9 +360,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertTrue(viewModel.staleLimitIDs.isEmpty)
     }
 
-    /// A providers read that fails keeps every card and marks it stale, but
-    /// only for the newest load: one superseded by a successful refresh must not
-    /// put the notice over fresh cards when it fails late.
     @MainActor
     func testOnlyTheNewestFailedProvidersReadMarksCardsStale() async throws {
         let providers = ProvidersResponse(
@@ -430,10 +392,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertEqual(viewModel.staleLimitIDs, ["openrouter"])
     }
 
-    // MARK: - Loading placeholder state
-
-    /// Nothing to probe means nothing to reserve room for: a server with no
-    /// keyed provider must never flash the placeholder.
     @MainActor
     func testLoadingFlagStaysFalseWithoutCandidateProviders() async throws {
         let client = QuotaStubClient(
@@ -468,7 +426,6 @@ final class ProviderLimitCardTests: XCTestCase {
         await client.waitForHeldQuota()
 
         XCTAssertTrue(viewModel.isLoadingLimits)
-        // The placeholder holds the slot before any card exists.
         XCTAssertTrue(viewModel.limitCards.isEmpty)
         XCTAssertTrue(viewModel.showsLimits)
 
@@ -479,8 +436,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertEqual(viewModel.limitCards.map(\.id), ["openrouter"])
     }
 
-    /// A failing `providers()` call is silent, but it still has to put the
-    /// placeholder away rather than leaving it up forever.
     @MainActor
     func testLoadingFlagIsClearedWhenTheProvidersCallFails() async throws {
         let viewModel = InsightsViewModel(client: QuotaStubClient(providers: nil, quotas: [:]))
@@ -491,8 +446,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertFalse(viewModel.showsLimits)
     }
 
-    /// The generation guard again, from the flag's side: a stale load finishing
-    /// late must not take the newer load's placeholder down with it.
     @MainActor
     func testSupersededLoadDoesNotClearTheNewerLoadsFlag() async throws {
         let client = QuotaStubClient(
@@ -525,8 +478,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertEqual(viewModel.limitCards.map(\.id), ["openrouter"])
     }
 
-    // MARK: - Helpers
-
     private func decodeQuota(_ json: String) throws -> ProviderQuotaResponse {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -540,10 +491,6 @@ final class ProviderLimitCardTests: XCTestCase {
     }
 }
 
-/// Scripts `/api/providers` and `/api/provider/quota`, and can park a quota
-/// probe or a providers read on a continuation so a test can order events
-/// without sleeping. Parked calls answer with the scripted responses as they
-/// stand when released.
 @MainActor
 private final class QuotaStubClient: InsightsDataClient {
     nonisolated var insightsFeatures: InsightsFeatures { .webui }
@@ -552,16 +499,12 @@ private final class QuotaStubClient: InsightsDataClient {
     private(set) var refreshFlags: [Bool] = []
     private(set) var quotaCallCount = 0
 
-    /// Nil throws. A provider missing from `quotas` throws.
     var providersResponse: ProvidersResponse?
     var quotas: [String: ProviderQuotaResponse]
     private let insightsResponse: InsightsResponse?
     private var heldProviders: CheckedContinuation<Void, Never>?
     private var providersParkWaiter: CheckedContinuation<Void, Never>?
-    /// Keyed by 1-based probe number so a test can park two loads at once and
-    /// release the stale one first.
     private var heldContinuations: [Int: CheckedContinuation<Void, Never>] = [:]
-    /// Tests in `waitForHeldQuota`, each with the parked-probe count it waits for.
     private var parkWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
     init(
@@ -596,7 +539,6 @@ private final class QuotaStubClient: InsightsDataClient {
         return providersResponse
     }
 
-    /// Returns once a providers read is parked.
     func waitForHeldProviders() async {
         guard heldProviders == nil else { return }
         await withCheckedContinuation { providersParkWaiter = $0 }
@@ -626,7 +568,6 @@ private final class QuotaStubClient: InsightsDataClient {
         return quota
     }
 
-    /// Returns once `count` probes are parked at the same time.
     func waitForHeldQuota(count: Int = 1) async {
         guard heldContinuations.count < count else { return }
         await withCheckedContinuation { parkWaiters.append((count, $0)) }

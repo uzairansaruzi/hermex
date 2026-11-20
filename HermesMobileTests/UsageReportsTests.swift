@@ -3,7 +3,6 @@ import XCTest
 
 @MainActor
 final class UsageReportsTests: XCTestCase {
-    /// Wednesday of 2026-W46, 12:00 UTC.
     private let now = Date(timeIntervalSince1970: 1_794_398_400)
     private let week: TimeInterval = 7 * 24 * 60 * 60
     private let device = UsageDevice(channel: .testflight, appVersion: "1.9.0", osVersion: "26.1",
@@ -62,8 +61,6 @@ final class UsageReportsTests: XCTestCase {
         XCTAssertEqual(report.servers.webui, 1)
     }
 
-    /// Format 2 says which gateway each Hermes server reached; format 1, which a user who
-    /// declined the re-prompt keeps sending, has no such key.
     func testOnlyFormatTwoReportsEachServersGateway() throws {
         servers[0].hermesGateway = .webapp
         servers.append(Self.server("https://dash.example.org", kind: .hermes, version: "0.21.5"))
@@ -80,7 +77,6 @@ final class UsageReportsTests: XCTestCase {
         XCTAssertTrue(entries.allSatisfy { $0["gateway"] == nil })
     }
 
-    /// The re-prompt's preview shows the format it asks for; Settings' shows the one being sent.
     func testOnlyTheReaskPreviewShowsTheNewerFormat() async throws {
         let defaults = try makeDefaults()
         defaults.set(1, forKey: UsageReports.Keys.acceptedVersion)
@@ -132,7 +128,6 @@ final class UsageReportsTests: XCTestCase {
     func testTurningOffWhileTheReportIsBuiltSendsNothingEvenIfTurnedBackOn() async throws {
         let defaults = try makeDefaults()
         var reports: UsageReports?
-        // Off and straight back on while the report is being built: the erased week stays unsent.
         reports = makeReports(defaults: defaults, device: { @MainActor [device, now, week] in
             reports?.turnOff()
             reports?.allow(now: now.addingTimeInterval(week))
@@ -183,8 +178,6 @@ final class UsageReportsTests: XCTestCase {
         XCTAssertEqual(reports.thisWeek?.star, UsageCardTally(dismissed: true))
     }
 
-    // MARK: - Helpers
-
     private func makeDefaults() throws -> UserDefaults {
         let name = "UsageReportsTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
@@ -206,7 +199,6 @@ final class UsageReportsTests: XCTestCase {
     }
 }
 
-/// Stands in for the collector: records each request's headers and body, then answers 204 or fails.
 private final class UsageReportFixture: URLProtocol {
     struct Request { let headers: [String: String]; let body: Data? }
 
@@ -217,7 +209,6 @@ private final class UsageReportFixture: URLProtocol {
     static var requests: [Request] { lock.withLock { recorded } }
     static func reset() { lock.withLock { recorded = []; fails = false } }
 
-    /// The app's own configuration, with this fixture in front of the network.
     static func configuration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.usageReports
         configuration.protocolClasses = [UsageReportFixture.self]

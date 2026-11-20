@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Aggregation logic for the in-chat "N files changed" recap (issue #316, Slice D).
-/// Covers tool-path extraction, normalization, the ignore filter, rename handling,
-/// `paths[]`/`edits[]` arrays, and the `git/status` join for counts + chips.
 final class TurnFileChangeAggregatorTests: XCTestCase {
 
     private func tool(_ name: String, _ args: [String: JSONValue]) -> ToolCall {
@@ -15,8 +12,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try XCTUnwrap(try decoder.decode(GitStatusResponse.self, from: Data(json.utf8)).git)
     }
-
-    // MARK: - Extraction & multi-file edits
 
     func testMultiFileEditsProduceOrderedEntries() throws {
         let gitStatus = try status("""
@@ -57,8 +52,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         XCTAssertEqual(summary, .empty)
     }
 
-    // MARK: - Renames
-
     func testRenameUsesDestinationAndDropsSource() {
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: [
@@ -74,8 +67,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         XCTAssertEqual(summary.changes.first?.action, .renamed)
         XCTAssertEqual(summary.changes.first?.changeKind, .renamed)
     }
-
-    // MARK: - paths[] and edits[] arrays
 
     func testPathsArrayProducesOneEntryPerPath() {
         let summary = TurnFileChangeAggregator.summarize(
@@ -93,15 +84,13 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
                 tool("patch", ["edits": .array([
                     .object(["path": .string("x/one.swift")]),
                     .object(["path": .string("x/two.swift")]),
-                    .object(["start": .number(1)]) // no path → skipped
+                    .object(["start": .number(1)])
                 ])])
             ],
             files: []
         )
         XCTAssertEqual(summary.changes.map(\.path), ["x/one.swift", "x/two.swift"])
     }
-
-    // MARK: - Normalization
 
     func testNormalizationStripsPrefixesQuotesAndBrackets() {
         XCTAssertEqual(TurnFileChangeAggregator.normalize("~/Sources/App.swift"), "Sources/App.swift")
@@ -120,8 +109,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         XCTAssertNil(TurnFileChangeAggregator.normalize(String(repeating: "a", count: 241)))
     }
 
-    // MARK: - Ignore filter
-
     func testIgnoredTreesAreDropped() {
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: [
@@ -138,8 +125,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
 
         XCTAssertEqual(summary.changes.map(\.path), ["src/keep.swift"])
     }
-
-    // MARK: - git/status join
 
     func testJoinUsesStatusCountsAndChangeKind() throws {
         let gitStatus = try status("""
@@ -184,10 +169,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
     }
 
     func testJoinDoesNotMatchDistinctRelativePathsSharingASuffix() throws {
-        // A tool edits a relative `other/App.swift`; git status separately modified a
-        // *different* file `some/other/App.swift`. The shared trailing component must not
-        // make the tool path inherit the other file's counts/chip (suffix match is gated
-        // on the longer path being absolute).
         let gitStatus = try status("""
         {"git": {"is_git": true, "files": [
           {"path": "some/other/App.swift", "status": "M", "unstaged": true, "additions": 9, "deletions": 3}
@@ -219,8 +200,6 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         XCTAssertTrue(summary.diffFiles.isEmpty)
     }
 
-    // MARK: - Consolidation
-
     func testSamePathEditedTwiceConsolidatesToOneEntry() {
         let summary = TurnFileChangeAggregator.summarize(
             toolCalls: [
@@ -244,6 +223,4 @@ final class TurnFileChangeAggregatorTests: XCTestCase {
         XCTAssertEqual(summary.changes.count, 1)
         XCTAssertEqual(summary.changes.first?.action, .added)
     }
-
-    // MARK: - Titles
 }

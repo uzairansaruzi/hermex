@@ -1,40 +1,22 @@
 import SwiftUI
 
-/// The two sides of a Hermes server's home (#709): the Bots inbox and the session list.
 enum HermesHomeTab: String {
     case bots, sessions
 }
 
-/// What both sides of a Hermes server's home share: the server's name, which titles a pushed
-/// screen's back button, the server's avatar in the header, and the switch between the sides.
 struct HermesHome {
     let title: String
     let avatar: SessionsHeader.Avatar
     let tab: Binding<HermesHomeTab>
-    /// The home is a split's sidebar, whose bars stay horizontal beside a vertical one; the
-    /// detail column takes its rail items (`HermesHomeDetailBar`).
     var isSidebar = false
 }
 
-/// The home's search button, which each side fills: the Sessions side grows the header's field,
-/// the Bots side opens its search sheet.
 struct HermesHomeSearch {
     let label: LocalizedStringKey
     var isDisabled = false
     let open: () -> Void
 }
 
-/// The Hermes home's bar chrome (#709), the same on both sides: no top bar, since each side's
-/// list leads with the session list's header (`SessionsHeader`), and a bottom bar of
-/// `(filter) [Bots | Sessions] (new chat)` whose ends each side fills. The title names a pushed
-/// screen's back button, and stays inline so a pushed screen such as Tasks keeps the one-line bar.
-/// On iOS 26 the bar's glass pills float over the list: the system's bottom scroll edge effect
-/// read as a solid band behind them, so it is hidden.
-///
-/// Where the system draws a vertical bar (iPhone Duo), the bar's buttons and the header's search
-/// and avatar move into it (`HermesHomeRailItems`) and the header drops its pill
-/// (`homeBarOwnsSearch`). Unfolded, the rail is the split's detail column's, so the detail carries
-/// them (`HermesHomeDetailBar`) and this sidebar shows no bar.
 struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     let home: HermesHome
     let search: HermesHomeSearch
@@ -50,12 +32,8 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
                 .modifier(RailTopInset(isActive: ownsRail))
                 .modifier(HiddenBottomScrollEdge())
                 .themedPageBackground()
-                // With the rail the bar stays visible, and returning from a pushed screen drew
-                // the title for a moment before its removal landed, so the rail's home has none.
                 .navigationTitle(ownsRail ? "" : home.title)
                 .navigationBarTitleDisplayMode(.inline)
-                // The vertical bar carries the navigation bar's items, so it stays; its title would
-                // be a row of its own above the header.
                 .toolbar(ownsRail ? .automatic : .hidden, for: .navigationBar)
                 .toolbar(removing: ownsRail ? .title : nil)
                 .toolbar {
@@ -73,7 +51,6 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
         ToolbarItem(placement: .bottomBar) { filter }
         if #available(iOS 26, *) {
             ToolbarSpacer(.flexible, placement: .bottomBar)
-            // The segmented control is its own pill; a glass one around it would double it.
             ToolbarItem(placement: .bottomBar) { HermesHomeSwitch(tab: home.tab) }
                 .sharedBackgroundVisibility(.hidden)
             ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -84,9 +61,6 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     }
 }
 
-/// The unfolded iPhone Duo's rail belongs to the split's detail column, so a split home's detail
-/// root (its placeholder or chat) carries the home's rail items. A screen pushed over it shows
-/// only its own.
 struct HermesHomeDetailBar<Filter: View, NewChat: View>: ViewModifier {
     let home: HermesHome?
     let search: HermesHomeSearch
@@ -102,9 +76,6 @@ struct HermesHomeDetailBar<Filter: View, NewChat: View>: ViewModifier {
     }
 }
 
-/// The home's buttons in a vertical bar: New Chat, Search and the filter at its top, and Bots,
-/// Sessions and the avatar at its foot. The segmented switch is too wide for it, so each side
-/// gets its own button.
 @available(iOS 27.1, *)
 private struct HermesHomeRailItems<Filter: View, NewChat: View>: ToolbarContent {
     let home: HermesHome
@@ -121,22 +92,17 @@ private struct HermesHomeRailItems<Filter: View, NewChat: View>: ToolbarContent 
         ToolbarItem(placement: .topBarTrailing) { filter }
         ToolbarItem(placement: .bottomBar) { HermesHomeSideButton(side: .bots, tab: home.tab) }
         ToolbarItem(placement: .bottomBar) { HermesHomeSideButton(side: .sessions, tab: home.tab) }
-        // A custom label otherwise falls back to a horizontal bar of its own.
         ToolbarItem(placement: .bottomBar) { HermesHomeAvatarMenu(avatar: home.avatar) }
             .axisBehavior(.verticalPreferred)
     }
 }
 
 extension EnvironmentValues {
-    /// The home's bar holds search and the avatar, so `SessionsHeader` leaves them out.
     @Entry var homeBarOwnsSearch = false
-    /// A split's detail column draws the vertical bar (unfolded iPhone Duo), so its sidebar leaves
-    /// its bar items to the detail (`SessionSplitView`).
     @Entry var splitDetailHasVerticalBar = false
 }
 
 extension View {
-    /// `toolbar(content:)`, told whether the system draws a vertical bar here (`VerticalBarReader`).
     func verticalBarToolbar<Items: ToolbarContent>(
         @ToolbarContentBuilder _ items: @escaping (_ hasVerticalBar: Bool) -> Items
     ) -> some View {
@@ -144,12 +110,6 @@ extension View {
     }
 }
 
-/// Calls `content` with whether the system draws a vertical bar here (iOS 27.1, iPhone Duo). In a
-/// split it is the detail column's: the sidebar reads it too, but its bars stay horizontal.
-///
-/// The system reports no bar while a pushed screen covers the reader, a swipe back included,
-/// which redrew the screen underneath without its rail until the swipe landed. So a bar once
-/// seen stays until the size class changes, as a fold does.
 struct VerticalBarReader<Content: View>: View {
     @ViewBuilder let content: (Bool) -> Content
 
@@ -177,7 +137,6 @@ private struct VerticalBarEdgeReader<Content: View>: View {
     }
 }
 
-/// One side of the home in a vertical bar, filled while it shows.
 private struct HermesHomeSideButton: View {
     let side: HermesHomeTab
     @Binding var tab: HermesHomeTab
@@ -197,7 +156,6 @@ private struct HermesHomeSideButton: View {
     }
 }
 
-/// The header's avatar as a bar button: a tap opens Settings and a hold switches servers.
 private struct HermesHomeAvatarMenu: View {
     let avatar: SessionsHeader.Avatar
 
@@ -219,14 +177,10 @@ private struct HermesHomeAvatarMenu: View {
     }
 }
 
-/// The rail's home has no top bar, but a swipe back lends it the pushed screen's until the swipe
-/// lands, which dropped the list by a row and then jumped it back. So with the rail the list
-/// ignores the bar and keeps the 24 points an empty one leaves above it.
 private struct RailTopInset: ViewModifier {
     let isActive: Bool
 
     func body(content: Content) -> some View {
-        // One branch, so the list keeps its identity as the rail comes and goes.
         content
             .contentMargins(.top, isActive ? 24 : 0, for: .scrollContent)
             .ignoresSafeArea(.container, edges: isActive ? .top : [])
@@ -243,13 +197,10 @@ private struct HiddenBottomScrollEdge: ViewModifier {
     }
 }
 
-/// `[Bots | Sessions]`. It keeps a system bar's size at accessibility text sizes; a long press
-/// shows the Large Content Viewer instead.
 private struct HermesHomeSwitch: View {
     @Binding var tab: HermesHomeTab
 
     var body: some View {
-        // The segments name themselves; the picker needs no label of its own.
         Picker(selection: $tab) {
             Text("Bots").tag(HermesHomeTab.bots)
             Text("Sessions").tag(HermesHomeTab.sessions)
@@ -257,8 +208,6 @@ private struct HermesHomeSwitch: View {
             EmptyView()
         }
         .pickerStyle(.segmented)
-        // A bare `.fixedSize()` hugs the longer label (#1344); the minimum gives both segments
-        // room, and a longer translation still widens the switch instead of truncating.
         .frame(minWidth: 200)
         .fixedSize()
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)

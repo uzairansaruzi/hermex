@@ -3,9 +3,6 @@ import Foundation
 struct SessionsResponse: Decodable {
     let sessions: [SessionSummary]?
     let cliCount: Int?
-    /// Total archived sessions in the active profile (`archived_count`), present
-    /// on every response regardless of `include_archived` (issue #17). Optional so
-    /// older servers that omit it decode fine.
     let archivedCount: Int?
     let serverTime: Double?
     let serverTz: String?
@@ -98,17 +95,10 @@ struct ProjectMutationResponse: Decodable, Equatable {
 }
 
 struct ProjectSummary: Decodable, Equatable, Hashable, Identifiable {
-    /// What a Hermes project lane (#1052) carries beyond a webui project. Never decoded: only
-    /// `HermesProjectTree` makes it.
     struct Hermes: Hashable {
-        /// The primary folder, where Move to Project sends a session; nil when it has none.
         let folder: String?
-        /// A per-repository project the host derives from sessions' folders. It has no record,
-        /// so it can't be renamed, deleted or moved into.
         let isAutomatic: Bool
-        /// The host's count of its sessions, as Desktop shows it.
         let sessionCount: Int
-        /// How many listed sessions the host named as its own, so a lane knows when it has them all.
         let claimedCount: Int
     }
 
@@ -118,7 +108,6 @@ struct ProjectSummary: Decodable, Equatable, Hashable, Identifiable {
     let name: String?
     let color: String?
     let createdAt: Double?
-    /// Set only on a Hermes server's project.
     let hermes: Hermes?
 
     enum CodingKeys: String, CodingKey {
@@ -205,18 +194,11 @@ struct SessionStatusResponse: Decodable, Equatable {
 }
 
 struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
-    /// What a Hermes server's row (#1046) carries beyond a webui one. Never decoded: only
-    /// `HermesSessionRow` makes it.
     struct Hermes: Hashable {
-        /// The row's identity across a legacy compression chain, whose tip `sessionId` names.
         let lineageRoot: String
-        /// The host's read mark, which every client shares.
         let unread: Bool
-        /// The first prompt, cut at 60 characters, as an untitled row shows it.
         let preview: String?
-        /// A bot's canonical Bot Chat, which the Sessions list opens in that bot (#1053).
         var isBotChat = false
-        /// The Bot Chat root this row's chat caches under, falling back to its bot's copy (#1144).
         var botChatRoot: String? = nil
     }
 
@@ -263,12 +245,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let readOnly: Bool?
     let isReadOnly: Bool?
     let matchType: String?
-    /// Server-built excerpt of the matched message text on a content-search row
-    /// (`match_preview`, upstream `_session_search_preview`, <=124 chars and
-    /// redacted like the title). Absent on title matches, on every non-search
-    /// response, and on servers older than the commit that added it.
     let matchPreview: String?
-    /// Set only on a Hermes server's row.
     let hermes: Hermes?
 
     init(
@@ -354,15 +331,6 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         case parentSessionId, relationshipType, readOnly, isReadOnly, matchType, matchPreview
     }
 
-    /// Lossy field by field, like `SessionDetail` and `ProjectSummary` already are.
-    ///
-    /// The synthesized `Decodable` this replaces failed the whole value on one
-    /// mistyped field, and `SessionsResponse` decoded the array as a unit — so a
-    /// single malformed row emptied the entire session list, with pull-to-refresh
-    /// unable to recover it. The rows come from three different sources (sidecar
-    /// JSON, the state.db overlay, `get_cli_sessions()`), and upstream coerces
-    /// these same fields with `_numeric_count` / `_safe_first` on its way out,
-    /// which is the server conceding the inputs are not uniform.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
@@ -401,9 +369,6 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         hermes = nil
     }
 
-    /// Decodes a session array a row at a time, so one unreadable row costs that
-    /// row instead of the whole list. Returns nil only when the key is absent
-    /// or is not an array at all.
     static func decodingRowsIndependently<Key: CodingKey>(
         from container: KeyedDecodingContainer<Key>,
         forKey key: Key
@@ -465,8 +430,6 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         hermes = nil
     }
 
-    /// Applies the import response without dropping list metadata that the
-    /// detail endpoint does not consistently return.
     func mergingImportedDetail(_ detail: SessionDetail) -> SessionSummary {
         let imported = SessionSummary(from: detail)
         return SessionSummary(
@@ -507,8 +470,6 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         )
     }
 
-    /// Mirrors all stored fields so local title patches preserve session-list metadata.
-    /// Update this when `SessionSummary` gains a new stored property.
     func replacingTitle(with title: String) -> SessionSummary {
         SessionSummary(
             sessionId: sessionId,
@@ -555,34 +516,22 @@ extension SessionSummary {
     ]
     private static let cliSourceMarkers: Set<String> = ["acp", "cli", "desktop", "tui"]
 
-    /// Delegated children are identified only by an explicit source marker.
-    /// Parent linkage is shared by ordinary forks and compression continuations,
-    /// so it must never classify a row as a subagent on its own.
     var isDelegatedSubagentSession: Bool {
         [sourceTag, rawSource, sessionSource, sourceLabel]
             .compactMap(Self.normalizedSourceMarker)
             .contains("subagent")
     }
 
-    /// Claude Code imports are classified only by explicit upstream source
-    /// metadata. Titles, models, and read-only/CLI flags are intentionally not
-    /// descriptive enough to identify this source.
     var isClaudeCodeSession: Bool {
         [sourceTag, rawSource]
             .compactMap(Self.normalizedSourceMarker)
             .contains("claude_code")
     }
 
-    /// Delegated children are runner-owned and view-only. Upstream has also
-    /// emitted both read-only spellings across row sources, so either explicit
-    /// true value preserves that safety for other imported sessions.
     var isSessionReadOnly: Bool {
         isDelegatedSubagentSession || readOnly == true || isReadOnly == true
     }
 
-    /// External sessions need the same import step hermes-webui performs before
-    /// opening them. An explicit WebUI source wins over stale CLI flags left on
-    /// an already-imported sidecar.
     var requiresExternalImport: Bool {
         if Self.normalizedSourceMarker(sessionSource) == "webui" { return false }
         if Self.normalizedSourceMarker(sessionSource) == "messaging" { return true }
@@ -594,9 +543,6 @@ extension SessionSummary {
             || markers.contains(where: Self.cliSourceMarkers.contains)
     }
 
-    /// The source chip shown by hermes-webui, preferring the server's label and
-    /// falling back to stable brand/acronym casing for older servers. A Hermes row's
-    /// chip names its creator instead (`hermesSourceLabel`).
     var sourceDisplayLabel: String? {
         if hermes != nil { return hermesSourceLabel }
         guard requiresExternalImport else { return nil }
@@ -613,20 +559,14 @@ extension SessionSummary {
         return Self.sourceChipLabel(marker)
     }
 
-    /// Hermex's own chats on a Hermes host, current (`gui`, stored as `desktop`) and older
-    /// (`hermex`, #1279), and rows no client made. They show no chip (#1674).
     private static let hermesUnchippedSources: Set<String> = ["cron", "desktop", "fork", "gui", "hermex", "local", "unknown"]
 
-    /// A Hermes row's chip (#1674): the client or platform that made it (`sessionSource`,
-    /// set by `HermesSessionRow.summary`), unless that was Hermex or nobody.
     private var hermesSourceLabel: String? {
         guard let marker = Self.normalizedSourceMarker(sessionSource),
               !Self.hermesUnchippedSources.contains(marker) else { return nil }
         return Self.sourceChipLabel(marker)
     }
 
-    /// A lowercased source marker as a chip shows it: brand and acronym casing where plain
-    /// capitalizing gets it wrong, else its words capitalized.
     private static func sourceChipLabel(_ marker: String) -> String {
         switch marker {
         case "cli": return "CLI"
@@ -656,11 +596,6 @@ extension SessionSummary {
         !isEmptySidebarPlaceholder
     }
 
-    /// Mirrors hermes-webui's visible-sidebar safety net for just-created
-    /// placeholders: hide only the known empty Untitled shape, while keeping rows
-    /// with content, pending work, streaming state, or explicit user/server state.
-    /// Sort timestamps such as ``lastMessageAt`` are intentionally ignored here —
-    /// ``compact()`` sets them from ``updated_at`` even for zero-message sessions.
     var isEmptySidebarPlaceholder: Bool {
         guard hasPlaceholderTitle else { return false }
         guard !hasSidebarState else { return false }
@@ -669,12 +604,6 @@ extension SessionSummary {
         return (messageCount ?? 0) == 0 && (userMessageCount ?? 0) == 0
     }
 
-    /// True when this row originates from a scheduled cron job.
-    ///
-    /// Mirrors hermes-webui's `is_cron_session` (`api/models.py`): a `cron`
-    /// source marker (`session_source` / `source_tag` / `source_label`) or a
-    /// `cron_`-prefixed session id. Tolerant — a row with no cron markers is
-    /// treated as a normal session, so unknown/missing fields never hide it.
     var isCronSession: Bool {
         if let sessionId = sessionId?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -719,16 +648,12 @@ extension SessionSummary {
     }
 }
 
-/// Which non-standard session kinds the session list should show. Cron jobs,
-/// CLI imports, Claude Code imports, and delegated subagents are controlled independently. A row
-/// with unknown/missing source data remains visible as a normal session.
 struct AutomatedSessionVisibility: Equatable {
     var showsCron: Bool
     var showsCli: Bool
     var showsClaudeCode: Bool
     var showsSubagents: Bool
 
-    /// Show every kind, primarily for explicit opt-in and tests.
     static let showAll = AutomatedSessionVisibility(
         showsCron: true,
         showsCli: true,
@@ -748,12 +673,6 @@ struct AutomatedSessionVisibility: Equatable {
         self.showsSubagents = showsSubagents
     }
 
-    /// Whether `session` should remain visible under these toggles.
-    ///
-    /// `isCliSession` is server-computed (`is_cli_session_row`, re-stamped onto
-    /// every row by `_normalize_sidebar_source_flags` in `api/routes.py`); cron
-    /// detection is client-side (`SessionSummary.isCronSession`). On a Hermes server
-    /// `showsCli` is CLI and Messaging Sessions: it hides every row with a source chip (#1674).
     func shows(_ session: SessionSummary) -> Bool {
         if session.isDelegatedSubagentSession, !showsSubagents { return false }
         if session.isCronSession, !showsCron { return false }
@@ -964,9 +883,6 @@ struct SessionDetail: Decodable, Equatable, Identifiable {
     }
 }
 
-/// Anchor key the server builds in `_anchor_message_key` (`api/routes.py`):
-/// role, optional timestamp, first 160 chars of whitespace-normalized text,
-/// and attachment count of the last visible message after compaction.
 struct CompressionAnchorMessageKey: Decodable, Equatable {
     let role: String?
     let ts: Double?

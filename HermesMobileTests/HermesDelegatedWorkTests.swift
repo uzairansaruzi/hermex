@@ -200,8 +200,6 @@ import Observation
         XCTAssertEqual(wire.calls.map(\.method), ["subagent.list", "subagent.list", "subagent.interrupt", "subagent.list"])
     }
 
-    /// A worker's next tool changes its row but not the count, so a toolbar reading the count
-    /// is not redrawn by every roster read.
     func testARosterReadWithTheSameCountLeavesTheCountUntouched() async {
         let wire = HermesDelegatedWorkWire()
         var tools = 0
@@ -221,8 +219,6 @@ import Observation
         XCTAssertFalse(countChanged)
     }
 
-    /// A socket that no longer owns the session (4001) asks for a reconnect, keeps the methods
-    /// available, and never sends an interrupt the host could not authorize.
     func testOwnershipRejectionAsksForAReconnectAndSendsNoInterrupt() async throws {
         let wire = HermesDelegatedWorkWire()
         var listCount = 0

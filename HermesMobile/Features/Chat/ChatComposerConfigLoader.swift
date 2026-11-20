@@ -7,11 +7,7 @@ struct ChatComposerConfigState: Equatable, Sendable {
     var currentProfile: String?
     var selectedProfileName: String?
     var selectedReasoningEffort: String?
-    /// Model-aware effort vocabulary (`supported_efforts`); `nil` on older
-    /// servers → composer falls back to the full static list (issue #18).
     var supportedReasoningEfforts: [String]?
-    /// `supports_reasoning_effort`; `false` hides the effort control, `nil`
-    /// (older servers) keeps it visible.
     var supportsReasoningEffort: Bool?
     var modelCatalogGroups: [ModelCatalogGroup]
     var agentCommands: [AgentCommand]
@@ -65,13 +61,6 @@ struct ChatComposerConfigLoader {
         self.client = client
     }
 
-    /// Loads the composer's server config for a chat. Profiles (and a switch to
-    /// the session's profile) go first because `/api/models` and
-    /// `/api/workspaces` are profile-scoped upstream. After that, models,
-    /// workspaces, and commands load concurrently; only reasoning waits, for the
-    /// model it is scoped to. Errors keep the serial order's precedence
-    /// (profiles, models, reasoning, workspaces), and commands load even when the
-    /// rest fails.
     func loadConfiguration(from initialState: ChatComposerConfigState) async -> ChatComposerConfigLoadResult {
         var state = initialState
         var configurationError: Error?
@@ -145,9 +134,6 @@ struct ChatComposerConfigLoader {
                 ?? Self.uniqueProvider(for: state.currentModel, in: state.modelCatalogGroups)
         }
 
-        // Scope the query to the session's resolved model/provider so the
-        // gating fields are model-accurate (issue #18); the seeded effort is
-        // the server's already-coerced value for that model.
         let reasoningResponse = try await client.reasoning(
             model: Self.nonEmpty(state.currentModel),
             provider: Self.nonEmpty(state.currentModelProvider)

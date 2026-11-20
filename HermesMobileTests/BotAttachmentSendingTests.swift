@@ -2,8 +2,6 @@ import XCTest
 import UIKit
 @testable import HermesMobile
 
-/// How a Hermes chat's files go to the host: an image staged as the host receives it, then
-/// uploaded over HTTP to the Profile's image store, which answers with the stored path.
 @MainActor final class BotAttachmentSendingTests: XCTestCase {
     private var photo: Data {
         UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).jpegData(withCompressionQuality: 0.8) { ctx in
@@ -32,7 +30,6 @@ import UIKit
         XCTAssertEqual(jpeg.mime, "image/jpeg")
     }
 
-    /// Any file the encoder doesn't re-encode goes as it is, as `file.attach` takes any type (#1676).
     func testAnyFileTypeIsPreparedAsItIs() throws {
         let tool = try BotAttachmentUpload.prepare(data: Data([1]), filename: "tool.exe")
         XCTAssertEqual(tool.data, Data([1]))

@@ -5,8 +5,6 @@ import XCTest
 @testable import HermesMobile
 
 final class SessionNavigationStateTests: XCTestCase {
-    /// A Hermes row (#1046) is known by its lineage root and opens its own id, which on a
-    /// legacy compression chain is the tip, in the row's Profile. A webui row opens no Hermes chat.
     func testAHermesRowOpensItsOwnIDInItsProfile() {
         let row = HermesSessionRow(id: "tip", profile: "research", lineageRootID: "root").summary(in: "default")
 
@@ -114,8 +112,6 @@ final class SessionNavigationStateTests: XCTestCase {
         await initialLoad.value
     }
 
-    /// Over a tunnel each held request is a round trip, so restore must not
-    /// wait for projects or the profile, and neither of those waits for the other.
     @MainActor
     func testInitialLoadRestoresBeforeProjectsAndProfileAndLoadsThemTogether() async {
         let log = InitialLoadLog()
@@ -278,23 +274,19 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertFalse(
             activeRowMonitorID(isRegularWidth: false, destination: .utility(.archived)).shouldPoll
         )
-        // Scheduled sessions renders live rows, so its badges keep updating.
         XCTAssertTrue(
             activeRowMonitorID(isRegularWidth: false, destination: .utility(.scheduled)).shouldPoll
         )
-        // On regular width the sidebar stays on screen beside the chat.
         XCTAssertTrue(activeRowMonitorID(isRegularWidth: true, destination: chat).shouldPoll)
     }
 
     func testActiveRowPollRestartsWhenReturningToCompactList() {
         let chat = SessionNavigationDestination.session(SessionSummary(sessionId: "streaming"))
 
-        // A different task ID is what makes SwiftUI restart the paused poll.
         XCTAssertNotEqual(
             activeRowMonitorID(isRegularWidth: false, destination: chat),
             activeRowMonitorID(isRegularWidth: false, destination: nil)
         )
-        // Selecting another chat on regular width keeps the running poll.
         XCTAssertEqual(
             activeRowMonitorID(isRegularWidth: true, destination: chat),
             activeRowMonitorID(isRegularWidth: true, destination: nil)
@@ -331,8 +323,6 @@ final class SessionNavigationStateTests: XCTestCase {
             }
         )
 
-        // The tick runs right away, on the rows the reload found, rather than
-        // leaving stale Approval or Input badges up until the poll's first tick.
         XCTAssertEqual(events, ["reload", "tick:after-reload"])
     }
 
@@ -469,7 +459,6 @@ final class SessionNavigationStateTests: XCTestCase {
         )
         XCTAssertEqual(route.host, .scheduled)
 
-        // iPad: the sidebar keeps its own toast while Scheduled fills the detail column.
         let sidebarArchive = route.archiveStarted()
         XCTAssertEqual(
             route.archiveConfirmed(
@@ -483,14 +472,12 @@ final class SessionNavigationStateTests: XCTestCase {
     func testArchiveToastFollowsTheUserToTheOtherSessionScreen() {
         var route = SessionListArchiveToastRoute()
 
-        // iPhone: swiped on Scheduled, then tapped Back before the reply.
         let leftScheduled = route.archiveStarted()
         XCTAssertEqual(
             route.archiveConfirmed(leftScheduled, swipedOn: .scheduled, destination: nil, isRegularWidth: false),
             .list
         )
 
-        // iPhone: swiped on the list, then opened Scheduled before the reply.
         let openedScheduled = route.archiveStarted()
         XCTAssertEqual(
             route.archiveConfirmed(
@@ -529,11 +516,9 @@ final class SessionNavigationStateTests: XCTestCase {
     func testFailureToastShowsOnTheSessionScreenInFront() {
         var route = SessionListArchiveToastRoute()
 
-        // iPhone: the first failure on Scheduled, before any archive.
         route.noticeShown(destination: .utility(.scheduled))
         XCTAssertEqual(route.host, .scheduled)
 
-        // iPhone: archived on Scheduled, tapped Back, then an action failed on the list.
         let scheduledArchive = route.archiveStarted()
         _ = route.archiveConfirmed(
             scheduledArchive, swipedOn: .scheduled, destination: .utility(.scheduled), isRegularWidth: false
@@ -570,7 +555,6 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertNil(ChatShortcutNavigation.adjacentChat(offset: 1, from: "a", in: [SessionSummary]()))
     }
 
-    /// The Bots home steps through bots and rooms alike, a room never mistaken for a bot of its name.
     func testNextAndPreviousChatStepThroughBotsAndRooms() throws {
         let ops = try XCTUnwrap(BotProfile(.object(["name": .string("ops")])))
         let helper = try XCTUnwrap(BotProfile(.object(["name": .string("helper")])))
@@ -597,7 +581,6 @@ private final class InitialLoadLog {
     var events: [String] = []
 }
 
-/// Holds a scripted load open until the test releases it.
 @MainActor
 private final class HeldInitialLoad {
     private var continuation: CheckedContinuation<Void, Never>?
@@ -615,11 +598,6 @@ private final class HeldInitialLoad {
     }
 }
 
-/// Hosts the regular-width shell in a real window. Creation counts show which
-/// column a root selection re-identifies; the detail column's navigation stack
-/// shows what it pops and keeps; probe views entering and leaving the window mark
-/// when the sidebar and pushed screens actually change, so tests wait on those
-/// events rather than on a number of main-queue turns.
 @MainActor
 final class SessionSplitViewIdentityTests: XCTestCase {
     func testRootSelectionRebuildsOnlyTheDetailColumn() throws {
@@ -636,10 +614,6 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         XCTAssertEqual(log.detail, 2, "A root selection must reset the detail stack")
     }
 
-    /// Pins the visibility policy the split view applies on a root selection or width change. The
-    /// portrait close is not hosted: UISplitViewController's display-mode change did not settle
-    /// reliably on CI's parallel test clones, and a collapsed sidebar can't be told apart from
-    /// `.automatic` in an iPhone-idiom host anyway.
     func testRoomySplitKeepsItsSidebarOutUnlessTheUserCollapsedIt() {
         typealias Visibility = NavigationSplitViewVisibility
         XCTAssertEqual(Visibility.settled(isRoomy: true, isCollapsedByUser: false), .doubleColumn)
@@ -657,17 +631,12 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         XCTAssertFalse(Visibility.doubleColumn.isCollapsedByUser(after: .detailOnly, was: true))
     }
 
-    /// A push above an open chat clears both, so a fold keeps a Settings sheet a sheet. Unfolding
-    /// has nowhere to push, so a pushed Settings becomes one.
     func testSettingsPresentationSurvivesAWidthChange() {
         XCTAssertEqual(HermesSettingsPresentation.sheet.afterWidthChange(usesSplit: false), .sheet)
         XCTAssertEqual(HermesSettingsPresentation.pushed.afterWidthChange(usesSplit: true), .sheet)
         XCTAssertEqual(HermesSettingsPresentation.pushed.afterWidthChange(usesSplit: false), .pushed)
     }
 
-    /// Settings subpages (`NavigationLink`) and file or fork screens
-    /// (`navigationDestination`) push inside the detail column; a root selection
-    /// must pop them along with the old root (#116), and the new root can push again.
     func testRootSelectionPopsAScreenPushedInsideTheDetail() throws {
         let log = DetailPushLog()
         let host = UIHostingController(rootView: pushingSplitView(rootRevision: 0, log: log))
@@ -698,8 +667,6 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         XCTAssertEqual(detailStack.viewControllers.count, 2, "The new root must still push")
     }
 
-    /// A deep link can select a root that pushes as soon as it appears, even while the
-    /// old root's screen still covers it. The selection pops only the old screen.
     func testRootSelectionKeepsAScreenTheNewRootPushes() throws {
         let log = DetailPushLog()
         let host = UIHostingController(rootView: pushingSplitView(rootRevision: 0, log: log))
@@ -712,7 +679,6 @@ final class SessionSplitViewIdentityTests: XCTestCase {
             host.rootView = pushingSplitView(rootRevision: 1, log: log, pushesOnAppear: true)
             host.view.layoutIfNeeded()
         }
-        // Main-queue work the selection deferred ran before this turn.
         let deferredWorkRan = expectation(description: "deferred work ran")
         DispatchQueue.main.async { deferredWorkRan.fulfill() }
         wait(for: [deferredWorkRan], timeout: 5)
@@ -721,8 +687,6 @@ final class SessionSplitViewIdentityTests: XCTestCase {
         XCTAssertEqual(detailStack.viewControllers.count, 2, "A root selection must keep the new root's own push")
     }
 
-    /// Runs `change` and returns the detail column's navigation controller once the
-    /// screen it pushes is on screen.
     private func waitForPushedScreen(
         log: DetailPushLog,
         after change: () throws -> Void
@@ -803,7 +767,6 @@ final class SessionSplitViewIdentityTests: XCTestCase {
     }
 }
 
-/// Host the real home lists at both width classes.
 @MainActor
 final class HermesHomeSplitRoutingTests: XCTestCase {
     private let server = URL(string: "http://127.0.0.1:9")!
@@ -812,7 +775,6 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
         try assertSplit(in: sessions(), sizeClass: .regular, expected: true)
     }
 
-    /// A Plus/Max iPhone in landscape: a split here would rebuild the chat on every rotation (#1528).
     func testRegularWidthCompactHeightHermesSessionsKeepsItsStack() throws {
         try assertSplit(in: NavigationStack { sessions() }, sizeClass: .regular, verticalSizeClass: .compact, expected: false)
     }
@@ -916,16 +878,11 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
             replacement: [SessionSummary(sessionId: "newer-chat", profile: "default")])
     }
 
-    // The application owns its cache for the scene's lifetime. A hosted chat's
-    // initial attach can finish after its window closes, so its test store has the
-    // same process lifetime instead of invalidating a context still in use.
     private static let selectionCache = Result {
         try ModelContainer(for: CachedSession.self, CachedMessage.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     }
 
-    /// Host the real list observer with a selected chat. These are list snapshots, not
-    /// confirmed mutations: changing Profile, replacing cache, and reloading a page.
     private func assertListReplacementKeepsChat(cached: Bool, replacement: [SessionSummary]) async throws {
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
                                        username: "fixture", password: "fixture-only")
@@ -982,7 +939,6 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     }
 
     private func renderTurn(_ window: UIWindow) async {
-        // Synchronize with main-queue rendering, not an elapsed-time delay.
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async {
                 window.layoutIfNeeded()
@@ -1033,7 +989,6 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     func testConfirmedArchiveAndDeleteCloseTheSelectedDetail() {
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
                                        username: "fixture", password: "fixture-only")
-        // Both confirmed mutation callbacks carry the original row, not a list diff.
         for archived in [false, true] {
             let row = SessionSummary(sessionId: "new-tip", archived: archived, profile: "default",
                 hermes: .init(lineageRoot: "root-1", unread: false, preview: nil))
@@ -1115,14 +1070,12 @@ private typealias PushingSplitView = SessionSplitView<SplitColumnProbe, PushingD
 private final class DetailPushLog {
     var sidebar = 0
     var roots = 0
-    /// Pushes a screen from the detail root that appeared last.
     var push: (() -> Void)?
     var rootDidAppear: () -> Void = {}
     weak var pushedScreen: UIView?
     var pushedScreenMoved: (Bool) -> Void = { _ in }
 }
 
-/// A detail root that pushes a screen the way Settings and the file browser do.
 private struct PushingDetailProbe: View {
     let log: DetailPushLog
     let pushesOnAppear: Bool
@@ -1151,7 +1104,6 @@ private final class SplitColumnCreationLog {
     var detail = 0
 }
 
-/// Reports when SwiftUI creates it and when its view enters or leaves the window.
 private struct SplitColumnProbe: UIViewRepresentable {
     let onCreate: @MainActor () -> Void
     var onWindowChange: @MainActor (Bool) -> Void = { _ in }

@@ -2,8 +2,6 @@ import SwiftUI
 import XCTest
 @testable import HermesMobile
 
-/// A message's images open as one lightbox gallery at the tapped image; only the pages
-/// around the selected one hold a loader, and a zoomed image keeps its zoom and stops the paging.
 @MainActor
 final class ImageGalleryTests: XCTestCase {
     private var window: UIWindow?
@@ -42,8 +40,6 @@ final class ImageGalleryTests: XCTestCase {
         XCTAssertEqual(scrollView.contentOffset.x, scrollView.bounds.width * 2, accuracy: 1)
     }
 
-    /// The pager runs edge to edge; a page's chrome must still clear the Dynamic Island
-    /// and the home indicator.
     func testGalleryPagesKeepTheScreensSafeArea() async throws {
         let probe = PageProbe()
         _ = try await hostPager(startingAt: 0, of: 2, probe: probe)
@@ -55,9 +51,6 @@ final class ImageGalleryTests: XCTestCase {
         XCTAssertEqual(safeArea.bottom, screen.bottom, accuracy: 1)
     }
 
-    /// Zooming a loaded image redraws the pager; the zoom must survive that, and a sideways
-    /// drag must pan the image instead of turning the page. Both neighbours stay live, so
-    /// VoiceOver can step from one zoomed image back to another that is still zoomed.
     func testZoomingALoadedImageKeepsTheZoomAndStopsPaging() async throws {
         let session = SessionSummary(title: "Screenshots")
         let server = try XCTUnwrap(URL(string: "https://example.test"))
@@ -91,8 +84,6 @@ final class ImageGalleryTests: XCTestCase {
         XCTAssertTrue(pager.isScrollEnabled)
     }
 
-    /// A page the user swipes away from while its image is still downloading fetches it again
-    /// on the way back, instead of sitting on "Loading media".
     func testAPageLeftWhileLoadingLoadsAgainWhenTheUserComesBack() async throws {
         let files = HeldFirstMedia(heldName: "shot-0.png", image: Self.photo)
         let server = try XCTUnwrap(URL(string: "https://example.test"))
@@ -113,8 +104,6 @@ final class ImageGalleryTests: XCTestCase {
         await files.finishFirstDownload()
     }
 
-    // MARK: - Hosting
-
     private struct Page: Identifiable {
         let id: String
     }
@@ -131,7 +120,6 @@ final class ImageGalleryTests: XCTestCase {
         })
     }
 
-    /// Shows `root` full screen on a phone-sized window and returns the pager's scroll view.
     private func host(_ root: some View) async throws -> UIScrollView {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -146,14 +134,12 @@ final class ImageGalleryTests: XCTestCase {
         return try XCTUnwrap(Self.scrollViews(in: window).first)
     }
 
-    /// Zooms `image` the way a pinch ends.
     private func zoom(_ image: ZoomableScrollView, to scale: CGFloat) async throws {
         image.setZoomScale(scale, animated: false)
         image.delegate?.scrollViewDidEndZooming?(image, with: nil, atScale: scale)
         await settle()
     }
 
-    /// The zooming scroll view of the image on screen.
     private func visibleZoomableImage() -> ZoomableScrollView? {
         guard let window else { return nil }
         return Self.scrollViews(in: window)
@@ -170,7 +156,6 @@ final class ImageGalleryTests: XCTestCase {
         }
     }
 
-    /// Every scroll view under `view`, outermost first.
     private static func scrollViews(in view: UIView) -> [UIScrollView] {
         let own = (view as? UIScrollView).map { [$0] } ?? []
         return own + view.subviews.flatMap { scrollViews(in: $0) }
@@ -188,8 +173,6 @@ private final class PageProbe {
     var safeAreas: [String: EdgeInsets] = [:]
 }
 
-/// Media whose first download of `heldName` waits until the test finishes it; every other
-/// download answers with `image` at once.
 private actor HeldFirstMedia: WorkspaceFileClient {
     nonisolated let scope = "held-first-media"
     nonisolated let opensTopLevelFolders = false

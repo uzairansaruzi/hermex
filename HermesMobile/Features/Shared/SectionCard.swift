@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// A card container: an optional uppercase title over a glass panel. Shared by
-/// Usage and Task Detail, and matched to the Settings card chrome, so the
-/// screens read as one app.
-///
-/// An optional `footer` sits flush against the card's bottom edge, under a
-/// full-width divider and outside the content's padding — the shape a row of
-/// card actions wants. Passing it here rather than cancelling the padding at
-/// the call site keeps the card's insets its own business.
 struct SectionCard<Content: View, Footer: View>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -15,8 +7,6 @@ struct SectionCard<Content: View, Footer: View>: View {
     let title: String?
     @ViewBuilder let content: Content
     @ViewBuilder let footer: Footer
-    /// Set by the initializer rather than inferred from `Footer`, so an empty
-    /// footer never leaves a divider hanging under the content.
     private let hasFooter: Bool
 
     init(

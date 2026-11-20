@@ -1,11 +1,7 @@
 import Foundation
 import Observation
 
-/// Sendable because quota probes run concurrently in a task group: the client
-/// is handed to child tasks off the main actor. A webui server's is its `APIClient`;
-/// a Hermes host's is `HermesInsightsClient` (#1074).
 protocol InsightsDataClient: Sendable {
-    /// What this server's insights report, which decides what the Usage screen offers.
     var insightsFeatures: InsightsFeatures { get }
     func sessions() async throws -> SessionsResponse
     func insights(days: Int) async throws -> InsightsResponse
@@ -17,30 +13,18 @@ extension APIClient: InsightsDataClient {
     nonisolated var insightsFeatures: InsightsFeatures { .webui }
 }
 
-/// What one server's insights can report.
 struct InsightsFeatures: Equatable, Sendable {
-    /// The windows the picker offers. Today is the only hourly one; 24 hours is the only one
-    /// without a chart.
     let timeframes: [AnalyticsTimeframe]
-    /// Message counts cover only part of the window, so the totals mark them "≈".
     let approximatesMessages: Bool
-    /// A failed insights read is rebuilt from `/api/sessions`, which is also the only source of
-    /// top sessions. Without it, the failure is the screen's error.
     let fallsBackToSessions: Bool
 
     static let webui = InsightsFeatures(timeframes: [.today, .last7Days, .last30Days, .last90Days],
                                         approximatesMessages: false,
                                         fallsBackToSessions: true)
-    /// A Hermes host (#1074) reports no hours, counts messages over at most its newest 500 visible
-    /// sessions (`insights.get`), and has no sessions list here. Its `days=1` is a rolling
-    /// 24 hours, not midnight to now, so it gets 24 hours instead of Today (#1678).
     static let hermes = InsightsFeatures(timeframes: [.last24Hours, .last7Days, .last30Days, .last90Days],
                                          approximatesMessages: true, fallsBackToSessions: false)
 }
 
-/// The windows the Usage screen offers. Each maps to a `days` value the insights
-/// handler clamps to 1-365, and to a matching local filter for the session
-/// metadata fallback.
 enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
     case today
     case last24Hours
@@ -53,8 +37,6 @@ enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .today:
-            // "Today", not "24h": the handler's days=1 means midnight-to-now,
-            // and the local fallback filters on the same calendar day to match.
             String(localized: "Today")
         case .last24Hours:
             String(localized: "24 hours")
@@ -80,14 +62,10 @@ enum AnalyticsTimeframe: String, CaseIterable, Identifiable {
         }
     }
 
-    /// True when the window plots hours rather than days. The server reports
-    /// session counts per hour and nothing else, so this window has no metric.
     var isHourly: Bool {
         self == .today
     }
 
-    /// False for the rolling 24 hours: the host's daily rows are calendar dates, so the window
-    /// would split into one or two bars at a midnight that means nothing to it.
     var showsChart: Bool {
         self != .last24Hours
     }
@@ -158,33 +136,18 @@ final class InsightsViewModel {
     private(set) var serverInsights: InsightsResponse?
     var selectedTimeframe: AnalyticsTimeframe = .last30Days
     private(set) var loadedTimeframe: AnalyticsTimeframe = .last30Days
-    /// True from the start: the screen loads as it appears, and until then "none" would be a guess
-    /// that drew the empty state for a frame before the spinner.
     private(set) var isLoading = true
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
     private(set) var dataSource: InsightsDataSource = .local
     private(set) var fallbackReason: String?
-    /// The provider quota cards above the window picker (#415). Empty until a
-    /// provider qualifies. A card leaves once its provider leaves the selection
-    /// or the server says it no longer qualifies; a failed probe keeps it (#1408).
     private(set) var limitCards: [ProviderLimitCard] = []
-    /// True only while quota probes for at least one candidate provider are in
-    /// flight. It exists so the Limits slot can be reserved before the answers
-    /// arrive instead of popping in and shoving the analytics down (#415), so a
-    /// server with no keyed provider must never set it.
     private(set) var isLoadingLimits = false
-    /// The ids of the `limitCards` the latest refresh failed to update, so they
-    /// still show the last values loaded (#1408). Drives the Limits notice.
     private(set) var staleLimitIDs: Set<String> = []
     private var activeLoadID: UUID?
-    /// Same generation guard as `ProvidersViewModel`: quota has three
-    /// overlapping entry points (`.task`, `.refreshable`, the toolbar button),
-    /// and a superseded probe must never overwrite a newer one's cards.
     private var limitsGeneration = 0
 
     private let client: any InsightsDataClient
-    /// The Hermes Usage screen whose cards the Limits widget shows (#1409); nil publishes nothing.
     private let limitsScope: ProviderLimitsPublisher.Scope?
     private let limitsPublisher: ProviderLimitsPublisher?
 
@@ -224,8 +187,6 @@ final class InsightsViewModel {
             guard activeLoadID == loadID, !Task.isCancelled else { return }
             lastError = error
             guard features.fallsBackToSessions else {
-                // Nothing to rebuild the window from, and what is on screen is another window or
-                // unconfirmed: the failure replaces it.
                 serverInsights = nil
                 dataSource = .local
                 errorMessage = error.localizedDescription
@@ -256,30 +217,10 @@ final class InsightsViewModel {
         }
     }
 
-    /// Loads the quota cards. Deliberately separate from `load()`: a cold
-    /// account-limits probe can take several seconds upstream, and the chart
-    /// must never wait on it.
-    ///
-    /// Failures never reach `errorMessage` or `lastError`: quota is a bonus
-    /// panel, and must not put an error over the analytics the user came for.
-    /// A failure with nothing on screen stays silent. One with cards showing
-    /// keeps them as they were and marks them in `staleLimitIDs` (#1408), so a
-    /// network blip does not look like a vanished subscription.
-    ///
-    /// `refresh` bypasses the server's 45 s probe cache and belongs only to the
-    /// toolbar button and pull-to-refresh.
-    ///
-    /// Each load that settles the cards hands them to the Limits widget, with a ticket taken
-    /// before the first read so a server switch meanwhile drops them (#1409). A failed providers
-    /// read publishes nothing.
     func loadLimits(refresh: Bool = false) async {
         limitsGeneration += 1
         let generation = limitsGeneration
         let ticket = limitsScope.flatMap { limitsPublisher?.ticket(for: $0) }
-        // The newest generation owns `isLoadingLimits`, and clears it on every
-        // way out — including the silent failures below. A superseded load
-        // leaves it alone so it cannot cancel the placeholder of the load that
-        // replaced it.
         defer {
             if generation == limitsGeneration {
                 isLoadingLimits = false
@@ -290,7 +231,6 @@ final class InsightsViewModel {
         do {
             selection = providerQuotaSelection(from: try await client.providers())
         } catch {
-            // Nothing to correct the cards with: keep them, but say they may be old.
             guard generation == limitsGeneration, !Task.isCancelled else { return }
             staleLimitIDs = Set(limitCards.map(\.id))
             return
@@ -319,8 +259,6 @@ final class InsightsViewModel {
                 }
             }
 
-            // Selection order, not completion order: cards must not reshuffle
-            // because one provider answered faster this time.
             var probes = Array(repeating: LimitProbe.failed, count: selection.count)
             for await (index, probe) in group {
                 probes[index] = probe
@@ -354,17 +292,13 @@ final class InsightsViewModel {
         limitsPublisher?.publish(limitCards, stale: staleLimitIDs, with: ticket)
     }
 
-    /// What this server's insights report.
     var features: InsightsFeatures {
         client.insightsFeatures
     }
 
-    /// The windows the picker offers.
     var timeframes: [AnalyticsTimeframe] {
         features.timeframes
     }
-
-    // MARK: - Aggregates
 
     var analytics: SessionUsageAnalytics {
         SessionUsageAnalytics(sessions: filteredSessions)
@@ -394,8 +328,6 @@ final class InsightsViewModel {
         serverInsights?.totalCost ?? analytics.estimatedCost
     }
 
-    /// Cache stats only exist in server insights — nil hides the cards on
-    /// the local fallback and on older servers that don't report them (#24).
     var totalCacheReadTokens: Int? {
         serverInsights?.totalCacheReadTokens
     }
@@ -412,16 +344,10 @@ final class InsightsViewModel {
         serverInsights != nil || dataSource == .localFallback
     }
 
-    /// A re-fetch of something already on screen. The first load and a server
-    /// that never answers both render a placeholder instead, so neither can pin
-    /// the refresh spinner on.
     var isRefreshing: Bool {
         isLoading && hasLoadedAnalytics
     }
 
-    /// Whether the Limits group has anything to occupy its slot: real cards, or
-    /// the placeholder standing in for a first load. False once a load settles
-    /// with nothing to show, which is how the group disappears again.
     var showsLimits: Bool {
         !limitCards.isEmpty || isLoadingLimits
     }
@@ -470,25 +396,17 @@ final class InsightsViewModel {
         activityByHour.max { ($0.sessions ?? 0) < ($1.sessions ?? 0) }
     }
 
-    // MARK: - Chart
-
-    /// The metric the user picked, or nil while the screen is following the data.
     private var chosenMetric: UsageMetric?
 
-    /// The hero and chart metric. A window the server prices at zero opens on
-    /// tokens rather than a confident $0.00, until the user says otherwise.
     var metric: UsageMetric {
         get { chosenMetric ?? (estimatedCost > 0 ? .cost : .tokens) }
         set { chosenMetric = newValue }
     }
 
-    /// Hidden on the hourly window, which has only one figure to show.
     var showsMetricToggle: Bool {
         !loadedTimeframe.isHourly
     }
 
-    /// The bars for the loaded window: one per hour on the 24-hour window, one
-    /// per calendar day otherwise.
     var chartBuckets: [UsageBucket] {
         guard let serverInsights else { return [] }
 
@@ -502,20 +420,15 @@ final class InsightsViewModel {
         )
     }
 
-    /// Daily rows regardless of window, so "per active day" means the same thing
-    /// on every screen.
     private var dailyBuckets: [UsageBucket] {
         guard let serverInsights else { return [] }
         return UsageBuckets.daily(from: serverInsights.dailyTokens ?? [], windowDays: periodDays)
     }
 
-    /// Days in the window that actually did something. Dividing by the window
-    /// length instead would quietly deflate every average.
     var activeDayCount: Int {
         dailyBuckets.filter(\.hasActivity).count
     }
 
-    /// The window total, shown whenever the user is not dragging the chart.
     var heroFigure: UsageHeroFigure {
         if loadedTimeframe.isHourly {
             return UsageHeroFigure(
@@ -533,9 +446,6 @@ final class InsightsViewModel {
                 caption: String(localized: "Estimated by the server from session metadata.")
             )
         case .tokens:
-            // "Processed", not "total": this is the server's `total_tokens`,
-            // which excludes cache reads. The chart stacks those separately and
-            // the totals grid names them, so the two labels have to agree.
             return UsageHeroFigure(
                 label: String(localized: "Processed tokens"),
                 value: usageFormattedTokens(totalTokens),
@@ -557,17 +467,11 @@ final class InsightsViewModel {
         }
     }
 
-    /// The caption under the hourly chart, which plots something the metric
-    /// toggle cannot describe.
     var hourlyChartNote: String? {
         guard loadedTimeframe.isHourly else { return nil }
         return String(localized: "Sessions per hour — the server does not report hourly tokens or cost.")
     }
 
-    // MARK: - Totals
-
-    /// The two-up grid under the chart. Cache cells drop out entirely on servers
-    /// that do not report them (#24) and on the local fallback.
     var totalsCells: [UsageTotalsCell] {
         var cells: [UsageTotalsCell] = [
             UsageTotalsCell(
@@ -638,7 +542,6 @@ final class InsightsViewModel {
         return cells
     }
 
-    /// Nil on the 24-hour window, which is at most one day by definition.
     private var perActiveDayDetail: String? {
         guard loadedTimeframe != .last24Hours else { return nil }
         let activeDays = activeDayCount
@@ -646,8 +549,6 @@ final class InsightsViewModel {
         return String(localized: "\(usageFormattedTokens(totalTokens / activeDays)) per active day")
     }
 
-    /// Cached reads as a share of everything the model was shown, which is
-    /// ordinary input plus cache reads — the same denominator the server uses.
     private func cachedInputDetail(cacheReadTokens: Int) -> String? {
         let observedInput = totalInputTokens + cacheReadTokens
         guard observedInput > 0 else { return nil }
@@ -655,17 +556,12 @@ final class InsightsViewModel {
         return String(localized: "\(insightsFormattedPercent(share)) of observed input")
     }
 
-    // MARK: - Top sessions
-
-    /// All sessions sorted by total tokens (descending), with cost shown when available.
-    /// Falls back to input-only or output-only if one is missing.
     var topSessions: [SessionSummary] {
         guard dataSource != .server else { return [] }
         return analytics.topSessions
     }
 }
 
-/// One cell in the Usage totals grid.
 struct UsageTotalsCell: Identifiable, Equatable {
     let id: String
     let label: String
@@ -679,12 +575,6 @@ private extension SessionSummary {
     }
 }
 
-/// What one refresh learned about one provider's limits (#1408). Only a status
-/// saying the server can't report this provider removes its card: `unsupported`
-/// (hermex-push and webui), `no_key` or `invalid_key` (webui). Anything else
-/// that is not a usable card is a failure and keeps the last one: a thrown
-/// request, an unknown status or empty payload, and `unavailable`, which both
-/// servers also answer when the provider's own API can't be reached.
 private enum LimitProbe {
     case card(ProviderLimitCard)
     case gone

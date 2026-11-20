@@ -1,10 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// The agent's plan as one log row: `Plan`, then `2 of 5 · current step`. Expanding lists
-/// every item with its state; long-press copies the list. A Hermes chat shows it at the top
-/// of the plan's turn once it leaves the strip (#1139). It shows
-/// whatever the Thinking and Tool Cards setting says.
 struct HermesPlanRowView: View {
     let plan: HermesPlan
 
@@ -30,7 +26,6 @@ struct HermesPlanRowView: View {
     }
 }
 
-/// Every item of a plan with its state, as the row and the strip expand to.
 struct HermesPlanItemList: View {
     let plan: HermesPlan
 
@@ -71,10 +66,6 @@ struct HermesPlanItemList: View {
     }
 }
 
-/// A running plan pinned above a Hermes chat's composer (#1139, mock B): one glass line with
-/// "2 of 5", the current step and a chevron. Tap expands the list upward, instantly under
-/// Reduce Motion; long-press copies it. `onCollapsedHeightChange` reports the line's height,
-/// which is all the transcript makes room for: the open list rises over it.
 struct HermesPlanStrip: View {
     let plan: HermesPlan
     let onCollapsedHeightChange: (CGFloat) -> Void

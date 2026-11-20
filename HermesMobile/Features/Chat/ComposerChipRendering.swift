@@ -1,15 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// The chip a skill, file or bot reference is drawn as: one attachment glyph that stands for
-/// the whole `source` string.
-///
-/// Everything that leaves the editor - what is sent, copied, cut, or saved as a
-/// draft - reads `source` back out, so the chip never changes the message.
 final class ComposerChipAttachment: NSTextAttachment {
-    /// The reference this glyph stands for. Carried whole so a tap on the chip
-    /// can report what was tapped without the caller re-deriving it from a
-    /// caret offset.
     let token: ComposerChipToken
 
     var source: String { token.source }
@@ -29,9 +21,6 @@ final class ComposerChipAttachment: NSTextAttachment {
     }
 }
 
-/// A zero-source attachment for one explicitly selected response passage.
-/// Unlike skill and file chips, it is backed by draft metadata rather than a
-/// substring the user can type.
 final class ComposerQuoteAttachment: NSTextAttachment {
     let quote: ComposerQuote
 
@@ -52,17 +41,9 @@ final class ComposerQuoteAttachment: NSTextAttachment {
 }
 
 extension NSAttributedString.Key {
-    /// Spacing between quote attachments is part of their presentation and must
-    /// never enter the typed draft.
     static let composerQuoteSpacer = NSAttributedString.Key("com.hermex.composerQuoteSpacer")
 }
 
-/// Chip geometry, derived from the editor's own font so Dynamic Type moves the
-/// chip with the text around it.
-///
-/// t3code draws a 24 pt chip against a 15 pt label; every other measurement is a
-/// fraction of that height, so scaling the height by the label's line height
-/// keeps the proportions at every content size.
 struct ComposerChipMetrics: Equatable {
     let labelFont: UIFont
     let height: CGFloat
@@ -85,18 +66,9 @@ struct ComposerChipMetrics: Equatable {
     }
 }
 
-/// Draws the chip. The image is baked against a trait collection, so the editor
-/// re-renders it when the appearance or the content size category changes.
 @MainActor enum ComposerChipRenderer {
-    /// Baked chips, keyed by everything that changes one. The editor redraws
-    /// only when its chips or its style move, but the collapsed composer draws
-    /// from `body`, which runs again on every parent update — including each
-    /// token of a live stream. Baking there uncached would burn a render pass
-    /// per frame for a picture that never changed.
     private static let cache = NSCache<CacheKey, UIImage>()
 
-    /// Retain image-valued keys and hash every component. NSArray's own hash
-    /// only reflects its count, which would put every chip in the same bucket.
     private final class CacheKey: NSObject {
         let values: [NSObject]
         init(_ values: [NSObject]) { self.values = values }
@@ -153,8 +125,6 @@ struct ComposerChipMetrics: Equatable {
         return image
     }
 
-    /// The chip's glyph: an SF Symbol takes the chip's muted tint, a file-type
-    /// asset keeps its own colours.
     private static func iconImage(
         _ icon: ComposerChipIcon,
         metrics: ComposerChipMetrics,
@@ -179,7 +149,6 @@ struct ComposerChipMetrics: Equatable {
             let view = BotAvatarView(profile: reference.profile, avatar: reference.avatar, size: metrics.iconSize, motion: .still)
                 .environment(\.colorScheme, traits.userInterfaceStyle == .dark ? .dark : .light)
             let renderer = ImageRenderer(content: view)
-            // Traits report 0 before the view reaches a window; the real scale is a new cache key.
             renderer.scale = max(traits.displayScale, 1)
             return renderer.uiImage
         }
@@ -237,9 +206,6 @@ struct ComposerChipMetrics: Equatable {
             path.lineWidth = 1
             path.stroke()
 
-            // The icon leads in both directions: mirroring it by hand is what
-            // keeps an RTL chip from reading back to front, since the image is
-            // drawn once and reused as a glyph.
             let iconX = isRightToLeft
                 ? width - metrics.horizontalPadding - metrics.iconSize
                 : metrics.horizontalPadding
@@ -269,10 +235,6 @@ struct ComposerChipMetrics: Equatable {
     }
 }
 
-/// Everything about the current environment that changes a chip's picture.
-///
-/// Built inside a view's `body` so SwiftUI re-evaluates — and the chips
-/// re-measure — when appearance, contrast, direction, or text size moves.
 struct ComposerChipTextStyle {
     let metrics: ComposerChipMetrics
     let traits: UITraitCollection
@@ -286,7 +248,6 @@ struct ComposerChipTextStyle {
         displayScale: CGFloat,
         appearance: AppAppearance
     ) {
-        // The same body style the editor uses, at this view's text size.
         metrics = ComposerChipMetrics(editorFont: .app(forTextStyle: .body, at: dynamicTypeSize))
         traits = UITraitCollection { traits in
             traits[AppAppearanceTrait.self] = appearance
@@ -298,15 +259,7 @@ struct ComposerChipTextStyle {
     }
 }
 
-/// A run of text with its skill references drawn as chips, for the two places
-/// SwiftUI does the drawing: the collapsed composer pill and the sent user
-/// bubble. The expanded editor is a `UITextView` with real attachments instead,
-/// but every chip is the same picture, so one reference cannot look like two
-/// different things on either side of the send.
 enum ComposerChipTextLine {
-    /// The tokens that still describe `text`. A caller whose chips were
-    /// computed a beat earlier can hand over a set the text has since outgrown;
-    /// drawing none is better than drawing one in the wrong place.
     static func validTokens(_ tokens: [ComposerChipToken], in text: String) -> [ComposerChipToken] {
         let string = text as NSString
         guard tokens.allSatisfy({
@@ -317,8 +270,6 @@ enum ComposerChipTextLine {
         return tokens
     }
 
-    /// `text` with every token replaced by its chip picture and the rest left
-    /// verbatim, so nothing in a message is read as markdown or a format string.
     @MainActor static func text(
         _ text: String,
         tokens: [ComposerChipToken],
@@ -355,21 +306,7 @@ enum ComposerChipTextLine {
     }
 }
 
-/// Crossing between the draft the server sees and the text the editor draws.
-///
-/// A chip is one character on screen and its whole source string in the draft,
-/// so every caret the editor reports and every range the composer asks for has
-/// to be translated. The rendered document is the authority: reading the
-/// mapping off the attachments themselves means a caret can never be computed
-/// from a stale idea of where the chips are.
-///
-/// An attachment this file did not make contributes nothing at all — not even
-/// the U+FFFC placeholder standing in for it on screen. The draft is what gets
-/// sent, saved, and copied, so anything the editor cannot describe as text has
-/// no business reaching it: a stray glyph would travel to the server, come back
-/// in the transcript, and be rendered by whatever reads it next.
 extension NSAttributedString {
-    /// The draft text this document stands for.
     var composerSourceText: String {
         composerSourceText(in: NSRange(location: 0, length: length))
     }
@@ -392,7 +329,6 @@ extension NSAttributedString {
         return source as String
     }
 
-    /// The draft offset a display offset points at.
     func composerSourceOffset(forDisplayOffset displayOffset: Int) -> Int {
         let bounded = max(0, min(length, displayOffset))
         guard bounded > 0 else { return 0 }
@@ -409,9 +345,6 @@ extension NSAttributedString {
         return source
     }
 
-    /// The display offset a draft offset points at. An offset that lands inside
-    /// a chip resolves to just after it, because there is nowhere inside a chip
-    /// for a caret to be.
     func composerDisplayOffset(forSourceOffset sourceOffset: Int) -> Int {
         var source = 0
         var display = 0
@@ -420,8 +353,6 @@ extension NSAttributedString {
             if let chip = attributes[.attachment] as? ComposerChipAttachment {
                 let chipLength = (chip.source as NSString).length
                 if sourceOffset < source + chipLength {
-                    // The chip's own start still has a caret position; anywhere
-                    // else inside it resolves to just after the chip.
                     display = sourceOffset <= source ? range.location : NSMaxRange(range)
                     stop.pointee = true
                     return
@@ -442,14 +373,12 @@ extension NSAttributedString {
         return display
     }
 
-    /// The display range a draft range covers.
     func composerDisplayRange(forSourceRange range: NSRange) -> NSRange {
         let start = composerDisplayOffset(forSourceOffset: range.location)
         let end = composerDisplayOffset(forSourceOffset: range.upperBound)
         return NSRange(location: start, length: max(0, end - start))
     }
 
-    /// The draft range a display range covers.
     func composerSourceRange(forDisplayRange range: NSRange) -> NSRange {
         let start = composerSourceOffset(forDisplayOffset: range.location)
         let end = composerSourceOffset(forDisplayOffset: range.upperBound)

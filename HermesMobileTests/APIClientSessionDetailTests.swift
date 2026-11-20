@@ -142,7 +142,6 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         let messages = try XCTUnwrap(response.session?.messages)
         XCTAssertEqual(messages.count, 5)
 
-        // Message 1: normal + filename alias
         let msg1 = messages[0]
         XCTAssertEqual(msg1.attachments?.count, 2)
         XCTAssertEqual(msg1.attachments?[0].name, "report.pdf")
@@ -150,24 +149,20 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         XCTAssertEqual(msg1.attachments?[1].name, "image.jpg")
         XCTAssertEqual(msg1.attachments?[1].isImage, true)
 
-        // Message 2: legacy bare string
         let msg2 = messages[1]
         XCTAssertEqual(msg2.attachments?.count, 1)
         XCTAssertEqual(msg2.attachments?.first?.name, "legacy_file.txt")
         XCTAssertNil(msg2.attachments?.first?.path)
 
-        // Message 3: mixed quality — malformed entries are dropped
         let msg3 = messages[2]
         XCTAssertEqual(msg3.attachments?.count, 2)
         XCTAssertEqual(msg3.attachments?[0].name, "good.csv")
         XCTAssertEqual(msg3.attachments?[1].path, "/uploads/minimal.txt")
         XCTAssertNil(msg3.attachments?[1].name)
 
-        // Message 4: explicit null
         let msg4 = messages[3]
         XCTAssertNil(msg4.attachments)
 
-        // Message 5: missing key
         let msg5 = messages[4]
         XCTAssertNil(msg5.attachments)
     }
@@ -330,8 +325,6 @@ final class APIClientSessionDetailTests: APIClientTestCase {
     }
 
     func testSessionToleratesNumericFieldsOutsideIntRange() async throws {
-        // Values beyond Int range reach the lossy int decoder's Double branch,
-        // which used to trap instead of decoding to nil (#62).
         let client = makeClient { request in
             apiTestJSONResponse("""
             {
@@ -1124,8 +1117,6 @@ final class APIClientSessionDetailTests: APIClientTestCase {
     }
 
     func testToolCallDisplayFormatterToleratesOutOfRangeExitCode() {
-        // An exit code beyond Int range comes straight from tool output and
-        // used to trap while rendering the card (#62).
         let display = ToolCallDisplayFormatter.resultDisplay(
             preview: #"{"output":"done\n","exit_code":1e300,"error":null}"#,
             toolName: "terminal"
@@ -1280,11 +1271,9 @@ final class APIClientSessionDetailTests: APIClientTestCase {
         }
 
         pass([("settled", "Settled thinking", "Settled reply"), ("streaming", "Live thinking", "Part")])
-        // A stream tick: only the streaming reply's visible text grew.
         pass([("settled", "Settled thinking", "Settled reply"), ("streaming", "Live thinking", "Partial")])
         XCTAssertEqual(derivedIDs, ["settled", "streaming", "streaming"])
 
-        // A pass that skips an entry drops it, so the memo stays bounded to the transcript.
         pass([("streaming", "Live thinking", "Partial")])
         pass([("settled", "Settled thinking", "Settled reply")])
         XCTAssertEqual(derivedIDs, ["settled", "streaming", "streaming", "settled"])
@@ -1321,7 +1310,6 @@ final class APIClientSessionDetailTests: APIClientTestCase {
             archivedGroups: archived,
             cache: &cache
         )
-        // The streaming reply now contains the echo, so its cached stripping is stale.
         let tickMessages = transcript(streamingContent: "Partial\n\n\(echo)")
         let memoized = ChatViewModel.reasoningDisplayGroups(
             messages: tickMessages,

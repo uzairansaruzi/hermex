@@ -2,23 +2,14 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// One workspace file. Markdown keeps the chat renderer and HTML the report sheet's sandboxed
-/// page, each with a Source mode in the actions menu; every other text file draws on the source surface with a gutter,
-/// syntax colour, and an optional starting line. Images keep their own preview;
-/// documents and media open in Quick Look, and archives and other binaries show
-/// No Preview with Export. Every file with a workspace-relative path offers Copy Path.
-/// Its state belongs to one file: callers key it with `.id` on the file they open.
 struct FilePreviewView: View {
-    /// How a Markdown or HTML file shows: rendered, or raw on the source surface.
     private enum RenderedViewMode: Hashable {
         case preview
         case source
     }
 
     let onAPIError: (Error) -> Void
-    /// Forwarded to the source surface's Comment…; nil outside a chat that can take a draft.
     let onAddToPrompt: ((String) -> Void)?
-    /// Forwarded to the source surface's Back to Chat; nil when back navigation does it.
     let onReturnToChat: (() -> Void)?
 
     private let entry: WorkspaceEntry
@@ -36,9 +27,6 @@ struct FilePreviewView: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(CodeDisplaySettings.wrapsLinesKey) private var wrapsLines = false
 
-    /// `initialLine` is one-based; the source surface scrolls to it and highlights it,
-    /// so a Markdown or HTML file opened at a line starts in Source.
-    /// `prefetchedFile` is a text fetch the file tree already started; the first load reuses it.
     init(
         files: (any WorkspaceFileClient)?,
         entry: WorkspaceEntry,
@@ -172,9 +160,6 @@ struct FilePreviewView: View {
         .transcriptLinks()
     }
 
-    /// The View choice for Markdown and HTML, Wrap for source, Copy Path for any file with a
-    /// workspace-relative path, and Copy Contents and Select Text for text. The drawn
-    /// source surface owns long press for line selection, so these live in the toolbar.
     @ViewBuilder
     private var fileActionsMenu: some View {
         let content: String? = if case let .text(file)? = viewModel.preview { file.content ?? "" } else { nil }
@@ -242,8 +227,6 @@ struct FilePreviewView: View {
         case let .quickLook(file):
             QuickLookFileView(url: file.url)
         case .audio:
-            // The workspace file browser never produces audio previews; this
-            // arm only keeps the shared `FilePreviewContent` switch exhaustive.
             unavailableContent(String(localized: "Preview is not available for this file type."))
         case let .unavailable(message):
             unavailableContent(message)
@@ -285,9 +268,6 @@ struct FilePreviewView: View {
         .background(Color(.appCanvas))
     }
 
-    /// Small files render as one document. Large ones render the chunks the view
-    /// model split on load in a lazy stack, so opening the file only lays out and
-    /// highlights the chunks near the screen.
     private func markdownContent(_ content: String) -> some View {
         ScrollView {
             if let chunks = viewModel.markdownChunks {
@@ -330,10 +310,6 @@ struct FilePreviewView: View {
         .background(Color(.appCanvas))
     }
 
-    /// The report sheet's page, so a workspace page gets the same sandbox, theme and failure
-    /// state as an attached report. A truncated file (past the host's text preview) or one over
-    /// the sheet's size limit shows that failure state rather than half a page; Source still
-    /// shows what loaded.
     private func htmlContent(_ file: FileResponse) -> some View {
         let content = file.content ?? ""
         let fits = !file.isTruncated && content.utf8.count <= BotArtifactBuffer.maximumBytes
@@ -351,7 +327,6 @@ struct FilePreviewView: View {
         return FilePreviewViewModel.isHTMLPath(path)
     }
 
-    /// A file with a rendered Preview beside its Source.
     private var isRenderedFile: Bool { isMarkdownFile || isHTMLFile }
 
     @ViewBuilder

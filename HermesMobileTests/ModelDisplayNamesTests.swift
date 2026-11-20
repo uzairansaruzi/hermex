@@ -31,7 +31,6 @@ final class ModelDisplayNamesTests: XCTestCase {
             ModelDisplayNames.displayLabel(for: "team/production", displayName: "Team / Production"),
             "Team / Production"
         )
-        // Differing from the id in case alone is still the server's name.
         XCTAssertEqual(ModelDisplayNames.displayLabel(for: "qwen-max", displayName: "Qwen-Max"), "Qwen-Max")
     }
 }

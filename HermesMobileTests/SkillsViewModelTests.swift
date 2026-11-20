@@ -51,8 +51,6 @@ final class SkillsViewModelTests: APIClientTestCase {
         XCTAssertNil(model.lastError)
     }
 
-    /// A Hermes host's `{detail}` refusal (#1069): the row turns back, and the screen has the
-    /// host's reason to show.
     @MainActor
     func testARefusedToggleRollsBackAndKeepsTheHostsReason() async throws {
         let client = ScriptedSkillsClient([SkillSummary(name: "arxiv", category: "research", description: nil, path: nil,
@@ -72,7 +70,6 @@ final class SkillsViewModelTests: APIClientTestCase {
         XCTAssertNil(model.toggleErrorMessage)
     }
 
-    /// A Hermes host sends no tags, so search reads names, descriptions and categories alone.
     @MainActor
     func testSearchWithoutTagsMatchesNamesAndDescriptions() async {
         let model = SkillsViewModel(client: ScriptedSkillsClient([
@@ -87,8 +84,6 @@ final class SkillsViewModelTests: APIClientTestCase {
     }
 }
 
-/// A Skills server on scripted data: it lists `skills` and records each toggle, failing it
-/// with `toggleError` when set.
 @MainActor private final class ScriptedSkillsClient: SkillsDataClient {
     nonisolated var skillsFeatures: SkillsFeatures { .hermes }
     var toggleError: Error?

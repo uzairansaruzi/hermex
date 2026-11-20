@@ -2,8 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class BotFilePathSearchTests: XCTestCase {
-    /// A name searches every folder; the bare trigger, one character and a path keep the
-    /// one-folder listing, which is also all a known `@path` check ever asks.
     func testPanelSearchesEveryFolderOnlyForANameOfTwoOrMoreCharacters() {
         XCTAssertEqual(["", "s", "src/Ch", "View"].map(BotFilePathSearch.panelWord(for:)),
                        [".", "s", "src/Ch", "@file:View"])
@@ -120,8 +118,6 @@ final class ComposerFilePathSearchLoadTests: XCTestCase {
     }
 }
 
-/// Holds one query's closure open until the test says otherwise, so a late
-/// reply can be raced against a newer one deterministically.
 @MainActor
 final class QueryGate {
     private var waiters: [CheckedContinuation<Void, Never>] = []

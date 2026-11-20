@@ -3,37 +3,26 @@ import Foundation
 import ImageIO
 import zlib
 
-/// Why a stream can't go on. Each is fatal to the socket: RFB has no way to resynchronise.
 enum RFBFailure: Error, Equatable {
     case unsupportedVersion
-    /// The server offers no security type this client speaks, or refused the one chosen.
     case refused
     case malformed
 }
 
-/// What `RFBDecoder.feed` asks its owner to do, in order.
 enum RFBOutput: Equatable {
     case send(Data)
-    /// A whole framebuffer update has been applied. The owner takes `snapshot()` and asks for
-    /// the next update with `updateRequest()`.
     case updateComplete
 }
 
-/// The client's messages, in the exact bytes the server's filter frames
-/// (`tools/bot_desktop/rfb_filter.py` at the pin).
 enum RFBMessage {
-    /// 32 bits in BGRX memory order, so Raw and the framebuffer share one layout.
     static let pixelFormat: Data = {
-        var bytes: [UInt8] = [0, 0, 0, 0]               // type 0, padding
-        bytes += [32, 24, 0, 1]                         // bpp, depth, little endian, true color
-        bytes += [0, 255, 0, 255, 0, 255]               // red, green, blue max
-        bytes += [16, 8, 0, 0, 0, 0]                    // red, green, blue shift, padding
+        var bytes: [UInt8] = [0, 0, 0, 0]
+        bytes += [32, 24, 0, 1]
+        bytes += [0, 255, 0, 255, 0, 255]
+        bytes += [16, 8, 0, 0, 0, 0]
         return Data(bytes)
     }()
 
-    /// Tight first, then CopyRect and Raw, then the desktop-size, JPEG quality 7 and compression
-    /// 2 pseudo-encodings. Quality 7 is what Hermes Desktop asks noVNC for. No cursor encoding:
-    /// the server then draws the pointer into the picture.
     static let encodings: Data = {
         let list: [Int32] = [7, 1, 0, -223, -25, -254]
         var data = Data([2, 0])
@@ -49,18 +38,8 @@ enum RFBMessage {
     }
 }
 
-/// Parses a server's RFB bytes and keeps the framebuffer they describe. It knows nothing about
-/// sockets or Hermes, so recorded bytes can drive it. WebSocket frames don't align with RFB
-/// messages, so `feed` takes chunks of any size: each step reads a whole message or rectangle
-/// and commits it, and a step that runs out of bytes rolls back to wait for the next chunk.
-///
-/// Reads RFB 3.8 with security type None and Tight, CopyRect, Raw and DesktopSize. Not `Sendable`:
-/// `RFBClient` owns one, and decoding happens off the main actor.
 final class RFBDecoder {
-    /// The largest side a server may declare, far past any real desktop, so a bad stream can't
-    /// ask for an unbounded buffer. It also bounds a Raw rectangle, and a Tight length is 22 bits.
     private static let maximumSide = 8192
-    /// The server never sends this client its clipboard, so a cut text past this is a broken stream.
     private static let maximumCutText = 1 << 20
 
     private enum Stage {
@@ -68,26 +47,20 @@ final class RFBDecoder {
         case rectangles(remaining: Int)
     }
 
-    /// Thrown by a read past the bytes held, to roll the step back.
     private struct NeedMoreBytes: Error {}
 
     private var stage = Stage.version
     private var bytes: [UInt8] = []
-    /// The first byte the committed steps have not consumed.
     private var head = 0
-    /// Where the running step has read to.
     private var cursor = 0
     private var framebuffer: RFBFramebuffer?
     private var inflaters: [RFBInflater?] = [nil, nil, nil, nil]
-    /// The framebuffer was replaced, so the next request must be for all of it.
     private var needsFullUpdate = false
-    /// Something changed since the last `snapshot()`.
     private var isDirty = false
 
     var width: Int { framebuffer?.width ?? 0 }
     var height: Int { framebuffer?.height ?? 0 }
 
-    /// Reads `chunk` and returns what the owner must do. Throws `RFBFailure`.
     func feed(_ chunk: Data) throws -> [RFBOutput] {
         bytes.append(contentsOf: chunk)
         var output: [RFBOutput] = []
@@ -110,21 +83,16 @@ final class RFBDecoder {
         return output
     }
 
-    /// The next request: incremental, or all of it after the framebuffer was replaced.
     func updateRequest() -> Data {
         defer { needsFullUpdate = false }
         return RFBMessage.updateRequest(incremental: !needsFullUpdate, width: width, height: height)
     }
 
-    /// The framebuffer as an image, or nil when nothing has changed since the last one. The
-    /// image holds its own copy, because the next update writes to this memory.
     func snapshot() -> CGImage? {
         guard isDirty else { return nil }
         isDirty = false
         return framebuffer?.image()
     }
-
-    // MARK: - Steps
 
     private func step(_ output: inout [RFBOutput]) throws {
         switch stage {
@@ -144,11 +112,11 @@ final class RFBDecoder {
             stage = .securityResult
         case .securityResult:
             guard try readUInt32() == 0 else { throw RFBFailure.refused }
-            output.append(.send(Data([1])))     // ClientInit, shared
+            output.append(.send(Data([1])))
             stage = .serverInit
         case .serverInit:
             let width = Int(try readUInt16()), height = Int(try readUInt16())
-            _ = try read(16)                    // The server's format: SetPixelFormat replaces it.
+            _ = try read(16)
             let nameLength = Int(try readUInt32())
             guard nameLength <= 4096 else { throw RFBFailure.malformed }
             _ = try read(nameLength)
@@ -172,7 +140,7 @@ final class RFBDecoder {
 
     private func readMessage(_ output: inout [RFBOutput]) throws {
         switch try readByte() {
-        case 0:                                 // FramebufferUpdate
+        case 0:
             _ = try readByte()
             let count = Int(try readUInt16())
             if count == 0 {
@@ -180,15 +148,14 @@ final class RFBDecoder {
             } else {
                 stage = .rectangles(remaining: count)
             }
-        case 2:                                 // Bell
+        case 2:
             break
-        case 3:                                 // ServerCutText
+        case 3:
             _ = try read(3)
             let length = Int(try readUInt32())
             guard length <= Self.maximumCutText else { throw RFBFailure.malformed }
             _ = try read(length)
         default:
-            // It can't be framed, so nothing after it can be read.
             throw RFBFailure.malformed
         }
     }
@@ -198,7 +165,6 @@ final class RFBDecoder {
         let width = Int(try readUInt16()), height = Int(try readUInt16())
         let encoding = Int32(bitPattern: try readUInt32())
         if encoding == -223 {
-            // DesktopSize: the rectangle's size is the new framebuffer's, and it has no data.
             framebuffer = try makeFramebuffer(width: width, height: height)
             needsFullUpdate = true
             isDirty = true
@@ -228,17 +194,15 @@ final class RFBDecoder {
         pixels.withUnsafeBufferPointer { framebuffer.writeBGRX($0, to: rect) }
     }
 
-    // MARK: - Tight
-
     private func readTight(_ rect: RFBRect, into framebuffer: RFBFramebuffer) throws {
         let control = try readByte()
         let kind = control >> 4
         switch kind {
-        case 0b1000:                            // Fill
+        case 0b1000:
             let color = try read(3)
             resetStreams(control)
             framebuffer.fill(rect, red: color[color.startIndex], green: color[color.startIndex + 1], blue: color[color.startIndex + 2])
-        case 0b1001:                            // JPEG
+        case 0b1001:
             let length = try readCompactLength()
             let jpeg = try read(length)
             resetStreams(control)
@@ -270,9 +234,6 @@ final class RFBDecoder {
         }
     }
 
-    /// The rectangle's pixel data: as it is under 12 bytes, else zlib on its persistent stream.
-    /// Tight's stream-reset bits apply here, once every byte has arrived. Inflating is the
-    /// last thing the step does, so a stream never sees the same bytes twice.
     private func readTightData(size: Int, stream: Int, control: UInt8) throws -> ArraySlice<UInt8> {
         guard size >= 12 else {
             let data = try read(size)
@@ -312,8 +273,6 @@ final class RFBDecoder {
         return length
     }
 
-    // MARK: - Reads
-
     private func read(_ count: Int) throws -> ArraySlice<UInt8> {
         guard bytes.count - cursor >= count else { throw NeedMoreBytes() }
         defer { cursor += count }
@@ -344,12 +303,10 @@ final class RFBDecoder {
     }
 }
 
-/// One rectangle of the framebuffer, in pixels from the top left.
 struct RFBRect: Equatable {
     let x, y, width, height: Int
 }
 
-/// A zlib stream that outlives one rectangle, as Tight's four do.
 private final class RFBInflater {
     private let stream = UnsafeMutablePointer<z_stream>.allocate(capacity: 1)
 
@@ -370,7 +327,6 @@ private final class RFBInflater {
         inflateReset(stream)
     }
 
-    /// Inflates `input`, which must produce exactly `size` bytes.
     func inflate(_ input: UnsafeBufferPointer<UInt8>, size: Int) throws -> [UInt8] {
         guard let base = input.baseAddress else { throw RFBFailure.malformed }
         return try [UInt8](unsafeUninitializedCapacity: size) { output, count in
@@ -389,8 +345,6 @@ private final class RFBInflater {
         }
     }
 
-    /// Reads what follows the pixels in this block: the output can fill before the end of the
-    /// server's sync flush, and input left here would be missing from the next rectangle's.
     private func drain() throws {
         let scratch = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)
         defer { scratch.deallocate() }
@@ -403,7 +357,6 @@ private final class RFBInflater {
     }
 }
 
-/// The picture: 32-bit BGRX from the top left, without row padding.
 private final class RFBFramebuffer {
     let width, height: Int
     private let pixels: UnsafeMutablePointer<UInt32>
@@ -454,7 +407,6 @@ private final class RFBFramebuffer {
         guard let base = source.baseAddress else { return }
         var offset = 0
         forEachRow(rect) { row in
-            // Forced opaque below: the pad byte is the server's and may be zero.
             memcpy(row, base + offset, rect.width * 4)
             for index in 0..<rect.width { row[index] |= 0xFF00_0000 }
             offset += rect.width * 4
@@ -471,8 +423,6 @@ private final class RFBFramebuffer {
         }
     }
 
-    /// Two colors pack one bit a pixel, most significant first, each row whole bytes; more use
-    /// one byte a pixel. An index past the palette is a broken stream.
     func writePalette(_ indices: UnsafeBufferPointer<UInt8>, palette: UnsafeBufferPointer<UInt8>, colors: Int,
                       to rect: RFBRect) throws {
         var table = [UInt32](repeating: 0, count: colors)
@@ -497,8 +447,6 @@ private final class RFBFramebuffer {
         if failed { throw RFBFailure.malformed }
     }
 
-    /// Each channel is a difference from `left + above - aboveLeft`, clamped to a byte, with
-    /// anything off the rectangle's edge read as zero.
     func writeGradient(_ source: UnsafeBufferPointer<UInt8>, to rect: RFBRect) {
         var previous = [UInt8](repeating: 0, count: rect.width * 3)
         var current = [UInt8](repeating: 0, count: rect.width * 3)
@@ -520,7 +468,6 @@ private final class RFBFramebuffer {
         }
     }
 
-    /// Row by row in whichever direction a source overlapping its destination stays intact.
     func copy(from source: RFBRect, to destination: RFBRect) {
         let rows = Array(0..<destination.height)
         for row in source.y < destination.y ? rows.reversed() : rows {
@@ -530,7 +477,6 @@ private final class RFBFramebuffer {
         }
     }
 
-    /// Draws a JPEG that must be exactly `rect`'s size. Core Graphics counts from the bottom.
     func drawJPEG(_ jpeg: UnsafeBufferPointer<UInt8>, in rect: RFBRect) throws {
         let data = Data(buffer: jpeg)
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),

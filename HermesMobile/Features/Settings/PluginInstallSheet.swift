@@ -1,14 +1,8 @@
 import SwiftUI
 
-/// The one review every install goes through (#1582), for the Profile fixed when it opened. The field
-/// takes a repository or URL, a catalog name, `hermes plugins install <name>` or a `hermes://` link,
-/// and what it resolves to shows below it. Nothing is called safe, and the wording grows stronger
-/// from a Nous plugin to a raw repository. There's no Force toggle: Replace appears only when the host
-/// says the plugin already exists.
 struct PluginInstallSheet: View {
     let model: PluginsModel
     let profile: String
-    /// Set when Discover opened this for one entry, which needs no field.
     private let entry: HermesCatalogEntry?
 
     @Environment(\.dismiss) private var dismiss
@@ -31,7 +25,6 @@ struct PluginInstallSheet: View {
     private var parsed: PluginInstallInput { PluginInstallInput(input) }
     private var review: PluginsModel.InstallReview { model.review(of: parsed) }
 
-    /// What the Install button sends, or nil while there's nothing the host could install.
     private var source: HermesPluginSource? {
         switch review {
         case .repo(let identifier): return .repo(identifier)
@@ -50,7 +43,6 @@ struct PluginInstallSheet: View {
                     if source != nil { installOptions }
                 }
                 .listSectionSpacing(.compact)
-                // The button stays on screen however far the review scrolled, so its answer must too.
                 .onChange(of: refusal) { if refusal != nil { proxy.scrollTo(Self.refusalID, anchor: .top) } }
             }
             .themedPageBackground()
@@ -174,8 +166,6 @@ struct PluginInstallSheet: View {
         .background(.appMaterial(.bar))
     }
 
-    /// One attempt, which the user asked for. An unconfirmed result closes the sheet like a success,
-    /// because the list is where it says so.
     private func install(replace: Bool) async {
         guard let source, !isInstalling else { return }
         isInstalling = true
@@ -194,9 +184,6 @@ struct PluginInstallSheet: View {
     }
 }
 
-/// A catalog entry's facts: who publishes it, the pinned commit, the Disclosure word for word and the
-/// keys it needs. With a `profile` it's the review, which adds what installing means and where it
-/// lands. A plugin needing a newer Hermes says so and can't be installed; OS limits are only labels.
 struct PluginCatalogReview: View {
     let entry: HermesCatalogEntry
     var profile: String?
@@ -257,7 +244,6 @@ struct PluginCatalogReview: View {
         }
     }
 
-    /// Only an HTTPS GitHub repository, which is all the catalog link is for.
     private var githubURL: URL? {
         guard let url = URL(string: entry.repo), url.scheme == "https", url.host == "github.com" else { return nil }
         return url
@@ -274,7 +260,6 @@ extension HermesCatalogEntry.Tier {
     }
 }
 
-/// A line of what installing means, with a glyph that grows stronger with the risk.
 private struct PluginWarningRow: View {
     enum Level { case plain, strong, strongest }
 
@@ -294,8 +279,6 @@ private struct PluginWarningRow: View {
     }
 }
 
-/// Finish setup: the keys a plugin installed just now needs. Each goes to the Profile's `.env` once
-/// and isn't kept here.
 struct PluginSetupSection: View {
     let setup: PluginsModel.PluginSetup
     let model: PluginsModel
@@ -329,7 +312,6 @@ private struct PluginKeyRow: View {
             if let failure {
                 Text(verbatim: failure).font(AppFont.footnote()).foregroundStyle(.red)
             }
-            // Borderless so only the button saves, not a tap anywhere in the row.
             Button("Save Key") { Task { await save() } }
                 .buttonStyle(.borderless)
                 .disabled(value.isEmpty || isSaving)

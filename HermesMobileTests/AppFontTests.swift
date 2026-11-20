@@ -15,7 +15,6 @@ final class AppFontTests: XCTestCase {
         AppFontSettings.shared.family = storedFamily
     }
 
-    /// A missing `UIAppFonts` entry or a bad family name falls back to San Francisco silently.
     func testEveryNamedFontLoadsWithItsWeights() {
         let expected: [AppFontFamily: String] = [
             .dmSans: "DM Sans",
@@ -44,9 +43,6 @@ final class AppFontTests: XCTestCase {
         )
     }
 
-    /// Nothing passes the font down: a body that reads a token re-runs when the font changes,
-    /// which is what restyles settled transcript rows and nested hosting. The composer is UIKit
-    /// and has to follow in its `updateUIView`.
     func testChangingTheFontRestylesViewsAndTheComposer() async throws {
         let restyled = expectation(description: "A body read the new font")
         let target = AppFont.body()

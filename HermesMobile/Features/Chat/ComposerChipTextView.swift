@@ -1,19 +1,11 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// The composer's editor: a text view that draws known skill references as
-/// atomic chips while every value that leaves it stays the draft's own text.
 final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     private var pendingTransitionFocus: UUID?
 
-    /// The owner's current focus intent, read when a deferred focus is about to
-    /// land. UIKit's own restoration can re-request focus after a bound blur in
-    /// the same pop (#831), so a cancel alone cannot guarantee the blur wins.
     var wantsDeferredFocus: () -> Bool = { true }
 
-    /// UIKit re-promotes the last editor while a navigation pop is still animating,
-    /// before SwiftUI's keyboard safe area can follow, which leaves the composer
-    /// behind the keyboard (#810). Defer focus until the transition finishes.
     override func becomeFirstResponder() -> Bool {
         guard let coordinator = owningViewController?.transitionCoordinator else {
             cancelDeferredFocus()
@@ -32,14 +24,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return false
     }
 
-    /// Blur can arrive before UIKit has made this editor first responder.
     func cancelDeferredFocus() {
         pendingTransitionFocus = nil
     }
 
-    /// Gives up the keyboard for dictation, sent down the responder chain from the
-    /// mic. A live composition is committed first, or dictation's first write would
-    /// replace the document under it and split its characters (#312).
     @objc func resignForDictation() {
         if markedTextRange != nil { unmarkText() }
         _ = resignFirstResponder()
@@ -55,8 +43,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         if window == nil { cancelDeferredFocus() }
     }
 
-    /// Navigation temporarily resigns the editor without changing the user's
-    /// focus intent. Preserve that intent so the return can restore it.
     var isInNavigationTransition: Bool {
         owningViewController?.navigationController?.transitionCoordinator != nil
     }
@@ -72,35 +58,20 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     var acceptsAttachments = true
     var keyboardCommands = ComposerKeyboardCommands()
-    /// Settings' Send with Return (#1655): a hardware-keyboard ↩ does what ⌘↩ does,
-    /// and ⇧↩ or ⌥↩ types the newline. UIKit sends key commands only from a
-    /// hardware keyboard, so the on-screen Return key keeps typing newlines.
     var returnSends = false
-    /// The chat's last sent message, which ↑ brings back into an empty editor
-    /// on a hardware keyboard. Nil where there is no single author to recall
-    /// (Bot rooms), which leaves ↑ to move the caret.
     var recallLastSentText: (() -> String?)?
     var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
     var onPasteFileURLs: ([URL]) -> Void = { _ in }
     var onPasteImageProviders: ([NSItemProvider]) -> Void = { _ in }
     var onPasteImages: ([UIImage]) -> Void = { _ in }
-    /// Takes a paste past `ComposerLargePaste.threshold` as a file (#1381). Nil
-    /// keeps every paste inline and turns Paste as Text off.
     var onPasteLargeText: ((String) -> Void)?
-    /// What paste reads and copy writes. Tests use a private one rather than the
-    /// clipboard the simulator shares with the Mac.
     var pasteboard = UIPasteboard.general
-    /// Reports a tap that landed on a chip's glyph. Every chip reports; what a
-    /// tap means belongs to the composer.
     var onTapChip: (ComposerChipToken) -> Void = { _ in }
     var onTapQuote: (ComposerQuote) -> Void = { _ in }
     var onRemoveQuote: (UUID) -> Void = { _ in }
 
-    /// Explicit quoted passages are zero-source chips placed before the typed
-    /// draft. Their ids and full text live outside the editor document.
     var quotes: [ComposerQuote] = []
 
-    /// The skills whose references are drawn as chips.
     var chipSkills: [SkillSlashSuggestion] = [] {
         didSet {
             guard chipSkills != oldValue else { return }
@@ -108,8 +79,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// The workspace files this composer has inserted, whose `@path` references
-    /// are drawn as chips.
     var chipFilePaths: Set<String> = [] {
         didSet {
             guard chipFilePaths != oldValue else { return }
@@ -117,7 +86,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// Resolvable bot aliases from this composer's connection, including avatars.
     var chipBots: [String: ComposerBotReference] = [:] {
         didSet {
             guard chipBots != oldValue else { return }
@@ -126,10 +94,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     private var chipCatalog = ComposerChipCatalog.empty
-    /// The chips currently on screen. The collapsed pill reads this rather than
-    /// re-deriving it, because `preservingTrailing` makes the set depend on what
-    /// was drawn before — a trailing chip whose space was deleted stays a chip,
-    /// and nothing but this editor knows that.
     private(set) var renderedTokens: [ComposerChipToken] = []
     private(set) var renderedQuotes: [ComposerQuote] = []
     private var renderedStyle: ChipRenderStyle?
@@ -141,9 +105,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return recognizer
     }()
 
-    /// What the chips were drawn against. A chip is a baked image, so a change
-    /// of appearance or text size has to redraw it even when the draft has not
-    /// moved at all.
     private struct ChipRenderStyle: Equatable {
         let fontName: String
         let fontPointSize: CGFloat
@@ -163,9 +124,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         registerForTraitChanges(
             [UITraitUserInterfaceStyle.self, AppAppearanceTrait.self, UITraitAccessibilityContrast.self, UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]
         ) { (view: ComposerChipTextView, _) in
-            // Deferred: `adjustsFontForContentSizeCategory` updates `font` from
-            // the same trait change, and the chips have to be sized against the
-            // font that wins.
             DispatchQueue.main.async { view.refreshChipsIfNeeded() }
         }
     }
@@ -175,17 +133,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         nil
     }
 
-    // MARK: - Draft text
-
-    /// The typed portion of the draft: every skill or file chip contributes the
-    /// reference it was made from, while quote chips contribute nothing. Quote
-    /// metadata is combined with this text by the owning composer when it saves
-    /// or sends; copy and slash-trigger matching use this source text directly.
     var sourceText: String {
         attributedText.composerSourceText
     }
 
-    /// The caret or selection in draft coordinates.
     var sourceSelection: NSRange {
         get { attributedText.composerSourceRange(forDisplayRange: selectedRange) }
         set {
@@ -195,10 +146,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// Applies the SwiftUI-owned direction and enabled appearance without
-    /// rewriting text attributes on every representable update. A redundant
-    /// alignment or colour assignment invalidates UITextView layout and can
-    /// reveal the caret after the user has manually scrolled elsewhere.
     func applyPresentationStyle(isRightToLeft: Bool, isDisabled: Bool) {
         let semanticAttribute: UISemanticContentAttribute = isRightToLeft ? .forceRightToLeft : .unspecified
         if semanticContentAttribute != semanticAttribute {
@@ -216,33 +163,21 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         }
     }
 
-    /// UIKit may place a caret on the zero-source quote prefix after a chip tap.
-    /// Map it back through draft coordinates so typing always starts after the
-    /// quote metadata.
     func normalizeSelectionAroundQuoteMetadata() {
         let draftSelection = sourceSelection
         sourceSelection = draftSelection
     }
 
-    /// The on-screen range a draft range covers, or `nil` when it does not land
-    /// on positions this editor recognises.
     func displayTextRange(forSourceRange range: NSRange) -> UITextRange? {
         textRange(from: attributedText.composerDisplayRange(forSourceRange: range))
     }
 
-    // MARK: - Chips
-
-    /// Keeps the chip recognizer out of UIKit's gesture arbitration unless the
-    /// touch begins on a rendered chip. Ordinary text touches remain entirely
-    /// owned by the text view's native editing recognizers.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard gestureRecognizer === chipTapRecognizer else { return true }
         guard !renderedTokens.isEmpty || !renderedQuotes.isEmpty else { return false }
         return tappableChip(at: touch.location(in: self)) != nil
     }
 
-    /// A chip tap reports its action while UIKit continues handling the same
-    /// touch for caret placement and selection.
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
@@ -273,12 +208,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         case quote(ComposerQuote)
     }
 
-    /// The chip whose glyph covers `point`, or `nil`.
-    ///
-    /// `closestPosition` answers with a caret boundary, so the characters on
-    /// both sides of it are candidates; the glyph's own rectangle is what
-    /// decides, which is what keeps a tap in the space beside a chip from
-    /// counting as a tap on it.
     private func tappableChip(at point: CGPoint) -> TappableChip? {
         guard let position = closestPosition(to: point) else { return nil }
         let caret = offset(from: beginningOfDocument, to: position)
@@ -305,10 +234,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return nil
     }
 
-    /// Redraws the document when the chips the draft calls for, or the way they
-    /// have to be drawn, no longer match what is on screen. Ordinary typing
-    /// changes neither, so it never rebuilds — which is what keeps predictive
-    /// text and the undo stack alive.
     func refreshChipsIfNeeded() {
         guard markedTextRange == nil else { return }
 
@@ -323,10 +248,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         render(source: source, tokens: tokens, quotes: quotes, sourceSelection: sourceSelection)
     }
 
-    /// Replaces the whole draft, chips and all. The fallback for an edit the
-    /// input system could not apply in place, and for a deliberate clear.
-    /// `isComplete` draws a reference that ends the text as a chip, the way the
-    /// transcript draws a sent message.
     func replaceDocument(with source: String, isComplete: Bool = false) {
         let tokens = ComposerChipTokenizer.tokens(
             in: source,
@@ -342,9 +263,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         )
     }
 
-    /// Restores the plain typing attributes a chip attachment would otherwise
-    /// leave behind. Never while an IME composition is marked: touching typing
-    /// attributes mid-composition breaks it.
     func restoreTypingAttributes() {
         guard markedTextRange == nil else { return }
 
@@ -428,8 +346,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         }
 
         attributedText = document
-        // Assigning a non-uniform document clears these, and every later render
-        // reads them back for its base attributes.
         self.font = font
         self.textColor = textColor
         renderedTokens = tokens
@@ -437,14 +353,9 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         renderedStyle = currentStyle
         self.sourceSelection = Self.clamp(sourceSelection, toLengthOf: source)
         restoreTypingAttributes()
-        // The document was replaced wholesale, so an undo recorded against the
-        // old one would put back text the chips no longer describe.
         discardUndoHistory()
     }
 
-    /// Clears the undo stack once no undo group is open. Clearing also drops
-    /// open groups, and dictation keeps one open across its insertions: its
-    /// later close then has no match, and UIKit aborts the app (#1303).
     private func discardUndoHistory() {
         guard let undoManager else { return }
         guard undoManager.groupingLevel > 0 else {
@@ -463,7 +374,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     @objc private func undoGroupDidClose(_ notification: Notification) {
         NotificationCenter.default.removeObserver(self, name: .NSUndoManagerDidCloseUndoGroup, object: nil)
-        // The group is still closing while this posts.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             isUndoClearPending = false
@@ -526,10 +436,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return NSRange(location: location, length: min(max(0, range.length), length - location))
     }
 
-    // MARK: - Editing
-
-    /// A chip deletes as one thing: backspacing next to it removes the whole
-    /// reference rather than the last character of a name the user cannot see.
     override func deleteBackward() {
         if selectedRange.length == 0,
            sourceSelection.location == 0,
@@ -554,8 +460,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         replace(range, withText: "")
     }
 
-    /// Copy and cut hand over the draft text, so a chip pasted anywhere - back
-    /// into this composer, or into any other app - is the reference itself.
     override func copy(_ sender: Any?) {
         guard selectedRange.length > 0 else {
             super.copy(sender)
@@ -613,9 +517,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
                 title: send.title, action: #selector(sendFromKeyboard), input: "\r", modifierFlags: .command
             ))
         }
-        // Left out entirely while an IME composition is open, so ↩ confirms the
-        // candidate. Otherwise registered even while Send is unavailable, so ↩ on an
-        // empty or blocked draft does nothing rather than type a newline.
         if returnSends, acceptsKeyboardCommands {
             let send = UIKeyCommand(
                 title: keyboardCommands.send?.title ?? String(localized: "Send Message"),
@@ -623,7 +524,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             )
             send.wantsPriorityOverSystemBehavior = true
             commands.append(send)
-            // ⌥↩ works too but stays out of the ⌘-hold overlay, which lists ⇧↩ once.
             let newlines = [
                 UIKeyCommand(
                     title: String(localized: "New Line"), action: #selector(newlineFromKeyboard),
@@ -663,7 +563,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             input: UIKeyCommand.inputUpArrow,
             modifierFlags: []
         )
-        // Arrow keys go to text editing first otherwise.
         recallCommand.wantsPriorityOverSystemBehavior = true
         return commands + [recallCommand]
     }
@@ -704,9 +603,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return super.canPerformAction(action, withSender: sender)
     }
 
-    /// A locked editor takes no command, and an unfinished IME composition keeps
-    /// Return and Esc for itself: ⌘↩ must never submit half-composed text. Checked
-    /// again when a key fires, since UIKit can dispatch a command it listed earlier.
     private var acceptsKeyboardCommands: Bool {
         isEditable && markedTextRange == nil
     }
@@ -736,8 +632,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         keyboardCommands.escape?.perform()
     }
 
-    /// What ↑ would bring back. Only an empty editor takes it, so ↑ inside a
-    /// draft, or with a quote staged, keeps moving the caret.
     private var recallableText: String? {
         guard acceptsKeyboardCommands, quotes.isEmpty, textStorage.length == 0,
               let text = recallLastSentText?(), !text.isEmpty
@@ -747,11 +641,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return text
     }
 
-    /// Fills the empty editor with the last sent message as one undoable edit:
-    /// chips drawn as its bubble draws them, the caret at the end, and the
-    /// draft published like typing. Drawing chips replaces the document and
-    /// clears the undo stack, so the undo that empties the editor again is
-    /// registered here rather than left to the input system.
     @objc private func recallLastSentTextFromKeyboard() {
         guard let text = recallableText else { return }
 
@@ -799,7 +688,6 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             return
         }
 
-        // An IME composition keeps UIKit's own paste.
         if let onPasteLargeText, isEditable, markedTextRange == nil,
            let text = pasteboard.string, ComposerLargePaste.converts(text) {
             onPasteLargeText(text)
@@ -809,14 +697,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         super.paste(sender)
     }
 
-    /// Whether ⌘⇧V and the edit menu's Paste as Text are on: only where long
-    /// pastes convert, and never mid-composition.
     var canPasteAsText: Bool {
         onPasteLargeText != nil && acceptsKeyboardCommands && pasteboard.hasStrings
     }
 
-    /// Puts the copied text in inline however long it is, as an ordinary edit
-    /// that publishes the draft and that undo takes back.
     @objc func pasteAsText() {
         guard canPasteAsText, let text = pasteboard.string else { return }
         insertText(text)

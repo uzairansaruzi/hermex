@@ -1,12 +1,5 @@
 import Foundation
 
-/// A link to a file in the session workspace, the way an agent writes it in chat: a
-/// `file:` or `sandbox:` URL, an absolute path under the workspace, or a `./`, `../`, or `~/` path,
-/// each with an optional `:line[:column]` suffix or `#L12[C3]` fragment.
-///
-/// `path` is workspace-relative and `/`-joined, the same identity the file tree and
-/// `/api/file` use. Bare relative paths (`src/main.swift`) are not file links: a
-/// relative web URL looks the same, so they keep the ordinary link behaviour.
 struct FileReference: Hashable, Identifiable {
     let path: String
     let line: Int?
@@ -18,29 +11,17 @@ struct FileReference: Hashable, Identifiable {
         path.split(separator: "/").last.map(String.init) ?? path
     }
 
-    /// The reference as it reads in chat: `ChatView.swift:12:3`.
     var label: String {
         guard let line else { return name }
         guard let column else { return "\(name):\(line)" }
         return "\(name):\(line):\(column)"
     }
 
-    /// The absolute path a Markdown destination names, accepting the same syntax as
-    /// `parse` but without its workspace containment. Media is deliberately not workspace
-    /// scoped: the server keeps chat images in its own attachment store
-    /// (`~/.hermes/webui/attachments/`), well outside any workspace, and `/api/media`
-    /// owns the allow-list that decides what it will serve. A containment check here
-    /// would only hide images the server is happy to hand over.
-    ///
-    /// `./` and `../` need a workspace root to resolve against; an absolute path or a
-    /// `file:` URL does not. Bare relative paths stay unrecognized, as they do for links,
-    /// unless `resolvesBarePaths`: a Hermes reply's `out/chart.png` is its folder's (#1679).
     static func absoluteMediaPath(_ destination: String, workspaceRoot: String?, resolvesBarePaths: Bool = false) -> String? {
         var normalized = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.hasPrefix("<"), normalized.hasSuffix(">"), normalized.count >= 2 {
             normalized = String(normalized.dropFirst().dropLast())
         }
-        // A colon marks a URL scheme (`https:`, `data:`), never a bare path.
         let bare = resolvesBarePaths && !normalized.contains(":") && !normalized.hasPrefix("#")
         guard let target = fileTarget(of: normalized) ?? (bare ? fileTarget(of: "./" + normalized) : nil) else { return nil }
 
@@ -53,9 +34,6 @@ struct FileReference: Hashable, Identifiable {
         return "/" + components.joined(separator: "/")
     }
 
-    /// Parses a Markdown link destination against the session's workspace root. Nil when
-    /// the destination is not a file link, the workspace root is unknown, or the path
-    /// resolves outside the workspace (including `..` traversal).
     static func parse(_ destination: String, workspaceRoot: String?) -> FileReference? {
         guard let rootComponents = pathComponents(ofAbsolutePath: workspaceRoot ?? ""),
               !rootComponents.isEmpty else { return nil }
@@ -78,17 +56,12 @@ struct FileReference: Hashable, Identifiable {
         )
     }
 
-    // MARK: - Parsing
-
     private struct Target {
         let path: String
         let fragment: String
     }
 
-    /// The path and fragment of a destination that could name a file; nil for everything
-    /// with another scheme or without an accepted prefix.
     private static func fileTarget(of destination: String) -> Target? {
-        // OpenAI models write a file they made as `sandbox:/abs/path`: an absolute path.
         if destination.lowercased().hasPrefix("sandbox:/") {
             return fileTarget(of: String(destination.dropFirst("sandbox:".count)))
         }
@@ -123,8 +96,6 @@ struct FileReference: Hashable, Identifiable {
         let column: Int?
     }
 
-    /// Strips `:line[:column]` from the path, or reads `L12[C3]` from the fragment when the
-    /// path carries no suffix. Zero and negative positions are dropped.
     private static func splitPosition(path: String, fragment: String) -> Position {
         if let match = path.firstMatch(of: /:(\d+)(?::(\d+))?$/) {
             return Position(
@@ -144,9 +115,6 @@ struct FileReference: Hashable, Identifiable {
         return value
     }
 
-    /// Resolves `path` to normalized absolute components. `~/` expands to the home directory
-    /// the workspace root sits in (`/Users/<name>` or `/home/<name>`); `./` and `../` are
-    /// taken from the workspace root.
     private static func absolutePath(for path: String, rootComponents: [String]) -> [String]? {
         if path.hasPrefix("/") {
             return pathComponents(ofAbsolutePath: path)
@@ -164,7 +132,6 @@ struct FileReference: Hashable, Identifiable {
         return normalize(trimmed.split(separator: "/").map(String.init))
     }
 
-    /// Collapses `.` and `..`; nil when `..` would climb above the filesystem root.
     private static func normalize(_ components: [String]) -> [String]? {
         var result: [String] = []
         for component in components {
@@ -181,18 +148,10 @@ struct FileReference: Hashable, Identifiable {
     }
 }
 
-/// What a preview does with a file it can't draw as text or an image, by extension.
-/// The workspace preview, chat file links and chat attachments share one list, and
-/// the Files tree never prefetches either kind as text. Foundation-only and kept beside
-/// `FileReference` so `scripts/benchmark-streaming-scans` can compile it on the host.
 enum BinaryFilePreview: Equatable {
-    /// Downloaded (at most 25 MB) and shown by Quick Look, which can still decline.
     case quickLook
-    /// Never downloaded to preview: archives, executables, object code and databases
-    /// would only reach a Quick Look file icon.
     case unavailable
 
-    /// Nil for every other path, which previews as text or as an image.
     init?(path: String) {
         let pathExtension = URL(fileURLWithPath: path).pathExtension.lowercased()
         if Self.quickLookExtensions.contains(pathExtension) {

@@ -1,10 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// How a Hermes session link finds its stored session (#1176), on an in-memory host: one read
-/// for a named Profile, the default Profile for `""`, every Profile for none, where one hit
-/// opens, none is gone and two are ambiguous. A prefix match never counts, a legacy compression
-/// chain is identified under its root, a Bot Chat opens in its bot and a room never opens.
 @MainActor final class HermesSessionLookupTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -14,8 +10,6 @@ import XCTest
         HermesSessionDestination(server: server, profile: profile, key: key)
     }
 
-    /// A stored row as `GET /api/sessions/{id}` returns it: `profile` is the Profile asked.
-    /// `delegatedFrom` is the `_delegate_from` a subagent's `model_config` (a JSON string) carries.
     private func row(_ id: String, _ profile: String, title: String? = "Plan", parent: String? = nil,
                      endReason: String? = nil, hidden: Bool = false, delegatedFrom: String? = nil) -> BotJSON {
         .object(["id": .string(id), "source": .string("tui"), "title": title.map(BotJSON.string) ?? .null,
@@ -44,7 +38,6 @@ import XCTest
         XCTAssertEqual(wire.methods, [], "A named Profile needs no Profile list")
     }
 
-    /// `""` is the host's default Profile, whatever its name, as `profiles.list` marks it.
     func testAnEmptyProfileReadsTheHostsDefaultProfile() async throws {
         let wire = LookupWire()
         wire.profiles = [("research", false), ("main", true)]
@@ -77,7 +70,6 @@ import XCTest
         XCTAssertEqual(outcome, .gone)
     }
 
-    /// The same key under two Profiles opens nothing.
     func testAMissingProfileWithTwoMatchesIsAmbiguous() async throws {
         let wire = LookupWire()
         wire.profiles = [("default", true), ("research", false), ("triage", false)]
@@ -88,8 +80,6 @@ import XCTest
         XCTAssertEqual(outcome, .ambiguous)
     }
 
-    /// The host answers a key it doesn't have with the one session it prefixes; the link's key
-    /// must come back as the row's `id`.
     func testAPrefixMatchIsNoMatch() async throws {
         let wire = LookupWire()
         wire.profiles = [("default", true), ("research", false)]
@@ -102,9 +92,6 @@ import XCTest
         XCTAssertEqual(probed.profile, "default", "Only the exact match counts, so the probe is not ambiguous")
     }
 
-    /// A legacy compression chain: the link names its tip, whose parents ended in compression.
-    /// The chat opens by the link's key and caches under the chain's root, as the list row does;
-    /// a parent that ended otherwise (a branch's) is not the chain.
     func testACompressedSessionIsIdentifiedUnderItsLineageRoot() async throws {
         let wire = LookupWire()
         wire.rows = ["research": [
@@ -125,8 +112,6 @@ import XCTest
         XCTAssertEqual(wire.reads, ["research/tip", "research/middle", "research/root", "research/forked-from"])
     }
 
-    /// The walk follows at most eight parents. A root eight up is the chain's; a ninth rotation
-    /// leaves the root unproven, so the tip keeps its own identity rather than a middle segment's.
     func testTheLineageWalkIdentifiesOnlyARootItReaches() async throws {
         func resolve(rotations: Int) async throws -> (SessionSummary, LookupWire) {
             let wire = LookupWire()
@@ -145,7 +130,6 @@ import XCTest
         XCTAssertEqual(wire.reads.count, 10, "The tip, eight parents, and the ninth that proves the limit was hit")
     }
 
-    /// A bot's Bot Chat opens through the bot route, so one chat keeps one screen (#1146).
     func testABotChatOpensInItsBot() async throws {
         let wire = LookupWire()
         wire.rows = ["inbox-triage": ["abc": row("abc", "inbox-triage", title: HermesCall.botChatTitle, hidden: true)]]
@@ -165,8 +149,6 @@ import XCTest
         XCTAssertEqual(outcome, .room)
     }
 
-    /// A subagent's push opens the session that delegated to it, one hop up, found in the
-    /// child's Profile; a parent that is gone is gone, and a child naming none opens itself (#1177).
     func testASubagentLinkOpensItsParent() async throws {
         let wire = LookupWire()
         wire.profiles = [("default", true), ("research", false)]
@@ -191,10 +173,6 @@ import XCTest
         XCTAssertEqual(gone, .gone)
     }
 
-    /// A subagent that compressed under legacy compression pushes from its newest segment, which
-    /// inherits `_delegate_from`: its link opens that delegator, even one that itself later
-    /// compressed. Without the marker, a parent that ended in compression is either the subagent's
-    /// own earlier segment or a delegator that compressed, so the link opens nothing.
     func testACompressedSubagentLinkOpensItsDelegator() async throws {
         let wire = LookupWire()
         wire.rows = ["research": [
@@ -225,9 +203,6 @@ import XCTest
         XCTAssertEqual(compressedRootDelegator, .gone, "Never falls back to the child")
     }
 
-    /// A subagent that compressed nine times, past the lineage walk's eight hops: a marked
-    /// segment opens its `_delegate_from` key directly, and an unmarked chain opens nothing
-    /// rather than one of the subagent's own earlier segments.
     func testASubagentPastTheLineageLimitOpensItsDelegatorOnlyWhenMarked() async throws {
         func chain(marked: Bool) -> [String: BotJSON] {
             var rows = ["p": row("p", "research", title: "Planning"),
@@ -254,8 +229,6 @@ import XCTest
         XCTAssertEqual(exhausted, .gone)
     }
 
-    /// A Profile that can't be read leaves the link unproven: nothing opens, and the failure
-    /// (here a store the host can't read) reaches the caller, which drops the link.
     func testAProbeThatFailsOpensNothing() async throws {
         let wire = LookupWire()
         wire.profiles = [("default", true), ("research", false)]
@@ -270,7 +243,6 @@ import XCTest
         }
     }
 
-    /// The default Profile the host doesn't mark is no Profile to guess at.
     func testAnEmptyProfileWithoutADefaultOpensNothing() async throws {
         let wire = LookupWire()
         wire.profiles = [("research", false)]
@@ -285,15 +257,11 @@ import XCTest
     }
 }
 
-/// A Hermes host's stored rows by Profile, keyed by the key a read asks for: a row whose `id`
-/// differs stands for the host's prefix match. `failures` refuses a Profile's reads.
 @MainActor private final class LookupWire: BotTransport {
     var profiles: [(name: String, isDefault: Bool)] = []
     var rows: [String: [String: BotJSON]] = [:]
     var failures: [String: Error] = [:]
-    /// Each row read, as `<profile>/<key>`, in order.
     private(set) var reads: [String] = []
-    /// Each socket call's method, in order.
     private(set) var methods: [String] = []
 
     var replayEpoch: String? { nil }

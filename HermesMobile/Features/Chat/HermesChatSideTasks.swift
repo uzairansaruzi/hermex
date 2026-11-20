@@ -1,124 +1,68 @@
 import Foundation
 import Observation
 
-/// The `/btw` side question a Hermes session's panel shows (#1013). It is answered from a
-/// snapshot of the conversation with tools off, beside the running turn, and never enters
-/// the transcript.
 struct HermesBtw: Equatable {
     enum State: Equatable {
-        /// Asked; waiting for its `btw.complete`.
         case waiting
-        /// The host's answer. Empty when it produced none.
         case answered(String)
-        /// A reconnect lost the answer, or the host never confirmed the question.
         case unavailable
     }
 
-    /// This ask, so a reply never lands on a later one.
     let id = UUID()
     let question: String
-    /// The host's `btw_…` id, once the ask is confirmed.
     fileprivate(set) var taskID: String?
     fileprivate(set) var state = State.waiting
 }
 
-/// A `/background` task: a side agent in its own `bg_<id>` session under the Profile, shown
-/// as a transcript card until its result replaces it (#1013).
 struct HermesBackgroundTask: Equatable, Identifiable {
     enum State: Equatable {
         case running
-        /// `background.complete`'s text, or the side session's last reply. A failure is the
-        /// host's `error: …` text.
         case finished(String)
-        /// Neither the replay nor the side session had a result. A later completion or read
-        /// can still fill it.
         case unavailable
     }
 
-    /// The host's `bg_…` task id, which is also the side session's id.
     let id: String
     let prompt: String
     fileprivate(set) var state: State
 }
 
-/// What the host made of a `/goal` command (`command.dispatch`).
 enum HermesGoalReply: Equatable {
-    /// Done on the host; `output` says what changed.
     case exec(output: String)
-    /// The goal wants a turn: `message` goes out as a prompt, once. `display` is what the
-    /// transcript shows for it, when the host names one.
     case send(notice: String?, message: String, display: String?)
 }
 
-/// Why a side question or background task did not start.
 enum HermesSideTaskFailure: Error, Equatable {
-    /// It never reached the host.
     case notSent
-    /// The host refused it.
     case refused
-    /// It went out, but the host's answer was lost: it may run with no way to follow it.
     case unconfirmed
 }
 
-/// A Hermes session's side work in the main chat (#1013): its goal, loop and heartbeat (#1142),
-/// one `/btw` question at a time, and its `/background` tasks. `HermesChatTurnCoordinator`
-/// owns it and hands it the session's `btw.complete`, `background.complete` and
-/// `session.control.update` frames; completions match by `task_id`, and unknown ids are
-/// ignored. Each ask, start, goal command and Pause or Resume is one `write`, never resent.
-///
-/// Completions ride the session's replay. When an attach lost frames (a truncated ring, a new
-/// epoch or runtime, a live gap), a question still waiting reads as unavailable and each task
-/// without a result is read once from its side session: its last reply, or unavailable.
 @MainActor @Observable final class HermesChatSideTasks {
     private let engine: HermesConversation
-    /// A task's card changed: added, finished, or unavailable.
     @ObservationIgnored var onBackgroundChange: (HermesBackgroundTask) -> Void = { _ in }
-    /// The goal `session.control` reports changed.
     @ObservationIgnored var onGoalChange: (SubmittedGoal?) -> Void = { _ in }
-    /// The host reaped the runtime (4001): reattach to the stored key.
     @ObservationIgnored var onNeedsReattach: () -> Void = {}
 
-    /// The question the panel shows; nil once closed.
     private(set) var btw: HermesBtw?
-    /// This chat's background tasks, oldest first.
     private(set) var backgroundTasks: [HermesBackgroundTask] = []
-    /// The goal from the last control snapshot; nil without one.
     private(set) var goal: SubmittedGoal?
-    /// The loop and heartbeat from the last control snapshot, in that order, each one the host
-    /// reports. The goal menu lists them beside the goal (#1142).
     private(set) var automations: [BotSessionControl] = []
-    /// A Pause or Resume waiting for the user's confirmation. A reattach discards it.
     private(set) var pendingAutomation: BotSessionControl?
-    /// A confirmed Pause or Resume is on its way; the menu waits for its answer.
     private(set) var isChangingAutomation = false
-    /// The attach whose read or `session.control.update` the loop and heartbeat come from. A
-    /// reattach keeps showing the earlier rows, but they can't be paused or resumed until this
-    /// attach's own control data arrives.
     private var controlAttempt: Int?
 
-    /// Completions whose task id this chat has not learned yet: the host can finish a task
-    /// before its reply to the ask is read. Kept only while an ask or start is in flight.
     @ObservationIgnored private var unclaimed: [String: BotJSON] = [:]
     @ObservationIgnored private var startsInFlight = 0
-    /// Bumped by every control frame, so a read sent before one never replaces it.
     @ObservationIgnored private var controlRevision = 0
-    /// The last attach lost frames: tasks without a result are read once connected.
     @ObservationIgnored private var needsResultRead = false
-    /// The attach the last Pause or Resume was asked on; a confirmation from another is stale.
     @ObservationIgnored private var pendingAttempt = 0
 
     init(engine: HermesConversation) {
         self.engine = engine
     }
 
-    /// A question is out and unanswered; only one at a time.
     var isAsking: Bool { btw?.state == .waiting }
 
-    // MARK: Goal
-
-    /// Whether a `/goal` argument controls the session's goal (status, pause, resume, done,
-    /// clear and the rest) rather than setting a new one, as the host's `is_goal_control`
-    /// reads it. A goal's own turns keep the session busy, so these run mid-turn.
     static func isGoalControl(_ argument: String) -> Bool {
         let normalized = argument.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let verbs: Set = ["", "status", "show", "pause", "resume", "clear", "stop", "done", "unwait"]
@@ -126,8 +70,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         return verbs.contains(normalized) || ["wait", "gate"].contains(first)
     }
 
-    /// Runs one `/goal` command (`command.dispatch goal`): a verb or a new goal's text.
-    /// Throws `NotSent` when it never went out; a refusal carries the host's message.
     func dispatchGoal(_ argument: String) async throws -> HermesGoalReply {
         let reply = try await write { .commandDispatch(name: "goal", argument: argument, sessionID: $0) }
         switch reply["type"].text {
@@ -142,18 +84,10 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    // MARK: Loop and heartbeat
-
-    /// Whether the host takes `session.control`. Without it the goal menu shows the loop and
-    /// heartbeat but offers no Pause or Resume.
     var controlsAutomations: Bool { !engine.wire.unavailableMethods.contains("session.control") }
 
-    /// Whether the loop and heartbeat shown are this attach's, so a Pause or Resume acts on
-    /// them. False from a reattach until its control read or update lands.
     var canChangeAutomations: Bool { controlAttempt == engine.generation }
 
-    /// Holds a Pause or Resume until the user confirms it. Only a state the host offers one
-    /// for (`action`) can be asked.
     func ask(_ control: BotSessionControl) {
         guard control.action != nil, canChangeAutomations, automations.contains(control), !isChangingAutomation else { return }
         pendingAutomation = control
@@ -162,11 +96,6 @@ enum HermesSideTaskFailure: Error, Equatable {
 
     func cancelAutomation() { pendingAutomation = nil }
 
-    /// Sends the asked Pause or Resume once, confirmed, as `session.control` and shows the
-    /// snapshot the host answers with, unless a control frame came first. Throws
-    /// `BotFailure.stale`, sending nothing, when the chat reattached or the state changed since
-    /// the ask, up to the socket write, or this attach's control data has not arrived yet, and
-    /// `NotSent` when it never went out. A refusal carries the host's message.
     func confirmAutomation(_ control: BotSessionControl) async throws {
         pendingAutomation = nil
         guard pendingAttempt == engine.generation, canChangeAutomations, automations.contains(control),
@@ -178,7 +107,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         let reply: BotJSON
         do {
             reply = try await write({ .sessionControl(sessionID: $0, profile: profile, action: action) }) { [weak self] in
-                // The host acts on the session's current loop or heartbeat, not the one confirmed.
                 guard self?.automations.contains(control) == true else { throw BotFailure.stale }
             }
         } catch is HermesChatTurnCoordinator.NotSent where !automations.contains(control) {
@@ -190,11 +118,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         applyControl(reply["control"], attempt: attempt)
     }
 
-    // MARK: btw
-
-    /// Asks `question` and opens the panel on it. Throws, with the panel closed, when the
-    /// question never reached the host or the host refused it. A lost answer leaves the
-    /// panel saying the answer is unavailable.
     func ask(_ question: String) async throws {
         let asked = HermesBtw(question: question)
         btw = asked
@@ -216,20 +139,13 @@ enum HermesSideTaskFailure: Error, Equatable {
         if let early = started.early { receive(early) }
     }
 
-    /// Closes the panel. The host still answers; the answer is ignored.
     func closeBtw() { btw = nil }
 
-    /// The host replaced the Bot Chat (#1339): its question and background tasks stay with
-    /// it, so none of their answers or results reaches the new chat.
     func forgetChat() {
         btw = nil; backgroundTasks = []
         unclaimed = [:]; needsResultRead = false
     }
 
-    // MARK: Background
-
-    /// Starts a background task and adds its running card. Throws when it never went out,
-    /// was refused, or its task id was lost.
     func startBackground(_ prompt: String) async throws {
         let (reply, early) = try await start { .promptBackground(sessionID: $0, text: prompt) }
         guard let taskID = Self.nonEmpty(reply["task_id"].text) else { throw HermesSideTaskFailure.unconfirmed }
@@ -239,9 +155,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         if let early { receive(early) }
     }
 
-    // MARK: Frames
-
-    /// Applies one of the session's side frames; false for any other frame.
     @discardableResult
     func receive(_ frame: BotJSON) -> Bool {
         let payload = frame["payload"]
@@ -272,9 +185,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    /// An attach's replay. With frames lost, its completions still apply, and the rest is
-    /// settled: a waiting question is unavailable, and tasks are read once connected.
-    /// Without, the owner applies the frames in order.
     func didReplay(_ frames: [BotJSON], lostFrames: Bool) {
         guard lostFrames else { return }
         frames.forEach { receive($0) }
@@ -282,9 +192,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         needsResultRead = true
     }
 
-    /// Connected: reads the goal, loop and heartbeat, and the results the last replay lost. A
-    /// Pause or Resume asked on an earlier attach is dropped with its confirmation, and the rows
-    /// shown wait for this attach's read or update before they take another.
     func didConnect(runtime: String, attempt: Int) {
         if pendingAttempt != attempt { pendingAutomation = nil }
         readControl(runtime: runtime, attempt: attempt)
@@ -294,9 +201,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    // MARK: Reads
-
-    /// `session.control.read`, unless a control frame arrives first.
     private func readControl(runtime: String, attempt: Int) {
         guard !engine.wire.unavailableMethods.contains("session.control.read") else { return }
         let revision = controlRevision
@@ -308,8 +212,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    /// Reads each task still without a result from its side session. A chat that left
-    /// meanwhile reads again on its next attach.
     private func readResults() {
         let pending = backgroundTasks.filter { if case .finished = $0.state { return false }; return true }
         guard !pending.isEmpty else { return }
@@ -331,7 +233,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    /// A side session's result: its last reply that is not a tool call.
     static func result(_ messages: [BotJSON]) -> String? {
         messages.last { message in
             message["role"].text == "assistant" && (message["tool_calls"].list ?? []).isEmpty
@@ -339,10 +240,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         }.flatMap { text($0["content"]) }
     }
 
-    // MARK: Helpers
-
-    /// Sends one side call on the attached runtime and returns its reply, with the task's
-    /// completion when it came first. Failures map to `HermesSideTaskFailure`.
     private func start(_ call: (String) -> HermesCall) async throws -> (reply: BotJSON, early: BotJSON?) {
         startsInFlight += 1
         defer {
@@ -361,10 +258,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    /// One write bound to the attached runtime. `stillCurrent` adds the caller's checks at the
-    /// socket write. Throws `NotSent` when it never went out. A 4001 means the host reaped the
-    /// runtime, whether it arrives plain or, from `/goal`, as a setting refusal; the chat
-    /// reattaches either way.
     private func write(_ call: (String) -> HermesCall, stillCurrent: (() throws -> Void)? = nil) async throws -> BotJSON {
         guard engine.connectionState == .connected, let runtime = engine.runtime else {
             throw HermesChatTurnCoordinator.NotSent(underlying: BotFailure.transport)
@@ -381,7 +274,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    /// The host no longer has the runtime (4001).
     static func isReaped(_ error: Error) -> Bool {
         switch error {
         case BotFailure.rejected(4001), BotSettingFailure.rejected(4001, _): return true
@@ -395,7 +287,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         self.btw = btw
     }
 
-    /// A task's new state. A result is final: a later read never replaces it.
     private func settle(_ taskID: String, _ state: HermesBackgroundTask.State) {
         guard let index = backgroundTasks.firstIndex(where: { $0.id == taskID }),
               backgroundTasks[index].state != state else { return }
@@ -404,7 +295,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         onBackgroundChange(backgroundTasks[index])
     }
 
-    /// Shows a control snapshot `attempt`'s attach read or received.
     private func applyControl(_ control: BotJSON, attempt: Int) {
         guard control.fields != nil else { return }
         if controlAttempt != attempt { controlAttempt = attempt }
@@ -416,7 +306,6 @@ enum HermesSideTaskFailure: Error, Equatable {
         onGoalChange(goal)
     }
 
-    /// A control snapshot's goal as the goal menu reads it; nil once cleared.
     private static func goal(_ goal: BotJSON) -> SubmittedGoal? {
         guard goal.fields != nil, let title = goal["title"].text else { return nil }
         return SubmittedGoal(goal: title, status: goal["status"].text, turnsUsed: goal["turns_used"].integer,
@@ -424,7 +313,6 @@ enum HermesSideTaskFailure: Error, Equatable {
                              lastReason: goal["last_reason"].text, pausedReason: goal["paused_reason"].text)
     }
 
-    /// A row's text: a string, or its text parts joined.
     private static func text(_ content: BotJSON) -> String? {
         if let text = content.text { return text }
         return content.list.map { parts in parts.compactMap { $0["text"].text }.joined() }

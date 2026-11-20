@@ -32,9 +32,6 @@ struct ComposerVoiceStatusView: View {
     }
 }
 
-/// The composer's bottom row while dictation runs, in place of the toolbar:
-/// cancel, then the waveform and timer, then finish. The row has no Send: the
-/// draft is locked until the words land, and Send comes back with the toolbar.
 struct ComposerDictationRow: View {
     let voiceInput: ComposerVoiceInputController
     let circleSize: CGFloat
@@ -98,7 +95,6 @@ struct ComposerDictationRow: View {
         }
     }
 
-    /// What the capture is called to VoiceOver, or nil while nothing is recording.
     private var capture: String? {
         switch voiceInput.state {
         case .listening: String(localized: "Listening...")
@@ -114,9 +110,6 @@ struct ComposerDictationRow: View {
     }
 }
 
-/// Recent mic levels as bars, newest on the trailing edge. This view is the only
-/// reader of `levels`, so each sample redraws these bars and nothing else. With
-/// Reduce Motion the bars stay flat and it reads nothing at all.
 struct ComposerDictationWaveform: View {
     let meter: ComposerVoiceLevelMeter
 
@@ -151,13 +144,6 @@ struct ComposerDictationWaveform: View {
     }
 }
 
-/// The composer mic. A quick **tap** toggles on-device dictation (unchanged); a
-/// **press-and-hold** records a server-transcribed voice note, releasing to send
-/// and sliding up to cancel. Both paths run through a single
-/// `DragGesture(minimumDistance: 0)`: touch-down schedules a `DispatchWorkItem`
-/// after the hold threshold, and a release before it fires cancels the item and
-/// counts as a tap → dictation. See `pressGesture` for why timing beats composing
-/// `LongPressGesture`/`TapGesture`.
 struct ComposerVoiceControlButton: View {
     let isDisabled: Bool
     let color: Color
@@ -179,13 +165,9 @@ struct ComposerVoiceControlButton: View {
                 .gesture(pressGesture)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction {
-                    // VoiceOver synthesizes an activation rather than a real touch,
-                    // so the gesture's tap path never fires for it.
                     if !isDisabled { onTap() }
                 }
                 .accessibilityAction(named: Text("Record voice note")) {
-                    // VoiceOver can't hold-to-talk, so this starts recording; the
-                    // recording bar then exposes "Stop and send" / "Cancel" actions.
                     onRecordingStart()
                 }
         } else {
@@ -220,12 +202,6 @@ struct ComposerVoiceControlButton: View {
         Text(isRecordingVoiceNote ? String(localized: "Recording voice note") : String(localized: "Voice input"))
     }
 
-    /// One `DragGesture(minimumDistance: 0)` distinguishes tap from hold by timing,
-    /// which is far more reliable than composing `LongPressGesture`/`TapGesture`/
-    /// `highPriorityGesture` (those let the press keep claiming the touch so the tap
-    /// never wins). Touch-down schedules a delayed "start recording"; a release
-    /// before the delay cancels it and counts as a tap → dictation. A perfectly
-    /// still hold still records because the delay is timer-driven, not movement-driven.
     private var pressGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
@@ -270,15 +246,9 @@ struct ComposerVoiceControlButton: View {
     }
 }
 
-/// Telegram-style indicator shown above the composer while a voice note records:
-/// a pulsing red dot, an `m:ss` timer, and a slide-to-cancel hint that turns red
-/// once the cancel threshold is armed, or Cancel and Send buttons when no finger is
-/// holding the mic. Exposes explicit VoiceOver actions because the hold-to-talk
-/// gesture isn't reachable with VoiceOver on.
 struct ComposerVoiceRecordingBar: View {
     let elapsed: TimeInterval
     let isCancelArmed: Bool
-    /// False when nothing is holding the mic, so a release can't end the recording.
     var isHeld = true
     let onStop: () -> Void
     let onCancel: () -> Void

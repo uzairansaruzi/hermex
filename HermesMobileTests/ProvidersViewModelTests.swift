@@ -31,8 +31,6 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertFalse(model.isActive(model.providers[1]))
     }
 
-    /// A failed pull-to-refresh must keep the cached providers *and* surface the
-    /// error — the view shows a refresh-failure banner above the stale rows.
     @MainActor
     func testRefreshFailureKeepsCachedProvidersAndSetsErrorMessage() async {
         let client = makeClient { request in
@@ -67,10 +65,6 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertFalse(model.isLoading)
     }
 
-    /// `load()` has three overlapping entry points (`.task`, `.refreshable`,
-    /// "Try Again"). When two loads race and their responses land out of order,
-    /// the older response must be discarded: it may not overwrite newer provider
-    /// data or the newer load's state (#42 Codex review).
     @MainActor
     func testStaleOverlappingLoadDoesNotOverwriteNewerResponse() async throws {
         let firstRequestArrived = expectation(description: "stale request arrived")
@@ -94,11 +88,9 @@ final class ProvidersViewModelTests: APIClientTestCase {
         let staleLoad = Task { await model.load() }
         await fulfillment(of: [firstRequestArrived], timeout: 5)
 
-        // A newer load starts while the first request is still in flight …
         let freshLoad = Task { await model.load() }
         await fulfillment(of: [secondRequestArrived], timeout: 5)
 
-        // … and its response lands first.
         requests.request(at: 1).complete(withJSON: """
         { "active_provider": "fresh", "providers": [ { "id": "fresh" } ] }
         """)
@@ -106,7 +98,6 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertEqual(model.providers.map(\.id), ["fresh"])
         XCTAssertFalse(model.isLoading)
 
-        // The stale response lands afterwards — it must be discarded.
         requests.request(at: 0).complete(withJSON: """
         { "active_provider": "stale", "providers": [ { "id": "stale" } ] }
         """)
@@ -125,8 +116,6 @@ final class ProvidersViewModelTests: APIClientTestCase {
         XCTAssertEqual(ProvidersView.expansionKey(for: ProviderSummary(id: nil), at: 0), "#0")
     }
 
-    /// The disclosure count follows the model picker: `shown / total` only when
-    /// the server trimmed the catalog, a plain count otherwise.
     @MainActor
     func testModelCountLabelShowsShownOverTotalOnlyWhenTrimmed() {
         let trimmed = ProviderSummary(
@@ -143,21 +132,14 @@ final class ProvidersViewModelTests: APIClientTestCase {
         )
         XCTAssertEqual(ProvidersViewModel.modelCountLabel(for: complete), "2")
 
-        // A total with nothing visible is not a trim — advertise the total alone.
         let hidden = ProviderSummary(id: "p", models: [], modelsTotal: 4)
         XCTAssertEqual(ProvidersViewModel.modelCountLabel(for: hidden), "4")
 
-        // No catalog at all reserves no count slot.
         XCTAssertNil(ProvidersViewModel.modelCountLabel(for: ProviderSummary(id: "p")))
     }
 }
 
-/// URLProtocol whose responses are completed manually by the test, so two
-/// in-flight requests can be answered out of order (the shared
-/// `MockURLProtocol` answers synchronously inside `startLoading`, which
-/// serializes responses in request order).
 private final class DeferredProvidersMockURLProtocol: URLProtocol {
-    /// Called (on a URLSession worker thread) whenever a request starts loading.
     static var onRequest: ((DeferredProvidersMockURLProtocol) -> Void)?
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -193,13 +175,10 @@ private final class DeferredProvidersMockURLProtocol: URLProtocol {
     }
 }
 
-/// Thread-safe collector for the deferred requests above (`onRequest` fires on
-/// URLSession worker threads).
 private final class DeferredProvidersRequests: @unchecked Sendable {
     private let lock = NSLock()
     private var pending: [DeferredProvidersMockURLProtocol] = []
 
-    /// Appends the request and returns its 1-based arrival order.
     func append(_ request: DeferredProvidersMockURLProtocol) -> Int {
         lock.lock()
         defer { lock.unlock() }

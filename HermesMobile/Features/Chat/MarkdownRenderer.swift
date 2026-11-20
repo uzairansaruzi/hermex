@@ -75,10 +75,6 @@ struct StreamingMarkdownRenderer: View {
     }
 
     var body: some View {
-        // `content` changes first and `displayedContent` catches up after the
-        // yield, so the first body pass of each update hands the child the
-        // text it already drew. `.equatable()` skips the child's whole-reply
-        // work (trim, fallback policy, math layout) on that pass.
         StreamingMarkdownDisplayedContentView(content: displayedContent)
             .equatable()
             .task(id: content) {
@@ -90,9 +86,6 @@ struct StreamingMarkdownRenderer: View {
     }
 }
 
-/// The streaming reply as `StreamingMarkdownRenderer` currently displays it.
-/// Equatable on `content` so a parent pass with unchanged text is free;
-/// environment changes (color scheme) still update it.
 private struct StreamingMarkdownDisplayedContentView: View, Equatable {
     let content: String
 
@@ -117,9 +110,6 @@ private struct StreamingMarkdownDisplayedContentView: View, Equatable {
 
     @ViewBuilder
     private var streamingMarkdownContent: some View {
-        // Streaming text changes on nearly every token, so this deliberately
-        // does not memoize; it only avoids the redundant second full-string
-        // `replacingInlineMath` pass the no-math branch used to run.
         switch MarkdownMathLayoutCache.uncachedLayout(for: content) {
         case .segmented(let segments):
             VStack(alignment: .leading, spacing: 0) {
@@ -147,9 +137,6 @@ private struct StreamingMarkdownDisplayedContentView: View, Equatable {
 
 }
 
-/// The background a wide markdown table fades its hidden edges into. Defaults
-/// to the transcript background. Grouped lists set their row colour; a host
-/// on a translucent fill sets nil, which turns the fade off.
 struct MarkdownTableEdgeFadeColorKey: EnvironmentKey {
     static let defaultValue: SwiftUI.Color? = SwiftUI.Color(.appCanvas)
 }
@@ -190,9 +177,6 @@ private struct StreamingMarkdownChunkedView: View {
 }
 
 extension EnvironmentValues {
-    /// True inside a streaming reply, sealed chunks included: they render with
-    /// `isStreaming: false` to highlight, but the reply swaps to its settled view
-    /// when it ends, so a control there (a drawable fence's View) would vanish mid-use.
     @Entry var markdownReplyIsStreaming = false
 }
 
@@ -204,7 +188,6 @@ private struct ChatMarkdownView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        // Parsed here rather than inside `Markdown(_: String)` so the parse alone is timed.
         let signpost = performanceSignposter.beginInterval("Markdown Parse")
         let parsedContent = MarkdownContent(content)
         performanceSignposter.endInterval("Markdown Parse", signpost, "chars=\(content.count, privacy: .public)")
@@ -225,12 +208,6 @@ private struct ChatMarkdownView: View {
     }
 }
 
-/// Routes a fenced code block to display-math rendering when its language is a
-/// math language (`math`/`latex`/`tex`) and the body parses as math; otherwise
-/// renders it as a normal syntax-highlighted code block. A math fence whose
-/// body SwiftMath can't parse falls back to the code block too, so nothing is
-/// lost. A settled `svg`, `mermaid` or `html` fence's code block gains a View button
-/// (`DrawableFence`).
 private struct MathFenceOrCodeBlock: View {
     let language: String?
     let content: String
@@ -263,7 +240,6 @@ private struct ChatCodeBlock: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @State private var highlightedCode: NSAttributedString?
-    /// Whether a long settled diff shows every line instead of the first `collapsedLineLimit`.
     @State private var showsAllDiffLines = false
 
     private let logger = Logger.hermesMarkdownRendering
@@ -334,8 +310,6 @@ private struct ChatCodeBlock: View {
         .task(id: highlightRequest) {
             await updateHighlightedCode(for: highlightRequest)
         }
-        // Code (and diff) blocks must never mirror inside an RTL message (#259):
-        // the language header, copy/wrap controls, and the source itself stay LTR.
         .forcedLeftToRight()
     }
 
@@ -343,9 +317,6 @@ private struct ChatCodeBlock: View {
         SwiftUI.Color(.appCode)
     }
 
-    /// Falls back to a synchronous cache peek so a block that was already highlighted
-    /// (reopen, scrolling back, or a sealed stable chunk at the streaming-to-settled swap)
-    /// draws highlighted on its first frame, before its task runs.
     @ViewBuilder
     private var codeText: some View {
         if let highlightedCode = highlightedCode
@@ -356,8 +327,6 @@ private struct ChatCodeBlock: View {
         }
     }
 
-    /// A settled diff: tinted rows, capped at `collapsedLineLimit` lines behind a
-    /// full-width Show all row. Copy still copies the whole source.
     @ViewBuilder
     private func diffBody(_ diff: MarkdownDiffDocument) -> some View {
         let lines = diff.visibleLines(showingAll: showsAllDiffLines)
@@ -376,7 +345,6 @@ private struct ChatCodeBlock: View {
 
         if diff.isCollapsible {
             Button {
-                // Pins the reader's offset while the block grows or shrinks by up to 1,920 rows.
                 chatDisclosureToggled()
                 showsAllDiffLines.toggle()
             } label: {
@@ -402,9 +370,6 @@ private struct ChatCodeBlock: View {
         }
     }
 
-    /// The code body with its shared monospaced styling and padding. `fixedHorizontal`
-    /// is `true` inside the horizontal `ScrollView` (each line keeps its natural width)
-    /// and `false` when wrapping (lines reflow to the bubble width, growing vertically).
     private func styledCodeText(fixedHorizontal: Bool) -> some View {
         codeText
             .fixedSize(horizontal: fixedHorizontal, vertical: true)
@@ -427,11 +392,8 @@ private struct ChatCodeBlock: View {
         )
     }
 
-    /// Seeds from the cache when it can; otherwise shows plain text while the
-    /// highlighter works off main, and drops the result if the block moved on.
     @MainActor
     private func updateHighlightedCode(for request: MarkdownCodeHighlightRequest) async {
-        // Diff and patch never highlight: `MarkdownDiffFormatter` styles them natively.
         guard !MarkdownDiffFormatter.isDiffLanguage(request.language) else { return }
         let highlighter = MarkdownCodeHighlighter.shared
         if let cached = highlighter.cachedHighlight(for: request) {
@@ -492,8 +454,6 @@ private struct ChatCodeBlock: View {
     }
 }
 
-/// A drawable fence's View button (#1649), beside wrap and copy. Its page is built when the
-/// sheet opens, so a transcript row never parses or draws the source.
 private struct DrawableFenceViewButton: View {
     let fence: DrawableFence
     let source: String
@@ -522,7 +482,6 @@ private struct DrawableFenceViewButton: View {
                         }
                     }
             }
-            // The code block forces left to right (#259); the sheet follows the app again.
             .environment(\.layoutDirection,
                          UIApplication.shared.userInterfaceLayoutDirection == .rightToLeft ? .rightToLeft : .leftToRight)
         }
@@ -545,12 +504,9 @@ private struct DrawableFenceViewButton: View {
     }
 }
 
-/// The fence's drawing in the report sheet. Its page is built once the sheet has a width, off the
-/// main actor since a diagram runs its engine; until then the sheet shows only its background.
 private struct DrawableFenceSheetPage: View {
     private enum Drawing {
         case pending
-        /// Nil when the source can't draw: the sheet's failure state.
         case drawn(String?)
     }
 
@@ -567,7 +523,6 @@ private struct DrawableFenceSheetPage: View {
                 SwiftUI.Color.clear
             }
         }
-        // The first width only: the page doesn't reload, and a diagram still fits a later one.
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
             if width == 0 { width = newWidth }
         }
@@ -585,9 +540,6 @@ private struct DrawableFenceSheetPage: View {
 
 private struct PlainCodeBlockText: View {
     let content: String
-    /// When `true`, each line's 500-char segments are concatenated into a single
-    /// `Text` so SwiftUI soft-wraps the line; when `false`, they stay side by side
-    /// in an `HStack` for the horizontal-scroll layout.
     var wraps = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -629,8 +581,6 @@ private struct PlainCodeBlockText: View {
 
 private struct HighlightedCodeBlockText: View {
     let content: NSAttributedString
-    /// See `PlainCodeBlockText.wraps`; the concatenated `Text` preserves each
-    /// segment's syntax-highlight attributes.
     var wraps = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -659,7 +609,6 @@ private struct HighlightedCodeBlockText: View {
                 }
             }
         }
-        // The highlighter strips its absolute fonts, so this sets every token's face and size.
         .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont(customSize: customCodeSize))
     }
 
@@ -702,8 +651,6 @@ enum MarkdownPlainCodeFormatter {
         }
     }
 
-    /// The code's lines with CRLF, CR, and Unicode line and paragraph separators
-    /// treated as newlines; an empty string is one empty line.
     static func rawLines(in code: String) -> [String] {
         let normalizedCode = code
             .replacingOccurrences(of: "\r\n", with: "\n")
@@ -717,7 +664,6 @@ enum MarkdownPlainCodeFormatter {
         return lines.isEmpty ? [""] : lines
     }
 
-    /// Splits one line into `maxSegmentLength`-character segments; an empty line is one space.
     static func segments(in line: String) -> [MarkdownPlainCodeSegment] {
         guard !line.isEmpty else {
             return [MarkdownPlainCodeSegment(id: 0, text: " ")]
@@ -841,9 +787,6 @@ enum MarkdownContentFallbackReason: String, Equatable {
 enum MarkdownContentRenderingPolicy {
     static let maxMarkdownCharacterCount = 80_000
     static let maxMarkdownLineCount = 2_000
-    /// MarkdownUI joins a paragraph's inline elements with `Text` `+`, which
-    /// SwiftUI resolves recursively; about 600 overflow an iPhone's 1 MB main
-    /// thread stack (#1333). Paragraphs over this limit render as one `Text`.
     static let maxInlineElementsPerParagraph = 300
 
     static func fallbackReason(for content: String) -> MarkdownContentFallbackReason? {
@@ -858,8 +801,6 @@ enum MarkdownContentRenderingPolicy {
         return nil
     }
 
-    /// Overestimates inline elements: each delimiter counts once; each line, and
-    /// each `:`, `@` or `www.` of a bare URL or email that GFM autolinks, counts twice.
     static func hasTooManyInlineElements(_ markdown: String) -> Bool {
         var count = 0
         var trailingWs = 0
@@ -897,7 +838,6 @@ enum MarkdownHighlightFallbackReason: String, Equatable {
     case tooManyLines
     case lineTooLong
     case highlighterUnavailable
-    /// The owning block's task was cancelled before the highlight pass ran.
     case cancelled
 }
 
@@ -1010,8 +950,6 @@ enum MarkdownHighlightPolicy {
         return .plain(reason: .unsupportedLanguage, normalizedLanguage: normalizedLanguage)
     }
 
-    /// Whether a fence language can ever be highlighted. Reads only the language,
-    /// so it is a cheap gate before any work that touches the code.
     static func canHighlight(language: String?) -> Bool {
         guard let normalized = normalizedLanguage(from: language) else { return false }
         return splashSwiftLanguages.contains(normalized) || highlightrLanguages.contains(normalized)
@@ -1136,34 +1074,19 @@ enum MarkdownCodeHighlightResult {
     case plain(reason: MarkdownHighlightFallbackReason, normalizedLanguage: String?)
 }
 
-/// Highlights settled chat code blocks off the main actor. Highlightr runs
-/// highlight.js in a JSContext, so both the context load and each block's pass
-/// stay off main. Results are cached by appearance, fence language, and code;
-/// a remounted block that was highlighted before (session reopen, scrolling back,
-/// or code in a sealed stable chunk at the streaming-to-settled swap) reads its
-/// result synchronously through `cachedHighlight(for:)` instead of flashing plain.
-/// Code in a reply's unsealed streaming tail is first highlighted at the swap.
 actor MarkdownCodeHighlighter {
     static let shared = MarkdownCodeHighlighter()
 
-    /// NSCache is thread-safe, which is what lets the main actor peek it synchronously.
-    /// Content-addressed: a hit needs the code itself, so entries never reveal
-    /// one server's transcript under another.
     private nonisolated(unsafe) let cache: NSCache<NSString, NSAttributedString> = {
         let cache = NSCache<NSString, NSAttributedString>()
         cache.countLimit = 256
-        // Cost is the UTF-16 length held by the key and the result, each of which
-        // carries the code; the largest highlighted block is 80k characters.
         cache.totalCostLimit = 2_000_000
         return cache
     }()
     private var highlightrsByAppearance: [ColorScheme: Highlightr] = [:]
 
-    /// A fresh instance with its own cache; the app uses `shared`.
     init() {}
 
-    /// The cached highlight for a settled request, or nil when it has not been highlighted yet.
-    /// Requests that can never highlight return before building a key from the code.
     nonisolated func cachedHighlight(for request: MarkdownCodeHighlightRequest) -> NSAttributedString? {
         guard !request.isStreaming,
               MarkdownHighlightPolicy.canHighlight(language: request.language) else { return nil }
@@ -1181,7 +1104,6 @@ actor MarkdownCodeHighlighter {
             isStreaming: request.isStreaming
         )
 
-        // A block that scrolled away while queued on this actor skips its pass.
         if case .highlight(let normalizedLanguage, _) = decision, Task.isCancelled {
             return .plain(reason: .cancelled, normalizedLanguage: normalizedLanguage)
         }
@@ -1206,7 +1128,6 @@ actor MarkdownCodeHighlighter {
             return .plain(reason: reason, normalizedLanguage: normalizedLanguage)
         }
 
-        // Freeze the result so a cached string never aliases a mutable one.
         let frozen = Self.removingAbsoluteFonts(from: highlighted)
         let key = Self.cacheKey(for: request)
         cache.setObject(frozen, forKey: key, cost: key.length + frozen.length)
@@ -1227,9 +1148,6 @@ actor MarkdownCodeHighlighter {
         return highlightr
     }
 
-    /// Drops the engines' fixed-size fonts (Splash 13 pt, Highlightr Courier 14) so the code
-    /// view's `ChatTypography.codeFont` sizes every token, keeping the cache size-independent.
-    /// Bold and italic tokens keep their emphasis as relative presentation intents.
     private static func removingAbsoluteFonts(from highlighted: NSAttributedString) -> NSAttributedString {
         let result = NSMutableAttributedString(attributedString: highlighted)
         let range = NSRange(location: 0, length: result.length)
@@ -1249,7 +1167,6 @@ actor MarkdownCodeHighlighter {
 
     private static func cacheKey(for request: MarkdownCodeHighlightRequest) -> NSString {
         let scheme = request.colorScheme == .dark ? "dark" : "light"
-        // Length-prefix the language so a `|` in it or in the code can't shift the boundary.
         let language = request.language ?? ""
         return "\(scheme)|\(language.utf16.count):\(language)|\(request.code)" as NSString
     }
@@ -1289,16 +1206,12 @@ private struct PlainMarkdownFallbackView: View {
     }
 }
 
-/// Rendered Markdown text sizes for a Dynamic Type size: 16 pt prose and 13 pt code at
-/// `.large`, scaled like body text and capped at 2.2x (the review diff's cap). Views read
-/// `dynamicTypeSize` from the environment and resolve through `init(dynamicTypeSize:)`.
 struct ChatTypography: Equatable {
     static let maximumScale: CGFloat = 2.2
 
     let bodySize: CGFloat
     let codeSize: CGFloat
 
-    /// Resolved once per size, so scrolling cells never re-run font metrics.
     private static let bySize: [DynamicTypeSize: ChatTypography] = Dictionary(
         uniqueKeysWithValues: DynamicTypeSize.allCases.map { ($0, ChatTypography(resolving: $0)) }
     )
@@ -1317,8 +1230,6 @@ struct ChatTypography: Equatable {
         codeSize = scaled(13)
     }
 
-    /// The monospaced font for code block bodies (plain, highlighted, and diff). `customSize`
-    /// is `CodeDisplaySettings.customSizeKey`'s value, which replaces the scaled size when set.
     func codeFont(customSize: Double?) -> SwiftUI.Font {
         .system(size: customSize.map { CGFloat($0) } ?? codeSize, weight: .regular, design: .monospaced)
     }
@@ -1331,7 +1242,6 @@ enum ChatMarkdownInlineStyle {
 }
 
 private extension MarkdownUI.Theme {
-    /// `bodySize` is `ChatTypography.bodySize`; headings and inline code scale relative to it.
     static func chat(colorScheme: ColorScheme, isStreaming: Bool, bodySize: CGFloat) -> MarkdownUI.Theme {
         MarkdownUI.Theme.gitHub
             .text {
@@ -1409,8 +1319,6 @@ private struct ChatMarkdownTable: View {
     @Environment(\.markdownTableEdgeFadeColor) private var edgeFadeColor
     @Environment(\.isAppThemed) private var isThemed
 
-    /// A table wider than its column fades the edge that hides columns, so a
-    /// cut-off column never reads as the whole table.
     @ViewBuilder
     var body: some View {
         let scroller = ScrollView(.horizontal) {
@@ -1452,7 +1360,6 @@ private struct ChatMarkdownTable: View {
     }
 }
 
-/// MarkdownUI's GitHub block quote, whose fixed colors a theme replaces.
 private struct ChatMarkdownQuote: View {
     let configuration: BlockConfiguration
     let colorScheme: ColorScheme
@@ -1486,22 +1393,10 @@ private struct ChatMarkdownQuote: View {
     }
 }
 
-/// Single-child layout that caps a table cell's width while reporting the
-/// height the content needs *at that capped width*.
-///
-/// `Grid` sizes table rows from each cell's ideal size. A plain
-/// `.frame(maxWidth:)` caps the ideal width but still reports the
-/// single-line ideal height, so long cell text wraps at render time without
-/// the row growing — rows end up overlapping (issue #233). Measuring the
-/// child at the clamped width makes the reported height match what is
-/// actually drawn.
 struct TableCellWidthCap: Layout {
     let minWidth: CGFloat
     let maxWidth: CGFloat
 
-    /// Pure clamp used by `sizeThatFits`: fill the proposed (column) width
-    /// when the parent offers one, otherwise fall back to the child's ideal
-    /// width, always bounded to `minWidth...maxWidth`.
     static func resolvedWidth(
         idealWidth: CGFloat,
         proposedWidth: CGFloat?,
@@ -1547,7 +1442,6 @@ private extension Logger {
     )
 }
 
-/// Matches MarkdownUI's GitHub heading metrics, registering only the text label.
 private struct SelectableMarkdownHeading: View {
     let configuration: BlockConfiguration
     let level: Int

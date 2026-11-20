@@ -1,13 +1,7 @@
 import SwiftUI
 
-/// Every model the server reported for the window, in the order it returned them
-/// (webui: cost descending; a Hermes host: tokens descending). There is no provider dot:
-/// webui's insights handler has no provider dimension to draw one from. A Hermes host's rows
-/// are per model and billing provider, which leads the row's subtitle (#1074).
 struct UsageModelsCard: View {
     let models: [InsightsModelBreakdown]
-    /// Whether the window has any priced usage at all. When it does not, the rows
-    /// lead with token share instead of a row of identical "0% of cost".
     let hasCost: Bool
 
     var body: some View {
@@ -71,8 +65,6 @@ private struct UsageModelRow: View {
     }
 }
 
-/// The heaviest sessions, by tokens. Only reachable on the local-metadata
-/// fallback, where the server never told us about models.
 struct UsageTopSessionsCard: View {
     let sessions: [SessionSummary]
 

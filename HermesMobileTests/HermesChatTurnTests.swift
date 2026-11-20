@@ -3,9 +3,6 @@ import Observation
 import SwiftUI
 @testable import HermesMobile
 
-/// A Hermes session in the main chat (#1010): `HermesChatTurnCoordinator` reducing the
-/// engine's frames onto `ChatViewModel`, over #901's socket-level host and the frames
-/// recorded at the `HERMES_AGENT_TESTED_SHA` pin.
 @MainActor final class HermesChatTurnTests: XCTestCase {
     func testAnApprovalSummaryUsesTheSameChatsRuntimeAndSurvivesReattach() async throws {
         let chat = await openChat()
@@ -39,10 +36,6 @@ import SwiftUI
         XCTAssertNil(returned.summaries.states[returned.key], "only the host withdrawing it drops the result")
     }
 
-    // MARK: Reducer
-
-    /// The recorded canned turn starts with no prompt from this phone, streams its text
-    /// and title, and goes idle only once `session.info` says so after `message.complete`.
     func testRecordedTurnStreamsTextAndTitleAndEndsOnSessionInfo() async throws {
         let frames = try recorded("turn-frames")
         let first = frames[0]["params"]
@@ -73,14 +66,10 @@ import SwiftUI
         XCTAssertEqual(chat.model.runEndTrigger, 1)
         XCTAssertEqual(chat.liveActivity.titles, [], "a Hermes title never reaches a webui Live Activity")
 
-        // The host sends no `session.info {running: true}` before a later turn's start.
         chat.receive(event(frames.count + 1, "message.start", runtime: runtime))
         XCTAssertNotEqual(chat.model.activeRunStartedAt, startedAt, "a later turn never counts from the last one's start")
     }
 
-    /// The recorded tool turn: the interim reply, one tool row keyed by `tool_id` from start
-    /// to completion, the approval as an open request until it is withdrawn, and the final
-    /// answer that only `message.complete` carries.
     func testRecordedToolTurnKeysToolsByIDAndAppendsTheFinalAnswer() async throws {
         let frames = try recorded("turn-tool-approval-frames")
         let key = try XCTUnwrap(frames[0]["params"]["payload"]["stored_session_id"].text)
@@ -118,24 +107,18 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.map(\.content), ["Done."])
     }
 
-    /// A title that is only the reference line a photo-only send appends shows the photo's
-    /// name, never the raw line (#1046).
     func testAnAttachmentOnlyTitleShowsTheAttachmentsName() async {
         let chat = await openChat()
         chat.receive(event(1, "session.title", ["title": .string(Self.photoReference)]))
         XCTAssertEqual(chat.model.displayTitle, "IMG_2041.jpg")
     }
 
-    /// The host's instant title cuts a photo's reference line at 48 characters, before the
-    /// photo's name. The header names the chat after the first prompt's photo instead (#1046).
     func testATitleCutBeforeTheAttachmentsNameShowsTheFirstPromptsAttachment() async {
         let chat = await openChat(history: [userRow(Self.photoReference)])
         chat.receive(event(1, "session.title", ["title": .string("[The user attached an image…")]))
         XCTAssertEqual(chat.model.displayTitle, "IMG_2041.jpg")
     }
 
-    /// An error after the turn's `message.start` with no completion after it: the turn ends
-    /// failed when the host settles it.
     func testALoneErrorEndsTheTurnAsFailedWhenTheHostSettles() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -151,8 +134,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.runEndTrigger, 1)
     }
 
-    /// A warning the turn goes on past, such as a model switch that failed at its start, is
-    /// an `error` too: the reply stays one row, and the turn ends once, completed.
     func testAnErrorTheTurnGoesOnPastKeepsOneTurn() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -166,7 +147,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.runEndTrigger, 1)
     }
 
-    /// A turn the host refuses before starting it sends only an `error`: it ends at once.
     func testAnErrorBeforeTheTurnStartsEndsItAtOnce() async {
         let chat = await openChat()
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -178,8 +158,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.runEndTrigger, 1)
     }
 
-    /// Stop is one `session.interrupt`; the run ends stopped only from its own frames, and a
-    /// stopped run raises no completion alert.
     func testStopInterruptsOnceAndEndsOnTheInterruptedCompletion() async {
         let chat = await openChat()
         chat.host.always("session.interrupt", .init(result: .object(["status": .string("interrupted")])))
@@ -199,10 +177,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.runEndTrigger, 0)
     }
 
-    // MARK: Compaction (#1734)
-
-    /// A recorded auto-compaction: the working row reads "Compacting context" from the first
-    /// `compacting`, through the "Compacting context" marker line, until `compacted`.
     func testACompactionMidTurnShowsFromCompactingUntilCompacted() async throws {
         let frames = try recorded("turn-compaction-frames")
         let chat = await openChat(runtime: try XCTUnwrap(frames[0]["params"]["session_id"].text))
@@ -218,7 +192,6 @@ import SwiftUI
         XCTAssertNotNil(chat.model.activeStreamID, "the turn goes on")
     }
 
-    /// A compaction whose `compacted` never came ends with the turn the host reports over.
     func testTheTurnsEndClearsACompactionWhoseEndNeverCame() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -228,8 +201,6 @@ import SwiftUI
         XCTAssertFalse(chat.model.isCompacting)
     }
 
-    /// A recorded compaction that made no progress sends no `compacted`: the turn's next
-    /// output shows it went on, as Desktop reads it.
     func testTheTurnsNextOutputClearsACompactionThatSentNoEnd() async throws {
         let frames = try recorded("turn-compaction-frames", key: "unended")
         let chat = await openChat(runtime: try XCTUnwrap(frames[0]["params"]["session_id"].text))
@@ -240,7 +211,6 @@ import SwiftUI
         XCTAssertFalse(chat.model.isCompacting)
     }
 
-    /// A reattach can miss `compacted`: the line goes with the old socket.
     func testAReattachDropsACompactionItCannotSeeEnd() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -251,8 +221,6 @@ import SwiftUI
         XCTAssertNotNil(chat.model.activeStreamID, "the running turn is still shown")
     }
 
-    /// An in-process `/compress` pins `compressing` and always clears it with its `ready`, which
-    /// the host sends as `{kind: "status", text: "ready"}` (`_status_update` with no text).
     func testACompressPinnedStatusEndsWithItsReady() async {
         let chat = await openChat()
         chat.receive(event(1, "status.update", ["kind": .string("compressing"), "text": .string("compressing 10 messages")]))
@@ -261,10 +229,6 @@ import SwiftUI
         XCTAssertFalse(chat.model.isCompacting)
     }
 
-    // MARK: Host notices (#1746)
-
-    /// The recorded dropped model switch: a live `ttl` notice shows and hides once its `ttl_ms` is
-    /// up. A same-key show replaces it, and the first one's timer then hides nothing.
     func testALiveTTLNoticeShowsUntilItsTimeIsUp() async throws {
         let frames = try recorded("turn-notice-frames")
         let payload = frames[1]["params"]["payload"]
@@ -288,9 +252,6 @@ import SwiftUI
         XCTAssertNil(notices.shown)
     }
 
-    /// Opening a chat replays the session's standing notices in order, so a later clear still
-    /// wins, but never a `ttl` one, which may have expired long ago. The first attach always
-    /// rebuilds the transcript, and the notices still apply.
     func testOpeningAChatRestoresStandingNoticesButNoExpiredOne() async throws {
         let timer = ManualNoticeTimer()
         let chat = await openChat(replay: try standingNoticeReplay(latest: 4), noticeTimer: timer.timer)
@@ -298,8 +259,6 @@ import SwiftUI
         XCTAssertTrue(timer.delays.isEmpty)
     }
 
-    /// A reattach whose replay was cut short rebuilds the transcript; what the replay holds of the
-    /// notices still applies.
     func testAReattachWithATruncatedReplayStillRestoresStandingNotices() async throws {
         let timer = ManualNoticeTimer()
         let chat = await openChat(noticeTimer: timer.timer)
@@ -311,8 +270,6 @@ import SwiftUI
         XCTAssertTrue(timer.delays.isEmpty)
     }
 
-    /// A live clear that arrives after lost frames still withdraws its notice: the rebuild it
-    /// starts replays only what follows it.
     func testAClearArrivingAfterAGapStillWithdrawsItsNotice() async {
         let chat = await openChat()
         chat.receive(event(1, "notification.show", ["text": .string("Credit access paused"), "level": .string("error"),
@@ -324,8 +281,6 @@ import SwiftUI
         XCTAssertNil(chat.turn.hostNotices.shown)
     }
 
-    /// A new runtime for the session drops the old one's notices and timers: a dead runtime never
-    /// sends their clears, and an old timer never hides the new runtime's notice.
     func testANewRuntimeDropsTheOldRuntimesNoticesAndTimers() async {
         let timer = ManualNoticeTimer()
         let chat = await openChat(noticeTimer: timer.timer)
@@ -344,8 +299,6 @@ import SwiftUI
         XCTAssertEqual(notices.shown?.text, "Large model again", "the old runtime's timer hides nothing")
     }
 
-    /// Each show keeps its key's place: a newer key shows on top, and the older one's update stays
-    /// behind it, waiting.
     func testAShowWithAKnownKeyReplacesThatNoticeInPlace() async {
         let chat = await openChat()
         let notices = chat.turn.hostNotices
@@ -360,8 +313,6 @@ import SwiftUI
         XCTAssertEqual(notices.waitingCount, 1)
     }
 
-    /// The host's clear withdraws its key. A dismissed key stays hidden until the host shows it
-    /// with new text, and dismissing the newest shows the one behind it.
     func testAClearWithdrawsANoticeAndADismissHidesItUntilNewText() async throws {
         let chat = await openChat()
         let notices = chat.turn.hostNotices
@@ -382,9 +333,6 @@ import SwiftUI
         XCTAssertEqual(notices.shown?.text, "A plugin says bye")
     }
 
-    /// A canonical session keeps its id across a new epoch (a host restart, or the host ending a
-    /// session nobody watched for its orphan grace, 5 minutes by default), and the new epoch
-    /// replays nothing. The old lifetime's notices and timers go, since nothing will clear them.
     func testACanonicalSessionUnderANewEpochDropsTheOldNoticesAndTimers() async {
         let timer = ManualNoticeTimer()
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true, noticeTimer: timer.timer)
@@ -402,8 +350,6 @@ import SwiftUI
         XCTAssertTrue(timer.tasks[0].isCancelled)
     }
 
-    /// Frames lost within the same lifetime rebuild the transcript but keep the notices: the host
-    /// still holds them.
     func testAGapInTheSameLifetimeKeepsTheNotices() async {
         let chat = await openChat()
         chat.receive(event(1, "notification.show", ["text": .string("Credit access paused"), "level": .string("error"),
@@ -413,8 +359,6 @@ import SwiftUI
         await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
         XCTAssertEqual(chat.turn.hostNotices.shown?.text, "Credit access paused")
     }
-
-    // MARK: Sending
 
     func testSendSubmitsAQueuedPromptOnceAndShowsIt() async {
         let chat = await openChat()
@@ -433,11 +377,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.map(\.role), ["user", "assistant"], "its own message.start is the same turn")
     }
 
-    // MARK: Turn base (#1392)
-
-    /// An idle direct Send reads HEAD at the folder's repository before its prompt goes out: the
-    /// prompt waits for that read. The base belongs to the turn the send started alone, so the
-    /// next turn the host starts (a queued prompt, another client's) has none.
     func testADirectSendReadsHeadBeforeItsPromptAndOnlyItsTurnKeepsTheBase() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -467,8 +406,6 @@ import SwiftUI
         XCTAssertNil(chat.model.hermesTurnBase, "a turn this chat did not send has no base")
     }
 
-    /// Only a turn that completes counts toward the session list cards and the rating prompt,
-    /// once, however many frames settle it.
     func testOnlyACompletedTurnCountsAsACompletedReply() async throws {
         let rating = isolatedRatingState()
         let chat = await openChat(ratingPromptState: rating)
@@ -483,7 +420,6 @@ import SwiftUI
         XCTAssertEqual(rating.policy.completedResponses, 2)
     }
 
-    /// A running Hermes turn holds the rating request back on its server, like a webui stream.
     func testARunningTurnHoldsTheRatingRequestBack() async throws {
         let rating = isolatedRatingState()
         let chat = await openChat(ratingPromptState: rating)
@@ -496,8 +432,6 @@ import SwiftUI
         XCTAssertFalse(rating.hasActiveStream(on: server))
     }
 
-    /// A HEAD read that fails sends anyway, with no base, so the card shows uncommitted changes.
-    /// A send cancelled during the read sends nothing.
     func testAFailedHeadReadStillSendsAndACancelledOneSendsNothing() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -529,8 +463,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").count, 1, "a cancelled send never reaches the host")
     }
 
-    /// The base stays with its turn across a reattach that finds the turn still running, and goes
-    /// once the chat moves to another folder.
     func testATurnsBaseSurvivesItsReattachButNotAFolderMove() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -551,8 +483,6 @@ import SwiftUI
         XCTAssertNil(chat.model.hermesTurnBase)
     }
 
-    /// Another client's turn can start ahead of a send's reply: when that reply says the send
-    /// was queued behind it, neither that turn nor the queued one keeps the base.
     func testATurnStartedAheadOfAQueuedSendsReplyKeepsNoBase() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -569,9 +499,6 @@ import SwiftUI
         XCTAssertNil(chat.model.hermesTurnBase, "the queued turn began without its send alone")
     }
 
-    /// A reattach that lost frames keeps the base only when the snapshot proves it is the same
-    /// turn: a turn followed from its send's reply, with no start time, could have ended and
-    /// another begun while the chat was away.
     func testAReattachThatLostFramesDropsABaseItCannotMatchToTheRunningTurn() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -593,9 +520,6 @@ import SwiftUI
         XCTAssertNil(chat.model.hermesTurnBase)
     }
 
-    /// Each mode reads only its own receipt: a steer is `queued`, an interrupt `redirected` or
-    /// `queued`, a send `streaming` or `queued`, and the host's voice-stop acknowledgment
-    /// clears a send without claiming a turn ran. Anything else is unknown, never success.
     func testEachPromptModeReadsOnlyItsOwnAcknowledgment() {
         let reply = { (status: String) in BotJSON.object(["status": .string(status), "future": .bool(true)]) }
         XCTAssertEqual(BotPromptMode.steer.outcome(reply("queued")), .guidanceQueued)
@@ -607,7 +531,6 @@ import SwiftUI
         XCTAssertEqual(BotPromptMode.steer.outcome(reply("streaming")), .unknown)
         XCTAssertEqual(BotPromptMode.send.outcome(reply("redirected")), .unknown)
         XCTAssertEqual(BotPromptMode.send.outcome(.object(["voice_stopped": .bool(true)])), .voiceStopped)
-        // A canonical host's send is admitted only by a receipt naming its admission (#1602).
         XCTAssertEqual(BotPromptMode.send.outcome(.object(["status": .string("queued")]), canonical: true), .unknown)
         XCTAssertEqual(BotPromptMode.send.outcome(.object(["status": .string("terminal"), "admission_id": .string("a1")]),
                                                   canonical: true), .unknown)
@@ -619,8 +542,6 @@ import SwiftUI
         XCTAssertFalse(BotPromptMode.send.definitelyRejected(BotFailure.transport))
     }
 
-    /// A reply that is neither a start nor a queue might have been taken: the draft stays,
-    /// and nothing is sent again.
     func testAnUnknownAcknowledgmentKeepsTheDraftAndSendsOnce() async {
         let chat = await openChat()
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("something new")])))
@@ -631,9 +552,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
     }
 
-    /// A new session's draft keeps the new-session key until the host accepts its first
-    /// prompt, so leaving before sending leaves it for the next New Session. Then it moves
-    /// to the session's own key.
     func testAcceptedNewSessionClosesOnConfirmedArchiveOrDelete() async throws {
         for archived in [false, true] {
             let key = archived ? "new-archived" : "new-deleted"
@@ -674,7 +592,6 @@ import SwiftUI
         chat.host.next("prompt.submit", .init(result: .object(["status": .string("something new")])))
         _ = await chat.model.sendMessage("Plan the release")
         XCTAssertEqual(chat.model.hermesDraftKey, newKey, "an unconfirmed prompt moves nothing")
-        // Its lost answer holds Send until the reattach it started has read the session (#508).
         await chat.model.reconnectStreamIfNeeded()
 
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -689,10 +606,6 @@ import SwiftUI
                        "returning resumed the created session")
     }
 
-    /// A legacy compression chain keeps one draft whichever segment opened it (#1176): its list
-    /// row (the tip) and links to its root or middle restore and edit the same draft, under the
-    /// chain's root, while each resumes the key it named. A draft the tip kept before drafts
-    /// followed the root moves to it.
     func testEverySegmentOfACompressionChainSharesOneDraft() async {
         let drafts = ChatDraftStore(persistence: InMemoryDraftPersistence(), debounceDuration: .seconds(60))
         let server = URL(string: "https://hermes.example")!
@@ -735,7 +648,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("session.interrupt"), [])
     }
 
-    /// Stop & send is `session.redirect`: the new prompt takes a row, and the reply after it a new one.
     func testStopAndSendRedirectsTheTurn() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -750,9 +662,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.map(\.content), ["Reading every file", "Only the README", "README says hi."])
     }
 
-    /// Queue holds the prompt on the host, shown as a pending bubble instead of a receipt
-    /// (#1379). A second queued prompt merges into it as the host merges them, and it stays
-    /// through the idle gap until the host runs it as one real row.
     func testQueueHoldsThePromptOnTheHostUntilItsTurnStarts() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -773,8 +682,6 @@ import SwiftUI
         XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty)
     }
 
-    /// A reattach restores the host's queued prompt as the bubble, its file reference a chip
-    /// rather than a host path, and its turn shows it once.
     func testAReattachRestoresTheQueuedPromptAsOneBubble() async {
         let chat = await openChat(snapshot: resume(running: true)
             .replacing("queued", with: .object(["user": .string("Then the tests\n\n@file:/a/notes.txt")])))
@@ -786,8 +693,6 @@ import SwiftUI
         XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty)
     }
 
-    /// Another client's Stop discards the host's queue too: the bubble goes, Stop no longer
-    /// asks, and the next turn does not show the discarded prompt.
     func testAStopFromAnotherClientClearsTheQueuedPrompt() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -804,7 +709,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("session.interrupt"), [], "this chat sent no stop")
     }
 
-    /// Stop asks first only when it would lose something: a queued prompt or an open request.
     func testStopConfirmsOnlyWithAQueuedPromptOrAnOpenRequest() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -828,18 +732,10 @@ import SwiftUI
         XCTAssertTrue(chat.model.queuedPromptMessages.isEmpty)
     }
 
-    // MARK: Canonical hosts (#1602)
-
-    /// A canonical send carries the Profile and a `submission_id` the host admits it by, and its
-    /// recorded receipt, `queued` even on an idle session, clears the draft. Its own turn can start
-    /// ahead of that receipt, listed as queued first: its prompt shows once, with no queued bubble.
-    /// While a lost turn holds the queue, a send waits behind it as a queued bubble, with no turn
-    /// shown running.
     func testACanonicalReceiptForTheRunningOrABlockedAdmissionShowsNoPhantomTurn() async throws {
         var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
         receipt["admission_id"] = .string("a1")
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
-        // The recorded order: `pending` lists the send's admission as queued, then its turn starts.
         chat.host.next("prompt.submit", .init(result: .object(receipt), before: [
             canonicalEvent(1, "session.info", ["pending": .array([admission("a1", "queued", "Run the quick check.")])],
                            admission: "a1", generation: nil),
@@ -866,8 +762,6 @@ import SwiftUI
         XCTAssertEqual(blocked.model.queuedPromptMessages.map(\.content), ["Then the tests"])
     }
 
-    /// An older queued admission that starts while a Send is out, as when another client discards
-    /// the lost turn holding it, shows its own prompt; the Send then waits behind it as a bubble.
     func testAnOlderAdmissionStartingDuringASendShowsItsOwnPrompt() async throws {
         var receipt = try XCTUnwrap(try canonical("canonical-receipts")["idle"].fields)
         receipt["admission_id"] = .string("a3")
@@ -885,8 +779,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.queuedPromptMessages.map(\.content), ["Run the quick check."])
     }
 
-    /// Sends queued behind a canonical turn stay separate admissions, one bubble each in the
-    /// host's order, as its recorded `pending` lists them, and the next turn takes only its own.
     func testCanonicalQueuedSendsStaySeparateAdmissions() async throws {
         let rows = try XCTUnwrap(try canonical("canonical-resume-queued")["pending"].list)
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(running: true, pending: rows), canonical: true)
@@ -899,9 +791,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.map(\.content), ["Then the tests"])
     }
 
-    /// A queued admission withdrawn while another runs settles with its own `message.complete`,
-    /// recorded with no generation. It is no turn's completion: the running turn that then fails
-    /// with no completion of its own ends failed, not completed.
     func testAWithdrawnCanonicalAdmissionIsNotTheRunningTurnsCompletion() async throws {
         let withdrawn = try canonical("canonical-withdrawn-complete")
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
@@ -916,10 +805,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.latestRunOutcome?.ending, .failed)
     }
 
-    /// Stop on a canonical host withdraws the known queued admissions first, then interrupts the
-    /// generation the host last named, here the recorded next turn's (#1341, decision 3). A stop
-    /// the host refuses because a newer turn started (recorded `stale_generation`) sends nothing
-    /// more and asks for another tap.
     func testCanonicalStopWithdrawsTheQueueThenInterruptsItsGeneration() async throws {
         let stale = try canonical("canonical-stale-generation")
         var next = try XCTUnwrap(try canonical("canonical-second-turn-start").fields)
@@ -929,7 +814,6 @@ import SwiftUI
         next["session_id"] = .string("tip"); next["seq"] = .number(1)
         chat.receive(.object(next))
         XCTAssertNotNil(chat.model.activeStreamID)
-        // A newer turn starting while the queue is withdrawn is not the one this Stop is for.
         chat.host.next("prompt.cancel", .init(result: .object(["status": .string("terminal"), "outcome": .string("cancelled")]),
                                               before: [canonicalEvent(2, "session.usage", admission: "a3", generation: 3)]))
         chat.host.next("session.interrupt", .init(error: stale["code"].integer, message: stale["message"].text ?? "", data: stale["data"]))
@@ -944,9 +828,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("session.interrupt").count, 2, "only the second tap sent a second stop")
     }
 
-    /// A turn a canonical host lost across its restart (`pending` status `unknown`) shows with
-    /// Discard, which acknowledges it with that turn's own generation, never the session's, and
-    /// never resends its prompt.
     func testALostCanonicalTurnIsDiscardedWithItsOwnGeneration() async throws {
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(generation: 4, pending: [
             admission("lost", "unknown", "Run the quick check.", generation: 2), admission("next", "queued", "Then the tests")
@@ -962,9 +843,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
 
-    /// Fork From Here on a canonical host (#1603) is one fenced `branch` edit that keeps the rows
-    /// through the selected row's own id, with nothing counted, and opens the branch the recorded
-    /// receipt names.
     func testACanonicalBranchKeepsTheRowsThroughTheSelectedRowsID() async throws {
         let branch = try canonical("canonical-mutations")["branch"]["result"]
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
@@ -978,9 +856,6 @@ import SwiftUI
         XCTAssertEqual(sent["expected_generation"], .number(1))
     }
 
-    /// An `/undo` whose answer was lost goes out again identical, same row and request id, though
-    /// the history read since no longer holds that exchange: deriving a target again would undo
-    /// another one.
     func testALostCanonicalUndoIsSentAgainIdentical() async throws {
         let chat = await openChat(runtime: "tip", history: [userRow("First", id: 1), assistantRow("One", id: 2),
                                                              userRow("Second", id: 3), assistantRow("Two", id: 4)],
@@ -991,7 +866,6 @@ import SwiftUI
         chat.host.allow("session.mutate")
         chat.host.always("session.mutate", .init(result: .object(["rewound_count": .number(0)])))
         serveHistory([userRow("First", id: 1), assistantRow("One", id: 2)])
-        // The lost answer ended the chat's connection, which reattaches on its own.
         await waitUntil("reattached") { chat.turn.engine.connectionState == .connected }
         try await chat.turn.undo()
         let tries = chat.writes("session.mutate")
@@ -1000,8 +874,6 @@ import SwiftUI
         XCTAssertEqual(tries[0]["request_id"], tries[1]["request_id"])
     }
 
-    /// `/compress` on a canonical host is a fenced `compress` edit; its recorded `noop` receipt
-    /// removed nothing and says why, and the transcript stays.
     func testACanonicalCompressIsAFencedEdit() async throws {
         let noop = try canonical("canonical-mutations")["compress"]["result"]
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
@@ -1012,8 +884,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("session.compress"), [])
     }
 
-    /// A canonical compaction reply that is neither `noop`, a preview nor a receipt (no `revision`)
-    /// says nothing safe about the transcript, so it fails rather than reading as compacted.
     func testACanonicalCompressReplyWithoutARevisionFails() async throws {
         let chat = await openChat(runtime: "tip", snapshot: canonicalSnapshot(), canonical: true)
         chat.host.always("session.mutate", .init(result: .object(["session_id": .string("tip"), "operation": .string("compress"),
@@ -1022,8 +892,6 @@ import SwiftUI
         catch { XCTAssertEqual(error as? BotFailure, .unsupported) }
     }
 
-    /// A refused password (#884, #942) is never sent again unasked: neither returning from the
-    /// background, a network change nor a send signs the chat in again.
     func testARefusedSignInIsNeverSentAgainUnasked() async {
         let chat = await openChat()
         let before = chat.host.requests.count
@@ -1036,20 +904,12 @@ import SwiftUI
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
         let sent = await chat.model.sendMessage("Are you there?")
         XCTAssertFalse(sent)
-        // The first attach's goal, model-catalog, Profile, command-catalog and worker reads run off
-        // its path and can land after `before`; they are not a reattach.
         let methods = chat.host.requests.dropFirst(before).compactMap { $0["method"].text }
         XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog",
                                           "subagent.list"].contains($0) }, [], "nothing reattached or sent")
         XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
     }
 
-    // MARK: `@` file references (#1113)
-
-    /// The `@` panel opens only once `session.info` names a folder on a `local` backend, then
-    /// asks `complete.path` on the attached runtime under the session's Profile: a name searches
-    /// every folder through the host's `@file:` fuzzy search (#1388), and a picked folder asks
-    /// again for what is inside it.
     func testTheAtPanelCompletesPathsOnTheCurrentRuntimeOfALocalBackend() async {
         let chat = await openChat()
         XCTAssertFalse(chat.model.offersFilePathSearch, "no session.info has named a folder")
@@ -1076,8 +936,6 @@ import SwiftUI
         ])
     }
 
-    /// Rows for a folder the chat has moved away from never show: a reply that lands after
-    /// `session.info` names a new folder is dropped.
     func testAPanelReplyThatLandsAfterTheFolderMovedIsDropped() async {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1092,10 +950,6 @@ import SwiftUI
         XCTAssertFalse(chat.model.filePathSearch.isLoading)
     }
 
-    /// Files' workspace search (#1389) asks the `@` panel's whole-folder search over the chat's
-    /// folder, only once it is on a `local` backend. Pushing Files detaches the chat (#902), so
-    /// the search runs without it and leaves it detached. A query or path with a space stays,
-    /// since the host's fuzzy search takes one and Files opens rather than inserts the path.
     func testFilesSearchesTheWholeFolderAfterTheChatDetachesForIt() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("docker")]))
@@ -1119,8 +973,6 @@ import SwiftUI
         XCTAssertTrue(chat.turn.isConnectionSuspended, "the search reattached the chat")
     }
 
-    /// A Files search cancelled while its socket waits for `gateway.ready` ends at once and
-    /// closes the socket only it wanted, rather than holding it until the read deadline.
     func testAFilesSearchCancelledWhileTheSocketOpensEndsAtOnce() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1140,8 +992,6 @@ import SwiftUI
         }
     }
 
-    /// A Files search reply that lands after the chat's folder moved is stale, never rows for
-    /// the new folder.
     func testAFilesSearchReplyAfterTheFolderMovedIsStale() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1158,8 +1008,6 @@ import SwiftUI
         }
     }
 
-    /// An `@path` in the draft or a sent message becomes a chip when `complete.path` lists it;
-    /// one it doesn't list stays text and is not asked about again.
     func testAnAtPathBecomesAChipOnlyWhenTheHostListsIt() async {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1174,8 +1022,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("complete.path").count, 2, "a settled candidate is not asked again")
     }
 
-    /// A failed lookup leaves only its own candidate open: a sibling the host confirmed in the
-    /// same folder still becomes a chip and is not asked about again.
     func testAFailedLookupKeepsItsSiblingsAnswers() async {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1191,8 +1037,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.fileChipPaths, ["a.md", "b.md"])
     }
 
-    /// Move to Project takes the old folder's chips with it, and a confirmation that lands after
-    /// the move counts for nothing: the next pass asks again in the new folder.
     func testAFolderMoveDropsChipsAndAStaleConfirmation() async {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1216,8 +1060,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("complete.path").count, 2)
     }
 
-    /// A `complete.path` the host never answers empties the panel and leaves the candidate
-    /// open; the chat keeps its connection and its next call is answered.
     func testAnUnansweredCompletionFailsOnlyItself() async throws {
         let chat = await openChat(rpcDeadline: .milliseconds(50))
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1237,8 +1079,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("session.resume").count, resumes, "the chat never reattached")
     }
 
-    /// A chip pass that waited behind another starts against the backend it finds: once
-    /// `session.info` moves the folder off `local`, it asks nothing.
     func testAWaitingChipPassRechecksTheBackend() async {
         let chat = await openChat(rpcDeadline: .seconds(5))
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1248,7 +1088,7 @@ import SwiftUI
         let first = Task { await chat.model.loadFileChipReferences(draft: "see @README.md") }
         await fulfillment(of: [asked], timeout: 2)
         let second = Task { await chat.model.loadFileChipReferences(draft: "see @README.md") }
-        await Task.yield() // the second caller reaches its wait behind the first pass
+        await Task.yield()
 
         chat.receive(event(2, "session.info", ["terminal_backend": .string("docker")]))
         await first.value
@@ -1259,8 +1099,6 @@ import SwiftUI
         XCTAssertEqual(chat.model.fileChipPaths, [])
     }
 
-    /// An open `@` panel asks again when the folder moves under the same query, even while
-    /// the old folder's reply is still on its way.
     func testAnOpenPanelReloadsInTheNewFolder() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
@@ -1291,13 +1129,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("complete.path").map { $0["word"]?.text }, ["@file:Sou", "@file:Sou"])
     }
 
-    // MARK: Reattach
-
-    /// Back from the background mid-turn: the replay carries what was missed, the reply
-    /// continues without repeating, and nothing is sent again.
-    /// A live `computer_use` raises the Screen card (#1632), in a session as in a Bot Chat (#1633):
-    /// the turn's end leaves it, the next turn's start clears it, even one that began while away,
-    /// and a replay never raises it.
     func testALiveComputerUseRaisesTheScreenCardUntilTheNextTurn() async {
         let chat = await openChat()
         defer { chat.model.suspendStreamForBackground() }
@@ -1338,8 +1169,6 @@ import SwiftUI
         await chat.model.reconnectStreamIfNeeded()
         chat.model.flushPendingStreamingContent()
         XCTAssertEqual(chat.model.messages.map(\.content), ["Write a haiku", "Autumn moonlight"])
-        // Each attach's goal, model-catalog, Profile (#1015), command-catalog (#1036) and worker
-        // (#1140) reads run off its path and can land anywhere in this; they are not the reattach.
         let methods = chat.host.requests.dropFirst(leaving).compactMap { $0["method"].text }
         XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog",
                                           "subagent.list"].contains($0) },
@@ -1348,15 +1177,10 @@ import SwiftUI
         XCTAssertNotNil(chat.model.activeStreamID)
     }
 
-    /// A hole in the live stream rebuilds the transcript from a full snapshot. The two deltas
-    /// emitted while it was read are in its reply already and are dropped; the next one
-    /// continues it.
     func testAGapRebuildsFromTheSnapshot() async {
         await assertRebuild(after: event(5, "message.delta", ["text": .string("lost the middle")]))
     }
 
-    /// Only deltas the rebuilt reply holds are dropped: a new one that repeats the reply's
-    /// start, or its last character, is new text.
     func testARebuildKeepsNewDeltasThatRepeatTheReply() async {
         await assertRebuild(after: event(5, "message.delta", ["text": .string("lost the middle")]),
                             reply: "I checked the logs.\n",
@@ -1365,8 +1189,6 @@ import SwiftUI
                             shows: "I checked the logs.\nI\nNext")
     }
 
-    /// The replay places the raced deltas: of two held " ha"s after a replayed ". ha", only
-    /// the first is in the reply "Hello there. ha ha", so the second still shows.
     func testARebuildDropsOnlyTheDeltasAfterTheReplayedText() async {
         await assertRebuild(after: event(5, "message.delta", ["text": .string("lost the middle")]),
                             replayed: [event(6, "message.delta", ["text": .string(". ha")])],
@@ -1376,10 +1198,6 @@ import SwiftUI
                             shows: "Hello there. ha ha ha")
     }
 
-    // MARK: Reclaim
-
-    /// The host reaps the idle chat's runtime and says so (#1122): the chat reattaches once,
-    /// only reading, and the next send goes out on the new runtime on the first try.
     func testAReclaimedRuntimeReattachesAndTheNextSendGoesOut() async {
         let chat = await openChat()
         let leaving = chat.host.requests.count
@@ -1394,8 +1212,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime-2")])
     }
 
-    /// A reclaim that names only the stored key, as for a runtime this chat never held, still
-    /// reattaches.
     func testAReclaimOfTheStoredKeyReattaches() async {
         let chat = await openChat()
         let leaving = chat.host.requests.count
@@ -1403,7 +1219,6 @@ import SwiftUI
         XCTAssertEqual(socketReads(chat, since: leaving), ["session.resume", "session.events.since", "session.resume"])
     }
 
-    /// Another session's reclaim reaches every chat on the socket and changes nothing here.
     func testAnotherSessionsReclaimIsIgnored() async {
         let chat = await openChat()
         let leaving = chat.host.requests.count
@@ -1413,8 +1228,6 @@ import SwiftUI
         XCTAssertEqual(chat.host.requests.count, leaving, "nothing read or sent")
     }
 
-    /// A reclaim mid-turn is a lost stream: the reattach's snapshot settles the turn, and no
-    /// spinner is left waiting on the reaped runtime.
     func testAReclaimMidTurnEndsInTheRecoveryState() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -1427,8 +1240,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").count, 0, "nothing resends")
     }
 
-    /// The new session runs under the Profile the dashboard is scoped to (`current`), not the
-    /// CLI's sticky default (`active`).
     func testCurrentProfileIsTheDashboardsScopedProfile() async throws {
         let host = BotSocketHost()
         let client = BotClient(http: host.connection(Self.connection))
@@ -1443,12 +1254,6 @@ import SwiftUI
         XCTAssertEqual(HermesHostFixture.requests.last { $0.url?.path == "/api/profiles/active" }?.httpMethod, "GET")
     }
 
-    // MARK: Replaced Bot Chat (#1339)
-
-    /// The host moved the Bot Chat aside and made a new one under its title while the chat was
-    /// away (hermes-agent 0.22.3). A send's attach follows the new chat, rebuilds from its rows
-    /// with one notice after them in place of the old ones, and does not send into it; the next
-    /// send does.
     func testABotChatTheHostReplacedIsFollowedAndASendAcrossTheSwapIsHeld() async {
         let chat = await openChat(target: .canonicalChat(profile: "default"), history: [userRow("Old question")])
         XCTAssertEqual(chat.model.messages.map(\.content), ["Old question"])
@@ -1475,10 +1280,6 @@ import SwiftUI
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime-2")])
     }
 
-    // MARK: Plan and outcome (#1139)
-
-    /// The host's plan reads tolerantly: blank and malformed items drop, an item with no id
-    /// gets its position, and an unknown status reads as pending.
     func testAPlanParsesTolerantlyAndSkipsMalformedItems() {
         let plan = HermesPlan(.object([
             "revision": .number(3),
@@ -1501,9 +1302,6 @@ import SwiftUI
         XCTAssertNil(HermesPlan(.null))
     }
 
-    /// A turn that calls `todo` pins its plan while it runs. Once every step is done, or the turn
-    /// ends, the plan settles at the top of that turn: under the prompt the chat sent, then by the
-    /// row the host saved it as. A later turn that leaves the plan alone does not take it.
     func testAPlanPinsWhileItsTurnRunsAndSettlesIntoThatTurn() async throws {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1534,7 +1332,6 @@ import SwiftUI
         XCTAssertEqual(activity.settledPlan?.followsLastPrompt, false, "the new turn did not touch the plan")
     }
 
-    /// A plan whose turn ends with steps still open settles too, showing where it stopped.
     func testAnOpenPlanSettlesWhenItsTurnEnds() async {
         let chat = await openChat()
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -1548,8 +1345,6 @@ import SwiftUI
         XCTAssertEqual(chat.turn.activity.settledPlan?.followsLastPrompt, true)
     }
 
-    /// A turn this chat never saw start that ends is the newest turn (#1158): an earlier plan
-    /// with no saved row no longer settles under the last prompt, which may now be that turn's.
     func testAnUnseenTurnEndsAnEarlierPlansClaimOnTheLastPrompt() async {
         let chat = await openChat()
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -1564,9 +1359,6 @@ import SwiftUI
         XCTAssertNil(chat.turn.activity.settledPlan, "no saved row, and the last prompt may be the unseen turn's")
     }
 
-    /// An older revision never replaces a newer one, and an empty list at revision 1 or later is
-    /// the host clearing the plan: it goes from the strip and the transcript, and an older
-    /// revision does not bring it back.
     func testAnOlderPlanRevisionNeverReplacesANewerOneAndAHostClearRemovesIt() async {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1583,9 +1375,6 @@ import SwiftUI
         XCTAssertNil(activity.pinnedPlan, "an older revision never undoes the clear")
     }
 
-    /// A reattach to the turn the chat was following restores that turn's plan from the
-    /// snapshot's `todo_state`, revision-monotonic; a new runtime starts its revisions again, so
-    /// the plan the old one had is dropped, and the new one's own revision pins.
     func testTheAttachSnapshotRestoresThePlanAndANewRuntimeDropsIt() async {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1607,8 +1396,6 @@ import SwiftUI
         XCTAssertEqual(activity.pinnedPlan?.items.map(\.content), ["Fresh 1"], "its revisions count from the start again")
     }
 
-    /// Reopening a chat restores the session's plan, which the host keeps across turns, so it may
-    /// be any earlier turn's: it is not drawn under the newest prompt.
     func testAPlanRestoredOnOpenIsNotDrawnUnderTheNewestPrompt() async {
         let chat = await openChat(snapshot: resume(running: false)
             .replacing("todo_state", with: .object(todos(revision: 2, ["completed", "completed"]))))
@@ -1616,8 +1403,6 @@ import SwiftUI
         XCTAssertNil(chat.turn.activity.pinnedPlan)
     }
 
-    /// Opening a chat while a turn runs does not pin a restored plan the turn never revised; the
-    /// turn's own revision does.
     func testARunningTurnPinsOnlyAPlanItRevised() async {
         let chat = await openChat(snapshot: resume(running: true)
             .replacing("todo_state", with: .object(todos(revision: 2, ["completed", "in_progress"], prefix: "Earlier"))))
@@ -1630,9 +1415,6 @@ import SwiftUI
         XCTAssertEqual(activity.pinnedPlan?.revision, 3, "its own revision pins")
     }
 
-    /// The chat followed a turn's plan, then left; the turn finished its plan and ended while the
-    /// replay lost its frames. The idle snapshot's newer revision is still that turn's, since its
-    /// prompt is the only one saved since it began: it settles at the top of that turn.
     func testAFollowedTurnsFinalPlanSettlesUnderItsPromptAfterAReattach() async {
         let activity = await followTurnThatEndsAway(saving: [userRow("Plan it", id: 5, at: 1_790_000_001)])
         XCTAssertNil(activity.pinnedPlan)
@@ -1640,8 +1422,6 @@ import SwiftUI
         XCTAssertEqual(activity.settledPlan?.rowID, 5, "at the top of its own turn")
     }
 
-    /// As above, but the turn did not revise its plan again: the plan it already owned settles at
-    /// the top of that turn all the same.
     func testAFollowedTurnsUnchangedPlanSettlesUnderItsPromptAfterAReattach() async {
         let activity = await followTurnThatEndsAway(saving: [userRow("Plan it", id: 5, at: 1_790_000_001)],
                                                     finalPlan: todos(revision: 1, ["in_progress", "pending"]))
@@ -1650,8 +1430,6 @@ import SwiftUI
         XCTAssertEqual(activity.settledPlan?.rowID, 5, "at the top of its own turn")
     }
 
-    /// As above, but another turn also ran while the chat was away: the newer revision may be
-    /// that turn's, so it is not drawn under either.
     func testAFollowedTurnKeepsNoPlanALaterTurnMayHaveRevised() async {
         let activity = await followTurnThatEndsAway(saving: [userRow("Plan it", id: 5, at: 1_790_000_001),
                                                              userRow("Another client", id: 6, at: 1_790_000_050)])
@@ -1659,9 +1437,6 @@ import SwiftUI
         XCTAssertNil(activity.settledPlan)
     }
 
-    /// A turn another client started shows no prompt in this chat, so its plan never settles
-    /// under the last prompt shown, an earlier turn's: without a saved row it is not drawn, and
-    /// with one only that row places it.
     func testAnotherClientsPlanIsNeverDrawnUnderAnEarlierPrompt() async {
         let chat = await openChat(history: [userRow("Mine", id: 7)])
         let activity = chat.turn.activity
@@ -1680,8 +1455,6 @@ import SwiftUI
         XCTAssertEqual(activity.settledPlan?.followsLastPrompt, false, "only its saved row places it")
     }
 
-    /// A settled plan follows its turn's saved prompt. Once that row is gone, as after `/undo`,
-    /// it is not drawn under the last prompt left, another turn's.
     func testASettledPlanWhoseSavedPromptIsGoneIsNotDrawn() throws {
         let plan = try XCTUnwrap(HermesPlan(.object(todos(revision: 1, ["completed"]))))
         let rows = [promptRow("Earlier", rowID: 5), promptRow("Its prompt", rowID: 7)]
@@ -1695,10 +1468,6 @@ import SwiftUI
         XCTAssertEqual(saved.afterRenderID(in: [rows[0], shown]), "local", "the shown prompt stands in until the read saves it")
     }
 
-    /// A first turn that failed before the host saved any row still shows its outcome row, with
-    /// Retry and the billing page, in place of the empty chat's start prompt, as a prompt queued
-    /// behind another client's first turn still shows its bubble. Loading and a failed load keep
-    /// their own placeholders.
     func testAnEmptyChatShowsAFailedTurnsOutcomeOrAQueuedPrompt() {
         typealias Placeholder = ChatTranscriptView.Placeholder
         XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: true,
@@ -1715,9 +1484,6 @@ import SwiftUI
                                  showsQueuedPrompt: false))
     }
 
-    /// A failed turn says why in its outcome row, not as error text: the host's surface, its
-    /// reset time and raw error. Once the turn settles, one live-state read takes the prompt the
-    /// host kept for Retry, which nothing sends on its own. The next turn clears the row.
     func testAFailedTurnShowsItsOutcomeAndNeverRetriesOnItsOwn() async throws {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1745,9 +1511,6 @@ import SwiftUI
         XCTAssertNil(activity.retryTarget)
     }
 
-    /// The failure read can name a later turn than the one this chat saw fail, such as one another
-    /// client started that the host failed before it began. Retry then offers that turn's prompt,
-    /// dated from its start, never the earlier prompt's row, whose cut would take both turns.
     func testRetryCutsAtThePromptOfTheTurnTheFailureReadNames() async {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1763,9 +1526,6 @@ import SwiftUI
         XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second", showsPrompt: false), "the named turn's prompt, at its own row")
     }
 
-    /// Another client's turn the host failed before it began completes with no `message.start`
-    /// (#1158). The earlier failure's Retry goes at once, since its cut would take that turn too,
-    /// and the failure read offers the newer turn's prompt at its own row instead.
     func testAnUnseenFailedTurnReplacesTheEarlierRetry() async {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1792,10 +1552,6 @@ import SwiftUI
         XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second", showsPrompt: false))
     }
 
-    /// The failure read takes the snapshot, then the newest rows. A turn another client submitted
-    /// in between, which the host failed before it began, saved its prompt after the failed one's,
-    /// so the rows can't say which prompt the snapshot's turn is: Retry is not offered, rather than
-    /// cutting at the later prompt's row with the earlier prompt's text.
     func testRetryIsNotOfferedWhenAPromptFollowsTheFailedOne() async {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1811,8 +1567,6 @@ import SwiftUI
         XCTAssertNil(activity.retryTarget, "no prompt row is provably the failed turn's")
     }
 
-    /// A warning on a turn that succeeded shows the host's words. It survives a reattach and
-    /// goes when the next turn starts.
     func testAWarningShowsTheHostsWordsUntilTheNextTurn() async {
         let chat = await openChat()
         let activity = chat.turn.activity
@@ -1831,8 +1585,6 @@ import SwiftUI
         XCTAssertNil(activity.notice)
     }
 
-    /// A failure the host retained while the chat was away shows on attach, with the host's raw
-    /// prompt and the saved row dated from the turn's start for Retry.
     func testAFailureTheHostRetainedShowsOnAttach() async {
         let chat = await openChat(history: [userRow("Summarize the logs")])
         await reattach(chat, resume(running: false, inflight: Self.failedInflight))
@@ -1841,10 +1593,6 @@ import SwiftUI
         XCTAssertEqual(chat.turn.activity.retryTarget, .init(rowID: 1, text: "Summarize the logs\n\n@file:/a/notes.txt", showsPrompt: false))
     }
 
-    // MARK: Delegated work
-
-    /// Restored background workers remain inspectable even when the session has no visible
-    /// transcript rows, rather than being covered by the new-conversation placeholder.
     func testLiveWorkersReplaceTheEmptyConversationPlaceholder() {
         typealias Placeholder = ChatTranscriptView.Placeholder
         XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true,
@@ -1853,9 +1601,6 @@ import SwiftUI
                                    showsTurnOutcome: false, showsQueuedPrompt: false, showsDelegatedWork: false), .startPrompt)
     }
 
-    /// The worker count lists the session's workers once it connects, then again only on the
-    /// lifecycle frames that change the roster, which coalesce into one read; leaving drops it,
-    /// so the toolbar button goes with the connection (#1140).
     func testDelegatedWorkListsOnConnectAndOnLifecycleFramesOnly() async {
         let chat = await openChat(subagents: [worker("tests"), worker("docs")])
         let work = chat.turn.activity.delegatedWork
@@ -1874,9 +1619,6 @@ import SwiftUI
         XCTAssertEqual(work.activeCount, 0, "a chat that left shows no workers")
     }
 
-    /// A delivery the host starts on its own (`_notif_submit`) draws its card when that turn ends:
-    /// the turn's saved rows come back in the newest-rows read, the delivery's typed row among
-    /// them, above the reply it prompted (#1140).
     func testALiveDelegationDeliveryDrawsItsCompletionCardWhenItsTurnEnds() async throws {
         let report = "[ASYNC DELEGATION BATCH COMPLETE]\n--- RESULT ---\nTests rewritten; docs updated."
         let earlier = [userRow("Split the work"), assistantRow("Started two workers.", id: 2)]
@@ -1908,14 +1650,11 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.last?.content, "Both workers finished.")
     }
 
-    // MARK: Fixture
-
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
     private static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("Fixtures/HermesAgent")
 
-    /// A Hermes chat attached to an idle session on `runtime`, whose events the test feeds.
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
@@ -1923,19 +1662,15 @@ import SwiftUI
         let client: BotClient
         let liveActivity: TitleRecordingLiveActivity
 
-        /// One recorded line: an event's params, or a host request envelope as is.
         @MainActor func receive(_ frame: BotJSON) {
             client.onEvent?(frame["method"].text == "event" ? frame["params"] : frame)
         }
 
-        /// The params of every `method` call the chat sent.
         func writes(_ method: String) -> [[String: BotJSON]] {
             host.requests.filter { $0["method"].text == method }.compactMap { $0["params"].fields }
         }
     }
 
-    /// The two reference lines a photo-only send appends, for an upload the host named
-    /// `dashboard_<date>_<time>_<hex>_IMG_2041.jpg`.
     private static let photoReference = "[The user attached an image: dashboard_20261005_120000_0123abcd_IMG_2041.jpg]\n"
         + "[Examine it with the vision_analyze tool using image_url: /home/u/.hermes/images/dashboard_20261005_120000_0123abcd_IMG_2041.jpg]"
 
@@ -1950,7 +1685,6 @@ import SwiftUI
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
         host.always("session.resume", .init(result: snapshot ?? resume(running: false, runtime: runtime, key: key, profile: profile)))
         host.always("session.events.since", .init(result: replay ?? BotFixtureWire.replay(latest: 0)))
-        // The reduced reply `session.create` gives a session that has not started.
         host.always("session.create", .init(result: .object([
             "session_id": .string(runtime), "stored_session_id": .string(key), "message_count": .number(0),
             "messages": .array([]), "info": .object(["profile_name": .string(profile)])
@@ -1975,7 +1709,6 @@ import SwiftUI
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)
     }
 
-    /// A rating state on its own defaults, so a completed turn never writes the device's counter.
     private func isolatedRatingState() -> RatingPromptState {
         let suite = "HermesChatTurnTests.rating.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -1983,7 +1716,6 @@ import SwiftUI
         return RatingPromptState(defaults: defaults)
     }
 
-    /// A failed turn's retained `inflight`, as `session.resume` carries it (`_fail_inflight_turn`).
     private static let failedInflight: [String: BotJSON] = [
         "user": .string("Summarize the logs\n\n@file:/a/notes.txt"), "assistant": .string(""),
         "error": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
@@ -1992,7 +1724,6 @@ import SwiftUI
                                   "retryable": .bool(true), "resets_at": .number(1_900_000_000)])
     ]
 
-    /// A rate-limited turn's `message.complete` (`_complete_turn_payload`), whose prompt row the host saved as 7.
     private static let rateLimitedCompletion: [String: BotJSON] = [
         "status": .string("error"), "text": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
         "error": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
@@ -2002,16 +1733,12 @@ import SwiftUI
         "persisted_turn": .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
     ]
 
-    /// A `todo.updated` payload or `todo_state` at `revision`: one item per status, named
-    /// `<prefix> <n>`.
     private func todos(revision: Int, _ statuses: [String], prefix: String = "Step") -> [String: BotJSON] {
         ["revision": .number(Double(revision)), "todos": .array(statuses.enumerated().map { index, status in
             .object(["id": .string("\(prefix)-\(index)"), "content": .string("\(prefix) \(index + 1)"), "status": .string(status)])
         })]
     }
 
-    /// A replay of runtime `runtime` holding the recorded `ttl` notice, a `/login` link, and a slow
-    /// agent start the host then cleared.
     private func standingNoticeReplay(latest: Int, truncated: Bool = false) throws -> BotJSON {
         var expired = try recorded("turn-notice-frames")[1]["params"].fields ?? [:]
         expired["session_id"] = .string("runtime"); expired["seq"] = .number(Double(latest - 3))
@@ -2025,7 +1752,6 @@ import SwiftUI
         ])
     }
 
-    /// Leaves and comes back: the replay holds nothing past `latest`, and every snapshot is `snapshot`.
     private func reattach(_ chat: Chat, _ snapshot: BotJSON, latest: Int = 0) async {
         chat.model.suspendStreamForBackground()
         chat.host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: latest)))
@@ -2034,16 +1760,12 @@ import SwiftUI
         XCTAssertEqual(chat.turn.engine.connectionState, .connected)
     }
 
-    /// The host's `session.reclaimed` broadcast as the gateway delivers it: a session-less
-    /// event naming both ids in its payload.
     private func reclaimed(runtime: String, key: String) -> BotJSON {
         .object(["type": .string("session.reclaimed"), "session_id": .string(""),
                  "payload": .object(["session_id": .string(runtime), "stored_session_id": .string(key),
                                      "reason": .string("idle_timeout")])])
     }
 
-    /// Feeds `frame` and waits for the reattach to land on the replacement runtime the host
-    /// resumes, idle.
     private func reclaim(_ chat: Chat, _ frame: BotJSON) async {
         chat.host.always("session.resume", .init(result: resume(running: false, runtime: "runtime-2")))
         chat.receive(frame)
@@ -2052,16 +1774,11 @@ import SwiftUI
         }
     }
 
-    /// The socket calls since `index`, without the reads each attach makes off its path.
     private func socketReads(_ chat: Chat, since index: Int) -> [String] {
         chat.host.requests.dropFirst(index).compactMap { $0["method"].text }
             .filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog", "subagent.list"].contains($0) }
     }
 
-    /// Feeds a turn through seq 3, then `frame`, which breaks the order: the chat reattaches,
-    /// the replay carries `replayed` up to seq 6, and the snapshot, whose reply is `reply`,
-    /// replaces the transcript. `held` lands while that snapshot is read; the reply then
-    /// reads `shows`, and a live delta appends as it is.
     private func assertRebuild(after frame: BotJSON, replayed: [BotJSON] = [], reply: String = "Hello there, friend",
                                held: [BotJSON]? = nil, shows: String = "Hello there, friend.",
                                file: StaticString = #filePath, line: UInt = #line) async {
@@ -2069,8 +1786,6 @@ import SwiftUI
         chat.receive(event(1, "message.start"))
         chat.receive(event(2, "message.delta", ["text": .string("Hello")]))
         chat.receive(event(3, "message.delta", ["text": .string(" there")]))
-        // Deltas 7 and 8 were emitted while the host read the snapshot, so its reply holds
-        // them; 9 came after.
         let held = held ?? [event(7, "message.delta", ["text": .string(", fri")]),
                             event(8, "message.delta", ["text": .string("end")]),
                             event(9, "message.delta", ["text": .string(".")])]
@@ -2096,9 +1811,6 @@ import SwiftUI
         XCTAssertNotNil(chat.model.activeStreamID, file: file, line: line)
     }
 
-    /// Follows a turn that began at the fixtures' start time and revised its plan to revision 1,
-    /// then leaves. While away the turn ends with `finalPlan` (by default finished at revision 2),
-    /// the host saves `rows` after an earlier prompt, and the replay comes back truncated.
     private func followTurnThatEndsAway(saving rows: [BotJSON], finalPlan: [String: BotJSON]? = nil) async -> HermesChatActivity {
         let earlier = userRow("Earlier", id: 3, at: 1_789_999_000)
         let chat = await openChat(history: [earlier])
@@ -2114,7 +1826,6 @@ import SwiftUI
         return activity
     }
 
-    /// A canonical gateway fixture's reply (`scripts/capture-hermes-fixtures --local --gateway`).
     private func canonical(_ name: String) throws -> BotJSON {
         guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
             throw XCTSkip("The source tree is not present (physical device or remote runner).")
@@ -2122,8 +1833,6 @@ import SwiftUI
         return try JSONDecoder().decode(BotJSON.self, from: data)["reply"]
     }
 
-    /// A canonical host's snapshot of session `tip`, whose id is its runtime: `pending` and
-    /// `prompts` as given, under generation `generation` and replay epoch `epoch`.
     private func canonicalSnapshot(running: Bool = false, generation: Int = 1, pending: [BotJSON] = [],
                                    prompts: [BotJSON] = [], epoch: String = "epoch") -> BotJSON {
         .object(["session_id": .string("tip"), "stored_session_id": .string("tip"), "replay_epoch": .string(epoch),
@@ -2132,13 +1841,11 @@ import SwiftUI
                  "info": .object(["profile_name": .string("default")])])
     }
 
-    /// One canonical `pending` row.
     private func admission(_ id: String, _ status: String, _ text: String, generation: Int? = nil) -> BotJSON {
         .object(["admission_id": .string(id), "status": .string(status), "text": .string(text),
                  "execution_generation": generation.map { .number(Double($0)) } ?? .null])
     }
 
-    /// A canonical frame: an event of session `tip` from admission `admission`, under `generation`.
     private func canonicalEvent(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:],
                                 admission: String, generation: Int?) -> BotJSON {
         var params = event(seq, type, payload, runtime: "tip").fields ?? [:]
@@ -2160,36 +1867,30 @@ import SwiftUI
                  "payload": .object(payload)])
     }
 
-    /// A `complete.path` reply listing `rows`, path to `meta`, in order.
     private func completions(_ rows: KeyValuePairs<String, String>) -> BotJSON {
         .object(["items": .array(rows.map { text, meta in
             .object(["text": .string(text), "display": .string(text), "meta": .string(meta)])
         })])
     }
 
-    /// A live worker as `subagent.list` reports it.
     private func worker(_ id: String) -> BotJSON {
         .object(["subagent_id": .string(id), "goal": .string("Work on \(id)"), "depth": .number(0),
                  "started_at": .number(1_790_000_010), "status": .string("running")])
     }
 
-    /// A saved prompt as a transcript page carries it (#1047), saved at `at`.
     private func userRow(_ text: String, id: Int = 1, at timestamp: Double = 1_790_000_000) -> BotJSON {
         .object(["id": .number(Double(id)), "role": .string("user"), "content": .string(text), "timestamp": .number(timestamp)])
     }
 
-    /// A prompt as the transcript draws it, saved as `rowID`, rendered as `row-<rowID>`.
     private func promptRow(_ text: String, rowID: Int) -> TranscriptMessage {
         TranscriptMessage(loadedIndex: rowID, renderID: "row-\(rowID)", anchorID: "anchor-\(rowID)",
                           message: ChatMessage(role: "user", content: text, timestamp: 1, messageId: "m\(rowID)", rowID: rowID))
     }
 
-    /// A saved reply as a transcript page carries it, saved at `at`.
     private func assistantRow(_ text: String, id: Int, at timestamp: Double = 1_790_000_010) -> BotJSON {
         .object(["id": .number(Double(id)), "role": .string("assistant"), "content": .string(text), "timestamp": .number(timestamp)])
     }
 
-    /// Serves `rows` as session `key`'s settled history, every page the same.
     private func serveHistory(_ rows: [BotJSON], key: String = "tip") {
         _ = HermesHostFixture.configuration { request in
             guard request.url?.path == "/api/sessions/\(key)/messages" else { return nil }
@@ -2212,13 +1913,10 @@ import SwiftUI
     }
 }
 
-/// A host notice timer the test fires by hand: each scheduled expiry, in order.
 @MainActor private final class ManualNoticeTimer {
     private(set) var delays: [Duration] = []
-    /// Each expiry's task, which waits until it is cancelled.
     private(set) var tasks: [Task<Void, Never>] = []
     private var expiries: [@MainActor () -> Void] = []
-    /// Keeps each task's stream open, so the task waits rather than ends.
     private var streams: [AsyncStream<Void>.Continuation] = []
 
     var timer: HermesHostNotices.Timer {
@@ -2233,11 +1931,9 @@ import SwiftUI
         }
     }
 
-    /// Runs the `index`th expiry, as its delay running out would.
     func fire(_ index: Int) { expiries[index]() }
 }
 
-/// Records the session titles a chat pushes to the Live Activity.
 private final class TitleRecordingLiveActivity: AgentLiveActivityManaging {
     private(set) var titles: [String] = []
     func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {}
@@ -2248,7 +1944,6 @@ private final class TitleRecordingLiveActivity: AgentLiveActivityManaging {
     func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?) {}
 }
 
-/// Drafts kept in memory for the test's life.
 private actor InMemoryDraftPersistence: ChatDraftPersisting {
     private var values: [ChatDraftKey: ChatDraft] = [:]
     func load() -> [ChatDraftKey: ChatDraft] { values }
@@ -2256,7 +1951,6 @@ private actor InMemoryDraftPersistence: ChatDraftPersisting {
 }
 
 private extension BotJSON {
-    /// This object with `key` set to `value`.
     func replacing(_ key: String, with value: BotJSON) -> BotJSON {
         var fields = self.fields ?? [:]
         fields[key] = value

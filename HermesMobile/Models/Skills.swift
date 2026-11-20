@@ -169,8 +169,6 @@ enum SlashSkillFormatter {
         return lines.joined(separator: "\n")
     }
 
-    /// The skills worth showing for `query`, best first. Pass a larger `limit`
-    /// when the result is a written list rather than a popover.
     static func matching(
         _ query: String,
         in suggestions: [SkillSlashSuggestion],
@@ -193,7 +191,6 @@ enum SlashSkillFormatter {
             return String(localized: "No skills are configured on the server.")
         }
 
-        // A chat message lists everything that matched; only the popover is bounded.
         let matches = matching(trimmed, in: suggestions, limit: .max)
         guard !matches.isEmpty else {
             return String(localized: "No skills match `\(trimmed)`.")
@@ -228,9 +225,7 @@ struct SkillDetailResponse: Decodable, Equatable {
     let name: String?
     let content: String?
     let linkedFiles: [String]?
-    /// A Hermes host's linked file that is not text (#1070), which has no preview. webui never sets it.
     var isBinary = false
-    /// A Hermes host's linked file past its 512 KiB preview, which `content` holds. webui never sets it.
     var isTruncated = false
 
     enum CodingKeys: String, CodingKey {

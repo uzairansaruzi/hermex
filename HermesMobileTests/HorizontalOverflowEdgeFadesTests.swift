@@ -2,8 +2,6 @@ import SwiftUI
 import XCTest
 @testable import HermesMobile
 
-/// The shared edge-fade rule behind the composer toolbar and wide markdown
-/// tables: an edge fades only while it hides content.
 final class HorizontalOverflowEdgeFadesTests: XCTestCase {
     func testNoFadesWhenContentFits() {
         let fades = HorizontalOverflowEdgeFades(offset: 0, contentWidth: 300, viewportWidth: 320)
@@ -27,8 +25,6 @@ final class HorizontalOverflowEdgeFadesTests: XCTestCase {
     }
 
     func testRightToLeftFlipsRawOffset() {
-        // Raw offset 0 in RTL shows the visual start of the content (its right end),
-        // so only the trailing (left) edge hides anything.
         let atStart = HorizontalOverflowEdgeFades(
             offset: 180, contentWidth: 500, viewportWidth: 320, layoutDirection: .rightToLeft
         )

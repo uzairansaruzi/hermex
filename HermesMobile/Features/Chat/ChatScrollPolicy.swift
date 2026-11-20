@@ -2,34 +2,9 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
-/// Pure decision rules for the chat transcript's auto-scroll behavior.
-///
-/// Auto-follow is an explicit latch rather than a distance test.
-///
-/// Follow switches **off** when a drag begins, when a live gesture moves the
-/// offset, or when a scroll with no gesture carries the reader away from the
-/// bottom (a status-bar tap, VoiceOver, or a hardware-keyboard scroll).
-///
-/// Follow switches **on** when a scroll-to-bottom tap or a send resets it, when
-/// a gesture settles at the true bottom, or when a non-gesture offset change
-/// lands at the true bottom from nearby (a collapse near the end clamping the
-/// offset). Landing at the bottom from far above is a relayout artifact, never
-/// a reason to follow.
-///
-/// Layout growth from streaming tokens and keyboard inset changes never flip
-/// the latch on their own, so a reader parked above the end stays parked. The
-/// distance thresholds below drive the scroll-to-bottom button, the
-/// reading-older chrome, and how far a gesture-free scroll must carry the
-/// reader before it counts as leaving.
 enum ChatScrollPolicy {
-    /// Existing transcripts should enter at their latest content as part of the
-    /// scroll view's first layout, before the destination becomes visible.
     static let initialTranscriptAnchor = UnitPoint.bottom
 
-    /// Rich Markdown can finish measuring after the scroll view's initial
-    /// layout. Keep those size changes bottom-pinned only while follow is
-    /// latched on and no disclosure toggle is settling; otherwise return nil so
-    /// the reader's offset, and the row they just tapped, stay where they are.
     static func sizeChangeAnchor(
         shouldFollowLatestMessage: Bool,
         isDisclosureSettling: Bool = false
@@ -37,56 +12,26 @@ enum ChatScrollPolicy {
         shouldFollowLatestMessage && !isDisclosureSettling ? .bottom : nil
     }
 
-    /// Distance (pt) from the bottom within which the scroll-to-bottom button
-    /// stays hidden while idle.
     static let bottomDetectionThreshold: CGFloat = 80
 
-    /// Looser bottom threshold while a response is streaming, so small layout
-    /// jitter from incoming tokens does not flash the scroll-to-bottom button.
     static let streamingBottomDetectionThreshold: CGFloat = 160
 
-    /// Strict bottom tolerance (pt) that re-arms follow when a gesture ends there.
     static let followReArmThreshold: CGFloat = 12
 
-    /// How long a finished drag waits for momentum to announce itself before the
-    /// release position is treated as final. Finger-lift velocity is not a
-    /// reliable signal: a gentle fling can report zero and still decelerate.
     static let dragSettleDelay: TimeInterval = 0.16
 
-    /// Gap between momentum ticks that means deceleration has stopped.
     static let momentumSettleDelay: TimeInterval = 0.05
 
-    /// How long follow scrolls and the bottom size-change anchor stay suspended
-    /// after a disclosure toggle. Covers the disclosure animation plus a frame.
     static let disclosureAnchorSuspension: TimeInterval = 0.25
 
-    /// The offset pin armed by a disclosure toggle releases once the content
-    /// size has been quiet this long. Lazy rows can keep laying out well past
-    /// the animation, and SwiftUI re-applies the bottom anchor on each of those
-    /// size changes after a status-bar scroll, so a fixed window is not enough.
     static let disclosureHoldQuietPeriod: TimeInterval = 0.3
 
-    /// Upper bound on the pin, so a transcript that never goes quiet (streaming
-    /// tokens) still returns to normal scrolling.
     static let disclosureHoldMaximum: TimeInterval = 2
 
-    /// Scroll-gesture events that drive the follow latch.
     enum FollowEvent: Equatable {
-        /// An explicit jump to the latest content: scroll-to-bottom tap or send.
         case reset
-        /// The user started dragging the transcript.
         case userScrollBegin
-        /// The user's gesture settled: a drag with no momentum after
-        /// `dragSettleDelay`, or deceleration coming to rest. Re-arms at the
-        /// bottom; elsewhere it keeps whatever the latch already is, so a
-        /// send or scroll-to-bottom tap that landed while the gesture was
-        /// still settling is not undone by the late settle report.
         case userScrollEnd(isAtBottom: Bool)
-        /// The content offset changed for any other reason: streaming growth,
-        /// keyboard presentation, a programmatic scroll, or a live gesture.
-        /// `movedAwayFromBottom` marks a scroll with no gesture that carried
-        /// the reader away from the bottom (see `isScrollingAwayFromBottom`);
-        /// `wasNearBottom` is where the previous report left the reader.
         case contentScrolled(
             isAtBottom: Bool,
             isUserScrolling: Bool,
@@ -95,7 +40,6 @@ enum ChatScrollPolicy {
         )
     }
 
-    /// The scroll geometry one metrics report is derived from.
     struct ScrollGeometry: Equatable {
         var offsetY: CGFloat
         var contentHeight: CGFloat
@@ -106,13 +50,6 @@ enum ChatScrollPolicy {
         }
     }
 
-    /// True when a report without a gesture shows the reader farther from the
-    /// bottom than the last one, past the streaming threshold, in the same
-    /// viewport. While follow is on the bottom anchor snaps every size change
-    /// back to zero distance, so only an actual scroll (status-bar tap,
-    /// VoiceOver, hardware keyboard) can move the reader out that far. Keyboard
-    /// insets change the viewport and are excluded; the scroll observer
-    /// suppresses the check while a disclosure pin holds the offset.
     static func isScrollingAwayFromBottom(previous: ScrollGeometry?, current: ScrollGeometry) -> Bool {
         guard let previous, previous.visibleHeight == current.visibleHeight else { return false }
         let distance = current.distanceFromBottom
@@ -120,24 +57,15 @@ enum ChatScrollPolicy {
             && distance > streamingBottomDetectionThreshold
     }
 
-    /// The follow latch. `isFollowing` is the answer; the second flag lets an
-    /// explicit reset outlive a gesture that was still coasting when it landed.
     struct FollowLatch: Equatable {
         var isFollowing = true
-        /// Set by `.reset`. Until the gesture settles or a new drag begins, live
-        /// offset changes still flagged as user scrolling belong to momentum
-        /// that predates the explicit action and must not switch follow off.
         var ignoresCoastingGesture = false
     }
 
-    /// Whether a send while a response streams jumps the reader to the end (`.reset`). Steer
-    /// and Stop and send show the prompt as a transcript row; Queue holds it as a pending
-    /// bubble or composer receipt (#1379), so a reader up in history stays there.
     static func streamingSendReArmsFollow(_ behavior: StreamingSendBehavior) -> Bool {
         behavior != .queue
     }
 
-    /// Reduces one event onto the current latch state.
     static func resolveFollow(current: FollowLatch, event: FollowEvent) -> FollowLatch {
         var latch = current
         switch event {
@@ -164,7 +92,6 @@ enum ChatScrollPolicy {
         return latch
     }
 
-    /// Proximity, not the follow latch, hides the arrow at the bottom.
     static func showsScrollToBottomButton(isNearBottom: Bool, isStreaming: Bool, isFollowing: Bool) -> Bool {
         !isNearBottom && (!isStreaming || !isFollowing)
     }
@@ -181,24 +108,15 @@ enum ChatScrollPolicy {
         distanceFromBottom <= bottomThreshold(isStreaming: isStreaming)
     }
 
-    /// The reader's place in a row, kept through a rewrap (rotation, a narrower
-    /// window, a text-size change) that moves every row under the reader (#1414).
-    /// Approximate: the same share of the row's height, not the same glyph.
     struct ReflowAnchor: Equatable {
-        /// The row's `renderID`, or the key of a block between rows.
         let id: String
-        /// Share of the row's height above the reading line, 0...1.
         let fractionWithinRow: CGFloat
     }
 
-    /// Where a reflow or a rebuilt transcript keeps the reader (#1528). The top
-    /// is a place of its own: its offset changes with the bars' insets.
     enum ReadingPlace: Equatable {
         case top
         case row(ReflowAnchor)
 
-        /// Whether `id`'s new frame can move this place: the row's own, or any at the top,
-        /// where a frame moving means the bars' insets may have too.
         func dependsOnFrame(of id: String) -> Bool {
             switch self {
             case .top: true
@@ -207,9 +125,6 @@ enum ChatScrollPolicy {
         }
     }
 
-    /// The row under `readingLineY`, all in the transcript content's coordinates.
-    /// A line in the gap after a row, or below the last one, keeps the end of the
-    /// row above it. Nil at the top and above the first row, which keep the top.
     static func reflowAnchor(readingLineY: CGFloat, isAtTop: Bool, rowFrames: [String: CGRect]) -> ReflowAnchor? {
         guard !isAtTop else { return nil }
         let row = rowFrames
@@ -220,21 +135,11 @@ enum ChatScrollPolicy {
         return ReflowAnchor(id: row.key, fractionWithinRow: min(max(fraction, 0), 1))
     }
 
-    /// Where the reading line belongs once the anchor's row has its new frame.
     static func reflowReadingLineY(anchor: ReflowAnchor, newFrame: CGRect) -> CGFloat {
         newFrame.minY + anchor.fractionWithinRow * newFrame.height
     }
 }
 
-/// Transcript disclosure controls (reasoning blocks, tool cards, tool groups,
-/// turn folds) call this right before they toggle so the transcript can pin
-/// the reader's offset and suspend follow scrolls through the size change.
-///
-/// A reference, not a closure: SwiftUI cannot compare closures, so a closure
-/// rebuilt on each transcript pass (every stream tick and keystroke) would
-/// invalidate every reader. `chatDisclosureToggled(perform:)` keeps one
-/// instance and refreshes `handler` in place, which nothing observes, so
-/// readers see the same value on every pass.
 final class ChatDisclosureToggleAction: Equatable {
     var handler: () -> Void = {}
 
@@ -254,11 +159,6 @@ extension EnvironmentValues {
     }
 }
 
-/// Routes link taps through one `OpenURLAction` that outlives body passes, for
-/// the same reason as `ChatDisclosureToggleAction`. The screen's `handler` sees
-/// each link first and returns nil for links it does not own; of those, web
-/// pages go to `SafariView` (their app, else the in-app browser) and the rest
-/// go to the system.
 final class TranscriptLinkRouter {
     enum Decision {
         case host(OpenURLAction.Result)
@@ -275,7 +175,6 @@ final class TranscriptLinkRouter {
         self?.route(url) ?? .systemAction
     }
 
-    /// What a tap on `url` does, given the screen handler's result for it.
     static func decision(for url: URL, hostResult: OpenURLAction.Result?) -> Decision {
         if let hostResult { return .host(hostResult) }
         return InAppBrowserPolicy.opensInApp(url) ? .inAppBrowser : .system
@@ -295,31 +194,19 @@ final class TranscriptLinkRouter {
 }
 
 extension View {
-    /// Publishes `handler` to the transcript's disclosure controls without
-    /// invalidating them when the caller rebuilds the closure.
     func chatDisclosureToggled(perform handler: @escaping () -> Void) -> some View {
         modifier(ChatDisclosureToggledModifier(handler: handler))
     }
 
-    /// Routes every link tap below this view through `handler` first, without
-    /// invalidating link readers when the caller rebuilds the closure. Links
-    /// the handler returns nil for open web pages in the app that claims them,
-    /// else in an in-app Safari sheet over whatever is on screen (`SafariView`);
-    /// other links go to the system.
     func transcriptLinks(perform handler: @escaping (URL) -> OpenURLAction.Result?) -> some View {
         modifier(TranscriptLinksModifier())
             .modifier(TranscriptLinkHandlerModifier(handler: handler))
     }
 
-    /// `transcriptLinks(perform:)` for a screen with no links of its own.
     func transcriptLinks() -> some View {
         transcriptLinks { _ in nil }
     }
 }
-
-// The stable instances live in these modifiers' own state, not the caller's.
-// Handlers usually capture the calling view, whose state would otherwise hold
-// the instance that holds the handler: a cycle that outlives the screen.
 
 private struct ChatDisclosureToggledModifier: ViewModifier {
     let handler: () -> Void
@@ -331,8 +218,6 @@ private struct ChatDisclosureToggledModifier: ViewModifier {
     }
 }
 
-/// Owns the router and refreshes its handler on every pass, publishing only the
-/// router itself: a reference that compares equal, as with `chatDisclosureToggled`.
 private struct TranscriptLinkHandlerModifier: ViewModifier {
     let handler: (URL) -> OpenURLAction.Result?
     @State private var router = TranscriptLinkRouter()
@@ -343,10 +228,6 @@ private struct TranscriptLinkHandlerModifier: ViewModifier {
     }
 }
 
-/// Publishes the enclosing router's `openURL`. It takes no inputs and its one
-/// dependency never changes, so owner passes skip its body and `openURL` is
-/// written once: re-written on every pass, iOS 26 could treat it as changed
-/// and re-run every link reader (ChatTranscriptEnvironmentStabilityTests).
 private struct TranscriptLinksModifier: ViewModifier {
     @Environment(\.transcriptLinkRouter) private var router
 
@@ -366,11 +247,7 @@ private extension EnvironmentValues {
     }
 }
 
-/// A run keeps reader ownership even after an explicit latest/send re-arms follow.
-/// Only an owned successful completion can consume this one-shot permission.
 struct ChatCompletionScrollPolicy {
-    /// Use the final visible row of the current turn, never an older reply or
-    /// an interim bubble. Render identity remains stable through hydration.
     static func finalResponseRenderID(
         in messages: [TranscriptMessage], terminalReplyRenderIDs: Set<String>
     ) -> String? {

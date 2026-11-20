@@ -1,9 +1,5 @@
 import Foundation
 
-/// Decides whether the composer's Send/Stop action button is disabled.
-/// Send is allowed when the user typed something, added a quote, or staged at
-/// least one attachment. Attachment-only sends synthesize their message text in
-/// `PendingAttachment.chatMessageText`; a send block always disables.
 enum ChatComposerSendGate {
     static func showsStopButton(
         isWaitingForStream: Bool,
@@ -23,18 +19,10 @@ enum ChatComposerSendGate {
     }
 }
 
-/// How the chat's state limits its composer. A read-only session locks the draft and
-/// every control. A chat showing its offline cache (#1375) keeps the draft editable and
-/// holds Send and every control that reaches the host until it reconnects, except a Hermes
-/// chat's plain-text Send, which waits as the transcript's waiting send (#1407).
 struct ChatComposerAccess: Equatable {
-    /// The status line's "Read-only"; it locks the editor.
     let readOnlyMessage: String?
-    /// The chat shows its offline cache, so Send waits for the reconnect.
     let isOffline: Bool
-    /// Offline, a plain-text Send waits for the reconnect instead of being held.
     let offersWaitingSend: Bool
-    /// A Send waits for the reconnect, so every other Send is held until it goes or comes back.
     let hasWaitingSend: Bool
 
     init(session: SessionSummary, isViewingCachedData: Bool, offersWaitingSend: Bool = false, hasWaitingSend: Bool = false) {
@@ -46,26 +34,19 @@ struct ChatComposerAccess: Equatable {
 
     var allowsEditing: Bool { readOnlyMessage == nil }
 
-    /// Whether being offline holds Send for this draft: everything but plain text (no quotes, files
-    /// or `/` command) where a waiting send is offered.
     func holdsSendOffline(isPlainText: Bool) -> Bool {
         isOffline && !(offersWaitingSend && isPlainText)
     }
 
-    /// File and host-argument searches, dictation, voice notes, attachments, and
-    /// configuration, branch, and workspace changes all reach the host.
     var allowsHostControls: Bool { allowsEditing && !isOffline }
 }
 
-/// Whether a chat still counts as new, with its settings above the composer rather than in
-/// the header. The server's count keeps the row from flashing while an existing chat loads.
 enum ChatComposerNewChatPolicy {
     static func showsControls(hasMessages: Bool, serverMessageCount: Int?, isStreaming: Bool) -> Bool {
         !hasMessages && (serverMessageCount ?? 0) == 0 && !isStreaming
     }
 }
 
-/// Which composer controls respond while work is in progress.
 struct ChatComposerControlGate {
     let access: ChatComposerAccess
     let isSending: Bool
@@ -73,29 +54,21 @@ struct ChatComposerControlGate {
     let isWaitingForStream: Bool
     let isUpdatingConfiguration: Bool
 
-    /// `+` only opens the picker, and a pick waits in the draft like a paste, so no
-    /// work in progress holds it (#1436).
     var allowsAttaching: Bool { access.allowsHostControls }
 
-    /// Model, workspace, and Profile changes wait for the chat to settle.
     var allowsConfiguration: Bool {
         allowsConfigurationIgnoringUpdates && !isUpdatingConfiguration
     }
 
-    /// The same, for Model settings, whose rows hold off during a change without dimming.
     var allowsConfigurationIgnoringUpdates: Bool {
         access.allowsHostControls && !isSending && !isCompressingSession && !isWaitingForStream
     }
 
-    /// Whether the model label opens Model settings. During a run it still opens to turn YOLO off,
-    /// with every other row held.
     func allowsModelSettings(approvals: ComposerApprovals?) -> Bool {
         allowsConfiguration || (access.allowsHostControls && approvals?.canTurnOffYolo == true)
     }
 }
 
-/// Work in progress that holds Send even with a draft to send. VoiceOver reads it
-/// as a dimmed Send's value, so the user knows what they are waiting for.
 enum ChatComposerSendBlock: Equatable {
     case waitingForConnection
     case offline
@@ -104,7 +77,6 @@ enum ChatComposerSendBlock: Equatable {
     case uploadingAttachment
     case updatingConfiguration
 
-    /// The first condition that holds Send, or nil when none does.
     init?(isWaitingForConnection: Bool = false, isOffline: Bool, isSending: Bool, isCompressingSession: Bool,
           isUploadingAttachment: Bool, isUpdatingConfiguration: Bool) {
         if isWaitingForConnection {
@@ -124,7 +96,6 @@ enum ChatComposerSendBlock: Equatable {
         }
     }
 
-    /// The composer status line's wording for the same state.
     var accessibilityValue: String {
         switch self {
         case .waitingForConnection: String(localized: "Waiting for connection")
@@ -137,21 +108,9 @@ enum ChatComposerSendBlock: Equatable {
     }
 }
 
-/// The Sessions composer's trailing circle. Stop while a response runs and the
-/// draft is empty; otherwise Send. Mid-run a tap on Send uses the Send While
-/// Responding default, the glyph and VoiceOver label say which behavior that
-/// is, and a long-press (or a VoiceOver action) picks any behavior for this one
-/// message. Idle, Send is a plain send with no choices.
 struct ChatComposerSendButton: Equatable {
     let showsStop: Bool
-    /// What a tap on Send does to the running response; nil while idle or
-    /// while the circle is Stop. The composer dispatches exactly this, so the
-    /// glyph never says one behavior while a tap does another.
     let runningBehavior: StreamingSendBehavior?
-    /// A Hermes session with files staged (#1012): only a fresh turn takes them, so Steer
-    /// drops out and a Steer default queues them. Stop and send stays, text-only, and
-    /// leaves them staged. Files alone are a draft too (#1367): mid-run they queue under
-    /// every default, with nothing else to choose.
     let stagedFilesDropSteer: Bool
     private let queuesStagedFilesOnly: Bool
 
@@ -167,8 +126,6 @@ struct ChatComposerSendButton: Equatable {
         self.stagedFilesDropSteer = stagedFilesDropSteer
     }
 
-    /// The circle's one SF Symbol: Stop, the running default's symbol, or the
-    /// plain arrow.
     var systemName: String {
         if showsStop { return "stop.fill" }
         return runningBehavior?.systemImage ?? "arrow.up"
@@ -179,47 +136,33 @@ struct ChatComposerSendButton: Equatable {
         return runningBehavior?.settingsDescription ?? String(localized: "Send")
     }
 
-    /// The long-press choices, in the Bot card's order. On a webui session, staged
-    /// files keep Steer: a steer carries them as an attached-files note (#856).
     var choices: [StreamingSendBehavior] {
         guard runningBehavior != nil, !queuesStagedFilesOnly else { return [] }
         return stagedFilesDropSteer ? [.queue, .interrupt] : [.steer, .queue, .interrupt]
     }
 
-    /// ⌘⇧↩'s pick from `choices` (#1380): the first one Send does not already do. Never
-    /// Stop and send, so a key chord cannot end the run; nil while idle or when that
-    /// would be all that is left.
     var alternateBehavior: StreamingSendBehavior? {
         choices.first { $0 != runningBehavior && $0 != .interrupt }
     }
 }
 
-/// Keeps a hold on Send from also counting as a tap. A hold that opens the
-/// send-choice card marks its own release to be dropped. A new touch-down, the
-/// dropped release, or the card closing after the finger lifted clears the mark.
 struct ChatComposerSendHold {
     private var holdOpenedChoices = false
 
-    /// A new touch-down on Send: any earlier hold is over.
     mutating func pressBegan() {
         holdOpenedChoices = false
     }
 
-    /// The hold timer fired and opened the card.
     mutating func openedChoices() {
         holdOpenedChoices = true
     }
 
-    /// The card closed. A finger still down keeps its release dropped; one
-    /// that lifted off the button never reached Send, so the mark goes.
     mutating func choicesClosed(isPressing: Bool) {
         if !isPressing {
             holdOpenedChoices = false
         }
     }
 
-    /// Send's Button action: a tap, a keyboard or assistive activation, or a
-    /// hold's release. Returns whether Send should act; a hold's release does not.
     mutating func activate() -> Bool {
         guard holdOpenedChoices else { return true }
         holdOpenedChoices = false
@@ -227,10 +170,8 @@ struct ChatComposerSendHold {
     }
 }
 
-/// Device-local presentation choices shared by Sessions servers, never Bot Chat.
 enum SessionChatPreferences {
     static let dismissKeyboardKey = "sessionChat.dismissKeyboardAfterSend"
-    /// Settings' Send with Return (#1655), read by every composer editor. Off by default.
     static let returnSendsKey = "sessionChat.returnSends"
     static let completionPositionKey = "sessionChat.completionPosition"
 
@@ -251,7 +192,6 @@ enum SessionChatPreferences {
     }
 }
 
-/// An asynchronous send must not overwrite a newer editing session or draft.
 enum ChatSendFocusPolicy {
     static func focusAfterSubmission(
         succeeded: Bool, dismissKeyboard: Bool, wasFocused: Bool,

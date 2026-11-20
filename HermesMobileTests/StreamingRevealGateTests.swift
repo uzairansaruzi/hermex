@@ -9,7 +9,6 @@ final class StreamingRevealGateTests: XCTestCase {
     }
 
     func testAHeldFragmentFinishedByWhitespaceShowsWithTheCut() {
-        // "gam" was held; "ma delt" arrived since.
         let (shown, held) = StreamingRevealGate.cut("gamma delt", heldPreviousTick: true)
         XCTAssertEqual(shown, "gamma ")
         XCTAssertEqual(held, "delt")
@@ -26,7 +25,6 @@ final class StreamingRevealGateTests: XCTestCase {
     }
 
     func testNeverSplitsAGraphemeCluster() {
-        // The combining accent and the ZWJ family stay whole on either side.
         let text = "café 👩‍👩‍👧‍👦"
         let (shown, held) = StreamingRevealGate.cut(text, heldPreviousTick: false)
         XCTAssertEqual(shown, "café ")

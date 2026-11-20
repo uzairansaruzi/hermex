@@ -144,9 +144,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertTrue(text.contains("file:///tmp/fenced.png"))
     }
 
-    /// A `MEDIA:` mention inside code is prose, not a file reference: a bare or
-    /// placeholder token, a tag inside a longer span, a double-backtick span, and a
-    /// fenced block all stay text.
     func testMediaMentionInsideCodeStaysLiteral() {
         let markdown = """
         Before `MEDIA:` and `MEDIA:<path>` then `echo MEDIA:/tmp/inline.png` \
@@ -165,8 +162,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         )
     }
 
-    /// Models format a file they mean to send as code, so a span holding only the
-    /// tag delivers it, and the wrapping backticks don't stay behind as text.
     func testCodeWrappedMediaTagDeliversFile() {
         let segments = TranscriptMediaParser.segments(
             in: "Report: `MEDIA:/tmp/report.pdf`, chart: `MEDIA:https://cdn.example/chart.png`."
@@ -258,7 +253,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertTrue(reference.isExtensionlessRemoteMediaCandidate)
     }
 
-    /// Both kinds share one cache, so their flattened keys must stay apart.
     func testAttachmentAndMediaCacheKeysNeverCollide() {
         let namespace = "https://one.example.test|session-a"
         let path = "/tmp/result.png"
@@ -270,7 +264,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         )
         XCTAssertNotEqual(attachmentKey.cacheKey, mediaKey.cacheKey)
 
-        // A separator inside the namespace can't shift the namespace boundary.
         let shiftedKey = AttachmentImageCacheKey(namespace: "https://one.example.test", path: "session-a|\(path)")
         XCTAssertNotEqual(attachmentKey.cacheKey, shiftedKey.cacheKey)
     }
@@ -293,10 +286,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         }
     }
 
-    // MARK: - Streaming scan cost (#675)
-
-    /// A reply with no media marker is the whole input as one text segment,
-    /// including near-misses the byte pre-scan must not mistake for markers.
     func testReplyWithoutMediaMarkersIsOneTextSegment() {
         let markdown = String(
             repeating: "Run `echo $HOME` [docs](https://example.test) ! [x] MEDIA file:/tmp\n",
@@ -306,8 +295,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(TranscriptMediaParser.segments(in: markdown), [.text(markdown)])
     }
 
-    /// Text runs across many lines stay merged into one segment per gap
-    /// between media, with a marker as the very last bytes of the reply.
     func testTextAroundMediaMergesIntoOneRunPerGap() {
         let before = String(repeating: "Line before the image.\n", count: 200)
         let between = String(repeating: "Line between.\n", count: 200)
@@ -324,10 +311,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         )
     }
 
-    // MARK: - Segment cache (#680)
-
-    /// A settled row parses once; later body evaluations read the memoized
-    /// segments, which must match a fresh parse.
     func testSettledSegmentsAreMemoized() {
         TranscriptMediaSegmentCache.removeAll()
         let markdown = "Screenshot: MEDIA:/tmp/cache-680.png done"
@@ -340,7 +323,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(TranscriptMediaSegmentCache.segments(in: markdown, workspaceRoot: nil, isStreaming: false), first)
     }
 
-    /// Streaming text changes per token; caching it would evict settled rows.
     func testStreamingSegmentsDoNotPopulateTheCache() {
         TranscriptMediaSegmentCache.removeAll()
         let markdown = "Still streaming MEDIA:/tmp/cache-680.png"
@@ -351,8 +333,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertFalse(TranscriptMediaSegmentCache.hasCachedSegments(in: markdown, workspaceRoot: nil))
     }
 
-    /// A relative image resolves against the workspace root, so the same text
-    /// under two roots must not share an entry.
     func testWorkspaceRootIsPartOfTheSegmentCacheKey() {
         TranscriptMediaSegmentCache.removeAll()
         let markdown = "![](./shots/login.png)"

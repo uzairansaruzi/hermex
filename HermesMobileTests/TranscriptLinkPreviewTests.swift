@@ -87,8 +87,6 @@ final class TranscriptLinkPreviewTests: XCTestCase {
         XCTAssertNil(TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: true))
     }
 
-    /// A transcript-wide flag flip re-evaluates every row, so a settled row's
-    /// scan must be paid once, including the common no-URL result.
     func testSettledScanIsMemoizedEvenWithoutAURL() {
         TranscriptLinkPreviewEligibility.removeAll()
         let content = "A settled reply with no link in it (#680)"

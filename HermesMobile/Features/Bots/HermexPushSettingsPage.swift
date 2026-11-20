@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Settings → Notifications (#1252): push for this server and device first, then the
-/// sections the caller supplies for alerts that apply on this iPhone to every server.
 @MainActor struct HermexPushSettingsPage<SharedSections: View>: View {
     let server: URL
     @Environment(\.scenePhase) private var scenePhase
@@ -36,8 +34,6 @@ import SwiftUI
             await provisioner.reload()
             await provisioner.checkPlugin()
         }
-        // Runs on appear and on every return to the app, so allowing notifications in
-        // iOS Settings clears the notice without re-running setup.
         .task(id: scenePhase) {
             if scenePhase == .active { await provisioner.recheckNotificationPermission() }
         }
@@ -47,8 +43,6 @@ import SwiftUI
             provisioner.leaveSettings()
         }
         .confirmationDialog("Set this Hermes host up for push?", isPresented: $isConfirmingEnable, titleVisibility: .visible) {
-            // Provisioning changes the host, so the existing owner finishes that
-            // transaction even if Settings closes before it returns.
             Button("Set up push") { Task { await provisioner.enable() } }
         } message: {
             Text("If this host is not set up yet, Hermex installs the hermex-push plugin on it and restarts its gateway, interrupting work running there. A host that is already set up is only paired. Nothing happens until you tap this.")
@@ -61,16 +55,13 @@ import SwiftUI
                  : String(localized: "This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted."))
         }
         .confirmationDialog("Update the hermex-push plugin?", isPresented: $isConfirmingUpdate, titleVisibility: .visible) {
-            // Like setup, the run outlives the screen: the host has already been asked to change.
             Button("Update plugin") { Task { await provisioner.updatePlugin() } }
         } message: {
-            // An update offered by a pairing failure has no pairing to keep.
             Text(provisioner.pairing == nil
                  ? String(localized: "Your Hermes host downloads hermex-push again from GitHub and restarts its gateway, interrupting work running there. To finish, you’ll likely need to restart Hermes on the host yourself.")
                  : String(localized: "Your Hermes host downloads hermex-push again from GitHub and restarts its gateway, interrupting work running there. This iPhone stays paired. To finish, you’ll likely need to restart Hermes on the host yourself."))
         }
         .confirmationDialog("Restart Hermes?", isPresented: $isConfirmingRestart, titleVisibility: .visible) {
-            // Like the update, the run outlives the screen: the host has already been asked to restart.
             Button("Restart", role: .destructive) { Task { await provisioner.restartHermes() } }
         } message: {
             Text("Bot turns running on this host stop. Hermex reconnects when Hermes is back.")
@@ -125,8 +116,6 @@ import SwiftUI
             Text("The relay only ever sees encrypted text.")
                 .font(AppFont.caption()).foregroundStyle(.appSecondary)
         }
-        // Also available after pairing, so an expired sign-in can be repaired
-        // without searching through the server's detail screen.
         NavigationLink(provisioner.connection == nil ? String(localized: "Connect Hermes…") : String(localized: "Hermes connection")) {
             BotConnectionView(server: server)
         }
@@ -135,7 +124,7 @@ import SwiftUI
             switch failure.remedy {
             case .none: failureRow(failure)
             case .updatePlugin: failureCallout(failure, action: String(localized: "Update plugin…"))
-            case .retryUpdate, .retryRestart: EmptyView() // The plugin card at the top shows it.
+            case .retryUpdate, .retryRestart: EmptyView()
             }
         }
     }
@@ -156,8 +145,6 @@ import SwiftUI
         .frame(minHeight: 44)
     }
 
-    /// Settings' end-to-end push check (#874). No spinner: the label says "Sending…" while
-    /// the one request runs. A failure shows in the red row at the bottom of the section.
     @ViewBuilder private func testNotificationRows(_ pairing: PushPairing) -> some View {
         Button(provisioner.phase == .sendingTest ? String(localized: "Sending…") : String(localized: "Send Test Notification")) {
             Task { await provisioner.sendTestNotification() }
@@ -179,8 +166,6 @@ import SwiftUI
         }
     }
 
-    /// Progress without motion: a finished step is checked, the running one is named, and
-    /// the rest stay quiet. No spinner, so a slow host never repaints the screen.
     private func stepRow(_ step: HermexPushProvisioner.Step) -> some View {
         let isDone = provisioner.completed.contains(step)
         let isRunning = provisioner.isRunning(step)
@@ -197,8 +182,6 @@ import SwiftUI
                                     : String(localized: "\(step.title): waiting"))))
     }
 
-    /// Denied iOS permission, kept apart from the red step failure because no host step
-    /// ran. The whole row opens Hermex's notification page in iOS Settings.
     @ViewBuilder private func notificationsOffRow(title: String?, message: String) -> some View {
         if let settingsURL = URL(string: UIApplication.openNotificationSettingsURLString) {
             Link(destination: settingsURL) {
@@ -219,9 +202,6 @@ import SwiftUI
         }
     }
 
-    /// The plugin update (#851) and the restart that finishes it (#934) as design C's card at
-    /// the top of the section: one card for every state, in the notifications-off row's style.
-    /// No spinner: a dashed circle and the running step's name carry progress.
     @ViewBuilder private func pluginCallout(_ card: HermexPushProvisioner.PluginCard) -> some View {
         let newest = HermexPushPlugin.newestVersion.description
         switch card {
@@ -233,13 +213,11 @@ import SwiftUI
         case .updating(let step):
             callout("circle.dashed", tint: Color(.appTextSecondary), title: Text("Updating the plugin…"), message: Text(step.progress))
         case .status(.restartNeeded(let loaded)) where provisioner.canRestart(loaded):
-            // The loaded plugin has the restart route, so restarting is the card's one action.
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
                     message: Text("Hermes loads the new plugin when it restarts."),
                     action: String(localized: "Restart Hermes…")) { isConfirmingRestart = true }
         case .status(.restartNeeded), .status(.setupNeedsRestart):
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
-                    // A gateway's Webapp is the gateway itself, not `hermes dashboard` (#1606).
                     message: provisioner.servesWebapp ? Text("Restart the Hermes gateway on your host, then check again.")
                         : Text("Restart `hermes dashboard` on your host, then check again."),
                     action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
@@ -267,9 +245,6 @@ import SwiftUI
         }
     }
 
-    /// A failure the plugin update answers (the update's own, or keys an old plugin sent) or
-    /// a restart that never ran. The action asks for that step's confirmation again before
-    /// the host changes.
     private func failureCallout(_ failure: HermexPushProvisioner.Failure, action: String) -> some View {
         callout("exclamationmark.triangle.fill", tint: .red, title: Text(failure.title), message: Text(failure.message),
                 action: action) {
@@ -277,8 +252,6 @@ import SwiftUI
         }
     }
 
-    /// The card itself. With an action, the whole card is the button, so it stays a
-    /// full-width target at every Dynamic Type size.
     @ViewBuilder private func callout(_ symbol: String, tint: Color, title: Text, message: Text,
                                       action: String? = nil, perform: @escaping () -> Void = {}) -> some View {
         let card = HStack(alignment: .firstTextBaseline, spacing: 10) {

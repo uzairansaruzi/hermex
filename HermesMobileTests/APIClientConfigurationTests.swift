@@ -109,7 +109,6 @@ final class APIClientConfigurationTests: APIClientTestCase {
             let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             XCTAssertEqual(body?["model"] as? String, "claude-sonnet-4")
             XCTAssertNil(body?["modelId"])
-            // A providerless save keeps the bare {model} body.
             XCTAssertNil(body?["provider"])
 
             return apiTestJSONResponse("""
@@ -126,9 +125,6 @@ final class APIClientConfigurationTests: APIClientTestCase {
         XCTAssertEqual(response.model, "claude-sonnet-4")
     }
 
-    /// A catalog row that names its provider must send it: Core persists
-    /// `{model, provider}` atomically and resolves slash-qualified ids like
-    /// `anthropic/...` through the named provider's route.
     func testSaveDefaultModelSendsTheRowProviderWhenKnown() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/default-model")
@@ -494,8 +490,6 @@ final class APIClientConfigurationTests: APIClientTestCase {
             let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             XCTAssertEqual(body?["name"] as? String, "research")
             XCTAssertEqual(body?["clone_config"] as? Bool, false)
-            // Optional fields must be omitted, not sent as null (the server
-            // treats presence as intent).
             XCTAssertEqual(body?.count, 2)
 
             return apiTestJSONResponse("""
@@ -593,8 +587,6 @@ final class APIClientConfigurationTests: APIClientTestCase {
             DefaultProfilePickerView.filteredProfiles(profiles, query: query).map(\.name)
         }
 
-        // "default" is the one profile whose display name differs from its
-        // saved name, so both spellings have to find it.
         XCTAssertEqual(names("Default"), ["default"])
         XCTAssertEqual(names("defau"), ["default"])
         XCTAssertEqual(names("research"), ["research"])

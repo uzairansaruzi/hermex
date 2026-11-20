@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The active webui server's sections on its page: connection and update, sessions and the
-/// main page's entries, defaults, and offline data. The page's list carries their loads and
-/// dialogs (`webuiServerPresentations`), since a section's own modifiers would run per row;
-/// Offline Data carries its alert on its button.
 struct WebuiServerSections: View {
     @Bindable var authManager: AuthManager
     @Bindable var model: WebuiServerSettingsModel
@@ -38,8 +34,6 @@ struct WebuiServerSections: View {
             }
             .accessibilityHint("Opens the custom request headers editor.")
 
-            // Not behind the Bot Mode preview gate (#557): this login is what push
-            // pairing needs, and push serves this server's webui sessions too.
             NavigationLink {
                 BotConnectionView(server: server) { authManager.hermesSignInSaved(server: server) }
             } label: {
@@ -157,9 +151,6 @@ struct WebuiServerSections: View {
         if model.isLoadingServerSettings {
             SettingsStatusPill(label: String(localized: "Loading"))
         } else if model.serverSettingsError == nil, model.serverVersion != nil {
-            // Only "Connected" when the latest load actually succeeded — a stale
-            // `serverVersion` from an earlier success must not mask a now-failed
-            // load (e.g. a restart that never came back).
             SettingsStatusPill(label: String(localized: "Connected"))
         } else {
             SettingsStatusPill(label: model.serverSettingsError ?? String(localized: "Unknown"), tint: .orange)
@@ -194,10 +185,6 @@ struct WebuiServerSections: View {
         return name == "default" ? String(localized: "Default") : name
     }
 
-    // The manual "Check for updates" control (#308). Distinct from the passive
-    // on-open check: it forces a live git fetch on the server. While a check is in
-    // flight it swaps to a "Checking…" row; it's disabled during an apply so
-    // the two update flows never run at once.
     @ViewBuilder
     private var serverUpdateCheckAction: some View {
         if model.isCheckingForUpdates {
@@ -212,10 +199,6 @@ struct WebuiServerSections: View {
         }
     }
 
-    // Informational only — never a warning. A normal, up-to-date server shows a
-    // calm "Up to date"; a server that genuinely lags shows how far behind it is.
-    // When the check is disabled, errored, or hasn't loaded, we show nothing here
-    // and let the plain version row stand on its own.
     @ViewBuilder
     private var serverUpdateNote: some View {
         if model.serverVersion != nil, let serverUpdateState = model.serverUpdateState {
@@ -242,13 +225,6 @@ struct WebuiServerSections: View {
         .accessibilityElement(children: .combine)
     }
 
-    // The in-app "Update" action. Every phase resolves to a concrete UI so there
-    // is never a stuck spinner *or* a silent vanish: the initial Update button is
-    // gated on the server reporting a pending update, but once a run is underway
-    // the progress / blocked / failed UI is driven purely by `updateApplyPhase`.
-    // That keeps the message + Retry visible even if a slow/failed restart leaves
-    // `serverUpdateState` nil or stale. Success returns to `.idle`, where the
-    // refreshed `.upToDate` state removes the button.
     @ViewBuilder
     private var serverUpdateAction: some View {
         switch model.updateApplyPhase {
@@ -273,9 +249,6 @@ struct WebuiServerSections: View {
         Button(title) {
             model.isConfirmingUpdate = true
         }
-        // Mirror of the check button's `isUpdateApplyInFlight` guard: while a
-        // forced check is running, block Update/Retry so apply can't race the
-        // in-flight POST /api/updates/check (#308 review).
         .disabled(model.isCheckingForUpdates)
     }
 
@@ -304,7 +277,6 @@ struct WebuiServerSections: View {
 }
 
 extension View {
-    /// The active webui server page's load, dialogs, and pickers, on the page's list.
     func webuiServerPresentations(
         _ model: WebuiServerSettingsModel,
         onDefaultProfileSelected: @escaping (DefaultProfileSelection) -> Void
@@ -332,13 +304,8 @@ private struct WebuiServerPresentations: ViewModifier {
             } message: {
                 Text("This pulls the latest Hermes server version and restarts it. Active chats may be interrupted briefly; the app reconnects when the server is back.")
             }
-            // Result of a manual "Check for updates" tap (#308). The outcome is kept
-            // set after dismissal so the title/message read off it without blanking
-            // mid-animation; a fresh check overwrites it before re-presenting.
             .alert(forcedCheckAlertTitle, isPresented: $model.isPresentingForcedCheckResult) {
                 if case .updateAvailable = model.forcedCheckOutcome {
-                    // The popup already carries the restart warning, so Update applies
-                    // directly — no second confirmation dialog (issue #308).
                     Button("Update") {
                         Task {
                             await model.applyServerUpdate()
@@ -424,17 +391,12 @@ private struct CustomHeadersSettingsView: View {
         .themedPageBackground()
         .navigationTitle("Connection Headers")
         .navigationBarTitleDisplayMode(.inline)
-        // Live-refresh the network clients on every edit (cheap, in-memory only)
-        // but defer the slow Keychain write until the editor is dismissed so
-        // typing never stutters.
         .onChange(of: headers) { _, newValue in
             authManager.updateCustomHeaders(newValue, persist: false)
         }
         .onDisappear {
             authManager.updateCustomHeaders(headers, persist: true)
         }
-        // onDisappear doesn't fire when the app is backgrounded or terminated
-        // mid-edit, so also flush to the Keychain when the scene leaves active.
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
                 authManager.updateCustomHeaders(headers, persist: true)

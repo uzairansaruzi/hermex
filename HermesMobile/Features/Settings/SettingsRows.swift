@@ -3,7 +3,6 @@ import SwiftUI
 import UIKit
 
 extension View {
-    /// A Settings page's list (#1252): inset grouped, titled inline under the index's large title.
     func settingsPage(_ title: String) -> some View {
         listStyle(.insetGrouped)
             .navigationTitle(title)
@@ -11,7 +10,6 @@ extension View {
     }
 }
 
-/// The Profile a server page lists and writes to, a menu of the others when the host has more than one.
 struct ServerProfileRow: View {
     let profiles: [String]
     let selection: String
@@ -34,8 +32,6 @@ struct ServerProfileRow: View {
     }
 }
 
-/// A Settings row's title beside its gray glyph, with an optional note under the title for what
-/// the row needs explained.
 struct SettingsLabel: View {
     let title: String
     let systemImage: String
@@ -60,7 +56,6 @@ struct SettingsLabel: View {
     }
 }
 
-/// A row that opens a web page or iOS Settings, marked with an outward arrow.
 struct SettingsExternalLink: View {
     let title: String
     let systemImage: String
@@ -82,7 +77,6 @@ struct SettingsExternalLink: View {
     }
 }
 
-/// Small circular avatar (initials + per-server Header Logo Color) for server rows.
 struct ServerAvatarBadge: View {
     let initials: String
     let colorHex: String
@@ -125,8 +119,6 @@ struct SettingsTextFieldRow: View {
     var autocapitalization: TextInputAutocapitalization = .words
     var isSecure = false
     var submitLabel: SubmitLabel = .return
-    /// Title above a full-width field at every text size, for values too long for the
-    /// trailing field, such as a server address.
     var isStacked = false
     var onSubmit: (() -> Void)? = nil
 
@@ -257,9 +249,6 @@ private struct HeaderLogoColorPresetButton: View {
     }
 }
 
-/// A server page's Main Page switches (#190): which entries the home lists above its sessions.
-/// The switches are app-wide, so a webui page and a Hermes page (#1585) show the same ones;
-/// `includesWebuiEntries` adds the two only a webui home has, Active Profile and Bot Mode.
 struct MainPageSettingsSection: View {
     let includesWebuiEntries: Bool
 
@@ -321,8 +310,6 @@ struct MainPageSettingsSection: View {
     }
 }
 
-/// A Hermes server's CLI and Messaging Sessions switch (#1674), on until turned off. It hides
-/// every row with a source chip from that server's list; the host keeps them.
 struct HermesCliSessionsToggle: View {
     @AppStorage private var showsCliSessions: Bool
 
@@ -337,8 +324,6 @@ struct HermesCliSessionsToggle: View {
     }
 }
 
-/// The Cron Sessions switch on a server page's Sessions section: off, a home lists no cron
-/// session, Scheduled included. App-wide, like the Main Page switches.
 struct CronSessionsToggle: View {
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
 
@@ -349,8 +334,6 @@ struct CronSessionsToggle: View {
     }
 }
 
-/// The Message Count and Workspace switches on a server page's Sessions section: whether a
-/// session row shows them. App-wide, like the Main Page switches.
 struct SessionRowDisplayToggles: View {
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
@@ -366,9 +349,6 @@ struct SessionRowDisplayToggles: View {
     }
 }
 
-/// The active server page's Offline Data section: Clear Offline Cache deletes this server's
-/// offline data (`clear`), never another server's, its drafts, or its push pairing. The alert
-/// sits on the button, since a Section's own modifiers run once per row (#1255).
 struct OfflineDataSection: View {
     let server: URL
 
@@ -416,8 +396,6 @@ struct OfflineDataSection: View {
         isClearing = false
     }
 
-    /// Deletes `server`'s cached sessions and messages, Bot room history, and Bot roster, leaving
-    /// every other server's (#18). Each refills on the server's next online load.
     @MainActor
     static func clear(
         server: URL,

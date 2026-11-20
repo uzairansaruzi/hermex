@@ -1,12 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// The long-press actions a room message offers: Copy only, by the canonical-chat
-/// policy settled in issue #481. The copied text is the Markdown source the
-/// transcript rendered, so a code block pastes as a code block.
 @MainActor
 enum BotMessageActions {
-    /// `copy` is injectable so a test can read the text without a pasteboard.
     static func items(
         copyText: String?,
         isHapticsEnabled: Bool,

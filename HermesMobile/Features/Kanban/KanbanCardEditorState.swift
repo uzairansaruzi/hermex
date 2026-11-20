@@ -50,8 +50,6 @@ final class KanbanCardEditorState: Identifiable {
     var priorityText = "0"
     var assignee: String?
     var tenant = ""
-    /// The workspace kind the user picked, else the Board's default. A Hermes create sends it
-    /// unless it is a Scratch nobody picked, which leaves a project Board its project (#1044).
     var workspaceKind: String {
         get { pickedWorkspaceKind ?? defaultWorkspaceKind }
         set { pickedWorkspaceKind = newValue }
@@ -63,10 +61,7 @@ final class KanbanCardEditorState: Identifiable {
 
     private(set) var submission: KanbanCardEditorSubmission = .idle
     private(set) var remoteCard: KanbanCard?
-    /// Why the server refused the last save, in its own words (`KanbanWriteRefusal`).
     private(set) var failureMessage: String?
-    /// The server's note on the created Card, such as a Hermes host's warning that no
-    /// dispatcher is running; the Board shows it after the editor closes.
     private(set) var notice: String?
 
     private let client: any KanbanDataClient
@@ -103,7 +98,6 @@ final class KanbanCardEditorState: Identifiable {
         self.board = board
         self.client = client
         backend = client.backend
-        // webui's editor starts every Card in Scratch, as before.
         self.defaultWorkspaceKind = client.backend == .hermes
             ? defaultWorkspaceKind.flatMap { Self.workspaceKinds.contains($0) ? $0 : nil } ?? "scratch"
             : "scratch"
@@ -128,15 +122,10 @@ final class KanbanCardEditorState: Identifiable {
         baselineCard?.status?.rawValue
     }
 
-    /// The Statuses the Status picker offers: Triage, To Do and Ready, or on a Hermes host
-    /// Triage and Ready, which the host turns into To Do while a prerequisite is open (#1044).
     var createStatuses: [String] { backend.createStatuses }
 
-    /// A Hermes host sets a Card's tenant on create only (#1044); webui edits it.
     var canEditTenant: Bool { !isEditing || backend == .webui }
 
-    /// A Hermes host picks a Worktree or Directory Card's path itself, from the Board's project
-    /// directory, so it takes none from Hermex (#1044).
     var offersWorkspacePath: Bool { backend == .webui }
 
     var needsReadyUnassignedConfirmation: Bool {
@@ -197,16 +186,12 @@ final class KanbanCardEditorState: Identifiable {
                 }
             } catch {
                 guard isCurrent(attemptID) else { return }
-                // No mutation has been attempted, so this is a read failure,
-                // never an uncertain write outcome.
                 submission = .failed
                 activeAttemptID = nil
                 return
             }
         }
 
-        // The preflight suspends. Revalidate after it returns, then capture an
-        // immutable mutation intent used for both the write and reconciliation.
         guard validate() else {
             activeAttemptID = nil
             return
@@ -404,9 +389,6 @@ final class KanbanCardEditorState: Identifiable {
         activeAttemptID = nil
     }
 
-    /// Whether `card` carries what the save asked for. A Hermes host decides what the save
-    /// leaves to it (#1044): a new Card's tenant (a prerequisite's) and workspace kind (Scratch
-    /// or the project's worktree) when none was sent, and To Do for a Card asked into Ready.
     private func intendedValuesAppear(in card: KanbanCard, intent: MutationIntent) -> Bool {
         switch intent {
         case let .create(request):

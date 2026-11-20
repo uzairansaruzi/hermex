@@ -2,8 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ChatMarkerMessageClassifierTests: XCTestCase {
-    // MARK: - Context compaction
-
     func testBracketedCompactionPrefixMatches() {
         let message = makeMessage(role: "user", content: "[Context compaction] Summary of earlier conversation…")
         XCTAssertEqual(ChatMarkerMessageClassifier.classify(message), .contextCompaction)
@@ -24,8 +22,6 @@ final class ChatMarkerMessageClassifierTests: XCTestCase {
         XCTAssertNil(ChatMarkerMessageClassifier.classify(message))
     }
 
-    // MARK: - Preserved task list
-
     func testPreservedTaskListPrefixMatchesForUserRole() {
         let message = makeMessage(
             role: "user",
@@ -42,10 +38,6 @@ final class ChatMarkerMessageClassifierTests: XCTestCase {
         XCTAssertNil(ChatMarkerMessageClassifier.classify(message))
     }
 
-    // MARK: - Plain messages
-
-    // MARK: - Card body
-
     func testCardBodyStripsPreservedTaskListMarker() {
         let body = ChatMarkerMessageClassifier.cardBody(
             for: .preservedTaskList,
@@ -53,8 +45,6 @@ final class ChatMarkerMessageClassifierTests: XCTestCase {
         )
         XCTAssertEqual(body, "1. First task\n2. Second task")
     }
-
-    // MARK: - Helpers
 
     private func makeMessage(role: String?, content: String?) -> ChatMessage {
         ChatMessage(role: role, content: content, timestamp: nil, messageId: "test-id")

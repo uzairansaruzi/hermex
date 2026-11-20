@@ -1,39 +1,20 @@
 import Foundation
 
-/// A Hermes chat's working folder (#1112): the folder `session.info` says its runtime works in,
-/// and the terminal backend it runs commands on, for the session `storedKey` names under
-/// `profile`. Files, transcript file links and MEDIA references read it; the composer's `@`
-/// panel (#1113) and Git (#1114) read the same context.
 struct HermesWorkspaceContext: Hashable, Sendable {
     let server: URL
     let profile: String
     let storedKey: String
-    /// The host path of the folder. Never shown, logged or persisted.
     let cwd: String
-    /// `local`, `docker`, `ssh`, …; nil while the host has not said.
     let terminalBackend: String?
 
-    /// Only a `local` backend's folder is on the host the dashboard reads; any other backend's
-    /// is in a container or on another machine, so its files are not browsable.
     var isLocal: Bool { terminalBackend == "local" }
 }
 
-/// A Hermes chat's workspace files (#1112), through the host's `/api/fs/*` routes on the sign-in
-/// its Bot screens share. Those routes read any host path a signed-in client names, so the fence
-/// here is the client's own rule, not a security boundary: a workspace-relative path becomes
-/// `cwd + "/" + path` only when it is relative and climbs nowhere (`hostPath`), and a child's
-/// path is its folder's plus its name, never the listing's `path`, which the host resolves
-/// (`/private/var/…` for `/var/…`) and so can leave the folder the chat asked for. A file's
-/// download sends its host path too, without the stored key, so it works before the host has
-/// stored a new chat (#1138); a MEDIA path keeps the stored key so the host resolves it against
-/// the session. Rows, previews and errors carry only relative paths. Checked at the
-/// `HERMES_AGENT_TESTED_SHA` pin (ca678285) in `hermes_cli/web_routers/files.py`.
 @MainActor final class HermesWorkspaceFileClient: WorkspaceFileClient {
     let context: HermesWorkspaceContext
     nonisolated let scope: String
     nonisolated let opensTopLevelFolders = false
     private let http: HermesConnection
-    /// The most a preview download reads (`BotArtifactBuffer.maximumBytes`); tests pass a few bytes.
     private let previewLimit: Int
 
     init(context: HermesWorkspaceContext, http: HermesConnection, previewLimit: Int = BotArtifactBuffer.maximumBytes) {
@@ -43,9 +24,6 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         scope = "\(context.server.absoluteString)|hermes|\(context.profile)|\(context.storedKey)|\(context.cwd)"
     }
 
-    /// One folder, not recursive, folders first as the host sorts them. The host hides build,
-    /// VCS and credential entries, and lists a symlinked folder as a file. A folder it can't read
-    /// answers 200 `{entries: [], error}`, which throws `WorkspaceFolderReadFailure`.
     func directoryList(path: String) async throws -> DirectoryListResponse {
         let reply = try Self.json(try await send(.fsList(path: try Self.hostPath(path, in: context.cwd))))
         if let code = reply["error"].text, !code.isEmpty { throw WorkspaceFolderReadFailure(code: code) }
@@ -59,10 +37,6 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         return DirectoryListResponse(entries: entries, path: path, workspace: nil, error: nil)
     }
 
-    /// The file's first 512 KiB as text, or none for a binary file. The host decodes it with
-    /// replacement characters, so it is only ever a preview: export downloads the file. A
-    /// truncated file has no line count. A symlinked folder, which the listing shows as a file,
-    /// throws `BotArtifactFailure.folder` here and from every download.
     func file(path: String) async throws -> FileResponse {
         let name = path.split(separator: "/").last.map(String.init)
         let body: Data
@@ -83,41 +57,28 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         )
     }
 
-    /// The whole file, for Save to Files and Share: no size cap, as on webui, and an empty file
-    /// is the file.
     func rawFileData(path: String) async throws -> Data {
         try await download(try Self.hostPath(path, in: context.cwd), inSession: false, limit: nil, allowsEmpty: true)
     }
 
-    /// At most 25 MB (`BotArtifactBuffer`), for Quick Look.
     func rawFilePreviewData(path: String) async throws -> Data {
         try await download(try Self.hostPath(path, in: context.cwd), inSession: false, limit: previewLimit)
     }
 
-    /// An image preview keeps the 25 MB cap of every Hermes preview download.
     func imagePreviewData(path: String) async throws -> Data {
         try await rawFilePreviewData(path: path)
     }
 
-    /// A MEDIA path is the reply's own, often outside the folder, so it is sent as written; the
-    /// host resolves it against the session and decides what it serves. At most 25 MB, for the
-    /// MEDIA viewer's preview.
     func mediaData(path: String) async throws -> Data {
         try await download(path, inSession: true, limit: previewLimit)
     }
 
-    /// `mediaData` for Save and Share: the whole file, as `rawFileData` reads one.
     func mediaExportData(path: String) async throws -> Data {
         try await download(path, inSession: true, limit: nil, allowsEmpty: true)
     }
 
-    /// The host path of `path`, a workspace-relative path: the folder itself for
-    /// `FileTree.rootPath`, else `cwd + "/" + path`. Refuses an absolute path, a `..` component
-    /// and a path with nothing past the root, before any request.
     nonisolated static func hostPath(_ path: String, in cwd: String) throws -> String {
         let root = cwd.count > 1 && cwd.hasSuffix("/") ? String(cwd.dropLast()) : cwd
-        // The host calls Python's str.strip() on the path; a read can return a sibling.
-        // Python includes four ASCII separators in addition to Unicode whitespace.
         if let last = (path == FileTree.rootPath ? root : path).unicodeScalars.last,
            last.properties.isWhitespace || (0x1C...0x1F).contains(last.value) {
             throw BotArtifactFailure.unavailable
@@ -129,7 +90,6 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         return (root == "/" ? "" : root) + "/" + path
     }
 
-    /// `inSession` sends the stored key, for a path the host must resolve against the session.
     private func download(_ path: String, inSession: Bool, limit: Int?, allowsEmpty: Bool = false) async throws -> Data {
         let request = try HermesREST.downloadArtifact(path: path, profile: context.profile,
                                                       sessionID: inSession ? context.storedKey : nil)
@@ -139,9 +99,6 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         }
     }
 
-    /// One request's body, or the failure its status means (`HermesCronClient.accepted`). A reason
-    /// that names a path, as an `OSError`'s can, reads as the generic failure instead, so no host
-    /// path reaches the screen. A dropped request reads as the webui's network failure.
     private func send(_ rest: HermesREST) async throws -> Data {
         let reply: (body: Data, status: Int)
         do { reply = try await http.reply(rest) } catch let error as URLError { throw APIError.network(underlying: error) }
@@ -150,15 +107,11 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         }
     }
 
-    /// Lines as an editor numbers them: a final newline ends the last line rather than starting
-    /// another, and an empty file has none.
     nonisolated static func lineCount(_ text: String) -> Int {
-        // Bytes, not Characters: Swift reads `\r\n` as one Character that is not `\n`.
         let newlines = text.utf8.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
         return text.isEmpty || text.utf8.last == 0x0A ? newlines : newlines + 1
     }
 
-    /// One file or folder name, so a path joined from names never leaves its folder.
     private static func isName(_ name: String) -> Bool {
         !name.isEmpty && name != "." && name != ".." && !name.contains { $0 == "/" || $0 == "\\" || $0 == "\0" }
     }

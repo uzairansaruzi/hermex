@@ -71,11 +71,8 @@ final class SessionListCardTests: XCTestCase {
     func testUsageReportsCardWinsThenTipAndOnlyOneCardShowsPerLaunch() {
         XCTAssertEqual(SessionListCard.choose(eligible: [.usageReports, .tip, .star], shownThisLaunch: nil), .usageReports)
         XCTAssertEqual(SessionListCard.choose(eligible: [.tip, .star], shownThisLaunch: nil), .tip)
-        // Answering the usage reports card leaves the slot empty until a later launch.
         XCTAssertNil(SessionListCard.choose(eligible: [.tip, .star], shownThisLaunch: .usageReports))
-        // Dismissing the tip card leaves the slot empty until a later launch.
         XCTAssertNil(SessionListCard.choose(eligible: [.star], shownThisLaunch: .tip))
-        // A star card already showing keeps the slot when another card becomes eligible mid-launch.
         XCTAssertEqual(SessionListCard.choose(eligible: [.usageReports, .tip, .star], shownThisLaunch: .star), .star)
     }
 
@@ -123,7 +120,6 @@ final class SessionListCardTests: XCTestCase {
 
     @MainActor
     func testCancellationDuringWelcomeOrIdleCannotDisplayAnotherFrame() async {
-        // Covers pre-blink, airborne, neutral waiting, and holding the downward glance.
         for cancellationPause in [1, 4, 7, 10] {
             let greeting = SessionListCardGreeting()
             var frames: [SessionListCardGreeting.Phase] = []

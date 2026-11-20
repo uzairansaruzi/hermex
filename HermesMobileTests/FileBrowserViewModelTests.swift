@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Lazy loading, expansion memory, selection reveal, and preview prefetch for the file tree, on
-/// webui's session routes and on a Hermes chat's folder (#1112).
 final class FileBrowserViewModelTests: APIClientTestCase {
 
     private var defaults: UserDefaults!
@@ -20,8 +18,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         super.tearDown()
     }
 
-    /// Records every `/api/list` path the model asked for, in call order, and names the
-    /// paths whose listing should currently fail.
     private final class RequestLog: @unchecked Sendable {
         private let lock = NSLock()
         private var paths: [String] = []
@@ -65,7 +61,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         #"{"name": "\#(name)", "path": "\#(path)", "type": "\#(isDirectory ? "dir" : "file")", "is_dir": \#(isDirectory)}"#
     }
 
-    /// `.git/{HEAD}`, `src/{Chat/{ChatView.swift}}`, `README.md`.
     private func listingJSON(for path: String) -> String? {
         switch path {
         case ".":
@@ -114,13 +109,10 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         )
     }
 
-    /// Saves the open folders of the webui workspace `makeViewModel` opens by default.
     private func saveWebUIExpansion(_ paths: Set<String>) throws {
         let files = WebUIWorkspaceFileClient(sessionID: "s1", workspace: "/tmp/ws", server: try XCTUnwrap(URL(string: "https://example.test")))
         FileTreeExpansionStore(scope: files.scope, defaults: defaults).save(paths)
     }
-
-    // MARK: - Loading
 
     @MainActor
     func testFirstLoadOpensVisibleTopLevelFoldersAndSkipsHiddenOnes() async throws {
@@ -191,8 +183,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.expandedPaths, ["src/Chat"])
     }
 
-    // MARK: - Selection
-
     @MainActor
     func testSelectingAFileOpensAndListsEveryAncestor() async throws {
         let log = RequestLog()
@@ -208,8 +198,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.expandedPaths, ["src", "src/Chat"])
         XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), [".git", "src", "src/Chat", "src/Chat/ChatView.swift", "README.md"])
     }
-
-    // MARK: - Persistence
 
     @MainActor
     func testExpansionIsRememberedPerServerAndWorkspace() async throws {
@@ -232,8 +220,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         await otherWorkspace.loadInitialRootIfNeeded()
         XCTAssertEqual(otherWorkspace.expandedPaths, ["src"], "Another workspace on the same server starts from the default expansion")
     }
-
-    // MARK: - Prefetch
 
     @MainActor
     func testPressDownPrefetchesTextFilesAndOpeningKeepsOnlyThatFile() async throws {
@@ -267,8 +253,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         _ = try await fresh.value
     }
 
-    // MARK: - Races and cancellation
-
     @MainActor
     func testStaleRootListingNeverOverwritesANewerOne() async throws {
         let files = HeldFirstRootListing()
@@ -286,8 +270,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isLoadingRoot)
     }
 
-    /// A cancelled first load reports no error, and loads again the next time the screen
-    /// appears, since it left nothing to show.
     @MainActor
     func testCancelledRootRequestDoesNotSurfaceAnErrorAndLoadsAgain() async throws {
         let log = RequestLog()
@@ -309,12 +291,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertTrue(viewModel.tree.isRootLoaded)
     }
 
-    // MARK: - Hermes (#1112)
-
-    /// A Hermes tree opens with every folder closed and lists only the chat's folder, since the
-    /// host lists one folder at a time and blocks on protected ones (#1138); a folder lists when
-    /// tapped. Every row is the folder's relative path plus the entry's name, though the host
-    /// answers with resolved `/private/…` paths.
     @MainActor
     func testAHermesTreeOpensClosedAndNamesChildrenRelatively() async throws {
         let cwd = HermesWorkspaceFileClientTests.cwd
@@ -340,8 +316,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
-    /// A chat folder that is gone shows the folder-missing state with no rows, as when it was
-    /// deleted after the tree loaded, and reports no error. A missing subfolder fails only its row.
     @MainActor
     func testAMissingHermesFolderShowsItsStateAndAMissingSubfolderFailsItsRow() async throws {
         let cwd = HermesWorkspaceFileClientTests.cwd
@@ -371,8 +345,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.takeLastError(), "The host's answer about the folder is not a failed request")
     }
 
-    /// A folder's first listing still in flight when the chat's folder disappears never lands
-    /// once the folder is back, even after the folder was closed and the root listed again (#188).
     @MainActor
     func testAFirstListingInFlightWhenTheFolderDisappearsNeverLands() async throws {
         let cwd = HermesWorkspaceFileClientTests.cwd
@@ -407,9 +379,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src", "src/new.swift"])
     }
 
-    /// The chat's folder moving drops the tree, the expansion and the prefetches, and lists the
-    /// new folder with its own expansion. A listing of the old folder still in flight never lands
-    /// in the new tree, even in a folder of the same name that nothing has listed (#188).
     @MainActor
     func testAFolderChangeDropsTheOldTreeAndAStaleListing() async throws {
         let old = HermesWorkspaceFileClientTests.cwd
@@ -452,8 +421,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src", "src/new.swift"])
     }
 
-    /// Expansion is kept per server, Profile, session and folder: two chats on one folder never
-    /// share it.
     @MainActor
     func testHermesExpansionIsKeptPerServerProfileAndSession() async throws {
         let cwd = HermesWorkspaceFileClientTests.cwd
@@ -482,8 +449,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(same.expandedPaths, ["src"], "The same chat and folder remembers its layout")
     }
 
-    // MARK: - Workspace search (#1389)
-
     private func hit(_ path: String, isDirectory: Bool = false) -> ComposerFilePathSearch.Match {
         ComposerFilePathSearch.Match(path: path, name: String(path.split(separator: "/").last ?? ""),
                                      parentPath: ComposerFilePathSearch.Match.parentPath(of: path), isDirectory: isDirectory)
@@ -494,8 +459,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         FileBrowserViewModel(files: nil, defaults: defaults, searchDebounce: {})
     }
 
-    /// Typing quickly settles on the last query: the newer query searches until its own reply
-    /// lands, and a slow reply for an older one never replaces it.
     @MainActor
     func testWorkspaceSearchSettlesOnTheLastQuery() async {
         let viewModel = searchingViewModel()
@@ -519,7 +482,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
                        .found([hit("Sources/Source.swift")]))
     }
 
-    /// One character and a path keep today's loaded-tree filter: the host is never asked.
     @MainActor
     func testShortAndPathShapedQueriesNeverAskTheHost() async {
         let viewModel = searchingViewModel()
@@ -531,7 +493,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(asked, [])
     }
 
-    /// A failed search reads as unavailable, never as "No Matches"; an empty answer does.
     @MainActor
     func testAFailedWorkspaceSearchIsUnavailableNotEmpty() async {
         let viewModel = searchingViewModel()
@@ -543,7 +504,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.workspaceSearchState(for: "GitDiff", in: "scope", hiding: []), .found([]))
     }
 
-    /// The Workspace section lists files only, and none the loaded tree already shows.
     @MainActor
     func testWorkspaceHitsAreFilesTheTreeDoesNotShow() async throws {
         let viewModel = FileBrowserViewModel(files: WebUIWorkspaceFileClient(session: try session(), server: try XCTUnwrap(URL(string: "https://example.test")),
@@ -560,8 +520,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.workspaceSearchState(for: "Chat", in: "scope", hiding: shown), .found([hit("docs/Chat Notes.md")]))
     }
 
-    /// An answer belongs to the workspace it was asked in: the same query in a moved folder
-    /// searches again rather than showing the old folder's files.
     @MainActor
     func testAnotherWorkspacesAnswerNeverShows() async {
         let viewModel = searchingViewModel()
@@ -571,8 +529,6 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertEqual(viewModel.workspaceSearchState(for: "GitDiff", in: "new", hiding: []), .searching)
     }
 
-    /// Opening a Workspace hit opens that file without listing or expanding a folder above it
-    /// (#1233), and stops a prefetch for another file.
     @MainActor
     func testOpeningAWorkspaceHitListsNoFolders() async throws {
         let log = RequestLog()
@@ -612,12 +568,9 @@ final class FileBrowserViewModelTests: APIClientTestCase {
     }
 }
 
-/// A workspace whose first root listing waits until the test releases it, then answers with
-/// `old.txt`; every later listing answers `new.txt` at once.
 private actor HeldFirstRootListing: WorkspaceFileClient {
     nonisolated let scope = "held-first-root-listing"
     nonisolated let opensTopLevelFolders = false
-    /// Fulfilled once the first listing is held.
     nonisolated let firstListingHeld = XCTestExpectation(description: "the first root listing is held")
     private var listings = 0
     private var held: CheckedContinuation<Void, Never>?

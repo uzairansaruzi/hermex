@@ -20,7 +20,6 @@ import SwiftUI
     private var followsLatest: Bool { followLatch.isFollowing }
     let roster: [BotProfile]
     let avatars: [String: UIImage]
-    /// Leaves the room for the inbox's sign-in form, after the host refused the password.
     let onUpdateSignIn: () -> Void
 
     init(reader: BotRoomReader, roster: [BotProfile], avatars: [String: UIImage], threadID: String? = nil, sequence: Int? = nil, onUpdateSignIn: @escaping () -> Void = {}) {
@@ -35,15 +34,8 @@ import SwiftUI
             let hasHiddenEvents = start > 0
             let showsWelcome = threadID == nil && reader.showsWelcome
             ScrollView {
-                // At least as tall as the visible transcript while a new room shows
-                // its welcome, which centres it; taller, and scrolling, only when
-                // the welcome is (at accessibility text sizes).
                 ZStack {
                     if showsWelcome { Color.clear.containerRelativeFrame(.vertical) }
-                    // Eager over a bounded window: member replies are
-                    // hosted selection documents, and a lazy stack places unbuilt rows
-                    // from an estimate, so the jump to a search hit missed on a cold
-                    // open (issue #553). The window keeps the build to the newest page.
                     VStack(spacing: 16) {
                         if !showsThreadOverview && (hasHiddenEvents || reader.hasEarlier) {
                             Button("Load earlier") { loadEarlier(proxy: proxy) }
@@ -60,7 +52,6 @@ import SwiftUI
                             BotRoomTranscriptRow(event: $0, isOverview: threadID == nil)
                         }) { row in
                             let event = row.event
-                            // Thread identity survives new replies and activity reordering.
                             if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
                                 Button { selectedThread = thread.id } label: {
                                     BotRoomThreadPreview(thread: thread, room: reader.room)
@@ -92,7 +83,6 @@ import SwiftUI
                         Color.clear.frame(height: 1).id("room-bottom")
                     }
                     .padding(16)
-                    // Centred in the reading column; the scroll view stays full width.
                     .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))
                     .frame(maxWidth: .infinity)
                     .background {
@@ -119,8 +109,6 @@ import SwiftUI
             .task(id: threadID == nil ? nil : availableSearchSequence) {
                 guard threadID != nil, let sequence = availableSearchSequence else { return }
                 window.reveal(sequence, in: transcriptEvents, overview: showsThreadOverview)
-                // A pushed destination lays out after the overview's synchronous
-                // search callback. Wait for those materialized rows before jumping.
                 await Task.yield()
                 guard !Task.isCancelled else { return }
                 handleFollowEvent(.userScrollBegin)
@@ -192,8 +180,6 @@ import SwiftUI
             if scenePhase == .active { await reader.open(owner: owner, preservingLoadedHistory: true) }
         }
         .onChange(of: scenePhase) {
-            // Control Center and banners (`.inactive`) keep the room live (#902); the
-            // background stops it (#533), and only a stopped room reopens.
             guard visible else { return }
             switch scenePhase {
             case .background: reader.leave(owner: owner, preservingLoadedHistory: true)
@@ -202,7 +188,6 @@ import SwiftUI
             }
         }
         .onDisappear { visible = false; reader.leave(owner: owner, preservingLoadedHistory: true) }
-        // A lost room reconnects as the network returns rather than on its backoff (#1372).
         .onChange(of: NetworkPathMonitor.shared.changeCount) { if visible { reader.networkPathDidChange() } }
         .onChange(of: reader.feedback) { _, feedback in
             if let feedback { ChatHaptics.botFeedback(feedback.event, isEnabled: isHapticsEnabled) }
@@ -216,8 +201,6 @@ import SwiftUI
 
     private var showsThreadOverview: Bool { threadID == nil && !reader.threads.isEmpty }
 
-    /// Thread previews stand in for their latest event. Unthreaded history remains
-    /// readable, but never gains a fabricated reply target.
     private var transcriptEvents: [BotRoomEvent] {
         if let threadID { return reader.threads.first { $0.id == threadID }?.events ?? [] }
         return (reader.events.filter { $0.threadID == nil } + reader.threads.map(\.latest))
@@ -230,9 +213,6 @@ import SwiftUI
 
     private func seedWindow() { window.seed(transcriptEvents, live: reader.link == .live, overview: showsThreadOverview) }
 
-    /// Reveals a page of events already in memory, or fetches one from the room
-    /// when none are hidden. Chronological detail preserves its first row;
-    /// descending overview appends below the reader without changing the offset.
     private func loadEarlier(proxy: ScrollViewProxy) {
         handleFollowEvent(.userScrollBegin)
         let firstEvent = showsThreadOverview ? nil
@@ -274,8 +254,6 @@ import SwiftUI
     }
 }
 
-/// Stable thread identities in the overview, exact sequence identities in detail
-/// and unthreaded history. A reply must not replace its overview row's identity.
 struct BotRoomTranscriptRow: Identifiable {
     enum ID: Hashable { case thread(String), event(Int) }
     let event: BotRoomEvent
@@ -327,23 +305,11 @@ private struct BotRoomThreadPreview: View {
     }
 }
 
-/// The room events BotRoomView builds: the newest page when the room opens,
-/// anchored by sequence number because room history is prepended. History the
-/// reader loads stays hidden until asked for, and new events always show, so
-/// neither shifts what is on screen. Load earlier reveals hidden events in
-/// pages before the room fetches more.
 struct BotRoomTranscriptWindow: Equatable {
     static let pageSize = 50
     private var oldestShown: Int?
-    // Overview rows reorder when threads receive replies, so their expansion
-    // cannot be anchored to a latest-event sequence that can disappear.
     private var overviewCount = Self.pageSize
 
-    /// Index of the first shown event in `events`, which are sorted by sequence.
-    /// An anchor outside the events (a reconnect restored a trimmed transcript,
-    /// or the room restarted) falls back to the newest page. `keeping` widens the
-    /// window to a search hit that is present, so its row is built by the time
-    /// the jump runs (#553).
     func start(in events: [BotRoomEvent], keeping sequence: Int? = nil, overview: Bool = false) -> Int {
         let newestPage = max(0, events.count - Self.pageSize)
         let start = overview ? max(0, events.count - overviewCount) : oldestShown.flatMap { oldest in
@@ -353,10 +319,6 @@ struct BotRoomTranscriptWindow: Equatable {
         return min(start, hit)
     }
 
-    /// Anchors the window on the newest page once the room is live, and again
-    /// after the room empties (closed) or its events no longer cover the anchor.
-    /// Until then `start` follows the newest page, so the open-time catch-up
-    /// after a stale cache restore is not built in full.
     mutating func seed(_ events: [BotRoomEvent], live: Bool, overview: Bool = false) {
         guard !events.isEmpty else { oldestShown = nil; overviewCount = Self.pageSize; return }
         guard !overview else { return }
@@ -371,7 +333,6 @@ struct BotRoomTranscriptWindow: Equatable {
         return (first.seq...last.seq).contains(sequence)
     }
 
-    /// Keeps a search hit shown after its jump lands.
     mutating func reveal(_ sequence: Int, in events: [BotRoomEvent], overview: Bool = false) {
         guard !events.isEmpty else { return }
         if overview {
@@ -381,7 +342,6 @@ struct BotRoomTranscriptWindow: Equatable {
         }
     }
 
-    /// Shows up to one more page of hidden events; false when none are hidden.
     mutating func showEarlier(in events: [BotRoomEvent], overview: Bool = false) -> Bool {
         let start = start(in: events, overview: overview)
         guard start > 0 else { return false }
@@ -425,7 +385,6 @@ private struct BotRoomEventView: View {
                         Text(event.sender(in: room)).font(AppFont.caption()).foregroundStyle(.appSecondary)
                         ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible) {
                             MarkdownRenderer(content: messageText)
-                                // The bubble's fill is translucent, so no solid fade matches it.
                                 .environment(\.markdownTableEdgeFadeColor, nil)
                         }
                         .onGeometryChange(for: Bool.self) { geometry in
@@ -438,8 +397,6 @@ private struct BotRoomEventView: View {
                     Spacer(minLength: 20)
                 }
                 .accessibilityElement(children: .combine)
-                // Every member message is a finished reply, so each one is timed.
-                // Under the bubble, past the avatar, which stays level with the bubble.
                 footer.padding(.leading, 34)
             }
         } else {
@@ -450,7 +407,6 @@ private struct BotRoomEventView: View {
 
     private var messageText: String { event.payload["text"].text ?? "" }
 
-    /// Rooms take the shared meta row with the time only; Copy stays in the long-press menu.
     @ViewBuilder
     private var footer: some View {
         if showsTimestamps, let timestamp = event.timestamp, timestamp > 0,
@@ -497,9 +453,6 @@ struct BotRoomMemberAvatar: View {
     }
 }
 
-/// What a new room opens on: every member's face and name, then, when this
-/// phone can write to the room, the invitation to speak. One VoiceOver element.
-/// Faces stay still, like the room's other faces (#517).
 struct BotRoomWelcomeView: View {
     let room: BotGroupRoom
     let roster: [BotProfile]
@@ -510,7 +463,6 @@ struct BotRoomWelcomeView: View {
     var body: some View {
         VStack(spacing: 20) {
             if dynamicTypeSize.isAccessibilitySize {
-                // Stacked, so full names fit at accessibility text sizes.
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(room.members) { member in
                         HStack(spacing: 14) {
@@ -550,7 +502,6 @@ struct BotRoomWelcomeView: View {
             : String(localized: "Group members: \(names).")
     }
 
-    /// Rows of up to three, balanced so four members make two rows of two.
     private static func rows(of members: [BotGroupRoom.Member]) -> [ArraySlice<BotGroupRoom.Member>] {
         guard !members.isEmpty else { return [] }
         let rowCount = (members.count + 2) / 3
@@ -559,7 +510,6 @@ struct BotRoomWelcomeView: View {
     }
 }
 
-/// Uses the inbox row's avatar/name/time layout; identity is supplied by its caller.
 struct BotRoomInboxRow: View {
     let room: BotGroupRoom
     let roster: [BotProfile]

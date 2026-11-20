@@ -20,7 +20,6 @@ final class ReviewDiffLayoutTests: XCTestCase {
         )
     }
 
-    /// Two files: a header and three lines each.
     private var rows: [ReviewDiffRow] {
         [header("a"), line("a", 0, "short"), line("a", 1, "a much longer line"), line("a", 2),
          header("b"), line("b", 0), line("b", 1), line("b", 2)]
@@ -65,7 +64,6 @@ final class ReviewDiffLayoutTests: XCTestCase {
         let layout = ReviewDiffLayout(rows: rows, collapsedFileIDs: [], metrics: metrics)
         XCTAssertNil(layout.stickyHeader(atVerticalOffset: 0), "The header is in place, nothing to pin.")
         XCTAssertEqual(layout.stickyHeader(atVerticalOffset: 30), .init(rowIndex: 0, y: 0))
-        // File b's header starts at 110; with 50 pt of header it starts pushing at offset 60.
         XCTAssertEqual(layout.stickyHeader(atVerticalOffset: 60), .init(rowIndex: 0, y: 0))
         XCTAssertEqual(layout.stickyHeader(atVerticalOffset: 80), .init(rowIndex: 0, y: -20))
         XCTAssertNil(layout.stickyHeader(atVerticalOffset: 110), "Fully pushed off, and b is in place.")
@@ -107,7 +105,6 @@ extension ReviewDiffLayoutTests {
 }
 
 extension ReviewDiffLayoutTests {
-    /// A 400 KB minified line must typeset only what can be on screen, not the whole row.
     func testDrawnCharactersStopAtTheReachableColumnsOrTheVisibleWrappedLines() {
         let columns = 400_000
         let unwrapped = ReviewDiffLayout(rows: [], collapsedFileIDs: [], metrics: metrics)
@@ -116,7 +113,6 @@ extension ReviewDiffLayoutTests {
 
         let wrapMetrics = ReviewDiffMetrics(rowHeight: 20, fileHeaderHeight: 50, noticeHeight: 44, wrappedLineHeight: 14)
         let wrapped = ReviewDiffLayout(rows: [], collapsedFileIDs: [], metrics: wrapMetrics, wrapColumns: 45)
-        // A 280 pt window 1,000 lines down: lines 1000...1020 plus one either side.
         XCTAssertEqual(
             wrapped.drawnCharacterRange(columnCount: columns, reachableColumns: 400, visibleMinY: 14_000, visibleMaxY: 14_280),
             (999 * 45)..<(1_022 * 45)
@@ -138,7 +134,6 @@ extension ReviewDiffLayoutTests {
     }
 
     func testVisualLinesSliceWholeCharacters() {
-        // "e" + combining acute and a skin-tone emoji are one Character each.
         let line = ReviewDiffLine(content: "ab👍🏽cde\u{301}", change: .context, oldLineNumber: nil, newLineNumber: 1)
         XCTAssertEqual(line.columnCount, 6)
         XCTAssertEqual(line.visualLines(in: 2..<6, wrapColumns: 2), ["👍🏽c", "de\u{301}"])

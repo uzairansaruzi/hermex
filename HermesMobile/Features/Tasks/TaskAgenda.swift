@@ -1,7 +1,5 @@
 import Foundation
 
-/// The segments above the Tasks list. Selection is view state: it is never
-/// persisted and never travels between servers.
 enum TaskFilter: Int, CaseIterable, Identifiable {
     case all
     case live
@@ -10,8 +8,6 @@ enum TaskFilter: Int, CaseIterable, Identifiable {
 
     var id: Int { rawValue }
 
-    /// The segment label, count included — a segmented control can only show
-    /// one string per segment.
     func title(count: Int) -> String {
         switch self {
         case .all:
@@ -26,9 +22,6 @@ enum TaskFilter: Int, CaseIterable, Identifiable {
     }
 }
 
-/// Agenda buckets, declared in the order they appear on screen: what is
-/// happening now, then what happens next, then what is broken, then what is
-/// dormant.
 enum TaskAgendaGroup: Int, CaseIterable, Identifiable {
     case now
     case laterToday
@@ -60,8 +53,6 @@ enum TaskAgendaGroup: Int, CaseIterable, Identifiable {
     }
 }
 
-/// One rendered group. Empty groups are never built, so a section always has
-/// rows.
 struct TaskAgendaSection: Identifiable {
     let group: TaskAgendaGroup
     let jobs: [CronJob]
@@ -70,12 +61,6 @@ struct TaskAgendaSection: Identifiable {
 }
 
 enum TaskAgenda {
-    /// The single group a job belongs to.
-    ///
-    /// Precedence is what keeps the buckets disjoint: a running job is always
-    /// "Now", a failed last run is always "Needs Attention" whatever the job's
-    /// enabled state, and everything that is neither running nor scheduled
-    /// falls to "Paused".
     static func group(
         for job: CronJob,
         isRunning: Bool,
@@ -93,15 +78,12 @@ enum TaskAgenda {
               let weekHorizon = calendar.date(byAdding: .day, value: 7, to: startOfToday)
         else { return .later }
 
-        // An overdue next run — the server's schedule lagging behind the clock
-        // — still reads as today's business rather than sinking to "Later".
         if next < startOfTomorrow { return .laterToday }
         if next < startOfDayAfterTomorrow { return .tomorrow }
         if next < weekHorizon { return .thisWeek }
         return .later
     }
 
-    /// Whether a job survives the selected filter.
     static func matches(_ job: CronJob, filter: TaskFilter, isRunning: Bool) -> Bool {
         switch filter {
         case .all:
@@ -127,8 +109,6 @@ enum TaskAgenda {
         }
     }
 
-    /// The filtered, grouped, sorted agenda. Groups keep their declared order;
-    /// within a group jobs sort by next run, soonest first, then by name.
     static func sections(
         jobs: [CronJob],
         runningJobIDs: Set<String>,
@@ -171,14 +151,10 @@ enum TaskAgenda {
 }
 
 extension CronJob {
-    /// Live means the server will fire this job again. `enabled` and
-    /// `state` are the same fact surfaced twice, and a paused job can still
-    /// carry `enabled: true` briefly, so both have to agree.
     var isLive: Bool {
         enabled != false && state != "paused"
     }
 
-    /// True when the last run, or its delivery, failed.
     var hasFailedRun: Bool {
         if lastStatus == "error" { return true }
         if let lastError, !lastError.isEmpty { return true }
@@ -186,9 +162,6 @@ extension CronJob {
         return false
     }
 
-    /// One readable line explaining the failure, safe for a list row: escapes
-    /// stripped, first meaningful line only. The full text lives on Task
-    /// Detail.
     var failureSummary: String? {
         for candidate in [lastError, lastDeliveryError] {
             guard let candidate, !candidate.isEmpty else { continue }
@@ -197,16 +170,10 @@ extension CronJob {
         return nil
     }
 
-    /// The schedule in English, or `nil` when the expression is not one the
-    /// humaniser recognises.
     var scheduleDescription: CronScheduleDescription? {
         CronScheduleHumanizer.describe(editableScheduleText ?? scheduleText)
     }
 
-    /// Pause/resume control state, shared by the detail screen and its header
-    /// card so the two buttons can't drift apart again. Resume is a circled
-    /// triangle, never `play.fill`: beside "Run now" the same solid triangle
-    /// twice would say the two buttons do the same thing.
     var shouldResume: Bool {
         status == .paused || status == .off
     }

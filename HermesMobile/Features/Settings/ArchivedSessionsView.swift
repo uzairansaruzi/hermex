@@ -1,19 +1,13 @@
 import SwiftUI
 
-/// A server's archived sessions, with Unarchive (#17). On a Hermes server (#1048) they are one
-/// Profile's, hidden Bot Chats included, paged 100 at a time, with Delete as well. A Bot Chat row
-/// opens in its bot on the Bots tab (#1146).
 struct ArchivedSessionsView: View {
     let server: URL
-    /// Forwarded to `ChatView` and used for load/unarchive failures so a 401
-    /// here triggers the same re-login flow as everywhere else.
     let onAPIError: (Error) -> Void
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel: ArchivedSessionsViewModel
     @State private var openedSession: SessionSummary?
-    /// The Hermes session a row opened.
     @State private var openedHermesChat: HermesSessionChat?
     @State private var sessionPendingDeletion: SessionSummary?
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
@@ -26,7 +20,6 @@ struct ArchivedSessionsView: View {
         _viewModel = State(initialValue: ArchivedSessionsViewModel(server: server))
     }
 
-    /// A Hermes server's Archived screen (#1048), from its Sessions list or Settings.
     init(server: URL, hermes: HermesArchiveSource) {
         self.server = server
         onAPIError = { _ in }
@@ -39,8 +32,6 @@ struct ArchivedSessionsView: View {
             .themedPageBackground()
             .navigationTitle("Archived Sessions")
             .navigationDestination(item: $openedSession) { session in
-                // Opening an archived session reuses the normal read path —
-                // no special-casing on the chat side (issue #17).
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
             .navigationDestination(item: $openedHermesChat) { chat in
@@ -53,11 +44,9 @@ struct ArchivedSessionsView: View {
                 await load()
             }
             .onDisappear {
-                // A pushed chat keeps the screen's client; leaving for good ends it.
                 if viewModel.isHermes, openedHermesChat == nil { viewModel.close() }
             }
             .onChange(of: scenePhase) {
-                // The background closes a Hermes server's socket; the screen reads again on return.
                 guard viewModel.isHermes else { return }
                 switch scenePhase {
                 case .background: viewModel.close()
@@ -66,7 +55,6 @@ struct ArchivedSessionsView: View {
                 }
             }
             .onChange(of: openedHermesChat == nil) { _, closed in
-                // Back from a chat the background closed this screen's client under.
                 if closed, viewModel.isHermes, !viewModel.isConnected { Task { await load() } }
             }
             .alert(
@@ -145,8 +133,6 @@ struct ArchivedSessionsView: View {
         }
     }
 
-    /// The end of a Hermes server's archived rows: the next page loads as it comes into view,
-    /// and a tap tries again after a failed one.
     private var loadMoreRow: some View {
         Button("Load more") { Task { await viewModel.loadMore() } }
             .font(AppFont.subheadline())
@@ -196,8 +182,6 @@ struct ArchivedSessionsView: View {
         }
     }
 
-    /// Always-visible unarchive affordance; the context menu keeps the same
-    /// action for discoverability parity with the main list's row menus.
     private func unarchiveButton(for session: SessionSummary) -> some View {
         Button {
             unarchive(session)

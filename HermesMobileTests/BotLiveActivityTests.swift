@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// #489: a bot's Live Activity: its identity, tap target, cold-launch ownership and relay
-/// content. A bot's chat driving it is `HermesChatLiveActivityTests`; ActivityKit is
-/// unreachable here.
 @MainActor final class BotLiveActivityTests: XCTestCase {
     private let server = URL(string: "https://webui.example")!
     private let profile = BotProfile(.object(["name": .string("inbox-triage")]))!
@@ -12,10 +9,6 @@ import XCTest
         BotDestination(server: server, connectionID: connectionID, profile: "inbox-triage", conversation: "root")
     }
 
-    // MARK: Identity and ownership
-
-    /// A bot activity's tap (#1146) opens the bot's canonical chat in the regular chat, under the
-    /// root the activity named, through the selection every bot route ends at.
     func testATapOpensTheBotsCanonicalChat() throws {
         let connection = BotConnection(id: UUID(), name: "Mac", address: server, username: "user", password: "fixture")
         let bot = try XCTUnwrap(AgentRunActivityBot(destination(connection.id)))
@@ -36,7 +29,6 @@ import XCTest
         XCTAssertFalse(AgentLiveActivityReusePolicy.canReuseActivity(
             existingSessionID: first.key, existingStreamID: first.streamID(turn: "100.0"),
             requestedSessionID: second.key, requestedStreamID: second.streamID(turn: "100.0")))
-        // The same bot's next turn is a new activity; a reconnect inside a turn is not.
         XCTAssertNotEqual(first.streamID(turn: "100.0"), first.streamID(turn: "200.0"))
     }
 
@@ -75,8 +67,6 @@ import XCTest
         XCTAssertEqual(manager.drivenSessionID, bot.key)
     }
 
-    /// A legacy compression moves a bot's stored key mid-turn (#1179): the adopted activity's
-    /// pushes move to the new key, and a blank key moves nothing.
     func testABotsPushesFollowAKeyMove() throws {
         var bot = try XCTUnwrap(AgentRunActivityBot(destination()))
         bot.pushSessionID = "tip"
@@ -93,9 +83,6 @@ import XCTest
         XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
     }
 
-    /// The relay route for each kind of activity (#566): a webui run pushes under its
-    /// own server and session ID, a bot under its destination's server and stored
-    /// agent session, and an activity that names neither cannot be pushed.
     func testPushTargetRoutesWebuiRunsAndBotsToTheirOwnServerAndAgentSession() throws {
         let webui = AgentRunActivityAttributes(sessionID: "webui-session", sessionTitle: "Plan",
                                                startedAt: .now, server: server)
@@ -151,8 +138,6 @@ import XCTest
         }
     }
 
-    // MARK: Detail chips (#644)
-
     func testOnlyARealUpdateTimeIsShownAsFreshness() throws {
         let stamped = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: Data(
             #"{"v":1,"status":"running","tool_calls":3,"started_at":1800000000,"updated_at":1800000042}"#.utf8))
@@ -183,8 +168,6 @@ import XCTest
         XCTAssertEqual(counted.keepingCounts(from: shown).chips, ["Plan 2 of 5"], "A state's own chips win")
     }
 
-    // MARK: Shared model
-
     func testAnActivityPersistedByAnOlderBuildStillDecodes() throws {
         let state = Data(#"{"sessionID":"s","sessionTitle":"T","status":"thinking","currentActivity":"Thinking","responseExcerpt":"","startedAt":0,"updatedAt":0,"isStale":false,"isFinal":false}"#.utf8)
         XCTAssertNil(try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: state).chips)
@@ -198,8 +181,6 @@ import XCTest
         XCTAssertNil(AgentRunActivityAvatarFile.url(named: "../escape.png"))
         XCTAssertNil(AgentRunActivityAvatarFile.url(named: nil))
     }
-
-    // MARK: Stale waiting presentation (#813)
 
     func testStaleBotPresentationSelectsOnlyPendingInput() {
         let counts = ["Plan 2 of 5", "2 workers"]

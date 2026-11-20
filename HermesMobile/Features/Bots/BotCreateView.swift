@@ -1,16 +1,10 @@
 import SwiftUI
 
-/// The create and duplicate sheet: a live face, the name, an optional role, the
-/// drawn look, the model and the credential choice, plus instructions and the
-/// bundled-skills choice for a new bot, then one Create button.
-/// After a partial create the same sheet shows each step's outcome and Try Again.
 @MainActor struct BotCreateView: View {
     @State private var creator: BotCreator
     @State private var showsModels = false
     @State private var showsExpressions = false
     @State private var showsDescribe = false
-    /// What the face should do about the last edit: a hop for a shape, a wobble
-    /// for a color, a glance down while the name is typed.
     @State private var cue: BotFaceCue?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -24,9 +18,6 @@ import SwiftUI
                     BotInteractiveFaceView(name: creator.name, appearance: creator.draft.appearance, size: 150, cue: cue)
                         .padding(.top, 24).padding(.bottom, 20)
                     if creator.hasStarted { results }
-                    // Once the Profile write has been dispatched these values are on the
-                    // host; a retry only finishes the remaining steps, so editing them
-                    // here would be a lie. Edit the bot afterwards instead.
                     card {
                         TextField("Name your bot", text: Binding(get: { creator.draft.title }, set: { creator.setTitle($0); cue = BotFaceCue(.glanceDown) }))
                             .font(AppFont.title3()).multilineTextAlignment(.center)
@@ -70,7 +61,6 @@ import SwiftUI
                          : "The bot starts with no API keys. Add them in Hermes Desktop before it can answer.")
                         .font(AppFont.caption2()).foregroundStyle(.appTertiary).padding(.horizontal, 12).padding(.top, 7)
 
-                    // A duplicate copies the source's instructions and skills, so these are new-bot only.
                     if !creator.isDuplicate { startingPoint.disabled(creator.hasStarted) }
                 }
                 .padding(.horizontal, 16)
@@ -116,12 +106,9 @@ import SwiftUI
         .task { await creator.load() }
         .onDisappear { creator.close() }
         .onChange(of: scenePhase) { if scenePhase == .background { creator.close() } }
-        // A clean create closes on its own; one with leftovers stays up so the
-        // results and the note are read before Done.
         .onChange(of: creator.phase) { if creator.phase == .created, !creator.needsAttention { dismiss() } }
     }
 
-    /// The new bot's instructions and whether it starts with the bundled skills.
     @ViewBuilder private var startingPoint: some View {
         sectionLabel("Instructions")
         card {
@@ -154,7 +141,6 @@ import SwiftUI
                 : "The bot starts with every skill that ships with Hermes.")
     }
 
-    /// Footnote under a card, leading-aligned however short it is.
     private func caption(_ text: LocalizedStringKey) -> some View {
         Text(text).font(AppFont.caption2()).foregroundStyle(.appTertiary)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -187,7 +173,6 @@ import SwiftUI
         }
     }
 
-    /// Per-step outcomes after an attempt, mirroring the editor's save results.
     private var results: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(creator.phase == .created ? (creator.needsAttention ? "Created, with a note" : "Created") : "Needs Attention").font(AppFont.headline())

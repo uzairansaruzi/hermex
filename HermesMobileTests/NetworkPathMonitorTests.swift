@@ -26,15 +26,11 @@ final class NetworkPathMonitorTests: XCTestCase {
     }
 
     func testUnknownPathCountsAsSatisfied() {
-        // Before the first update the monitor reports satisfied, so only an
-        // offline first path is news.
         XCTAssertFalse(NetworkPathSnapshot.publishesChange(from: nil, to: wifi))
         XCTAssertTrue(NetworkPathSnapshot.publishesChange(from: nil, to: offline))
     }
 
     func testOnlyAnUnsatisfiedStatusCountsAsOffline() {
-        // A probe is what brings a `requiresConnection` path (an on-demand VPN)
-        // up, so waiting on it would never end.
         XCTAssertTrue(NetworkPathSnapshot(status: .requiresConnection, interfaces: []).isSatisfied)
         XCTAssertTrue(NetworkPathSnapshot(status: .satisfied, interfaces: ["en0"]).isSatisfied)
         XCTAssertFalse(NetworkPathSnapshot(status: .unsatisfied, interfaces: []).isSatisfied)

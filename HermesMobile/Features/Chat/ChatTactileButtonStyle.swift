@@ -294,7 +294,6 @@ private struct ChatMinimumHitTargetModifier<HitShape: Shape>: ViewModifier {
     let shape: HitShape
 
     func body(content: Content) -> some View {
-        // Expand the hit shape without making compact composer controls consume row space.
         content
             .padding(.horizontal, horizontalPadding)
             .padding(.vertical, verticalPadding)

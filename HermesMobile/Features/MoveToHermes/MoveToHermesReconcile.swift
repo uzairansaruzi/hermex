@@ -1,109 +1,53 @@
 import Foundation
 
-/// Move to Hermes's reconcile (#1214): fills the titles, pins and folders the import (#1213)
-/// leaves out, and moves each chat's unsent draft from the webui to Hermes. It never writes over
-/// a value Hermes holds, and never resends a change whose result is unknown.
-///
-/// The runner (#1216) drives it in three steps and journals between them:
-/// 1. `plan` reads each chat's Hermes row once. That read is the snapshot, and every planned
-///    `Operation` records its field's value there as `from`. The runner saves the plan before
-///    anything is sent.
-/// 2. `apply` reads the row again before sending. A field still at `from` is written, after
-///    `willDispatch` records it; one already at `to` counts as applied; anything else changed in
-///    Hermes meanwhile and is left alone. A pin, unpinned and pinned again in between, reads as
-///    unchanged: the host keeps no per-field version, and an edit between this read and the
-///    write still loses to the write.
-/// 3. `settle` checks a write whose result never arrived, including one the journal still shows
-///    in flight after a quit: applied when Hermes holds `to`, otherwise uncertain and reported,
-///    never sent again, even when the field is back at `from`.
-///
-/// Titles and folders fill only a field Hermes has empty. A pin is filled only on a chat this
-/// Move copied, whose unpinned state is the import's own default; a chat Hermes already had keeps
-/// its pin and archive state, since its `false` may be the user's choice. Archive state needs no
-/// step: the import carries it. Unread state is the host's own and is never moved.
 enum MoveToHermesReconcile {
-    /// One webui chat in Hermes that reconcile fills: where it is, and whether this Move copied it.
     struct Target: Codable, Equatable, Sendable {
         let chat: MoveToHermesSourceChat
-        /// The Hermes Profile holding it.
         let profile: String
-        /// True for a chat this Move imported; false for one Hermes already had.
         let copied: Bool
     }
 
-    /// One field change, with its value in the snapshot (`from`) and the value it writes (`to`).
     enum Change: Codable, Hashable, Sendable {
         case title(from: String?, to: String)
         case pinned(from: Bool, to: Bool)
         case folder(from: String?, to: String)
     }
 
-    /// One change to one Hermes session, as the journal records it before dispatch.
     struct Operation: Codable, Hashable, Sendable {
         let id: String
         let profile: String
         let change: Change
     }
 
-    /// One chat's planned changes, and the session id its Hermes draft is keyed by.
     struct Plan: Codable, Equatable, Sendable {
         let target: Target
-        /// The chat's id when the snapshot shows the Hermes Sessions list keys its draft by it: a
-        /// visible row with no parent. A row with a parent may continue a compression chain whose
-        /// root keys the draft, or be a branch keyed by its own id; the client can't tell which,
-        /// so nil leaves the draft on the webui and reports it.
         let draftSession: String?
         let operations: [Operation]
     }
 
-    /// What reading one chat's snapshot gave.
     enum Planned: Codable, Equatable, Sendable {
         case plan(Plan)
-        /// Hermes no longer has the session.
         case missing
-        /// Its row couldn't be read. Nothing was planned or sent, so it can be planned again.
         case unread
     }
 
-    /// What became of one operation.
     enum Outcome: Codable, Equatable, Sendable {
-        /// Hermes holds the value: written now, already there, or found by `settle`.
         case applied
-        /// Hermes's value changed after the snapshot, so it was left alone.
         case changed
-        /// The Hermes host has no such folder (4017).
         case folderMissing
-        /// Hermes no longer has the session.
         case missing
-        /// The host refused it and wrote nothing, such as a title still in use after its one
-        /// suffixed retry.
         case rejected(reason: String)
-        /// Nothing was written: its row couldn't be read, the run was cancelled, `willDispatch`
-        /// threw first, or the host's write fence found the session moved on (#1300). Safe to
-        /// apply again.
         case notSent
-        /// Sent, but the result never arrived and Hermes doesn't hold the value. Reported, never
-        /// sent again.
         case uncertain
     }
 
-    /// What became of one chat's draft.
     enum DraftOutcome: Equatable, Sendable {
         case moved(ChatDraftTransfer)
-        /// Its Hermes draft key couldn't be verified (`Plan.draftSession`), or the row now has a
-        /// parent or is hidden, so it stays on the webui.
         case unverified
-        /// Hermes no longer has the session, so the draft stays on the webui.
         case missing
-        /// Not moved this time: the row couldn't be read or saving failed. Both drafts are kept,
-        /// and moving it again is safe.
         case failed
     }
 
-    /// The chats reconcile fills. The first move takes the chats this run imported (`copied`)
-    /// and every chat Hermes already had; Copy Missing Chats Again takes only the ones it
-    /// imported, so a later run never re-applies the webui's values over changes made in Hermes.
-    /// A runner replaying its own uncertain import builds that chat's `Target` itself.
     static func targets(_ entries: [MoveToHermesScan.Entry], outcomes: [String: WebuiSessionTransfer.Outcome],
                         firstMove: Bool) -> [Target] {
         entries.compactMap { entry in
@@ -121,7 +65,6 @@ enum MoveToHermesReconcile {
         }
     }
 
-    /// Reads each target's Hermes row and plans its changes from that snapshot, keyed by chat id.
     @MainActor
     static func plan(_ targets: [Target], on hermes: any BotTransport) async -> [String: Planned] {
         let planned = await MoveToHermesRequests.map(targets) { target -> Planned in
@@ -137,8 +80,6 @@ enum MoveToHermesReconcile {
         return Dictionary(zip(targets.map(\.chat.id), planned), uniquingKeysWith: { first, _ in first })
     }
 
-    /// The changes `target` needs given its Hermes row. A hidden row gets none: `pinned: true`
-    /// would unhide it, and nothing lists it.
     static func operations(for target: Target, snapshot row: Snapshot) -> [Operation] {
         guard !row.hidden else { return [] }
         var changes: [Change] = []
@@ -148,11 +89,6 @@ enum MoveToHermesReconcile {
         return changes.map { Operation(id: target.chat.id, profile: target.profile, change: $0) }
     }
 
-    /// Sends each of `operations` whose field still holds its `from`, after `willDispatch`
-    /// records it. Each reads its session's row just before; a session's operations run in order,
-    /// and at most `MoveToHermesRequests.perServer` sessions at once. When `willDispatch` throws,
-    /// nothing more is sent. A title the host says is in use is tried once more with a short id
-    /// suffix (`suffixed`), recorded through `willDispatch` like any other write.
     @MainActor
     static func apply(_ operations: [Operation], on hermes: any BotTransport,
                       willDispatch: @escaping @MainActor (Operation) async throws -> Void) async -> [Operation: Outcome] {
@@ -165,7 +101,6 @@ enum MoveToHermesReconcile {
             case .missing: return .missing
             case .unread: return .notSent
             }
-            // Hidden since planning: `pinned: true` would unhide it, so it is left as Hermes has it.
             guard !row.hidden else { return .changed }
             switch state(of: operation.change, in: row) {
             case .to: return .applied
@@ -204,7 +139,6 @@ enum MoveToHermesReconcile {
             } catch BotSettingFailure.rejected(_, let message) {
                 return .rejected(reason: message)
             } catch {
-                // A timeout, a rate limit or a lost reply: read once to see whether it landed.
                 return await settle([operation], on: hermes)[operation] ?? .uncertain
             }
         }
@@ -217,9 +151,6 @@ enum MoveToHermesReconcile {
         return Dictionary(zip(groups.joined(), results.joined()), uniquingKeysWith: { first, _ in first })
     }
 
-    /// Settles `operations` whose writes went out without a known result: `.applied` when Hermes
-    /// holds `to`, otherwise `.uncertain`, never sent again. An operation whose row can't be read
-    /// is left out, to settle later.
     @MainActor
     static func settle(_ operations: [Operation], on hermes: any BotTransport) async -> [Operation: Outcome] {
         let groups = sessions(of: operations)
@@ -238,13 +169,6 @@ enum MoveToHermesReconcile {
         return settled
     }
 
-    /// Moves each planned chat's webui draft to its Hermes session draft (`ChatDraftStore.transferDraft`),
-    /// keyed by chat id. `webui` and `hermes` are the server URLs the app keys those servers'
-    /// drafts by; `connectionID` is the Hermes connection. Each chat with a draft has its row read
-    /// again first, since a plan can be old: a deleted, hidden or parented row keeps its draft on
-    /// the webui, as does a chat whose plan didn't verify its key. Chats left out keep theirs too.
-    /// `canTransfer` is asked just before each transfer; false keeps the draft (`.failed`), as when
-    /// the Hermes server is being removed while its row was read.
     @MainActor
     static func moveDrafts(_ plans: [Plan], webui: URL, hermes: URL, connectionID: UUID,
                            store: ChatDraftStore, on transport: any BotTransport,
@@ -288,10 +212,6 @@ enum MoveToHermesReconcile {
         return outcomes
     }
 
-    // MARK: Snapshot
-
-    /// The fields reconcile reads from a Hermes session row (`GET /api/sessions/{id}`). SQLite
-    /// flags may come as `0`/`1`; blank text reads as none.
     struct Snapshot: Equatable, Sendable {
         var title: String?
         var pinned = false
@@ -320,8 +240,6 @@ enum MoveToHermesReconcile {
         case unread
     }
 
-    /// The exact row `id` in `profile`. The host falls back to a unique prefix, so a row under
-    /// another id is missing, as in the scan.
     @MainActor
     private static func snapshot(_ id: String, in profile: String, on hermes: any BotTransport) async -> Read {
         guard !Task.isCancelled else { return .unread }
@@ -355,7 +273,6 @@ enum MoveToHermesReconcile {
         }
     }
 
-    /// `operations` grouped by session, in first-seen order, each group in its given order.
     private static func sessions(of operations: [Operation]) -> [[Operation]] {
         var order: [String] = []
         var groups: [String: [Operation]] = [:]
@@ -367,30 +284,19 @@ enum MoveToHermesReconcile {
         return order.compactMap { groups[$0] }
     }
 
-    // MARK: Titles
-
-    /// The host's title cap, counted in Unicode scalars as its Python `len` counts.
     static let titleLimit = 100
 
-    /// The title the webui chat gives Hermes, cleaned the way the host cleans titles
-    /// (`hermes_state_titles.sanitize_title`) and cut to its cap; nil for none or the webui's
-    /// `Untitled` placeholder.
     static func fillTitle(_ title: String?) -> String? {
         guard let cleaned = sanitized(title), cleaned != "Untitled" else { return nil }
         return capped(cleaned, to: titleLimit)
     }
 
-    /// `title` with a short suffix from the session id, `Title (a1b2c3)`, cut so the whole stays
-    /// under the host's cap. Tried once after the host says a title is in use; a second
-    /// collision is reported, not retried.
     static func suffixed(_ title: String, id: String) -> String {
         let suffix = " (\(id.suffix(6)))"
         let base = capped(title, to: titleLimit - suffix.unicodeScalars.count)
         return base.trimmingCharacters(in: .whitespaces) + suffix
     }
 
-    /// The host's cleaning: control and invisible characters dropped, whitespace runs collapsed
-    /// to one space, ends trimmed; nil when nothing is left.
     static func sanitized(_ title: String?) -> String? {
         guard let title else { return nil }
         var scalars = String.UnicodeScalarView()
@@ -407,7 +313,6 @@ enum MoveToHermesReconcile {
         return scalars.isEmpty ? nil : String(scalars)
     }
 
-    /// Control and invisible characters the host strips (`_TITLE_CONTROL_RE`, `_TITLE_INVISIBLE_RE`).
     private static func isDropped(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F, 0x7F,

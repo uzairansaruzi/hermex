@@ -49,7 +49,6 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
 
         XCTAssertTrue(fileName.hasSuffix("-notes.txt"))
         XCTAssertEqual(fileName, URL(fileURLWithPath: fileName).lastPathComponent)
-        // The file must live inside the store's attachments directory.
         let contents = try FileManager.default.contentsOfDirectory(
             at: directory.appendingPathComponent("ChatDrafts/Attachments", isDirectory: true),
             includingPropertiesForKeys: nil
@@ -83,7 +82,6 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await store.data(named: "nested/\(outside)"))
     }
 
-    /// Quick Look reads a file, not bytes; the URL obeys the same name rules.
     func testFileURLPointsAtTheSavedCopyAndRejectsTraversalNames() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -105,21 +103,16 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
         let referenced = try await store.save(data: Data("keep".utf8), suggestedFilename: "keep.jpg")
         let orphan = try await store.save(data: Data("drop".utf8), suggestedFilename: "drop.jpg")
 
-        // Within the grace window, nothing is collected — even true orphans.
         await store.sweep(keepingReferenced: [], olderThan: 24 * 60 * 60)
         let survivingOrphan = try await store.data(named: orphan)
         XCTAssertEqual(survivingOrphan, Data("drop".utf8))
 
-        // Past the grace window, orphans go; referenced files stay.
         await store.sweep(keepingReferenced: [referenced], olderThan: 0)
         await XCTAssertThrowsErrorAsync(try await store.data(named: orphan))
         let keptData = try await store.data(named: referenced)
         XCTAssertEqual(keptData, Data("keep".utf8))
     }
 
-    // MARK: - Read-failure classification
-
-    /// A record is only dropped from a draft when its copy is genuinely gone.
     func testAMissingFileIsClassifiedUnrecoverable() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -134,9 +127,6 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
         }
     }
 
-    /// The case that matters: a copy that is present but unreadable right now
-    /// (data protection before first unlock, a transient I/O error) must be
-    /// retried, not reported as permanently lost and swept away.
     func testAnUnreadableButPresentFileIsClassifiedTransient() {
         let protectionFailure = NSError(
             domain: NSCocoaErrorDomain,
@@ -156,7 +146,6 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
     }
 }
 
-/// `XCTAssertThrowsError` for async expressions.
 private func XCTAssertThrowsErrorAsync<T>(
     _ expression: @autoclosure () async throws -> T,
     _ message: String = "",
@@ -167,6 +156,5 @@ private func XCTAssertThrowsErrorAsync<T>(
         _ = try await expression()
         XCTFail("Expected error but succeeded. \(message)", file: file, line: line)
     } catch {
-        // Expected.
     }
 }

@@ -1,7 +1,5 @@
 import UIKit
 
-/// Semantic colours for the surface. Every colour is dynamic, so a draw pass resolves
-/// light or dark from the current trait collection with no theme plumbing.
 struct ReviewDiffTheme {
     let background = UIColor.appCanvas
     let text = UIColor.appText
@@ -26,8 +24,6 @@ struct ReviewDiffTheme {
     }
 }
 
-/// What the surface is showing. A diff keeps the change bar beside the gutter; a
-/// source file drops it so every row reads as plain context.
 enum ReviewDiffPresentation: Equatable {
     case diff
     case source
@@ -40,8 +36,6 @@ enum ReviewDiffPresentation: Equatable {
     }
 }
 
-/// Fonts and fixed geometry, resolved once per trait collection. Row heights follow
-/// the scaled code font so Dynamic Type grows rows instead of clipping them.
 struct ReviewDiffStyle {
     let codeFont: UIFont
     let lineNumberFont: UIFont
@@ -50,7 +44,6 @@ struct ReviewDiffStyle {
     let fileHeaderMetaFont: UIFont
     let noticeFont: UIFont
     let metrics: ReviewDiffMetrics
-    /// Advance of one character in `codeFont`; the word highlights sit on this grid.
     let codeCharacterWidth: CGFloat
     let gutterWidth: CGFloat
     let changeBarWidth: CGFloat
@@ -58,12 +51,9 @@ struct ReviewDiffStyle {
     let maxContentWidth: CGFloat = 2800
     let fileHeaderHorizontalPadding: CGFloat = 12
 
-    /// Change bar plus gutter: the part of a row that never scrolls horizontally.
     var stickyWidth: CGFloat { changeBarWidth + gutterWidth }
     var codeStartX: CGFloat { stickyWidth + codePadding }
 
-    /// `customCodeSize` is `CodeDisplaySettings.customSizeKey`'s value. When set, it replaces
-    /// the scaled code size, and line numbers and hunk labels keep their proportion to it.
     static func resolve(
         for traits: UITraitCollection,
         presentation: ReviewDiffPresentation = .diff,

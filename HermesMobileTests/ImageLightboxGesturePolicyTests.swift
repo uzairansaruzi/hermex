@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The lightbox's two gesture rules: the dismiss drag exists only at fit scale, and it
-/// closes on either distance or speed.
 final class ImageLightboxGesturePolicyTests: XCTestCase {
     func testDismissDragOnlyStartsAtFitScale() {
         let downward = CGPoint(x: 0, y: 600)
@@ -43,11 +41,8 @@ final class ImageLightboxGesturePolicyTests: XCTestCase {
     }
 
     func testClosesOnDistanceOrSpeed() {
-        // A slow, long drag.
         XCTAssertTrue(ImageLightboxGesturePolicy.shouldDismiss(translation: 160, velocity: 40))
-        // A short, fast flick.
         XCTAssertTrue(ImageLightboxGesturePolicy.shouldDismiss(translation: 30, velocity: 1_400))
-        // A small nudge either way stays open.
         XCTAssertFalse(ImageLightboxGesturePolicy.shouldDismiss(translation: 30, velocity: 40))
         XCTAssertFalse(ImageLightboxGesturePolicy.shouldDismiss(translation: -400, velocity: -1_400))
     }

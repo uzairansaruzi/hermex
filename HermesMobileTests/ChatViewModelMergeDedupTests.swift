@@ -3,11 +3,6 @@ import XCTest
 
 final class ChatViewModelMergeDedupTests: XCTestCase {
 
-    // #330 regression: a server-transcribed voice note sends the bare transcript
-    // (no "[Attached files:]" marker). The server frequently returns the clip
-    // attachment on reload as a bare filename (no path), while the optimistic
-    // bubble holds the full upload path. Dedup must still match them so the
-    // optimistic message isn't re-inserted as a duplicate user turn.
     func testVoiceNoteDedupesWhenServerReturnsBareFilenameAttachment() {
         let transcript = "The last chatted about this portable monstrosity"
         let optimistic = ChatMessage(
@@ -44,7 +39,6 @@ final class ChatViewModelMergeDedupTests: XCTestCase {
         )
     }
 
-    // Guard: genuinely different attachment filenames must NOT be deduped away.
     func testDifferentAttachmentFilenamesAreNotDeduped() {
         let optimistic = ChatMessage(
             role: "user", content: "same text", timestamp: 3000, messageId: "local-1",

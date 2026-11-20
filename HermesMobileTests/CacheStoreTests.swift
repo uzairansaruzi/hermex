@@ -398,7 +398,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try fetchCachedSessions(in: context).map(\.sessionID), ["fresh-session"])
         XCTAssertTrue(try fetchCachedMessages(in: context).isEmpty)
 
-        // The expiry delete must reach the store, not just this context.
         let storeContext = ModelContext(context.container)
         XCTAssertEqual(try fetchCachedSessions(in: storeContext).map(\.sessionID), ["fresh-session"])
         XCTAssertTrue(try fetchCachedMessages(in: storeContext).isEmpty)
@@ -408,8 +407,6 @@ final class CacheStoreTests: XCTestCase {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
         let firstCachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-        // Built fresh per call so the tool-call dictionaries are new instances,
-        // like a reloaded transcript; equal values must still compare equal.
         func window(toolPath: String = "notes.txt", reply: String = "Reading") -> [ChatMessage] {
             [
                 ChatMessage(role: "user", content: "Read my notes", timestamp: 1_770_000_000, messageId: "m1"),
@@ -435,12 +432,10 @@ final class CacheStoreTests: XCTestCase {
 
         try CacheStore.cacheMessages(window(), serverURL: serverURL, sessionID: "abc123", in: context, cachedAt: firstCachedAt)
 
-        // Identical window inside the refresh interval: no row is rewritten.
         let soon = firstCachedAt.addingTimeInterval(10 * 60)
         try CacheStore.cacheMessages(window(), serverURL: serverURL, sessionID: "abc123", in: context, cachedAt: soon)
         XCTAssertEqual(try cachedAtByID(), ["m1": firstCachedAt, "m2": firstCachedAt])
 
-        // A changed tool call with the same call count is still a change.
         let edited = firstCachedAt.addingTimeInterval(20 * 60)
         try CacheStore.cacheMessages(
             window(toolPath: "todo.txt"),
@@ -453,7 +448,6 @@ final class CacheStoreTests: XCTestCase {
         let restored = try CacheStore.cachedMessages(serverURL: serverURL, sessionID: "abc123", in: context, now: edited)
         XCTAssertEqual(restored.last?.toolCalls, window(toolPath: "todo.txt").last?.toolCalls)
 
-        // Past the refresh interval, unchanged rows get a new cachedAt and expiry.
         let later = firstCachedAt.addingTimeInterval(CachePolicy.rowRefreshInterval)
         try CacheStore.cacheMessages(
             window(toolPath: "todo.txt"),
@@ -496,8 +490,6 @@ final class CacheStoreTests: XCTestCase {
         let newerCachedAt = olderCachedAt.addingTimeInterval(60)
         let overflow = 3
 
-        // Server B's rows were cached first, so they go first even though their
-        // timestamps and sort indexes are the highest in the table.
         for index in 0..<overflow {
             context.insert(CachedMessage(
                 serverURLString: serverB.absoluteString,
@@ -603,8 +595,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(restored.contentParts, contentParts)
     }
 
-    // MARK: - Per-server isolation (#18)
-
     func testCachedMessagesAreScopedToTheirServerForTheSameSessionID() throws {
         let context = try makeContext()
         let serverA = URL(string: "https://a.example.test")!
@@ -658,8 +648,6 @@ final class CacheStoreTests: XCTestCase {
             cachedAt: cachedAt
         )
 
-        // Re-cache server A with a different set so its stale-removal pass runs.
-        // It must drop A's "a1" without touching server B's "b1".
         try CacheStore.cacheSessions(
             try XCTUnwrap(decodeSessions("""
             {"sessions": [{"session_id": "a2", "title": "A two", "last_message_at": 1770000100, "archived": false}]}
@@ -698,8 +686,6 @@ final class CacheStoreTests: XCTestCase {
             cachedAt: cachedAt
         )
 
-        // Re-cache server A's session with no messages so its stale-removal pass
-        // wipes A's window; server B's identically-keyed session must survive.
         try CacheStore.cacheMessages(
             [],
             serverURL: serverA,
@@ -834,10 +820,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.cachedSession(id: "parent", serverURL: serverA, in: context)?.title, "On server A")
     }
 
-    // MARK: Hermes (#1054)
-
-    /// A Hermes session is keyed by its server, Profile and lineage root and keeps the tip it
-    /// opens by; its messages share that scope, by row id. It reads back as the list showed it.
     func testHermesKeysCarryTheServerProfileAndLineageRoot() throws {
         let context = try makeContext()
         let row = HermesSessionRow(id: "tip", title: "Chain", preview: "First prompt", lastActive: 1_770_000_000, unread: true,
@@ -857,16 +839,12 @@ final class CacheStoreTests: XCTestCase {
                                                            in: context, limit: 10), [hermesMessage(7)])
         XCTAssertEqual(try CacheStore.hermesLineageRoot(forKey: "tip", profile: "default", serverURL: hermesServer, in: context), "root")
 
-        // The same session id in another Profile's store is another session.
         let other = HermesSessionRow(id: "tip", title: "Elsewhere", lineageRootID: "root").summary(in: "default-extra")
         try CacheStore.cacheHermesSessions([other], profile: "default-extra", reachedEnd: true, serverURL: hermesServer, in: context)
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default", in: context).map(\.title), ["Chain"])
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default-extra", in: context).map(\.title), ["Elsewhere"])
     }
 
-    /// The cache holds no tool or reasoning cards, only which rows anchor them, so a cached
-    /// transcript can draw a turn's fold row before the host answers. A later read that finds
-    /// the row anchors nothing clears it.
     func testHermesTranscriptRemembersWhichRowsAnchorWork() throws {
         let context = try makeContext()
         let scope = CacheStore.hermesScope(profile: "default", lineageRoot: "root")
@@ -883,9 +861,6 @@ final class CacheStoreTests: XCTestCase {
             .workAnchorIDs, [])
     }
 
-    /// Each page is upserted and none sweeps, so reading page 1 alone keeps the rows later pages
-    /// brought. A walk that reached the list's end drops a cached row it lacks. Archived rows
-    /// are never cached.
     func testHermesPagesUpsertAndOnlyAWalkToTheEndRemovesARow() throws {
         let context = try makeContext()
         func cache(_ rows: [HermesSessionRow], reachedEnd: Bool) throws {
@@ -910,7 +885,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try cached(), ["A renamed", "C"], "a walk to the end drops the row deleted elsewhere")
     }
 
-    /// A session this phone deleted or archived leaves the cache with its transcript.
     func testRemovingAHermesSessionTakesItsTranscript() throws {
         let context = try makeContext()
         let rows = ["a", "b"].map { HermesSessionRow(id: $0, title: $0.uppercased()).summary(in: "default") }
@@ -926,9 +900,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try fetchCachedMessages(in: context).map(\.sessionID), ["hermes|default|b"])
     }
 
-    /// A deleted Profile takes only its own Bot Chat on that connection, archived copies included,
-    /// and a discarded connection every one of its own: other connections', servers' and
-    /// sessions' stay.
     func testRemovingABotOrAConnectionTakesOnlyItsBotChats() throws {
         let context = try makeContext()
         let mac = UUID(), laptop = UUID()
@@ -973,14 +944,10 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try session(), 1)
     }
 
-    /// A newest read after a rewind holds the rows before the cut and the new turn: the cut rows
-    /// inside its row ids go, and rows an older page brought on an earlier visit keep their
-    /// place before it.
     func testANewestReadDropsTheRowsARewindCut() throws {
         let context = try makeContext()
         try cacheTip(Array(1...6), newest: .from(rowIDs: [4, 5, 6]), in: context)
 
-        // Rewound before row 5; the new turn saved rows 7 and 8.
         try cacheTip([3, 4, 7, 8], newest: .from(rowIDs: [3, 4, 7, 8]), in: context)
 
         let cached = try CacheStore.cachedHermesMessages(serverURL: hermesServer, profile: "default", lineageRoot: "tip",
@@ -990,32 +957,23 @@ final class CacheStoreTests: XCTestCase {
                                                            in: context, limit: 2).compactMap(\.rowID), [7, 8])
     }
 
-    /// An undo with no later turn leaves the newest read's ids below the rows it removed, which
-    /// go all the same, since the read went back from the newest row; undoing the only exchange
-    /// leaves nothing.
     func testANewestReadDropsTheRowsAnUndoRemoved() throws {
         let context = try makeContext()
         try cacheTip(Array(1...6), newest: .from(rowIDs: [4, 5, 6]), in: context)
 
-        // Undid rows 5 and 6; the newest read stopped at row 3, which an older page holds.
         try cacheTip([3, 4], newest: .from(rowIDs: [3, 4]), in: context)
         XCTAssertEqual(try CacheStore.cachedHermesMessages(serverURL: hermesServer, profile: "default", lineageRoot: "tip",
                                                            in: context, limit: 100).compactMap(\.rowID), [1, 2, 3, 4])
 
-        // Undid every row left; the read found none and reached the first row.
         try cacheTip([], newest: .all, in: context)
         XCTAssertEqual(try CacheStore.cachedHermesMessages(serverURL: hermesServer, profile: "default", lineageRoot: "tip",
                                                            in: context, limit: 100), [])
     }
 
-    /// A compaction re-inserts the session's first rows under new, higher ids, so they show
-    /// before rows with lower ones. A newest read that stopped short of them never covered them,
-    /// so they stay cached.
     func testANewestReadKeepsTheCompactedHeadRowsItNeverReached() throws {
         let context = try makeContext()
         try cacheTip([1001, 1002, 3, 4, 1003, 1004, 1005], newest: .all, in: context)
 
-        // Reopened: the newest read went back to row 4 only, and a turn saved row 1006.
         try cacheTip([4, 1003, 1004, 1005, 1006], newest: .from(rowIDs: [4, 1003, 1004, 1005, 1006]), in: context)
 
         XCTAssertEqual(try CacheStore.cachedHermesMessages(serverURL: hermesServer, profile: "default", lineageRoot: "tip",
@@ -1023,8 +981,6 @@ final class CacheStoreTests: XCTestCase {
                        [1001, 1002, 3, 4, 1003, 1004, 1005, 1006])
     }
 
-    /// Two Hermes servers and a webui server never read each other's rows, and clearing one
-    /// server, as sign-out and removing it do, takes only its rows, Hermes ones included.
     func testHermesRowsStayWithTheirServerAndClearWithIt() throws {
         let context = try makeContext()
         let serverA = URL(string: "https://a.hermes.example")!
@@ -1053,9 +1009,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.cachedSessions(serverURL: webui, in: context).map(\.title), ["On webui"])
     }
 
-    /// Hermes rows keep the TTL: an expired one never reads back and the next write purges it.
-    /// The cap is the same maintenance pass, which
-    /// `testCacheMaintenanceEvictsOnlyTheLeastRecentlyCachedOverflowAcrossServers` covers.
     func testHermesRowsKeepTheTTL() throws {
         let context = try makeContext()
         let old = Date(timeIntervalSince1970: 1_770_000_000)
@@ -1071,7 +1024,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try fetchCachedMessages(in: context).compactMap(\.rowID), [9_999])
     }
 
-    /// A store written before #1054's columns opens with every row, its new columns empty.
     func testAStoreFromBeforeTheHermesColumnsOpensWithItsRows() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("cache-\(UUID().uuidString).store")
         addTeardownBlock {
@@ -1103,7 +1055,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.cachedSessions(serverURL: URL(string: "https://example.test")!, in: context).map(\.title), ["Before"])
     }
 
-    /// The cache names its servers' URLs, so it stays out of the app group (#1509).
     func testTheCacheIsNotStoredInTheAppGroup() throws {
         guard let group = HermesShareDraft.containerURL() else {
             throw XCTSkip("An unsigned build, as on CI, has no app group.")
@@ -1111,7 +1062,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertFalse(CacheContainer.configuration.url.path.hasPrefix(group.path))
     }
 
-    /// An install's existing cache moves with its rows, and nothing stays behind.
     func testMovingTheStoreKeepsItsRowsAndLeavesNothingBehind() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
@@ -1134,14 +1084,12 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.cachedSessions(serverURL: server, in: context).map(\.title), ["Kept"])
     }
 
-    /// A store that won't open leaves the app a working cache that isn't written to disk.
     func testAStoreThatWontOpenFallsBackToMemory() throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         addTeardownBlock { try? FileManager.default.removeItem(at: file) }
         try Data().write(to: file)
         let server = URL(string: "https://example.test")!
 
-        // A regular file as the store's parent directory can't hold a store.
         let context = ModelContext(CacheContainer.container(for: ModelConfiguration(url: file.appendingPathComponent("default.store"))))
         let sessions = try decodeSessions(#"{"sessions": [{"session_id": "s1", "title": "Kept", "archived": false}]}"#)
         try CacheStore.cacheSessions(try XCTUnwrap(sessions.sessions), serverURL: server, in: context)
@@ -1152,13 +1100,11 @@ final class CacheStoreTests: XCTestCase {
 
     private let hermesServer = URL(string: "https://hermes.example")!
 
-    /// Caches the held rows `ids` of session `tip` in `default`, after a newest read that covered `newest`.
     private func cacheTip(_ ids: [Int], newest: HermesNewestCoverage, in context: ModelContext) throws {
         try CacheStore.cacheHermesMessages(ids.map { hermesMessage($0) }, newestCoverage: newest, serverURL: hermesServer,
                                            profile: "default", lineageRoot: "tip", in: context)
     }
 
-    /// A settled Hermes row as the chat's projection makes it.
     private func hermesMessage(_ rowID: Int, root: String = "tip") -> ChatMessage {
         ChatMessage(role: rowID.isMultiple(of: 2) ? "assistant" : "user", content: "Row \(rowID)", timestamp: Double(rowID),
                     messageId: "\(root)/row-\(rowID)", displayMetadata: ["task_count": .number(1)], rowID: rowID)
@@ -1189,7 +1135,6 @@ final class CacheStoreTests: XCTestCase {
     }
 }
 
-/// The cache's schema before #1054 added the Hermes columns, for the upgrade test.
 enum CacheSchemaBefore1054: VersionedSchema {
     static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
     static var models: [any PersistentModel.Type] { [CachedSession.self, CachedMessage.self] }

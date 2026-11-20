@@ -25,7 +25,6 @@ import Observation
         XCTAssertNil(summaries.states[key])
     }
 
-    /// A card that leaves (its `.task` cancelled) and returns while loading keeps its one request.
     func testACardThatLeavesAndReturnsWhileLoadingKeepsItsOneRequest() async throws {
         let summaries = ApprovalSummaries(), key = key()
         let started = expectation(description: "summary started")
@@ -75,7 +74,6 @@ import Observation
               pendingCount: 1, choices: [.once, .deny])
     }
 
-    /// A fresh defaults suite for the switch; `nil` leaves it at its shipped default.
     private func appStorage(explains: Bool?) throws -> UserDefaults {
         let suite = "approval-summary-test-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

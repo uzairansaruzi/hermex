@@ -2,8 +2,6 @@ import Foundation
 import StoreKit
 import UIKit
 
-/// Something the user did during the week (#1662). The raw values are the report's
-/// `features` keys; `docs/agents/usage-reports.md` lists where each is observed.
 enum UsageFeature: String, CaseIterable, Codable, CodingKey {
     case workspace, tasks, skills, memory, insights, kanban, bots
     case shareExtension = "share_extension"
@@ -13,7 +11,6 @@ enum UsageFeature: String, CaseIterable, Codable, CodingKey {
     case appIntents = "app_intents"
 }
 
-/// One prompt card's week: on screen, closed with its X, its own button opened.
 struct UsageCardTally: Codable, Equatable {
     var shown = false
     var dismissed = false
@@ -25,7 +22,6 @@ struct UsageCardTally: Codable, Equatable {
     }
 }
 
-/// A UTC ISO week, named by its Monday at 00:00 UTC.
 struct UsageWeekID: Codable, Hashable {
     let monday: Date
 
@@ -41,7 +37,6 @@ struct UsageWeekID: Codable, Hashable {
 
     var previous: UsageWeekID { UsageWeekID(containing: monday.addingTimeInterval(-24 * 60 * 60)) }
 
-    /// `YYYY-Www`, as the report names it.
     var id: String {
         let parts = Self.calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: monday)
         return String(format: "%04d-W%02d", parts.yearForWeekOfYear ?? 0, parts.weekOfYear ?? 0)
@@ -51,23 +46,19 @@ struct UsageWeekID: Codable, Hashable {
         Self.calendar.isDate(monday, equalTo: other.monday, toGranularity: .month)
     }
 
-    /// `YYYY-MM-DD` in UTC.
     static func day(_ date: Date) -> String {
         date.formatted(Date.ISO8601FormatStyle(timeZone: .gmt).year().month().day())
     }
 }
 
-/// The local tallies for one week. Callers only ever hand in booleans and counts.
 struct UsageTallies: Codable, Equatable {
     var week: UsageWeekID
-    /// UTC days (`YYYY-MM-DD`) in which the app came to the foreground.
     var activeDays: Set<String> = []
     var completedResponses = 0
     var features: Set<UsageFeature> = []
     var tip = UsageCardTally()
     var star = UsageCardTally()
 
-    /// The before-consent preview's weekly values: plausible, and labelled as samples.
     static func sample(week: UsageWeekID) -> UsageTallies {
         UsageTallies(week: week, activeDays: Set((0..<5).map { UsageWeekID.day(week.monday.addingTimeInterval(Double($0) * 86_400)) }),
                      completedResponses: 42, features: [.workspace, .insights, .bots, .liveActivity],
@@ -75,8 +66,6 @@ struct UsageTallies: Codable, Equatable {
     }
 }
 
-/// What this phone is, read when a report is built. Makes no request beyond StoreKit's
-/// local app transaction, which only tells TestFlight from the App Store.
 struct UsageDevice: Equatable {
     var channel: UsageReport.Channel
     var appVersion: String
@@ -91,13 +80,11 @@ struct UsageDevice: Equatable {
             appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0",
             osVersion: UIDevice.current.systemVersion,
             deviceModel: hardwareModel,
-            // The app's display language, which can differ from the device's.
             language: String((Bundle.main.preferredLocalizations.first ?? "en").prefix(16)),
             region: region(Locale.current.region?.identifier)
         )
     }
 
-    /// TestFlight installs carry a sandbox app transaction; anything unreadable counts as the App Store.
     private static func channel() async -> UsageReport.Channel {
         guard let result = try? await AppTransaction.shared else { return .appstore }
         switch result {
@@ -106,7 +93,6 @@ struct UsageDevice: Equatable {
         }
     }
 
-    /// The hardware identifier, such as `iPhone17,2`; a simulator reports the model it simulates.
     private static var hardwareModel: String {
         if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return simulated }
         var info = utsname()
@@ -114,22 +100,15 @@ struct UsageDevice: Equatable {
         return withUnsafeBytes(of: &info.machine) { bytes in String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self) }
     }
 
-    /// Two capital letters or three digits, as the collector accepts; `ZZ` (unknown) otherwise.
     static func region(_ identifier: String?) -> String {
         guard let identifier, identifier.wholeMatch(of: /[A-Z]{2}|[0-9]{3}/) != nil else { return "ZZ" }
         return identifier
     }
 }
 
-/// The weekly usage report, exactly as it goes on the wire (#1659): every key required and
-/// every value inside the collector's limits. `UsageReports` builds it, and the preview shows
-/// the same value the sender encodes. It has no field that could hold a URL or a name.
 struct UsageReport: Encodable, Equatable {
-    /// The newest format this build can encode. Each user's reports use the version they accepted.
     static let currentVersion = 2
 
-    /// The fields each later format added, which the re-prompt names. Version 2 added each
-    /// server's `gateway`.
     static func fieldsAdded(after version: Int) -> [String] {
         version < 2 ? [String(localized: "whether each Hermes server is a Webapp or a dashboard")] : []
     }
@@ -145,12 +124,9 @@ struct UsageReport: Encodable, Equatable {
     struct Version: Encodable, Equatable {
         var kind: ServerKind
         var version: String
-        /// From format 2; nil, and so absent from the JSON, in format 1.
         var gateway: Gateway?
     }
 
-    /// What a server's last sign-in reached; `unknown` for a webui server or a Hermes server
-    /// not signed in since this was recorded.
     enum Gateway: String, Encodable { case webapp, dashboard, unknown }
 
     struct Features: Encodable, Equatable {
@@ -205,8 +181,6 @@ struct UsageReport: Encodable, Equatable {
         case completedResponses = "completed_responses"
     }
 
-    /// The one builder the preview and the sender share. It reads only each server's kind and
-    /// known release, and makes no request.
     init(version: Int, tallies: UsageTallies, firstReportOfMonth: Bool, installDate: Date, device: UsageDevice,
          servers: [ServerAccount], settings: Settings) {
         v = version
@@ -234,8 +208,6 @@ struct UsageReport: Encodable, Equatable {
         cards = Cards(tip: tallies.tip, star: tallies.star)
     }
 
-    /// A plain release number, `other` for any other string, or `unknown` when the app knows
-    /// none: a webui server stores no version.
     static func reportedVersion(of server: ServerAccount) -> String {
         guard server.kind == .hermes, let version = server.serverVersion else { return "unknown" }
         return version.wholeMatch(of: /[0-9]+(\.[0-9]+){1,3}/) != nil ? version : "other"
@@ -256,22 +228,15 @@ struct UsageReport: Encodable, Equatable {
     }
 }
 
-/// The device's answer about usage reports. One answer covers every server.
 struct UsageReportConsent: Equatable {
-    /// The format the user allowed; nil while reports are off.
     var acceptedVersion: Int?
-    /// The newest format the user said No thanks to, or turned reports off at.
     var declinedVersion: Int?
 
     enum Question: Equatable {
-        /// The first ask.
         case allow
-        /// The report gained fields since the version the user allowed.
         case moreFields([String])
     }
 
-    /// What the session list card asks now, if anything. No thanks and turning reports off are
-    /// both permanent for that format.
     func question(currentVersion: Int = UsageReport.currentVersion) -> Question? {
         guard (declinedVersion ?? 0) < currentVersion else { return nil }
         guard let acceptedVersion else { return declinedVersion == nil ? .allow : nil }
@@ -279,14 +244,11 @@ struct UsageReportConsent: Equatable {
     }
 }
 
-/// Consent, the week's tallies and the weekly send (#1662), device-wide in `UserDefaults`.
-/// Nothing is tallied unless reports are allowed and at least one server is configured.
 @MainActor
 final class UsageReports {
     static let shared = UsageReports(defaults: .standard)
     static let collectorURL = URL(staticString: "https://hermex-stats.uzairansar.com/v1/report")
 
-    /// Debug builds never send.
     nonisolated static var buildSends: Bool {
         #if DEBUG
         false
@@ -299,10 +261,8 @@ final class UsageReports {
         static let acceptedVersion = "usageReports.acceptedVersion"
         static let declinedVersion = "usageReports.declinedVersion"
         static let week = "usageReports.week"
-        /// Last week's tallies, waiting for the next foreground to send them.
         static let endedWeek = "usageReports.endedWeek"
         static let lastAttemptedWeek = "usageReports.lastAttemptedWeek"
-        /// Debug builds: Settings › Developer shows the card past its guards until answered.
         static let debugForcesCard = "usageReports.debugForcesCard"
     }
 
@@ -330,8 +290,6 @@ final class UsageReports {
         self.currentVersion = currentVersion
     }
 
-    // MARK: - Consent
-
     var consent: UsageReportConsent {
         UsageReportConsent(acceptedVersion: defaults.object(forKey: Keys.acceptedVersion) as? Int,
                            declinedVersion: defaults.object(forKey: Keys.declinedVersion) as? Int)
@@ -339,19 +297,15 @@ final class UsageReports {
 
     var isAllowed: Bool { consent.acceptedVersion != nil }
 
-    /// Allow, on the card or in Settings: reports use the newest format, and today counts as active.
     func allow(now: Date = Date()) {
         defaults.set(currentVersion, forKey: Keys.acceptedVersion)
         recordActiveDay(now)
     }
 
-    /// No thanks: the card never asks again for this format. On the re-prompt, reports keep
-    /// going in the format already allowed.
     func decline() {
         defaults.set(currentVersion, forKey: Keys.declinedVersion)
     }
 
-    /// Settings off: stops sending and erases the tallies. Reports already sent stay sent.
     func turnOff() {
         defaults.removeObject(forKey: Keys.acceptedVersion)
         defaults.set(currentVersion, forKey: Keys.declinedVersion)
@@ -360,7 +314,6 @@ final class UsageReports {
     }
 
     #if DEBUG
-    /// Settings › Developer's toggle: forgets the answer and the week so the card asks again.
     func forgetAnswerForTesting() {
         for key in [Keys.acceptedVersion, Keys.declinedVersion, Keys.week, Keys.endedWeek] {
             defaults.removeObject(forKey: key)
@@ -368,11 +321,8 @@ final class UsageReports {
     }
     #endif
 
-    // MARK: - Tallies
-
     private var isRecording: Bool { isAllowed && !servers().isEmpty }
 
-    /// This week's tallies so far; nil before anything is recorded.
     var thisWeek: UsageTallies? { load(Keys.week) }
 
     func record(_ feature: UsageFeature, now: Date = Date()) {
@@ -383,7 +333,6 @@ final class UsageReports {
         update(now) { $0.completedResponses += 1 }
     }
 
-    /// A tip or star card event seen at the card itself; Settings › About's matching rows never count.
     func record(_ card: SessionListCard, _ event: WritableKeyPath<UsageCardTally, Bool>, now: Date = Date()) {
         switch card {
         case .tip: update(now) { $0.tip[keyPath: event] = true }
@@ -403,8 +352,6 @@ final class UsageReports {
         save(tallies, forKey: Keys.week)
     }
 
-    /// Sets aside tallies from the week that just ended for the next send, discards anything
-    /// older, and returns this week's.
     private func rollOver(_ now: Date) -> UsageTallies {
         let week = UsageWeekID(containing: now)
         if let stored: UsageTallies = load(Keys.week), stored.week != week {
@@ -417,11 +364,6 @@ final class UsageReports {
         return load(Keys.week) ?? UsageTallies(week: week)
     }
 
-    // MARK: - Reports
-
-    /// Each foreground: counts today, which first sets aside the week that just ended, then
-    /// sends that week once. The attempt is recorded before posting, and a failure is never
-    /// retried, even after a relaunch.
     func appBecameActive(now: Date = Date()) async {
         recordActiveDay(now)
         await sendEndedWeek(now: now)
@@ -432,9 +374,6 @@ final class UsageReports {
         _ = rollOver(now)
         guard defaults.data(forKey: Keys.endedWeek) != nil else { return }
         let device = await device()
-        // Read the tallies only after the await, so turning reports off meanwhile, even
-        // if they're turned on again, leaves nothing to send. From here to the request
-        // nothing waits, so consent is checked just before it.
         guard let ended: UsageTallies = load(Keys.endedWeek) else { return }
         defaults.removeObject(forKey: Keys.endedWeek)
         guard lastAttemptedWeek != ended.week else { return }
@@ -450,14 +389,11 @@ final class UsageReports {
         _ = try? await session.data(for: request)
     }
 
-    /// The report for the week in progress, as it would be sent; the example before consent.
-    /// `asking` builds it in the newest format, as the consent card's re-prompt asks for it.
     func preview(now: Date = Date(), asking: Bool = false) async -> UsageReport {
         let week = UsageWeekID(containing: now)
         guard let accepted = consent.acceptedVersion else {
             return build(version: currentVersion, tallies: .sample(week: week), firstOfMonth: true, device: await device())
         }
-        // Roll over before the await: resuming in a later week with this `now` would discard that week's tallies.
         let tallies = rollOver(now)
         return build(version: asking ? currentVersion : accepted, tallies: tallies, firstOfMonth: isFirstReport(ofMonthOf: week), device: await device())
     }
@@ -473,13 +409,11 @@ final class UsageReports {
         (defaults.object(forKey: Keys.lastAttemptedWeek) as? Date).map(UsageWeekID.init(containing:))
     }
 
-    /// True until a report for another week whose Monday is in the same UTC month was attempted.
     private func isFirstReport(ofMonthOf week: UsageWeekID) -> Bool {
         guard let last = lastAttemptedWeek, last != week else { return true }
         return !last.isInSameMonth(as: week)
     }
 
-    /// Push is on when any configured server has a pairing; App Lock is the device setting.
     static func liveSettings(servers: [ServerAccount]) -> UsageReport.Settings {
         let paired = Set(((try? KeychainPushPairingStore()?.allPairings()) ?? [:]).keys.map(\.absoluteString))
         return UsageReport.Settings(pushEnabled: servers.contains { paired.contains($0.id) },
@@ -496,7 +430,6 @@ final class UsageReports {
 }
 
 extension URLSessionConfiguration {
-    /// No cookies, cache, credentials or custom headers: the report body is the whole request.
     static var usageReports: URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil

@@ -1,12 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// A turn's reasoning as the same dense log row tool calls use: brain icon,
-/// bold title, dim one-line preview, chevron, and an empty status slot so the
-/// labels line up. Live rows read `Thinking` with the latest thought; settled
-/// rows read `Thought` with the block's beginning. Tap reveals the reasoning under the row; long-press
-/// copies it. Live thinking streams through `LiveReasoningTextView`; settled
-/// text is selectable. "Expand Thinking by Default" decides the initial state.
 struct ReasoningBlockView: View {
     let text: String
     let liveStreamID: String?
@@ -135,8 +129,6 @@ struct StreamingReasoningTextState: Equatable {
         }
     }
 
-    /// Prefer a nearby blank line so stable chunk identity follows content structure.
-    /// The character-count fallback also bounds a paragraph with no line breaks.
     private func stableChunkBoundary(in text: String) -> String.Index {
         let target = text.index(
             text.startIndex,
@@ -235,9 +227,6 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
         textView.accessibilityLabel = text
     }
 
-    /// Reports at most the row body cap. Past it the text view scrolls itself
-    /// and `TailPinnedTextView` keeps the newest chunk in view, so the SwiftUI
-    /// window around it never needs to scroll for live thinking.
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         uiView: UITextView,
@@ -257,9 +246,6 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
         return CGSize(width: width, height: layout.frameHeight)
     }
 
-    /// A text view that stays scrolled to its last line whenever it scrolls,
-    /// so streaming thinking shows the newest text. It is never interactive
-    /// while live, so there is no user offset to respect.
     final class TailPinnedTextView: UITextView {
         override func layoutSubviews() {
             super.layoutSubviews()
@@ -278,8 +264,6 @@ private struct StreamingReasoningTextView: UIViewRepresentable {
             "HermexStreamingReasoningChunkID"
         )
 
-        // Retained for this mounted text view, so SwiftUI recreating the wrapper
-        // never chunks the entire reply again before applying its appended suffix.
         private var state = StreamingReasoningTextState()
         private var renderedText = ""
         private var stableChunkIDs: [Int] = []

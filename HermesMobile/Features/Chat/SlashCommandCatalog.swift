@@ -1,14 +1,8 @@
 import Foundation
 
-/// The commands one chat's `/` panel knows: webui's built-ins, or a Hermes chat's own
-/// commands and its host's (#1036).
 struct SlashCommandScope: Equatable, Sendable {
-    /// The app's commands, listed first; their arguments come from the app.
     var builtins: [SlashCommand]
-    /// Host command names and aliases, lowercased, whose arguments the host completes.
     var hostCommands: Set<String> = []
-    /// A Hermes chat's: the host completes its commands' arguments, and an agent command's
-    /// aliases find it, as the host's `canon` lists them.
     var isHermes = false
 
     static let webui = SlashCommandScope(builtins: SlashCommandCatalog.allCommands)
@@ -193,8 +187,6 @@ enum SlashCommandCatalog {
         )
     ]
 
-    /// The commands worth showing for `query`, best first. An empty query keeps
-    /// the curated order of `commands`.
     static func matching(
         _ query: String,
         in commands: [SlashCommand] = allCommands,
@@ -205,23 +197,12 @@ enum SlashCommandCatalog {
         }
     }
 
-    /// Every built-in command name, lowercased. Used to keep an agent command
-    /// that shadows a built-in out of the popover.
     static let builtinNames: Set<String> = Set(allCommands.map { $0.name.lowercased() })
 
     static func command(named name: String) -> SlashCommand? {
         allCommands.first { $0.name.lowercased() == name.lowercased() }
     }
 
-    /// The commands a Hermes chat runs itself (#1036): each has a native path, so the host's
-    /// command of the same name never runs. Every other command its host lists runs there.
-    /// `/title` is `session.title` on the chat's runtime (#1048); `/retry` and `/undo` rewind
-    /// the session's history as Regenerate does (#1049); `/compress` and `/compact` are
-    /// `session.compress`, and `/clear` opens a new chat in this one's place (#1050). `/sessions`
-    /// and `/resume` open the Sessions list, or a session by its title (#1053). `/branch` and
-    /// `/fork` are `session.branch`, and open the branch on top (#1051). `/workspace` is the folder
-    /// chip's pick, and `/interrupt` is Stop and send (#1673). `/rollback` lists, compares and
-    /// restores the host's checkpoints through `rollback.*`, which a Webapp runs (#1728).
     static let hermesCommands: [SlashCommand] = ["new", "stop", "model", "workspace", "reasoning", "personality", "title",
                                                  "goal", "btw", "background", "bg", "interrupt", "retry", "undo",
                                                  "compress", "compact", "branch", "fork"].compactMap(command(named:)) + [
@@ -263,9 +244,6 @@ enum SlashCommandCatalog {
         hermesCommands.first { $0.name.lowercased() == name.lowercased() }
     }
 
-    /// Host commands a Hermes chat holds until a later slice of #702: they rewrite history or
-    /// move between chats, so the host alone would leave the phone stale. Listed, never run.
-    /// None is held now: `/branch` and `/fork` run natively (#1051).
     static let hermesHeldNames: Set<String> = []
 
     static let reasoningLevels = ["show", "hide", "none", "minimal", "low", "medium", "high", "xhigh"]

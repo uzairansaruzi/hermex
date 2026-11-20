@@ -2,16 +2,7 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// `/compress`, `/compact` and `/clear` in a Hermes session (#1050), over #901's socket-level
-/// host and scripted transcript pages. Compress is `session.compress` on the runtime
-/// (`tui_gateway/methods_session.py`); the reply and page shapes are the ones
-/// `scripts/local-hermes` answered at the `HERMES_AGENT_TESTED_SHA` pin, where an in-place
-/// compaction soft-archives the middle turns (`active` 0) and re-inserts the rest under new ids.
 @MainActor final class HermesCompressClearTests: XCTestCase {
-    // MARK: Compress
-
-    /// `/compress` names the session's runtime and Profile; `/compact` is the same call, and
-    /// sends its focus.
     func testCompressSendsTheProfileAndAnyFocus() async {
         let chat = await openChat(threeTurns)
         chat.host.always("session.compress", .init(result: compressed(removed: 4)))
@@ -27,8 +18,6 @@ import Observation
         XCTAssertEqual(chat.writes("slash.exec"), [], "never the host's own /compress")
     }
 
-    /// Once the host compacts, the newest page replaces the transcript: the compacted turns, the
-    /// compaction card after them, and the turns after it. One note says what was removed.
     func testACompactionRereadsTheNewestPageAndPostsTheNote() async throws {
         let chat = await openChat(threeTurns)
         chat.host.always("session.compress", .init(result: compressed(removed: 4)))
@@ -49,9 +38,6 @@ import Observation
         XCTAssertFalse(chat.model.isCompressingSession)
     }
 
-    /// A compaction that removed nothing, an aborted one, another compressor holding the lock,
-    /// one still running on the compute host and a busy host (4009) each say why on the status
-    /// line, keep the draft, and read nothing.
     func testWhatTheHostDidNotCompressShowsItsMessage() async {
         let chat = await openChat(threeTurns)
         let refusals: [(String, BotSocketHost.Reply, String)] = [
@@ -88,7 +74,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4, 5, 6])
     }
 
-    /// While a reply streams, `/compress` asks to wait and sends nothing.
     func testCompressingDuringAReplyIsRefused() async {
         let chat = await openChat(threeTurns)
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -102,9 +87,6 @@ import Observation
         XCTAssertEqual(chat.writes("session.compress"), [])
     }
 
-    /// Leaving while the host summarizes, as backgrounding does, loses the answer. Nothing is
-    /// sent again, and on return the chat reads the compacted history from the newest page
-    /// instead of keeping the rows it held.
     func testACompactionWhoseAnswerWasLostIsReadOnReturn() async {
         let chat = await openChat(threeTurns)
         chat.host.withhold("session.compress")
@@ -125,8 +107,6 @@ import Observation
         XCTAssertEqual(chat.writes("session.compress").count, 1)
     }
 
-    /// A compute host that answers `pending` finishes later and says so with
-    /// `status.update {kind: "compacted"}`: then the chat reads the compacted history.
     func testAPendingCompactionIsReadWhenTheHostFinishes() async {
         let chat = await openChat(threeTurns)
         chat.host.next("session.compress", .init(result: .object([
@@ -143,11 +123,6 @@ import Observation
         XCTAssertEqual(chat.model.compressionReferenceCard?.referenceText, "The user asked for two answers.")
     }
 
-    // MARK: Stored key rotation
-
-    /// A host on legacy compaction re-points the session to a new stored key, which its
-    /// `session.info` reports. The chat reads the new key's page, keeps its root and draft key,
-    /// and goes on sending on the same runtime.
     func testARotatedStoredKeyIsAdoptedAndTheRootKept() async {
         let chat = await openChat(threeTurns)
         let draftKey = chat.model.hermesDraftKey
@@ -167,9 +142,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime")])
     }
 
-    /// A bot's Bot Chat follows the new key too (#1145, reversing #1099's "never for a Bot
-    /// Chat"), so `/compress` leaves it writable: later pages read the new key, while the
-    /// canonical root, the bot's draft key and the next attach's title lookup stay as they were.
     func testABotChatFollowsItsRotatedStoredKeyAndKeepsSending() async {
         let chat = await openChat(threeTurns, target: .canonicalChat(profile: "default"))
         let draftKey = chat.model.hermesDraftKey
@@ -191,8 +163,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime")])
     }
 
-    /// Pushes and run alerts name the session by its current stored key (#1177), so the open
-    /// chat's replies stay quiet and its alert opens it after the key moves.
     func testPushPresenceAndTheRunAlertFollowTheRotatedKey() async {
         let chat = await openChat(threeTurns)
         let server = URL(string: "https://hermes.example")!
@@ -204,11 +174,6 @@ import Observation
         XCTAssertEqual(chat.model.hermesSessionLink, HermesSessionDestination(server: server, profile: "default", key: "tip-2"))
     }
 
-    // MARK: Clear
-
-    /// `/clear` opens a new chat in this one's place, in its Profile, on the model its chip
-    /// shows and in its working folder. The old chat keeps its session and history, and
-    /// nothing is cleared on the host.
     func testClearOpensANewChatWithTheProfileModelAndFolder() async {
         let chat = await openChat(threeTurns, info: ["cwd": .string("/work/app")], catalog: .object([
             "model": .string("claude-opus"), "provider": .string("anthropic"), "providers": .array([
@@ -230,8 +195,6 @@ import Observation
         XCTAssertEqual(chat.writes("session.create"), [])
     }
 
-    /// Before the chip's catalog answers, or when it fails, `/clear` keeps the model and
-    /// provider the host reported for this chat instead of the Profile's default.
     func testClearKeepsTheReportedModelWithoutTheCatalog() async {
         let chat = await openChat(threeTurns, info: [
             "cwd": .string("/work/app"), "model": .string("claude-opus"), "provider": .string("anthropic")
@@ -244,7 +207,6 @@ import Observation
                                          model: HermesCall.Model(id: "claude-opus", provider: "anthropic")))
     }
 
-    /// The cleared chat's first attach creates its session once, with those settings.
     func testTheClearedChatCreatesItsSessionWithThoseSettings() async {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
@@ -273,8 +235,6 @@ import Observation
         XCTAssertEqual(creates.first?["provider"], .string("anthropic"))
     }
 
-    // MARK: Fixture
-
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
 
@@ -283,8 +243,6 @@ import Observation
          row(4, "assistant", "Second answer."), row(5, "user", "Third"), row(6, "assistant", "Third answer.")]
     }
 
-    /// `threeTurns` after an in-place compaction, as the host pages it: the first turn
-    /// re-inserted under new ids, the middle one archived, the summary, then the last turn.
     private var compactedTurns: [BotJSON] {
         [row(7, "user", "First"), row(8, "assistant", "First answer."),
          row(3, "user", "Second", active: false), row(4, "assistant", "Second answer.", active: false),
@@ -295,8 +253,6 @@ import Observation
          row(10, "user", "Third"), row(11, "assistant", "Third answer.")]
     }
 
-    /// A `compressed` reply as the pin's in-process handler answers it, its `info` naming
-    /// `storedKey`.
     private func compressed(removed: Int, storedKey: String = "tip") -> BotJSON {
         .object(["status": .string("compressed"), "removed": .number(Double(removed)),
                  "before_messages": .number(6), "after_messages": .number(4),
@@ -306,7 +262,6 @@ import Observation
                  "info": .object(["stored_session_id": .string(storedKey)]), "messages": .array([])])
     }
 
-    /// Each stored key's transcript, served as one short page, and how many pages were read.
     private final class Pages: @unchecked Sendable {
         private let lock = NSLock()
         private var stored: [String: [BotJSON]] = [:]
@@ -338,9 +293,6 @@ import Observation
         }
     }
 
-    /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are
-    /// `rows`. `info` is the snapshot's `session.info`; `catalog` answers `model.options`. A
-    /// `.canonicalChat` target's title lookup finds root `root` at tip `tip`.
     private func openChat(_ rows: [BotJSON], info: [String: BotJSON] = [:], catalog: BotJSON? = nil,
                           target: ConversationTarget = .session(profile: "default", key: "tip")) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
@@ -374,8 +326,6 @@ import Observation
         return Chat(model: model, turn: turn, host: host, client: client, pages: pages)
     }
 
-    /// One display row as the transcript handler returns it: a live row, or one compaction
-    /// archived (`active` 0, `compacted` 1).
     private func row(_ id: Int, _ role: String, _ content: String, active: Bool = true) -> BotJSON {
         .object(["id": .number(Double(id)), "session_id": .string("tip"), "role": .string(role), "content": .string(content),
                  "timestamp": .number(1_790_000_000 + Double(id)), "active": .number(active ? 1 : 0),

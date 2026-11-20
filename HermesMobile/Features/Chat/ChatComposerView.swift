@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// A composer status line that offers Retry, such as "Couldn't steer".
 struct ComposerRetryableStatus {
     let message: String
     let onRetry: () -> Void
@@ -12,19 +11,13 @@ private struct ComposerStatusView: View {
     let text: String
     let isError: Bool
     let onRetry: (() -> Void)?
-    /// Offers Copy fix prompt, which puts this text on the pasteboard (#955).
     let fixPrompt: String?
-    /// Offers Cancel, which stops a Hermes send's uploads (#1012).
     let onCancel: (() -> Void)?
-    /// Offers Fix on This Phone, which opens Serve Every Profile (#1611).
     let onFix: (() -> Void)?
-    /// Offers ✕, for an error that goes once read.
     let onDismiss: (() -> Void)?
     @State private var didCopyFixPrompt = false
 
     var body: some View {
-        // At accessibility sizes Copy fix prompt drops below the message,
-        // like the transcript log rows' stacked labels.
         let layout = fixPrompt != nil && dynamicTypeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
@@ -83,7 +76,6 @@ private struct ComposerStatusView: View {
         .onChange(of: text) { didCopyFixPrompt = false }
     }
 
-    /// Swaps to "Copied" without animation and announces it for VoiceOver.
     private func fixPromptButton(_ prompt: String) -> some View {
         Button {
             UIPasteboard.general.string = prompt
@@ -99,8 +91,6 @@ private struct ComposerStatusView: View {
         }
         .font(AppFont.caption(weight: .semibold))
         .buttonStyle(.borderless)
-        // Wraps like Retry would: a long translation shares the row with the
-        // message instead of squeezing it, and never overflows when stacked.
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel(didCopyFixPrompt ? Text("Fix prompt copied") : Text("Copy fix prompt"))
         .accessibilityHint(Text("Copies a prompt that asks your Hermes agent to restart Hermes WebUI."))
@@ -161,14 +151,9 @@ struct MessageComposerView: View {
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var plusIconSize: CGFloat = 20
 
-    /// t3code sizing: every circle in the composer is 44 pt, which is also the
-    /// minimum hit target, so no invisible hit padding is needed.
     private let circleSize = ChatComposerMetrics.actionSize
     private let pillInset = ChatComposerMetrics.pillInset
 
-    /// The draft. Pass the owner's plain `$state`, not a get/set binding:
-    /// SwiftUI re-runs the owner of a get/set binding on every keystroke. The
-    /// owner hears about edits through `onDraftEdit` instead.
     @Binding var draftMessage: String
     @Binding var quotes: [ComposerQuote]
     @Binding var isFocused: Bool
@@ -176,13 +161,9 @@ struct MessageComposerView: View {
     let isCompressingSession: Bool
     let isWaitingForStream: Bool
     let isCancellingStream: Bool
-    /// A read-only session locks the editor; an offline chat holds only Send and host controls.
     let access: ChatComposerAccess
     let errorMessage: String?
-    /// Offered as Copy fix prompt on the `errorMessage` banner (#955).
     let errorFixPrompt: String?
-    /// Offered as Fix on This Phone on the `errorMessage` banner, for a Profile the Webapp
-    /// doesn't serve (#1611).
     let onFixError: (() -> Void)?
     let configurationErrorMessage: String?
     let contextWindowSnapshot: ContextWindowSnapshot?
@@ -194,13 +175,9 @@ struct MessageComposerView: View {
     let workspaceRoots: [WorkspaceRoot]
     let selectedWorkspacePath: String?
     let workspaceSuggestions: [String]
-    /// Server base URL for the workspace-registry manager; nil hides the
-    /// Manage affordance in the workspace picker.
     let workspaceManagementServer: URL?
     let personalitySuggestions: [String]
     let skillSuggestions: [SkillSlashSuggestion]
-    /// Whether a skills request has succeeded, even an empty one. Lets the
-    /// mid-sentence close rule tell "still loading" from "loaded, none match".
     let hasLoadedSkillSuggestions: Bool
     let agentCommands: [AgentCommand]
     let profileOptions: [ProfileSummary]
@@ -208,10 +185,8 @@ struct MessageComposerView: View {
     let selectedProfileName: String?
     let selectedProfileTitle: String
     let selectedReasoningEffort: String?
-    /// Model-aware effort vocabulary; `nil` → full static list (issue #18).
     let supportedReasoningEfforts: [String]?
     let supportsReasoningEffort: Bool?
-    /// When false the model has no effort setting, so the combined title omits it.
     let showsReasoningControl: Bool
     let isUpdatingConfiguration: Bool
     let pendingAttachments: [PendingAttachment]
@@ -219,45 +194,23 @@ struct MessageComposerView: View {
     let attachmentUploadCount: Int
     let attachmentUploadGeneration: Int
     let isSendingVoiceNote: Bool
-    /// When true, dictation auto-starts once this composer appears with the app active —
-    /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
     let autoStartsVoiceInput: Bool
     let apiClient: APIClient?
-    /// This chat's server-side session. Nil before the session exists.
     let sessionID: String?
-    /// The server whose favorite and recent models this composer lists.
     let server: URL
-    /// Loads one query's rows into `filePathSearch`: the chat's workspace listing, or a
-    /// Hermes chat's `complete.path` (#1113). Nil keeps the `@` panel closed.
     let searchFilePaths: ((String) async -> Void)?
-    /// The workspace files already picked in this chat. The editor draws their
-    /// `@path` references as chips; the view model owns the set so the sent
-    /// transcript can draw the same ones.
     let chipFilePaths: Set<String>
-    /// A bot's chat's `@`mention roster (#1145): its bots lead the `@` panel and draw as chips in
-    /// the editor. Nil everywhere else.
     var botMentions: BotMentions? = nil
-    /// Those bots' avatars, keyed by Profile, from this connection only.
     var mentionAvatars: [String: UIImage] = [:]
-    /// The `@` panel's rows and its directory listings. Owned by the view model
-    /// so a folder listed to confirm a restored draft's references is not listed
-    /// again the first time the panel opens.
     let filePathSearch: ComposerFilePathSearch
     let uploadAttachmentErrorMessage: String?
-    /// "Couldn't steer" with Retry, after a steer didn't reach the run.
     let steerFailure: ComposerRetryableStatus?
-    /// The Send While Responding default: what a tap on Send does mid-run, and
-    /// the glyph and VoiceOver label that say so.
     let streamingSendBehavior: StreamingSendBehavior
-    /// Sends the draft. Mid-run it carries the behavior Send shows (tap and
-    /// Command-Return) or one picked for this message from the send-choice card
-    /// or a VoiceOver action; the default does not change. Nil while idle.
     let onSend: (StreamingSendBehavior?) -> Void
     let onSendVoiceNote: (Data, String) -> Void
     let onCancel: () -> Void
     let onSelectModel: (ModelCatalogOption) -> Void
     let onModelPickerOpen: () async -> Void
-    /// Sends a level; true once the host took it.
     let onSelectReasoningEffort: (String) async -> Bool
     let onLoadWorkspaceSuggestions: (String) async -> Void
     let onWorkspaceRegistryChanged: () async -> Void
@@ -265,7 +218,6 @@ struct MessageComposerView: View {
     let onLoadSkillSuggestions: () async -> Void
     let onSelectWorkspace: (String) async -> Void
     let onSelectProfile: (ProfileSummary) -> Void
-    /// The composer's measured height, and whether that is its resting layout (`isResting`).
     let onHeightChange: (_ height: CGFloat, _ isResting: Bool) -> Void
     let onPhotoMediaSelected: ([HermexPickedMedia]) -> Void
     let onFileURLsSelected: ([URL]) -> Void
@@ -276,109 +228,54 @@ struct MessageComposerView: View {
     let onRemoveAttachment: (UUID) -> Void
     let onPreviewAttachment: (PendingAttachment) -> Void
     let onDismissUploadAttachmentError: () -> Void
-    /// Clears `errorMessage` and `configurationErrorMessage` from their banner's ✕; nil hides it.
     let onDismissError: (() -> Void)?
-    /// A workspace file the user just picked, for the chip catalog.
     let onSelectFileReference: (String) -> Void
-    /// The draft, each time its finished `@…` references change (and once on
-    /// appear), so the owner can confirm which name workspace files. Scanned
-    /// here because this view already re-runs per keystroke; the owner never
-    /// has to read the draft in its own body.
     let onFileReferenceCandidatesChange: (String) async -> Void
-    /// Each edit the user makes to the draft here (typing, completions,
-    /// dictation), after it lands in `draftMessage`, for the owner to persist.
     let onDraftEdit: (String) -> Void
-    /// The chat's last sent message, for ↑ in an empty composer on a hardware
-    /// keyboard. A closure, so the transcript is scanned only when ↑ is pressed.
     var recallLastSentText: (() -> String?)? = nil
-    /// Takes a long paste as a file; a Hermes session's (#1381). Nil keeps pastes inline.
     var onPasteLargeText: ((String) -> Void)? = nil
-    /// A file chip the user tapped, by workspace-relative path.
     let onOpenFileReference: (String) -> Void
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
-    /// False on a Hermes session (#1010): voice notes stay hidden until their phase lands, and
-    /// the workspace picker takes a typed path (#1117). The + menu, dictation, the context
-    /// indicator and the branch picker (#1116) stay.
     var showsSessionControls = true
-    /// The commands the `/` panel lists and runs: a Hermes chat's own and its host's (#1036).
     var slashScope = SlashCommandScope.webui
-    /// The host's suggestions for a host command's argument (#1036).
     var hostSlashCompletion: HermesSlashCompletion?
-    /// Asks the host to complete a host command's argument: the draft up to the caret, or nil
-    /// once the caret leaves one. Called again on each change; a newer call replaces it.
     var onCompleteHostSlashArgument: (String?) async -> Void = { _ in }
-    /// A Hermes session's model, folder and Profile chips (#1015, #1117), shown while the rest
-    /// of `showsSessionControls` stays hidden. Its folder picker takes a typed path, which the
-    /// host checks.
     var showsModelAndProfileControls = false
-    /// A configuration change that has not landed yet, such as a model the host applies
-    /// after the running response. Shown below any configuration error.
     var configurationNotice: String?
-    /// The effort a Hermes host sends when the model takes less than the one picked (#1016).
     var sentReasoningEffort: String?
-    /// A Hermes session's Fast mode (#1142); nil hides its row in Model settings.
     var fastMode: Bool?
-    /// Whether the host takes a Fast change now; the row shows disabled otherwise.
     var mayChangeFastMode = false
-    /// Asks the host for the other Fast mode.
     var onSelectFastMode: (Bool) -> Void = { _ in }
-    /// Chat settings, which the header opens. The composer presents it because its pickers
-    /// and their gates live here.
     var isChatSettingsPresented: Binding<Bool> = .constant(false)
-    /// Model settings, which the model label opens. `ChatView` owns it so its own
-    /// expensive-model question can stand down while the sheet is up.
     var isModelSettingsPresented: Binding<Bool> = .constant(false)
-    /// Where Model settings asks the host's expensive-model question. Nil outside Hermes.
     var modelConfirmationControls: BotChatControls?
-    /// Model settings' Approvals row; nil hides it.
     var approvals: ComposerApprovals?
     var onSetYolo: (Bool) -> Void = { _ in }
     var onSelectApprovalMode: (HermesApprovalMode) -> Void = { _ in }
-    /// Nothing is sent yet: workspace, branch, Profile and context sit above the composer.
     var showsNewChatControls = false
-    /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
-    /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
-    /// Set while a send uploads its files, for the status line's Cancel.
     var onCancelAttachmentUpload: (() -> Void)?
-    /// A Hermes session's dictation transcriber: the host's speech-to-text for the chat's
-    /// Profile (#1071). Nil sends dictation to the webui's `/api/transcribe` through `apiClient`.
     var hermesTranscriber: ComposerTranscriber?
 
     @State private var textFieldHeight: CGFloat = 0
     @State private var textInputHeight: CGFloat = 22
-    /// Where the caret is in `draftMessage`, in UTF-16 units. Transient by
-    /// design: a restored draft starts with the caret at its end, not wherever
-    /// it was left last week.
     @State private var composerSelection = ComposerSelection()
-    /// Where Esc closed the `/` or `@` panel (#1380). It stays closed until the draft or
-    /// the caret moves, so the trigger it closed does not reopen it at once; the first move
-    /// clears it, so coming back to the same spot opens the panel again.
     @State private var dismissedSuggestionsAnchor: SuggestionAnchor?
     @State private var noticeMessage: String?
     @State private var showsWorkspaceSheet = false
     @State private var showsGitBranchPicker = false
-    /// Runs once Chat settings has closed: a change that may raise an alert from
-    /// `ChatView`, which can't appear over the sheet.
     @State private var afterChatSettingsDismiss: (() -> Void)?
     @State private var optimisticWorkspacePath: String?
-    /// Read on appear: the `server` they belong to isn't known to a property initializer.
     @State private var favoriteModelKeys: [ModelFavoriteKey] = []
     @State private var recentModelKeys: [ModelFavoriteKey] = []
     @State private var keyboardIsVisible = false
-    /// The card's shape and controls, which open with the keyboard rather than with focus. Focus
-    /// flips while UIKit takes first responder, which stalls the main thread, so a SwiftUI animation
-    /// started then jumps while the keyboard, on the render server, keeps moving smoothly.
     @State private var isCardOpen = false
-    /// Opens the card for a focus no keyboard answers, such as with a hardware keyboard.
     @State private var cardFallback: DispatchWorkItem?
     @State private var shouldRestoreFocusAfterPresentation = false
     @State private var selectedQuote: ComposerQuote?
-    /// True while the send-choice card is up after a hold on Send mid-run.
     @State private var choosingSendBehavior = false
-    /// Keeps the release of a hold that opened the card from also sending.
     @State private var sendHold = ChatComposerSendHold()
     @State private var sendHoldWorkItem: DispatchWorkItem?
     @GestureState private var isPressingSend = false
@@ -388,11 +285,9 @@ struct MessageComposerView: View {
     @State private var presentFilesAfterMediaPickerDismisses = false
     @State private var showFileImporter = false
     @State private var voiceInput = ComposerVoiceInputController()
-    /// Whether the keyboard was up when dictation took it down, so it can return.
     @State private var restoresFocusAfterDictation = false
     @State private var voiceNoteRecorder = ComposerVoiceNoteRecorder()
     @State private var voiceNoteCancelArmed = false
-    /// A hold on the mic records until release; Voice note in `+` records until the bar's buttons.
     @State private var voiceNoteIsHeld = true
     @State private var didAutoStartVoiceInput = false
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
@@ -402,7 +297,6 @@ struct MessageComposerView: View {
         !access.allowsEditing
     }
 
-    /// Offline or read-only: nothing that reaches the host starts, open controls included.
     private var holdsHostControls: Bool {
         !access.allowsHostControls
     }
@@ -413,8 +307,6 @@ struct MessageComposerView: View {
         case waitingForUploadsToFinish
     }
 
-    /// The `/…` the caret is sitting in, whether that is the start of the draft
-    /// or the middle of a sentence.
     private var slashTrigger: ComposerSlashTrigger? {
         guard !areSuggestionsDismissed else { return nil }
         return ComposerSlashTrigger.detect(in: draftMessage, selection: composerSelection.range, scope: slashScope)
@@ -425,24 +317,16 @@ struct MessageComposerView: View {
         let caret: NSRange
     }
 
-    /// Dictation closes every panel: the draft is locked, and accepting a row would
-    /// edit it and drop the words still being recorded.
     private var areSuggestionsDismissed: Bool {
         isDictating || dismissedSuggestionsAnchor == SuggestionAnchor(draft: draftMessage, caret: composerSelection.range)
     }
 
-    /// The draft up to the caret while it is at a host command's argument (#1036), which the
-    /// host is asked to complete.
     private var hostSlashArgumentText: String? {
         guard !holdsHostControls, fileTrigger == nil, let trigger = slashTrigger, trigger.startsDraft,
               ParsedSlashQuery(query: trigger.text, scope: slashScope).isHostArgumentMode else { return nil }
         return trigger.text
     }
 
-    /// The `@…` the caret is sitting in, or `nil` when there is none.
-    ///
-    /// Needs `searchFilePaths`, since every path the panel offers comes from
-    /// the chat's own workspace.
     private var fileTrigger: ComposerFileTrigger? {
         guard !holdsHostControls, !areSuggestionsDismissed, searchFilePaths != nil || botMentions != nil else {
             return nil
@@ -454,11 +338,6 @@ struct MessageComposerView: View {
         fileTrigger != nil
     }
 
-    /// What the panel filters on, or `nil` when it should be closed.
-    ///
-    /// The `@` panel wins when both triggers match: a `/` inside a path never
-    /// triggers at all (it follows a non-space), but an `@` inside a command's
-    /// free-form argument is still a file reference.
     private var slashQuery: String? {
         guard fileTrigger == nil else { return nil }
         return slashTrigger?.panelQuery(scope: slashScope, skills: skillSuggestions,
@@ -469,22 +348,15 @@ struct MessageComposerView: View {
         slashQuery != nil
     }
 
-    /// Whether the panel may only offer skills. The send path runs a command
-    /// only when the trimmed draft starts with `/`, so past other text a
-    /// command row would be inserted text nothing executes.
     private var showsSlashAutocompleteSkillsOnly: Bool {
         !(slashTrigger?.startsDraft ?? true)
     }
 
-    /// Every write the user makes to the draft goes through here, so the owner
-    /// can persist it.
     private func editDraft(_ text: String) {
         draftMessage = text
         onDraftEdit(text)
     }
 
-    /// Swaps the `/…` at the caret for `replacement` and leaves the caret just
-    /// after it, so the rest of the draft survives accepting a row.
     private func applyCompletion(_ replacement: String) {
         guard let trigger = slashTrigger else { return }
 
@@ -493,15 +365,11 @@ struct MessageComposerView: View {
         composerSelection = composerSelection.moved(to: completed.selection)
     }
 
-    /// A row the user tapped in the `/` panel: completes it with a selection tick.
     private func pickCompletion(_ replacement: String) {
         applyCompletion(replacement)
         ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
     }
 
-    /// A bot's chat's `@` panel (#1145), as Bot Chat draws it: this connection's other bots, then
-    /// the chat's workspace files. Its task asks for files, so the container stands while the
-    /// first answer is out; it shows once there is a row or a lookup in flight.
     private func botAutocomplete(_ trigger: ComposerFileTrigger, mentions: BotMentions) -> some View {
         let bots = mentions.completions(query: trigger.query)
         return Group {
@@ -524,14 +392,6 @@ struct MessageComposerView: View {
         .task(id: trigger.query) { await searchFilePaths?(trigger.query) }
     }
 
-    /// Swaps the `@…` at the caret for the picked entry.
-    ///
-    /// A file finishes the reference: `@path` plus a space, recorded so the
-    /// editor draws it as a chip. A folder is a step on the way, so it inserts
-    /// with a trailing `/` and no space and the panel stays open listing what is
-    /// inside it. Only files are recorded, which is what keeps a folder
-    /// reference from becoming a chip that opens nothing. Either pick plays a
-    /// selection tick, so a folder tap that keeps the panel open still lands.
     private func applyFileCompletion(_ match: ComposerFilePathSearch.Match) {
         guard let trigger = fileTrigger else { return }
 
@@ -575,9 +435,6 @@ struct MessageComposerView: View {
         }
     }
 
-    // No `GlassEffectContainer` around the composer: on device, after the card collapsed
-    // with the send, it kept taking taps where the card had been, above the pill, and the
-    // scroll-to-bottom arrow there stopped working.
     private var composerWithLifecycle: some View {
         VStack(spacing: 6) {
             if voiceNoteRecorder.isRecording {
@@ -661,10 +518,8 @@ struct MessageComposerView: View {
             }
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
-            // The panel takes only the room the composer leaves (`composerPanelHeight`).
             .layoutPriority(-1)
 
-            // Back when the keyboard goes and the viewport has room again.
             if showsNewChatControls, showsConfigurationControls, !viewportIsShort {
                 newChatControlsRow
                     .padding(.horizontal)
@@ -673,7 +528,6 @@ struct MessageComposerView: View {
 
             composerSurface
                 .padding(.horizontal)
-                // Above the toolbar row, whose solid background bleeds up under the card.
                 .zIndex(1)
 
             if isExpanded {
@@ -681,7 +535,6 @@ struct MessageComposerView: View {
                     if isDictating {
                         dictationRow.transition(.opacity)
                     } else {
-                        // Waits for the card to rise past where the row lands.
                         toolbarRow.transition(.asymmetric(
                             insertion: .opacity.animation(reduceMotion ? nil : .easeIn(duration: 0.12).delay(0.14)),
                             removal: .opacity
@@ -692,12 +545,6 @@ struct MessageComposerView: View {
                     .padding(.horizontal)
                     .padding(.top, 8)
                     .frame(maxWidth: .infinity)
-                    // Solid chat background behind the controls: the card
-                    // above is glass on purpose, but transcript text
-                    // scrolling under the row made the pills unreadable.
-                    // Bleeds up into the gap under the card and down past
-                    // the keyboard gap and the bottom safe area, so no strip
-                    // of transcript shows around the row.
                     .background(
                         Color(.appCanvas)
                             .padding(.top, -10)
@@ -707,9 +554,6 @@ struct MessageComposerView: View {
                     .transition(.opacity)
             }
         }
-        // Focus flips arrive from UIKit outside any withAnimation, so the
-        // morph and the row's insertion take their animation from here: the
-        // keyboard's curve going up, so they move as one.
         .animation(isExpanded ? ChatMotion.keyboard(reduceMotion: reduceMotion)
             : ChatMotion.composerChrome(reduceMotion: reduceMotion), value: isExpanded)
         .background(
@@ -748,8 +592,6 @@ struct MessageComposerView: View {
             }
             .frame(width: 0, height: 0)
         }
-        // The same keyboard-retaining overlay as the "+" picker and the Bot
-        // composer's send-choice card, so the keyboard stays up.
         .background {
             HermexKeyboardRetainingOverlay(isPresented: choosingSendBehavior) {
                 SendChoiceCard(
@@ -760,8 +602,6 @@ struct MessageComposerView: View {
             }
             .frame(width: 0, height: 0)
         }
-        // The run ending, or Send turning into Stop, closes the card and drops
-        // a hold that has not opened it yet, as the Bot composer does.
         .onChange(of: sendChoices) { _, choices in
             guard choices.isEmpty else { return }
             cancelScheduledSendChoices()
@@ -777,8 +617,6 @@ struct MessageComposerView: View {
                 cancelScheduledSendChoices()
             }
         }
-        // The view model holds both list loads while offline; going online is
-        // part of each identity so the held load runs on reconnect.
         .task(id: [draftMayReferenceSkill, access.isOffline]) {
             await loadSkillSuggestionsForChipsIfNeeded()
         }
@@ -792,10 +630,6 @@ struct MessageComposerView: View {
             await onCompleteHostSlashArgument(hostSlashArgumentText)
         }
         .task(id: AppLock.shared.isLocked) {
-            // Cold path: the composer appears already active (the usual case for the
-            // "New Chat with Voice" intent once its session is created) — start here.
-            // Runs again when the app lock changes, since dictation waits for it (#885);
-            // one modifier keeps this chain inside CI Xcode's type-checking budget.
             if AppLock.shared.isLocked { voiceInput.suspend() }
             else if scenePhase == .active { voiceInput.resume() }
             autoStartVoiceInputIfNeeded()
@@ -810,26 +644,18 @@ struct MessageComposerView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
                 voiceInput.suspend()
-                // Backgrounding stops the recorder's run-loop ticker, so cancel
-                // the in-flight recording rather than leave it silently stalled.
                 cancelVoiceNote()
             } else {
                 voiceInput.resume()
-                // An intent that opened this composer may have foregrounded the app
-                // a beat after it appeared; auto-start once we're active (#338).
                 autoStartVoiceInputIfNeeded()
             }
         }
         .onChange(of: voiceNoteRecorder.elapsed) { _, elapsed in
-            // Enforce the max-duration cap: auto-stop and send (not cancel) once
-            // the clip hits the limit, mirroring a finger release.
             if voiceNoteRecorder.isRecording, elapsed >= ComposerVoiceNoteRecorder.maximumDuration {
                 finishVoiceNote(translationHeight: 0)
             }
         }
         .onChange(of: showsGitBranchPicker) { _, isPresented in
-            // The New Branch alert takes the keyboard, so hand focus off up front
-            // and bring it back once the popover closes.
             if isPresented {
                 prepareForComposerPresentation()
             } else {
@@ -988,11 +814,6 @@ struct MessageComposerView: View {
         .animation(ChatMotion.keyboard(reduceMotion: reduceMotion), value: keyboardIsVisible)
     }
 
-    /// Pill while the editor is idle; card while it is focused. Controls in the pill
-    /// open their sheets without expanding it. `shouldRestoreFocus…` keeps a focused
-    /// card open while its sheet is up, until focus comes back.
-    /// Collapsed with no status or recording row above the card: the layout whose height a chat
-    /// can start from before its own composer is measured.
     private var isResting: Bool {
         !isExpanded && !voiceNoteRecorder.isRecording && voiceNoteStatus == nil && voiceStatus == nil
             && composerStatus == nil
@@ -1005,15 +826,10 @@ struct MessageComposerView: View {
             || shouldRestoreFocusAfterPresentation
     }
 
-    /// Dictation locks the draft from the mic tap until its words have landed.
     private var isDictating: Bool {
         voiceInput.state != .idle
     }
 
-    /// The glass surface: one text view in both states so focus and the draft
-    /// survive the morph. Pill: `+`, text, thumbnails, provider logo, mic and
-    /// Stop/Send in a row. Card: strip above the editor, controls move to
-    /// `toolbarRow` below.
     private var composerSurface: some View {
         VStack(spacing: 0) {
             if isExpanded {
@@ -1049,7 +865,6 @@ struct MessageComposerView: View {
                     onPasteImageProviders: onPasteImageProviders,
                     onPasteImages: onPasteImages,
                     onTapChip: { token in
-                        // A skill chip is inert; a file chip opens the file.
                         guard let path = token.filePath else { return }
                         onOpenFileReference(path)
                     },
@@ -1057,7 +872,6 @@ struct MessageComposerView: View {
                     onRemoveQuote: removeQuote,
                     recallLastSentText: recallLastSentText,
                     onPasteLargeText: onPasteLargeText,
-                    // The pill's `+` and logo already inset the draft.
                     collapsedHorizontalPadding: 4
                 )
                 .allowsHitTesting(!isDictating)
@@ -1085,9 +899,6 @@ struct MessageComposerView: View {
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
     }
 
-    /// Card-state row under the surface. It never scrolls: the model label takes the
-    /// spare width and truncates, which leaves room for #250's voice-mode button beside
-    /// the mic. Visual order is VoiceOver order.
     private var toolbarRow: some View {
         HStack(alignment: .center, spacing: 8) {
             plusButton(usesGlass: true)
@@ -1104,8 +915,6 @@ struct MessageComposerView: View {
         }
     }
 
-    /// Above a chat with nothing sent yet, and gone after the first message: the header
-    /// holds these from then on. The labels truncate instead of scrolling.
     private var newChatControlsRow: some View {
         HStack(alignment: .center, spacing: 8) {
             workspaceSelector
@@ -1118,13 +927,10 @@ struct MessageComposerView: View {
         }
     }
 
-    /// False only for a composer with no session to configure.
     private var showsConfigurationControls: Bool {
         showsSessionControls || showsModelAndProfileControls
     }
 
-    /// The same controls and gates as the new-chat row, plus the context details. Every change
-    /// waits for the sheet to close, since each can raise an alert from `ChatView`.
     private var chatSettingsSheet: some View {
         ChatSettingsSheet(
             workspaceTitle: workspaceTitle,
@@ -1150,7 +956,6 @@ struct MessageComposerView: View {
         afterChatSettingsDismiss = nil
     }
 
-    /// `perform` runs a picked workspace.
     private func workspacePickerSheet(
         perform: @escaping (@escaping () -> Void) -> Void = { $0() }
     ) -> some View {
@@ -1192,7 +997,6 @@ struct MessageComposerView: View {
             supportsVoiceNotes: showsSessionControls,
             onTap: toggleVoiceInput,
             onRecordingStart: { startVoiceNoteRecording() },
-            // A note started from `+` ends at its bar's buttons, so a hold on the mic can't touch it.
             onRecordingDragChanged: { height in
                 guard voiceNoteIsHeld else { return }
                 voiceNoteCancelArmed = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: height)
@@ -1204,10 +1008,6 @@ struct MessageComposerView: View {
         )
     }
 
-    /// One trailing circle in both states. Stop while a response streams and the
-    /// draft is empty; Send as soon as there is text (or, on Hermes, a staged
-    /// file). Mid-run a tap sends with the behavior its glyph shows, and a hold
-    /// opens the send-choice card for this one message (`ChatComposerSendButton`).
     private var actionButton: some View {
         Button(action: actionButtonPressed) {
             actionButtonLabel
@@ -1222,7 +1022,6 @@ struct MessageComposerView: View {
         .accessibilityLabel(sendButton.accessibilityLabel)
         .accessibilityValue(blockedSendReason ?? "")
         .accessibilityActions {
-            // VoiceOver can't hold, so each choice is a named action.
             ForEach(sendChoices, id: \.self) { behavior in
                 Button(behavior.title) { pickSendBehavior(behavior) }
             }
@@ -1236,19 +1035,12 @@ struct MessageComposerView: View {
                 .tint(actionButtonForeground)
                 .scaleEffect(0.9)
         } else {
-            // Morphs between Stop and the default's Send glyph; instant
-            // with Reduce Motion.
             Image(systemName: sendButton.systemName)
                 .font(.system(size: actionIconSize, weight: .semibold))
                 .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
         }
     }
 
-    /// Times a hold the way the mic does (`ComposerVoiceControlButton`): one
-    /// `DragGesture(minimumDistance: 0)` beside the button's own tap, where
-    /// touch-down schedules the card and lifting before the delay cancels it.
-    /// The gesture state resets on a cancelled touch too, so a hold can never
-    /// stay armed.
     private var sendHoldGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .updating($isPressingSend) { _, isPressing, _ in
@@ -1265,7 +1057,6 @@ struct MessageComposerView: View {
             choosingSendBehavior = true
         }
         sendHoldWorkItem = item
-        // The mic's hold delay, so the composer's two holds feel alike.
         DispatchQueue.main.asyncAfter(
             deadline: .now() + ComposerVoiceNoteGesture.holdActivationDelay,
             execute: item
@@ -1277,17 +1068,13 @@ struct MessageComposerView: View {
         sendHoldWorkItem = nil
     }
 
-    /// Closes the send-choice card. A hold still down keeps its release from
-    /// sending (or stopping); see `ChatComposerSendHold`.
     private func closeSendChoices() {
         choosingSendBehavior = false
         sendHold.choicesClosed(isPressing: isPressingSend)
     }
 
-    /// The card's rows and VoiceOver's named actions both land here.
     private func pickSendBehavior(_ behavior: StreamingSendBehavior) {
         closeSendChoices()
-        // A pick can outlive the run or the draft it was offered for.
         guard sendChoices.contains(behavior) else { return }
         if voiceInput.isListening {
             voiceInput.stopBeforeSubmittingDraft()
@@ -1295,15 +1082,10 @@ struct MessageComposerView: View {
         onSend(behavior)
     }
 
-    /// Whether the draft holds anything that could be drawn as a skill chip.
     private var draftMayReferenceSkill: Bool {
         ComposerChipTokenizer.mayContainReference(draftMessage)
     }
 
-    /// A draft restored from the store can already name a skill, and chips are
-    /// only drawn for skills the app has heard of. Fetching the list the moment
-    /// the draft looks like it needs one keeps a reopened chat from showing raw
-    /// `/skill` text, without a skills request on every chat that never uses one.
     private func loadSkillSuggestionsForChipsIfNeeded() async {
         guard draftMayReferenceSkill, skillSuggestions.isEmpty else { return }
         await onLoadSkillSuggestions()
@@ -1333,7 +1115,6 @@ struct MessageComposerView: View {
         }
     }
 
-    /// Glass in the card's row. The pill is already glass, so its `+` stays plain.
     private func plusButton(usesGlass: Bool) -> some View {
         Button {
             showMediaPicker = true
@@ -1357,10 +1138,6 @@ struct MessageComposerView: View {
         .accessibilityLabel("Composer options")
     }
 
-    /// One "Git Actions" toggle covers every git control in chat (#189), so the branch chip goes
-    /// with the toolbar menu rather than lingering alone. A Hermes chat creates a branch only
-    /// through hermex-push (#1236), and nothing switches while another write holds the
-    /// repository's lock.
     @ViewBuilder
     private var gitBranchPicker: some View {
         if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
@@ -1414,7 +1191,6 @@ struct MessageComposerView: View {
         )
     }
 
-    /// `showsTitle` is false in the pill, where the logo is the only model identity.
     private func modelEffortControl(showsTitle: Bool) -> some View {
         ComposerModelLabelButton(
             showsTitle: showsTitle,
@@ -1436,7 +1212,6 @@ struct MessageComposerView: View {
             recents: ModelRecentsStore.visibleRecentOptions(
                 in: modelGroups, recentKeys: recentModelKeys, favoriteKeys: favoriteModelKeys
             ),
-            // A change in flight blocks other rows without dimming them; see the sheet.
             isDisabled: !controlGate.allowsConfigurationIgnoringUpdates,
             isUpdating: isUpdatingConfiguration,
             errorMessage: configurationErrorMessage,
@@ -1451,7 +1226,6 @@ struct MessageComposerView: View {
             onSelectApprovalMode: onSelectApprovalMode,
             allModelsPicker: allModelsPicker
         )
-        // Over this sheet while it is up; `ChatView`'s own stands down until it closes.
         .modifier(HermesModelConfirmationModifier(controls: modelConfirmationControls))
     }
 
@@ -1469,7 +1243,6 @@ struct MessageComposerView: View {
                     providerID: selectedModelProviderID
                 )
             },
-            // The current model's row opens this while another change is still out.
             isSelectionDisabled: isConfigurationControlDisabled,
             onSelect: onSelect,
             onToggleFavorite: { option in
@@ -1508,15 +1281,6 @@ struct MessageComposerView: View {
             return match
         }
 
-        // No catalog match: carry the RAW id as `displayName` too. A locally
-        // shortened title here ("claude-haiku-4-5") would differ from the id
-        // and so read to `ModelDisplayNames` as a server-provided name — it
-        // would render verbatim instead of prettifying to "Haiku 4.5". Only
-        // the webui transport's `name`/`label` is a server name; anything the
-        // client derives must keep `displayName == id` to stay prettifiable.
-        // Display only: `matchesSelection` and the group lookup below match
-        // on id/provider, never on this string. A blank id has nothing to
-        // prettify, so it keeps the placeholder title ("Model").
         let fallbackID = selectedModelID ?? selectedModelTitle
         return ModelCatalogOption(
             id: fallbackID,
@@ -1535,8 +1299,6 @@ struct MessageComposerView: View {
         if let readOnlyMessage = access.readOnlyMessage {
             return (readOnlyMessage, false, nil, nil, nil, nil, nil)
         } else if let errorMessage, let onFixError {
-            // A Profile the Webapp doesn't serve leaves the chat on its cached copy, so it would
-            // read as offline; say why, with the fix (#1611). Send stays held by `access`.
             return (errorMessage, true, nil, nil, nil, onFixError, nil)
         } else if access.isOffline {
             return (ChatComposerSendBlock.offline.accessibilityValue, false, nil, nil, nil, nil, nil)
@@ -1565,7 +1327,6 @@ struct MessageComposerView: View {
         return nil
     }
 
-    /// Only errors: the dictation row shows progress while a capture runs.
     private var voiceStatus: ComposerVoiceStatus? {
         guard !isDictating, let errorMessage = voiceInput.errorMessage else { return nil }
         return ComposerVoiceStatus(
@@ -1575,9 +1336,6 @@ struct MessageComposerView: View {
         )
     }
 
-    /// Voice-note status shown above the composer when *not* actively recording
-    /// (the recording bar covers that case): the permission prompt and recorder
-    /// errors like a denied microphone.
     private var voiceNoteStatus: ComposerVoiceStatus? {
         if voiceNoteRecorder.isRequestingPermission {
             return ComposerVoiceStatus(
@@ -1647,9 +1405,6 @@ struct MessageComposerView: View {
             || voiceInput.isRequestingPermission
     }
 
-    /// Whether a hold-to-record gesture is allowed to start a new voice note.
-    /// Recording mid-stream is fine (it queues like any send), so unlike dictation
-    /// this does not block on `isWaitingForStream`.
     private var isVoiceNoteRecordingDisabled: Bool {
         !showsSessionControls
             || holdsHostControls
@@ -1693,7 +1448,6 @@ struct MessageComposerView: View {
         sendButton.showsStop
     }
 
-    /// What a hold on Send offers right now: nothing while Send is disabled.
     private var sendChoices: [StreamingSendBehavior] {
         isActionButtonDisabled ? [] : sendButton.choices
     }
@@ -1728,23 +1482,17 @@ struct MessageComposerView: View {
         )
     }
 
-    /// VoiceOver's value on a Send that has a draft but is held by work in
-    /// progress. Stop, a read-only chat and an empty draft explain themselves.
     private var blockedSendReason: String? {
         guard !isReadOnly, !showsStopButton,
               !trimmedDraftMessage.isEmpty || !quotes.isEmpty || !pendingAttachments.isEmpty else { return nil }
         return sendBlock?.accessibilityValue
     }
 
-    /// A tap on the circle. The release of a hold that opened the send-choice
-    /// card lands here too, and is dropped so the hold never also sends.
     private func actionButtonPressed() {
         guard sendHold.activate() else { return }
         actionButtonTapped()
     }
 
-    /// Stop, or Send with the behavior it shows. Keyboard sends come here too, so a
-    /// hold that arrived after the key was enabled still stops it.
     private func actionButtonTapped() {
         guard !isActionButtonDisabled else { return }
         if showsStopButton {
@@ -1757,9 +1505,6 @@ struct MessageComposerView: View {
         }
     }
 
-    /// The hardware-keyboard commands (#1380), titled like the circle and the send-choice
-    /// card. ⌘↩ is Send, never Stop; ⌘⇧↩ is the card's safe alternate; Esc closes what is
-    /// open before it stops the run through the usual confirmation, keeping the draft.
     private var keyboardCommands: ComposerKeyboardCommands {
         let button = sendButton
         var commands = ComposerKeyboardCommands()
@@ -1784,12 +1529,6 @@ struct MessageComposerView: View {
         return commands
     }
 
-    /// Starts dictation once for a composer opened by the "New Chat with Voice" intent (#338),
-    /// mirroring a mic tap. Gated so it fires a single time, only while the app is active and
-    /// unlocked (the scene stays active under the app lock, so the microphone never starts
-    /// behind it) and the mic is free; the reused tap path handles the mic/speech permission
-    /// prompt and surfaces a clear error if access is denied, so a denied/undetermined mic
-    /// degrades gracefully.
     @MainActor
     private func autoStartVoiceInputIfNeeded() {
         guard autoStartsVoiceInput, !didAutoStartVoiceInput else { return }
@@ -1801,13 +1540,9 @@ struct MessageComposerView: View {
 
     @MainActor
     private func toggleVoiceInput() {
-        // A recording from `+` leaves the mic free to tap; dictation must not start over it.
         guard !voiceNoteRecorder.isRecording else { return }
         voiceInput.transcribe = hermesTranscriber ?? apiClient?.dictationTranscriber
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
-        // Resign now, not on the next update: a live composition or a pending
-        // autocorrection commits as the editor lets go, and dictation's baseline
-        // has to include that edit.
         restoresFocusAfterDictation = isFocused
         if isFocused {
             UIApplication.shared.sendAction(#selector(ComposerChipTextView.resignForDictation), to: nil, from: nil, for: nil)
@@ -1820,7 +1555,6 @@ struct MessageComposerView: View {
                 composerSelection = composerSelection.moved(to: update.caret)
             }
         )
-        // A start that fails at once never leaves idle where SwiftUI can see it.
         Task {
             await start.value
             if !isDictating { restoreFocusAfterDictation() }
@@ -1834,8 +1568,6 @@ struct MessageComposerView: View {
         isFocused = true
     }
 
-    /// Hold recognized, or Voice note picked in `+` → start recording a voice note.
-    /// Gated by the recording disabled conditions; stops dictation first if it's running.
     @MainActor
     private func startVoiceNoteRecording(isHeld: Bool = true) {
         guard !isVoiceNoteRecordingDisabled, !voiceNoteRecorder.isRecording else { return }
@@ -1848,8 +1580,6 @@ struct MessageComposerView: View {
         Task { await voiceNoteRecorder.begin() }
     }
 
-    /// Finger lifted (or max duration hit). Cancels if slid up past the threshold,
-    /// otherwise stops and sends the clip.
     @MainActor
     private func finishVoiceNote(translationHeight: CGFloat) {
         let shouldCancel = ComposerVoiceNoteGesture.isCancelArmed(dragTranslationHeight: translationHeight)
@@ -1937,7 +1667,6 @@ struct MessageComposerView: View {
         requestTextViewFocusIfPossible()
     }
 
-    /// The card stays open across this, so returning from a sheet never flashes the pill.
     private func requestTextViewFocusIfPossible() {
         guard canFocusTextView else { return }
         isCardOpen = true

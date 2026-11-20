@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// Sets, replaces or removes one key in `profile`'s `.env` (#1318); a nil `key` asks for a custom
-/// key's name too. The value lives only in this view's state: it goes out once in the write's body
-/// and is cleared when the view closes. `onCancel`, when the form is a sheet's root, shows Cancel;
-/// `onDone` closes the sheet after a write the host accepted. Neither Cancel nor Back is offered
-/// while a write is in flight, so the sheet never closes under one.
 struct APIKeyForm: View {
     let key: HermesEnvKey?
     let profile: String
@@ -19,7 +14,6 @@ struct APIKeyForm: View {
     @State private var failure: String?
 
     private var name: String { key?.name ?? customName.trimmingCharacters(in: .whitespacesAndNewlines) }
-    /// Trimmed, since a pasted key often ends in a newline.
     private var trimmedValue: String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
@@ -90,7 +84,6 @@ struct APIKeyForm: View {
         .onDisappear { value = "" }
     }
 
-    /// Runs one write, then closes the sheet, or shows the host's refusal and keeps the value.
     private func write(_ operation: @escaping @MainActor () async throws -> Void) {
         isWriting = true
         Task {
@@ -106,9 +99,6 @@ struct APIKeyForm: View {
     }
 }
 
-/// The Add Key sheet (#1318): a custom key and every key the host knows, by category. An advanced
-/// key shows only in search results; a key the Profile already sets carries a checkmark and opens
-/// to be replaced.
 struct APIKeyPicker: View {
     let keys: [HermesEnvKey]
     let profile: String

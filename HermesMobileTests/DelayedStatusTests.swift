@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The stream recovery chip's show-after/hold-for timing (#1373): brief
-/// statuses never flash, shown ones stay long enough to read. Instants are
-/// injected, so no test waits on real time.
 @MainActor
 final class DelayedStatusTests: XCTestCase {
     private let start = ContinuousClock.now
@@ -41,7 +38,6 @@ final class DelayedStatusTests: XCTestCase {
         _ = status.update(target: .reconnecting, now: at(600), policy: policy, immediately: false)
         XCTAssertEqual(status.shown, .reconnecting)
 
-        // The swapped-in status holds from when it appeared, not from the first one.
         XCTAssertEqual(status.update(target: nil, now: at(700), policy: policy, immediately: false), at(1000))
     }
 
@@ -70,7 +66,6 @@ final class DelayedStatusTests: XCTestCase {
         sleeper.didPark = { parked.fulfill() }
         let driver = DelayedStatusDriver<ActiveStreamRecoveryState>(now: { now }, sleep: sleeper.sleep(until:))
 
-        // Cancelled before its body starts: even a status that skips the delay stays hidden.
         let cancelledFirst = Task { await driver.run(target: .waitingForNetwork, immediately: true) }
         cancelledFirst.cancel()
         await cancelledFirst.value
@@ -79,7 +74,6 @@ final class DelayedStatusTests: XCTestCase {
         let run = Task { await driver.run(target: .checking) }
         await fulfillment(of: [parked], timeout: 5)
 
-        // The target changed (its `.task(id:)` restarted), but this sleep still ends normally.
         run.cancel()
         now = at(400)
         sleeper.resume()
@@ -93,8 +87,6 @@ final class DelayedStatusTests: XCTestCase {
     }
 }
 
-/// Parks each sleep until `resume`, ignoring cancellation, to stand in for a
-/// deadline that passes just as its run is cancelled.
 @MainActor
 private final class DeadlineSleeper {
     private var parked: CheckedContinuation<Void, Never>?

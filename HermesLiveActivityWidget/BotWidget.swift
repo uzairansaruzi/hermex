@@ -2,11 +2,6 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// Bots on the Home Screen (#1643): a face and title per bot, each tap opening that bot's chat on
-/// its own server. A small widget holds one bot (one tap target is all a small widget gets); a
-/// medium holds a row of 4 and a large two rows of 4, in the order the user chose. Each instance
-/// is configured from the app's snapshot (`BotWidgetSnapshot`); nothing here reads the network or
-/// the Keychain, and each face is the PNG the app rendered.
 struct BotWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: BotWidgetSnapshot.widgetKind, intent: BotWidgetConfigurationIntent.self,
@@ -22,15 +17,11 @@ struct BotWidget: Widget {
 }
 
 struct BotWidgetEntry: TimelineEntry {
-    /// One bot's place on the widget.
     enum Slot: Equatable {
-        /// No bot chosen for it yet.
         case empty
-        /// The chosen bot or its server is no longer in the snapshot.
         case unavailable
         case bot(title: String, light: URL?, dark: URL?, destination: BotWidgetDestination)
 
-        /// Nil unless the bot is in the snapshot, so any other slot's tap opens the app as it is.
         var destination: URL? {
             if case .bot(_, _, _, let destination) = self { destination.url } else { nil }
         }
@@ -39,8 +30,6 @@ struct BotWidgetEntry: TimelineEntry {
     let date: Date
     let slots: [Slot]
 
-    /// The entry for a configuration in `family`, read against the app's snapshot: one slot on a
-    /// small widget, else 4 per row, with unchosen slots left empty so the layout never reflows.
     init(date: Date, configuration: BotWidgetConfigurationIntent, family: WidgetFamily,
          file: BotWidgetSnapshotFile? = .shared) {
         self.date = date
@@ -73,9 +62,6 @@ struct BotWidgetEntry: TimelineEntry {
     }
 }
 
-/// A single entry: the snapshot only changes when the app writes it, and that reloads the widget. An
-/// entry with an unavailable bot asks again hourly, since before the first unlock after a restart
-/// the snapshot can't be read and every bot looks gone.
 struct BotWidgetTimeline: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> BotWidgetEntry {
         let hermes = BotWidgetEntry.Slot.bot(title: String(localized: "Hermes"), light: nil, dark: nil,
@@ -115,15 +101,12 @@ private struct BotWidgetView: View {
         }
     }
 
-    /// One bot of a row; a bot's own link, so each opens its own chat.
     @ViewBuilder private func cell(_ slot: BotWidgetEntry.Slot) -> some View {
         let view = BotWidgetSlotView(slot: slot, faceSize: 58, isSingle: false).frame(maxWidth: .infinity)
         if let url = slot.destination { Link(destination: url) { view } } else { view }
     }
 }
 
-/// A slot's face and title. A small widget's single slot gets two title lines and a hint under an
-/// empty or unavailable face; a row's slots get one line.
 private struct BotWidgetSlotView: View {
     @Environment(\.colorScheme) private var colorScheme
     let slot: BotWidgetEntry.Slot
@@ -201,8 +184,6 @@ private struct BotWidgetSlotView: View {
     }
 }
 
-/// A gray face: the fallback before the app renders a bot's avatar, and, with flat eyes, the
-/// unavailable state.
 private struct BotWidgetPlainFace: View {
     let isFlat: Bool
 

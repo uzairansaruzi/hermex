@@ -36,9 +36,6 @@ struct ComposerModelPickerSectionExpansionState {
     }
 }
 
-/// Tracks the provider groups whose server-supplied overflow models the user
-/// has chosen to reveal. Both model pickers use the same small state model so
-/// their counts and visible rows cannot drift apart.
 struct ModelPickerOverflowExpansionState {
     private var expandedGroupIDs: Set<String> = []
 

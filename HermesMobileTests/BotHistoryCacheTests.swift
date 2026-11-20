@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The room search index and its rules: bounded, scoped to its server and connection, and
-/// revocable. A bot's chat is searched on its host (#1146), so only rooms are saved here.
 final class BotHistoryCacheTests: XCTestCase {
     private let server = URL(string: "https://one.example")!
     private let otherServer = URL(string: "https://two.example")!
@@ -14,7 +12,6 @@ final class BotHistoryCacheTests: XCTestCase {
 
     private var room: BotGroupRoom { BotGroupRoom(RoomFixture.room(latest: 3))! }
 
-    /// Saves `texts` as one page of `room`'s user messages, seq 1 onwards.
     private func append(_ cache: BotHistoryCache, room roomID: String, _ texts: [String], roles: [String]? = nil,
                         key: BotRoomKey? = nil, receivedAt: Date = Date()) async throws {
         let key = key ?? roomKey(roomID: roomID)
@@ -90,7 +87,6 @@ final class BotHistoryCacheTests: XCTestCase {
         try await cache.appendRoom(key: key, room: room, page: RoomFixture.page([RoomFixture.event(1)], cursor: 1), since: 0)
         try await cache.appendRoom(key: key, room: room, page: RoomFixture.page(
             [RoomFixture.event(2, kind: "tool.started")], cursor: 2), since: 1)
-        // Killed here: the relaunched cache holds the older cursor and re-reads from it.
         let relaunched = BotHistoryCache(directory: directory)
         let saved = try await relaunched.roomHistory(key)
         XCTAssertEqual(saved?.cursor, 1)
@@ -255,8 +251,6 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertTrue(empty.isEmpty)
     }
 
-    /// Bot Chat saved its own snapshots here until #1148. They are dropped, and written out
-    /// without, the first time the cache loads.
     func testLegacyBotChatSnapshotsAreDroppedOnLoad() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

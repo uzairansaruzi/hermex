@@ -1,6 +1,5 @@
 import Foundation
 
-/// Room identity never borrows a display name or a hidden member session ID.
 struct BotRoomKey: Hashable, Identifiable {
     let server: URL
     let connectionID: UUID
@@ -13,8 +12,6 @@ struct BotRoomCapabilities: Equatable {
     let authority: String?
     let pageLimit: Int
     let methods: Set<String>
-    /// The Profiles a canonical host's `groups.create` will seat for this connection (#1605); nil
-    /// from a dashboard, which names none and seats whoever its roster lists.
     let seatableProfiles: Set<String>?
     init(_ value: BotJSON) {
         let methods = Set(value["methods"].list?.compactMap(\.text) ?? [])
@@ -97,8 +94,6 @@ struct BotRoomEvent: Identifiable, Equatable {
     }
     var isMessage: Bool { kind == "message.user" || kind == "message.member" }
 
-    /// True once the user or a member has said something. System rows such as
-    /// a rename don't count, so a room renamed before its first message is new.
     static func hasConversation(in events: some Sequence<BotRoomEvent>) -> Bool {
         events.contains { ["message.user", "message.member"].contains($0.kind) }
     }
@@ -123,7 +118,6 @@ struct BotRoomEvent: Identifiable, Equatable {
     }
 }
 
-/// A loaded projection, not a claim about the server's complete thread history.
 struct BotRoomThread: Identifiable, Equatable {
     let id: String
     let events: [BotRoomEvent]
@@ -146,16 +140,12 @@ struct BotRoomThread: Identifiable, Equatable {
     }
 }
 
-/// Pure replay seam. Invisible events still advance the cursor and occupy their
-/// sequence number. An unchanged page leaves the visible transcript untouched.
 struct BotRoomLog {
     private(set) var cursor = 0
     private(set) var earlierBoundary = 0
     private(set) var events: [BotRoomEvent] = []
     private var seen = Set<Int>()
     static func windowStart(before sequence: Int) -> Int { max(0, sequence - 200) }
-    /// Preserve system rows and the replay cursor without keeping an unbounded
-    /// seen-set or the entire paged history alive after leaving the room.
     func recentWindow() -> Self {
         var result = self
         result.events = Array(events.suffix(500))
@@ -169,8 +159,6 @@ struct BotRoomLog {
         self = Self(); cursor = Self.windowStart(before: latest); earlierBoundary = cursor
     }
     mutating func loadedEarlier(from start: Int) { earlierBoundary = start }
-    /// An acknowledgment can arrive ahead of unread log events. Insert its bubble
-    /// without skipping those events on the next log read.
     mutating func acknowledge(_ event: BotJSON) {
         let previous = cursor
         apply(.object(["events": .array([event])]))
@@ -184,8 +172,6 @@ struct BotRoomLog {
     }
 }
 
-/// Room identifier, text and name rules shared by the room screens and
-/// `HermesCall`'s room admission.
 enum BotRoomRPC {
     static func validID(_ id: String) -> Bool {
         id.range(of: "\\A[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\\z", options: .regularExpression) != nil
@@ -205,7 +191,6 @@ struct BotRoomFailure: Error, LocalizedError {
     var errorDescription: String? {
         if expired { return String(localized: "This room’s history is no longer available.") }
         if code == 4123 { return String(localized: "Restart the Hermes gateway on your Mac, then reconnect.") }
-        // A canonical host refused a retry or discard because the task moved on (#1605).
         if reason == "stale_generation" { return String(localized: "This chat changed on the server. Reopen it and try again.") }
         return BotFailure.rejected(code).localizedDescription
     }

@@ -1,7 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// A Hermes chat's model, effort and Fast controls (`HermesChatSettings` owns one).
 @MainActor final class BotChatControlsTests: XCTestCase {
     private func context(_ id: UUID = UUID(), generation: Int = 1) -> BotChatControls.Context {
         .init(connectionID: id, profile: "same-profile", runtime: "runtime", generation: generation)
@@ -57,8 +56,6 @@ import XCTest
         XCTAssertEqual(settings.catalog.active?.id, "model-b")
     }
 
-    /// A catalog read the dropped socket cut shows nothing: the banner would outlive the
-    /// reconnect, which keeps the same connection and Profile.
     func testCatalogReadCutByALostConnectionLeavesNoError() async {
         let wire = SettingsWire(); let settings = BotChatControls()
         wire.catalogFailure = BotFailure.transport
@@ -119,8 +116,6 @@ import XCTest
         XCTAssertTrue(other.writes.isEmpty)
     }
 
-    /// A method the host lacks is the connection's to remember: a second chat on it never
-    /// sends the call, and a new connection starts with the control on.
     func testAMissingMethodStaysOffForEveryChatOnTheConnection() async throws {
         let wire = SettingsWire(), connection = UUID()
         let first = BotChatControls(), second = BotChatControls()
@@ -204,7 +199,6 @@ import XCTest
     var beforeDispatch: (() -> Void)?
     var afterDispatch: (() async -> Void)?
     var writes: [(String, [String: BotJSON])] = []
-    /// The connection's missing methods: like the gateway, a -32601 adds its method.
     var unavailableMethods: Set<String> = []
     func connect() async throws {}
     func close() {}

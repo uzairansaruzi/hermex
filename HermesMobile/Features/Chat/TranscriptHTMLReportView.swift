@@ -2,20 +2,11 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// A settled Hermes reply's HTML report, rendered in place (#1623): a filename strip with
-/// download and expand, then the page itself, flush with the transcript's text.
-///
-/// The transcript mounts every row when a chat opens, so nothing downloads until the row is
-/// first on screen (`loadsOnceVisible`). The page's height is measured once and locked, up to
-/// about three screens, and a taller page fades out at the cap; expand opens it whole. A page is
-/// live only while its reply is on screen: scrolled away, it becomes a still image at the same
-/// height and its web view is released, and coming back loads it again.
 struct TranscriptHTMLReportView<FileCard: View>: View {
     let reference: TranscriptMediaReference
     let cacheNamespace: String
     let loader: TranscriptHTMLReportLoader
     let onExpand: () -> Void
-    /// The file card a report over `HTMLReport.inlineByteLimit` shows instead.
     @ViewBuilder let fileCard: () -> FileCard
 
     @Environment(\.responseSelectionScope) private var selectionScope
@@ -27,13 +18,11 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
     @State private var width: CGFloat = 0
     @State private var measurement: HTMLReportMeasurement?
     @State private var isLive = false
-    /// The live page has painted, so it covers the snapshot or placeholder under it.
     @State private var isPainted = false
     @State private var handle = HTMLReportWebViewHandle()
     @State private var export: FileExportPayload?
     @State private var exportErrorMessage: String?
 
-    /// Before a page is measured: the cached height when there is one.
     private static var placeholderHeight: CGFloat { 180 }
     private static var fadeHeight: CGFloat { 56 }
 
@@ -49,8 +38,6 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.width.rounded() } action: { width = $0 }
             .onChange(of: cacheKey) {
                 isPainted = false
-                // Until the page measures under the new key, it keeps the height it had, so the
-                // transcript doesn't shift.
                 measurement = HTMLReportCache.measurement(for: cacheKey) ?? measurement
             }
             .loadsOnceVisible(id: reference.id) { admittedID = $0 }
@@ -77,8 +64,6 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
             }
         }
     }
-
-    // MARK: Strip
 
     private var strip: some View {
         HStack(spacing: 8) {
@@ -119,8 +104,6 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
         }
     }
 
-    // MARK: Page
-
     @ViewBuilder
     private var page: some View {
         switch model.phase {
@@ -149,7 +132,6 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
                         onAnchorTap: onExpand
                     )
                     .accessibilityLabel(reference.displayName)
-                    // A new width, font or text size lays the page out again and measures it.
                     .id(cacheKey)
                 }
             }
@@ -205,17 +187,12 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
         }
     }
 
-    // MARK: State
-
     private struct LoadKey: Equatable {
         let admittedID: String?
         let attempt: Int
-        /// A load refused while the chat was detached runs again once it attaches.
         let attach: Int?
     }
 
-    /// A settled reply's selection host can't see the scroll view, so the page follows its whole
-    /// reply's visibility, as its media does.
     private var isVisible: Bool { selectionScope?.collectsGlyphs ?? true }
 
     private var cacheKey: String {
@@ -231,7 +208,6 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
         HTMLReportTheme(appearance: appearance, colorScheme: colorScheme, dynamicTypeSize: dynamicTypeSize)
     }
 
-    /// On screen: load the page. Off screen: keep a still image of it, then release it.
     private func followVisibility() async {
         guard !isVisible else {
             isLive = true
@@ -247,10 +223,6 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
         isPainted = false
     }
 
-    /// The first measure of this content under this `cacheKey` locks the height; a later load of
-    /// the same content, in this row or another showing the same file, takes the locked one, so no
-    /// row jumps. The height stored under `cacheKey` alone is only the placeholder for the next
-    /// open, before the file has downloaded.
     private func lockHeight(_ contentHeight: CGFloat) {
         let contentKey = "\(cacheKey)|\(model.contentTag ?? "")"
         if let locked = HTMLReportCache.measurement(for: contentKey) {
@@ -266,8 +238,6 @@ struct TranscriptHTMLReportView<FileCard: View>: View {
         isPainted = true
     }
 
-    /// About three screens: most reports show whole, while a runaway page can't take over the
-    /// chat or hold an unbounded web view and still image.
     private static var heightCap: CGFloat {
         let screen = UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.screen.bounds.height }

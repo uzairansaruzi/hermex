@@ -1,11 +1,6 @@
 import SwiftUI
 import WidgetKit
 
-/// Provider limits on the Home Screen and Lock Screen (#1409), drawn from the snapshot the app
-/// writes when Usage loads on a Hermes server (`ProviderLimitsSnapshot`). It makes no network or
-/// Keychain call: opening Usage is the only refresh. Each window shows its percentage until the
-/// earlier of its reset and an hour after its measurement, then asks to open Hermex; the timeline
-/// has an entry at each of those instants rather than trusting WidgetKit to reload on time.
 struct ProviderLimitsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: ProviderLimitsSnapshot.widgetKind, provider: ProviderLimitsTimeline()) { entry in
@@ -33,8 +28,6 @@ struct ProviderLimitsTimeline: TimelineProvider {
         completion(ProviderLimitsEntry(date: Date(), snapshot: ProviderLimitsSnapshotFile.shared?.read()))
     }
 
-    /// An entry now and one at every later instant a window expires, so each percentage goes on
-    /// time even when the system reloads late.
     func getTimeline(in context: Context, completion: @escaping (Timeline<ProviderLimitsEntry>) -> Void) {
         let now = Date()
         let snapshot = ProviderLimitsSnapshotFile.shared?.read()
@@ -45,11 +38,9 @@ struct ProviderLimitsTimeline: TimelineProvider {
     }
 }
 
-/// One window as an entry draws it.
 private struct LimitReading {
     let provider: ProviderLimitsSnapshot.Provider
     let window: ProviderLimitsSnapshot.Window
-    /// Nil once the window expired.
     let percent: Double?
 
     init(_ provider: ProviderLimitsSnapshot.Provider, _ window: ProviderLimitsSnapshot.Window, at now: Date) {
@@ -82,8 +73,6 @@ private struct ProviderLimitsWidgetView: View {
         }
     }
 
-    /// The window with the least left that still shows a percentage, else the one with the least
-    /// left when it was measured, shown as expired.
     private func tightest(in snapshot: ProviderLimitsSnapshot) -> LimitReading? {
         let readings = snapshot.providers.flatMap { provider in
             provider.windows.map { LimitReading(provider, $0, at: entry.date) }
@@ -126,7 +115,6 @@ private struct SmallLimit: View {
     }
 }
 
-/// Up to two providers side by side, two windows each.
 private struct MediumLimits: View {
     let snapshot: ProviderLimitsSnapshot
     let now: Date
@@ -138,7 +126,6 @@ private struct MediumLimits: View {
             HStack {
                 ProfileLabel(profile: snapshot.profile)
                 Spacer(minLength: 8)
-                // The oldest measurement shown: a newer publication never makes it look fresh.
                 if let measured = providers.compactMap(\.updatedAt).min() {
                     Text("Updated \(shortMoment(measured, now: now))")
                         .font(.caption2)
@@ -199,7 +186,6 @@ private struct MediumRow: View {
     }
 }
 
-/// The Lock Screen's rectangle: the tightest window, in the system's one-color rendering.
 private struct RectangularLimit: View {
     let reading: LimitReading
     let profile: String
@@ -280,7 +266,6 @@ private struct WindowTitle: View {
     }
 }
 
-/// The reset, or for a stale value still showing, when it was measured.
 private struct WindowFootnote: View {
     let reading: LimitReading
     let now: Date
@@ -335,7 +320,6 @@ private struct ProfileLabel: View {
     }
 }
 
-/// The remaining share, unanimated: it changes only between timeline entries.
 private struct LimitBar: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
@@ -359,9 +343,6 @@ private struct LimitBar: View {
     }
 }
 
-/// The Usage card's tiers (`providerLimitTint`): accent, orange at 25% or less, red at 10% or
-/// less, in full color only. Tinted and vibrant rendering draw it in primary and Always-On in
-/// secondary, so the number and bar carry it alone.
 private struct LimitTint {
     let percent: Double
     let renderingMode: WidgetRenderingMode
@@ -378,12 +359,10 @@ private struct LimitTint {
 
 private func clamped(_ percent: Double) -> Double { min(max(percent, 0), 100) }
 
-/// "12%" for the small widget's large figure.
 private func percentText(_ percent: Double) -> String {
     (clamped(percent).rounded() / 100).formatted(.percent.precision(.fractionLength(0)))
 }
 
-/// "3:40 PM" today, "Thu" within the week, "Nov 12" beyond.
 private func shortMoment(_ date: Date, now: Date) -> String {
     if Calendar.current.isDate(date, inSameDayAs: now) {
         return date.formatted(date: .omitted, time: .shortened)

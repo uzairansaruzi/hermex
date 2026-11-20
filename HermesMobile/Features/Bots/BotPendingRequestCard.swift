@@ -1,42 +1,21 @@
 import SwiftUI
 import UIKit
 
-/// The request blocking a bot, rendered in the transcript where its work
-/// stopped, so the command sits under the tool row that asked for it.
-///
-/// Placement is the only thing Bot-specific here: the surfaces, choice buttons,
-/// decision buttons and copy are the Sessions approval and clarification
-/// vocabulary. `isEnabled` false is a resolved, expired or in-flight request:
-/// the card stays readable and stops acting. A Hermes chat's request slot shows
-/// it too, with `subject` naming Hermes or the bot (#1141); the
-/// Desktop-task and connection bodies are the Hermes chat's own
-/// (`HermesRequestCards.swift`).
-///
-/// Only the Desktop-task body has no input, because its answer is data only
-/// Hermes Desktop holds. Everything else — approvals, questions, sudo and
-/// secret prompts, connection operations — is answered from here.
 struct BotPendingRequestCard: View {
     static let cornerRadius: CGFloat = 14
 
     let request: BotPendingRequest
-    /// Which bot on which connection is asking, so two hosts with equal Profile
-    /// names never produce an anonymous card.
     let identity: String
     let isEnabled: Bool
-    /// Stop is gated separately: a Desktop-only request is never answerable, but
-    /// stopping the work it blocks is exactly what the phone still owns.
     let canStop: Bool
     let isAnswering: Bool
     let resolution: BotRequestResolution?
     let onApprove: (BotApprovalRequest.Choice) -> Void
     let onAnswer: ([BotQuestionAnswer]) -> Void
     let onSkip: () -> Void
-    /// Sends a credential request's typed value. Empty is the host's skip.
     let onCredential: (String) -> Void
     let onStop: () -> Void
-    /// One row's answer, or Continue, for a connection operation.
     let onConnection: (BotConnectionOperation.Answer) -> Void
-    /// Who the copy says is waiting.
     var subject: HermesRequestSubject = .bot
     var summary: ApprovalSummaryPresentation? = nil
 
@@ -58,8 +37,6 @@ struct BotPendingRequestCard: View {
                     credential: credential, identity: identity, isEnabled: isEnabled,
                     isAnswering: isAnswering, onCredential: onCredential
                 )
-                // A new request gets a fresh, empty field: a password typed for a
-                // timed-out sudo prompt must never ride along into a secret.
                 .id(credential.requestID)
             case .desktopTask(let task):
                 HermesDesktopTaskRequestBody(task: task, identity: identity, subject: subject, canStop: canStop, onStop: onStop)
@@ -68,7 +45,6 @@ struct BotPendingRequestCard: View {
                     operation: operation, identity: identity, subject: subject, isEnabled: isEnabled,
                     isAnswering: isAnswering, onConnection: onConnection
                 )
-                // Typed setup values belong to one operation's rows.
                 .id(operation.opID)
             }
             if let resolution {
@@ -85,7 +61,6 @@ struct BotPendingRequestCard: View {
         .onChange(of: request.requestID, initial: true) { announce() }
     }
 
-    /// One announcement per request; re-renders and answers stay silent.
     private func announce() {
         guard UIAccessibility.isVoiceOverRunning else { return }
         let summary: String
@@ -105,10 +80,6 @@ struct BotPendingRequestCard: View {
     }
 }
 
-/// A command approval. Only the choices the host actually offered are shown:
-/// a smart-denied or permanent-allow-blocked request legitimately has fewer.
-/// The scope line under the command says what Allow session and Always allow
-/// cover, and is absent when neither is offered.
 private struct BotApprovalRequestBody: View {
     let approval: BotApprovalRequest
     let identity: String
@@ -130,8 +101,6 @@ private struct BotApprovalRequestBody: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         if let command = approval.command {
-            // Horizontally scrollable and selectable, so a long command is
-            // readable in full before it is approved.
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(command)
                     .font(.system(.footnote, design: .monospaced))
@@ -166,8 +135,6 @@ private struct BotApprovalRequestBody: View {
         }
     }
 
-    /// Two per row, in the host's order, so Allow once and Deny stay reachable
-    /// without the layout changing when a choice is withheld.
     private var rows: [[BotApprovalRequest.Choice]] {
         stride(from: 0, to: approval.choices.count, by: 2).map {
             Array(approval.choices[$0..<min($0 + 2, approval.choices.count)])
@@ -201,9 +168,6 @@ private struct BotApprovalRequestBody: View {
     }
 }
 
-/// One or many clarify questions. A single single-select question submits on
-/// tap, as the Sessions card does; multi-select and batches need a deliberate
-/// Send because no one tap can express the whole answer.
 private struct BotQuestionRequestBody: View {
     let question: BotQuestionRequest
     let identity: String
@@ -214,11 +178,9 @@ private struct BotQuestionRequestBody: View {
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
-    /// Choice ids picked per question id, and the free text typed for it.
     @State private var picked: [String: Set<Int>] = [:]
     @State private var typed: [String: String] = [:]
 
-    /// True when one tap is the whole answer, so no Send control is needed.
     private var submitsOnTap: Bool {
         !question.isBatch && question.questions.first?.allowsMultipleChoices == false
     }
@@ -227,9 +189,6 @@ private struct BotQuestionRequestBody: View {
 
     private var canSubmit: Bool { isEnabled && !isAnswering && hasAnswer }
 
-    /// Every outstanding question, not just one. A partial send would lock the
-    /// untouched questions as skipped, so Send waits for the whole batch and
-    /// Skip stays the deliberate way to decline all of it.
     private var hasAnswer: Bool {
         !unanswered.isEmpty && unanswered.allSatisfy { item in
             !(picked[item.id]?.isEmpty ?? true)
@@ -330,8 +289,6 @@ private struct BotQuestionRequestBody: View {
                 .pendingRequestFieldSurface()
                 .disabled(!isEnabled || isAnswering)
 
-            // A batch or multi-select answer is sent by the Send control below,
-            // which speaks for every question at once.
             if submitsOnTap {
                 PendingRequestSubmitButton(isBusy: isAnswering, canSubmit: canSubmit) { onAnswer(answers()) }
                     .accessibilityLabel("Send answer")
@@ -358,8 +315,6 @@ private struct BotQuestionRequestBody: View {
         picked[item.id] = selection
     }
 
-    /// One answer per question the host has not already locked. A blank one is a
-    /// deliberate skip for that question, which is what the host's tool reads it as.
     private func answers() -> [BotQuestionAnswer] {
         unanswered.map { item in
             let labels = item.choices.filter { picked[item.id]?.contains($0.id) == true }.map(\.wireLabel)
@@ -372,12 +327,6 @@ private struct BotQuestionRequestBody: View {
     }
 }
 
-/// A sudo password or a secret the bot asked for. Masked, sent straight to the
-/// host and never held on the model, in a draft or anywhere else on the phone.
-/// The field offers AutoFill for passwords, and its value belongs to one
-/// request: the card keys this body by request id, so a replacement request
-/// starts empty. Skip is a first-class answer: it releases the bot immediately
-/// instead of leaving it parked until the host's deadline.
 private struct BotCredentialRequestBody: View {
     let credential: BotCredentialRequest
     let identity: String
@@ -398,7 +347,6 @@ private struct BotCredentialRequestBody: View {
             .font(AppFont.subheadline())
             .foregroundStyle(.appPrimary)
             .fixedSize(horizontal: false, vertical: true)
-        // A secret's storage name, so the user knows which of their keys to paste.
         if let envVar = credential.envVar {
             Text(verbatim: envVar)
                 .font(.system(.footnote, design: .monospaced))
@@ -455,16 +403,11 @@ private struct BotCredentialRequestBody: View {
     private func submit() {
         guard canSubmit else { return }
         let outgoing = value
-        // Dropped from the view the moment it is handed over; the model never
-        // holds it either, so no layer of the phone keeps the value around.
         value = ""
         onCredential(outgoing)
     }
 }
 
-/// The line left in the card's slot when the host withdrew the request on screen
-/// (#892), in the room system line's style. Static: it appears and goes without
-/// a transition, and VoiceOver hears it once.
 struct BotRequestWithdrawalNote: View {
     let withdrawal: BotRequestWithdrawal
 

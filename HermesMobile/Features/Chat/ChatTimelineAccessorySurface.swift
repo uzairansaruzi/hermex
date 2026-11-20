@@ -64,8 +64,6 @@ extension View {
         )
     }
 
-    /// Shape-based entry point for accessories that are not a rounded rectangle,
-    /// such as the one-line run-status capsule.
     func chatTimelineAccessorySurface(
         fallbackMaterial: Material,
         in shape: some Shape

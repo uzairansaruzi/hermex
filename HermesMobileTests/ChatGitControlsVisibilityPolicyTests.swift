@@ -33,8 +33,6 @@ final class ChatGitControlsVisibilityPolicyTests: XCTestCase {
         XCTAssertTrue(showsInlineCommit(hasCommittableChanges: false, isCommitting: true))
     }
 
-    /// A Hermes chat's repository is read-only (#1114): its turn still gets the changes recap,
-    /// but never the commit button, even mid-commit.
     func testARepositoryWithoutWritesKeepsTheRecapAndHidesTheCommitButton() {
         XCTAssertFalse(showsInlineCommit(supportsWrites: false))
         XCTAssertFalse(showsInlineCommit(supportsWrites: false, isCommitting: true))

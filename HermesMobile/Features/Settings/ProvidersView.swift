@@ -1,13 +1,5 @@
 import SwiftUI
 
-/// Read-only provider status screen (#26): which providers the server knows
-/// about, whether each has a credential (and where it came from), which one is
-/// active, and each provider's model catalog. Deliberately carries no write
-/// affordances — API-key set/delete stays a server-side operation.
-///
-/// Chrome matches the composer's model picker (#361): a plain `List` of
-/// provider disclosures, each labelled with the bundled provider glyph, the
-/// name, and the catalog count.
 struct ProvidersView: View {
     let server: URL
 
@@ -70,8 +62,6 @@ struct ProvidersView: View {
         }
     }
 
-    /// Loading, load-failure, and empty-catalog states. Rendered as a full-height
-    /// list row rather than an overlay so pull-to-refresh keeps working.
     @ViewBuilder
     private var statusRow: some View {
         if viewModel.isLoading {
@@ -97,8 +87,6 @@ struct ProvidersView: View {
         }
     }
 
-    /// Shown above cached rows when a pull-to-refresh fails: the list would
-    /// otherwise look freshly loaded even though the request errored (#42 review).
     private func refreshFailureBanner(detail: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -127,9 +115,6 @@ struct ProvidersView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Expansion is keyed by the provider's stable id so refreshes that reorder
-    /// the list (the server sorts active-first) keep the right rows expanded;
-    /// entries without an id fall back to their position.
     static func expansionKey(for provider: ProviderSummary, at index: Int) -> String {
         if let id = provider.id?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty {
             return id
@@ -147,9 +132,6 @@ struct ProvidersView: View {
     }
 }
 
-/// One provider: a disclosure whose label carries the glyph, name, catalog
-/// count, and credential state, and whose body lists the provider's models.
-/// A provider the server sent no models for renders the label alone.
 private struct ProviderDisclosure: View {
     let provider: ProviderSummary
     let isActive: Bool
@@ -217,8 +199,6 @@ private struct ProviderDisclosure: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Key status on the leading edge, the Active and key-source badges trailing.
-    /// The badges keep their intrinsic width so the status text wraps first.
     @ViewBuilder
     private var statusLine: some View {
         let badge = ProvidersViewModel.keySourceBadge(for: provider)
@@ -250,7 +230,6 @@ private struct ProviderDisclosure: View {
                 }
 
                 if let badge {
-                    // Technical token (env / OAuth / config) — deliberately not localized.
                     Text(verbatim: badge)
                         .font(AppFont.caption2(weight: .medium))
                         .padding(.horizontal, 8)
@@ -263,8 +242,6 @@ private struct ProviderDisclosure: View {
         }
     }
 
-    /// Model rows reuse the picker's row geometry so a provider's catalog reads
-    /// the same on both screens. Entries without a label or id are skipped.
     private func modelList(_ models: [ProviderModel]) -> some View {
         let titles = models.enumerated().compactMap { index, model in
             Self.modelTitle(model).map { (index: index, title: $0) }
@@ -287,8 +264,6 @@ private struct ProviderDisclosure: View {
         .padding(.top, 4)
     }
 
-    /// "Showing X of Y models" when the server trimmed the catalog, otherwise the
-    /// plain count — the visible label is compact, so VoiceOver gets the words.
     private var modelCountAccessibilityLabel: Text {
         if let info = ProvidersViewModel.truncatedModelInfo(for: provider) {
             return Text("Showing \(info.shown) of \(info.total) models")

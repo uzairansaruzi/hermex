@@ -262,10 +262,6 @@ private extension View {
 }
 
 extension View {
-    /// `inheritsClipping` keeps the surface on the material path even when
-    /// Liquid Glass is available. Glass is composited outside the SwiftUI
-    /// layer tree, so it ignores an ancestor's clip or mask and draws over
-    /// neighbouring views; controls inside a masked scroller need this.
     func adaptiveGlass(
         _ style: AdaptiveGlassStyle = .regular,
         isInteractive: Bool = false,

@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Decoding contract for `GET /api/provider/quota` (#415). The `available`
-/// fixtures are the live payloads captured 2026-09-05; the rest cover the other
-/// statuses upstream returns from the same handler.
 final class APIClientProviderQuotaTests: APIClientTestCase {
     func testEndpointQueryConstruction() {
         let base = URL(string: "https://example.test")!

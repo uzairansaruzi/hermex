@@ -1,7 +1,5 @@
 import UIKit
 
-/// Identification only, using one connection's inbox roster. No delivery or relay
-/// work belongs here; the annotated prompt follows the ordinary command path.
 struct BotMentions {
     struct Completion: Identifiable {
         let profile: BotProfile
@@ -12,9 +10,6 @@ struct BotMentions {
     private let candidates: [Completion]
     private let byForm: [String: BotProfile]
     private static let reserved: Set<String> = ["all", "everyone", "user", "default", "hermes"]
-    /// A handle runs possessively to its end and is not a mention when a path
-    /// continues it (`@docs/plan.md`, `@docs.md`), so the composer's file
-    /// references never resolve as a bot; trailing punctuation still does.
     private static let tokens = try! NSRegularExpression(
         pattern: #"(^|\s)@([a-z0-9][a-z0-9_-]*+)(?![/\\]|\.[a-z0-9_-])"#, options: .caseInsensitive
     )
@@ -53,8 +48,6 @@ struct BotMentions {
         bot.id.lowercased() == "default" ? "hermes" : bot.id
     }
 
-    /// Desktop's slug and collapsed forms; reserved words only block friendly
-    /// aliases, so the primary Profile still owns @hermes and @default.
     static func nameForms(_ value: String?) -> [String] {
         guard let name = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else { return [] }
         let slug = name.replacingOccurrences(of: "[^a-z0-9_-]+", with: "-", options: .regularExpression)
@@ -74,13 +67,10 @@ struct BotMentions {
         }.prefix(8))
     }
 
-    /// Every unambiguous alias is available to the shared composer editor.
     func chipReferences(avatars: [String: UIImage]) -> [String: ComposerBotReference] {
         byForm.mapValues { ComposerBotReference(profile: $0, avatar: avatars[$0.id]) }
     }
 
-    /// Preserve UTF-16 offsets while masking code, so sending and chip display
-    /// resolve the same prose without shifting a chip onto unrelated text.
     static func proseMentions(in text: String) -> [(range: NSRange, form: String)] {
         let prose = NSMutableString(string: text)
         for regex in [fences, inlineCode] {
@@ -111,8 +101,6 @@ struct BotMentions {
         return Self.notePrefix + lines + Self.noteSuffix
     }
 
-    /// Hide only a trailing identification note in user presentation. Drafts and
-    /// transport text retain their original bytes, including whitespace.
     static func displayText(_ text: String) -> String {
         guard let start = text.range(of: notePrefix, options: .backwards),
               text.hasSuffix(noteSuffix) else { return text }
@@ -125,8 +113,6 @@ struct BotMentions {
     }
 }
 
-/// Caret-local @ token. Uses the slash completion's UTF-16 replacement behavior
-/// so text on either side and the editor's selection ownership are preserved.
 struct BotMentionTrigger {
     let range: NSRange
     let query: String

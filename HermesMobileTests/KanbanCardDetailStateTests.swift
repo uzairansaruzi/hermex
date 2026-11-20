@@ -267,7 +267,6 @@ private actor CardDetailClient: KanbanDataClient {
 private actor StaleMissingEntityClient: KanbanDataClient {
     private var detailCallCount = 0
     private var boardContinuation: CheckedContinuation<KanbanBoardsResponse, Never>?
-    /// Fulfilled once the Board read is held, so the test can overtake it.
     nonisolated let boardReadStarted = XCTestExpectation(description: "the Board read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { decode(#"{"columns":["ready"],"read_only":false}"#) }
@@ -299,7 +298,6 @@ private actor StaleMissingEntityClient: KanbanDataClient {
 private actor StaleDetailClient: KanbanDataClient {
     private var detailCallCount = 0
     private var staleContinuation: CheckedContinuation<KanbanCardDetailEnvelope, Never>?
-    /// Fulfilled once the second detail read is held, so the test can overtake it.
     nonisolated let staleReadStarted = XCTestExpectation(description: "the stale detail read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { decode(#"{"columns":["ready"],"read_only":false}"#) }

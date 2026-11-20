@@ -29,8 +29,6 @@ struct ComposerProfileSelectorMenu: View {
     let profileOptions: [ProfileSummary]
     let selectedProfileName: String?
     let selectedProfileTitle: String
-    /// Single-profile servers reject switches (#24), so the control is a plain
-    /// label: no chevron, no menu, no button trait.
     let isStatic: Bool
     let isDisabled: Bool
     let color: Color
@@ -101,8 +99,6 @@ struct ComposerProfileSelectorMenu: View {
     }
 }
 
-/// The composer's model label, which opens Model settings. Keyboard down it is only the
-/// provider's logo and a chevron; keyboard up the title takes the row's spare width and truncates.
 struct ComposerModelLabelButton: View {
     let showsTitle: Bool
     let selection: ComposerModelEffortSelection
@@ -149,18 +145,14 @@ struct ComposerModelLabelButton: View {
     }
 }
 
-/// What Model settings' Approvals row shows and may change.
 struct ComposerApprovals: Equatable {
     let isYoloOn: Bool
-    /// A Hermes session's Profile has an approval mode. A webui session has only YOLO.
     let offersModes: Bool
-    /// The host's `approval_mode`, nil until it reports one.
     let mode: String?
     let mayTurnOffYolo: Bool
     let isChanging: Bool
     let errorMessage: String?
 
-    /// The state in effect: Off wins, then YOLO, then the mode. Nil when nothing is known.
     var value: String? {
         if mode == HermesApprovalMode.off.rawValue { return Self.title(for: .off) }
         if isYoloOn { return "YOLO" }
@@ -168,11 +160,8 @@ struct ComposerApprovals: Equatable {
         return HermesApprovalMode(rawValue: mode).map(Self.title(for:)) ?? mode.capitalized
     }
 
-    /// YOLO is on and this chat can't turn it off: the mode or a `--yolo` launch holds it.
     var isYoloLocked: Bool { isYoloOn && !mayTurnOffYolo }
 
-    /// YOLO is on and this chat can turn it off. This stays open during a run: stopping a bypass
-    /// can't wait for the work it's letting through.
     var canTurnOffYolo: Bool { isYoloOn && mayTurnOffYolo }
 
     static func title(for mode: HermesApprovalMode) -> String {
@@ -189,7 +178,6 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     let effort: String?
     let supportedEfforts: [String]?
     let supportsEffort: Bool?
-    /// The level a Hermes host sends when the model's route takes less than `effort` (#1016).
     var sentEffort: String? = nil
 
     var modelProviderID: String? {
@@ -226,24 +214,20 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
 
     var title: String {
         let modelLabel = ModelDisplayNames.displayLabel(for: model.id, displayName: model.displayName)
-        // No level reported yet: a placeholder word would only push the model's name out.
         guard committedEffort != nil, let effortTitle else { return modelLabel }
         return "\(modelLabel) · \(effortTitle)"
     }
 
-    /// `title` for VoiceOver, which reads a lowered level as a sentence rather than symbols.
     var accessibilityTitle: String {
         guard let effort = committedEffort, let lowered = loweredEffort else { return title }
         let picked = ReasoningEffortOption.title(for: effort), sent = ReasoningEffortOption.title(for: lowered)
         return String(localized: "\(ModelDisplayNames.displayLabel(for: model.id, displayName: model.displayName)), \(picked) effort, sent as \(sent)")
     }
 
-    /// The same model with `level` chosen, for a level still on its way to the host.
     func replacingEffort(with level: String) -> Self {
         Self(model: model, effort: level, supportedEfforts: supportedEfforts, supportsEffort: supportsEffort)
     }
 
-    /// `sentEffort` when it differs from the committed level.
     private var loweredEffort: String? {
         guard let effort = committedEffort, let sent = normalizedEffort(sentEffort), sent != effort else { return nil }
         return sent
@@ -256,8 +240,6 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     }
 }
 
-/// Quiet toolbar-row control: icon, one-line title, optional chevron, no pill
-/// background, so the row reads as one surface. 44 pt tall for the hit target.
 struct ComposerInlineControlLabel: View {
     static let minimumHeight: CGFloat = 44
     static let horizontalPadding: CGFloat = 6
@@ -295,7 +277,6 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
     let id: String
     let title: String
 
-    /// webui's static ladder, and the fallback when a server sends no vocabulary (#18).
     static let allCases: [ReasoningEffortOption] = [
         ReasoningEffortOption(id: "none", title: String(localized: "None")),
         ReasoningEffortOption(id: "minimal", title: String(localized: "Minimal")),
@@ -305,8 +286,6 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
         ReasoningEffortOption(id: "xhigh", title: String(localized: "XHigh"))
     ]
 
-    /// Every level with a title: webui's ladder plus the levels only a Hermes host offers
-    /// (#1016), which stay out of webui's fallback.
     private static let titled = allCases + [
         ReasoningEffortOption(id: "max", title: String(localized: "Max")),
         ReasoningEffortOption(id: "ultra", title: String(localized: "Ultra"))
@@ -317,7 +296,6 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
             ?? effort.capitalized
     }
 
-    /// `title`, shortened where eight of them share a line under the Thinking control.
     static func shortTitle(for effort: String) -> String {
         switch effort {
         case "minimal": String(localized: "Min")
@@ -326,11 +304,6 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
         }
     }
 
-    /// Menu options for a server-provided effort vocabulary (issue #18).
-    /// `nil` or empty → the full static list (older servers / defensive fallback;
-    /// an empty list also means `supports_reasoning_effort == false`, which hides
-    /// the control before this is ever rendered). Unknown ids are kept with a
-    /// capitalized title so a newer server's vocabulary still works.
     static func options(forSupportedEfforts supportedEfforts: [String]?) -> [ReasoningEffortOption] {
         guard let supportedEfforts, !supportedEfforts.isEmpty else { return allCases }
 
@@ -341,16 +314,11 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
             .map { id in ReasoningEffortOption(id: id, title: title(for: id)) }
     }
 
-    /// The lone effort when the server vocabulary leaves nothing to choose, so the
-    /// composer can render a static label instead of a one-item menu.
     static func singleOption(forSupportedEfforts supportedEfforts: [String]?) -> ReasoningEffortOption? {
         let options = options(forSupportedEfforts: supportedEfforts)
         return options.count == 1 ? options[0] : nil
     }
 
-    /// Whether the composer should show the effort control at all (issue #18).
-    /// `supports_reasoning_effort == false` hides it; older servers (both fields
-    /// absent) keep today's behavior and show it.
     static func showsEffortControl(
         supportsReasoningEffort: Bool?,
         supportedEfforts: [String]?

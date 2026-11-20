@@ -8,13 +8,10 @@ struct GitBranchPickerButton: View {
     let isLoading: Bool
     let isSwitching: Bool
     let isDisabled: Bool
-    /// Offers New Branch; a Hermes chat's picker only switches (#1116).
     var allowsCreate = true
     let onSelect: (GitCheckoutTarget) -> Void
     let onCreate: (GitCheckoutTarget) -> Void
     let onRefresh: () -> Void
-    /// Owned by the host so it can keep this button on screen while the popover
-    /// (and its New Branch alert, which takes the keyboard) is up.
     @Binding var showsPicker: Bool
 
     var body: some View {
@@ -22,8 +19,6 @@ struct GitBranchPickerButton: View {
             HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
             showsPicker = true
         } label: {
-            // Quiet inline control matching the composer toolbar row: no pill
-            // background, 44 pt tall for the hit target.
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
                     .font(AppFont.subheadline())
@@ -143,8 +138,6 @@ struct GitBranchPickerSheet: View {
             Button("Cancel", role: .cancel) {}
             Button("Create") {
                 let name = newBranchName.trimmingCharacters(in: .whitespacesAndNewlines)
-                // Alert action buttons ignore `.disabled` at runtime, so guard here to
-                // avoid sending an empty branch name to the server (which 400s).
                 guard !name.isEmpty else { return }
                 onCreate(GitCheckoutTarget(ref: currentBranch, mode: .local, newBranch: name))
             }

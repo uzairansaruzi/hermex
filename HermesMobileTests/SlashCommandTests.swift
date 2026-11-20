@@ -3,8 +3,6 @@ import XCTest
 
 final class SlashCommandTests: XCTestCase {
 
-    // MARK: - Catalog matching
-
     func testMatchingEmptyQueryReturnsAllCommands() {
         let results = SlashCommandCatalog.matching("")
         XCTAssertEqual(results.count, SlashCommandCatalog.allCommands.count)
@@ -22,10 +20,6 @@ final class SlashCommandTests: XCTestCase {
         let upper = SlashCommandCatalog.command(named: "MODEL")
         XCTAssertEqual(lower?.name, upper?.name)
     }
-
-    // MARK: - Reasoning levels
-
-    // MARK: - ParsedSlashQuery
 
     func testParsedQueryMultipleSpaces() {
         let parsed = ParsedSlashQuery(query: "/model   gpt-4")
@@ -55,8 +49,6 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertEqual(parsed.argQuery, "sta")
         XCTAssertTrue(parsed.isSubArgMode)
     }
-
-    // MARK: - Skill slash suggestions
 
     func testSkillSuggestionsTrimAndSortNames() {
         let suggestions = SlashSkillFormatter.suggestions(from: [
@@ -111,8 +103,6 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertNil(SlashSkillFormatter.invocation(from: "claude maybe a search", suggestions: suggestions))
     }
 
-    // MARK: - Agent slash suggestions
-
     func testAgentCommandSuggestionsHideCLIOnlyGatewayOnlyAndDuplicateCommands() {
         let suggestions = AgentSlashCommandSuggestion.matching("s", in: [
             AgentCommand(name: "status", description: "Agent status"),
@@ -124,8 +114,6 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertEqual(suggestions.map(\.name), ["session"])
         XCTAssertEqual(suggestions.first?.description, "Agent command")
     }
-
-    // MARK: - Ranking
 
     private func fields(
         name: String,
@@ -156,7 +144,6 @@ final class SlashCommandTests: XCTestCase {
     }
 
     func testScoreKeepsTheBestFieldMatch() {
-        // A weak name hit still beats a perfect description hit.
         let value = fields(name: "swift-refactor", description: "refactor")
         XCTAssertEqual(SlashCommandRanker.score(value, matching: "refactor"), 4)
     }
@@ -172,8 +159,6 @@ final class SlashCommandTests: XCTestCase {
 
         let ranked = SlashCommandRanker.rank(items, matching: "review") { $0 }
 
-        // Exact name (0) beats label prefix (3), which beats a name boundary
-        // hit (4). The three label-prefix ties break by label, then by name.
         XCTAssertEqual(ranked.map(\.name), ["review", "beta", "alpha", "zeta", "code-review"])
     }
 
@@ -226,8 +211,6 @@ final class SlashCommandTests: XCTestCase {
 
         XCTAssertEqual(suggestions.map(\.name), ["agents"])
     }
-
-    // MARK: - Autocomplete ranking passes
 
     private func skills(_ count: Int) -> [SkillSlashSuggestion] {
         SlashSkillFormatter.suggestions(from: (0..<count).map {

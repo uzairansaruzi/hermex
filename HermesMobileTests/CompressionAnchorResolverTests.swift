@@ -2,8 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class CompressionAnchorResolverTests: XCTestCase {
-    // MARK: - Gating
-
     func testKeyWithoutSummaryOrMarkerShowsNoCard() {
         let messages = [
             makeMessage(role: "user", content: "Hello"),
@@ -19,9 +17,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
     }
 
     func testLiteralCompactionMarkerReferenceTextSuppressesCard() {
-        // The latest marker message contains the summary, so it becomes the
-        // reference text — and is gated out because it is itself a marker
-        // (mirrors `_shouldShowSettledCompressionReference`).
         let messages = [
             makeMessage(role: "user", content: "Hello"),
             makeMessage(role: "assistant", content: "[Context compaction]\nOlder messages were summarized."),
@@ -48,8 +43,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
 
         XCTAssertEqual(resolution?.referenceText, "A fresh summary of the conversation.")
     }
-
-    // MARK: - Key matching
 
     func testKeyMatchPlacesCardAfterAnchorMessage() {
         let messages = [
@@ -108,7 +101,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
             metadata: metadata(key: key(role: "user", ts: 456, text: "Hello"), summary: "Summary.")
         )
 
-        // No key match and no index → top placement.
         XCTAssertEqual(resolution?.placement, .top)
     }
 
@@ -129,8 +121,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
         XCTAssertEqual(resolution?.placement, .afterLoadedMessageIndex(0))
     }
 
-    // MARK: - Index fallback
-
     func testKeyMismatchFallsBackToVisibleIndex() {
         let messages = [
             makeMessage(role: "user", content: "First", ts: 1),
@@ -147,7 +137,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
             )
         )
 
-        // Visible index 1 skips the tool row and lands on the assistant message.
         XCTAssertEqual(resolution?.placement, .afterLoadedMessageIndex(2))
     }
 
@@ -211,8 +200,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
         XCTAssertEqual(resolution?.placement, .top)
     }
 
-    // MARK: - Summary-only
-
     func testSummaryOnlyPlacesCardAtTop() {
         let messages = [
             makeMessage(role: "user", content: "Hello"),
@@ -236,11 +223,7 @@ final class CompressionAnchorResolverTests: XCTestCase {
         XCTAssertNil(resolution)
     }
 
-    // MARK: - View-model mapping
-
     func testCardMapsAnchorIndexToOffsetAdjustedRenderID() {
-        // Transcript renderIDs are absolute (`transcript:<offset + loadedIndex>`);
-        // the card must follow the same numbering when older pages are hidden.
         let messages = [
             makeMessage(role: "user", content: "Hello", messageId: "m0"),
             makeMessage(role: "assistant", content: "Hi there", messageId: "m1"),
@@ -274,8 +257,6 @@ final class CompressionAnchorResolverTests: XCTestCase {
         XCTAssertEqual(card?.referenceText, "Only a summary.")
         XCTAssertNil(card?.afterRenderID)
     }
-
-    // MARK: - Helpers
 
     private func resolve(
         messages: [ChatMessage],

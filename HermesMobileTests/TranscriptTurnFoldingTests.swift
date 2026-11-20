@@ -4,8 +4,6 @@ import XCTest
 final class TranscriptTurnFoldingTests: XCTestCase {
     private let firstTurnKey = TranscriptTurnClassifier.userTurnKey(absoluteIndex: 0)
 
-    // MARK: - Settled vs active
-
     func testSettledTurnFoldsActivityBehindTheFinalReply() {
         let messages = [
             user("u1", timestamp: 100),
@@ -64,8 +62,6 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertTrue(folds.folds.isEmpty)
     }
 
-    // MARK: - Interruption and expansion
-
     func testStoppedTurnReadsYouStoppedAndOpensWhenExpanded() {
         let messages = [
             user("u1", timestamp: nil),
@@ -108,8 +104,6 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertEqual(folds.folds.first?.label, .worked(elapsed: "30s"))
     }
 
-    // MARK: - Elapsed sources
-
     func testMissingTimestampsFallBackToPlainWorked() {
         let messages = [
             user("u1", timestamp: nil),
@@ -124,11 +118,6 @@ final class TranscriptTurnFoldingTests: XCTestCase {
     }
 
     func testClientRunSeededFromTheServerStartOutlastsTheUserMessageGap() {
-        // A run adopted on session load and settled while the user watched: the
-        // transcript carries no `_turnDuration` yet, and its last loaded row
-        // predates the reply. The ending the coordinator recorded from the
-        // server's `pending_started_at` still labels the whole run, so "Worked
-        // for" does not shrink to the part of it this client saw.
         let messages = [
             user("u1", timestamp: 100),
             assistantWithTools("a1", timestamp: 105),
@@ -170,8 +159,6 @@ final class TranscriptTurnFoldingTests: XCTestCase {
 
         XCTAssertEqual(message.turnDuration, 72.863)
     }
-
-    // MARK: - Shape of the turn
 
     func testSingleReplyWithNothingToHideGetsNoFold() {
         let messages = [
@@ -222,8 +209,6 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertEqual(folds.rowState(for: "transcript:3", expandedTurnKeys: [])?.hidesBubble, false)
     }
 
-    /// The host answers a delegation delivery as its own turn, so the prompt's
-    /// final reply stays visible instead of folding as an interim one (#1706).
     func testDelegationDeliveryEndsThePromptsTurn() {
         let messages = [
             user("u1", timestamp: 100),
@@ -250,8 +235,6 @@ final class TranscriptTurnFoldingTests: XCTestCase {
         XCTAssertEqual(folds.folds.first?.turnKey, TranscriptTurnClassifier.userTurnKey(absoluteIndex: 40))
         XCTAssertEqual(folds.folds.first?.hostRenderID, "transcript:41")
     }
-
-    // MARK: - Helpers
 
     private func derive(
         _ messages: [ChatMessage],

@@ -168,11 +168,8 @@ struct PendingClarification: Decodable, Equatable, Identifiable {
 struct ClarificationRespondResponse: Decodable, Equatable {
     let ok: Bool?
     let response: String?
-    /// The prompt already expired or was resolved (paired with a 409; issue #25).
     let stale: Bool?
-    /// Server cleared a stale card whose prompt already resolved (mirrors approvals).
     let staleCleared: Bool?
-    /// The respond was relayed to a gateway-managed run rather than resolved locally.
     let relayed: Bool?
 
     enum CodingKeys: String, CodingKey {

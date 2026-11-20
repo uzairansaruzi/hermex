@@ -19,7 +19,6 @@ final class APIClientTranscribeTests: APIClientTestCase {
             let bodyString = String(data: body, encoding: .utf8) ?? ""
             XCTAssertTrue(bodyString.contains("Content-Disposition: form-data; name=\"file\"; filename=\"voice-note.m4a\""))
             XCTAssertTrue(bodyString.contains("clip-bytes"))
-            // Transcribe sends only the file field — no session_id (unlike upload).
             XCTAssertFalse(bodyString.contains("name=\"session_id\""))
 
             return apiTestJSONResponse("""
@@ -49,8 +48,6 @@ final class APIClientTranscribeTests: APIClientTestCase {
             return (response, data)
         }
 
-        // A 503 with a JSON error body decodes into `.error` rather than throwing,
-        // so the caller can show the server's message and abort cleanly.
         let response = try await client.transcribeAudio(data: Data("x".utf8), filename: "v.m4a")
         XCTAssertEqual(response.error, "Speech-to-text is unavailable on this server")
         XCTAssertNil(response.transcript)

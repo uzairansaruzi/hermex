@@ -1,10 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Decoding contract for `GET /api/providers` (#26). The primary fixture mirrors
-/// the live server shape captured 2026-07-02 plus upstream
-/// `api/providers.py::get_providers()` @ `312d3fab`, including a
-/// `custom_providers`-derived entry that omits most fields.
 final class APIClientProvidersTests: APIClientTestCase {
     func testProvidersRequestDecodesLiveShape() async throws {
         let client = makeClient { request in
@@ -88,8 +84,6 @@ final class APIClientProvidersTests: APIClientTestCase {
         XCTAssertEqual(anthropic.authError, "OAuth token expired — run hermes auth login anthropic")
         XCTAssertEqual(anthropic.models, [])
 
-        // Custom-provider entries omit is_oauth / auth_error / is_self_hosted /
-        // base_url / is_plugin_provider, and may carry bare-string model IDs.
         let custom = providers[2]
         XCTAssertEqual(custom.id, "custom:glmcode")
         XCTAssertEqual(custom.isCustom, true)

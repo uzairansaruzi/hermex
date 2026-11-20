@@ -1,12 +1,5 @@
 import SwiftUI
 
-/// The create and edit sheet for a scheduled task. Both entry points — the
-/// Tasks toolbar's "New Task" and a task's own Edit action — present this same
-/// sheet, so the Configuration section's model and profile pickers are loaded
-/// and behave identically in each.
-///
-/// On a Hermes host (#1040) the sheet has no toast setting, its sources follow the
-/// Task's Profile, and an existing Task's Profile can't change (`locksProfile`).
 struct CronJobEditorSheet: View {
     let title: String
     let saveTitle: String
@@ -18,30 +11,16 @@ struct CronJobEditorSheet: View {
     private let locksProfile: Bool
 
     @State private var draft: CronJobEditorDraft
-    /// The Configuration section's model catalog and profile list. Loaded when
-    /// this sheet opens, not when the Tasks list appears.
     @State private var configuration: CronJobEditorConfigurationLoader
     @State private var isPresentingModelPicker = false
     @State private var isPresentingProfilePicker = false
     @State private var isPresentingSkillsPicker = false
-    /// The draft when the user picked another Profile on a server that scopes the
-    /// editor's sources by Profile, until that Profile's lists load and the choices
-    /// made for the old one are checked (#1040).
     @State private var draftAtProfilePick: CronJobEditorDraft?
     @Environment(\.dismiss) private var dismiss
 
-    /// Server-provided deliver targets. A plain `let` so a re-init while the
-    /// sheet is presented (options finishing their async load) swaps in the
-    /// fresh list, unlike `@State draft`, which keeps the user's edits.
     private let serverDeliveryOptions: [CronDeliveryOption]?
-    /// The draft's deliver value when the editor opened; stable across
-    /// re-inits because callers rebuild the same draft.
     private let initialDeliver: String
 
-    /// Picker rows recomputed from the live draft so a value typed while the
-    /// options were still loading keeps a matching row, and the initial
-    /// unknown/legacy value keeps its custom row even after the user selects
-    /// another option. `nil` means fall back to free-text entry.
     private var deliverPickerOptions: [CronDeliverPickerOption]? {
         CronDeliverPicker.options(
             serverOptions: configuration.deliveryOptions ?? serverDeliveryOptions,
@@ -143,10 +122,6 @@ struct CronJobEditorSheet: View {
                 } header: {
                     Text("Configuration")
                 } appFooter: {
-                    // States what upstream already does rather than
-                    // reimplementing it: `_selected_profile_snapshot_updates`
-                    // fills in the model from the profile only while the model
-                    // is blank, so the app must not prefill it.
                     Text("Leaving the model on Server default lets the server use the selected profile's model.")
                 }
 
@@ -161,8 +136,6 @@ struct CronJobEditorSheet: View {
             .themedPageBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
-            // A new loader is a new Profile's sources, so its loads start over. Once a
-            // picked Profile's lists arrive, the earlier targets and skills it lacks go.
             .task(id: ObjectIdentifier(configuration)) {
                 let loader = configuration
                 await loader.load()
@@ -173,7 +146,6 @@ struct CronJobEditorSheet: View {
             }
             .onChange(of: draft.trimmedProfile) { _, profile in
                 guard client.cronFeatures.isProfileScoped else { return }
-                // A second pick before the first one's lists load still checks the first's choices.
                 if draftAtProfilePick == nil { draftAtProfilePick = draft }
                 configuration = CronJobEditorConfigurationLoader(server: server, client: client, profile: profile)
             }
@@ -264,8 +236,6 @@ struct CronJobEditorSheet: View {
         )
     }
 
-    /// A failed catalog is not fatal: the picker keeps its custom entry, so an
-    /// exact model and provider ID can still be typed by hand.
     private var modelLoadStatus: ModelPickerLoadStatus {
         if configuration.isLoadingModels, configuration.modelGroups.isEmpty { return .loading }
         if let message = configuration.modelsErrorMessage, configuration.modelGroups.isEmpty {

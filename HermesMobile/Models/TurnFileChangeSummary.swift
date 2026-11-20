@@ -1,38 +1,15 @@
 import Foundation
 
-// In-chat "N files changed" recap (issue #316, Workspace git Slice D).
-//
-// The recap's file list is derived from an assistant turn's *tool-call metadata* (which
-// file-mutating tools ran, and on which paths) rather than a `git/status` snapshot — a
-// snapshot can't isolate a single turn's edits from accumulated uncommitted/external
-// changes. Each derived path is then joined to the rows of one range for the `+N −M` line
-// counts and the status chip: `git/status` on webui and for a Hermes turn without a base, or
-// a Hermes turn's range since the HEAD its send read (#1392), which keeps work the agent
-// committed. Read-only over data the chat already has.
-//
-// Mirrors the webui reference aggregation in `.codex-tmp/hermes-webui/static/workspace.js`
-// (mutation tool-name set, path-arg keys, path normalization, ignore filter).
-
-/// A single file changed during one assistant turn.
 struct TurnFileChange: Identifiable, Equatable {
-    /// Normalized, workspace-relative (or absolute, if the tool reported one) path.
     let path: String
-    /// Added lines, from the matched row (`0` when there is no net change).
     let additions: Int
-    /// Removed lines, from the matched row (`0` when there is no net change).
     let deletions: Int
-    /// What the tool did to the file (drives the streaming action label / fallback chip).
     let action: Action
-    /// Status chip kind — the matched row's kind when available, else derived
-    /// from `action`.
     let changeKind: GitFile.ChangeKind
-    /// The matched row, when one exists. `nil` for a tool-touched path with
-    /// no net git change (the row then shows `+0 −0` and is not openable in the diff sheet).
     let gitFile: GitFile?
 
     var id: String { path }
 
-    /// Last path component, e.g. `ContentView.swift`.
     var fileName: String {
         path.split(separator: "/").last.map(String.init) ?? path
     }
@@ -43,7 +20,6 @@ struct TurnFileChange: Identifiable, Equatable {
         case deleted
         case renamed
 
-        /// Fallback chip kind when the path didn't match a row.
         var changeKind: GitFile.ChangeKind {
             switch self {
             case .edited: return .modified
@@ -55,12 +31,8 @@ struct TurnFileChange: Identifiable, Equatable {
     }
 }
 
-/// Aggregated per-turn file-change recap. An empty `changes` array means "show nothing"
-/// (a turn that changed no files, or a non-git workspace).
 struct TurnFileChangeSummary: Equatable {
     let changes: [TurnFileChange]
-    /// The range the counts were read in, which the card names and its diff reads (#1392); nil
-    /// on webui, whose card names none and reads uncommitted changes.
     var scope: GitReviewScope?
 
     static let empty = TurnFileChangeSummary(changes: [])
@@ -70,20 +42,10 @@ struct TurnFileChangeSummary: Equatable {
     var totalAdditions: Int { changes.reduce(0) { $0 + $1.additions } }
     var totalDeletions: Int { changes.reduce(0) { $0 + $1.deletions } }
 
-    /// The range's files backing the changes, for opening the per-turn diff sheet.
     var diffFiles: [GitFile] { changes.compactMap(\.gitFile) }
 }
 
-/// Pure aggregation of a turn's file changes from tool-call metadata, joined to one range's rows.
-/// Stateless and deterministic so it can be unit-tested in isolation.
 enum TurnFileChangeAggregator {
-    /// Build the recap for one assistant turn.
-    /// - Parameters:
-    ///   - toolCalls: the turn's tool calls (live during streaming, or the archived group).
-    ///   - files: the changed files of `scope`, joined for line counts and chips.
-    ///   - scope: the range `files` were read in; nil on webui.
-    ///   - rowPath: maps a normalized tool path to the path the rows use, as
-    ///     `GitDataClient.rowPath(forToolPath:)` does; webui's are the same.
     static func summarize(toolCalls: [ToolCall], files: [GitFile], scope: GitReviewScope? = nil,
                           rowPath: (String) -> String = { $0 }) -> TurnFileChangeSummary {
         var orderedPaths: [String] = []
@@ -94,8 +56,6 @@ enum TurnFileChangeAggregator {
                 guard let path = normalize(candidate.path).map(rowPath) else { continue }
 
                 if let existing = actionByPath[path] {
-                    // A path edited and (re)created in the same turn reads better as the
-                    // stronger action; never let a later plain "edit" downgrade it.
                     if existing == .edited, candidate.action != .edited {
                         actionByPath[path] = candidate.action
                     }
@@ -123,11 +83,6 @@ enum TurnFileChangeAggregator {
         return TurnFileChangeSummary(changes: changes, scope: scope)
     }
 
-    // MARK: - Tool-call metadata extraction
-
-    /// File-mutating tools whose path arguments attribute a per-turn change. Tools outside
-    /// this set (reads, searches, shell, …) are intentionally ignored — a path they touch
-    /// is not per-turn attributed (it still shows in the global status sheet).
     private static func action(forToolNamed name: String) -> TurnFileChange.Action? {
         switch name {
         case "create_file":
@@ -144,7 +99,6 @@ enum TurnFileChangeAggregator {
         }
     }
 
-    /// Ordered (rawPath, action) candidates extracted from one tool call's arguments.
     private static func candidates(from toolCall: ToolCall) -> [(path: String, action: TurnFileChange.Action)] {
         guard let name = normalizedToolName(toolCall.name),
               let action = action(forToolNamed: name),
@@ -153,8 +107,6 @@ enum TurnFileChangeAggregator {
             return []
         }
 
-        // A rename/move yields a single file at its destination; the source path no longer
-        // exists in `git/status`, so don't emit a phantom row for it.
         if action == .renamed {
             if let destination = firstString(in: args, keys: ["destination", "path", "file_path", "filename"]) {
                 return [(path: destination, action: .renamed)]
@@ -164,8 +116,6 @@ enum TurnFileChangeAggregator {
 
         var results: [(path: String, action: TurnFileChange.Action)] = []
 
-        // `source`/`destination` are rename semantics and are consumed by the early-return
-        // rename branch above; only the plain path keys apply to edit/add/delete tools.
         for key in ["path", "file_path", "filename"] {
             if let value = string(args[key]) {
                 results.append((path: value, action: action))
@@ -205,26 +155,19 @@ enum TurnFileChangeAggregator {
         return nil
     }
 
-    /// Only string args are usable as paths (numbers/bools/objects are not file paths).
     private static func string(_ value: JSONValue?) -> String? {
         guard case .string(let value)? = value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    // MARK: - Path normalization & ignore filter
-
     private static let trimCharacters = CharacterSet(charactersIn: "`\"'<>()[]{}")
 
-    /// Path component names that mark generated/vendored trees we never attribute.
     private static let ignoredComponents: Set<String> = [
         ".git", ".hg", ".svn", "node_modules", ".venv", "venv",
         "__pycache__", "dist", "build", ".next", ".cache"
     ]
 
-    /// Normalize a raw tool path to a comparable workspace path, or `nil` to drop it.
-    /// Strips wrapping quotes/brackets, drops `~/` and `./` prefixes, rejects URLs and
-    /// over-long paths, and filters generated/vendored trees.
     static func normalize(_ raw: String) -> String? {
         var path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         path = path.trimmingCharacters(in: trimCharacters)
@@ -244,10 +187,6 @@ enum TurnFileChangeAggregator {
         path.split(separator: "/").contains { ignoredComponents.contains(String($0)) }
     }
 
-    // MARK: - Row join
-
-    /// Find the row for a tool path, tolerating absolute-vs-relative
-    /// references to the same repo file.
     private static func matchingFile(for path: String, in files: [GitFile]) -> GitFile? {
         if let exact = files.first(where: { displayPath($0) == path }) {
             return exact
@@ -259,11 +198,6 @@ enum TurnFileChangeAggregator {
         normalize(file.displayPath) ?? file.displayPath
     }
 
-    /// True when two normalized paths point at the same file — equal, or one is the
-    /// absolute form of the other (suffix match on a `/`-boundary). The suffix checks are
-    /// gated on the longer path being absolute so two distinct *relative* paths that merely
-    /// share a trailing component (e.g. `other/App.swift` vs `some/other/App.swift`) never
-    /// falsely match.
     private static func representsSameFile(_ lhs: String, _ rhs: String) -> Bool {
         guard !lhs.isEmpty, !rhs.isEmpty else { return false }
         if lhs == rhs { return true }

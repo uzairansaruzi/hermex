@@ -1,46 +1,26 @@
 import Foundation
 
-/// One Bot screen's use of its connection's shared gateway socket (`HermesGateway`). The
-/// inbox, each chat, a room, the creator and the editor hold their own; a chat's controls
-/// and delegated work share the chat's. `connect()` attaches to the socket, opening it when
-/// no other screen has; `close()` ends only this screen's calls, uploads and downloads,
-/// never the socket another screen is using. On a gateway's Webapp a chat's client uses its
-/// Profile's own socket instead (`HermesConnection.gateway(profile:)`).
 @MainActor final class BotClient: BotTransport {
-    /// The socket this client last attached to, picked again at each `connect()`.
     private var gateway: HermesGateway
-    /// A chat's Profile, whose own socket it uses where the host keeps Profiles apart; nil for a
-    /// screen that isn't one session's.
     private let profile: String?
     let consumerID: Int
-    /// The connection this client signs in and downloads through, shared with its Bot screens.
     let http: HermesConnection
-    /// Bumped by `close()`, `connect()` and a lost socket, so this screen's late HTTP
-    /// results are dropped.
     private var attempt = 0
     private var imageUploads: [UUID: Task<BotUploadedImage, Error>] = [:]
     private var artifactTasks: [UUID: Task<Data, Error>] = [:]
     var replayEpoch: String? { gateway.replayEpoch }
     var speaksCanonicalProtocol: Bool { gateway.speaksCanonicalProtocol }
-    /// `version` from the connection's last `/api/status` read, before the auth gate; nil when omitted.
     var serverVersion: String? { http.serverVersion }
-    /// `install_id` from the same read; nil when omitted.
     var serverInstallID: String? { http.serverInstallID }
     var unavailableMethods: Set<String> { http.unavailableMethods }
     var lastAttempt: HermesAttemptRecord? { http.lastAttempt }
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
 
-    /// A screen's client on the sign-in and socket `server`'s saved connection shares with
-    /// its other Bot screens; `profile` as in `init(http:profile:)`.
     convenience init(saved connection: BotConnection, server: URL, profile: String? = nil) {
         self.init(http: HermesConnections.shared.connection(for: connection, server: server), profile: profile)
     }
 
-    /// A client with its own cookie jar, sign-in and socket, for credentials that are not
-    /// saved yet (connection setup, dev auto-login) and for tests. `heartbeatInterval` is the
-    /// `gateway.ping` cadence; `socketFactory` gets the finished gateway upgrade, and nil
-    /// opens a native socket.
     convenience init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral,
                      rpcDeadline: Duration = .seconds(30), heartbeatInterval: Duration = .seconds(15),
                      socketFactory: ((URLRequest) -> any BotSocket)? = nil) {
@@ -48,7 +28,6 @@ import Foundation
             rpcDeadline: rpcDeadline, heartbeatInterval: heartbeatInterval, socketFactory: socketFactory)))
     }
 
-    /// A client on `http`'s shared gateway, or, for a chat on `profile`, on that Profile's.
     init(http: HermesConnection, profile: String? = nil) {
         self.http = http
         self.profile = profile
@@ -56,14 +35,10 @@ import Foundation
         consumerID = http.makeConsumerID()
     }
 
-    /// Attaches to the gateway socket once its handshake is done, so no RPC can precede it.
-    /// A socket another screen has open is joined as it is; otherwise this signs in unless
-    /// the connection already is and opens one, or waits for the one already opening.
     func connect() async throws {
         close()
         let attempt = self.attempt
         do {
-            // Sign-in says whether the host keeps each Profile's sessions on a socket of its own.
             if let profile {
                 try await http.signIn()
                 guard attempt == self.attempt else { throw BotFailure.stale }
@@ -76,8 +51,6 @@ import Foundation
         guard !Task.isCancelled else { close(); throw BotFailure.stale }
     }
 
-    /// Admits and sends one typed request. `HermesCall.params()` refuses a value the
-    /// host must never receive; `validateDispatch` runs at the actual socket write.
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)? = nil) async throws -> BotJSON {
         try await gateway.send(call, for: consumerID, validateDispatch: validateDispatch)
     }
@@ -95,7 +68,6 @@ import Foundation
         let http = self.http
         let task = Task {
             try await http.authorized(request, validateDispatch: { try self.checkOwner(attempt) }) { request, session in
-                // Whole-file reads (nil limit: export, inline audio) accept an empty file.
                 try await BotArtifactDownload.data(session: session, request: request, limit: limit, allowsEmpty: limit == nil)
             }
         }
@@ -125,7 +97,6 @@ import Foundation
         let attempt = self.attempt
         let data = try await http.data(.profilesActive, validateDispatch: { try self.checkOwner(attempt) })
         try checkOwner(attempt)
-        // Usually `default`, which `BotProfileName` reserves for creation, so only emptiness is refused.
         guard let profile = (try? JSONDecoder().decode(BotJSON.self, from: data))?["current"].text,
               !profile.isEmpty else { throw BotFailure.unsupported }
         return profile
@@ -149,11 +120,6 @@ import Foundation
         return messages
     }
 
-    /// Listen's speech (#1072). The host may install its TTS engine on first use, so this runs
-    /// on the provisioning deadline. Its reply is read bounded, like a download, and decoded off
-    /// the main actor. Plain HTTP, so it needs no attached socket and reaches the host while the
-    /// chat reconnects. A close or reconnect during its sign-in stops the send; the caller drops
-    /// a late result itself.
     func speech(text: String, profile: String) async throws -> Data {
         let attempt = self.attempt
         let request = try HermesREST.speak(text: text, profile: profile).request(base: http.connection.address)
@@ -163,7 +129,6 @@ import Foundation
         }
     }
 
-    /// The bytes of a speak reply's `data_url`, `data:<mime>;base64,<audio>`.
     nonisolated static func speechAudio(fromReply body: Data) throws -> Data {
         guard let url = (try? JSONDecoder().decode(BotJSON.self, from: body))?["data_url"].text,
               url.hasPrefix("data:"), let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),
@@ -224,10 +189,6 @@ import Foundation
         return page
     }
 
-    /// Writes `change` and returns the title the host kept. Behind the write fence (#1300) it reads
-    /// the session's revision first, since any activity moves it. A 400's reason is a
-    /// `HermesSessionRefusal`, a fence 409 or an owner's 404 or 403 a `HermesSessionFenceRefusal`;
-    /// neither is resent.
     @discardableResult
     func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
@@ -248,9 +209,6 @@ import Foundation
         return body?["title"].text
     }
 
-    /// The identity a write to `key` carries, from the session's mutation snapshot. Nil on a host
-    /// from before the fence, whose catch-all answers the route 404: `hermes dashboard`'s
-    /// "No such API endpoint", or headless `hermes serve`'s "Headless backend…".
     private func writeIdentity(key: String, profile: String, attempt: Int) async throws -> HermesSessionWriteIdentity? {
         let reply = try await http.reply(.sessionMutationSnapshot(key: key, profile: profile),
                                          validateDispatch: { try self.checkOwner(attempt) })
@@ -293,9 +251,6 @@ import Foundation
         return row
     }
 
-    /// A refused payload's reason is the host's `detail`: its text, or the first of its
-    /// `errors`, one per session it refused, each kept in the refusal's `entries`. A write fence
-    /// 409 (#1300) is a `HermesSessionFenceRefusal`.
     func importSessions(body: Data) async throws -> BotJSON {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
@@ -351,23 +306,15 @@ import Foundation
         } onCancel: { task.cancel() }
     }
 
-    /// Throws `.stale` once `close()`, a reconnect or a lost socket has ended `attempt`.
-    /// The HTTP calls check it on their result and, through `validateDispatch`, before
-    /// each send: `close()` can land while they wait on the shared sign-in.
     private func checkOwner(_ attempt: Int) throws {
         guard attempt == self.attempt, !Task.isCancelled else { throw BotFailure.stale }
     }
 
-    /// Ends this screen's part: its calls fail with `.transport`, its uploads and downloads
-    /// stop, and nothing more reaches `onEvent`. Not a disconnect: `onDisconnect` stays quiet.
     func close() {
         endLocalWork()
         gateway.leave(self)
     }
 
-    /// The gateway's report that this client's connection is gone: its socket was lost or
-    /// retired with its connection, or one of its required calls went unanswered past its
-    /// deadline. The gateway has already failed its calls.
     func socketEnded(_ error: Error) {
         endLocalWork()
         onDisconnect?(error)

@@ -10,20 +10,13 @@ struct ParsedSlashCommand: Equatable {
 enum SlashCommandExecutionResult: Equatable {
     case executed(message: String?)
     case openedSession(SessionSummary)
-    /// `/new` in a Hermes chat: a new chat in its Profile (#1036).
     case openedHermesSession(HermesSessionChat)
-    /// `/clear` in a Hermes chat: a new chat that takes this one's place (#1050).
     case replacedHermesSession(HermesSessionChat)
-    /// `/sessions` or `/resume` in a Hermes chat: its Profile's Sessions list, searching the
-    /// entry's query (#1053).
     case openedHermesSessionList(HermesSessionListEntry)
-    /// The host's `prefill`: this text replaces the draft (#1036).
     case prefill(String)
     case sendAsMessage
     case unsupported(friendlyMessage: String)
     case needsSubArg
-    /// The message didn't reach the run (a refused steer). The draft stays in
-    /// the composer, and the composer's status line says why.
     case notDelivered
 }
 
@@ -50,8 +43,6 @@ enum SlashCommandExecutor {
         )
     }
 
-    /// `modelContext` reaches the handful of commands that rewrite the offline
-    /// cache (`/clear`); callers with no SwiftData context can omit it.
     @MainActor
     static func execute(
         text: String,
@@ -71,7 +62,6 @@ enum SlashCommandExecutor {
             if let result = await viewModel.executeSkillShortcutCommand(name: parsed.name, args: parsed.args) {
                 return result
             }
-            // Match WebUI: let the agent/runtime handle unknown, non-blocked slash text.
             return .sendAsMessage
         }
 

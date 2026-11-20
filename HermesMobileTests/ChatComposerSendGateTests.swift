@@ -4,13 +4,7 @@ import UIKit
 import XCTest
 @testable import HermesMobile
 
-/// Send-button gate for the composer: text-only, attachment-only, both, or
-/// neither (#403). Busy flags always disable; attachment-only sends synthesize
-/// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
-    /// A host's level the model's list doesn't name stays on the ladder and stays current.
-    /// iPhone Duo's displays leave about 300 pt above the keyboard with a regular size class. An
-    /// editor that kept growing there pushed Send behind the keyboard.
     func testAShortViewportHoldsTheEditorToItsMinimumWhateverTheSizeClass() {
         XCTAssertEqual(
             ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .regular, isViewportShort: true),
@@ -25,8 +19,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertEqual(ladder.currentIndex, 2)
     }
 
-    /// A drag lands on the nearest level, past either end included, and sends one change: none
-    /// when it comes back to where it started.
     func testThinkingLadderSendsOnlyAChangeFromWhereTheDragLands() {
         let ladder = ThinkingLadder(levels: ["low", "medium", "high"], current: "medium")
 
@@ -37,8 +29,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(ladder.commit(at: 1))
     }
 
-    /// A drag ticks once per level crossed and picks one level on release. Coming back to where it
-    /// started picks nothing, and a cancelled touch leaves nothing behind.
     func testThinkingSliderDragTicksPerLevelAndPicksOnceOnRelease() {
         let ladder = ThinkingLadder(levels: ["low", "medium", "high"], current: "low")
         var drag = ThinkingSliderDrag()
@@ -62,7 +52,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(drag.end(on: ladder))
     }
 
-    /// A vertical swipe that starts on the control is the list scrolling, not a level change.
     func testOnlyASidewaysDragAdjustsTheThinkingLevel() {
         XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: 40, height: 6)))
         XCTAssertTrue(ThinkingLadder.isAdjustment(CGSize(width: -40, height: -6)))
@@ -70,7 +59,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(ThinkingLadder.isAdjustment(CGSize(width: -6, height: -40)))
     }
 
-    /// Reduce Motion lands on the level with no time passing, so a look never moves.
     func testThinkingSliderSnapsWithNoTimePassingUnderReduceMotion() {
         let store = ThinkingSliderStore(), size = CGSize(width: 348, height: 56)
         _ = store.advance(time: 100, target: 0, followsFinger: false, size: size, isStill: true)
@@ -81,8 +69,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertEqual(frame.thumbX, 348 - ThinkingSliderMetrics.inset)
     }
 
-    /// The thumb keeps up with a finger more closely than it eases to a tapped level, and a
-    /// paused track resumes without a jump, however long it was held.
     func testThinkingSliderFollowsTheFingerAndResumesWithoutAJump() {
         let size = CGSize(width: 348, height: 56)
         func step(followsFinger: Bool) -> Double {
@@ -98,8 +84,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertEqual(resumed.delta, 0.05)
     }
 
-    /// Every look draws its whole ladder without trapping, and paints something, at the real width
-    /// and at the sliver a first layout can pass. Particle counts rise and fall between frames.
     @MainActor
     func testEveryThinkingSliderLookDrawsAtAnyLevelAndWidth() throws {
         for look in ThinkingSliderLook.allCases {
@@ -124,7 +108,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         }
     }
 
-    /// VoiceOver's swipe moves one level and stops at each end.
     func testThinkingLadderAdjustsOneLevelAndStopsAtTheEnds() {
         let middle = ThinkingLadder(levels: ["low", "medium", "high"], current: "medium")
         XCTAssertEqual(middle.adjusted(by: 1), 2)
@@ -133,8 +116,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertEqual(ThinkingLadder(levels: ["low", "high"], current: nil).adjusted(by: 1), 0)
     }
 
-    /// The Approvals row shows the state in effect: Off wins, then YOLO, then the mode. A mode
-    /// newer than this app still shows, and a webui session has no mode to show.
     func testApprovalsRowShowsTheStateInEffect() {
         func approvals(yolo: Bool = false, mode: String?, mayTurnOff: Bool = true) -> ComposerApprovals {
             ComposerApprovals(isYoloOn: yolo, offersModes: mode != nil, mode: mode, mayTurnOffYolo: mayTurnOff,
@@ -151,8 +132,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(approvals(yolo: true, mode: "manual").isYoloLocked)
     }
 
-    /// A change's answer shows beside the row that asked, never on another row, and an
-    /// old error doesn't show on a row nobody touched since the sheet opened.
     func testModelSettingsShowsAnswersOnlyBesideTheRowThatAsked() {
         func status(_ row: ModelSettingsRow, _ lastChanged: ModelSettingsRow?, updating: Bool = false,
                     error: String? = nil, notice: String? = nil) -> ModelSettingsRowStatus? {
@@ -168,8 +147,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(status(.model, nil, error: "old"))
     }
 
-    /// A chat's settings leave the composer after its first message, and an existing chat
-    /// that hasn't loaded yet never shows them.
     func testNewChatControlsShowOnlyBeforeTheFirstMessage() {
         XCTAssertTrue(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: nil, isStreaming: false))
         XCTAssertTrue(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 0, isStreaming: false))
@@ -178,7 +155,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(ChatComposerNewChatPolicy.showsControls(hasMessages: false, serverMessageCount: 0, isStreaming: true))
     }
 
-    /// The header names the workspace and the Profile, whichever of them there is.
     func testHeaderSubtitleNamesWorkspaceAndProfile() {
         XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", profileTitle: "Default"), "hermes · Default")
         XCTAssertEqual(ChatToolbarSubtitleResolver.subtitle(workspacePath: "/repo/hermes", profileTitle: "Profile"), "hermes")
@@ -186,8 +162,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(ChatToolbarSubtitleResolver.subtitle(workspacePath: nil, profileTitle: nil))
     }
 
-    /// A level shows at once. Levels asked for meanwhile don't pile up: only the newest goes, and
-    /// a refused one clears at once so the chat's own level shows.
     @MainActor
     func testThinkingLevelsShowAtOnceAndOnlyTheNewestWaitingOneGoes() async {
         let sender = ThinkingLevelSender()
@@ -220,8 +194,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertEqual(sent, ["low", "high"])
     }
 
-    /// An accepted level outlasts the host's answer, since clearing on the answer flashes the old
-    /// level before the chat's own value reaches the screen. It then lets go.
     @MainActor
     func testAnAcceptedThinkingLevelOutlastsTheAnswer() async {
         let holding = ThinkingLevelSender(settleDelay: .seconds(60))
@@ -234,7 +206,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         await waitUntil("the level lets go") { settled.pendingLevel == nil }
     }
 
-    /// A run holds configuration but not `+` (#1436); offline and read-only hold both.
     func testAttachingStaysOpenDuringARunWhereConfigurationIsHeld() {
         func gate(_ session: SessionSummary = SessionSummary(sessionId: "s"), offline: Bool = false) -> ChatComposerControlGate {
             ChatComposerControlGate(
@@ -249,8 +220,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(gate(SessionSummary(sessionId: "s", readOnly: true)).allowsAttaching)
     }
 
-    /// During a run Model settings still opens to turn YOLO off, the only way to stop a bypass
-    /// without stopping the work. Nothing else reopens it.
     func testModelSettingsOpensDuringARunOnlyToTurnYoloOff() {
         func allows(yolo: Bool, mayTurnOff: Bool = true, offline: Bool = false, running: Bool = true) -> Bool {
             ChatComposerControlGate(
@@ -299,9 +268,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         ))
     }
 
-    /// Staged files are content (#1367): a Hermes draft holding only files mid-run
-    /// queues them under every Send While Responding default instead of offering
-    /// Stop, with no other choice to hold for. A webui session keeps Stop.
     func testHermesFileOnlyDraftMidRunQueuesInsteadOfStop() {
         for behavior in StreamingSendBehavior.allCases {
             let button = ChatComposerSendButton(isWaitingForStream: true, hasText: false, hasQuotes: false,
@@ -315,7 +281,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertTrue(webui.showsStop)
     }
 
-    /// ⌘⇧↩ (#1380) takes the other safe choice from what Send does now, never Stop and send.
     func testKeyboardAlternateIsTheOtherSafeChoiceFromTheEffectiveDefault() {
         func alternate(_ defaultBehavior: StreamingSendBehavior, waiting: Bool = true,
                        stagedFiles: Bool = false) -> StreamingSendBehavior? {
@@ -328,13 +293,10 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertEqual(alternate(.steer), .queue)
         XCTAssertEqual(alternate(.queue), .steer)
         XCTAssertEqual(alternate(.interrupt), .steer)
-        // Staged files turn a Steer default into Queue, leaving only Stop and send.
         XCTAssertNil(alternate(.steer, stagedFiles: true))
         XCTAssertNil(alternate(.steer, waiting: false))
     }
 
-    /// A quick tap acts; the release of a hold that opened the card does not,
-    /// and only that one release is dropped.
     func testHoldReleaseIsDroppedAndQuickTapActs() {
         var hold = ChatComposerSendHold()
         hold.pressBegan()
@@ -346,10 +308,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertTrue(hold.activate(), "the next activation")
     }
 
-    /// A hold released off Send never reaches the Button, so closing the card
-    /// clears the mark. Otherwise the next VoiceOver or keyboard activation,
-    /// which has no touch-down, would do nothing. A finger still down (the run
-    /// ended under it) keeps its release dropped.
     func testClosingTheCardAfterLiftingOffSendKeepsTheNextActivation() {
         var liftedOff = ChatComposerSendHold()
         liftedOff.pressBegan()
@@ -389,8 +347,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         ))
     }
 
-    /// Each busy flag, and the offline cache (#1375), holds Send with content, and the
-    /// block names what it waits on for VoiceOver.
     func testBusyFlagsDisableEvenWithContent() {
         func block(_ flag: Int) -> ChatComposerSendBlock? {
             ChatComposerSendBlock(isOffline: flag == 0, isSending: flag == 1, isCompressingSession: flag == 2,
@@ -404,8 +360,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(block(-1))
     }
 
-    /// Offline, a Hermes chat's plain-text Send waits for the reconnect (#1407); quotes, files, a
-    /// `/` command and a read-only session stay held, and while one waits every Send holds.
     func testOfflineHoldsEverySendButAWaitingPlainTextOne() {
         let offline = ChatComposerAccess(session: SessionSummary(profile: "default"), isViewingCachedData: true,
                                          offersWaitingSend: true)
@@ -445,9 +399,6 @@ final class HermexAttachmentPickerPolicyTests: XCTestCase {
         XCTAssertFalse(fence.consume(cancelled))
     }
 
-    /// Detaching the preview makes AVCaptureSession rebuild its graph and wait
-    /// for it; on device that held the main thread for ~9 s after leaving the
-    /// camera (#809). The detach must happen off the main thread.
     @MainActor
     func testCameraPreviewDetachesOffTheMainThread() {
         let controller = HermexAttachmentCameraController()

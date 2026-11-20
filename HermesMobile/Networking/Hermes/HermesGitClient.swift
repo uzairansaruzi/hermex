@@ -1,38 +1,8 @@
 import Foundation
 
-/// A Hermes chat's repository (#1114), read through the host's Git routes on the sign-in its Bot
-/// screens share, mapped into webui's Git models so the menu, Changes sheet, diffs and
-/// turn-changes card read it unchanged. It shows the whole repository holding the chat's folder,
-/// not only the folder: the root is resolved once from `GET /api/fs/git-root` and every read names
-/// it, since the host's paths are relative to the root. A folder outside a repository is asked
-/// again on the next read, so a repository the agent creates shows at turn end.
-///
-/// Writes (#1115) go through the host's review routes, which guard nothing: a file-less stage or
-/// revert covers the whole tree, `file` is a git pathspec, a commit with nothing staged stages
-/// everything first, and a push on a detached HEAD does nothing. So every write names one exact
-/// file (`HermesREST.isGitFile`), reads the rows it acts on again, and the guards live here,
-/// ahead of the request (`HermesGitRefusal`); each request also asks the owning chat first
-/// (`WriteOwner`). Each successful write answers the status read again. A branch switch (#1116)
-/// is a write too, refused while the tree has any uncommitted change. Fetch, pull and New Branch
-/// (#1236) go through the host's hermex-push plugin, the only place they exist, and show only
-/// while it lists their routes (`supportsSync()`). This Branch (#1386) reads the branch's committed
-/// range through the same review routes, read-only, and so does a turn's range since the HEAD its
-/// send read (#1392). The branch's pull request (#1391) comes from the host's `gh` through ship-info.
-///
-/// Neither the root nor git's own output (a refusal's `detail`, which can name host paths) reaches
-/// the screen or a log. Checked at the `HERMES_AGENT_TESTED_SHA` pin (ca678285) in
-/// `hermes_cli/web_git.py` and `web_routers/git.py`.
 @MainActor final class HermesGitClient: GitDataClient {
-    /// Writes a commit message for a diff with the host's one-shot model call
-    /// (`HermesChatTurnCoordinator.commitMessage`): the diff, the recent subjects to match, and on
-    /// Regenerate the last suggestion, which the host is told not to repeat.
     typealias MessageWriter = @MainActor @Sendable (_ diff: String, _ recent: String, _ avoid: String?) async throws -> String
-    /// A check that throws once a write may no longer go out.
     typealias Dispatch = @MainActor @Sendable () throws -> Void
-    /// The chat that owns the repository (`HermesChatTurnCoordinator.gitWriteDispatch`): asked as
-    /// each write begins, it throws while a turn runs or the chat shows cached data, else returns
-    /// the check every request of the write runs as it goes out, which also throws once the chat
-    /// reattached or left this folder. So a write stops partway rather than run under a turn.
     typealias WriteOwner = @MainActor @Sendable () throws -> Dispatch
 
     let context: HermesWorkspaceContext
@@ -40,17 +10,11 @@ import Foundation
     private let http: HermesConnection
     private let writeMessage: MessageWriter?
     private let writeOwner: WriteOwner?
-    /// Shared by everything that writes through this client: the chat's Git menu, branch picker and
-    /// commit sheet.
     let writeLock: GitWriteLock?
-    /// The repository root, once `fs/git-root` has found one. Never shown, logged or persisted.
     private var root: String?
 
-    /// webui's diff cap: a longer diff shows "Diff too large to show." instead of its text.
     static let maximumDiffBytes = 512 * 1024
-    /// The longest diff the host's `commit_message` template reads; past it a message may be partial.
     static let messageDiffCharacters = 12_000
-    /// The most of the selected files' diffs sent for a message, as `commit-context` caps its own.
     static let selectedDiffCharacters = 120_000
 
     init(context: HermesWorkspaceContext, http: HermesConnection, writeMessage: MessageWriter? = nil,
@@ -63,11 +27,8 @@ import Foundation
         self.writeLock = GitWriteLock()
     }
 
-    /// A Hermes host's writes answer only `{ok}`: a failed one reads the status again, and a
-    /// commit shows its sha.
     nonisolated var isHermes: Bool { true }
 
-    /// The branch, ahead/behind and dirty counts from `git/status`; nil outside a repository.
     func info() async throws -> GitInfo? {
         guard let root = try await repositoryRoot() else { return nil }
         let summary = try Self.json(try await send(.gitStatus(repository: root)))
@@ -78,14 +39,11 @@ import Foundation
                        ahead: summary["ahead"].integer, behind: summary["behind"].integer, isGit: true)
     }
 
-    /// Every uncommitted change: `review/list`'s rows joined by path with `git/status`' flags
-    /// (`Self.status(summary:changes:)`). `isGit == false` outside a repository.
     func status() async throws -> GitStatus? {
         guard let root = try await repositoryRoot() else { return Self.notARepository }
         return try await currentStatus(root)
     }
 
-    /// `status()` of the repository at `root`.
     private func currentStatus(_ root: String) async throws -> GitStatus {
         async let summary = send(.gitStatus(repository: root))
         async let changes = send(.gitChanges(repository: root))
@@ -93,11 +51,6 @@ import Foundation
         return Self.status(summary: try Self.json(summaryBody), changes: try Self.json(changesBody))
     }
 
-    /// The row's staged diff when it has only staged changes, else its worktree diff, which the
-    /// host synthesizes as all-add for an untracked file. A staged row past the status cap may also
-    /// have worktree edits, so it reads its whole change against HEAD; before the first commit
-    /// there is no HEAD and that read is empty, so a new file reads as its current content
-    /// (`currentContent(of:root:)`). Over `maximumDiffBytes` it is too large.
     func diff(for file: GitFile) async throws -> GitDiff? {
         guard let root = try await repositoryRoot() else { return nil }
         let path = file.displayPath
@@ -112,8 +65,6 @@ import Foundation
         return Self.diff(text, path: path, kind: kind)
     }
 
-    /// This Branch (#1386): `review/list`'s branch rows, with the branch name and detached flag
-    /// from `git/status`. Nil outside a repository.
     func branchReview() async throws -> GitBranchReview? {
         guard let root = try await repositoryRoot() else { return nil }
         async let summary = send(.gitStatus(repository: root))
@@ -122,17 +73,11 @@ import Foundation
         return Self.branchReview(summary: try Self.json(summaryBody), changes: try Self.json(changesBody))
     }
 
-    /// HEAD's full sha (#1392), read just before a direct send's prompt goes out; nil outside a
-    /// repository and before the first commit.
     func headSHA() async throws -> String? {
         guard let root = try await repositoryRoot() else { return nil }
         return Self.text(try Self.json(try await send(.gitHead(repository: root)))["sha"])
     }
 
-    /// A turn's range (#1392): `review/list`'s rows since `base`. The host marks every tracked row
-    /// `M`, whatever happened to it, so those claim no kind; an untracked row (`?`) keeps its flag,
-    /// which its diff needs. Nil without the base echoed back, which the host sends only for a
-    /// range it read.
     func changes(since base: String) async throws -> [GitFile]? {
         guard let root = try await repositoryRoot() else { return nil }
         let changes = try Self.json(try await send(.gitTurnChanges(repository: root, base: base)))
@@ -145,10 +90,6 @@ import Foundation
         }
     }
 
-    /// A branch or turn row's diff over its range, skipping the staged and worktree choice
-    /// `diff(for:)` makes for an uncommitted one. The range's diff of a file untracked when listed
-    /// is empty, so it reads `file-diff`, which all-adds a file still untracked and never a clean
-    /// tracked one; a file committed since keeps its range patch.
     func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff? {
         let request: (_ root: String, _ path: String) -> HermesREST
         switch scope {
@@ -165,8 +106,6 @@ import Foundation
         return Self.diff(text, path: path, kind: nil)
     }
 
-    /// `git/status` and the branch's `review/list` as one `GitBranchReview`. Rows keep only their
-    /// path and counts: the host's `M` and `staged: false` say nothing about the change.
     nonisolated static func branchReview(summary: BotJSON, changes: BotJSON) -> GitBranchReview? {
         guard summary.fields != nil else { return nil }
         let files = (changes["files"].list ?? []).compactMap { row -> GitFile? in
@@ -178,16 +117,12 @@ import Foundation
                                detached: summary["detached"].flag == true)
     }
 
-    /// A diff's text as a `GitDiff`, too large past `maximumDiffBytes`. A missing diff stays nil,
-    /// so it shows as no changes but has no patch to mark viewed.
     private static func diff(_ text: String?, path: String, kind: String?) -> GitDiff {
         let tooLarge = (text?.utf8.count ?? 0) > maximumDiffBytes
         return GitDiff(path: path, kind: kind, binary: isBinary(text ?? ""),
                        tooLarge: tooLarge, additions: nil, deletions: nil, diff: tooLarge ? nil : text)
     }
 
-    /// A new file's whole content as an all-add diff, from `fs/read-text` (its first 512 KiB,
-    /// `truncated` past that, the same cap as `maximumDiffBytes`).
     private func currentContent(of path: String, root: String) async throws -> GitDiff {
         let file = try Self.json(try await send(.fsReadText(path: root + "/" + path)))
         let binary = file["binary"].flag == true
@@ -202,18 +137,11 @@ import Foundation
                        diff: binary || tooLarge ? nil : diff)
     }
 
-    /// A turn's tool path as its row's root-relative path: Hermes tools name files relative to the
-    /// chat's folder or absolutely. Left as named until the root is known, or when it lies outside.
     func rowPath(forToolPath path: String) -> String {
         guard let root else { return path }
         return Self.rowPath(path, folder: context.cwd, root: root)
     }
 
-    /// `rowPath(forToolPath:)` for a chat working in `folder` inside the repository at `root`.
-    /// The path is anchored to the folder and its `.` and `..` collapsed, as the host resolves
-    /// it. The host's root has its symlinks resolved and the folder may not, so a folder spelled
-    /// through one (`/tmp/app/Sources` in `/private/tmp/app`) is matched by the root's trailing
-    /// folders. Symlinks aren't followed: one that renames a folder leaves the path as named.
     nonisolated static func rowPath(_ path: String, folder: String, root: String) -> String {
         let target = components(path.hasPrefix("/") ? path : folder + "/" + path)
         let rootParts = components(root)
@@ -227,7 +155,6 @@ import Foundation
         return path
     }
 
-    /// An absolute path's folder names, with `.` dropped and `..` taking off the one before it.
     private nonisolated static func components(_ path: String) -> [String] {
         path.split(separator: "/").reduce(into: []) { parts, part in
             switch part {
@@ -238,12 +165,6 @@ import Foundation
         }
     }
 
-    /// `git/status` and `review/list` as one `GitStatus`. Rows are `review/list`'s, which lists
-    /// every change; `status.files` stops at 200 and adds the flags a row lacks. A row past it has
-    /// no `unstaged` flag (unknown, not clean) and takes untracked and conflicted from its status
-    /// letter (`?`, `U`).
-    /// The list is whole, so it is never `truncated`, unless `review/list` sent none, which leaves
-    /// its completeness unknown (nil); `changed` is the host's full count.
     nonisolated static func status(summary: BotJSON, changes: BotJSON) -> GitStatus {
         guard summary.fields != nil else { return notARepository }
         var flags: [String: BotJSON] = [:]
@@ -270,20 +191,14 @@ import Foundation
     private nonisolated static let notARepository = GitStatus(isGit: false, branch: nil, upstream: nil, ahead: nil,
                                                               behind: nil, totals: nil, files: nil, truncated: nil)
 
-    /// The branch's name, or `HEAD` when detached, as webui names it.
     private nonisolated static func branch(_ summary: BotJSON) -> String? {
         summary["branch"].text ?? (summary["detached"].flag == true ? "HEAD" : nil)
     }
 
-    /// A diff with no hunk whose patch says the file is binary.
     private nonisolated static func isBinary(_ text: String) -> Bool {
         !text.contains("\n@@") && text.split(separator: "\n").contains { $0.hasPrefix("Binary files ") && $0.hasSuffix(" differ") }
     }
 
-    // MARK: - Writes (#1115)
-
-    /// Stages each file with something to stage, one request per file. A conflicted file is
-    /// refused: staging it would mark it resolved.
     func stage(_ files: [GitFile]) async throws -> GitStatus? {
         try await writing(files) { root, rows, dispatch in
             guard !rows.contains(where: { $0.conflict == true }) else { throw HermesGitRefusal.conflictedStage }
@@ -293,8 +208,6 @@ import Foundation
         }
     }
 
-    /// Unstages each staged file, one request per file. A rename is refused: the host's row names
-    /// only its new path, so its old path's deletion would stay staged.
     func unstage(_ files: [GitFile]) async throws -> GitStatus? {
         try await writing(files) { root, rows, dispatch in
             guard !rows.contains(where: Self.isRename) else { throw HermesGitRefusal.renamedUnstage }
@@ -304,11 +217,6 @@ import Foundation
         }
     }
 
-    /// Returns each file to HEAD, one at a time. A staged one is unstaged first, so a file new in
-    /// the index becomes untracked and goes too; the host deletes an untracked file. Without
-    /// `deleteUntracked` (a confirmation that didn't say so) a file that would be deleted is left
-    /// alone. A conflicted file is refused, as webui refuses it, and so is a rename: the host's
-    /// row names only its new path, so its old one couldn't be put back.
     func discard(_ files: [GitFile], deleteUntracked: Bool) async throws -> GitStatus? {
         try await writing(files) { root, rows, dispatch in
             guard !rows.contains(where: { $0.conflict == true }) else { throw HermesGitRefusal.conflictedDiscard }
@@ -321,8 +229,6 @@ import Foundation
         }
     }
 
-    /// Commits what is staged, or only `files` (`commitSelected`). Refused while the repository
-    /// has a conflict, and with nothing staged, which the host would answer by staging everything.
     func commit(message: String, only files: [GitFile]?) async throws -> GitCommitResponse {
         let dispatch = try beginWrite()
         let root = try await writableRoot()
@@ -334,15 +240,6 @@ import Foundation
         return try await committed(root, paths: nil)
     }
 
-    /// The host commits the whole index, so "commit selected" is a sequence: unstage everything,
-    /// stage the selection, commit, then stage again the files that were staged before. `git add`
-    /// puts back a whole file only, so the sequence is refused before it starts while a staged
-    /// file also has worktree edits, or may have (a row past the status cap), or is a rename,
-    /// whose old path the host's row doesn't name; while a staged file's path isn't one file to
-    /// stage again (`rows(for:in:)`); and before the first commit, where the host can't unstage
-    /// everything. A failure once any write went out, whose lost reply may hide that it ran,
-    /// stages those files again and throws; one staging them again after the commit is reported
-    /// with it (`stagingNotRestored`).
     private func commitSelected(_ files: [GitFile], message: String, root: String,
                                 dispatch: @escaping Dispatch) async throws -> GitCommitResponse {
         let current = try await currentStatus(root)
@@ -364,7 +261,6 @@ import Foundation
         do {
             try await write(.gitUnstage(repository: root, file: nil), dispatch)
             for path in selected { try await write(.gitStage(repository: root, file: path), dispatch) }
-            // With nothing staged the host would stage everything instead.
             let summary = try Self.json(try await send(.gitStatus(repository: root)))
             guard (summary["staged"].integer ?? 0) > 0 else { throw HermesGitRefusal.nothingStaged }
             try await write(.gitCommit(repository: root, message: message), dispatch, deadline: .provisioning)
@@ -385,15 +281,12 @@ import Foundation
         return try await committed(root, paths: selected, stagingRestored: restored)
     }
 
-    /// The new commit's short sha and the status after it.
     private func committed(_ root: String, paths: [String]?, stagingRestored: Bool = true) async throws -> GitCommitResponse {
         let sha = (try? Self.json(try await send(.gitHead(repository: root)))).flatMap { Self.text($0["sha"]) }
         return GitCommitResponse(ok: true, commit: sha.map { String($0.prefix(7)) }, paths: paths,
                                  status: try? await status(), git: nil, stagingNotRestored: !stagingRestored)
     }
 
-    /// Pushes the branch to its upstream, or to origin as its new upstream. A detached HEAD,
-    /// which the host would skip without a word, is refused.
     func push() async throws -> GitRemoteActionResponse {
         let dispatch = try beginWrite()
         let root = try await writableRoot()
@@ -403,14 +296,8 @@ import Foundation
         return GitRemoteActionResponse(ok: true, message: nil, status: try? await status())
     }
 
-    // MARK: - Sync (#1236)
-
-    /// hermex-push's fetch, pull and New Branch routes, as `/capabilities` lists them.
     static let syncRoutes = ["POST /git/fetch", "POST /git/pull", "POST /git/branch"]
 
-    /// Whether the host's hermex-push plugin has all three sync routes loaded, read through the
-    /// chat's own sign-in. A host that can't say (no plugin, an old or unloaded one, a failed read)
-    /// has none.
     func supportsSync() async -> Bool {
         guard let routes = try? await BotDashboardClient(http: http).companionRoutes() else { return false }
         return Self.syncRoutes.allSatisfy(routes.supports)
@@ -424,7 +311,6 @@ import Foundation
         try await sync(HermesREST.gitPull)
     }
 
-    /// One plugin write at the root; its answer is the status read again, never git's output.
     private func sync(_ request: (String) -> HermesREST) async throws -> GitRemoteActionResponse {
         let dispatch = try beginWrite()
         let root = try await writableRoot()
@@ -432,11 +318,6 @@ import Foundation
         return GitRemoteActionResponse(ok: true, message: nil, status: try? await status())
     }
 
-    /// A commit message from the host's model, as Desktop drafts one: `commit-context`'s diff of
-    /// what would commit, or the selected files' whole changes, with its recent subjects to match.
-    /// `avoiding` is the last suggestion, so Regenerate gives a different one. Before the first
-    /// commit a selected new file's whole change is empty, so it is sent as its current content,
-    /// as `diff(for:)` shows it.
     func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse {
         guard let writeMessage else { throw HermesGitRefusal.noMessage }
         let root = try await writableRoot()
@@ -462,10 +343,6 @@ import Foundation
         return GitCommitMessageResponse(ok: true, message: message, truncated: diff.count > Self.messageDiffCharacters)
     }
 
-    // MARK: - Branches (#1116)
-
-    /// `git/branches`' local heads, then its remote-tracking refs without one. The current branch
-    /// is the status's (`info()`), so `current` is left out.
     func branches() async throws -> GitBranches? {
         guard let root = try await repositoryRoot() else { return nil }
         let rows = try Self.json(try await send(.gitBranches(repository: root)))["branches"].list ?? []
@@ -481,15 +358,6 @@ import Foundation
                            upstream: nil, ahead: nil, behind: nil)
     }
 
-    /// Switches to a listed branch with `git switch`. A remote row (`origin/name`) goes out as
-    /// `name`, which git makes a tracking branch of. The host can't name the remote, so a remote
-    /// row is refused unless the host lists it, now, as the only branch called `name`: another
-    /// remote's `name` would leave git to refuse or pick `checkout.defaultRemote`, and a local
-    /// `name` would be switched to instead. Refused while the tree has any uncommitted change,
-    /// untracked files included, which `git switch` would carry across: there is no stash on
-    /// Hermes. A name the host would rewrite (`HermesREST.isBranchName`) is refused. A new branch
-    /// (`newBranch`) is created from HEAD through the plugin (#1236), uncommitted changes and all,
-    /// which is the usual reason to make one.
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse {
         if let name = target.newBranch {
             guard HermesREST.isBranchName(name), !stashingChanges else { throw HermesGitRefusal.failed }
@@ -520,17 +388,11 @@ import Foundation
         return Self.switched(to: branch, status: try? await status())
     }
 
-    // MARK: - Pull request (#1391)
-
-    /// The checked-out branch's pull request from ship-info, which asks the host's `gh`; nil
-    /// without `gh`, without a pull request, or outside a repository. Read on the standard
-    /// deadline, so a slow `gh` fails the read rather than holding it.
     func pullRequest() async throws -> GitPullRequest? {
         guard let root = try await repositoryRoot() else { return nil }
         return Self.pullRequest(try Self.json(try await send(.gitShipInfo(repository: root)))["pr"])
     }
 
-    /// `pr` as a link, only with a positive number and a web page; a state `gh` adds later is nil.
     private nonisolated static func pullRequest(_ pr: BotJSON) -> GitPullRequest? {
         guard let number = pr["number"].integer, number > 0,
               let url = Self.text(pr["url"]).flatMap(URL.init(string:)), InAppBrowserPolicy.opensInApp(url)
@@ -544,30 +406,22 @@ import Foundation
                             restoreStash: nil)
     }
 
-    /// A remote-tracking ref's branch name, the part after its remote (`origin/feature/x` is
-    /// `feature/x`), as `git/branches` matches it to local heads; nil without a remote part.
     private nonisolated static func shortName(_ ref: String) -> String? {
         ref.firstIndex(of: "/").map { String(ref[ref.index(after: $0)...]) }
     }
 
-    /// A file a revert deletes: untracked, or new in the index.
     private nonisolated static func isNew(_ file: GitFile) -> Bool {
         file.untracked == true || file.changeKind == .added
     }
 
-    /// A staged rename or copy, whose row names only its new path.
     private nonisolated static func isRename(_ file: GitFile) -> Bool {
         ["R", "C"].contains((file.status ?? "").uppercased().first.map(String.init) ?? "")
     }
 
-    /// A non-empty string, else nil.
     private nonisolated static func text(_ value: BotJSON) -> String? {
         value.text.flatMap { $0.isEmpty ? nil : $0 }
     }
 
-    /// Runs `writes` at the root on the rows the host lists now for `files`, then reads the status
-    /// again. The sheet's rows can be stale, so the write reads them again and matches them by
-    /// exact path (`rows(for:in:)`); a file with no change now is left out.
     private func writing(_ files: [GitFile],
                          _ writes: (String, [GitFile], @escaping Dispatch) async throws -> Void) async throws -> GitStatus? {
         let dispatch = try beginWrite()
@@ -577,9 +431,6 @@ import Foundation
         return try? await status()
     }
 
-    /// The current rows for `files`, by exact path, never trimmed. A path that isn't one file
-    /// (`HermesREST.isGitFile`), which the host would read as the whole tree, is refused, and so
-    /// is one the host lists twice: it trims a tracked file's name, so ` a` and `a` can share one.
     private nonisolated static func rows(for files: [GitFile], in current: [GitFile]) throws -> [GitFile] {
         try files.compactMap { file in
             guard let path = file.path, HermesREST.isGitFile(path) else { throw HermesGitRefusal.failed }
@@ -589,23 +440,18 @@ import Foundation
         }
     }
 
-    /// The owner's check for one write, which each of its requests runs again as it goes out.
     private func beginWrite() throws -> Dispatch {
         guard let writeOwner else { return Self.unowned }
         return try writeOwner()
     }
 
-    /// The check of a client no chat owns, as a test's: every write may go out.
     private static let unowned: Dispatch = {}
 
-    /// The root for a write; a folder outside a repository has nothing to write.
     private func writableRoot() async throws -> String {
         guard let root = try await repositoryRoot() else { throw HermesGitUnavailable() }
         return root
     }
 
-    /// One write, sent only while `dispatch` passes and counted in `sentWrites` as it goes out. A
-    /// refusal reads as `HermesGitRefusal.failed`, never git's output.
     private func write(_ rest: HermesREST, _ dispatch: @escaping Dispatch,
                        deadline: HermesConnection.Deadline = .standard) async throws {
         _ = try await send(rest, deadline: deadline, refusal: HermesGitRefusal.failed) { [weak self] in
@@ -614,11 +460,8 @@ import Foundation
         }
     }
 
-    /// Writes that went out. A write whose reply is lost may still have run, so Commit Selected
-    /// restores the index once any of its writes went out.
     private var sentWrites = 0
 
-    /// The root of the repository holding the chat's folder, resolved once; nil outside one.
     private func repositoryRoot() async throws -> String? {
         if let root { return root }
         let found = try Self.json(try await send(.gitRoot(path: context.cwd)))["root"].text
@@ -626,9 +469,6 @@ import Foundation
         return root
     }
 
-    /// One request's body. A refusal (400 `{detail}`, git's stderr) and any other failed status
-    /// read as `refusal`, so neither git's output nor a host path reaches the screen. A dropped
-    /// request reads as webui's network failure; the sign-in's own failures keep theirs.
     private func send(_ rest: HermesREST, deadline: HermesConnection.Deadline = .standard,
                       refusal: any Error = HermesGitUnavailable(),
                       validateDispatch: Dispatch? = nil) async throws -> Data {
@@ -649,13 +489,10 @@ import Foundation
     }
 }
 
-/// A Git read a Hermes host refused (#1114), shown with the existing copy instead of git's output.
 struct HermesGitUnavailable: LocalizedError, Equatable {
     var errorDescription: String? { String(localized: "Repository status unavailable") }
 }
 
-/// A Git write `HermesGitClient` refuses before sending it, or one the host refused (#1115).
-/// webui's wording where it has one.
 enum HermesGitRefusal: LocalizedError, Equatable {
     case conflictedStage
     case conflictedDiscard
@@ -666,16 +503,11 @@ enum HermesGitRefusal: LocalizedError, Equatable {
     case noMessage
     case renamedDiscard
     case renamedUnstage
-    /// A staged file is partly staged, may be (past the status cap), or is a rename.
     case partlyStagedSelection
     case firstCommitSelected
-    /// A turn is running in the chat that owns the repository.
     case turnRunning
-    /// A Commit Selected that failed before its commit couldn't stage the files again either.
     case restoreFailed
-    /// A branch switch with uncommitted changes (#1116).
     case uncommittedSwitch
-    /// The host refused it, or it names no single file; git's own output isn't shown.
     case failed
 
     var errorDescription: String? {

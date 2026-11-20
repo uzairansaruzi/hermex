@@ -1,25 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// One native selection document around the existing response layout. Text leaves
-/// supply their actual glyph geometry; images, equations and controls never register.
-///
-/// The content renders in its own hosted SwiftUI graph, rebuilt only when `identity`,
-/// `inputs` or the forwarded environment change: a long chat updates its replies far
-/// more often than they change, and every rebuild re-lays the whole reply out.
 struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     let identity: String
-    /// Everything `content` renders from besides `identity` and the forwarded
-    /// environment. Callbacks don't belong here: route them through a stable
-    /// reference so a kept content tree still calls the latest one.
     var inputs: AnyHashable?
-    // Metadata stays registered when glyph rendering is deferred offscreen.
     var collectsGlyphs = true
     var onAskHermex: ((String) -> Void)?
     @ViewBuilder let content: () -> Content
-    // The hosted graph sees only these and UIKit traits. A renderer that reads
-    // another environment value must join `ResponseSelectionEnvironment`, or a
-    // settled reply keeps the old value until its text changes.
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -30,11 +17,6 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     @Environment(\.markdownTableEdgeFadeColor) private var tableEdgeFadeColor
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @Environment(\.openURL) private var openURL
-    /// The hosted content's height. The content can grow after its first layout
-    /// (MarkdownUI block margins, async code highlighting); reading this in
-    /// `updateUIViewController` turns that growth into an update, so SwiftUI asks
-    /// `sizeThatFits` again instead of keeping a stale height that lets the reply
-    /// spill under the rows above and below it.
     @State private var contentHeight: CGFloat = 0
 
     func makeUIViewController(context: Context) -> ResponseSelectionController {
@@ -66,7 +48,6 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
         controller.rendering = rendering
         let contentHeight = $contentHeight
         let environment = rendering.environment
-        // Forwarded values go outermost so the selection scope installed inside wins.
         controller.host.rootView = AnyView(content()
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight.wrappedValue = $0 }
             .responseSelectionDocument(controller.scope)
@@ -89,7 +70,6 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     }
 }
 
-/// The environment a hosted reply renders from, compared to skip rebuilds.
 struct ResponseSelectionEnvironment: Equatable {
     let colorScheme: ColorScheme
     let layoutDirection: LayoutDirection
@@ -102,7 +82,6 @@ struct ResponseSelectionEnvironment: Equatable {
     let chatDisclosureToggled: ChatDisclosureToggleAction
 }
 
-/// What the hosted root was last built from.
 struct ResponseSelectionRendering: Equatable {
     let identity: String
     let inputs: AnyHashable?
@@ -115,8 +94,6 @@ final class ResponseSelectionController: UIViewController {
     let host = UIHostingController(rootView: AnyView(EmptyView()))
     var identity = ""
     var rendering: ResponseSelectionRendering?
-    /// The latest `openURL` around the reply. The hosted root holds
-    /// `forwardedOpenURL` instead, so a kept root still reaches this one.
     var openURL = OpenURLAction { _ in .systemAction }
     private(set) lazy var forwardedOpenURL = OpenURLAction { [weak self] url in
         guard let self else { return .systemAction }
@@ -142,7 +119,6 @@ final class ResponseSelectionController: UIViewController {
     }
 }
 
-/// The hosted SwiftUI tree must not retain its containing UIKit view.
 @Observable
 final class ResponseSelectionScope {
     var collectsGlyphs = true
@@ -154,9 +130,6 @@ private struct ResponseSelectionScopeKey: EnvironmentKey {
     static let defaultValue: ResponseSelectionScope? = nil
 }
 
-/// A reply's selectable leaves in view order. SwiftUI merges these at every level of the reply's
-/// tree, on every layout, so a merge only links two nodes; concatenating arrays copied every leaf
-/// below it each time (#1528).
 private indirect enum ResponseSelectionOrder: Equatable {
     case empty
     case leaf(UUID)
@@ -205,7 +178,6 @@ extension View {
 }
 
 extension View {
-    /// Attach only to a leaf containing one resolved Text, not its block container.
     func responseSelectableText(_ text: String, separator: String = "\n", tableColumn: Int? = nil) -> some View {
         modifier(ResponseSelectionLeaf(text: text, separator: separator, tableColumn: tableColumn))
     }
@@ -227,7 +199,6 @@ private struct ResponseSelectionLeaf: ViewModifier {
     }
 }
 
-/// Allocate glyph storage only for completed responses, never the streaming path.
 private struct RegisteredResponseSelectionLeaf: ViewModifier {
     let text: String
     let separator: String
@@ -255,8 +226,6 @@ struct ResponseSelectionGlyph {
     let rightToLeft: Bool
 }
 
-/// TextRenderer can draw off the main actor. Geometry is published without
-/// invalidating SwiftUI state or scheduling a second rendering pass.
 final class ResponseGlyphGeometry: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [ResponseSelectionGlyph] = []
@@ -274,7 +243,6 @@ final class ResponseGlyphGeometry: @unchecked Sendable {
     }
 }
 
-/// Attachments occupy a Text character index but no selectable source character.
 struct ResponseSelectionImageAttribute: TextAttribute {}
 
 private struct ResponseSelectionRenderer: TextRenderer {

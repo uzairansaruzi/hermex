@@ -1,25 +1,14 @@
 import SwiftUI
 
-/// Presentation inputs for the inline turn-end "Commit & Push" button. When the chat
-/// computes a non-nil value, the transcript renders the button under the latest assistant
-/// turn; `nil` hides it. Equatable so it can sit on the transcript view cheaply.
 struct ChatInlineCommitContext: Equatable {
     let runningPhase: GitCommitPhase?
     let isDisabled: Bool
 }
 
-/// Inline "Commit & Push" button shown under the latest assistant turn for git
-/// workspaces (issue #315, Slice C, surface B). Tapping it runs the same one-tap commit
-/// pipeline as the toolbar menu row — the host owns the work and drives the stacked
-/// progress toast; `runningPhase` mirrors that pipeline so the button shows a spinner
-/// and the current phase title while it runs.
 struct GitInlineCommitButton: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
-    /// Non-nil while a commit pipeline is running anywhere in the chat.
     let runningPhase: GitCommitPhase?
-    /// Disabled while streaming or viewing cached data (writes are unavailable then), or while
-    /// the commit sheet writes to a Hermes repository.
     let isDisabled: Bool
     let action: () -> Void
 

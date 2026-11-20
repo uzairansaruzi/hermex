@@ -1,40 +1,26 @@
 import SwiftUI
 
-/// The guided fix for a Webapp that serves only one Profile (#1611): reads the host's preflight,
-/// removes a duplicate bot credential from the Profile the user says shouldn't keep it, then
-/// starts the migration after one confirmation, waits for the restarted gateway, and checks that
-/// `profile`'s chats open. A blocker it can't remove gets a recovery chat with the agent instead.
-/// The host owns every step; this owns only the screen's state.
 @MainActor @Observable final class ServeEveryProfileModel {
     enum Phase: Equatable {
         case loading
-        /// A read or write failed; Try Again reads the plan again.
         case failed(String)
-        /// The preflight, blocked or clear.
         case ready(HermesMigrationPlan)
         case working(Step)
-        /// The gateway serves every Profile, and `profile` opens.
         case served
-        /// The wait ran out before the gateway served every Profile, or `profile` still didn't open.
         case unconfirmed
     }
 
     enum Step: Equatable { case removing, restarting, checking }
 
     private(set) var phase: Phase = .loading
-    /// Per duplicate bot, the Profile that keeps it; the one that answers today until the user picks.
     var keepers: [HermesDuplicateBot.ID: String] = [:]
-    /// The Profile whose chats couldn't open, checked once the gateway is back; nil from Settings.
     let profile: String?
-    /// Called once, when the gateway serves every Profile.
     var onServed: (() -> Void)?
 
     private let client: HermesGatewayMigrationClient
     private let restartDelays: [Duration]
     private let sleep: @Sendable (Duration) async throws -> Void
     private var work: Task<Void, Never>?
-    /// Duplicate bots a removal didn't clear; every later plan read shows them as blockers the
-    /// fix doesn't handle, so Check Again never offers the same removal again.
     private var unhandled: Set<HermesDuplicateBot.ID> = []
 
     init(client: HermesGatewayMigrationClient, profile: String?,
@@ -47,14 +33,8 @@ import SwiftUI
         self.sleep = sleep
     }
 
-    /// The Profile a gateway serving only one serves, where the recovery chat opens: the host's
-    /// standalone gateway is the default root's, and records that it serves nobody else.
     static let servedProfile = "default"
 
-    /// Opens a new chat on `server`'s served Profile, never New Session's, which may be one the
-    /// Webapp doesn't serve. Its text names the unserved Profile and `blockers` in the host's
-    /// words, and asks the agent to explain the migration's dry run and propose commands, under
-    /// the triage playbook's guardrails. Nothing is sent until the user does.
     func openRecoveryChat(blockers: [String], server: URL, inbox: URL? = HermesShareDraft.containerURL()) throws {
         let who = profile.map { "the \($0) Profile's chats" } ?? "chats on every Profile but \(Self.servedProfile)"
         let prompt = """
@@ -73,10 +53,8 @@ import SwiftUI
                                                origin: .troubleshooting, inbox: inbox)
     }
 
-    /// The Profile that keeps `bot`.
     func keeper(of bot: HermesDuplicateBot) -> String { keepers[bot.id] ?? bot.keeper }
 
-    /// The Profile `bot`'s credential is removed from: whichever of its two doesn't keep it.
     func loser(of bot: HermesDuplicateBot) -> String { keeper(of: bot) == bot.keeper ? bot.other : bot.keeper }
 
     func reload() async {
@@ -84,10 +62,6 @@ import SwiftUI
         await readPlan()
     }
 
-    /// Removes each duplicate bot's credential from the Profile that doesn't keep it, then reads
-    /// the plan again. A duplicate the host still reports could not be removed from here, so it
-    /// joins the blockers the recovery chat is for (`unhandled`). Returns
-    /// the work, which `leave` cancels.
     @discardableResult func removeDuplicates() -> Task<Void, Never>? {
         guard case .ready(let plan) = phase else { return nil }
         return run { [self] in
@@ -105,14 +79,11 @@ import SwiftUI
         }
     }
 
-    /// Starts the migration, then waits for the restarted gateway to serve every Profile. Returns
-    /// the work, which `leave` cancels.
     @discardableResult func migrate() -> Task<Void, Never>? {
         guard case .ready(let plan) = phase, !plan.isBlocked else { return nil }
         return run { [self] in
             phase = .working(.restarting)
             do { try await client.migrate() } catch let error as URLError where error.code != .cancelled {
-                // A request the restart dropped started the migration as surely as an answer.
             } catch {
                 guard !Task.isCancelled else { return }
                 phase = .failed(error.localizedDescription)
@@ -124,7 +95,6 @@ import SwiftUI
             } isFinal: { $0.servesEveryProfile }
             guard !Task.isCancelled else { return }
             guard let last, last.servesEveryProfile else {
-                // A migration the host refused leaves its blockers in the plan.
                 phase = last.map { $0.isBlocked ? .ready($0) : .unconfirmed } ?? .unconfirmed
                 return
             }
@@ -132,7 +102,6 @@ import SwiftUI
         }
     }
 
-    /// Stops waiting when the screen goes; the host carries on with whatever it started.
     func leave() {
         work?.cancel()
         work = nil
@@ -149,8 +118,6 @@ import SwiftUI
         }
     }
 
-    /// The gateway serves every Profile: `profile`'s socket opens, or it's `.unconfirmed`.
-    /// Migration and every plan read that finds it so (Check Again included) end here.
     private func confirmServed() async {
         if let profile {
             phase = .working(.checking)
@@ -173,13 +140,10 @@ import SwiftUI
     }
 }
 
-/// "Serve Every Profile": the screen for `ServeEveryProfileModel`, from a chat whose Profile the
-/// Webapp doesn't serve or from the server's Settings page.
 struct ServeEveryProfileView: View {
     @State private var model: ServeEveryProfileModel
     @State private var isConfirmingRemoval = false
     @State private var isConfirmingMigration = false
-    /// Why the recovery chat couldn't queue its text; nothing was queued.
     @State private var recoveryFailure: NewChatWithContentError?
     @Environment(\.dismiss) private var dismiss
     private let server: URL
@@ -189,7 +153,6 @@ struct ServeEveryProfileView: View {
         let http = HermesConnections.shared.connection(for: connection, server: server)
         let model = ServeEveryProfileModel(client: HermesGatewayMigrationClient(http: http), profile: profile)
         model.onServed = {
-            // Every open chat reattaches to the restarted gateway.
             HermesConnections.shared.reconnectGateway(server: server)
             onServed?()
         }

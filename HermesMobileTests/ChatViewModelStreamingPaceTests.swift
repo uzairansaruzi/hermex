@@ -2,9 +2,6 @@ import SwiftUI
 import XCTest
 @testable import HermesMobile
 
-/// Reveal tests for #1126: each tick shows streamed text up to the last
-/// whitespace, a held fragment shows on the next tick, and completion paths
-/// flush everything at once. Ticks are driven by hand; nothing sleeps.
 final class ChatViewModelStreamingPaceTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
@@ -26,14 +23,12 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         let firstTick = await nextAssistantContent(of: viewModel)
         XCTAssertEqual(firstTick, "alpha beta ")
 
-        // The held fragment re-arms a tick; text arriving meanwhile rides it.
         await waitForTickRequest(ticks, 2)
         streamClient.emit(.token("ma"))
         ticks.fire()
         let secondTick = await nextAssistantContent(of: viewModel) { $0 != "alpha beta " }
         XCTAssertEqual(secondTick, "alpha beta gamma", "a fragment is held for one tick only")
 
-        // Tokens after the buffer emptied schedule a fresh tick.
         streamClient.emit(.token(" delta "))
         await waitForTickRequest(ticks, 3)
         ticks.fire()
@@ -53,7 +48,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         streamClient.emit(.token("你好世界"))
         await waitForTickRequest(ticks, 1)
         ticks.fire()
-        // The tick held the whole fragment and asked for the next one.
         await waitForTickRequest(ticks, 2)
         XCTAssertEqual(assistantContent(of: viewModel) ?? "", "")
 
@@ -78,12 +72,10 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
             let firstTick = await nextAssistantContent(of: viewModel)
             XCTAssertEqual(firstTick, "alpha beta ")
 
-            // The held fragment had re-armed tick 2; completion cancels it.
             await waitForTickRequest(ticks, 2)
             streamClient.emit(completion)
             XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam", "\(completion)")
 
-            // The cancelled tick returning late shows nothing and asks for no more.
             ticks.release(2)
             await waitForTickReturn(ticks, 2)
             XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam", "\(completion)")
@@ -106,15 +98,12 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         let firstTick = await nextAssistantContent(of: viewModel)
         XCTAssertEqual(firstTick, "alpha beta ")
 
-        // A mid-stream flush (interim reply, snapshot save) cancels tick 2, and
-        // the next tokens schedule tick 3 while tick 2 is still suspended.
         await waitForTickRequest(ticks, 2)
         viewModel.flushPendingStreamingContent()
         XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam")
         streamClient.emit(.token(" delta eps"))
         await waitForTickRequest(ticks, 3)
 
-        // Tick 2 returns late: it must neither reveal text nor free tick 3's slot.
         ticks.release(2)
         await waitForTickReturn(ticks, 2)
         XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam")
@@ -141,8 +130,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         let didStart = await viewModel.sendMessage("Stream a reply")
         XCTAssertTrue(didStart)
 
-        // Awkward chunk boundaries: ZWJ family, flag, CRLF, tabs, doubled spaces,
-        // and a combining mark split across chunks ("cafe" + U+0301).
         let chunks = [
             "The 👩‍👩‍👧‍👦 family ",
             "and 🇫🇷 flag met.\r\n",
@@ -194,7 +181,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
             streamClient.emit(.token(chunk))
         }
 
-        // The text ends in whitespace, so one tick shows all of it.
         await waitForTickRequest(ticks, 1)
         ticks.fire()
 
@@ -213,8 +199,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         )
     }
 
-    /// #1417: a text-only tick patches the reply's row instead of re-deriving the transcript,
-    /// and the transcript still matches a from-scratch derivation, through cancellation too.
     @MainActor
     func testTextOnlyTicksPatchTheReplyWithoutReDerivingTheTranscript() async throws {
         let streamClient = PacingSpySSEStreamingClient()
@@ -246,8 +230,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         assertTranscriptMatchesFromScratch(viewModel)
     }
 
-    /// #1417: reasoning reads the reply's text, so a tick that completes an in-text
-    /// `<think>` block re-derives the transcript and shows the reasoning card.
     @MainActor
     func testATickThatCompletesInTextReasoningReDerivesTheTranscript() async throws {
         let streamClient = PacingSpySSEStreamingClient()
@@ -271,9 +253,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         assertTranscriptMatchesFromScratch(viewModel)
     }
 
-    // MARK: - Helpers
-
-    /// `count` settled prompt/reply turns, as a webui session's `messages` JSON.
     private static func settledTurns(_ count: Int) -> String {
         let turns = (0..<count).map { index in
             #"{"role": "user", "content": "Question \#(index)", "timestamp": \#(1_770_000_000 + index * 10), "message_id": "user-\#(index)"}, "#
@@ -282,7 +261,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         return "[" + turns.joined(separator: ", ") + "]"
     }
 
-    /// The presented rows and reasoning cards equal a from-scratch derivation of `messages`.
     @MainActor
     private func assertTranscriptMatchesFromScratch(
         _ viewModel: ChatViewModel,
@@ -384,8 +362,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         viewModel.messages.last(where: { $0.role == "assistant" })?.content
     }
 
-    /// Waits on observation, not a poll, for the first assistant content
-    /// matching `predicate`, and returns it.
     @MainActor
     private func nextAssistantContent(
         of viewModel: ChatViewModel,
@@ -407,9 +383,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     }
 }
 
-/// Hands each reveal tick to the test, which releases it with `fire()` or
-/// `release(_:)`. The tick is main-actor isolated, so the view model's code
-/// after it runs in the same main-actor job that marks the tick returned.
 @MainActor
 final class ManualRevealTicks {
     private var inFlight: [Int: CheckedContinuation<Void, Never>] = [:]
@@ -422,7 +395,6 @@ final class ManualRevealTicks {
         { @MainActor [weak self] in await self?.wait() }
     }
 
-    /// Fulfilled once the view model has asked for its `number`th tick.
     func expectRequest(_ number: Int) -> XCTestExpectation {
         let expectation = XCTestExpectation(description: "reveal tick \(number) requested")
         if requestCount >= number {
@@ -433,7 +405,6 @@ final class ManualRevealTicks {
         return expectation
     }
 
-    /// Fulfilled once the `number`th tick has returned to the view model.
     func expectReturn(_ number: Int) -> XCTestExpectation {
         let expectation = XCTestExpectation(description: "reveal tick \(number) returned")
         if returned.contains(number) {
@@ -444,12 +415,10 @@ final class ManualRevealTicks {
         return expectation
     }
 
-    /// Releases every tick in flight, oldest first.
     func fire() {
         inFlight.keys.sorted().forEach(release)
     }
 
-    /// Releases the `number`th tick, even one its view model already cancelled.
     func release(_ number: Int) {
         inFlight.removeValue(forKey: number)?.resume()
     }

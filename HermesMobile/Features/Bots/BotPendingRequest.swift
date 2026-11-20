@@ -1,15 +1,5 @@
 import Foundation
 
-/// A request that parks a bot's work until someone answers it.
-///
-/// Requests arrive as server-request envelopes, live or restored from
-/// `open_requests`; an approval can also come from the snapshot's
-/// `pending_approval`. A connection operation is the one kind that is not a
-/// server request: see `BotConnectionOperation`.
-///
-/// Only `desktopTask` is unanswerable, and not for want of a credential path: the
-/// answer is data only Hermes Desktop's own window holds, so no client without
-/// that window can produce one.
 enum BotPendingRequest: Equatable {
     case approval(BotApprovalRequest)
     case question(BotQuestionRequest)
@@ -17,8 +7,6 @@ enum BotPendingRequest: Equatable {
     case desktopTask(BotDesktopTaskRequest)
     case connection(BotConnectionOperation)
 
-    /// The host's id for this request: the envelope id, approval's queue id, or
-    /// a connection operation's `op_id`.
     var requestID: String {
         switch self {
         case .approval(let request): return request.requestID
@@ -30,19 +18,11 @@ enum BotPendingRequest: Equatable {
     }
 }
 
-/// A server request, received live or restored from `open_requests`.
-/// Keep the envelope id separate from approval's underlying queue request id.
-/// An unknown method keeps `pending` nil: the bot is still blocked, and the phone
-/// never answers it, not even with -32601, because a reply from here would
-/// pre-empt the Hermes Desktop window that can. `theme.apply` and `theme.pick` keep it nil
-/// too: a Hermes chat answers them itself, before they join its requests (`HermesThemeRequest`).
 struct BotServerRequest: Equatable {
     let id: String
     let method: String
     let sessionID: String
     let pending: BotPendingRequest?
-    /// A canonical host's approval or clarify prompt's execution generation, which its answer
-    /// carries (`HermesCanonicalPrompts`, #1602); nil for a server request.
     let promptGeneration: Int?
 
     init?(_ frame: BotJSON) {
@@ -77,34 +57,19 @@ struct BotServerRequest: Equatable {
     }
 }
 
-/// One pending dangerous-command approval. The host precomputes `choices` from
-/// its own smart-approval and permanent-allow policy, so the phone offers exactly
-/// what the host offered rather than inventing a fifth option.
 struct BotApprovalRequest: Equatable {
-    /// The host's wire vocabulary for `approval.respond`'s `choice`.
     enum Choice: String, Equatable, CaseIterable {
         case once, session, always, deny
     }
 
     let requestID: String
-    /// The command as the host redacted it. Nil when the gate was not command-shaped.
     let command: String?
-    /// Why the host flagged this action, from `description`.
     let consequence: String?
-    /// The host may include the tool's own folder, which takes precedence over session.info.
     let workingDirectory: String?
-    /// Server order, `once` first and `deny` last. Never empty.
     let choices: [Choice]
-    /// What Allow session and Always allow would allowlist: `pattern_keys`, else
-    /// `[pattern_key]`. Empty when the host sent neither.
     let patternKeys: [String]
-    /// The gated tool, when the host names it. Absent at the pin, where a plugin
-    /// rule carries its tool in the key or the command instead.
     let toolName: String?
 
-    /// What Allow session and Always allow cover on this bot's Profile, or nil
-    /// when Allow session isn't offered (a smart-denied prompt, or a room
-    /// approval's once and deny).
     var scopeLine: AttributedString? {
         ApprovalScope.line(
             keys: patternKeys, description: consequence, command: command, toolName: toolName,
@@ -112,8 +77,6 @@ struct BotApprovalRequest: Equatable {
         )
     }
 
-    /// Nil when the payload carries no usable request id: without one the phone
-    /// cannot address `approval.respond` and must not guess FIFO order.
     init?(_ json: BotJSON) {
         guard let id = json["request_id"].text, !id.isEmpty else { return nil }
         requestID = id
@@ -123,21 +86,14 @@ struct BotApprovalRequest: Equatable {
         let keys = (json["pattern_keys"].list ?? []).compactMap { Self.trimmed($0) }
         patternKeys = keys.isEmpty ? Self.trimmed(json["pattern_key"]).map { [$0] } ?? [] : keys
         toolName = Self.trimmed(json["tool_name"])
-        // A present `choices` is the host speaking, and nothing may be added to
-        // what it offered. If a newer host renames the lot so none of it parses,
-        // Deny is the only thing left that is safe to offer: rebuilding here
-        // would invent an Always allow the host never sanctioned.
         let present = json.fields?["choices"]
         if let present, present.list == nil {
-            // Present but not a list (null, a string, an object): not an older host,
-            // so nothing is rebuilt and Deny is the only safe offer.
             choices = [.deny]
         } else if let list = present?.list {
             let offered = list.compactMap { $0.text.flatMap(Choice.init(rawValue:)) }
             if offered.isEmpty { choices = [.deny] }
             else { choices = offered.contains(.deny) ? offered : offered + [.deny] }
         } else {
-            // Only an absent `choices` is an older host; rebuild what it would send.
             var rebuilt: [Choice] = [.once]
             if json["smart_denied"].flag != true, json["allow_session"].flag != false {
                 rebuilt.append(.session)
@@ -153,13 +109,7 @@ struct BotApprovalRequest: Equatable {
     }
 }
 
-/// One pending clarify request: either the single-question shape
-/// (`question`/`choices`/`multi_select`) or the batch shape (`questions`), which
-/// locks one answer per question id and carries the locked ones back on reconnect.
 struct BotQuestionRequest: Equatable {
-    /// One offered answer. `wireLabel` goes back to the host verbatim; the host
-    /// strips its own "(Recommended)" suffix, so presentation never leaks into
-    /// the answer and the phone never has to reconstruct a label.
     struct Choice: Identifiable, Equatable {
         static let recommendedSuffix = "(Recommended)"
 
@@ -180,14 +130,10 @@ struct BotQuestionRequest: Equatable {
     }
 
     struct Question: Identifiable, Equatable {
-        /// The host's `qid`. Nil for the single-question shape, whose
-        /// single answer carries no `question_id`.
         let wireID: String?
         let prompt: String
-        /// Empty means open-ended: free text is the only answer.
         let choices: [Choice]
         let allowsMultipleChoices: Bool
-        /// An answer already locked on the host, replayed so a reconnect restores it.
         let lockedAnswer: String?
 
         var id: String { wireID ?? "" }
@@ -197,12 +143,9 @@ struct BotQuestionRequest: Equatable {
     let requestID: String
     let questions: [Question]
 
-    /// Batch questions lock one answer per question id (`clarify.lock` on 0.21.2).
     var isBatch: Bool { questions.first?.wireID != nil }
     var unansweredCount: Int { questions.filter { !$0.isAnswered }.count }
 
-    /// Nil when the payload has no request id or no readable question, which is
-    /// how a host that carries the key but no content degrades to "no card".
     init?(_ json: BotJSON) {
         guard let id = json["request_id"].text, !id.isEmpty else { return nil }
         let locked = json["answers"]
@@ -242,18 +185,10 @@ struct BotQuestionRequest: Equatable {
     }
 }
 
-/// A value only the person can supply: the Mac's administrator password, or a
-/// secret the bot asked for by name. Password-vault prompts (`vault.*`) are not
-/// read: they stay open requests with no card, never answered from the phone (#1148).
-///
-/// Answers carry `{value}` through `request.answer`. An empty value skips
-/// without retaining a secret.
 struct BotCredentialRequest: Equatable {
-    /// The server request method.
     enum Kind: String, Equatable, CaseIterable {
         case sudo, secret
 
-        /// What skipping costs, so declining is an informed choice too.
         var skipConsequence: String {
             switch self {
             case .sudo: return String(localized: "Skip to let the command fail instead.")
@@ -264,9 +199,7 @@ struct BotCredentialRequest: Equatable {
 
     let kind: Kind
     let requestID: String
-    /// `secret` only: the name the host stores the value under.
     let envVar: String?
-    /// `secret` only: the host's own words for what it wants.
     let prompt: String?
 
     var title: String {
@@ -276,7 +209,6 @@ struct BotCredentialRequest: Equatable {
         }
     }
 
-    /// What the bot is asking for, preferring the host's wording when it sent any.
     var detail: String {
         switch kind {
         case .sudo:
@@ -286,9 +218,6 @@ struct BotCredentialRequest: Equatable {
         }
     }
 
-    /// Where the value ends up, stated before it is typed. `sudo` is used for the
-    /// one command and never written down; `secret` is saved on the host under
-    /// `envVar`. Neither is ever stored by Hermex.
     var handling: String {
         switch kind {
         case .sudo:
@@ -302,13 +231,7 @@ struct BotCredentialRequest: Equatable {
     }
 }
 
-/// A request only Hermes Desktop can answer: work its own window performs and
-/// answers by itself, serializing its terminal scrollback, the OS window beneath
-/// it, its preview pane. Nobody types an answer to those, on the phone or at the
-/// Mac; the host's deadline passes and the bot carries on, so the phone reports
-/// the wait rather than sending anyone to a desk.
 struct BotDesktopTaskRequest: Equatable {
-    /// The server request method.
     enum Kind: String, Equatable, CaseIterable {
         case tour
         case terminalRead = "terminal.read"
@@ -316,8 +239,6 @@ struct BotDesktopTaskRequest: Equatable {
         case previewRead = "preview.read"
         case previewAct = "preview.act"
 
-        /// What is happening, in the user's words rather than the wire name, naming the bot in
-        /// a bot's chat and Hermes in any other chat (#1141).
         func title(_ subject: HermesRequestSubject) -> String {
             switch (self, subject) {
             case (.terminalRead, .bot): return String(localized: "This bot is reading a terminal on the Mac.")
@@ -347,28 +268,16 @@ struct BotDesktopTaskRequest: Equatable {
     let requestID: String
 }
 
-/// A `manage_connections` operation: the bot asked to connect one or more apps,
-/// and the host holds the tool until every row is connected or skipped, Continue
-/// settles it, Stop interrupts it, or its deadline passes.
-///
-/// It is an event plus an RPC, not a server request: `connection.request` opens
-/// it, each `connection.update` carries the full snapshot again, the snapshot's
-/// `pending_connection` restores it, and `connection.respond` answers it by
-/// `op_id`. Nothing about it is cached.
 struct BotConnectionOperation: Equatable {
-    /// One value an MCP install still needs; the card draws a field for each.
     struct EnvField: Equatable, Identifiable {
         let name: String
         let isRequired: Bool
         let isSecret: Bool
-        /// The catalog's value for a non-secret field. The field starts with it,
-        /// as on Desktop, because the host never fills a default in by itself.
         let defaultValue: String?
         let prompt: String?
 
         var id: String { name }
 
-        /// What the field holds: the user's edit, else the default it starts with.
         func value(in values: [String: String]) -> String {
             values[name] ?? defaultValue ?? ""
         }
@@ -376,7 +285,6 @@ struct BotConnectionOperation: Equatable {
         init?(_ json: BotJSON) {
             guard let name = json["name"].text?.trimmingCharacters(in: .whitespaces), !name.isEmpty else { return nil }
             self.name = name
-            // Absent means the host's own defaults: required, and masked to be safe.
             isRequired = json["required"].flag ?? true
             isSecret = json["secret"].flag ?? true
             defaultValue = isSecret ? nil : BotConnectionOperation.trimmed(json["default"])
@@ -384,8 +292,6 @@ struct BotConnectionOperation: Equatable {
         }
     }
 
-    /// One app the bot asked for. A value this build does not recognize keeps its
-    /// row readable but offers nothing, since the phone cannot tell what it permits.
     struct Target: Equatable, Identifiable {
         enum Kind: String { case connector, mcp }
         enum Action: String { case authorize, connect, enable, install, reconnect }
@@ -419,38 +325,27 @@ struct BotConnectionOperation: Equatable {
             requiredEnv = (json["required_env"].list ?? []).compactMap(EnvField.init)
         }
 
-        /// The host lets the user skip any row still open: pending, started,
-        /// failed or expired. Connected and skipped rows are already resolved.
         var canSkip: Bool {
             guard kind != nil, action != nil, let state else { return false }
             return [.pending, .initiated, .failed, .expired].contains(state)
         }
 
-        /// A managed connector's vendor sign-in. It finishes in the browser and the
-        /// host notices the new account by itself, so the phone sends nothing back.
-        /// Only an https link opens: a failed or expired row's link is dead.
         var linkToOpen: URL? {
             guard kind == .connector, action != nil, state == .pending || state == .initiated,
                   let connectURL, connectURL.scheme?.lowercased() == "https" else { return nil }
             return connectURL
         }
 
-        /// An MCP sign-in, which redirects to a listener on the host's own
-        /// loopback. A phone browser dead-ends there, so it never gets the link.
         var finishesOnTheMac: Bool {
             guard kind == .mcp, action == .authorize || connectURL != nil, let state else { return false }
             return [.pending, .initiated, .failed].contains(state)
         }
 
-        /// An MCP enable or install the phone approves, sending a value for each
-        /// `requiredEnv` field. A failed one runs again with the new values.
         var canConnect: Bool {
             kind == .mcp && (action == .enable || action == .install) && connectURL == nil
                 && (state == .pending || state == .failed)
         }
 
-        /// The values Connect sends for what the fields hold: trimmed, and an
-        /// emptied field left out.
         func env(from values: [String: String]) -> [String: String] {
             requiredEnv.reduce(into: [:]) { env, field in
                 let value = field.value(in: values).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -458,8 +353,6 @@ struct BotConnectionOperation: Equatable {
             }
         }
 
-        /// True when this row connects with `env`: every required field filled,
-        /// no field it did not declare, and no empty value.
         func accepts(_ env: [String: String]) -> Bool {
             guard canConnect else { return false }
             let declared = Set(requiredEnv.map(\.name))
@@ -468,14 +361,11 @@ struct BotConnectionOperation: Equatable {
         }
     }
 
-    /// One row's answer, or Continue, on its way to `connection.respond`.
     enum Answer: Equatable {
         case connect(target: String, env: [String: String])
         case skip(target: String)
-        /// Settles the whole operation now; unresolved rows become `not_connected`.
         case continueWithout
 
-        /// True when the row on screen offers this answer, with every required value filled.
         func isOffered(by operation: BotConnectionOperation) -> Bool {
             switch self {
             case .continueWithout: return true
@@ -485,7 +375,6 @@ struct BotConnectionOperation: Equatable {
             }
         }
 
-        /// The `result` object: one row per answer, or only `settled_by`.
         var result: BotJSON {
             switch self {
             case .connect(let name, let env):
@@ -501,16 +390,11 @@ struct BotConnectionOperation: Equatable {
     }
 
     let opID: String
-    /// The host's write counter for this operation. A frame that is not newer is older.
     let seq: Int
     let deadline: Date
     let isSettled: Bool
-    /// Server order, one row per name.
     let targets: [Target]
 
-    /// Reads `connection.request`, a `connection.update` or `pending_connection`.
-    /// Nil without an id, a counter, a deadline or any readable row: there is
-    /// nothing a card could address, and the bot shows as blocked without one.
     init?(_ json: BotJSON) {
         guard let opID = json["op_id"].text, !opID.isEmpty, let seq = json["seq"].integer,
               let deadline = json["deadline_at"].number, deadline.isFinite, deadline > 0 else { return nil }
@@ -524,15 +408,10 @@ struct BotConnectionOperation: Equatable {
         self.targets = targets
     }
 
-    /// This operation after `frame`: every frame is the full snapshot, so a newer
-    /// one replaces it whole. An older or equal counter, or another operation's
-    /// frame, changes nothing.
     func applying(_ frame: BotConnectionOperation) -> BotConnectionOperation {
         frame.opID == opID && frame.seq > seq ? frame : self
     }
 
-    /// Whole minutes left before the host's deadline, never below one: the card
-    /// stays until the settled frame, which the deadline itself produces.
     static func minutesLeft(until deadline: Date, now: Date) -> Int {
         max(1, Int((deadline.timeIntervalSince(now) / 60).rounded(.up)))
     }
@@ -543,14 +422,10 @@ struct BotConnectionOperation: Equatable {
     }
 }
 
-/// One question's answer on its way to the host. `questionID` is the
-/// host's `qid` for a batch and nil for the single-question shape.
 struct BotQuestionAnswer: Equatable {
     let questionID: String?
     let text: String
 
-    /// Multi-select answers go over the wire as a JSON array string; the host
-    /// parses that, a bare array is not part of the contract.
     init(questionID: String?, selections: [String]) {
         self.questionID = questionID
         let data = try? JSONSerialization.data(withJSONObject: selections)
@@ -563,27 +438,18 @@ struct BotQuestionAnswer: Equatable {
     }
 }
 
-/// Why the request on screen can no longer be acted on, scoped to the request it
-/// describes so a newer request never inherits an older verdict.
 struct BotRequestResolution: Equatable {
     enum Outcome: Equatable {
-        /// The host accepted the answer. The next snapshot removes the request.
         case answered
-        /// The host had nothing left to resolve: answered on another surface, or expired.
         case alreadyResolved
-        /// Delivery failed in a way that cannot distinguish sent from not sent.
         case uncertain
     }
 
     let requestID: String
     let outcome: Outcome
 
-    /// True while the request must stay inert. An uncertain outcome warns instead
-    /// of locking the user out: the phone never resends, but a deliberate second
-    /// answer after checking Desktop is the user's call, not a replay.
     var blocksFurtherAnswers: Bool { outcome != .uncertain }
 
-    /// What the card says, naming the bot in a bot's chat and Hermes Desktop in any other chat.
     func message(_ subject: HermesRequestSubject) -> String {
         switch (outcome, subject) {
         case (.answered, _): return String(localized: "Answer sent.")
@@ -594,27 +460,16 @@ struct BotRequestResolution: Equatable {
     }
 }
 
-/// A request the host withdrew while it was on screen, and why (#892). The chat
-/// leaves `message` where the card stood, so the bot's next words make sense.
-///
-/// Only the family and the host's reason are kept: nothing the request carried
-/// outlives its card, and the note is never cached.
 struct BotRequestWithdrawal: Equatable {
-    /// A server request by the identity `request.cancel` names (#530): the
-    /// envelope id and method, never its params.
     struct Envelope: Equatable {
         let id: String
         let method: String
     }
 
-    /// Which card was withdrawn, told apart by its server-request method.
     enum Family: Equatable {
         case approval, question
-        /// sudo, secret and the password-manager prompts.
         case other
 
-        /// Nil for the Desktop renderer's own tasks: their card already says the
-        /// bot carries on without them, so their withdrawal is silent.
         init?(method: String) {
             switch method {
             case "approval": self = .approval
@@ -625,17 +480,12 @@ struct BotRequestWithdrawal: Equatable {
         }
     }
 
-    /// Why the host withdrew it, from `request.cancel`'s `reason`.
     enum Reason: Equatable {
         case timeout
-        /// `interrupted` or `session_closed`: the work stopped.
         case stopped
         case shutdown
-        /// Any other wording; approval callers may pass their own.
         case other
 
-        /// Nil for `resolved`, an answer given on another surface, and for a
-        /// cancel that gives no reason: either way silence is the honest note.
         init?(_ wire: String?) {
             switch wire?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" {
             case "", "resolved": return nil
@@ -655,14 +505,11 @@ struct BotRequestWithdrawal: Equatable {
         self.reason = reason
     }
 
-    /// Nil when this withdrawal leaves no note.
     init?(method: String, reason: String?) {
         guard let family = Family(method: method), let reason = Reason(reason) else { return nil }
         self.init(family: family, reason: reason)
     }
 
-    /// One whole sentence per family and reason, so every language translates it
-    /// intact. A timed-out approval says the one fact that matters: nothing ran.
     var message: String {
         switch (family, reason) {
         case (.approval, .timeout): return String(localized: "Approval timed out, so it didn't run.")

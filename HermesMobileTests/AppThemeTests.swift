@@ -71,14 +71,12 @@ final class ChatLayoutDirectionSettingsTests: XCTestCase {
     }
 
     func testRightToLeftLanguageDetectionUsesPrimaryPreferredLanguage() {
-        // RTL primaries auto-enable, including region-qualified identifiers.
         for rtl in [["ar-SA", "en-US"], ["he"], ["fa-IR"], ["ur"]] {
             XCTAssertTrue(
                 ChatTranscriptDisplaySettings.isRightToLeftLanguage(preferredLanguages: rtl),
                 "expected RTL for \(rtl)"
             )
         }
-        // LTR primaries stay off — even when an RTL language is further down the list.
         for ltr in [["en-US"], ["de"], ["de", "ar"], []] {
             XCTAssertFalse(
                 ChatTranscriptDisplaySettings.isRightToLeftLanguage(preferredLanguages: ltr),
@@ -89,11 +87,8 @@ final class ChatLayoutDirectionSettingsTests: XCTestCase {
 }
 
 final class CodeBlockWrappingSettingsTests: XCTestCase {
-    /// Wrap mode concatenates a line's 500-char segments back into one `Text`, so
-    /// joining them must reproduce the source line exactly (no dropped/duplicated
-    /// characters) even when the line is split into several segments.
     func testPlainFormatterSegmentsRejoinLosslessly() throws {
-        let longLine = String(repeating: "abcde", count: 240) // 1200 chars > 2x maxSegmentLength
+        let longLine = String(repeating: "abcde", count: 240)
         let lines = MarkdownPlainCodeFormatter.lines(in: longLine)
 
         XCTAssertEqual(lines.count, 1)
@@ -102,14 +97,9 @@ final class CodeBlockWrappingSettingsTests: XCTestCase {
         XCTAssertEqual(line.segments.map(\.text).joined(), longLine)
     }
 
-    /// The highlighted wrap path concatenates `MarkdownAttributedCodeFormatter`
-    /// segments back into one `Text`, so the segments must rejoin losslessly *and*
-    /// preserve their syntax-highlight attributes — including across a 500-char
-    /// segment boundary.
     func testAttributedFormatterSegmentsRejoinLosslesslyPreservingAttributes() throws {
         let source = String(repeating: "x", count: 1200)
         let attributed = NSMutableAttributedString(string: source)
-        // An attribute spanning the first 500-char boundary (480..<520) must survive.
         attributed.addAttribute(.kern, value: NSNumber(value: 3), range: NSRange(location: 480, length: 40))
 
         let lines = MarkdownAttributedCodeFormatter.lines(in: attributed)
@@ -130,7 +120,6 @@ final class CodeBlockWrappingSettingsTests: XCTestCase {
 }
 
 final class ResponseCompletionNotificationPolicyTests: XCTestCase {
-    // #862: a completed or failed run can alert; a stopped one has no outcome to alert with.
     func testOnlyCompletedAndFailedRunsHaveAnAlertOutcome() {
         XCTAssertEqual(ResponseCompletionOutcome(.complete), .completed)
         XCTAssertEqual(ResponseCompletionOutcome(.failed), .failed)
@@ -162,9 +151,6 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
     private let serverA = URL(string: "https://a.example.com")!
     private let serverB = URL(string: "https://b.example.com")!
 
-    // #862: the alert names the chat, says how the run ended, and carries a hash of
-    // its server rather than the URL. No `install_hash`, so it is never read as a
-    // relay push (#653).
     func testRequestCarriesTitleOutcomeAndServerHash() {
         let request = ResponseCompletionNotificationRequest(
             sessionID: "session-abc", server: serverA, title: "  Deploy notes\n", outcome: .failed)
@@ -173,7 +159,6 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
         XCTAssertEqual(request.body, "Response failed")
         XCTAssertEqual(request.userInfo, [
             "session_id": "session-abc",
-            // printf 'https://a.example.com' | shasum -a 256
             "server_hash": "93d446a9d8ca42b500faf019713f245eaf0377bd89add0676ece0b22d3ebfb02",
             "source": "local"
         ])
@@ -181,8 +166,6 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
         XCTAssertEqual(request.threadIdentifier, request.identifier)
     }
 
-    // #862: a newer alert for the same chat replaces the last one; the same session ID
-    // on another server is a different chat.
     func testIdentifierIsStablePerChatAndDistinctPerServer() {
         let failed = ResponseCompletionNotificationRequest(
             sessionID: "same-id", server: serverA, title: "A", outcome: .failed)
@@ -216,8 +199,6 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
             sessionID: "session-abc", server: serverA, title: "Deploy notes", outcome: .failed)])
     }
 
-    // #862: a chat's alerts share one identifier, so a run end that a newer one
-    // superseded while it waited must not schedule over the newer alert.
     @MainActor
     func testSkipsARunEndSupersededWhileItWaited() async {
         var latestRunEnd = 1
@@ -260,8 +241,6 @@ final class ResponseCompletionNotificationServiceTests: XCTestCase {
         XCTAssertTrue(scheduler.scheduledRequests.isEmpty)
     }
 
-    // #863: Settings' toggle and the chat's one-time offer share this enable, so the
-    // prompt, the asked-once flag and the stored preference stay in step.
     @MainActor
     func testEnableAsksOnceWhenPermissionWasNeverRequested() async throws {
         let defaults = try makeDefaults()
@@ -347,12 +326,9 @@ final class ResponseCompletionNotificationTrackerTests: XCTestCase {
 
         XCTAssertEqual(context, ResponseCompletionNotificationCompletionContext(sceneIsActive: false))
         XCTAssertTrue(tracker.shouldEndBackgroundTaskOnStreamInactive(runEndTrigger: 1))
-        // The same run-end trigger is consumed only once.
         XCTAssertNil(tracker.completionContext(runEndTrigger: 1, sceneIsActive: false))
     }
 
-    // #862: a failure after a handled completion is a new bump, so the stream going
-    // inactive leaves the background task open until the failure's alert is handled.
     func testFailureBumpKeepsBackgroundTaskOpenUntilItsContextIsConsumed() {
         var tracker = ResponseCompletionNotificationTracker()
         _ = tracker.completionContext(runEndTrigger: 1, sceneIsActive: false)
@@ -366,13 +342,10 @@ final class ResponseCompletionNotificationTrackerTests: XCTestCase {
     }
 }
 
-/// Shared with `NotificationOfferTests`.
 final class SpyResponseCompletionNotificationScheduler: ResponseCompletionNotificationScheduling {
     private var status: UNAuthorizationStatus
     private let requestAuthorizationResult: Bool
-    /// The status iOS reports once the prompt is answered; unchanged when nil.
     private let statusAfterRequest: UNAuthorizationStatus?
-    /// Runs while the permission check is in flight, for work that lands meanwhile.
     private let duringAuthorizationStatus: () -> Void
     private(set) var authorizationStatusCallCount = 0
     private(set) var requestAuthorizationCallCount = 0
@@ -407,7 +380,6 @@ final class SpyResponseCompletionNotificationScheduler: ResponseCompletionNotifi
     }
 }
 
-/// The legacy source viewer's wrap setting folds into the one Code setting.
 final class CodeWrapMigrationTests: XCTestCase {
     func testEitherSettingBeingOnStaysOn() throws {
         let suite = "CodeWrapMigrationTests"
@@ -440,8 +412,6 @@ final class AppearanceTextAndCodeSizeTests: XCTestCase {
         }
     }
 
-    /// One stored stop reaches SwiftUI and auto-adjusting UIKit text in any window on the
-    /// scene, and the first stop gives the size back to the iPhone.
     func testAStopResizesTheSceneAndTheFirstStopFollowsTheIPhone() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.lazy.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -476,8 +446,6 @@ final class AppearanceTextAndCodeSizeTests: XCTestCase {
         XCTAssertEqual(probe.size, DynamicTypeSize(window.traitCollection.preferredContentSizeCategory))
     }
 
-    /// A settled reply sits in its own hosting controller and skips rebuilds, so this proves
-    /// the setting reaches code already on screen.
     func testCustomCodeSizeResizesASettledReplysCodeBlock() async throws {
         let reply = ChatMessage(
             role: "assistant",
@@ -512,7 +480,6 @@ final class AppearanceTextAndCodeSizeTests: XCTestCase {
         XCTAssertEqual(height(), followingText, accuracy: 0.5)
     }
 
-    /// Off, a long line of terminal output scrolls sideways and stays one row tall.
     func testWrapSettingControlsToolOutput() async throws {
         let toolCall = ToolCall(
             name: "terminal",

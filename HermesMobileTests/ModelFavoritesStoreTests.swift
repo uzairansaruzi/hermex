@@ -19,7 +19,6 @@ final class ModelFavoritesStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    /// A favorite or recent picked on one server never shows on another.
     func testFavoritesAndRecentsStayWithTheirServer() throws {
         let first = try XCTUnwrap(URL(string: "https://a.test"))
         let second = try XCTUnwrap(URL(string: "https://b.test"))
@@ -37,7 +36,6 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(ModelFavoritesStore(server: first, defaults: defaults).favoriteKeys, [])
     }
 
-    /// Remembered Thinking and Fast stay with their server and model, and an unreadable blob is empty.
     func testPresetsStayWithTheirServerAndAnUnreadableBlobIsEmpty() throws {
         let first = try XCTUnwrap(URL(string: "https://a.test"))
         let second = try XCTUnwrap(URL(string: "https://b.test"))
@@ -59,7 +57,6 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertNil(ModelPresetStore(server: first, defaults: defaults).preset(for: key))
     }
 
-    /// An upgrade keeps the old shared list on the first server read, and only there.
     func testTheOldSharedListMovesToTheFirstServerRead() throws {
         let first = try XCTUnwrap(URL(string: "https://a.test"))
         let second = try XCTUnwrap(URL(string: "https://b.test"))

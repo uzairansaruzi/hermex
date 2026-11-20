@@ -1,14 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// A Hermes chat's workspace files (#1112): `HermesWorkspaceFileClient` against a scripted host
-/// whose replies are the shapes `hermes_cli/web_routers/files.py` answers at the pin (ca678285).
 @MainActor final class HermesWorkspaceFileClientTests: XCTestCase {
-    // MARK: Listing
-
-    /// The root lists the chat's folder; a subfolder is the folder plus its relative path, with a
-    /// `+` kept as itself. Each child's path is its folder's plus its name: the listing's own
-    /// `path` is resolved on the host and never read.
     func testAListingComposesTheHostPathAndBuildsChildPathsFromNames() async throws {
         let client = Self.client { request in
             guard request.url?.path == "/api/fs/list" else { return nil }
@@ -24,8 +17,6 @@ import XCTest
         XCTAssertEqual(nested.entries?.map(\.path), ["src/c++/src", "src/c++/a+b.txt"])
     }
 
-    /// The host's 200 `{entries: [], error}` for a folder it can't read is the folder's failure,
-    /// not an empty folder: `ENOENT` and `ENOTDIR` are a missing folder, `EACCES` is not.
     func testAnUnreadableFolderThrowsItsCode() async throws {
         let codes = ["ENOENT": true, "ENOTDIR": true, "EACCES": false]
         for (code, isMissing) in codes {
@@ -61,8 +52,6 @@ import XCTest
                        Self.cwd + "/ draft/ report.txt")
     }
 
-    /// A path that is absolute, climbs with `..`, starts at `~` or is empty past the root is
-    /// refused before any request.
     func testAPathOutsideTheFolderIsRefusedBeforeAnyRequest() async {
         let client = Self.client { _ in .json(200, .object(["entries": .array([])])) }
 
@@ -83,10 +72,6 @@ import XCTest
         XCTAssertEqual(Self.fileRequests.count, 0)
     }
 
-    // MARK: Reading
-
-    /// A file past 512 KiB previews its first part: it says it is truncated, keeps the host's
-    /// full size and has no line count. Its path is the relative one, never the host's.
     func testATruncatedFileKeepsItsTextAndRelativePath() async throws {
         let client = Self.client { request in
             request.url?.path == "/api/fs/read-text" ? .json(200, .object([
@@ -109,7 +94,6 @@ import XCTest
         XCTAssertFalse(file.isBinary)
     }
 
-    /// A binary file has no text, and a whole text file counts its lines.
     func testABinaryFileHasNoTextAndAWholeFileCountsLines() async throws {
         let client = Self.client { request in
             guard request.url?.path == "/api/fs/read-text" else { return nil }
@@ -130,7 +114,6 @@ import XCTest
         XCTAssertFalse(text.isTruncated)
     }
 
-    /// Lines count as an editor numbers them: a final newline, LF or CRLF, starts no new line.
     func testALineCountIgnoresAFinalNewline() {
         let counts = ["": 0, "one": 1, "one\n": 1, "one\ntwo\nthree\n": 3, "one\r\ntwo\r\n": 2, "one\r\ntwo": 2, "\n": 1]
         for (text, lines) in counts {
@@ -138,8 +121,6 @@ import XCTest
         }
     }
 
-    /// The host decodes text with replacement characters, so the preview is not the file: Save
-    /// and Share download the file's own bytes instead of re-encoding the preview.
     func testExportDownloadsTheFileRatherThanItsPreviewText() async throws {
         let client = Self.client { request in
             switch request.url?.path {
@@ -160,8 +141,6 @@ import XCTest
         XCTAssertEqual(Self.fileRequests.last.flatMap(Self.queryPath), Self.cwd + "/notes.txt")
     }
 
-    /// A symlinked folder lists as a file; opening it is the preview's No Preview state, not a
-    /// failed load to retry, whether its name previews as text, an image or through Quick Look.
     func testASymlinkedFolderOpensAsNoPreview() async {
         let client = Self.client { request in
             request.url?.path.hasPrefix("/api/fs/") == true
@@ -183,8 +162,6 @@ import XCTest
         }
     }
 
-    /// An empty file previews as empty text and exports as zero bytes; an empty MEDIA download
-    /// is still a failed read.
     func testAnEmptyFileExportsZeroBytes() async throws {
         let client = Self.client { request in
             switch request.url?.path {
@@ -210,8 +187,6 @@ import XCTest
         }
     }
 
-    /// A locked host's own 403 (`_hosted_fs_read_guard`) never blames the proxy, on a read or a
-    /// download. A 403 with no reason, as a proxy answers, still does.
     func testOnlyAnUnexplainedRefusalBlamesTheProxy() async {
         func failures(_ client: HermesWorkspaceFileClient) async -> (read: Error?, download: Error?) {
             var read: Error?, download: Error?
@@ -233,7 +208,6 @@ import XCTest
         XCTAssertEqual(unexplained.download as? BotFailure, .rejected(403))
     }
 
-    /// The host's reason for a refusal shows unless it names a path, as an `OSError`'s does.
     func testARefusalThatNamesAHostPathIsNotShown() async {
         let details = [
             "File not found": "The server rejected the request: File not found",
@@ -253,12 +227,6 @@ import XCTest
         }
     }
 
-    // MARK: Downloads
-
-    /// A file downloads by its host path with the Profile and no stored key, so Save to Files
-    /// works before the host has stored a new chat (#1138), with a `+` kept as itself. A MEDIA
-    /// path is sent as the reply wrote it, with the stored key, so the host resolves it against
-    /// the session.
     func testFileDownloadsSendTheHostPathAndMediaKeepsTheStoredKey() async throws {
         let client = Self.client { request in
             request.url?.path == "/api/fs/download" ? .json(200, .string("bytes")) : nil
@@ -280,8 +248,6 @@ import XCTest
         XCTAssertTrue(Self.fileRequests.first?.url?.query(percentEncoded: true)?.contains("a%2Bb.png") == true)
     }
 
-    /// Image and Quick Look previews stop at the preview cap (25 MB); Save and Share download
-    /// the whole file.
     func testOnlyPreviewDownloadsStopAtTheCap() async throws {
         let client = Self.client(previewLimit: 4) { request in
             request.url?.path == "/api/fs/download" ? .body(200, Data(count: 5)) : nil
@@ -297,10 +263,6 @@ import XCTest
         }
     }
 
-    // MARK: Scope
-
-    /// Two servers, two Profiles, two sessions on one folder, and one session in two folders
-    /// each get their own scope.
     func testTheScopeSeparatesServerProfileSessionAndFolder() {
         let http = HermesConnection(connection: Self.record, configuration: .ephemeral)
         let base = Self.context()
@@ -319,8 +281,6 @@ import XCTest
                        HermesWorkspaceFileClient(context: Self.context(), http: http).scope)
     }
 
-    // MARK: Fixtures
-
     nonisolated static let cwd = "/Users/agent/projects/app"
     nonisolated private static let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                                           username: "user", password: "secret")
@@ -338,20 +298,16 @@ import XCTest
                                   previewLimit: previewLimit)
     }
 
-    /// `GET /api/fs/list`'s reply for `directory`, each entry's `path` resolved the way the host
-    /// resolves it (`/private/…` on a Mac), which the client never reads.
     nonisolated static func listing(_ directory: String, _ entries: [(String, Bool)]) -> HermesHostFixture.Reply {
         .json(200, .object(["entries": .array(entries.map { name, isDirectory in
             .object(["name": .string(name), "path": .string("/private\(directory)/\(name)"), "isDirectory": .bool(isDirectory)])
         })]))
     }
 
-    /// The requests to `/api/fs/*`, without the sign-in's.
     static var fileRequests: [URLRequest] {
         HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/fs/") == true }
     }
 
-    /// The host path a request names in its query.
     nonisolated static func queryPath(_ request: URLRequest) -> String? {
         query(request)?.first { $0.name == "path" }?.value
     }

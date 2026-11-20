@@ -2,18 +2,9 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// A Hermes session's turns drive the shared Live Activity (#1014, #1179): one activity per turn
-/// under the `hermes:<profile>:<root>` identity, tapping through to the session's link and
-/// pushed under its stored key, the turn's work and waits as updates, and its ending as the
-/// outcome. Driven over #901's socket-level host.
 @MainActor final class HermesChatLiveActivityTests: XCTestCase {
     private static let startedAt = 1_790_000_000.5
 
-    // MARK: Start
-
-    /// A turn starts one activity under the session's key and the host's `turn_started_at`,
-    /// tapping through to the session's link and pushed under its stored key (#1179); its frames
-    /// start no second one, and a reattach inside the turn adopts it again.
     func testATurnStartsOneActivityAndAReattachAdoptsIt() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
@@ -37,8 +28,6 @@ import Observation
         XCTAssertEqual(chat.spy.ends, [])
     }
 
-    /// Opening the session mid-turn starts the activity under the identity the turn's first
-    /// chat used, titled from the snapshot, so the manager adopts the one already showing.
     func testOpeningARunningSessionAdoptsTheTurnsActivityUnderItsTitle() async throws {
         let chat = await openChat(snapshot: resume(running: true, title: "Release plan"))
         XCTAssertEqual(chat.spy.starts, [.init(sessionID: "hermes:default:tip", server: Self.server,
@@ -48,9 +37,6 @@ import Observation
                                                pushSessionID: "tip")])
     }
 
-    /// A legacy compression moves the stored key mid-turn (#1179): the same activity's pushes
-    /// move to the new key, once, and a reattach inside the turn keeps the chat's identity and
-    /// link, so the manager adopts that activity instead of starting another.
     func testAKeyMoveMidTurnKeepsTheActivityAndMovesItsPushes() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
@@ -72,7 +58,6 @@ import Observation
         XCTAssertEqual(chat.spy.ends, [])
     }
 
-    /// A turn the send's reply began, before its own frames, still gets one activity.
     func testATurnBegunBySendStartsOneActivity() async {
         let chat = await openChat()
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -83,11 +68,6 @@ import Observation
                        "its own message.start continues the same turn")
     }
 
-    // MARK: Updates
-
-    /// Reasoning, tools, reply text and the title reach the activity; reply text only while
-    /// excerpts are on. Turning them off clears what it showed, and later text moves the
-    /// status on without its words.
     func testTheTurnsWorkUpdatesTheActivity() async {
         let chat = await openChat(excerpts: true)
         chat.receive(event(1, "message.start"))
@@ -107,8 +87,6 @@ import Observation
         ])
     }
 
-    /// With excerpts off (the default), the reply that follows an answered question moves the
-    /// activity off waiting, as in Bot Chat, instead of leaving the wait shown to the end.
     func testTheReplyAfterAnAnsweredQuestionMovesTheActivityOffWaiting() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -118,8 +96,6 @@ import Observation
         XCTAssertEqual(chat.spy.events, [.waitingForClarification, .responding])
     }
 
-    /// An open approval shows as waiting for approval, and a question as needing an answer,
-    /// once each.
     func testOpenRequestsShowAsWaiting() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -133,10 +109,6 @@ import Observation
         XCTAssertEqual(chat.spy.events, [.waitingForApproval, .waitingForClarification])
     }
 
-    // MARK: End
-
-    /// `message.complete`'s status ends the activity with the matching outcome once the host
-    /// settles, and so does an `error` with no completion.
     func testTheTurnsEndingEndsTheActivityWithItsOutcome() async {
         let cases: [(frame: BotJSON, end: Spy.End)] = [
             (event(2, "message.complete", ["status": .string("complete"), "text": .string("ok")]),
@@ -158,7 +130,6 @@ import Observation
         }
     }
 
-    /// Stop ends the activity cancelled once the turn's own frames settle it.
     func testStopEndsTheActivityCancelled() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -170,9 +141,6 @@ import Observation
         XCTAssertEqual(chat.spy.ends, [.init(status: .cancelled, activity: "Response cancelled")])
     }
 
-    // MARK: Ownership
-
-    /// A dropped socket marks the activity stale.
     func testADroppedSocketMarksTheActivityStale() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -181,7 +149,6 @@ import Observation
         XCTAssertEqual(chat.spy.ends, [], "the turn may still be running on the host")
     }
 
-    /// Once a webui run or a bot takes the activity over, this chat never touches it again.
     func testAnActivityAnotherRunTookOverIsNeverTouched() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -199,11 +166,6 @@ import Observation
         XCTAssertEqual(leaving.spy.staleCount, 0)
     }
 
-    // MARK: Bot Chat (#1145)
-
-    /// A bot's Bot Chat keeps the Bot identity (#709): its turn starts the bot's activity,
-    /// keyed by connection and Profile, whose tap opens the bot's chat and whose push id is the
-    /// stored key. No `hermes:` session activity starts, and the turn's ending ends the bot's.
     func testABotChatsTurnDrivesTheBotsActivity() async throws {
         let chat = await openChat(target: .canonicalChat(profile: "default"))
         chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
@@ -219,7 +181,6 @@ import Observation
         XCTAssertEqual(chat.spy.starts, [], "never the hermes: session identity")
         XCTAssertEqual(chat.spy.events.last, .toolStarted(name: "terminal"))
 
-        // A legacy compression mid-turn moves the bot's pushes to the new key (#1179).
         chat.receive(event(4, "session.info", ["running": .bool(true), "stored_session_id": .string("tip-2")]))
         XCTAssertEqual(chat.spy.moves, ["tip-2"])
         XCTAssertEqual(chat.spy.botStarts.count, 1)
@@ -229,10 +190,6 @@ import Observation
         XCTAssertEqual(chat.spy.ends, [.init(status: .complete, activity: "Response complete")])
     }
 
-    /// A moved key outlives another run taking the activity while the chat was away (#1179):
-    /// reattaching to the same running turn drives its activity again under the moved key, for a
-    /// bot, whose identity still names the turn's first key, and for a session alike. The
-    /// durable record a relaunch reads keeps the moved key too.
     func testAMovedKeySurvivesAnotherRunTakingTheActivityBeforeAReattach() async throws {
         var bot = try XCTUnwrap(AgentRunActivityBot(BotDestination(server: Self.server, connectionID: Self.connection.id,
                                                                    profile: "default", conversation: "root")))
@@ -259,7 +216,6 @@ import Observation
             chat.model.suspendStreamForBackground()
             manager.start(sessionID: "webui-session", server: Self.server, sessionTitle: "Other run", streamID: "s1",
                           startedAt: .now)
-            // The bot's title lookup now finds its tip at the moved key.
             chat.host.always("session.list", .init(result: .object(["sessions": .array([
                 .object(["id": .string("root"), "resolved_id": .string("tip-2")])])])))
             chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
@@ -272,9 +228,6 @@ import Observation
         }
     }
 
-    /// A Bot Chat's pill shows the turn as Bot Chat's title does (#757, #778): at rest while
-    /// idle, working while the turn runs, waiting while a request is open, failed while the host
-    /// keeps the turn's error, and at rest again once the socket drops. A session has no pill.
     func testABotChatsPillFaceFollowsTheTurn() async {
         let chat = await openChat(target: .canonicalChat(profile: "default"))
         XCTAssertEqual(chat.turn.botProfile?.name, "Hermes", "the bare Profile row until a roster read answers")
@@ -299,10 +252,6 @@ import Observation
         XCTAssertNil(session.turn.botProfile)
     }
 
-    /// Attaching to a running turn starts the bot's activity before the roster is read, from the
-    /// bare Profile row. Once the roster answers, the same activity takes the bot's name and
-    /// static avatar: no second start, and the turn, so the pill's beat, carries on. A later
-    /// read while another bot holds the activity changes nothing.
     func testTheRosterNamesTheBotOnItsRunningActivity() async throws {
         let chat = await openChat(snapshot: resume(running: true), target: .canonicalChat(profile: "default"),
                                   roster: Self.roster(title: "Inbox Triage", expression: "sleepy"))
@@ -320,8 +269,6 @@ import Observation
         XCTAssertEqual(chat.spy.avatars.count, 2)
     }
 
-    /// A bot's picture arriving after its activity started draws the same activity again with
-    /// it: no second start, and the activity redraws to read the new image.
     func testABotsPictureArrivingRedrawsItsRunningActivity() async throws {
         let chat = await openChat(snapshot: resume(running: true), target: .canonicalChat(profile: "default"),
                                   roster: Self.roster(title: "Inbox Triage", expression: nil, pictured: true), pictures: true)
@@ -331,9 +278,6 @@ import Observation
         XCTAssertEqual(chat.spy.titles, ["Inbox Triage", "Inbox Triage"])
     }
 
-    /// A Bot Chat's activity keeps Bot Chat's count chips (#584): the plan's step and the live
-    /// worker count, written as they change and clear, again once a reattach adopts the
-    /// activity, and never to an activity another run took over. A session's activity gets none.
     func testABotChatsActivityShowsItsPlanAndWorkerCounts() async {
         let chat = await openChat(target: .canonicalChat(profile: "default"), subagents: [worker("tests"), worker("docs")])
         let work = chat.turn.activity.delegatedWork
@@ -378,11 +322,6 @@ import Observation
         XCTAssertEqual(session.spy.summaries, [], "a session's activity keeps its own chips")
     }
 
-    /// A Bot Chat row opened from Archived resumes its key, and may be a deliberate archive that
-    /// upstream's title lookup leaves out, or one the bot has since replaced. Its activity keeps
-    /// the `hermes:` session identity, whose tap is the session link to its key (#1165, #1179):
-    /// no Bot route, so a tap never reaches the canonical lookup, opens the replacement or
-    /// unarchives the original. The chat still keeps Bot Chat's rules.
     func testAnArchivedBotChatsActivityTapsBackToItsKey() async throws {
         let row = HermesSessionRow(id: "tip", title: "Bot Chat", archived: true, hidden: true, profile: "inbox-triage",
                                    lineageRootID: "root").summary(in: "default")
@@ -414,12 +353,6 @@ import Observation
         }
     }
 
-    // MARK: Tap
-
-    /// A Hermes session's activity taps through its session link (#1179), naming the exact
-    /// activity so a finished one is dismissed. One a build before #1179 started has no link,
-    /// and still builds no webui route: its tap opens the app as it is. A webui run on the same
-    /// server still routes.
     func testATapOnAHermesSessionsActivityOpensItsSession() throws {
         let link = try Self.link(profile: "Research & review", key: "20260925_023517_59d8c3")
         let hermes = AgentRunActivityAttributes(sessionID: "hermes:Research & review:20260925_023517_59d8c3",
@@ -441,19 +374,14 @@ import Observation
         XCTAssertEqual(url.host, "webui-push")
     }
 
-    // MARK: Fixture
-
     private static let server = URL(string: "https://hermes.example")!
 
-    /// The session link (#1176) a Hermes session's activity on this server taps to.
     private static func link(profile: String, key: String) throws -> URL {
         try XCTUnwrap(HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: profile, key: key)))
     }
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
 
-    /// A Hermes chat attached to session `tip` on Profile `default`, whose frames the test feeds.
-    /// A `.canonicalChat` target's title lookup finds root `root` at tip `tip`.
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
@@ -461,23 +389,16 @@ import Observation
         let client: BotClient
         let spy: Spy
 
-        /// One event's params, or a host request envelope as is.
         @MainActor func receive(_ frame: BotJSON) {
             client.onEvent?(frame["method"].text == "event" ? frame["params"] : frame)
         }
     }
 
-    /// `roster` answers `profiles.list`; without one the read fails, so a Bot Chat keeps its
-    /// bare Profile row. `subagents` answers `subagent.list`; without them the read fails.
-    /// `pictures` answers `profiles.get_asset` with an image. `manager` drives the activity in
-    /// place of the spy, for a test of the real manager's push keys.
     private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false,
                           target: ConversationTarget = .session(profile: "default", key: "tip"),
                           botChatRoot: String? = nil, roster: BotJSON? = nil, subagents: [BotJSON]? = nil,
                           pictures: Bool = false, manager: AgentLiveActivityManager? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
-        // Every test here shares one connection, and the shared avatar store keeps a fetched
-        // picture under it, so a picture an earlier test or run fetched would be drawn at once.
         BotAvatarStore.shared.removeAll(connectionID: Self.connection.id)
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
@@ -488,7 +409,6 @@ import Observation
             host.always("profiles.get_asset", .init(result: .object(["found": .bool(true), "data": .string(botAvatarDataURL(side: 4))])))
         }
         let client = BotClient(http: host.connection(Self.connection))
-        // No automatic reconnect: a test reattaches when it says so.
         let engine = HermesConversation(server: Self.server, connection: Self.connection,
                                         target: target, wire: client,
                                         reconnectDelay: { _ in throw CancellationError() })
@@ -496,7 +416,6 @@ import Observation
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, liveActivities: manager ?? spy,
                                              writeBotAvatar: { profile, destination in spy.writeAvatar(profile, destination) },
                                              isNetworkAvailable: { true })
-        // The chat's own webui manager is the same spy, so any write it made would show too.
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: Self.server, liveActivityManager: manager ?? spy,
             showsLiveActivityResponseExcerpts: excerpts, streamingScrollCoalescingDelayNanoseconds: 0,
@@ -513,15 +432,12 @@ import Observation
                  "payload": .object(payload)])
     }
 
-    /// A host request envelope on the chat's runtime.
     private func request(_ method: String, id: String, _ params: [String: BotJSON]) -> BotJSON {
         var params = params
         params["session_id"] = .string("runtime")
         return .object(["jsonrpc": .string("2.0"), "id": .string(id), "method": .string(method), "params": .object(params)])
     }
 
-    /// A roster whose `default` bot carries a saved name and a pinned face, and a picture when
-    /// `pictured`.
     private static func roster(title: String, expression: String?, pictured: Bool = false) -> BotJSON {
         var look: [String: BotJSON] = ["title": .string(title)]
         if let expression { look["expression"] = .string(expression) }
@@ -529,13 +445,11 @@ import Observation
                                                      "ui_meta": .object(["hermes-bots": .object(look)])])])])
     }
 
-    /// A live worker as `subagent.list` reports it.
     private func worker(_ id: String) -> BotJSON {
         .object(["subagent_id": .string(id), "goal": .string("Work on \(id)"), "depth": .number(0),
                  "started_at": .number(1_790_000_010), "status": .string("running")])
     }
 
-    /// A `todo.updated` payload, or a snapshot's `todo_state`, with one step per status.
     private func todos(revision: Int, _ statuses: [String]) -> [String: BotJSON] {
         ["revision": .number(Double(revision)), "todos": .array(statuses.enumerated().map { index, status in
             .object(["id": .string("step-\(index)"), "content": .string("Step \(index + 1)"), "status": .string(status)])
@@ -556,8 +470,6 @@ import Observation
     }
 }
 
-/// Records what a chat asks of the shared Live Activity manager, and drives like it: a
-/// start takes the activity over, and an end lets it go.
 @MainActor private final class Spy: AgentLiveActivityManaging {
     struct Start: Equatable {
         let sessionID: String
@@ -574,7 +486,6 @@ import Observation
         let activity: String
     }
 
-    /// A bot's activity as `startBot` asked for it.
     struct BotStart: Equatable {
         let key: String
         let destinationURL: URL
@@ -584,7 +495,6 @@ import Observation
         let startedAt: Date
     }
 
-    /// The look a bot's avatar was drawn from.
     struct Avatar: Equatable {
         let title: String
         let expression: String?
@@ -593,13 +503,10 @@ import Observation
     private(set) var starts: [Start] = []
     private(set) var botStarts: [BotStart] = []
     private(set) var avatars: [Avatar] = []
-    /// Whether the bot's fetched picture was there for each avatar drawn.
     private(set) var avatarPhotos: [Bool] = []
     private(set) var events: [AgentLiveActivityEvent] = []
     private(set) var ends: [End] = []
     private(set) var staleCount = 0
-    /// The keys `movePushSession` moved the driven activity's pushes to. As in the manager, a
-    /// key the activity already drives moves nothing.
     private(set) var moves: [String] = []
     private var drivenPushSessionID: String?
     var drivenSessionID: String?
@@ -630,12 +537,10 @@ import Observation
         drivenPushSessionID = bot.pushSessionID
     }
 
-    /// The titles `.sessionTitle` updates wrote.
     var titles: [String] {
         events.compactMap { if case .sessionTitle(let title) = $0 { title } else { nil } }
     }
 
-    /// The count chips `.workSummary` updates wrote.
     var summaries: [[String]] {
         events.compactMap { if case .workSummary(let chips) = $0 { chips } else { nil } }
     }

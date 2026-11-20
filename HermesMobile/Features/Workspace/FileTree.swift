@@ -1,7 +1,5 @@
 import Foundation
 
-/// One entry in the workspace tree. `path` is relative to the workspace root and joined with
-/// "/", which makes it the stable identity for rows, selection, and expansion state.
 struct FileTreeNode: Identifiable, Hashable {
     var id: String { path }
 
@@ -10,14 +8,10 @@ struct FileTreeNode: Identifiable, Hashable {
     let isDirectory: Bool
     let isSymlink: Bool
     let entry: WorkspaceEntry
-    /// Lowercased path components; search matches these exactly, by prefix, boundary, or substring.
     let searchSegments: [String]
-    /// camelCase-split words from every component; search also matches these fuzzily.
     let searchWords: [String]
 
-    /// Returns nil for an entry that carries neither a name nor a path.
     init?(entry: WorkspaceEntry, parentPath: String) {
-        // Whitespace can be part of a filename. Use it only to detect blank fields.
         func nonblank(_ value: String?) -> String? {
             guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             return value
@@ -37,7 +31,6 @@ struct FileTreeNode: Identifiable, Hashable {
         name = entryName ?? String(path.split(separator: "/").last ?? Substring(path))
         isDirectory = entry.isBrowsableDirectory
         isSymlink = entry.type == "symlink"
-        // Carry the resolved name and path so the preview never sees a nil path.
         self.entry = WorkspaceEntry(
             name: name,
             path: path,
@@ -58,7 +51,6 @@ struct FileTreeNode: Identifiable, Hashable {
     }
 }
 
-/// A node placed in the flattened list, with the depth that drives its indent.
 struct VisibleFileTreeNode: Identifiable, Equatable {
     var id: String { node.path }
 
@@ -66,9 +58,6 @@ struct VisibleFileTreeNode: Identifiable, Equatable {
     let depth: Int
 }
 
-/// The lazily loaded workspace tree. `children` holds the sorted entries of every directory
-/// fetched so far, keyed by directory path (`rootPath` for the workspace root); a missing key
-/// means that directory has not been listed yet.
 struct FileTree: Equatable {
     static let rootPath = "."
 
@@ -89,7 +78,6 @@ struct FileTree: Equatable {
         children[Self.parentPath(of: path)]?.first { $0.path == path }
     }
 
-    /// Replaces a directory's listing and forgets listings of subdirectories that no longer exist.
     mutating func setChildren(_ entries: [WorkspaceEntry], of directory: String) {
         let nodes = Self.sorted(entries.compactMap { FileTreeNode(entry: $0, parentPath: directory) })
         children[directory] = nodes
@@ -105,7 +93,6 @@ struct FileTree: Equatable {
         }
     }
 
-    /// Directories first, then Finder-style natural order (case-insensitive, numeric-aware).
     static func sorted(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
         nodes.sorted { left, right in
             if left.isDirectory != right.isDirectory {
@@ -120,22 +107,16 @@ struct FileTree: Equatable {
         return String(path[..<slash])
     }
 
-    /// Every directory between the root and `path`, top-down, excluding the root and `path` itself.
     static func ancestorPaths(of path: String) -> [String] {
         let parts = path.split(separator: "/").filter { !$0.isEmpty }
         guard parts.count > 1 else { return [] }
         return (1..<parts.count).map { parts[..<$0].joined(separator: "/") }
     }
 
-    /// The top-level directories a webui workspace opens on first visit: every one except hidden
-    /// dot-folders.
     static func defaultExpandedPaths(in rootNodes: [FileTreeNode]) -> Set<String> {
         Set(rootNodes.filter { $0.isDirectory && !$0.name.hasPrefix(".") }.map(\.path))
     }
 
-    /// Flattens the tree for display. Without a query, a directory's children appear only when
-    /// it is expanded. With a query, every loaded directory is traversed and a node stays visible
-    /// when it or any descendant matches, so results keep their ancestors for context.
     func visibleNodes(expanded: Set<String>, searchQuery: String = "") -> [VisibleFileTreeNode] {
         let tokens = FileTreeSearch.tokens(from: searchQuery)
         var output: [VisibleFileTreeNode] = []
@@ -172,12 +153,9 @@ struct FileTree: Equatable {
     }
 }
 
-/// Tokenized, tiered matching for the tree search. Scores are lower-is-better; a node matches
-/// when every query token matches one of its path segments, or fuzzily one of its words.
 enum FileTreeSearch {
     static let boundaryMarkers = ["/", "-", "_", "."]
 
-    /// Lowercased query split on whitespace and path punctuation.
     static func tokens(from query: String) -> [String] {
         query
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -186,8 +164,6 @@ enum FileTreeSearch {
             .map(String.init)
     }
 
-    /// Splits `ChatStreamCoordinator.swift` into `chat stream coordinator swift`, keeping
-    /// acronym runs like `HTTPServer` as `http server`.
     static func splitWords(_ value: String) -> [String] {
         var words: [String] = []
         var current = ""
@@ -217,8 +193,6 @@ enum FileTreeSearch {
         return words.map { $0.lowercased() }
     }
 
-    /// Tiers: exact 0, prefix 2, boundary 4, substring 6, then fuzzy subsequence at 100 when
-    /// enabled. Each tier adds position and length penalties. Expects lowercased inputs.
     static func score(value: String, query: String, fuzzy: Bool) -> Int? {
         guard !value.isEmpty, !query.isEmpty else { return nil }
         if value == query { return 0 }

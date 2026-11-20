@@ -1,18 +1,9 @@
 import Foundation
 
-/// The Tasks screens' client on a Hermes host (#1040): `/api/cron/*` and the Profile's skills
-/// over the sign-in, headers and cookie jar the server's Bot screens share, and the editor's
-/// model and Profile lists over the shared gateway socket. A mutation names the job's own
-/// Profile (`?profile=`), which the host treats as a hint and checks. A refusal the host
-/// explains reads as its `detail` (`accepted`). Every job also carries `hermes_home`, a host
-/// path, which is never decoded. A run is the session it ran in (#1042), and its output is that
-/// session's final reply; a script-only run has no session, and its output is the preview on
-/// its row (#1342). Nothing is read from the host's disk.
 @MainActor final class HermesCronClient: CronDataClient {
     nonisolated var cronFeatures: CronFeatures { .hermes }
     private let http: HermesConnection
 
-    /// Tasks for `server`'s saved connection, on the sign-in its Bot screens share.
     convenience init(saved connection: BotConnection, server: URL) {
         self.init(http: HermesConnections.shared.connection(for: connection, server: server))
     }
@@ -30,9 +21,6 @@ import Foundation
         })
     }
 
-    /// The host has no toast setting, so `toastNotifications` is not sent. A 424 means the
-    /// job was saved but the host's scheduler could not register it: it comes back as saved,
-    /// without the job, carrying the host's warning, so the list reloads.
     func createCron(
         prompt: String, schedule: String, name: String?, deliver: String?, skills: [String],
         model: String?, provider: String?, profile: String?, toastNotifications _: Bool
@@ -51,8 +39,6 @@ import Foundation
         return try Self.job(try Self.accepted(answer))
     }
 
-    /// Sends what the editor holds as `{updates}`. `profile` only routes the request: the
-    /// host can't move a job, so neither it nor the job's id is ever an update.
     func updateCron(
         jobID: String, prompt: String?, schedule: String?, name: String?, deliver: String?, skills: [String]?,
         model: String?, provider: String?, profile: String?, toastNotifications _: Bool?
@@ -70,7 +56,6 @@ import Foundation
         try Self.job(try await send(.cronPause(id: jobID, profile: profile)))
     }
 
-    /// Resuming a one-shot whose time has passed is the host's unhandled 500.
     func resumeCron(jobID: String, profile: String?) async throws -> CronMutationResponse {
         try Self.job(try await send(.cronResume(id: jobID, profile: profile)))
     }
@@ -80,22 +65,16 @@ import Foundation
         return CronMutationResponse(ok: ok, job: nil, error: nil)
     }
 
-    /// The host's trigger (#1041), which runs the Task before it answers with the job, so it
-    /// gets the long deadline. A tunnel can still give up first (Cloudflare's 524 after about
-    /// 100 s) while the run goes on; the screens follow it on the list. A paused Task is
-    /// resumed as it runs; one already running is refused with 409 and the host's `detail`.
     func runCron(jobID: String, profile: String?) async throws -> CronMutationResponse {
         try Self.job(try Self.accepted(try await reply(.cronTrigger(id: jobID, profile: profile), deadline: .provisioning)))
     }
 
-    /// `model.options` for the Profile, or the host's own when none is named.
     func cronModelGroups(profile: String?) async throws -> [ModelCatalogGroup] {
         let call: HermesCall
         if let profile, !profile.isEmpty { call = .profileModelOptions(profile: profile) } else { call = .configuredModelOptions }
         return HermesModelCatalog(try await gateway(call)).groups
     }
 
-    /// `profiles.list`. A row's `path` is a host path and is not kept.
     func cronProfiles() async throws -> [ProfileSummary] {
         (try await gateway(.profilesList(includeSessions: false))["profiles"].list ?? []).compactMap { row in
             guard let name = row["name"].text, !name.isEmpty else { return nil }
@@ -105,19 +84,13 @@ import Foundation
         }
     }
 
-    /// A disabled skill comes back `disabled`, which the editor leaves out.
     func cronSkills(profile: String?) async throws -> [SkillSummary] {
         try HermesSkillsClient.skills(try await send(.skills(profile: profile)))
     }
 
-    // The screens never ask a Hermes host for these (`cronFeatures`): its recent runs come with
-    // the list, and its latest output is the newest finished run's reply (`cronRunDetail`).
-
     func cronRecent() async throws -> CronRecentCompletionsResponse { throw BotFailure.unsupported }
     func cronOutput(jobID _: String, limit _: Int?) async throws -> CronOutputResponse { throw BotFailure.unsupported }
 
-    /// The Task's newest 100 runs, the most the host lists and the one page it has: it takes no
-    /// offset and reports no total, so the screens offer no more (#1042).
     func cronHistory(jobID: String, profile: String?, offset: Int, limit _: Int) async throws -> CronRunHistoryResponse {
         guard offset == 0 else { return CronRunHistoryResponse(jobId: jobID, runs: [], total: nil, offset: offset) }
         let page = try await send(.cronRuns(id: jobID, profile: profile, limit: 100))
@@ -125,10 +98,6 @@ import Foundation
                                       total: nil, offset: offset)
     }
 
-    /// One run's output: its session's final reply (`HermesREST.sessionMessages`), the last
-    /// assistant message that is not a tool call, as a side session's result is; nil when it gave
-    /// none. A run the host no longer has (404) is `HermesCronRunUnavailable`. A script-only run's
-    /// row is its whole record, so its output is the row's preview and nothing is sent.
     func cronRunDetail(jobID: String, profile: String?, run: CronRunHistoryItem) async throws -> CronRunDetailResponse {
         if let output = run.scriptOutput {
             return CronRunDetailResponse(jobId: jobID, filename: run.filename, content: output, snippet: nil)
@@ -140,15 +109,10 @@ import Foundation
                                      snippet: nil)
     }
 
-    // MARK: - Wire
-
-    /// One request's body, or the failure `accepted` reads from its status.
     private func send(_ rest: HermesREST) async throws -> Data {
         try Self.accepted(try await reply(rest))
     }
 
-    /// A dropped request reads as the webui's network failure, so a cancellation is
-    /// recognised as one.
     private func reply(_ rest: HermesREST,
                        deadline: HermesConnection.Deadline = .standard) async throws -> (body: Data, status: Int) {
         do { return try await http.reply(rest, deadline: deadline) } catch let error as URLError {
@@ -156,8 +120,6 @@ import Foundation
         }
     }
 
-    /// One gateway call on its own attachment to the connection's shared socket, left once
-    /// the host answers.
     private func gateway(_ call: HermesCall) async throws -> BotJSON {
         let client = BotClient(http: http)
         defer { client.close() }
@@ -165,12 +127,6 @@ import Foundation
         return try await client.call(call)
     }
 
-    /// A 2xx reply's body. A 4xx the host explains in `detail`, such as a schedule it can't
-    /// parse, a Task that is gone or a path outside a locked files root (403), reads as that
-    /// reason. A 403 with no reason, and any 502-504 or 520-530, gets the Hermes connection's
-    /// copy for the proxy or tunnel in front of it. Any other status is `APIError.http`, whose
-    /// 500 is the host's unhandled error.
-    /// `HermesSkillsClient` and `HermesInsightsClient` read their replies through it too.
     static func accepted(_ reply: (body: Data, status: Int)) throws -> Data {
         switch reply.status {
         case 200..<300: return reply.body
@@ -194,7 +150,6 @@ import Foundation
         do { return try JSONDecoder().decode(BotJSON.self, from: body) } catch { throw APIError.decoding(underlying: error) }
     }
 
-    /// `CronJob` reads the host's snake_case keys the way it reads webui's.
     private static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
@@ -202,23 +157,15 @@ import Foundation
     }()
 }
 
-/// A Tasks or Skills request a Hermes host refused with its reason (`{detail}`).
 struct HermesCronRefusal: LocalizedError, Equatable {
     let detail: String
     var errorDescription: String? { String(localized: "The server rejected the request: \(detail)") }
 }
 
-/// A run whose session the host no longer has (#1042).
 struct HermesCronRunUnavailable: LocalizedError, Equatable {
     var errorDescription: String? { String(localized: "This run is no longer on the server.") }
 }
 
-/// `GET /api/cron/jobs/{id}/runs` as history rows (#1042). Each row is the run's whole session,
-/// `system_prompt` included, of which only the fields a row shows are decoded. A script-only
-/// run (`source: cron_output`, since 0.21.6) is a row the host makes from its output file or
-/// execution record, with a `cron_output:` id no route opens (#1342). A row without
-/// an id can't be opened, so it is left out; a page without its `runs` list is a failed read,
-/// not a Task that never ran.
 private struct HermesCronRuns: Decodable {
     let runs: [CronRunHistoryItem]
 
@@ -229,10 +176,6 @@ private struct HermesCronRuns: Decodable {
         runs = try container.decode([Run].self, forKey: .runs).compactMap(\.item)
     }
 
-    /// One row. A run lasted from `started_at` to `ended_at`, epoch seconds, and is `is_active`
-    /// until it ends. Its cost is the provider's actual one when known, else the host's estimate;
-    /// its tokens are its input and output. A session's `preview` is its prompt, so only a
-    /// script-only run's is read.
     private struct Run: Decodable {
         let item: CronRunHistoryItem?
 
@@ -247,7 +190,6 @@ private struct HermesCronRuns: Decodable {
                 item = nil
                 return
             }
-            // `Date(timeIntervalSince1970:)` takes NaN and infinity and traps later, in formatting.
             let date = { (key: CodingKeys) in
                 row.decodeLossyDoubleIfPresent(forKey: key).flatMap { $0.isFinite ? Date(timeIntervalSince1970: $0) : nil }
             }
@@ -275,10 +217,6 @@ private struct HermesCronRuns: Decodable {
 }
 
 extension CronJobList {
-    /// A Hermes host's list (#1040), whose running state and recent runs are read off the
-    /// jobs. A job is running while it holds a fire claim or its latest execution is still
-    /// claimed or running; it has run for the time since its claim, or 0 without one. Each
-    /// job that has run contributes its last run, as webui's recent feed does.
     init(hermesJobs jobs: [CronJob], now: Date = .now) {
         self.jobs = jobs
         runningJobs = jobs.reduce(into: [:]) { running, job in

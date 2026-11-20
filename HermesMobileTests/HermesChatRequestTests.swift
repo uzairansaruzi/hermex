@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// A Hermes session's host requests in the main chat (#1011): approvals, questions, and sudo
-/// and secret prompts, over #901's socket-level host and the approval recorded at the
-/// `HERMES_AGENT_TESTED_SHA` pin.
 @MainActor final class HermesChatRequestTests: XCTestCase {
     func testApprovalStillAnswersWhileItsSummaryIsLoading() async throws {
         let chat = await openChat()
@@ -106,10 +103,6 @@ import XCTest
         XCTAssertNil(chat.requests.summaryPresentation(for: approval, workingDirectory: nil), "no direct connection means no summary slot")
     }
 
-    // MARK: Approvals
-
-    /// The recorded approval offers exactly the host's four choices, and the answer names the
-    /// approval queue's `request_id`, not the envelope id.
     func testARecordedApprovalOffersTheHostsChoicesAndAnswersByItsRequestID() async throws {
         let approval = try XCTUnwrap(try recorded("turn-tool-approval-frames").first { $0["method"].text == "approval" })
         let runtime = try XCTUnwrap(approval["params"]["session_id"].text)
@@ -134,8 +127,6 @@ import XCTest
         XCTAssertFalse(chat.model.isWaitingForUser)
     }
 
-    /// A smart-denied approval offers only Allow once and Deny, and a choice it did not offer
-    /// is never sent.
     func testAnApprovalOffersOnlyTheChoicesTheHostComputed() async throws {
         let chat = await openChat()
         chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1", choices: ["once", "deny"]))
@@ -147,8 +138,6 @@ import XCTest
         XCTAssertEqual(chat.writes("approval.respond"), [])
     }
 
-    /// `resolved: 0`: the host no longer held it, answered elsewhere or expired. The card goes
-    /// quietly, and the answer is not sent again.
     func testAnApprovalTheHostNoLongerHeldLeavesQuietly() async throws {
         let chat = await openChat()
         chat.host.always("approval.respond", .init(result: .object(["resolved": .number(0)])))
@@ -161,8 +150,6 @@ import XCTest
         XCTAssertEqual(chat.writes("approval.respond").count, 1)
     }
 
-    /// A malformed `resolved` is no verdict: the card stays, warns, can be tapped again on
-    /// purpose, and the answer is never resent on its own.
     func testAMalformedResolvedKeepsTheCardWarnsAndIsNotResent() async throws {
         for reply: BotJSON in [.object([:]), .object(["resolved": .string("1")]), .object(["resolved": .number(1.5)]),
                                .object(["resolved": .number(-1)]), .object(["resolved": .null])] {
@@ -176,15 +163,12 @@ import XCTest
                            "Answer outcome unknown. Check Hermes Desktop before answering again.", "\(reply)")
             XCTAssertEqual(chat.writes("approval.respond").count, 1, "never resent for \(reply)")
             XCTAssertTrue(chat.requests.mayAnswer, "a deliberate second tap stays possible")
-            // The host settling it elsewhere still retires the card.
             chat.receive(event(2, "request.cancel", ["id": .string("srq-a1"), "method": .string("approval"),
                                                     "reason": .string("resolved")]))
             XCTAssertNil(chat.requests.onScreen, "reconciled by the host's cancel for \(reply)")
         }
     }
 
-    /// The uncertain warning belongs to its request: once the host retires that card, the next
-    /// approval shows no warning about an answer nobody gave it.
     func testTheUncertainWarningLeavesWithItsRequestAndNeverReachesTheNextCard() async throws {
         let chat = await openChat()
         chat.host.always("approval.respond", .init(result: .object([:])))
@@ -199,7 +183,6 @@ import XCTest
         XCTAssertNil(chat.requests.errorMessage, "a fresh card carries no warning")
     }
 
-    /// A refused answer leaves the card answerable with the reason; nothing is retried.
     func testARefusedAnswerKeepsTheCardAndIsNotRetried() async throws {
         let chat = await openChat()
         chat.host.always("request.answer", .init(error: 4002))
@@ -213,10 +196,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer").count, 1)
     }
 
-    // MARK: Approval bypass
-
-    /// Skip all turns the session's bypass on, then releases the card with `once`, each sent
-    /// once and in that order; the switch turns it off again.
     func testSkipAllTurnsTheBypassOnAndReleasesTheCardAndTheSwitchTurnsItOff() async throws {
         let chat = await openChat()
         chat.host.next("config.set", .init(result: .object(["key": .string("yolo"), "value": .string("1"), "scope": .string("session")])))
@@ -243,8 +222,6 @@ import XCTest
         XCTAssertFalse(chat.model.isSessionApprovalBypassEnabled)
     }
 
-    /// Skip all whose release the host refuses is not a skip: the bypass is on, but the card
-    /// stays answerable with the reason, and the release is not sent again.
     func testSkipAllWhoseReleaseIsRefusedKeepsTheCard() async throws {
         let chat = await openChat()
         chat.host.next("config.set", .init(result: yoloReply("1")))
@@ -260,9 +237,6 @@ import XCTest
         XCTAssertEqual(chat.writes("approval.respond").count, 1)
     }
 
-    /// Turn off clears only the session's flag. A bypass the host sets itself (a `--yolo`
-    /// launch) stays on in the `session.info` written ahead of the reply, so the row keeps
-    /// reporting it and offers no second Turn off.
     func testTurnOffNeverClaimsApprovalsAreBackWhileTheHostStillBypassesThem() async {
         let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("manual")])
         chat.host.next("config.set", .init(result: yoloReply("0"), before: [
@@ -276,8 +250,6 @@ import XCTest
         XCTAssertEqual(chat.writes("config.set").count, 1, "a session flag already off cannot clear the host's bypass")
     }
 
-    /// A host that approves everything itself (`approvals.mode: off`) shows the bypass, and the
-    /// switch never sends a session-scoped off that cannot clear it.
     func testAHostWideBypassIsReportedButNotTurnedOff() async {
         let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("off")])
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
@@ -286,8 +258,6 @@ import XCTest
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
     }
 
-    /// A mode goes to the Profile's config with no session scope. Off holds the bypass for
-    /// this chat, so it can't be turned off here, and leaving Off releases it.
     func testAnApprovalModeWritesTheProfilesConfigAndOffLocksTheBypass() async {
         let chat = await openChat(info: ["yolo": .bool(false), "approval_mode": .string("manual")])
         chat.host.next("config.set", .init(result: modeReply("off"), before: [
@@ -304,8 +274,6 @@ import XCTest
         XCTAssertEqual(chat.model.composerApprovals.value, "Off")
         XCTAssertTrue(chat.model.composerApprovals.isYoloLocked)
 
-        // No `session.info` this time, as from a session with no agent yet. This chat's own
-        // flag may still hold the bypass, so the row never claims approvals are back.
         await chat.requests.setApprovalMode(.smart)
         XCTAssertEqual(chat.model.composerApprovals.value, "YOLO")
         XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
@@ -315,8 +283,6 @@ import XCTest
         XCTAssertEqual(chat.model.composerApprovals.value, "Smart")
     }
 
-    /// The switch sends the value asked for, so a report that lands first never turns it into
-    /// the opposite write, and a bypass this chat can't clear sends nothing.
     func testTheYoloSwitchSendsTheValueAskedFor() async {
         let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("manual")])
         chat.requests.applyBypass(.object(["yolo": .bool(false), "approval_mode": .string("manual")]))
@@ -328,7 +294,6 @@ import XCTest
         XCTAssertEqual(chat.writes("config.set"), [], "the mode holds this bypass")
     }
 
-    /// A refused mode leaves the row on the one in effect, with the host's reason.
     func testARefusedApprovalModeKeepsTheModeInEffect() async {
         let chat = await openChat(info: ["yolo": .bool(false), "approval_mode": .string("manual")])
         chat.host.next("config.set", .init(error: 4002))
@@ -341,10 +306,6 @@ import XCTest
         XCTAssertFalse(chat.model.composerApprovals.isChanging)
     }
 
-    // MARK: Questions
-
-    /// A batch locks each outstanding question by its `qid`, skipping the one the host already
-    /// holds, and never sends a bare answer. Skipping a batch locks each one empty.
     func testABatchLocksEachQuestionByItsIDAndSkipNeverSendsABareAnswer() async throws {
         let restored = request("clarify", id: "srq-b1", [
             "questions": .array([question("q1", "Which repo?"), question("q2", "Which branch?"), question("q3", "Run tests?")]),
@@ -378,7 +339,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer"), [], "a batch never gets a bare answer")
     }
 
-    /// A single question is answered, and skipped, with one `request.answer`.
     func testASingleQuestionIsAnsweredAndSkippedWithRequestAnswer() async throws {
         let chat = await openChat()
         chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
@@ -397,10 +357,6 @@ import XCTest
         XCTAssertEqual(chat.writes("clarify.lock"), [])
     }
 
-    // MARK: Credentials
-
-    /// Sudo and secret are answered and skipped with `request.answer {value}`, and the value is
-    /// kept nowhere on the request model once it is sent.
     func testSudoAndSecretAreAnsweredAndSkippedAndTheValueIsNotKept() async throws {
         let chat = await openChat()
         chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
@@ -420,11 +376,6 @@ import XCTest
         XCTAssertFalse(kept.contains("hunter2"), kept)
     }
 
-    // MARK: Canonical hosts (#1602)
-
-    /// A canonical host restores an open approval in its snapshot's `prompts`, recorded here. Its
-    /// card answers with that prompt's own `prompt_id` and generation, the exact keys the host
-    /// accepts, and the host's `resolved` receipt retires it.
     func testARestoredCanonicalApprovalAnswersWithItsOwnPromptAndGeneration() async throws {
         let prompt = try XCTUnwrap(try canonical("canonical-resume-running")["prompts"].list?.first)
         let chat = await openChat(canonical: [prompt])
@@ -439,8 +390,6 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen)
     }
 
-    /// A canonical clarify question arrives live as its recorded `clarify.request` event, answers
-    /// with `clarify.respond` under its prompt's generation, and leaves on the host's `resolved`.
     func testALiveCanonicalQuestionAnswersByItsPromptAndGeneration() async throws {
         let lifecycle = try XCTUnwrap(try canonical("canonical-clarify-lifecycle").list)
         var asked = try XCTUnwrap(lifecycle[0].fields)
@@ -459,8 +408,6 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen)
     }
 
-    /// A canonical host takes a sudo value only as the response frame to its request. Its
-    /// `request.answer` proxy says "expired" while the request still waits, so it is never sent.
     func testACanonicalSudoValueGoesAsTheResponseFrame() async throws {
         let chat = await openChat(canonical: [])
         chat.receive(request("sudo", id: "srq-s1", runtime: "tip"))
@@ -472,7 +419,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer"), [])
     }
 
-    /// An answer tapped for one prompt never answers the one that replaced it.
     func testAnActionForAReplacedPromptIsNeverDispatched() async throws {
         let chat = await openChat()
         chat.receive(request("sudo", id: "srq-s5"))
@@ -485,8 +431,6 @@ import XCTest
         XCTAssertTrue(chat.requests.mayAnswer, "the live prompt is still answerable")
     }
 
-    /// Password-vault prompts and unknown methods get no card and no answer here, though the
-    /// session still waits on them.
     func testRequestsThisChatMustNotAnswerGetNoCardButStillWait() async {
         let chat = await openChat()
         chat.receive(request("vault.unlock_prompt", id: "srq-v1", ["display_name": .string("1Password")]))
@@ -501,8 +445,6 @@ import XCTest
         )?.label(now: Date()), "Waiting for you")
     }
 
-    /// A batch answers only what the host still asks: a question it never asked is refused
-    /// before any write, and one it already locked is not locked again.
     func testABatchSendsOnlyTheQuestionsTheHostStillAsks() async throws {
         let restored = request("clarify", id: "srq-b1", [
             "questions": .array([question("q1", "First?"), question("q2", "Second?")]),
@@ -519,9 +461,6 @@ import XCTest
         XCTAssertEqual(chat.writes("clarify.lock").map { $0["question_id"] }, [.string("q2")])
     }
 
-    /// The first lock's receipt settles the rest: `expired` means the host dropped the prompt,
-    /// and an empty `remaining` that another client locked the tail. Either way nothing more
-    /// is locked and the card leaves.
     func testABatchStopsOnceTheHostSaysNothingRemains() async throws {
         for status in ["expired", "ok"] {
             let chat = await openChat()
@@ -537,8 +476,6 @@ import XCTest
         }
     }
 
-    /// A late answer to a prompt the host already dropped comes back `expired`: the card goes
-    /// quietly and nothing is resent.
     func testAnExpiredCredentialPromptLeavesQuietly() async throws {
         let chat = await openChat()
         chat.host.always("request.answer", .init(result: .object(["status": .string("expired")])))
@@ -550,7 +487,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer").count, 1)
     }
 
-    /// A question outranks an approval and a credential prompt: it is the outer blocker.
     func testAQuestionOutranksAnApprovalAndACredentialPrompt() async {
         let chat = await openChat()
         chat.receive(request("sudo", id: "srq-s1"))
@@ -560,8 +496,6 @@ import XCTest
         XCTAssertEqual(chat.requests.onScreen?.requestID, "srq-c1")
     }
 
-    /// A lost reply cannot tell sent from not sent: the chat reconnects, the host's
-    /// `open_requests` puts the card back, and the answer is never sent again on its own.
     func testALostAnswerIsNeverResent() async throws {
         let approval = approvalRequest(id: "srq-a1", requestID: "q-1")
         let chat = await openChat(openRequests: [approval], rpcDeadline: .milliseconds(50))
@@ -577,7 +511,6 @@ import XCTest
         XCTAssertEqual(chat.writes("approval.respond").count, 1)
     }
 
-    /// An answer tapped before a reattach belongs to the old attach and is never sent after it.
     func testAnAnswerCapturedBeforeAReattachIsNeverSent() async throws {
         let sudo = request("sudo", id: "srq-s1")
         let chat = await openChat(openRequests: [sudo])
@@ -591,7 +524,6 @@ import XCTest
         XCTAssertTrue(chat.requests.mayAnswer, "the restored prompt takes a fresh tap")
     }
 
-    /// `request.cancel` withdraws only the envelope it names by both id and method.
     func testACancelMustNameTheEnvelopesIDAndMethod() async {
         let chat = await openChat()
         chat.receive(request("sudo", id: "srq-s1"))
@@ -601,10 +533,6 @@ import XCTest
         }
     }
 
-    // MARK: Desktop tasks and connections (#1141)
-
-    /// A Desktop task shows its card with Stop and is never answered from here: the card is
-    /// inert, stopping loses nothing, and its withdrawal leaves no note.
     func testADesktopTaskShowsItsCardAndIsNeverAnswered() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -623,9 +551,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer"), [])
     }
 
-    /// `connection.request` shows one row per app in the host's order, duplicates dropped; an
-    /// update moves the rows only when its `seq` is newer; the settled frame closes the card,
-    /// and a late request for that operation cannot bring it back.
     func testAConnectionOperationOpensMovesForwardAndSettles() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -651,8 +576,6 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen, "a settled operation never comes back")
     }
 
-    /// An attach restores the operation from `pending_connection`; one this build cannot read
-    /// still waits, with no card; a resume that omits it clears it.
     func testPendingConnectionRestoresOnAttachAndClearsWhenOmitted() async {
         let chat = await openChat(pendingConnection: .object(operation(seq: 2)))
         XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1")
@@ -671,9 +594,6 @@ import XCTest
         XCTAssertFalse(chat.model.isWaitingForUser)
     }
 
-    /// A row's answer goes out once as `connection.respond` by the session's owner and `op_id`;
-    /// the card stays until the host says the operation settled. A move the card does not
-    /// offer is never sent.
     func testConnectionAnswersAreSentOnceAndTheCardStaysUntilSettled() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -698,8 +618,6 @@ import XCTest
         XCTAssertFalse(chat.model.isWaitingForUser)
     }
 
-    /// A row the host moves between the tap and the socket write is not answered: the write
-    /// checks the card still offers that move, and the rows still open stay answerable.
     func testAMoveTheCardStopsOfferingBeforeTheWriteIsNeverSent() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -707,7 +625,6 @@ import XCTest
         let moved = event(3, "connection.update", operation(seq: 2, targets: [
             BotConnectionFixture.gmail(state: "connected"), BotConnectionFixture.github()
         ]))
-        // Fires as the answer begins, after its tap checks and before the socket write.
         withObservationTracking { _ = chat.requests.answeringRequestID } onChange: {
             MainActor.assumeIsolated { chat.receive(moved) }
         }
@@ -719,8 +636,6 @@ import XCTest
         XCTAssertTrue(chat.requests.mayAnswer, "the card still answers its open rows")
     }
 
-    /// 4004: the host no longer holds the operation. The chat reads the session again, and a
-    /// card that read still lists stays inert; nothing is sent again.
     func testAnOperationTheHostNoLongerHoldsGoesInertAndIsReadAgain() async throws {
         let chat = await openChat(pendingConnection: .object(operation(seq: 1)))
         chat.host.next("connection.respond", .init(error: 4004))
@@ -738,7 +653,6 @@ import XCTest
         XCTAssertEqual(chat.writes("connection.respond").count, 1)
     }
 
-    /// A lost reply warns on the card the reconnect restores, and is never resent.
     func testALostConnectionAnswerWarnsAndIsNeverResent() async throws {
         let chat = await openChat(pendingConnection: .object(operation(seq: 1)), rpcDeadline: .milliseconds(50))
         chat.host.withhold("connection.respond")
@@ -748,7 +662,6 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen, "the card leaves with the socket")
         XCTAssertFalse(chat.model.isWaitingForUser)
 
-        // Reattach now rather than on the backoff.
         await chat.model.networkPathDidChange()
         XCTAssertEqual(chat.turn.engine.connectionState, .connected)
         XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1", "the host still holds it")
@@ -757,7 +670,6 @@ import XCTest
         XCTAssertEqual(chat.writes("connection.respond").count, 1)
     }
 
-    /// An operation this build cannot read stops holding the chat once the socket drops.
     func testADisconnectClearsAnUnreadableOperationsWait() async {
         let chat = await openChat(pendingConnection: .object(["op_id": .string("op-2")]))
         XCTAssertTrue(chat.model.isWaitingForUser)
@@ -766,9 +678,6 @@ import XCTest
         XCTAssertFalse(chat.model.isWaitingForUser)
     }
 
-    /// A readable settled frame ends the wait of an operation this build could not read, by
-    /// its `op_id`: another operation's settling leaves it waiting, and the settled one never
-    /// comes back.
     func testASettledFrameEndsAnUnreadableOperationsWait() async {
         let chat = await openChat(pendingConnection: .object(["op_id": .string("op-1")]))
         XCTAssertTrue(chat.model.isWaitingForUser)
@@ -783,8 +692,6 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen, "a settled operation never comes back")
     }
 
-    /// A new operation this build cannot read replaces the live card, as a readable one would:
-    /// the old card leaves rather than staying answerable, and the chat still waits.
     func testAnUnreadableRequestReplacesTheLiveCard() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -797,7 +704,6 @@ import XCTest
         XCTAssertTrue(chat.model.isWaitingForUser)
     }
 
-    /// Another operation's settled frame leaves the live card as it was.
     func testAnotherOperationSettlingLeavesTheLiveCardOpen() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -808,9 +714,6 @@ import XCTest
         XCTAssertTrue(chat.model.isWaitingForUser)
     }
 
-    /// Back on a session whose operation opened before the replay cursor, a `connection.update`
-    /// the engine holds while the snapshot is read moves the restored card instead of losing
-    /// it, and the snapshot's `open_requests` still apply.
     func testAnUpdateDuringTheSnapshotReadMovesTheRestoredOperation() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -838,8 +741,6 @@ import XCTest
         XCTAssertEqual(chat.requests.connection?.targets.map(\.state), [.connected, .connected], "later updates still land")
     }
 
-    /// An operation that settles while the snapshot is read closes, though the snapshot still
-    /// lists it, and a late frame for it cannot bring it back.
     func testAnOperationSettledDuringTheSnapshotReadStaysClosed() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -859,8 +760,6 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen, "a settled operation never comes back")
     }
 
-    /// Steer and Queue release an open operation with `settled_by: "continue"` before their
-    /// message, as Desktop does; a refused Continue still sends it; Interrupt sends no Continue.
     func testGuideAndQueueContinueFirstAndInterruptDoesNot() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -886,9 +785,6 @@ import XCTest
         XCTAssertEqual(chat.writes("connection.respond").count, 2, "Interrupt sends no Continue")
     }
 
-    /// A row's answer and a Steer or Queue's Continue never compete for one operation: while a
-    /// row's answer is out, a Queue sends no Continue and its message is held; while a Continue
-    /// is out, the card can't be answered.
     func testARowAnswerAndContinueNeverCompete() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -925,9 +821,6 @@ import XCTest
         XCTAssertEqual(other.writes("connection.respond").count, 1)
     }
 
-    /// A new operation replacing the card between a Steer's Continue and its socket write
-    /// gets no Continue for the old one, and the message is held rather than sent behind the
-    /// new operation.
     func testAContinueForAReplacedOperationIsNeverSent() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -935,7 +828,6 @@ import XCTest
         chat.host.next("connection.respond", .init(error: 4004))
         chat.host.next("prompt.submit", .init(result: .object(["status": .string("queued")])))
         let replaced = event(3, "connection.request", operation("op-2", seq: 1))
-        // Fires as Continue begins, after it read the operation and before the socket write.
         withObservationTracking { _ = chat.requests.answeringRequestID } onChange: {
             MainActor.assumeIsolated { chat.receive(replaced) }
         }
@@ -951,8 +843,6 @@ import XCTest
         XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-2")
     }
 
-    /// A lost Continue warns on the card the reconnect restores, as a lost row answer does,
-    /// and is never resent.
     func testALostContinueWarnsOnTheRestoredCard() async {
         let chat = await openChat(pendingConnection: .object(operation(seq: 1)), rpcDeadline: .milliseconds(50))
         chat.host.withhold("connection.respond")
@@ -964,7 +854,6 @@ import XCTest
         }
         XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
 
-        // Reattach now rather than on the backoff.
         await chat.model.networkPathDidChange()
         XCTAssertEqual(chat.turn.engine.connectionState, .connected)
         XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1", "the host still holds it")
@@ -973,10 +862,6 @@ import XCTest
         XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
 
-    // MARK: Withdrawal
-
-    /// The host withdrawing the card on screen leaves one note; a new request takes its slot,
-    /// and a request answered elsewhere (`resolved`) goes silently.
     func testAWithdrawnCardLeavesItsNoteAndAResolvedOneGoesSilently() async {
         let chat = await openChat()
         chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1"))
@@ -991,8 +876,6 @@ import XCTest
         XCTAssertNil(chat.requests.withdrawal)
     }
 
-    /// This phone's Stop withdrawing the card is the user's own doing: no note. Another
-    /// client's stop leaves one.
     func testThisPhonesStopWithdrawsTheCardSilently() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -1013,8 +896,6 @@ import XCTest
         XCTAssertEqual(chat.requests.withdrawal?.message, "Question withdrawn because the work stopped.")
     }
 
-    /// Stop & send while a card is open only steers: a redirect while a tool waits on the
-    /// request cancels nothing, so the card stays answerable and the session still waits.
     func testStopAndSendLeavesAnOpenCardAnswerable() async throws {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -1028,11 +909,6 @@ import XCTest
         XCTAssertTrue(chat.model.stopNeedsConfirmation)
     }
 
-    // MARK: Restore
-
-    /// Back from the background, the replay's `open_requests` replaces the cards, one per
-    /// envelope id; one answered on Desktop meanwhile is gone without a note, and nothing is
-    /// answered on return.
     func testReattachRestoresOpenRequestsDedupedBySrqID() async {
         let chat = await openChat()
         chat.receive(request("sudo", id: "srq-s1"))
@@ -1050,7 +926,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer") + chat.writes("approval.respond"), [])
     }
 
-    /// A card withdrawn while the phone was away leaves its note on return, from the replay.
     func testACardWithdrawnWhileAwayLeavesItsNoteOnReturn() async {
         let chat = await openChat()
         chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1"))
@@ -1065,10 +940,6 @@ import XCTest
         XCTAssertEqual(chat.requests.withdrawal?.message, "Approval timed out, so it didn't run.")
     }
 
-    // MARK: Theme requests (#1727)
-
-    /// "Switch to dark mode": `set_theme`'s `theme.apply` turns the app dark and is answered at
-    /// once with what was applied, with no card and no wait.
     func testAThemeApplyTurnsTheAppDarkAndAnswersWhatItApplied() async throws {
         keepAppearance()
         let chat = await openChat()
@@ -1088,8 +959,6 @@ import XCTest
         XCTAssertEqual(UserDefaults.standard.string(forKey: AppTheme.storageKey), AppTheme.dark.rawValue)
     }
 
-    /// "Make the accent green": `theme.apply` stores Hermex's green swatch where Settings >
-    /// Appearance keeps the accent.
     func testAThemeApplyStoresTheAccentSwatch() async throws {
         keepAppearance()
         UserDefaults.standard.removeObject(forKey: AppAppearanceSettings.accentHexKey)
@@ -1102,8 +971,6 @@ import XCTest
         XCTAssertEqual(UserDefaults.standard.string(forKey: AppAppearanceSettings.accentHexKey), "#4CC96B")
     }
 
-    /// "Use a layout called focus": Hermex has no layouts, so the whole request is refused and
-    /// nothing the user set changes.
     func testAThemeApplyWithALayoutIsRefusedAndChangesNothing() async throws {
         keepAppearance()
         UserDefaults.standard.set(AppTheme.light.rawValue, forKey: AppTheme.storageKey)
@@ -1122,8 +989,6 @@ import XCTest
         XCTAssertEqual(UserDefaults.standard.string(forKey: AppAppearanceSettings.accentHexKey), "#FF5C5C")
     }
 
-    /// "Let me pick an accent": the phone has no picker card, so `theme.pick` is answered at once
-    /// with `said`, which tells the agent to ask in the chat, never with a cancel.
     func testAThemePickIsAnsweredAtOnceWithSaid() async throws {
         let chat = await openChat()
         chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
@@ -1138,8 +1003,6 @@ import XCTest
         XCTAssertFalse(sent["result"]?["said"].text?.isEmpty ?? true)
     }
 
-    /// A gateway Webapp answers `request.answer` for a theme request with `expired` and lets it
-    /// time out (captured at the pin), so a canonical chat answers with the response frame.
     func testACanonicalThemePickGoesAsTheResponseFrame() async throws {
         let chat = await openChat(canonical: [])
         let answered = expectation(description: "theme.pick response frame")
@@ -1151,8 +1014,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer"), [])
     }
 
-    /// A theme request the socket delivers again, or a replay brings back after its answer, is
-    /// never answered twice.
     func testTheSameThemeRequestIsAnsweredOnce() async throws {
         let chat = await openChat()
         chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
@@ -1170,9 +1031,6 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer").map { $0["id"] }, [.string("srq-p2"), .string("srq-p3")])
     }
 
-    /// A theme request raised while the chat was away comes back in `open_requests`: it is
-    /// answered on return instead of leaving the session waiting, and a later attach that still
-    /// lists it doesn't answer it again.
     func testARestoredThemeRequestIsAnsweredOnceAndNeverWaits() async throws {
         let chat = await openChat()
         chat.host.always("request.answer", .init(result: .object(["status": .string("ok")])))
@@ -1196,21 +1054,16 @@ import XCTest
         XCTAssertEqual(chat.writes("request.answer").map { $0["id"] }, [.string("srq-p4"), .string("srq-p5")])
     }
 
-    // MARK: Fixture
-
-    /// Puts back the app-wide appearance a theme test may change.
     private func keepAppearance() {
         let defaults = UserDefaults.standard
         let keys = [AppTheme.storageKey, AppAppearanceSettings.accentHexKey]
         let saved = keys.map { defaults.object(forKey: $0) }
-        // `theme.apply` also restyles the connected scenes, so they go back with the settings.
         addTeardownBlock { @MainActor in
             for (key, value) in zip(keys, saved) { defaults.set(value, forKey: key) }
             AppAppearanceSettings.applyStoredToConnectedScenes()
         }
     }
 
-    /// A `theme.apply` answer's `value`, decoded from the JSON text the tool hands the model.
     private func themeAnswer(_ sent: [String: BotJSON]) throws -> BotJSON {
         let text = try XCTUnwrap(sent["result"]?["value"].text)
         return try JSONDecoder().decode(BotJSON.self, from: Data(text.utf8))
@@ -1221,28 +1074,23 @@ import XCTest
     private static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("Fixtures/HermesAgent")
 
-    /// A Hermes chat attached to an idle session on `runtime`, whose frames the test feeds.
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
         let host: BotSocketHost
         let client: BotClient
 
-        /// One recorded line: an event's params, or a host request envelope as is.
         @MainActor func receive(_ frame: BotJSON) {
             client.onEvent?(frame["method"].text == "event" ? frame["params"] : frame)
         }
 
         @MainActor var requests: HermesChatRequests { turn.requests }
 
-        /// The params of every `method` call the chat sent.
         func writes(_ method: String) -> [[String: BotJSON]] {
             host.requests.filter { $0["method"].text == method }.compactMap { $0["params"].fields }
         }
     }
 
-    /// `canonical` attaches over a canonical socket (#1602) to session `tip`, whose id is its
-    /// runtime, restoring `prompts` from its snapshot.
     private func openChat(runtime: String = "runtime", openRequests: [BotJSON] = [], info: [String: BotJSON] = [:],
                           pendingConnection: BotJSON? = nil, rpcDeadline: Duration = .seconds(30),
                           canonical prompts: [BotJSON]? = nil) async -> Chat {
@@ -1273,12 +1121,10 @@ import XCTest
         return Chat(model: model, turn: turn, host: host, client: client)
     }
 
-    /// The answer the card on screen would capture on a tap.
     private func action(_ chat: Chat, file: StaticString = #filePath, line: UInt = #line) throws -> HermesAnswerAction {
         try XCTUnwrap(chat.requests.prepareAnswer(), "Nothing on screen to answer", file: file, line: line)
     }
 
-    /// A canonical gateway fixture's reply (`scripts/capture-hermes-fixtures --local --gateway`).
     private func canonical(_ name: String) throws -> BotJSON {
         guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
             throw XCTSkip("The source tree is not present (physical device or remote runner).")
@@ -1299,7 +1145,6 @@ import XCTest
                                      "description": .string("recursive delete"), "choices": .array(choices.map(BotJSON.string))])
     }
 
-    /// The host's `config.set yolo` reply for the session scope.
     private func modeReply(_ value: String) -> BotJSON {
         .object(["key": .string("approvals.mode"), "value": .string(value)])
     }
@@ -1317,7 +1162,6 @@ import XCTest
                  "payload": .object(payload)])
     }
 
-    /// A host request envelope on `runtime`.
     private func request(_ method: String, id: String, _ params: [String: BotJSON] = [:], runtime: String = "runtime") -> BotJSON {
         var params = params
         params["session_id"] = .string(runtime)
@@ -1345,7 +1189,6 @@ import XCTest
         return .object(reply)
     }
 
-    /// A `manage_connections` frame's payload for this session (`BotConnectionFixture`'s shape).
     private func operation(_ id: String = "op-1", seq: Int, settled: Bool? = nil,
                            targets: [BotJSON] = [BotConnectionFixture.gmail(), BotConnectionFixture.github()]) -> [String: BotJSON] {
         var payload = BotConnectionFixture.operation(id, seq: seq, settled: settled, targets: targets).fields ?? [:]

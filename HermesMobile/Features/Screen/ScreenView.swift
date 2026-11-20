@@ -1,9 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// A bot's Screen (#1567): the picture, who controls it, and the ways to take and return control.
-/// It stays dumb: `ScreenSession` owns the state, and the session streams only while this is on
-/// screen with the app not in the background.
 struct ScreenView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -15,12 +12,9 @@ struct ScreenView: View {
     @State private var isConfirmingStop = false
     @State private var isConfirmingRemove = false
     @State private var isConfirmingRestart = false
-    /// Direct touch or the trackpad panel, remembered per server.
     @AppStorage private var usesTrackpad: Bool
-    /// Tells the entries the host has no screen at all, so they hide.
     private let onUnavailable: () -> Void
 
-    /// `takesOverWhenLive` is an entry's Take Over (#1632): control is taken at the first frame.
     init(profile: String, title: String, server: URL, connection: BotConnection, removesFromItsProfile: Bool = false,
          takesOverWhenLive: Bool = false, onUnavailable: @escaping () -> Void) {
         self.onUnavailable = onUnavailable
@@ -33,7 +27,6 @@ struct ScreenView: View {
     }
 
     private var isMine: Bool { session.control == .mine }
-    /// In the largest text sizes the bar's text wraps out, so Hand Back moves to the bottom.
     private var movesHandBackToBottom: Bool { dynamicTypeSize.isAccessibilitySize }
 
     var body: some View {
@@ -52,7 +45,6 @@ struct ScreenView: View {
         .onAppear { session.open() }
         .onDisappear { session.leave() }
         .onChange(of: scenePhase) {
-            // Control Center and banners (`.inactive`) keep the stream, as they keep the gateway.
             switch scenePhase {
             case .background: session.suspend()
             case .active: session.returnToForeground()
@@ -66,8 +58,6 @@ struct ScreenView: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            // Closing while holding would hand back, so the button says so. A hand-back that
-            // failed offers the way out too, or a dead link would trap the user here.
             if isMine, !movesHandBackToBottom, session.notice != .handBackFailed {
                 Button("Hand Back") { session.handBack() }
             } else {
@@ -127,7 +117,6 @@ struct ScreenView: View {
         case .starting:
             ScreenNotice(title: "Starting the screen", message: "This takes a few seconds. You can leave and come back.") { EmptyView() }
         case .blocked(let reason):
-            // The host's own words: too little memory, or a sandbox image with no desktop.
             ScreenNotice(title: "This screen can't start", detail: reason) { checkAgain }
         case .needsPackages(let command):
             ScreenNotice(title: "Install the desktop on this host",
@@ -213,9 +202,6 @@ struct ScreenView: View {
         }
     }
 
-    /// The picture with its controls: under it in portrait, and in landscape a side panel taking a
-    /// third of the width when the trackpad is on. The picture keeps its place in both, so a
-    /// rotation keeps its zoom and keyboard focus.
     private var live: some View {
         let showsTrackpad = isMine && usesTrackpad && !isTyping
         let isLandscape = verticalSizeClass == .compact
@@ -342,8 +328,6 @@ struct ScreenView: View {
         }
     }
 
-    /// A takeover on a screen that isn't streaming: the bot stays blocked until someone ends it.
-    /// In the largest text sizes the toolbar has no Hand Back, so it's here too.
     @ViewBuilder private var staleTakeover: some View {
         if session.control == .other {
             Text("Another session holds control, so the bot is blocked until someone hands back.")
@@ -393,7 +377,6 @@ struct ScreenView: View {
         .pickerStyle(.segmented)
     }
 
-    /// Esc, Tab, the modifiers and arrows. A modifier stays lit until the next key or click takes it.
     private var keyRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -435,11 +418,9 @@ struct ScreenView: View {
     }
 }
 
-/// One state with no picture: what happened and what can be done. Static text, never a spinner.
 private struct ScreenNotice<Actions: View>: View {
     let title: LocalizedStringKey
     var message: LocalizedStringKey?
-    /// The host's words, which are never a catalog key.
     var detail: String?
     @ViewBuilder let actions: Actions
 

@@ -1,15 +1,9 @@
 import SwiftUI
 
-/// What a Hermes chat's one `@` panel draws, in order: this connection's bots,
-/// then this conversation's workspace files.
 enum BotAtPanelSection {
     case bots([BotMentions.Completion])
     case files([ComposerFilePathSearch.Match])
 
-    /// The sections in drawing order. A group with nothing to show is absent,
-    /// so a connection with no roster shows files alone and a failed or empty
-    /// file lookup leaves the Bots section standing. A lookup still in flight
-    /// shows the Files section with no rows yet.
     static func sections(
         botCompletions: [BotMentions.Completion],
         fileMatches: [ComposerFilePathSearch.Match],
@@ -22,11 +16,6 @@ enum BotAtPanelSection {
     }
 }
 
-/// A Hermes chat's `@` panel: roster rows above workspace file rows, on the
-/// slash panel's glass. Section headers are the only chrome.
-///
-/// Rooms use `BotMentionAutocompleteView` directly and never reach this panel,
-/// so their mentions stay members-only.
 struct BotAtAutocompleteView: View {
     let botCompletions: [BotMentions.Completion]
     let avatars: [String: UIImage]
@@ -46,8 +35,6 @@ struct BotAtAutocompleteView: View {
         )
     }
 
-    /// Tracks Dynamic Type and the rows actually drawn, like the two panels it
-    /// combines. The loading row counts as the file group's one row.
     private var panelHeight: CGFloat {
         var height = CGFloat(sections.count) * headerHeight
         for section in sections {
@@ -71,7 +58,6 @@ struct BotAtAutocompleteView: View {
             }
         }
         .composerPanelHeight(panelHeight)
-        // Clip the scrolling content before Liquid Glass composites the surface.
         .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
         .adaptiveGlass(.regular, fallbackMaterial: .ultraThinMaterial,
                        in: RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))

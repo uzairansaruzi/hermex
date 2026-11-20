@@ -43,10 +43,6 @@ final class MarkdownMathRendererTests: XCTestCase {
     }
 
     func testCurrencyAmountsOnOneLineNeverPairIntoMath() {
-        // Regression: two bare amounts on one line paired into an inline-math span
-        // and TeX-rendered the prose between them (hyphenated words like
-        // "pay-in-arrears" qualify through the operator heuristic). hermes-webui's
-        // renderer rejects `$` followed by a digit as an opener; mirror that guard.
         let inputs = [
             "It was 4 visits, so $200. But the pattern all summer was pay-in-arrears (every visit lands a few days *after* a Friday mow), so $250 is the honest number.",
             "Then it's clean: **$250** — 5 visits deep, all after the fact. He's owed $250 whenever you pay next.",
@@ -212,7 +208,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertEqual(decision, .plain(reason: .missingLanguage, normalizedLanguage: nil))
     }
 
-    /// Diff and patch are styled natively by `MarkdownDiffFormatter`, never by Highlightr.
     func testMarkdownHighlightPolicyKeepsDiffAndPatchOutOfHighlightr() {
         for language in ["diff", "patch"] {
             XCTAssertEqual(
@@ -345,7 +340,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertTrue(intents.contains(.stronglyEmphasized))
         XCTAssertTrue(intents.contains(.emphasized))
 
-        // A Dynamic Type code size reaches the token only when no absolute font is attached to it.
         func renderedWidth(codeSize: CGFloat) -> CGFloat {
             let text = Text(AttributedString(highlightedCode))
                 .font(.system(size: codeSize, design: .monospaced))
@@ -388,7 +382,6 @@ final class MarkdownMathRendererTests: XCTestCase {
             return XCTFail("Expected Highlightr to highlight JSON code.")
         }
 
-        // A remount reads the stored result instead of running highlight.js again.
         XCTAssertTrue(highlighter.cachedHighlight(for: request) === first)
         XCTAssertTrue(second === first)
     }
@@ -410,7 +403,6 @@ final class MarkdownMathRendererTests: XCTestCase {
 
     func testMarkdownCodeHighlighterCacheKeySeparatesLanguageFromCode() async {
         let highlighter = MarkdownCodeHighlighter()
-        // Both fences normalize to Swift; a plain `language|code` key would read "swift a|b|c" for each.
         let cached = MarkdownCodeHighlightRequest(code: "b|c", language: "swift a", colorScheme: .light, isStreaming: false)
         _ = await highlighter.highlightedCode(for: cached)
 
@@ -614,7 +606,6 @@ final class MathFenceLanguageTests: XCTestCase {
     }
 
     func testFirstInfoTokenIsUsed() {
-        // Markdown info strings can carry extra tokens after the language.
         XCTAssertTrue(MathFenceLanguage.matches("math title=Quadratic"))
     }
 }
@@ -957,8 +948,6 @@ private actor RetryingInlineImageProvider: InlineImageProvider {
     }
 }
 
-/// Renders one overlong paragraph with only an iPhone's 1 MB main-thread stack
-/// left. The simulator has 8 MB, which hides #1333.
 @MainActor
 final class InlineElementStackDepthTests: XCTestCase {
     func testInlineCodeHeavyParagraphRendersOnAPhoneStack() {
@@ -990,7 +979,6 @@ final class InlineElementStackDepthTests: XCTestCase {
     }
 }
 
-/// Recurses until about `limit` bytes of stack remain, then runs `body`.
 @inline(never)
 private func withStack(left limit: Int, above bottom: Int, _ body: () -> Void) {
     var marker = 0

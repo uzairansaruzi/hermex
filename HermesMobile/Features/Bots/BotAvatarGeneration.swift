@@ -2,13 +2,8 @@ import Foundation
 import Observation
 import SwiftUI
 
-/// "Describe It": one avatar from the host's model, through `prompt.btw`, which denies every tool
-/// at dispatch. A real turn is not safe here: `prompt.submit` runs terminal and file tools with no
-/// approval request, a dropped socket does not stop it, and `session.resume` can auto-continue it.
 enum BotAvatarGeneration {
     enum Failure: LocalizedError, Equatable {
-        /// `said` is the host's own words when it answered with no JSON at all, such as a provider
-        /// rejecting the bot's API key. `unreadable` is a JSON answer that failed the checks.
         case host(String), said(String), timedOut, disconnected, unreadable([String])
 
         var errorDescription: String? {
@@ -18,20 +13,15 @@ enum BotAvatarGeneration {
             case .said(let message): return message
             case .timedOut: return String(localized: "The host took too long to answer.")
             case .disconnected: return String(localized: "The connection dropped before the host answered.")
-            // The problems are English, for the repair prompt, so they stay off the screen.
             case .unreadable: return String(localized: "The answer was not a usable avatar.")
             }
         }
     }
 
-    /// How long to wait for the answer. A slow model can reason for minutes.
     static let answerDeadline: Duration = .seconds(420)
     private static let deleteAttempts = 4
-    /// How long a closing draft gets before its row is deleted again. Tests shorten it.
     static var deleteRetryDelay: Duration = .seconds(2)
 
-    /// Adapted from Open Bot Avatar's design prompt (Dominik Scholz, MIT): flat, with a path
-    /// grammar the app parses itself, and short enough for a small model to answer quickly.
     static let designPrompt = """
     You design one small flat avatar: a soft, chunky silhouette of an object or creature with two eyes on it. It is shown at about 44 points on a phone. Give geometry only; the app adds the color, the eye shape and the motion.
 
@@ -67,8 +57,6 @@ enum BotAvatarGeneration {
             + problems.map { "- \($0)" } + ["", "Last answer:", answer]).joined(separator: "\n")
     }
 
-    /// Turns a description into a checked avatar. A bad avatar gets one repair try. An answer with no
-    /// JSON at all is the host saying why it can't, so it goes straight to the user.
     static func avatar(description: String, send: (String) async throws -> String) async throws -> BotGeneratedAvatar {
         let first = try await send(prompt(description: description))
         guard case .failure(.unreadable(let problems)) = BotGeneratedAvatar.read(answer: first) else {
@@ -78,14 +66,6 @@ enum BotAvatarGeneration {
         return try BotGeneratedAvatar.read(answer: try await send(repairPrompt(answer: first, problems: problems))).get()
     }
 
-    /// One tool-free model call in a hidden draft session under `profile`. The draft is closed and
-    /// its empty stored row deleted afterwards, even when the caller stopped waiting, unless the
-    /// socket itself has gone. Reads the shared socket's events for its own task only.
-    ///
-    /// The calls run in their own task: cancelling a call that isn't cancellation-safe ends the
-    /// screen's whole connection, so stopping only stops the waiting. One runs at a time: a call
-    /// nobody is waiting for may still hold the socket's handlers until its reply lands, even after
-    /// its sheet has closed, so the next starts once it has let them go.
     @MainActor static func ask(_ prompt: String, profile: String, transport: any BotTransport,
                                validateDispatch: (() throws -> Void)?) async throws -> String {
         let waiter = AnswerWaiter()
@@ -106,7 +86,6 @@ enum BotAvatarGeneration {
 
     @MainActor private static func run(_ prompt: String, profile: String, transport: any BotTransport, waiter: AnswerWaiter,
                                        validateDispatch: (() throws -> Void)?) async throws -> String {
-        // Stopped while waiting its turn: nothing goes to the host.
         guard !waiter.isFinished else { return try await waiter.answer(within: answerDeadline) }
         let draft = try await transport.call(.sessionDraft(profile: profile), validateDispatch: validateDispatch)
         guard let runtime = draft["session_id"].text else { throw BotFailure.unsupported }
@@ -119,21 +98,18 @@ enum BotAvatarGeneration {
             transport.onEvent = priorEvent
             transport.onDisconnect = priorDisconnect
             Task { @MainActor in
-                // A canonical draft has no runtime to close: one fenced delete removes it (#1603).
                 if transport.speaksCanonicalProtocol {
                     _ = try? await transport.mutateStoredSession(profile: profile, key: stored ?? runtime, .delete)
                     return
                 }
                 _ = try? await transport.call(.sessionClose(runtime: runtime), validateDispatch: nil)
                 guard let stored else { return }
-                // The host refuses to delete a session it is still closing, so this tries a few times.
                 for attempt in 1...deleteAttempts {
                     if (try? await transport.call(.sessionDelete(profile: profile, storedKey: stored), validateDispatch: nil)) != nil { return }
                     if attempt < deleteAttempts { try? await Task.sleep(for: deleteRetryDelay) }
                 }
             }
         }
-        // Stopped while the draft was opening: nothing more goes to the host.
         guard !waiter.isFinished else { return try await waiter.answer(within: answerDeadline) }
         let accepted = try await transport.call(.promptBtw(sessionID: runtime, text: prompt), validateDispatch: validateDispatch)
         guard let task = accepted["task_id"].text else { throw BotFailure.unsupported }
@@ -141,8 +117,6 @@ enum BotAvatarGeneration {
         return try await waiter.answer(within: answerDeadline)
     }
 
-    /// Holds the one continuation an answer resolves. Everything runs on the main actor, and only
-    /// the first of the answer, the deadline, a disconnect or a cancel takes effect.
     @MainActor private final class AnswerWaiter {
         var runtime: String?
         private var taskID: String?
@@ -157,7 +131,6 @@ enum BotAvatarGeneration {
             if let text = early[task] { finish(text) }
         }
 
-        /// `prompt.btw` can answer before its own reply is read, so an early answer is kept.
         func receive(_ event: BotJSON) {
             guard event["type"].text == "btw.complete", event["session_id"].text == runtime,
                   let task = event["payload"]["task_id"].text else { return }
@@ -169,7 +142,6 @@ enum BotAvatarGeneration {
             }
         }
 
-        /// The host reports a failed side question as text starting `error:`.
         private func finish(_ text: String) {
             if text.hasPrefix("error:") {
                 finish(throwing: Failure.host(String(text.dropFirst(6)).trimmingCharacters(in: .whitespaces)))
@@ -200,8 +172,6 @@ enum BotAvatarGeneration {
     }
 }
 
-/// The sheet's state. The result reaches the editor or creator as a draft, so nothing is on the
-/// host until its own Save. Closing stops the waiting, but the host's model call can't be stopped.
 @MainActor @Observable final class BotAvatarDescriber {
     enum State: Equatable { case idle, running, failed(String), finished }
 
@@ -237,7 +207,6 @@ enum BotAvatarGeneration {
     }
 }
 
-/// Describes an avatar for the host's model to draw.
 @MainActor struct BotAvatarDescribeSheet: View {
     @State private var describer: BotAvatarDescriber
     @State private var description = ""
@@ -281,14 +250,10 @@ enum BotAvatarGeneration {
         .presentationDetents([.medium])
         .onChange(of: describer.state) { if describer.state == .finished { dismiss() } }
         .onDisappear { describer.stopWaiting() }
-        // The editor closes its connection in the background, so no answer can arrive.
         .onChange(of: scenePhase) { if scenePhase == .background { describer.stopWaiting() } }
     }
 }
 
-/// Every shape a bot can take, in a compact sideways grid: a generated avatar first when the draft
-/// has one, then the classics, then the ready-made avatars. Faces are plain vector drawings, so a
-/// tile draws at once.
 struct BotAvatarShapePicker: View {
     let name: String
     let appearance: BotProfileAppearance
@@ -322,7 +287,6 @@ struct BotAvatarShapePicker: View {
 
     private func tile<Face: View>(selected: Bool, name: String, @ViewBuilder face: () -> Face) -> some View {
         face()
-            // Wide enough that the next column peeks in, which shows the grid scrolls.
             .frame(width: 64, height: 50)
             .overlay {
                 if selected { RoundedRectangle(cornerRadius: 12).stroke(.secondary, lineWidth: 2) }

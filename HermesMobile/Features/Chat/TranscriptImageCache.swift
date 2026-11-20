@@ -1,17 +1,5 @@
 import UIKit
 
-/// The process-wide cache of transcript thumbnails: attached images
-/// (`MessageBubbleView`) and images the agent links in replies
-/// (`TranscriptMediaView`), in webui chats, archived sessions and Hermes
-/// sessions. Bot transcripts render `MessageBubbleView` text-only and never
-/// reach it.
-///
-/// Bounded to 48 MB of decoded pixels and 150 images, and emptied on a memory
-/// warning; an evicted image reloads the next time its row appears. Keys carry
-/// the server and session namespace, so entries survive a server switch
-/// without ever showing under another server. Concurrent requests for one key
-/// share a single load, and every image is decoded off the main thread and
-/// capped at 512 px before it is stored.
 actor TranscriptImageCache {
     static let shared = TranscriptImageCache()
 
@@ -20,10 +8,6 @@ actor TranscriptImageCache {
     private let notificationCenter: NotificationCenter
     private let memoryWarningObserver: NSObjectProtocol
 
-    /// A fresh instance that applies the limits to `storage`; the app uses
-    /// `shared`. Tests pass their own center, so a posted memory warning
-    /// reaches only their cache, and may pass storage that records what the
-    /// cache stores.
     init(
         notificationCenter: NotificationCenter = .default,
         storage: NSCache<NSString, UIImage> = NSCache()
@@ -31,10 +15,8 @@ actor TranscriptImageCache {
         storage.totalCostLimit = 48 * 1024 * 1024
         storage.countLimit = 150
         self.storage = storage
-        // NSCache is thread-safe, which lets the observer clear it on the posting thread.
         nonisolated(unsafe) let observedStorage = storage
         self.notificationCenter = notificationCenter
-        // Loads in flight still finish and may land in the emptied cache.
         memoryWarningObserver = notificationCenter.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
@@ -48,10 +30,6 @@ actor TranscriptImageCache {
         notificationCenter.removeObserver(memoryWarningObserver)
     }
 
-    /// The thumbnail for `key`, calling `load` for its bytes only when the
-    /// image is neither cached nor already loading. Returns `nil` when there
-    /// are no bytes or UIKit can't read them; a failure isn't cached, so the
-    /// next request tries again.
     func image(forKey key: String, load: @escaping () async -> Data?) async -> UIImage? {
         if let cached = storage.object(forKey: key as NSString) {
             return cached
@@ -60,7 +38,6 @@ actor TranscriptImageCache {
             return await task.value
         }
 
-        // Detached so neither the load nor the decode runs on this actor.
         let task = Task.detached(priority: .userInitiated) { () -> UIImage? in
             guard let data = await load() else { return nil }
             return Self.thumbnail(from: data)
@@ -75,12 +52,6 @@ actor TranscriptImageCache {
         return image
     }
 
-    /// Decodes `data` into a display-ready image aspect-fit within 512 px on
-    /// its long edge, or `nil` when UIKit can't read or shrink it. A small image
-    /// UIKit can't pre-decode (some 16-bit, CMYK, or P3 files on device) comes
-    /// back undecoded rather than as nothing. The data is usually already
-    /// downsampled; this also caps the full-size bytes a loader falls back to
-    /// when downsampling fails. Synchronous: call it off the main thread.
     nonisolated static func thumbnail(from data: Data) -> UIImage? {
         guard let image = UIImage(data: data) else { return nil }
         let maxPixelSize = CGFloat(ImagePreviewDownsampler.attachmentMaxPixelSize)
@@ -99,7 +70,6 @@ actor TranscriptImageCache {
         return image.preparingThumbnail(of: size)
     }
 
-    /// The memory a decoded image holds; its cost in the cache.
     private nonisolated static func decodedByteCount(of image: UIImage) -> Int {
         if let cgImage = image.cgImage {
             return cgImage.bytesPerRow * cgImage.height

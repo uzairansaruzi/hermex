@@ -1,9 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// About → Acknowledgements (#1411) lists the license notices bundled in the app.
 final class SettingsAcknowledgementsTests: XCTestCase {
-    /// Every bundled notice is listed, sorted, and readable; the folder's `NOTICE.txt` index is not.
     func testListsEveryBundledNoticeSortedAndReadable() throws {
         let notices = AcknowledgementNotice.loadAll(bundle: .main)
 

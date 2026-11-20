@@ -42,8 +42,6 @@ struct DefaultProfilePickerView: View {
                         .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 12))
                 }
 
-                // The server 403s profile creation in single-profile mode,
-                // so the affordance is hidden there (#24).
                 if !isSingleProfileMode {
                     newProfileRow
                         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 8, trailing: 12))
@@ -73,8 +71,6 @@ struct DefaultProfilePickerView: View {
             }
             .sheet(isPresented: $showsCreateProfile) {
                 CreateProfileSheet(server: server) { createdProfile in
-                    // Optimistic append so the new profile is visible immediately,
-                    // then a fresh fetch reconciles paths/flags from the server.
                     if let createdProfile, !profiles.contains(createdProfile) {
                         profiles.append(createdProfile)
                     }
@@ -90,9 +86,6 @@ struct DefaultProfilePickerView: View {
         }
     }
 
-    /// Loading, load-failure, empty, and no-match states. Each only stands in
-    /// for an empty list, so an already-loaded list keeps rendering across a
-    /// refresh.
     @ViewBuilder
     private var statusPlaceholder: some View {
         if profiles.isEmpty, isLoading {
@@ -114,10 +107,6 @@ struct DefaultProfilePickerView: View {
         }
     }
 
-    /// "New Profile" is the last row of the list, on the shared picker's row
-    /// geometry, so it reads as part of the list rather than as its own card.
-    /// It keeps the entry chrome rather than the filled pill: a second filled
-    /// pill would compete with the selected profile.
     private var newProfileRow: some View {
         Button {
             showsCreateProfile = true
@@ -146,8 +135,6 @@ struct DefaultProfilePickerView: View {
         Self.filteredProfiles(profiles, query: trimmedSearchQuery)
     }
 
-    /// `profiles` narrowed to `query`. Static so tests can pin the predicate
-    /// without driving SwiftUI.
     static func filteredProfiles(_ profiles: [ProfileSummary], query: String) -> [ProfileSummary] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return profiles }
@@ -155,8 +142,6 @@ struct DefaultProfilePickerView: View {
         return profiles.filter { matches($0, query: query) }
     }
 
-    /// A profile is findable by every string the row can show: the name the
-    /// picker prints, the name it saves, its model, and its provider.
     static func matches(_ profile: ProfileSummary, query: String) -> Bool {
         profile.displayName.localizedCaseInsensitiveContains(query)
             || (profile.normalizedName?.localizedCaseInsensitiveContains(query) ?? false)
@@ -172,8 +157,6 @@ struct DefaultProfilePickerView: View {
             Task { await save(profile) }
         } label: {
             HStack(spacing: 12) {
-                // Same rule as the model picker: an unknown provider renders
-                // nothing at all rather than reserving an empty glyph slot.
                 if ProviderGlyphKind.resolve(providerID: profile.provider) != nil {
                     ProviderGlyph(providerID: profile.provider)
                         .frame(width: 17, height: 17)
@@ -276,8 +259,6 @@ struct DefaultProfilePickerView: View {
             activeProfileName = response.effectiveDefaultProfileName ?? currentDefaultProfileName
             isSingleProfileMode = response.singleProfileMode ?? false
         } catch {
-            // A cancelled .task (view dismissed mid-load) must not surface a
-            // "cancelled" error into state.
             if !Self.isCancellationError(error) {
                 errorMessage = error.localizedDescription
             }
@@ -286,9 +267,6 @@ struct DefaultProfilePickerView: View {
         isLoading = false
     }
 
-    /// Mirrors `SessionListViewModel.isCancellationError`: cancellation arrives
-    /// either as `CancellationError` or as a `.cancelled` `URLError`, possibly
-    /// wrapped in `APIError.network`.
     static func isCancellationError(_ error: Error) -> Bool {
         if error is CancellationError {
             return true
@@ -345,8 +323,6 @@ struct DefaultProfilePickerView: View {
 
 private struct CreateProfileSheet: View {
     let server: URL
-    /// Called with the server-reported profile on success (nil if the response
-    /// omitted it); the picker reconciles with a fresh `/api/profiles` fetch.
     let onCreated: (ProfileSummary?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -354,7 +330,6 @@ private struct CreateProfileSheet: View {
     @State private var name = ""
     @State private var cloneConfig = false
     @State private var modelGroups: [ModelCatalogGroup] = []
-    /// nil = "Use active profile default" (the webui form's empty option).
     @State private var selectedModel: ModelCatalogOption?
     @State private var baseURL = ""
     @State private var apiKey = ""
@@ -454,15 +429,11 @@ private struct CreateProfileSheet: View {
         .pickerStyle(.menu)
     }
 
-    /// The webui form lists `models` + `extra_models`; the parser doesn't
-    /// dedupe across the two, so drop repeats to keep ForEach identity unique.
     private func pickerOptions(for group: ModelCatalogGroup) -> [ModelCatalogOption] {
         var seen = Set<ModelCatalogOption>()
         return (group.models + group.extraModels).filter { seen.insert($0).inserted }
     }
 
-    // The webui lowercases the typed name before validating/submitting —
-    // mirror that so "Work" creates "work" instead of dead-ending validation.
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
@@ -476,8 +447,6 @@ private struct CreateProfileSheet: View {
     }
 
     private func loadModels() async {
-        // Best-effort, like the webui form: on failure the picker simply keeps
-        // only the "Use active profile default" option.
         guard let response = try? await APIClient(baseURL: server).models() else { return }
         modelGroups = response.catalogGroups
     }
@@ -490,8 +459,6 @@ private struct CreateProfileSheet: View {
         errorMessage = nil
         defer { isCreating = false }
 
-        // Mirror the webui payload: a "default" provider id is not a real
-        // provider selection and is dropped.
         let provider = selectedModel?.providerID
         let trimmedAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -517,10 +484,6 @@ private struct CreateProfileSheet: View {
     }
 }
 
-/// "Selected" and "Server Default" are different facts — the current default
-/// versus what the server would pick on its own — so the row shows both. On
-/// the filled selection pill the accent capsule stops reading, so the badge
-/// inverts onto the pill instead.
 private struct ProfileStatusBadge: View {
     let title: String
     let isInverted: Bool

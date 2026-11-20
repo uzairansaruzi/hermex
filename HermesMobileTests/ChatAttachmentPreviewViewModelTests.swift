@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Which preview a chat attachment opens in: Quick Look for documents and media,
-/// the inline player for audio, and No Preview for archives.
 @MainActor
 final class ChatAttachmentPreviewViewModelTests: APIClientTestCase {
     func testPDFAttachmentOpensInQuickLook() async throws {

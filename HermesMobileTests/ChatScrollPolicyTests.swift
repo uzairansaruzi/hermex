@@ -80,8 +80,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         }
     }
 
-    // MARK: Follow latch
-
     private typealias Latch = ChatScrollPolicy.FollowLatch
 
     private func follow(_ current: Bool, _ event: ChatScrollPolicy.FollowEvent) -> Bool {
@@ -98,16 +96,12 @@ final class ChatScrollPolicyTests: XCTestCase {
     }
 
     func testExplicitResetSurvivesLateDragSettlement() {
-        // Drag lifted above the bottom, then send or scroll-to-bottom landed inside the
-        // 160 ms settle window. The late settle report must not undo the reset.
         let latch = reduce(Latch(), .userScrollBegin, .reset, .userScrollEnd(isAtBottom: false))
         XCTAssertTrue(latch.isFollowing)
         XCTAssertFalse(latch.ignoresCoastingGesture)
     }
 
     func testExplicitResetSurvivesCoastingMomentum() {
-        // Send or scroll-to-bottom while the transcript is still decelerating: the
-        // remaining momentum ticks belong to the gesture that predates the reset.
         let coasting = reduce(
             Latch(),
             .userScrollBegin,
@@ -116,15 +110,12 @@ final class ChatScrollPolicyTests: XCTestCase {
         )
         XCTAssertTrue(coasting.isFollowing)
 
-        // Once that momentum settles, the next real drag turns follow off as usual.
         let settled = reduce(coasting, .userScrollEnd(isAtBottom: false))
         XCTAssertTrue(settled.isFollowing)
         XCTAssertFalse(settled.ignoresCoastingGesture)
         XCTAssertFalse(reduce(settled, .contentScrolled(isAtBottom: false, isUserScrolling: true)).isFollowing)
     }
 
-    /// Queue adds no transcript row (#1379): a reader up in history who queues a prompt stays
-    /// there, while Steer and Stop and send jump to the row they add.
     func testOnlyAStreamingSendThatAddsARowJumpsAReaderToTheEnd() {
         XCTAssertFalse(ChatScrollPolicy.streamingSendReArmsFollow(.queue))
         XCTAssertTrue(ChatScrollPolicy.streamingSendReArmsFollow(.steer))
@@ -137,41 +128,31 @@ final class ChatScrollPolicyTests: XCTestCase {
     }
 
     func testMomentumEndDecidesFromWhereItSettled() {
-        // A fling that stops mid-transcript stays off; one that lands at the end re-arms.
         XCTAssertFalse(follow(false, .userScrollEnd(isAtBottom: false)))
         XCTAssertTrue(follow(false, .userScrollEnd(isAtBottom: true)))
     }
 
     func testLayoutGrowthWhileOffNeverReArms() {
-        // Streaming tokens push the bottom away; that alone must not re-pin the reader.
         XCTAssertFalse(follow(false, .contentScrolled(isAtBottom: false, isUserScrolling: false)))
     }
 
     func testLayoutGrowthWhileFollowingStaysOn() {
-        // Keyboard presentation and token growth move the offset without a gesture.
         XCTAssertTrue(follow(true, .contentScrolled(isAtBottom: false, isUserScrolling: false)))
     }
 
     func testNonGestureScrollThatLandsAtBottomFromNearbyReArms() {
-        // A collapse near the end clamps the offset to the bottom.
         XCTAssertTrue(follow(false, .contentScrolled(isAtBottom: true, isUserScrolling: false, wasNearBottom: true)))
     }
 
     func testTransientBottomFromFarAboveDoesNotReArm() {
-        // A relayout that momentarily reads "at bottom" while the reader was parked
-        // thousands of points up must not switch follow on.
         XCTAssertFalse(follow(false, .contentScrolled(isAtBottom: true, isUserScrolling: false, wasNearBottom: false)))
     }
 
     func testScrollAwayFromBottomWithoutGestureTurnsFollowOff() {
-        // Status-bar tap, VoiceOver, or a hardware-keyboard scroll: no pan gesture,
-        // but the reader is being carried away from the bottom.
         XCTAssertFalse(follow(true, .contentScrolled(isAtBottom: false, isUserScrolling: false, movedAwayFromBottom: true)))
     }
 
     func testExplicitResetSurvivesCoastingMomentumAwayFromBottom() {
-        // Momentum ticks after a reset carry the away flag too; they still belong
-        // to the gesture that predates the reset.
         let latch = reduce(
             Latch(),
             .userScrollBegin,
@@ -181,14 +162,10 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertTrue(latch.isFollowing)
     }
 
-    // MARK: Scroll-away detection
-
     private typealias Geometry = ChatScrollPolicy.ScrollGeometry
 
     func testDistanceGrowingPastStreamingThresholdIsAScrollAway() {
         let atBottom = Geometry(offsetY: 4300, contentHeight: 5000, visibleHeight: 700)
-        // Status-bar scroll: the lazy stack may re-measure on the way, so the
-        // content height is allowed to move as long as the distance grows.
         let carriedAway = Geometry(offsetY: 3200, contentHeight: 5200, visibleHeight: 700)
         XCTAssertTrue(ChatScrollPolicy.isScrollingAwayFromBottom(previous: atBottom, current: carriedAway))
         XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(previous: nil, current: carriedAway))
@@ -196,23 +173,19 @@ final class ChatScrollPolicyTests: XCTestCase {
 
     func testJitterViewportAndFollowScrollsAreNotScrollAways() {
         let atBottom = Geometry(offsetY: 4300, contentHeight: 5000, visibleHeight: 700)
-        // Streaming jitter under the loose threshold.
         XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
             previous: atBottom,
             current: Geometry(offsetY: 4300, contentHeight: 5150, visibleHeight: 700)
         ))
-        // Keyboard inset change: viewport changes.
         XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
             previous: atBottom,
             current: Geometry(offsetY: 4300, contentHeight: 5000, visibleHeight: 400)
         ))
-        // Follow scroll heading back to the bottom from far away.
         let farAway = Geometry(offsetY: 1000, contentHeight: 5000, visibleHeight: 700)
         XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
             previous: farAway,
             current: Geometry(offsetY: 2000, contentHeight: 5000, visibleHeight: 700)
         ))
-        // Size change snapped back to the bottom by the anchor.
         XCTAssertFalse(ChatScrollPolicy.isScrollingAwayFromBottom(
             previous: atBottom,
             current: Geometry(offsetY: 4700, contentHeight: 5400, visibleHeight: 700)
@@ -236,8 +209,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         )
     }
 
-    // MARK: - Reflow (#1414)
-
     func testReflowKeepsTheReadingLineAtTheSameShareOfItsRow() throws {
         let frames = [
             "prompt": CGRect(x: 0, y: 0, width: 358, height: 100),
@@ -246,7 +217,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         let anchor = try XCTUnwrap(ChatScrollPolicy.reflowAnchor(readingLineY: 188, isAtTop: false, rowFrames: frames))
         XCTAssertEqual(anchor.id, "reply")
 
-        // The reply doubles in height and moves down; the line stays 40% into it.
         let rewrapped = CGRect(x: 0, y: 300, width: 300, height: 400)
         XCTAssertEqual(ChatScrollPolicy.reflowReadingLineY(anchor: anchor, newFrame: rewrapped), 460, accuracy: 0.001)
     }
@@ -256,8 +226,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertNil(ChatScrollPolicy.reflowAnchor(readingLineY: 40, isAtTop: true, rowFrames: frames))
         XCTAssertNil(ChatScrollPolicy.reflowAnchor(readingLineY: 10, isAtTop: false, rowFrames: frames))
     }
-
-    // MARK: - Transcript links
 
     func testTheScreensOwnResultWinsEvenForAWebLink() {
         let decision = TranscriptLinkRouter.decision(for: URL(string: "https://example.com")!, hostResult: .handled)
@@ -283,11 +251,6 @@ final class ChatScrollPolicyTests: XCTestCase {
     }
 }
 
-/// The transcript's disclosure and link actions reach every row through the
-/// environment. The owners rebuild their closures on each pass (every stream
-/// tick and keystroke), so these pin that readers behind a skipped boundary
-/// (the transcript's `.equatable()` rows) are not re-evaluated, while a tap
-/// still runs the latest closure.
 @MainActor
 final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
     func testDisclosureReadersSkipOwnerPassesAndRunTheLatestHandler() throws {
@@ -298,7 +261,6 @@ final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
         advance(probe, window: window, passes: 3)
 
         XCTAssertEqual(probe.ownerPasses, 4, "The owner must re-run on each tick for this to test anything")
-        // The old per-pass closures re-ran the reader on every owner pass (4); a slow runner can add one layout pass.
         XCTAssertLessThanOrEqual(probe.readerPasses, 2)
         try XCTUnwrap(probe.disclosure)()
         XCTAssertEqual(probe.handledTick, 3)
@@ -312,14 +274,11 @@ final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
         advance(probe, window: window, passes: 3)
 
         XCTAssertEqual(probe.ownerPasses, 4, "The owner must re-run on each tick for this to test anything")
-        // The old per-pass closures re-ran the reader on every owner pass (4); a slow runner can add one layout pass.
         XCTAssertLessThanOrEqual(probe.readerPasses, 2)
         try XCTUnwrap(probe.openURL)(URL(string: "https://example.com/file.swift")!)
         XCTAssertEqual(probe.handledTick, 3)
     }
 
-    /// Typing while a reply streams. On iOS 26 with the keyboard up, an `openURL`
-    /// re-written by a modifier whose body re-runs each pass re-ran every link reader.
     func testLinkReadersSkipOwnerPassesWhileTheKeyboardIsUp() throws {
         let keyboard = try showKeyboard()
         defer { keyboard.endEditing(true); keyboard.isHidden = true }
@@ -333,8 +292,6 @@ final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
         XCTAssertLessThanOrEqual(probe.readerPasses, 2)
     }
 
-    /// The owners pass method references, which capture the view and so its
-    /// state. Holding them must not keep that state alive after the screen goes.
     func testHandlersThatCaptureTheOwnerDoNotOutliveIt() {
         let released = expectation(description: "The owner's state is released with its screen")
         autoreleasepool {
@@ -345,7 +302,6 @@ final class ChatTranscriptEnvironmentStabilityTests: XCTestCase {
         wait(for: [released], timeout: 2)
     }
 
-    /// A focused text view in its own window, returned once the keyboard is up.
     private func showKeyboard() throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -385,7 +341,6 @@ private final class EnvironmentStabilityProbe {
     @ObservationIgnored var openURL: OpenURLAction?
 }
 
-/// Rebuilds its disclosure closure on every tick, as the transcript does per stream tick.
 private struct DisclosureOwner: View {
     let probe: EnvironmentStabilityProbe
 
@@ -400,7 +355,6 @@ private struct DisclosureOwner: View {
     }
 }
 
-/// Rebuilds its link closure on every tick, as ChatView does per stream tick and keystroke.
 private struct LinkOwner: View {
     let probe: EnvironmentStabilityProbe
 
@@ -418,8 +372,6 @@ private struct LinkOwner: View {
     }
 }
 
-/// Stands in for a settled transcript row: its inputs never change, so only an
-/// environment change can reach the readers inside it.
 private struct SettledRow: View {
     let probe: EnvironmentStabilityProbe
 
@@ -450,8 +402,6 @@ private final class OwnedModel {
     deinit { onRelease() }
 }
 
-/// Mirrors ChatView: the handlers are methods on a view that
-/// owns a model in `@State`.
 private struct SelfCapturingOwner: View {
     @State private var model: OwnedModel
     @State private var toggles = 0
@@ -474,9 +424,6 @@ private struct SelfCapturingOwner: View {
     }
 }
 
-/// The stream bumps its scroll trigger once per drain tick. Only the
-/// `StreamingFollowTrigger` leaf reads it, so each bump fires the follow scroll
-/// without re-running the transcript and the chat screen that own the leaf.
 @MainActor
 final class StreamingFollowTriggerTests: XCTestCase {
     func testBumpsFireTheScrollWithoutReRunningTheOwner() {
@@ -505,7 +452,6 @@ private final class FollowTriggerProbe {
     @ObservationIgnored var fires = 0
 }
 
-/// Stands in for ChatView and the transcript: it hands the leaf a reader, never the value.
 private struct FollowTriggerOwner: View {
     let probe: FollowTriggerProbe
 

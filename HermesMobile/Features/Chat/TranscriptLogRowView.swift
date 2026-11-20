@@ -1,24 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Geometry shared by every log row so the group toggle and the rows line up.
 enum TranscriptLogRowMetrics {
-    /// Row height at the default text size; text grows the row at larger sizes.
     static let minimumHeight: CGFloat = 32
-    /// Icon column width plus the gap, so the expanded body indents under the text.
     static let bodyIndent: CGFloat = 26
-    /// Tallest an expanded body gets before it scrolls inside its own window.
-    /// Fixed at every Dynamic Type size so a long result never owns the screen.
     static let bodyWindowHeight: CGFloat = 240
 }
 
-/// Pure sizing rule for an expanded body window: the frame it takes and
-/// whether it scrolls, from the measured content height. Shared by the
-/// SwiftUI window and the live thinking text view so both cap alike.
 struct TranscriptLogRowBodyWindowLayout: Equatable {
-    /// Zero until the content has been measured, then the lesser of its
-    /// natural height and the cap. Starting closed prevents one unbounded
-    /// layout pass from moving the transcript before the cap takes effect.
     let frameHeight: CGFloat
     let scrolls: Bool
 
@@ -30,10 +19,6 @@ struct TranscriptLogRowBodyWindowLayout: Equatable {
     }
 }
 
-/// Clips an expanded body at `TranscriptLogRowMetrics.bodyWindowHeight` and
-/// scrolls the overflow inside the window. Shorter content takes its natural
-/// height and cannot scroll. The measurement lives only here, so collapsed
-/// rows in the lazy transcript pay nothing for it.
 struct TranscriptLogRowBodyWindow<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
@@ -52,10 +37,6 @@ struct TranscriptLogRowBodyWindow<Content: View>: View {
                     proxy.size.height
                 } action: { height in
                     if contentHeight == nil {
-                        // The first bounded measurement opens the body from
-                        // zero, so rows below only move down toward their final
-                        // positions. Later content changes keep their existing
-                        // non-animated sizing behavior.
                         withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
                             contentHeight = height
                         }
@@ -74,13 +55,6 @@ struct TranscriptLogRowBodyWindow<Content: View>: View {
     }
 }
 
-/// The dense log row settled tool calls and thinking share: a 20 pt icon
-/// column, bold summary, dim one-line detail, `Copied` badge, an optional
-/// trailing accessory, chevron slot, and a fixed status slot so labels align
-/// across rows. Tap toggles the owner's expansion state and reveals
-/// `expandedBody` under the text behind a hairline, inside a
-/// `TranscriptLogRowBodyWindow` that scrolls once the body outgrows the cap;
-/// long-press copies `copyText` with a haptic and a short "Copied" badge.
 struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedBody: View>: View {
     let summary: String
     let detail: String?
@@ -88,13 +62,8 @@ struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedB
     let isExpanded: Bool
     let accessibilityLabel: String
     let copyText: () -> String
-    /// Flips the owner's expansion state; the row wraps it in the disclosure
-    /// animation and suspends the transcript's scroll anchor around it.
     let toggleExpansion: () -> Void
     @ViewBuilder let icon: () -> Icon
-    /// Trailing detail before the chevron, such as an edit's "+N −M". It moves to
-    /// its own line under the detail when the label stacks at accessibility sizes.
-    /// Not read by VoiceOver: fold it into `accessibilityLabel`.
     @ViewBuilder let accessory: () -> Accessory
     @ViewBuilder let status: () -> Status
     @ViewBuilder let expandedBody: () -> ExpandedBody
@@ -232,9 +201,6 @@ struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedB
         }
     }
 
-    /// Copies the row's text, then shows "Copied" for a moment. The reset task
-    /// is cancelled when the row leaves the screen so it never mutates a row
-    /// that is gone.
     private func copy() {
         isPressed = false
         UIPasteboard.general.string = copyText()
@@ -256,7 +222,6 @@ struct TranscriptLogRowView<Icon: View, Accessory: View, Status: View, ExpandedB
 }
 
 extension TranscriptLogRowView where Accessory == EmptyView {
-    /// A row with nothing between its label and chevron (thinking, plans).
     init(
         summary: String,
         detail: String?,

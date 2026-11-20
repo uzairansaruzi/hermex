@@ -41,7 +41,6 @@ final class KanbanCardDetailState {
     private(set) var loadState: KanbanCardDetailLoadState = .idle
     private(set) var detail: KanbanCardDetailEnvelope?
     private(set) var commentSubmission: KanbanCommentSubmissionState = .idle
-    /// Why the server refused the last comment, in its own words (`KanbanWriteRefusal`).
     private(set) var commentFailureMessage: String?
     private(set) var workerLogState: KanbanWorkerLogState = .idle
     var commentDraft = ""
@@ -105,7 +104,7 @@ final class KanbanCardDetailState {
 
         let mutationID = UUID()
         activeMutationID = mutationID
-        activeDetailLoadID = UUID() // Invalidates a read that began before this mutation.
+        activeDetailLoadID = UUID()
         let attempt = PendingCommentAttempt(body: body, baseline: detail?.comments ?? [])
         pendingAttempt = attempt
         commentFailureMessage = nil
@@ -268,7 +267,6 @@ final class KanbanCardDetailState {
         }
     }
 
-    /// webui's 404, or a Hermes host's (`BotFailure.rejected(404)`) for a Card or Board it lacks.
     private func isNotFound(_ error: Error) -> Bool {
         if case BotFailure.rejected(404) = error { return true }
         guard case let APIError.http(statusCode, _) = error else { return false }

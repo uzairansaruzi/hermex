@@ -6,8 +6,6 @@ enum Endpoint {
     case login
     case logout
     case sessions(includeArchived: Bool = false, archivedLimit: Int? = nil)
-    /// Move to Hermes's scan (#1213): every Profile's sessions, archived included, without
-    /// switching the Profile this client's cookie names.
     case moveScanSessions
     case sessionsSearch(query: String, content: Bool, depth: Int)
     case session(id: String, includeMessages: Bool, messageLimit: Int?, messageBefore: Int?, expandRenderable: Bool = false)
@@ -19,12 +17,8 @@ enum Endpoint {
     case pinSession
     case archiveSession
     case branchSession
-    /// A real copy: independent messages, tool calls and usage counters, and no
-    /// fork lineage. `branchSession` means "fork a child from here" (#25).
     case duplicateSession
     case compressSession
-    /// Truncates the session to empty on the server, resetting the title.
-    /// Destructive and irreversible: always confirm before calling it (#389).
     case clearSession
     case undoSession
     case retrySession
@@ -89,9 +83,6 @@ enum Endpoint {
     case switchProfile
     case createProfile
     case providers
-    /// `GET /api/provider/quota` — subscription limits or credits for one
-    /// provider. `refresh` bypasses the server's 45 s probe cache; a cold probe
-    /// can take several seconds, so only explicit refresh gestures pass it.
     case providerQuota(provider: String, refresh: Bool = false)
     case settings
     case updatesCheck
@@ -101,10 +92,7 @@ enum Endpoint {
     case cronCreate
     case cronUpdate
     case cronDelete
-    /// POST: triggers a run. `/api/crons/run` also serves a GET that reads one
-    /// past run's output — that is `cronRunDetail`, a separate case.
     case cronRun
-    /// GET on `/api/crons/run`: one past run's full output.
     case cronRunDetail(jobID: String, filename: String)
     case cronHistory(jobID: String, offset: Int, limit: Int)
     case cronPause
@@ -112,8 +100,6 @@ enum Endpoint {
     case cronStatus(jobID: String?)
     case cronOutput(jobID: String, limit: Int?)
     case cronDeliveryOptions
-    /// GET: every job's latest completion, for the Tasks list's recent-runs
-    /// group. Upstream also accepts `since` for polling; this app does not poll.
     case cronRecent
     case kanbanConfig
     case kanbanBoards
@@ -411,10 +397,6 @@ enum Endpoint {
     var queryItems: [URLQueryItem] {
         switch self {
         case let .sessions(includeArchived, archivedLimit):
-            // Opt-in (issue #17): the server's default response excludes archived
-            // rows, so the main list request stays byte-identical when off.
-            // `archived_limit` only means something alongside `include_archived=1`
-            // (`_query_positive_int` in upstream routes.py), so it is only sent then.
             guard includeArchived else { return [] }
 
             var items = [URLQueryItem(name: "include_archived", value: "1")]
@@ -423,8 +405,6 @@ enum Endpoint {
             }
             return items
         case .moveScanSessions:
-            // `all_profiles` is ignored in the server's isolated-Profile mode; the reply's own
-            // `all_profiles` says whether it was honored.
             return [
                 URLQueryItem(name: "all_profiles", value: "1"),
                 URLQueryItem(name: "include_archived", value: "1")
@@ -449,9 +429,6 @@ enum Endpoint {
                 items.append(URLQueryItem(name: "msg_before", value: "\(messageBefore)"))
             }
 
-            // Opt-in (upstream #3790): on cold load only, ask the server to widen the
-            // window until it holds ~msg_limit *renderable* rows so tool-heavy sessions
-            // don't open showing 1–2 bubbles. Omitted when false; older servers ignore it.
             if expandRenderable {
                 items.append(URLQueryItem(name: "expand_renderable", value: "1"))
             }
@@ -461,8 +438,6 @@ enum Endpoint {
             return [URLQueryItem(name: "session_id", value: id)]
         case let .chatStream(streamID, replayAfterSeq):
             var items = [URLQueryItem(name: "stream_id", value: streamID)]
-            // Opt-in reconnect: omitted on a live attach so the URL stays
-            // byte-identical. Negative cursors clamp to 0.
             if let replayAfterSeq {
                 items.append(URLQueryItem(name: "replay", value: "1"))
                 items.append(URLQueryItem(name: "after_seq", value: "\(max(0, replayAfterSeq))"))
@@ -625,7 +600,6 @@ enum Endpoint {
             return url
         }
         components.queryItems = queryItems
-        // The server reads a query's `+` as a space, and `queryItems` leaves it literal.
         let query = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         components.percentEncodedQuery = query
         return components.url ?? url
@@ -653,9 +627,6 @@ enum Endpoint {
         return components.url ?? root
     }
 
-    /// RFC 3986 unreserved characters minus `.`. Encoding dots as well keeps
-    /// the special `.` and `..` path segments inert while preserving the exact
-    /// Card identity after the server decodes the segment.
     private static let pathSegmentAllowed = CharacterSet.alphanumerics
         .union(CharacterSet(charactersIn: "-_~"))
 }

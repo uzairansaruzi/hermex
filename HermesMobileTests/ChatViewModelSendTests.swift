@@ -45,8 +45,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     func testListenAudioSessionRoutesToSpeakerNotEarpiece() {
-        // `.playback` forces the speaker (not the receiver/earpiece) by default, and
-        // `.spokenAudio` is Apple's recommended mode for synthesized speech. #252.
         XCTAssertEqual(ListenAudioSessionConfiguration.category, .playback)
         XCTAssertEqual(ListenAudioSessionConfiguration.mode, .spokenAudio)
         XCTAssertTrue(
@@ -54,9 +52,6 @@ final class ChatViewModelSendTests: XCTestCase {
         )
     }
 
-    /// The real on-device voice renders audio the Listen player can play and scrub (#1352).
-    /// Local-only, because it can take minutes on a fresh CI simulator (#1523). Run it by hand
-    /// after changing `OnDeviceSpeech` or `ListenAudioPlayer` (DEVELOPMENT.md § PR CI).
     @MainActor
     func testOnDeviceSpeechRendersAudioTheListenPlayerCanPlay() async throws {
         try XCTSkipIf(ProcessInfo.processInfo.environment["HERMEX_CI"] != nil,
@@ -90,16 +85,11 @@ final class ChatViewModelSendTests: XCTestCase {
         ))
 
         viewModel.toggleListening(to: context)
-        // Regression (review on #35): the tap itself must NOT activate the session —
-        // a slow `/api/tts` fetch would otherwise silence other audio while Hermex
-        // has nothing to play. Activation belongs to the moment playback starts.
         XCTAssertEqual(audioSession.activateCount, 0)
         await viewModel.listenPreparationTask?.value
 
         XCTAssertEqual(audioSession.activateCount, 1)
         XCTAssertEqual(speechSynthesizer.spokenStrings, ["Out loud, please."])
-        // One interleaved timeline shared by both spies (review on #332): the session
-        // is activated only after the on-device render, never held while it runs.
         let activateIndex = try XCTUnwrap(recorder.events.firstIndex(of: "activate"))
         let renderIndex = try XCTUnwrap(recorder.events.firstIndex(of: "render"))
         XCTAssertLessThan(renderIndex, activateIndex)
@@ -192,12 +182,9 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.toggleListening(to: context)
         XCTAssertTrue(viewModel.showsListenPlaybackBar)
         XCTAssertEqual(viewModel.listenPlaybackPhase, .loading)
-        // Regression (review on #35): no session activation while the fetch is in
-        // flight — only once decoded server audio is about to play.
         XCTAssertEqual(audioSession.activateCount, 0)
         await viewModel.listenPreparationTask?.value
 
-        // Server audio plays; the on-device voice is never touched.
         XCTAssertEqual(receivedAudioData, [serverAudio])
         XCTAssertEqual(player.prepareToPlayCount, 1)
         XCTAssertEqual(player.playCount, 1)
@@ -212,9 +199,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(remoteControlCenter.snapshots.last?.duration, 83)
         XCTAssertEqual(remoteControlCenter.snapshots.last?.isPlaying, true)
 
-        // Natural finish tears listen state down and releases the session. The
-        // defensive stopListening() at the start of toggleListening also
-        // deactivates once, so assert the finish-driven delta, not a total.
         let deactivationsBeforeFinish = audioSession.deactivateCount
         player.finishPlayback()
         XCTAssertNil(viewModel.listeningMessageID)
@@ -327,8 +311,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(reloadedViewModel.listenPlaybackSpeed, .oneAndHalf)
     }
 
-    /// iOS shows Now Playing as Stopped right after a mid-play rate change, so the Lock
-    /// Screen would offer a dead play button; Listen sends Now Playing again once that settles.
     @MainActor
     func testChangingSpeedWhilePlayingSendsNowPlayingAgainOnceItSettles() async throws {
         let settle = ManualAsyncDelay()
@@ -409,7 +391,6 @@ final class ChatViewModelSendTests: XCTestCase {
                 return player
             }
         ) { request in
-            // A raw 429 from the ~2 s rate limit must never surface to the user.
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: 429,
@@ -432,8 +413,6 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.toggleListening(to: context)
         await viewModel.listenPreparationTask?.value
 
-        // The on-device voice plays through the same player, so the playback bar and the
-        // Lock Screen controls cover it too (#1352).
         XCTAssertEqual(speechSynthesizer.spokenStrings, ["Fall back quietly."])
         XCTAssertEqual(playedAudio, [SpyOnDeviceSpeech.audio])
         XCTAssertEqual(player.playCount, 1)
@@ -441,7 +420,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
         XCTAssertEqual(remoteControlCenter.configureCount, 1)
         XCTAssertEqual(remoteControlCenter.snapshots.last?.isPlaying, true)
-        // Silent fallback: no error alert for the user (#15).
         XCTAssertNil(viewModel.messageActionErrorMessage)
     }
 
@@ -512,8 +490,6 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.toggleListening(to: try listenContext("Won't play.", id: "wont-play"))
         await viewModel.listenPreparationTask?.value
 
-        // The failed server attempt hands the session back before the render runs, so other
-        // audio isn't held silent, and the loading bar never shows the failed audio's length.
         let renderIndex = try XCTUnwrap(recorder.events.firstIndex(of: "render"))
         XCTAssertEqual(Array(recorder.events[..<renderIndex].suffix(2)), ["activate", "deactivate"])
         XCTAssertEqual(durationWhileRendering, 0)
@@ -586,15 +562,11 @@ final class ChatViewModelSendTests: XCTestCase {
 
         viewModel.toggleListening(to: context)
         let firstFetch = viewModel.listenPreparationTask
-        // Second tap lands while the server fetch is still in flight: it must act
-        // as "Stop Listening", not queue a second /api/tts call (#15 double-tap).
         viewModel.toggleListening(to: context)
 
         XCTAssertNil(viewModel.listeningMessageID)
         XCTAssertNil(viewModel.listenPreparationTask)
 
-        // Even if the first response completes after the stop, its stale request
-        // ID must not start playback or speech.
         await firstFetch?.value
         XCTAssertEqual(playerFactoryCalls, 0)
         XCTAssertTrue(speechSynthesizer.spokenStrings.isEmpty)
@@ -749,7 +721,6 @@ final class ChatViewModelSendTests: XCTestCase {
             await fulfillment(of: [started], timeout: 3)
             let current: ChatViewModel
             if switchesServer {
-                // ChatView.onDisappear stops Listen when the server-keyed tree is replaced.
                 old.stopListening()
                 current = try makeViewModel(renderOnDeviceSpeech: newSpeech.render, listenAudioPlayerFactory: { _ in player }, serverURL: URL(string: "https://second.test")!, handler: handler)
             } else {
@@ -785,8 +756,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 4001), onHermes: true))
     }
 
-    /// A Hermes host splits text by Python's `len`, Unicode scalars, so a reply whose characters
-    /// combine several scalars ("é" as e + U+0301) is measured that way, not by Swift's `count`.
     func testServerTTSPolicyCountsHermesTextInUnicodeScalars() {
         let accented = "e\u{301}"
         XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: accented, count: 2000), onHermes: true))
@@ -1050,8 +1019,6 @@ final class ChatViewModelSendTests: XCTestCase {
     private func makeContinuationDraftStore() -> ChatDraftStore {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
-        // Budgeted staging requires a backing store; keep real attachment copies
-        // isolated alongside this fixture's draft persistence.
         return ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory),
                               attachmentStore: ChatDraftAttachmentStore(directoryURL: directory),
                               debounceDuration: .seconds(60))
@@ -1079,7 +1046,6 @@ final class ChatViewModelSendTests: XCTestCase {
             case "/api/session":
                 let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
                 XCTAssertEqual(query?.first(where: { $0.name == "session_id" })?.value, "continuation-next")
-                // GET navigation can itself adopt the latest durable tip.
                 return apiTestJSONResponse(#"{"session":{"session_id":"continuation-tip","title":"Continuation","profile":"work","messages":[]}}"#, for: request)
             default:
                 XCTFail("Unexpected request \(path)")
@@ -1098,7 +1064,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.messages.isEmpty)
         XCTAssertEqual(viewModel.pendingAttachments.map(\.id), [staged.id])
         XCTAssertNil(viewModel.activeStreamID)
-        // Match ChatView's failed-submission reconciliation, including an edit during send.
         let edited = ComposerDraftContent(text: "Newer draft", quotes: submitted.quotes)
         let resolved = drafts.resolveSubmission(submitted: submitted, current: edited,
                                                 didStart: didStart, draftWasEdited: true,
@@ -1163,8 +1128,6 @@ final class ChatViewModelSendTests: XCTestCase {
                 let current = edited
                     ? ComposerDraftContent(text: "New work", quotes: [ComposerQuote(text: "New quote")])
                     : submitted
-                // The exact store path used by handleSlashExecutionResult ->
-                // reconcileConsumedDraft, before opening the continuation.
                 let resolved = drafts.resolveConsumedInput(
                     submitted: submitted, current: current, draftWasEdited: edited,
                     preserveRejectedSubmission: viewModel.isCompressionRotated, for: source
@@ -1241,9 +1204,7 @@ final class ChatViewModelSendTests: XCTestCase {
             }
             XCTAssertEqual(request.url?.path, "/api/session")
             continuationLoads += 1
-            // The first load fails while the connection drops; the retry succeeds.
             if continuationLoads == 1 { throw URLError(.networkConnectionLost) }
-            // The handler runs off the main thread while the retry awaits this response.
             sendHeldOffDuringRetry = DispatchQueue.main.sync { MainActor.assumeIsolated { viewModelRef?.isStartingChat } }
             return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
         }
@@ -1391,7 +1352,6 @@ final class ChatViewModelSendTests: XCTestCase {
         }
     }
 
-    /// After a Hermes update the server refuses every send until WebUI restarts (#955).
     @MainActor
     func testStaleAgentRuntimeSendFailureExplainsRestartAndRollsBack() async throws {
         let viewModel = try makeViewModel { request in
@@ -1408,13 +1368,11 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let didStart = await viewModel.sendMessage("Keep working")
 
-        // `false` is what keeps the draft in the composer (ChatView restores it).
         XCTAssertFalse(didStart)
         XCTAssertTrue(viewModel.messages.isEmpty)
         XCTAssertNotNil(viewModel.sendErrorMessage)
         XCTAssertEqual(viewModel.sendErrorRuntimeStale, .updated)
 
-        // The next error replaces it, so Copy fix prompt never outlives its banner.
         viewModel.setSendErrorMessage("Choose a slash command or continue typing.")
         XCTAssertNil(viewModel.sendErrorRuntimeStale)
     }
@@ -1503,22 +1461,15 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         XCTAssertEqual(requestedPaths, ["/api/transcribe", "/api/upload", "/api/chat/start"])
 
-        // The message the model sees is exactly the transcript — no
-        // "[Attached files: …]" suffix that would make the agent try to "inspect"
-        // (transcribe) the clip itself instead of answering the transcript (#330).
         XCTAssertEqual(startMessage, transcript)
         XCTAssertFalse(try XCTUnwrap(startMessage).contains("[Attached files:"))
 
-        // The clip still rides along as a display-only attachment so the inline
-        // player renders and persists; the server strips this attachment metadata
-        // before the model call, so it never reaches the agent.
         let attachments = try XCTUnwrap(startAttachments)
         XCTAssertEqual(attachments.count, 1)
         XCTAssertEqual(attachments.first?["path"] as? String, "/tmp/workspace/voice-note.m4a")
         XCTAssertEqual(attachments.first?["mime"] as? String, "audio/m4a")
         XCTAssertEqual(attachments.first?["is_image"] as? Bool, false)
 
-        // Optimistic bubble: transcript text plus the playable clip attachment.
         let optimistic = try XCTUnwrap(viewModel.messages.first)
         XCTAssertEqual(optimistic.role, "user")
         XCTAssertEqual(optimistic.content, transcript)
@@ -1550,7 +1501,6 @@ final class ChatViewModelSendTests: XCTestCase {
             },
         ]))
 
-        // Stage one attachment through the real coordinator (mocked upload).
         let staged = await viewModel.uploadAttachment(
             data: Data("fake-jpeg".utf8),
             filename: "photo.jpg"
@@ -1558,14 +1508,12 @@ final class ChatViewModelSendTests: XCTestCase {
         try XCTUnwrap(staged)
         XCTAssertEqual(viewModel.pendingAttachments.count, 1)
 
-        // Empty draft + staged attachment: previously rejected, now sends.
         let didStart = await viewModel.sendMessage("")
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(startMessage, "I've uploaded 1 file(s): /tmp/workspace/photo.jpg")
         XCTAssertEqual(viewModel.activeStreamID, "stream-403")
 
-        // Optimistic bubble shows the synthesized text plus the attachment.
         let optimistic = try XCTUnwrap(viewModel.messages.first)
         XCTAssertEqual(optimistic.role, "user")
         XCTAssertEqual(optimistic.content, "I've uploaded 1 file(s): /tmp/workspace/photo.jpg")
@@ -1573,7 +1521,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(optimistic.attachments?.first?.path, "/tmp/workspace/photo.jpg")
         XCTAssertEqual(try XCTUnwrap(startAttachments)?.count, 1)
 
-        // The composer strip is empty after a successful send.
         XCTAssertTrue(viewModel.pendingAttachments.isEmpty)
     }
 
@@ -2058,8 +2005,6 @@ final class ChatViewModelSendTests: XCTestCase {
 
         let didRespond = await viewModel.respondToApproval(.once)
 
-        // Expired prompt: the stale card dismisses with a friendly explanation
-        // instead of sticking around behind a generic failure (issue #25).
         XCTAssertFalse(didRespond)
         XCTAssertNil(viewModel.approvalPrompt)
         XCTAssertNil(viewModel.approvalErrorMessage)
@@ -2071,10 +2016,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
     }
 
-    /// The protective refusals answer HTTP 200 with `{"ok": false}` — `j()`
-    /// defaults to 200 — so only a non-2xx threw and a deliberate refusal read
-    /// as success. The card was cleared with no explanation while the agent
-    /// stayed blocked, and the next pending refresh made it reappear.
     @MainActor
     func testApprovalRespondRejectedWithOkFalseKeepsTheCardAndExplains() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -2087,7 +2028,6 @@ final class ChatViewModelSendTests: XCTestCase {
             handler: routes([
                 "/api/chat/start": chatStarted(),
                 "/api/approval/respond": { request in
-                    // 200, not an error status — that is the whole trap.
                     return apiTestJSONResponse(#"{"ok": false, "choice": "once"}"#, for: request)
                 },
                 "/api/approval/pending": jsonReply("""
@@ -2307,8 +2247,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.approvalPrompt?.pending.approvalId, "current-approval")
     }
 
-    /// Model settings' YOLO switch on a webui session: the row follows the server's answer both
-    /// ways, and a failure leaves it where it was with the reason beside it.
     @MainActor
     func testYoloSwitchFollowsTheServersAnswer() async throws {
         var bodies: [[String: Any]] = []
@@ -2481,10 +2419,6 @@ final class ChatViewModelSendTests: XCTestCase {
     func testLiveStreamScrollTriggerCoalescesRapidUpdates() async throws {
         let streamClient = SpySSEStreamingClient()
         streamClient.automaticallyFlushPendingStreamingContent = false
-        // Inject a tiny coalescing window. Determinism comes from flushing
-        // synchronously and awaiting the pending scroll-trigger task below, not from
-        // this value; a small delay just keeps those awaits fast. The production
-        // default (16ms) is exercised everywhere else.
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             streamingScrollCoalescingDelayNanoseconds: 1_000_000,
@@ -2494,35 +2428,20 @@ final class ChatViewModelSendTests: XCTestCase {
         let didStart = await viewModel.sendMessage("Stream a long response")
         XCTAssertTrue(didStart)
 
-        // sendMessage's optimistic user-message append schedules a coalesced scroll
-        // trigger. Settle it so the increments measured below come only from the
-        // streaming bursts — this is the task that used to race the real 16ms window
-        // before the synchronous assertion ran.
         await viewModel.awaitPendingStreamingScrollTriggerForTesting()
         let initialTrigger = viewModel.streamingScrollTrigger
 
-        // Burst 1: 20 rapid tokens batch behind a single coalesced flush. Nothing has
-        // scrolled yet at this synchronous point — no await has elapsed since the
-        // burst, regardless of CPU load.
         for index in 0..<20 {
             streamClient.emit(.token("token-\(index) "))
         }
         XCTAssertEqual(viewModel.streamingScrollTrigger, initialTrigger)
 
-        // Flushing the batch schedules exactly one (still-deferred) scroll trigger;
-        // draining it advances the trigger by exactly one — not 20 — proving the
-        // 20-token burst coalesced into a single scroll.
         viewModel.flushPendingStreamingContent()
         XCTAssertEqual(viewModel.streamingScrollTrigger, initialTrigger)
         await viewModel.awaitPendingStreamingScrollTriggerForTesting()
         XCTAssertEqual(viewModel.streamingScrollTrigger, initialTrigger + 1)
         XCTAssertTrue(viewModel.messages.last?.content?.hasPrefix("token-0 token-1") == true)
 
-        // Burst 2: a distinct, heterogeneous reasoning + tool-start burst. Flushing
-        // the batched reasoning while the tool-start scroll trigger is still pending
-        // exercises the production coalescing guard (one pending trigger at a time),
-        // so the whole burst collapses into exactly one more increment regardless of
-        // task scheduling order.
         streamClient.emit(.reasoning("Check the next step."))
         streamClient.emit(.toolStarted(ToolStreamEvent(
             eventType: "tool.started",
@@ -2556,21 +2475,17 @@ final class ChatViewModelSendTests: XCTestCase {
             )
         }
 
-        // Empty transcript before any work.
         assertMemoMatchesPureMapping("memo should match for an empty transcript")
 
-        // Append: optimistic user message + streaming assistant turn.
         let didStart = await viewModel.sendMessage("Stream a long response")
         XCTAssertTrue(didStart)
         assertMemoMatchesPureMapping("memo should match after the optimistic append")
 
-        // Edit: streaming tokens mutate the assistant message content in place.
         streamClient.emit(.token("first chunk "))
         viewModel.flushPendingStreamingContent()
         XCTAssertTrue(viewModel.messages.last?.content?.contains("first chunk") == true)
         assertMemoMatchesPureMapping("memo should match after a streaming content edit")
 
-        // Further edit: a second flush updates the same message again.
         streamClient.emit(.token("second chunk "))
         viewModel.flushPendingStreamingContent()
         assertMemoMatchesPureMapping("memo should match after a second content edit")
@@ -2637,7 +2552,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
         XCTAssertEqual(viewModel.messages.last?.content, "From server.")
 
-        // The flush the coalescing timer would run finds nothing left to apply.
         viewModel.flushPendingStreamingContent()
         XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
         XCTAssertEqual(viewModel.messages.last?.content, "From server.")
@@ -2809,7 +2723,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(groups.map(\.text), ["Work through the first question.", "Work through the second question."])
         XCTAssertEqual(viewModel.reasoningGroupsByAnchorID["assistant-2"]?.map(\.text), ["Work through the second question."])
 
-        // A keystroke-only ChatView pass reads the groups again; it must get the stored buffer back.
         XCTAssertTrue(sharesStorage(groups, viewModel.displayedReasoningGroups))
 
         let didStart = await viewModel.sendMessage("Third question")
@@ -3902,9 +3815,6 @@ final class ChatViewModelSendTests: XCTestCase {
         }
         defer { releaseSessionResponse.signal() }
 
-        // While the network reload is still in flight, the cached transcript is
-        // already on screen (no skeleton, since messages is non-empty) and the
-        // offline indicator stays off because this is the success-expected window.
         await fulfillment(of: [sessionRequestStarted], timeout: 2)
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question", "Cached answer"])
         XCTAssertTrue(viewModel.isLoading)
@@ -3913,7 +3823,6 @@ final class ChatViewModelSendTests: XCTestCase {
         releaseSessionResponse.signal()
         await loadTask.value
 
-        // After the reload completes it reconciles in place to the fresh server content.
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh question", "Fresh answer"])
         XCTAssertFalse(viewModel.isViewingCachedData)
         XCTAssertNil(viewModel.errorMessage)
@@ -3947,13 +3856,11 @@ final class ChatViewModelSendTests: XCTestCase {
 
         viewModel.prepareInitialMessageLoad(modelContext: context)
 
-        // The request goes out during the push transition while the cache paints.
         await fulfillment(of: [sessionRequestStarted], timeout: 2)
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Cached question", "Cached answer"])
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
 
-        // A second first-pass preparation keeps the request already in flight.
         viewModel.prepareInitialMessageLoad(modelContext: context)
         releaseSessionResponse.signal()
         await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
@@ -3982,12 +3889,9 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.prepareInitialMessageLoad(modelContext: context)
         await fulfillment(of: [prefetchStarted], timeout: 2)
 
-        // Any other load (refresh, reconnect, after a mutation) must not apply a
-        // response requested before it.
         await viewModel.loadMessages(modelContext: context)
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
 
-        // Nor may the initial load, which runs later, reuse the discarded prefetch.
         await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["Fresh answer"])
         XCTAssertEqual(sessionRequests.count, 3)
@@ -4013,8 +3917,6 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.prepareInitialMessageLoad(modelContext: context)
         await fulfillment(of: [prefetchStarted], timeout: 2)
 
-        // Leaving the chat (ChatView.onDisappear) drops the in-flight prefetch, so
-        // a later initial load on the same view model asks the server again.
         viewModel.cleanupPollingTasks()
         releasePrefetch.signal()
         await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
@@ -4052,8 +3954,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         releasePrefetch.signal()
 
-        // The prefetch predates the stream, so it would read as the stream having
-        // ended; the initial load asks again instead.
         await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
 
         XCTAssertEqual(sessionRequests.count, 2)
@@ -4092,7 +3992,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertFalse(viewModel.isViewingCachedData)
 
-        // Settle the transcript request prepare sent so it cannot outlive this test.
         await viewModel.loadMessages(modelContext: context, usesInitialPrefetch: true)
     }
 
@@ -4154,8 +4053,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
         await viewModel.loadMessages(modelContext: context)
 
-        // The cache-first reconcile fired exactly once so the view can snap back to the
-        // bottom as the taller server transcript replaces the lighter cached render.
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
     }
 
@@ -4200,10 +4097,6 @@ final class ChatViewModelSendTests: XCTestCase {
         }
         defer { releaseSessionResponse.signal() }
 
-        // The reload renders the cache then suspends on /api/session. Kick off a send
-        // *without* awaiting it (its optimistic user message is appended synchronously
-        // before the network call) so the transcript is mutated while the reload is
-        // still in flight.
         await fulfillment(of: [sessionRequestStarted], timeout: 2)
         let sendTask = Task { @MainActor in
             await viewModel.sendMessage("In-flight question", modelContext: context)
@@ -4211,8 +4104,6 @@ final class ChatViewModelSendTests: XCTestCase {
         await waitUntil("the send showed") { viewModel.messages.compactMap(\.content).contains("In-flight question") }
         XCTAssertTrue(viewModel.messages.compactMap(\.content).contains("In-flight question"))
 
-        // Now let the reload fail with a non-cacheable error: the cache-first revert
-        // must NOT wipe the optimistic send made during the load window (#289, Codex P2).
         releaseSessionResponse.signal()
         await loadTask.value
         _ = await sendTask.value
@@ -4653,7 +4544,6 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndReattachesWhenStreamIsActive() async throws {
         let streamClient = SpySSEStreamingClient()
-        // A reconnect may check and reload more than once; each only has to happen.
         let statusChecked = expectation(description: "stream status checked")
         statusChecked.assertForOverFulfill = false
         let reloaded = expectation(description: "messages reloaded")
@@ -4858,8 +4748,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         streamClient.emit(.token("Partial "))
 
-        // 13s: past transportFreshInterval (12), so stale recovery polls status
-        // and finalizes the inactive run (#227).
         await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(13))
 
         XCTAssertNil(viewModel.activeStreamID)
@@ -4907,8 +4795,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         streamClient.emit(.token("Partial "))
 
-        // 13s: past transportFreshInterval (12), so stale recovery polls status
-        // and finalizes the inactive run (#227).
         await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(13))
 
         XCTAssertNil(viewModel.activeStreamID)
@@ -5050,9 +4936,6 @@ final class ChatViewModelSendTests: XCTestCase {
 
         await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(10))
 
-        // #227: 10s of quiet is still inside transportFreshInterval, so the
-        // slow-but-alive stream shows no recovery chip at all — and is
-        // certainly not force-reconnected.
         XCTAssertEqual(viewModel.activeStreamRecoveryState, .idle)
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
         XCTAssertEqual(streamClient.stopCount, 0)
@@ -5147,14 +5030,11 @@ final class ChatViewModelSendTests: XCTestCase {
 
         await viewModel.recoverStaleActiveStreamIfNeeded(now: Date().addingTimeInterval(20))
 
-        // Partial replay match keeps the replay connection armed mid-stride...
         streamClient.emit(.token("First "))
 
-        // ...then the user paginates older messages, which drops pending buffers.
         let didLoadOlder = await viewModel.loadOlderMessages()
         XCTAssertTrue(didLoadOlder)
 
-        // Replay continues: the duplicate must still dedup, the new token must append.
         streamClient.emit(.token("middle "))
         streamClient.emit(.token("last."))
 
@@ -6212,16 +6092,12 @@ final class ChatViewModelSendTests: XCTestCase {
             providerID: "openai"
         ))
 
-        // The gating query is scoped to the newly selected model, never stale
-        // session state (upstream #3750 class of bug).
         XCTAssertEqual(reasoningQueries.count, 1)
         XCTAssertEqual(reasoningQueries[0]["model"], limitedModel)
         XCTAssertEqual(reasoningQueries[0]["provider"], "openai")
         XCTAssertEqual(viewModel.supportedReasoningEfforts, ["low", "medium", "high"])
         XCTAssertEqual(viewModel.supportsReasoningEffort, true)
         XCTAssertTrue(viewModel.showsReasoningEffortControl)
-        // "xhigh" is not supported by the new model: snap to the server's
-        // coerced reasoning_effort.
         XCTAssertEqual(viewModel.selectedReasoningEffort, "high")
     }
 
@@ -6252,10 +6128,6 @@ final class ChatViewModelSendTests: XCTestCase {
 
     @MainActor
     func testEffortGatingRefreshFailureResetsStaleGatingToFallback() async throws {
-        // First switch lands restrictive gating (no effort support); the second
-        // switch succeeds but its gating refresh fails. The stale "hidden"
-        // gating from the first model must not stick to the new model — it
-        // resets to the unknown fallback (static list, control shown).
         var reasoningCalls = 0
         var sessionModel = "gpt-5.4"
         let viewModel = try makeViewModel(
@@ -6308,8 +6180,6 @@ final class ChatViewModelSendTests: XCTestCase {
             providerID: "openai"
         ))
 
-        // The model change still succeeds; the failed refresh drops the stale
-        // gating instead of applying it to the new model.
         XCTAssertTrue(didSelect)
         XCTAssertEqual(viewModel.selectedModelID, "flaky-model")
         XCTAssertNil(viewModel.supportedReasoningEfforts)
@@ -6565,7 +6435,6 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndFinishesWhenStreamIsInactive() async throws {
         let streamClient = SpySSEStreamingClient()
-        // A reconnect may check and reload more than once; each only has to happen.
         let statusChecked = expectation(description: "stream status checked")
         statusChecked.assertForOverFulfill = false
         let reloaded = expectation(description: "messages reloaded")
@@ -6615,9 +6484,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(streamClient.stopCount, 2)
     }
 
-    /// #406 fallback ordering: an older server omits `pending_started_at`, so the
-    /// run clock falls back to the latest user turn rather than the moment this
-    /// session was opened.
     @MainActor
     func testLoadMessagesWithoutPendingStartedAtSeedsRunStartFromLatestUserMessage() async throws {
         let viewModel = try makeViewModel { request in
@@ -6971,9 +6837,6 @@ final class ChatViewModelSendTests: XCTestCase {
 
         await viewModel.loadMessages()
         let didStart = await viewModel.sendMessage("Newest question")
-        // `.done` widens the window all the way back to the session start
-        // (offset 0). The rows already on screen must keep their positional
-        // renderIDs, so the current offset wins and the widened head is trimmed.
         let completedSession = try makeSessionDetail("""
         {
           "session_id": "session-abc",
@@ -7026,8 +6889,6 @@ final class ChatViewModelSendTests: XCTestCase {
 
         await viewModel.loadMessages()
         let didStart = await viewModel.sendMessage("Newest question")
-        // `.done` without `_messages_offset` used to resolve to offset 0 and
-        // renumber every on-screen row. The overlap trim must keep offset 2.
         let completedSession = try makeSessionDetail("""
         {
           "session_id": "session-abc",
@@ -7078,8 +6939,6 @@ final class ChatViewModelSendTests: XCTestCase {
                 """, for: request)
             }
 
-            // Truncation/compaction rewrote history: no overlap with the
-            // on-screen window, so the reload must fully replace it.
             return apiTestJSONResponse("""
             {
               "session": {
@@ -7128,9 +6987,6 @@ final class ChatViewModelSendTests: XCTestCase {
                 """, for: request)
             }
 
-            // A rewrite retained the first on-screen message but moved it to a
-            // different absolute index. Preserving offset 2 would make both row
-            // identity and destructive action keep-counts incorrect.
             return apiTestJSONResponse("""
             {
               "session": {
@@ -7181,9 +7037,6 @@ final class ChatViewModelSendTests: XCTestCase {
                 """, for: request)
             }
 
-            // The first and third messages intentionally share ChatMessage's
-            // fallback ID. The offset delta identifies index 2 as the real
-            // overlap; firstIndex would incorrectly choose index 0.
             return apiTestJSONResponse("""
             {
               "session": {
@@ -7447,7 +7300,6 @@ final class ChatViewModelSendTests: XCTestCase {
                 {"session": {"session_id": "parent-1", "title": "Design review"}}
                 """, for: request)
             case "other-profile-parent":
-                // Upstream answers a session owned by another profile with 409.
                 return apiTestJSONResponse("""
                 {"error": "Session belongs to a different profile", "code": "session_profile_mismatch", "session_id": "other-profile-parent", "profile": "work"}
                 """, for: request, status: 409)
@@ -7864,11 +7716,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(viewModel.steeringConfirmationNotice)
     }
 
-    // MARK: - Refused steers (#856)
-
-    // Every test below leaves `/api/chat/cancel` to the mock's default branch,
-    // which fails the test: a steer, refused or not, never stops the run.
-
     @MainActor
     func testRefusedSteerKeepsRunDraftAndAttachments() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -7968,7 +7815,6 @@ final class ChatViewModelSendTests: XCTestCase {
         streamClient.emit(.streamEnd)
         await fulfillment(of: [queuedSend], timeout: 5)
 
-        // The queued send carries the real attachment, not the steer note.
         XCTAssertEqual(
             queuedStartBody?["message"] as? String,
             "also read this\n\n[Attached files: /tmp/workspace/notes.txt]"
@@ -8023,8 +7869,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(newTurnMessage, "one more thing")
     }
 
-    /// The steer said the run ended, but the status check still sees it: the
-    /// message waits in the queue for the run's own end instead of racing it.
     @MainActor
     func testRunEndedSteerStaysQueuedWhileServerReportsActive() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8064,9 +7908,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(newTurnMessage, "one more thing")
     }
 
-    /// The server says the run ended, but its transcript has no reply yet: the
-    /// live stream still owns the ending, so the run isn't failed early and the
-    /// message waits for the stream's own finish.
     @MainActor
     func testRunEndedSteerWithoutReplyWaitsForTheLiveStream() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8117,9 +7958,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(newTurnMessage, "one more thing")
     }
 
-    /// A file staged while a server-queued steer is in flight isn't part of
-    /// that message: it stays in the composer, and the queued send carries
-    /// only the file that was staged when the user tapped Send.
     @MainActor
     func testServerQueuedSteerLeavesFilesStagedDuringTheRequest() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8190,9 +8028,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(attachments?.compactMap { $0["path"] as? String }, ["/tmp/workspace/notes.txt"])
     }
 
-    /// The run ends while the steer is in flight, then the server refuses it:
-    /// no "Couldn't steer" on an idle composer, and the message goes out as a
-    /// normal new turn.
     @MainActor
     func testSteerRefusedAfterRunEndsSendsAsNewMessage() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8243,8 +8078,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(newTurnMessage, "one more thing")
     }
 
-    /// A steer that fails on the network after the run ended is a failed send:
-    /// the draft stays and the send error says why, with no steer Retry.
     @MainActor
     func testSteerNetworkErrorAfterRunEndsShowsSendError() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8336,19 +8169,10 @@ final class ChatViewModelSendTests: XCTestCase {
         """, for: request)
     }
 
-    /// Issue #202: a queued slash message whose send fails must not be retried in a tight loop.
-    /// This is the verify-first verdict test — it queues one message behind a live stream, makes
-    /// every drained send fail, triggers the drain, and counts how many times the send is retried.
-    /// A failure-driven retry loop shows up as more than one drained attempt; the guard makes it 1.
     @MainActor
     func testQueuedSlashMessageFailureDoesNotRetryInTightLoop() async throws {
         let streamClient = SpySSEStreamingClient()
         var startChatAttempts = 0
-        // The first /api/chat/start establishes a live stream so the next slash message queues
-        // behind it. Every drained send after that fails (no stream_id). The forced success at
-        // attempt 7 is a safety escape hatch: it guarantees even a buggy retry loop terminates
-        // (a successful send clears activeStreamID's nil guard / empties the queue), so the test
-        // can never hang regardless of whether the loop exists.
         let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
             "/api/chat/start": { request in
                 startChatAttempts += 1
@@ -8362,36 +8186,29 @@ final class ChatViewModelSendTests: XCTestCase {
             },
         ]))
 
-        // 1. Establish a live stream so the queued message has something to wait behind.
         let didStart = await viewModel.sendMessage("first message")
         XCTAssertTrue(didStart)
         XCTAssertNotNil(viewModel.activeStreamID)
 
-        // 2. Queue one slash message behind the active stream.
         let queueCommand = try XCTUnwrap(SlashCommandCatalog.command(named: "queue"))
         let queued = await viewModel.executeSlashCommand(queueCommand, args: "retry-me")
         XCTAssertEqual(queued, .executed(message: nil))
 
-        let attemptsBeforeDrain = startChatAttempts // only the establishing send so far
+        let attemptsBeforeDrain = startChatAttempts
 
-        // 3. Finishing the stream is the natural drain trigger. The drained send fails persistently.
         streamClient.emit(.streamEnd)
         XCTAssertNil(viewModel.activeStreamID)
 
-        // 4. Wait for the drained send to fail. A retry loop re-drains in the same step, so by
-        //    then it would already have taken the message out of the queue again.
         await waitUntil("the drained send failed") { viewModel.sendErrorMessage != nil }
 
         let drainedAttempts = startChatAttempts - attemptsBeforeDrain
 
-        // The guard makes a failed queued send attempt exactly once — no tight retry loop.
         XCTAssertEqual(
             drainedAttempts,
             1,
             "A failed queued send should be attempted exactly once, not retried in a loop. "
                 + "Observed \(drainedAttempts) drained attempt(s)."
         )
-        // The message remains queued for a later natural trigger instead of being dropped.
         let status = await viewModel.executeSlashCommand(try XCTUnwrap(SlashCommandCatalog.command(named: "status")))
         guard case let .executed(message) = status, let statusText = message else {
             return XCTFail("Expected /status to return an executed message, got \(status).")
@@ -8446,9 +8263,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(deletedNames, ["saved-1-notes.txt"])
     }
 
-    /// Leaving a chat mid-run hands its queue to the draft (#857): every queued
-    /// message comes back in order with its files, and the run's end sends
-    /// nothing.
     @MainActor
     func testLeavingChatHandsOverQueuedMessagesInOrder() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8471,7 +8285,6 @@ final class ChatViewModelSendTests: XCTestCase {
         let first = await viewModel.submitStreamingMessage("first", behavior: .queue)
         await viewModel.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
         let second = await viewModel.submitStreamingMessage("second", behavior: .queue)
-        // The receipt comes from the queue, not from a pinned line per message.
         XCTAssertEqual(first, .executed(message: nil))
         XCTAssertEqual(second, .executed(message: nil))
         XCTAssertEqual(viewModel.queuedMessagesReceipt, "Queued, sends when this run finishes")
@@ -8483,8 +8296,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.takeQueuedMessages().isEmpty)
         XCTAssertNil(viewModel.queuedMessagesReceipt)
 
-        // ChatView parks the hand-over into the chat's draft, where the file
-        // keeps the durable copy that restores it on reopen.
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
         let key = ChatDraftKey(serverID: "https://example.com", context: .session("session-abc"))
         drafts.setDraft("typed", for: key)
@@ -8499,9 +8310,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(chatStartCount, 1)
     }
 
-    /// The chat a user returns to must not claim anything is queued once its
-    /// queue was handed over: no receipt, and no interrupt fallback line saying
-    /// the message was queued, even though the stream snapshot restores (#857).
     @MainActor
     func testReturningToChatDoesNotRestoreQueueReceipt() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8513,7 +8321,6 @@ final class ChatViewModelSendTests: XCTestCase {
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
         streamClient.emit(.token("Partial answer."), lastEventID: "stream-123:3")
-        // ChatView pins the line a mid-run queue or interrupt returns.
         for (message, behavior) in [("queued", StreamingSendBehavior.queue), ("interrupting", .interrupt)] {
             let result = await viewModel.submitStreamingMessage(message, behavior: behavior)
             if case .executed(let notice?) = result {
@@ -8543,15 +8350,11 @@ final class ChatViewModelSendTests: XCTestCase {
         await reopened.loadMessages()
         await reopened.reconnectStreamIfNeeded()
 
-        // The snapshot did restore: the live answer is back.
         XCTAssertEqual(reopened.messages.last?.content, "Partial answer.")
         XCTAssertEqual(reopened.pinnedLocalNotices, [])
         XCTAssertNil(reopened.queuedMessagesReceipt)
     }
 
-    /// An interrupt whose cancel is still in flight when the chat is covered
-    /// (Files, a fork) had its message parked into the draft, so the refused
-    /// cancel must not report that message as queued (#857).
     @MainActor
     func testInterruptParkedWhileCancelIsInFlightReportsNoQueue() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8581,9 +8384,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(viewModel.queuedMessagesReceipt)
     }
 
-    /// A chat covered by Files while the run's first queued message is sending
-    /// parks the rest into its composer. The drained send finishing must not
-    /// swap the parked files back out of the composer (#857).
     @MainActor
     func testQueueParkedDuringADrainedSendKeepsItsFilesInTheComposer() async throws {
         let streamClient = SpySSEStreamingClient()
@@ -8626,13 +8426,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.pendingAttachments.map(\.path), ["/tmp/workspace/notes.txt"])
     }
 
-    /// Lets a `Task { @MainActor … }` that a delegate callback already enqueued run to
-    /// completion before assertions. Same-actor tasks run FIFO, so awaiting a task enqueued
-    /// *after* the callback's drains it; the leading yields add slack. It does not wait for
-    /// work still running on another actor (such as a delay resumed on `ManualAsyncDelay`)
-    /// that will hop back to main later: observe the state change for that instead.
     @MainActor
-    /// Asserts a slash command was refused, whatever its copy says.
     private func assertUnsupported(_ result: SlashCommandExecutionResult, file: StaticString = #filePath, line: UInt = #line) {
         guard case .unsupported = result else {
             return XCTFail("Expected a refusal, got \(result)", file: file, line: line)
@@ -8644,15 +8438,6 @@ final class ChatViewModelSendTests: XCTestCase {
         await Task { @MainActor in }.value
     }
 
-    /// A `503 {"error": ...}` for `/api/tts` — the canonical "server TTS refused,
-    /// use the on-device fallback" stimulus for Listen tests (#15).
-    // MARK: - Skill slash suggestions
-
-    /// The composer asks for the skill list from `.task` modifiers that SwiftUI
-    /// cancels on an unrelated view update — the chip warm-up for a restored
-    /// draft is keyed on the draft itself, so hydrating one cancels it. The
-    /// request used to run inside the caller, so that cancellation threw it away
-    /// and left a draft's `/skill` references drawn as plain text.
     @MainActor
     func testCancellingACallerDoesNotAbortTheSkillLoad() async throws {
         let viewModel = try makeViewModel { request in
@@ -8667,8 +8452,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
     }
 
-    /// A load that fails leaves nothing behind, so the next caller retries
-    /// rather than being told the list is already loaded.
     @MainActor
     func testAFailedSkillLoadIsRetriedByTheNextCaller() async throws {
         var attempts = 0
@@ -8691,12 +8474,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 
-    // MARK: - Personality slash suggestions
-
-    /// The personality list is loaded from the same kind of `.task` modifier as
-    /// the skill list, so it needs the same protection (#387): a caller SwiftUI
-    /// cancels must not take the shared fetch down with it and leave the
-    /// personality picker permanently empty.
     @MainActor
     func testCancellingACallerDoesNotAbortThePersonalityLoad() async throws {
         let viewModel = try makeViewModel { request in
@@ -8711,8 +8488,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.personalitySuggestions, ["none", "mentor"])
     }
 
-    /// A load that fails leaves nothing behind, so the next caller retries
-    /// rather than awaiting the finished, empty-handed task.
     @MainActor
     func testAFailedPersonalityLoadIsRetriedByTheNextCaller() async throws {
         var attempts = 0
@@ -8735,10 +8510,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(attempts, 2)
     }
 
-    /// The point of the shared handle: a caller arriving mid-flight joins the
-    /// request already running instead of firing its own and returning early
-    /// with an empty list. The mock holds the response open until the second
-    /// caller has arrived, so it really does land on the in-flight branch.
     @MainActor
     func testAConcurrentCallerJoinsTheInFlightPersonalityLoad() async throws {
         let requestStarted = XCTestExpectation(description: "personality request started")
@@ -8748,8 +8519,6 @@ final class ChatViewModelSendTests: XCTestCase {
             XCTAssertEqual(request.url?.path, "/api/personalities")
             attempts += 1
             requestStarted.fulfill()
-            // Bounded so a second, unshared request fails the count assertion
-            // below instead of hanging the test.
             _ = releaseResponse.wait(timeout: .now() + 5)
             return apiTestJSONResponse(#"{"personalities": [{"name": "mentor"}]}"#, for: request)
         }
@@ -8768,8 +8537,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(attempts, 1)
     }
 
-    /// The `/` panel's lists, typed for while the chat shows its offline cache, ask the
-    /// host nothing; they load once the chat reconnects.
     @MainActor
     func testOfflineSlashListsWaitForTheReconnect() async throws {
         let context = try makeContext()
@@ -8812,9 +8579,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.skillSlashSuggestions.map(\.slashName), ["handoff"])
     }
 
-    /// Sent references become chips the moment the catalog lands, and a chip is
-    /// not the size of the `/slug` it replaces, so the transcript has to be told
-    /// it just re-laid out under the reader (#388).
     @MainActor
     func testTheFirstSkillCatalogSignalsATranscriptRelayout() async throws {
         let viewModel = try makeViewModel { request in
@@ -8831,9 +8595,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
     }
 
-    // MARK: - Workspace file references (`@path`)
-
-    /// `.` holds `a/`; `a/` holds `b.md` and `c.md`.
     private func fileListingJSON(for path: String) -> String? {
         switch path {
         case ".":
@@ -8850,7 +8611,6 @@ final class ChatViewModelSendTests: XCTestCase {
         return components?.queryItems?.first { $0.name == "path" }?.value ?? "."
     }
 
-    /// A webui chat's `@` panel lists its own session's workspace, one folder per query.
     @MainActor
     func testTheAtPanelListsTheSessionsWorkspace() async throws {
         let listed = LockedStrings()
@@ -8870,9 +8630,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.filePathSearch.matches.map(\.path), ["a/b.md", "a/c.md"])
     }
 
-    /// What the composer picked dies with the view model, so a chat re-entered
-    /// from the session list has to ask the server whether a `@word` in the
-    /// restored draft is really a file before it can draw the chip again.
     @MainActor
     func testARestoredDraftReferenceIsConfirmedAgainstTheWorkspace() async throws {
         let listed = LockedStrings()
@@ -8893,8 +8650,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 1)
     }
 
-    /// A `@word` the folder does not hold stays plain text, and the answer
-    /// sticks: it must not cost a listing on every later transcript update.
     @MainActor
     func testACandidateItsFolderDoesNotHoldIsNeverDrawnAsAChip() async throws {
         let listed = LockedStrings()
@@ -8912,8 +8667,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
     }
 
-    /// A draft typed while the chat shows its offline cache asks the host nothing; its
-    /// `@path` is confirmed once the chat reconnects.
     @MainActor
     func testAnOfflineDraftReferenceWaitsForTheReconnect() async throws {
         let context = try makeContext()
@@ -8965,9 +8718,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/c.md"))
     }
 
-    /// The confirmation lives on a task the view model owns, so a caller
-    /// cancelled by an unrelated view update cannot take the listing down with
-    /// it — and the next caller finds the answer rather than asking again.
     @MainActor
     func testACancelledCallerDoesNotCancelTheConfirmation() async throws {
         let listed = LockedStrings()
@@ -8993,8 +8743,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
-    /// A listing that failed is not an answer, so the candidate stays open and
-    /// the next pass asks again.
     @MainActor
     func testAFailedListingIsRetriedByTheNextCaller() async throws {
         let attempts = LockedStrings()
@@ -9016,8 +8764,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
-    /// The sent bubble draws from the same catalog, so a reference that only
-    /// exists in the loaded transcript has to be confirmed too.
     @MainActor
     func testASentMessageReferenceIsConfirmedAfterTheTranscriptLoads() async throws {
         let viewModel = try makeViewModel { [self] request in
@@ -9054,8 +8800,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
-    /// A path the panel just offered is a chip immediately: the listing that
-    /// produced the row is the same answer a confirmation pass would get.
     @MainActor
     func testAPickedPathIsNeverRecheckedAgainstTheServer() async throws {
         let listed = LockedStrings()
@@ -9073,9 +8817,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(listed.values.isEmpty)
     }
 
-    /// A path is only a file inside the workspace it was found in, so switching
-    /// the session's workspace has to take every confirmed chip with it —
-    /// including one accepted straight from the panel — and ask again.
     @MainActor
     func testAWorkspaceChangeDropsConfirmedFileChipsAndAsksAgain() async throws {
         let listed = LockedStrings()
@@ -9105,16 +8846,10 @@ final class ChatViewModelSendTests: XCTestCase {
 
         await viewModel.loadFileChipReferences(draft: "@a/b.md here")
 
-        // The folder is listed again rather than answered from a cache filled
-        // against the old root.
         XCTAssertEqual(listed.values, ["a", "a"])
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
-    /// A webui workspace switch is optimistic: `/api/list` still answers from the old root
-    /// until the server applies it, so an open `@` panel must not load its query again on
-    /// the switch. Only a Hermes chat's folder move, which `session.info` reports already
-    /// applied, reloads it (#1113).
     @MainActor
     func testAWebuiWorkspaceSwitchLeavesAnOpenPanelsQueryAlone() async throws {
         let viewModel = try makeViewModel { request in
@@ -9131,9 +8866,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.filePathSearch.scopeRevision, panelScope)
     }
 
-    /// A pass still listing the old workspace's folders when the workspace moves
-    /// is cancelled outright: it stops before the next folder, settles nothing,
-    /// and the candidates are asked again under the new root.
     @MainActor
     func testAWorkspaceChangeCancelsTheConfirmationPassInFlight() async throws {
         let listed = LockedStrings()
@@ -9163,13 +8895,10 @@ final class ChatViewModelSendTests: XCTestCase {
         let stale = Task { await viewModel.loadFileChipReferences(draft: draft) }
         await fulfillment(of: [listingStarted], timeout: 5)
 
-        // Moves `currentWorkspace` synchronously, before its own request goes out.
         await viewModel.selectWorkspacePath("/tmp/other")
         releaseListing.signal()
         await stale.value
 
-        // Stopped between folders: `e` was never asked for, and `a`'s listing
-        // arrived after the reset so it settled nothing.
         XCTAssertEqual(listed.values, ["a"])
         XCTAssertTrue(viewModel.fileChipPaths.isEmpty)
 
@@ -9180,8 +8909,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "e/b.md"))
     }
 
-    /// Every folder the candidates name is answered, a batch at a time, rather
-    /// than the first batch and silence for the rest.
     @MainActor
     func testEveryFolderIsAnsweredBeyondOneBatch() async throws {
         let folders = (0..<25).map { "d\($0)" }
@@ -9207,9 +8934,6 @@ final class ChatViewModelSendTests: XCTestCase {
         }
     }
 
-    /// A cache-first transcript swapped for the server's copy can rewrite a
-    /// message in the middle of the list without changing the count or the last
-    /// id, so the swap itself has to be the signal.
     @MainActor
     func testReplacingAMiddleUserMessageIsRescanned() async throws {
         let loads = LockedStrings()
@@ -9322,15 +9046,12 @@ final class ChatViewModelSendTests: XCTestCase {
             streamClient: resolvedStreamClient,
             approvalStreamClient: approvalStreamClient ?? SpySSEStreamingClient(),
             clarifyStreamClient: clarifyStreamClient ?? SpySSEStreamingClient(),
-            // Default to a spy so unit tests never drive ActivityKit, whose synchronous reads
-            // can hold the main actor for seconds and starve a test's waits.
             liveActivityManager: liveActivityManager ?? SpyChatLiveActivityManager(),
             pollingIntervals: pollingIntervals,
             steeringConfirmationDismissDelay: steeringConfirmationDismissDelay,
             streamingScrollCoalescingDelayNanoseconds: streamingScrollCoalescingDelayNanoseconds,
             renderOnDeviceSpeech: renderOnDeviceSpeech,
             listenSpeedChangeSettleDelay: listenSpeedChangeSettleDelay,
-            // Default to a spy so unit tests never drive the live shared AVAudioSession.
             listenAudioSession: listenAudioSession ?? SpyListenAudioSession(),
             listenRemoteControlCenter: listenRemoteControlCenter ?? SpyListenRemoteControlCenter(),
             listenAudioPlayerFactory: listenAudioPlayerFactory,
@@ -9410,13 +9131,10 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 }
 
-/// Listen on a Hermes Sessions reply (#1072): the host's voice from `/api/audio/speak` in
-/// the chat's Profile, else the on-device voice, silently, as on webui (#15).
 @MainActor final class ListenSynthesisTests: XCTestCase {
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
 
-    /// The last `openHermesChat`'s conversation. Its reconnects wait until `suspend()`.
     private var engine: HermesConversation?
 
     override func tearDown() {
@@ -9456,8 +9174,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(model.messageActionErrorMessage)
     }
 
-    /// A refusal, a timeout, audio the player can't decode, or a reply over the 4,000-character
-    /// ceiling: the reply is spoken on device, with the playback bar and no alert.
     func testAHermesReplyTheHostCannotVoiceIsSpokenOnDeviceSilently() async throws {
         let ogg = HermesHostFixture.Reply.json(200, .object([
             "ok": .bool(true), "data_url": .string("data:audio/ogg;base64,T2dnUw=="), "mime_type": .string("audio/ogg")
@@ -9498,8 +9214,6 @@ final class ChatViewModelSendTests: XCTestCase {
         }
     }
 
-    /// Speech is plain HTTP, so Listen still reaches the host while the chat's socket is down
-    /// and reconnecting.
     func testAHermesReplyPlaysInTheHostsVoiceWhileTheChatReconnects() async throws {
         let speech = SpyOnDeviceSpeech()
         let player = SpyListenAudioPlayer()
@@ -9523,7 +9237,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(speech.spokenStrings, [])
     }
 
-    /// Audio the host sends after the user stopped Listen never plays.
     func testStoppingWhileTheHostSpeaksPlaysNothingWhenTheAudioArrives() async throws {
         let speech = SpyOnDeviceSpeech()
         let requested = expectation(description: "speech requested")
@@ -9548,8 +9261,6 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(model.listenPlaybackPhase, .idle)
     }
 
-    /// A Hermes chat in Profile `work`, attached over a scripted host. `synthesize` stands in
-    /// for the host's speech when set.
     private func openHermesChat(speech: SpyOnDeviceSpeech,
                                 player: @escaping @MainActor (Data) throws -> any ListenAudioPlaying,
                                 synthesize: (@MainActor (String) async throws -> Data?)? = nil) async -> ChatViewModel {
@@ -9587,8 +9298,6 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 }
 
-/// A polling `sleep` whose waits are events: `slept` is fulfilled as each poll goes back to
-/// sleep, and `cancelled` as a sleeping poll is cancelled. A wait ends only when cancelled.
 private func pollClock(slept: XCTestExpectation,
                        cancelled: XCTestExpectation? = nil) -> @Sendable (UInt64) async -> Void {
     { _ in
@@ -9600,13 +9309,8 @@ private func pollClock(slept: XCTestExpectation,
     }
 }
 
-// MARK: - Fake server
-
-/// One path's reply on the fake server a `makeViewModel` handler stands in for.
 private typealias ServerRoute = (URLRequest) throws -> (HTTPURLResponse, Data)
 
-/// A `makeViewModel` handler that answers each path from `table` and fails the test on any
-/// other path. `onRequest` sees every request first, for a test that records them.
 private func routes(_ table: [String: ServerRoute], onRequest: ((URLRequest) -> Void)? = nil,
                     file: StaticString = #filePath, line: UInt = #line) -> ServerRoute {
     { request in
@@ -9620,12 +9324,10 @@ private func routes(_ table: [String: ServerRoute], onRequest: ((URLRequest) -> 
     }
 }
 
-/// A route that answers `json` with `status`.
 private func jsonReply(_ json: String, status: Int = 200) -> ServerRoute {
     { apiTestJSONResponse(json, for: $0, status: status) }
 }
 
-/// `/api/chat/start`'s reply opening `stream` on `session`, after `inspect` checks the request.
 private func chatStarted(stream: String = "stream-123", session: String = "session-abc",
                          inspect: ((URLRequest) throws -> Void)? = nil) -> ServerRoute {
     { request in
@@ -9634,8 +9336,6 @@ private func chatStarted(stream: String = "stream-123", session: String = "sessi
     }
 }
 
-/// Every request path a handler was asked for, in call order. Handlers run
-/// off the test's thread, so the record needs its own lock.
 private final class LockedStrings: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [String] = []
@@ -9696,15 +9396,11 @@ private final class SpyChatLiveActivityManager: AgentLiveActivityManaging {
     }
 }
 
-/// Shared, interleaved call log so tests can prove ordering ACROSS the audio-session
-/// spy and the speech-synthesizer spy in one timeline — not two independent logs.
 private final class ListenCallRecorder {
     private(set) var events: [String] = []
     func record(_ event: String) { events.append(event) }
 }
 
-/// Stands in for the on-device voice: records what it was asked to speak and returns
-/// `audio` as the rendered bytes. `hold` keeps a render in flight until the test releases it.
 @MainActor
 private final class SpyOnDeviceSpeech {
     static let audio = Data("on-device speech".utf8)
@@ -9783,7 +9479,6 @@ private final class SpyListenAudioPlayer: ListenAudioPlaying {
         stopCount += 1
     }
 
-    /// Simulates the wrapped `AVAudioPlayer` finishing naturally.
     func finishPlayback() {
         onFinish?()
     }

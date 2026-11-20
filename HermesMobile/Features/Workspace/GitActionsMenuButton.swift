@@ -5,14 +5,10 @@ struct GitActionsMenuButton: View {
     let isEnabled: Bool
     let fetchDisabled: Bool
     let writesDisabled: Bool
-    /// Shows the branch and its distance from upstream as a row and leaves out Fetch and Pull,
-    /// for a repository without sync (`GitWriteAvailability.hidesSync`).
     var hidesSync = false
-    /// The branch's pull request (#1391), shown first with Copy Link; nil leaves the section out.
     let pullRequest: GitPullRequest?
     let isRunningAction: Bool
     var branchesDisabled = false
-    /// Opens the branch picker; nil where the host can't list branches.
     var onBranches: (() -> Void)?
     let onTap: () -> Void
     let onOpenPullRequest: (URL) -> Void
@@ -34,7 +30,6 @@ struct GitActionsMenuButton: View {
             if let pullRequest {
                 Section {
                     Button { onOpenPullRequest(pullRequest.url) } label: {
-                        // A string, so the number never takes a grouping separator ("#1,462").
                         Label("Pull Request #\(String(pullRequest.number))", systemImage: "arrow.triangle.pull")
                         if let state = pullRequest.state {
                             Text(state.title)

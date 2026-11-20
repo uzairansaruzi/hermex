@@ -7,14 +7,12 @@ final class ToolCallGroupSummaryTests: XCTestCase {
             call("patch", args: ["path": .string("Sources/App.swift")]),
             call("patch", args: ["path": .string("Sources/App.swift")]),
             call("write_file", args: ["paths": .array([.string("Sources/App.swift"), .string("README.md")])]),
-            // The webui unwraps an MCP filesystem write's success text into plain text.
             call(
                 "mcp__filesystem__write_file",
                 preview: "Successfully wrote to /tmp/a.txt",
                 args: ["path": .string("/tmp/a.txt"), "content": .string("hello")],
                 isError: false
             ),
-            // A failure keyword inside the path is not an error.
             call(
                 "mcp__filesystem__write_file",
                 preview: "Successfully wrote to /tmp/ENOENT.md",
@@ -33,7 +31,6 @@ final class ToolCallGroupSummaryTests: XCTestCase {
             call("patch", args: ["path": .string("B.swift")], isCompleted: false),
             call("write_file", args: nil),
             call("patch", preview: #"{"success": true, "no_change": true}"#, args: ["path": .string("C.swift")]),
-            // The webui unwraps a failed edit's error into plain text.
             call("patch", preview: "Could not find match for old_string in D.swift", args: ["path": .string("D.swift")]),
             call(
                 "patch",

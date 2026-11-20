@@ -1,8 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Parsing the host's blocking-request payloads. Everything here is pure, so it
-/// pins the wire contract without a socket.
 @MainActor final class BotPendingRequestParsingTests: XCTestCase {
     func testApprovalKeepsTheHostsOwnChoiceSet() {
         let request = BotApprovalRequest(BotFixtureWire.approval())
@@ -20,7 +18,6 @@ import XCTest
         XCTAssertEqual(request?.choices, [.once, .deny])
     }
 
-    /// A host old enough to omit `choices` still gets the gateway's own rules.
     func testApprovalRebuildsOmittedChoicesFromTheHostsFlags() {
         XCTAssertEqual(
             BotApprovalRequest(.object(["request_id": .string("a")]))?.choices,
@@ -36,8 +33,6 @@ import XCTest
         )
     }
 
-    /// A host that renames every choice must not have a permission invented for
-    /// it. Deny is the only thing safe to offer when none of the list parses.
     func testAnApprovalWhoseChoicesAreAllUnknownOffersOnlyDeny() {
         let request = BotApprovalRequest(.object([
             "request_id": .string("req-9"), "command": .string("rm -rf /"),
@@ -45,15 +40,12 @@ import XCTest
             "allow_permanent": .bool(true)
         ]))
         XCTAssertEqual(request?.choices, [.deny])
-        // An explicitly empty list is the host offering nothing, not an old host.
         XCTAssertEqual(
             BotApprovalRequest(.object(["request_id": .string("req-10"), "choices": .array([])]))?.choices,
             [.deny]
         )
     }
 
-    /// Only an absent `choices` is an older host. A present value that is not a list
-    /// is malformed, and nothing beyond Deny may be offered for it.
     func testAPresentButMalformedChoicesOffersOnlyDeny() {
         for malformed: BotJSON in [.null, .string("once"), .object(["once": .bool(true)]), .number(1)] {
             let request = BotApprovalRequest(.object([
@@ -69,7 +61,6 @@ import XCTest
         XCTAssertNil(BotApprovalRequest(.null))
     }
 
-    /// `pattern_keys` wins over `pattern_key`; both, and `tool_name`, are optional.
     func testApprovalReadsPatternKeysAndToolName() {
         let mixed = BotApprovalRequest(.object([
             "request_id": .string("a"), "pattern_key": .string("tirith:shortened_url"),
@@ -95,7 +86,6 @@ import XCTest
         XCTAssertNil(request?.questions.first?.wireID)
         XCTAssertEqual(request?.questions.first?.prompt, "Which mailbox first?")
         XCTAssertEqual(request?.questions.first?.choices.map(\.label), ["Primary", "Follow-ups"])
-        // The answer echoes the host's own label back; only presentation is stripped.
         XCTAssertEqual(request?.questions.first?.choices.map(\.wireLabel), ["Primary (Recommended)", "Follow-ups"])
         XCTAssertEqual(request?.questions.first?.choices.map(\.isRecommended), [true, false])
     }
@@ -154,8 +144,6 @@ import XCTest
         }
     }
 
-    /// `request.answer` is addressed by the envelope id, and a request belongs to
-    /// one session, so a frame missing either is nobody's request.
     func testARequestWithoutAnIDOrSessionIsDropped() {
         let params = BotJSON.object(["session_id": .string("runtime")])
         XCTAssertNil(BotServerRequest(.object(["method": .string("sudo"), "params": params])))
@@ -163,7 +151,6 @@ import XCTest
         XCTAssertNil(BotServerRequest(.object(["id": .string("srq-1"), "method": .string("sudo"), "params": .object([:])])))
     }
 
-    /// A sudo request carries only the redacted command; a secret's fields are read tolerantly.
     func testACredentialRequestReadsWithoutOptionalFields() {
         guard case .credential(let request)? = BotServerRequest(frame("sudo", params: ["command": .string("sudo ls")]))?.pending
         else { return XCTFail("Expected a credential request") }
@@ -182,15 +169,11 @@ import XCTest
         for (method, kind) in expected {
             XCTAssertEqual(BotServerRequest(frame(method))?.pending,
                            .desktopTask(BotDesktopTaskRequest(kind: kind, requestID: "srq-1")))
-            // A regular Hermes chat names Hermes where Bot Chat names the bot (#1141).
             XCTAssertNotEqual(kind.title(.hermes), kind.title(.bot))
             XCTAssertNotEqual(kind.detail(.hermes), kind.detail(.bot))
         }
     }
 
-    /// `mcp.setup` no longer exists at the pin, and password-vault prompts are not answered
-    /// from the phone (#1148); they and any future method still block the bot, but have no
-    /// card the phone could answer.
     func testUnknownMethodsBlockWithoutACard() {
         for method in ["mcp.setup", "vault.unlock_prompt", "vault.save_login", "vault.code", "future.prompt"] {
             let request = BotServerRequest(frame(method))
@@ -200,8 +183,6 @@ import XCTest
     }
 }
 
-/// Builders for `manage_connections` frames in the host's shapes
-/// (`tui_gateway/contracts/connectors_operation.py` at the pin).
 enum BotConnectionFixture {
     static let deadline = 1_900_000_000.0
 
@@ -238,8 +219,6 @@ enum BotConnectionFixture {
 }
 
 extension BotPendingRequestParsingTests {
-    /// Unknown values keep their row but offer nothing; a row without a name or a
-    /// repeated name is dropped; the update frame's own `from`/`to` keys are ignored.
     func testConnectionOperationReadsEveryHostShapeTolerantly() throws {
         var payload = BotConnectionFixture.operation(seq: 7, settled: false, targets: [
             BotConnectionFixture.gmail(),
@@ -270,7 +249,6 @@ extension BotPendingRequestParsingTests {
         XCTAssertNil(github.requiredEnv[0].defaultValue)
         XCTAssertEqual(github.requiredEnv[1].defaultValue, "github.com")
         XCTAssertFalse(github.requiredEnv[1].isRequired)
-        // A missing `required_env` is an install with nothing left to ask.
         XCTAssertEqual(operation.targets[3].requiredEnv, [])
 
         let future = operation.targets[4]
@@ -278,7 +256,6 @@ extension BotPendingRequestParsingTests {
         XCTAssertFalse(future.canSkip); XCTAssertFalse(future.canConnect)
         XCTAssertNil(future.linkToOpen); XCTAssertFalse(future.finishesOnTheMac)
 
-        // A known kind and state do not make an unknown action answerable.
         var teleport = BotConnectionFixture.gmail().fields!
         teleport["action"] = .string("teleport")
         let unknownAction = try XCTUnwrap(BotConnectionOperation.Target(.object(teleport)))
@@ -298,12 +275,10 @@ extension BotPendingRequestParsingTests {
         XCTAssertNil(BotConnectionOperation(.null))
     }
 
-    /// Each row offers only the moves the host allows for its kind and state.
     func testConnectionRowsOfferOnlyWhatTheHostAllows() throws {
         func row(_ json: BotJSON) throws -> BotConnectionOperation.Target {
             try XCTUnwrap(BotConnectionOperation.Target(json))
         }
-        // A managed connector opens its https sign-in while pending or started.
         let gmail = try row(BotConnectionFixture.gmail())
         XCTAssertEqual(gmail.linkToOpen, URL(string: "https://accounts.example/oauth?op=1"))
         XCTAssertFalse(gmail.canConnect)
@@ -320,7 +295,6 @@ extension BotPendingRequestParsingTests {
         app["connect_url"] = .string("hermes-desktop://connections/done")
         XCTAssertNil(try row(.object(app)).linkToOpen)
 
-        // An MCP sign-in returns to the Mac's loopback: never a phone link.
         let linear = try row(.object(["name": .string("linear"), "kind": .string("mcp"), "action": .string("authorize"),
                                       "state": .string("initiated"), "connect_url": .string("https://mcp.linear.app/a")]))
         XCTAssertNil(linear.linkToOpen)
@@ -331,7 +305,6 @@ extension BotPendingRequestParsingTests {
         oauthInstall["connect_url"] = .string("https://auth.example/authorize")
         XCTAssertTrue(try row(.object(oauthInstall)).finishesOnTheMac)
 
-        // An install connects once every required value is filled, and only with declared names.
         let github = try row(BotConnectionFixture.github())
         XCTAssertTrue(github.canConnect)
         XCTAssertFalse(github.accepts([:]))
@@ -346,9 +319,6 @@ extension BotPendingRequestParsingTests {
         XCTAssertTrue(enable.accepts([:]))
     }
 
-    /// A plain field starts at its default and Connect sends it, because the host
-    /// never fills one in: a required one is ready untouched, and only emptying it
-    /// holds Connect back.
     func testConnectionFieldsSendTheirDefaultUntouched() throws {
         let linear = try XCTUnwrap(BotConnectionOperation.Target(.object([
             "name": .string("linear"), "kind": .string("mcp"), "action": .string("install"), "state": .string("pending"),
@@ -360,7 +330,6 @@ extension BotPendingRequestParsingTests {
         XCTAssertEqual(linear.env(from: ["LINEAR_URL": " https://linear.example "]), ["LINEAR_URL": "https://linear.example"])
         XCTAssertFalse(linear.accepts(linear.env(from: ["LINEAR_URL": " "])))
 
-        // An optional default rides along too; a secret never has one.
         let github = try XCTUnwrap(BotConnectionOperation.Target(BotConnectionFixture.github()))
         XCTAssertEqual(github.env(from: ["GITHUB_TOKEN": "ghp_1"]), ["GITHUB_TOKEN": "ghp_1", "GITHUB_HOST": "github.com"])
         XCTAssertEqual(github.env(from: ["GITHUB_TOKEN": "ghp_1", "GITHUB_HOST": ""]), ["GITHUB_TOKEN": "ghp_1"])
@@ -377,7 +346,6 @@ extension BotPendingRequestParsingTests {
         XCTAssertEqual(BotConnectionOperation.Answer.continueWithout.result, .object(["settled_by": .string("continue")]))
     }
 
-    /// A frame that is not newer, or belongs to another operation, moves nothing.
     func testOnlyANewerFrameOfTheSameOperationReplacesIt() throws {
         let held = try XCTUnwrap(BotConnectionOperation(BotConnectionFixture.operation(seq: 3)))
         let older = try XCTUnwrap(BotConnectionOperation(BotConnectionFixture.operation(seq: 2, targets: [BotConnectionFixture.gmail(state: "connected")])))
@@ -391,9 +359,6 @@ extension BotPendingRequestParsingTests {
     }
 }
 
-/// The line under an approval that says what Allow session and Always allow
-/// cover (#883). Exact copy is the approved design; the scope wording follows
-/// the card's own server type, never the active server.
 @MainActor final class ApprovalScopeTests: XCTestCase {
     private static let allChoices = ["once", "session", "always", "deny"]
 
@@ -419,15 +384,11 @@ extension BotPendingRequestParsingTests {
             .scopeLine.map { String($0.characters) }
     }
 
-    /// Smart-denied prompts and room approvals offer only once and deny; with no
-    /// keys there is nothing a choice would allowlist.
     func testNoLineWithoutAllowSessionOrWithoutKeys() {
         XCTAssertNil(botLine(keys: ["recursive delete"], description: "recursive delete", choices: ["once", "deny"]))
         XCTAssertNil(botLine(keys: [], description: "recursive delete"))
     }
 
-    /// An MCP trust prompt offers all four choices, but each one is a single
-    /// accept that saves nothing, so there is no scope to name.
     func testNoLineForAOneTimeConfirmationEvenWithEveryChoice() {
         XCTAssertNil(botLine(keys: ["mcp_elicitation"],
                              description: "Server 'notes' is configured 'trust: untrusted'. Approve to run 'append' once, or deny to block it.",
@@ -435,8 +396,6 @@ extension BotPendingRequestParsingTests {
         XCTAssertNil(sessionsText(keys: ["protected_instruction_file"], description: "Write to AGENTS.md"))
     }
 
-    /// The tool comes from the default `<tool>:<sha12>` rule key, else `tool_name`,
-    /// else the command's `<tool>`; the raw `plugin_rule:` key never shows.
     func testAPluginRuleNamesItsToolInMonospaceAndNeverTheKey() throws {
         let line = try XCTUnwrap(botLine(keys: ["plugin_rule:send_email:3f9a1c2b7d4e"],
                                          description: "Sends email from your account",
@@ -457,8 +416,6 @@ extension BotPendingRequestParsingTests {
         )
     }
 
-    /// Hermes downgrades Always to the session for a Tirith finding
-    /// (`_persist_choice`), so Always names only the shell pattern.
     func testAMixedPromptOnHermesKeepsTheFindingToThisChat() {
         XCTAssertEqual(
             botText(keys: ["tirith:shortened_url", "recursive delete"],
@@ -468,7 +425,6 @@ extension BotPendingRequestParsingTests {
         )
     }
 
-    /// webui makes every key permanent, a Tirith finding included.
     func testSessionsNameThisSessionAndThisServerWithoutTheDowngrade() {
         XCTAssertEqual(
             sessionsText(keys: ["recursive delete"], description: "recursive delete"),
@@ -483,11 +439,7 @@ extension BotPendingRequestParsingTests {
     }
 }
 
-// MARK: withdrawn requests (#892)
-
 extension BotPendingRequestParsingTests {
-    /// Every family and reason says something. An answer given elsewhere, a cancel
-    /// that gives no reason, and the renderer's own tasks stay silent.
     func testAWithdrawalSpeaksForEveryFamilyAndReasonExceptAnAnswerOrTheRenderersOwnTasks() {
         let table: [(method: String, reason: String?, speaks: Bool)] = [
             ("approval", "timeout", true), ("approval", "interrupted", true), ("approval", "session_closed", true),

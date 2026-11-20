@@ -17,7 +17,6 @@ final class SourceHighlighterTests: XCTestCase {
         let text = NSMutableAttributedString(string: "ab\ncde\n\nf")
         let red = UIColor.red
         let blue = UIColor.blue
-        // "b\ncd" spans the first newline; "f" is on the last line with no newline after it.
         text.addAttribute(.foregroundColor, value: red, range: NSRange(location: 1, length: 4))
         text.addAttribute(.foregroundColor, value: blue, range: NSRange(location: 8, length: 1))
 

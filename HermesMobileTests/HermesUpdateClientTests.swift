@@ -1,9 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// Updating a Hermes host from Settings (#1075): `HermesUpdateClient`'s routes against a scripted
-/// host, in the shapes `scripts/local-hermes` answered at the pin (0.21.5, ca678285) and the live
-/// host's check, and `HermesUpdateModel` following one update through the dashboard's restart.
 @MainActor final class HermesUpdateClientTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
 
@@ -41,8 +38,6 @@ import XCTest
         XCTAssertEqual(checks.map(\.httpMethod), ["GET", "GET"])
     }
 
-    /// A build newer than its release channel (`check_hermes_update` at `bf0203a7`) isn't offered
-    /// an update: a rollback is `update_available` with `rollback_to`, and a hold is `behind: 0`.
     func testABuildNewerThanItsReleaseIsNeitherUpdatableNorCurrent() async throws {
         var reply = #"{"install_method": "git", "behind": -1, "update_available": true, "can_apply": true, "rollback_to": "0.22.4", "source_version": "0.22.4", "message": "This build is newer than stable release v0.22.4. Updating moves it back to that release."}"#
         let client = client { request in request.url?.path == "/api/hermes/update/check" ? .json(200, Self.json(reply)) : nil }
@@ -168,7 +163,6 @@ import XCTest
                 case 3: return .fail(URLError(.networkConnectionLost))
                 case 4: return .json(502, .string("Bad Gateway"))
                 default:
-                    // The restarted dashboard no longer tracks the process; the receipt is this run's.
                     return .json(200, Self.json(#"{"running": false, "exit_code": 0, "pid": null, "lines": [], "receipt": {"outcome": "success", "started_at": "2026-10-06T18:00:00+00:00", "post_version": "0.22.0"}}"#))
                 }
             case "/api/health":
@@ -209,7 +203,6 @@ import XCTest
         let http = connection { request in
             switch request.url?.path {
             case "/api/hermes/update":
-                // The host started the update, but its reply never arrived.
                 applied = true
                 return .fail(URLError(.networkConnectionLost))
             case "/api/actions/hermes-update/status":

@@ -1,6 +1,5 @@
 import Foundation
 
-/// A key the screen understands, as an X keysym: what RFB's KeyEvent carries whatever the host is.
 struct ScreenKey: Hashable, Sendable {
     let keysym: UInt32
 
@@ -24,8 +23,6 @@ struct ScreenKey: Hashable, Sendable {
 
     static func function(_ number: Int) -> ScreenKey { ScreenKey(keysym: 0xFFBE + UInt32(number) - 1) }
 
-    /// One typed scalar: Latin-1 as itself, anything else in the Unicode keysym range. Line
-    /// breaks and tabs are the keys that make them. A control character has no key: nil.
     init?(typing scalar: Unicode.Scalar) {
         switch scalar.value {
         case 0x0A, 0x0D: self = .enter
@@ -39,9 +36,7 @@ struct ScreenKey: Hashable, Sendable {
     init(keysym: UInt32) { self.keysym = keysym }
 }
 
-/// RFB's input messages, in the bytes the server's filter frames.
 extension RFBMessage {
-    /// The bit each button has in a PointerEvent's mask.
     enum Button {
         static let left: UInt8 = 1
         static let right: UInt8 = 1 << 2
@@ -59,9 +54,6 @@ extension RFBMessage {
     }
 }
 
-/// Input waiting for the socket, in order. A pointer move replaces a move still waiting with the
-/// same buttons, and whatever piled up during a send goes out as one frame, so a fast finger on a
-/// slow link falls behind by one position rather than by a queue. Keys and clicks are never dropped.
 struct ScreenInputQueue {
     private enum Item {
         case pointer(x: Int, y: Int, buttons: UInt8)
@@ -77,7 +69,6 @@ struct ScreenInputQueue {
         items.append(.pointer(x: x, y: y, buttons: buttons))
     }
 
-    /// A click or key, which must keep its place after the moves before it.
     mutating func append(_ message: Data) {
         items.append(.other(message))
     }
@@ -93,8 +84,6 @@ struct ScreenInputQueue {
     }
 }
 
-/// What a picture point means on the screen: `point` in a view `viewSize` big showing all of a
-/// `width` by `height` framebuffer, as a framebuffer pixel, kept on the picture.
 func screenPixel(at point: CGPoint, in viewSize: CGSize, width: Int, height: Int) -> (x: Int, y: Int)? {
     guard viewSize.width > 0, viewSize.height > 0, width > 0, height > 0 else { return nil }
     let x = Int(point.x / viewSize.width * CGFloat(width))

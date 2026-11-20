@@ -1,26 +1,17 @@
 import Foundation
 
-/// What a tool group's hidden rows did, for the collapsed toggle: up to two
-/// leading kinds of work plus a count of every other hidden call, and how many
-/// hidden calls failed. Structured so tests assert meaning; `sentence` and
-/// `accessibilityLabel(title:)` turn it into localized copy.
 struct ToolCallGroupSummary: Equatable {
     enum Part: Equatable {
-        /// Distinct paths across successful writes that named them and landed.
         case changedFiles(Int)
         case commands(Int)
         case delegatedTasks(Int)
         case searches(Int)
-        /// Distinct paths, when every read succeeded and named one.
         case readFiles(Int)
         case readActions(Int)
         case webPages(Int)
     }
 
-    /// At most two, in priority order: write, shell, delegate, search, read, web.
     let parts: [Part]
-    /// Hidden calls no part describes: lower-priority kinds, other tools, and
-    /// writes that failed, changed nothing, never finished, or named no path.
     let otherActionCount: Int
     let failedCount: Int
 
@@ -44,7 +35,6 @@ struct ToolCallGroupSummary: Equatable {
 
             switch ToolCallSummaryFormatter.kind(forToolNamed: entry.toolCall.name) {
             case .write:
-                // Only a finished, successful write whose result shows it landed changed anything.
                 let landed = status == .success && !ToolCallDiff.resultReportsNoChange(for: entry.toolCall)
                 let paths = landed ? ToolCallSummaryFormatter.changedPaths(args: args) : []
                 if paths.isEmpty {
@@ -64,8 +54,6 @@ struct ToolCallGroupSummary: Equatable {
             case .delegate: delegatedTasks += 1
             case .search: searches += 1
             case .web:
-                // The row says "Checked" for every web tool, but web_search
-                // fetched no page, so the summary counts it as a search.
                 if (entry.toolCall.name ?? "").lowercased().contains("search") {
                     searches += 1
                 } else {
@@ -75,8 +63,6 @@ struct ToolCallGroupSummary: Equatable {
             }
         }
 
-        // Each candidate pairs its part with the calls it stands for, so the
-        // calls behind an omitted part still land in `otherActionCount`.
         let candidates: [(part: Part, calls: Int)] = [
             (.changedFiles(changedPaths.count), writeCalls),
             (.commands(commands), commands),
@@ -91,20 +77,16 @@ struct ToolCallGroupSummary: Equatable {
         failedCount = failed
     }
 
-    /// "Changed 2 files and ran 4 commands", or `nil` when no part names the
-    /// work and the caller keeps its plain count.
     var sentence: String? {
         guard !parts.isEmpty else { return nil }
         var phrases = parts.map(\.phrase)
         if otherActionCount > 0 {
             phrases.append(String(localized: "\(otherActionCount) other actions"))
         }
-        // Only the first grapheme is cased, so names and later words keep theirs.
         let list = phrases.formatted(.list(type: .and))
         return String(list.prefix(1)).localizedUppercase + list.dropFirst()
     }
 
-    /// `title` plus the hidden failure count VoiceOver reads after it.
     func accessibilityLabel(title: String) -> String {
         guard failedCount > 0 else { return title }
         return "\(title), \(String(localized: "\(failedCount) failed"))"
@@ -112,7 +94,6 @@ struct ToolCallGroupSummary: Equatable {
 }
 
 private extension ToolCallGroupSummary.Part {
-    /// The lowercase list item; `sentence` cases the first one.
     var phrase: String {
         switch self {
         case .changedFiles(let count): String(localized: "changed \(count) files")

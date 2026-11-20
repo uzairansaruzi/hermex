@@ -1,14 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// A Hermes session's `/btw` card, docked above the composer in the clarification's slot
-/// (#1013, design pick B). It shows the question, then a static waiting line, then the
-/// answer, or that the answer is unavailable. Past the clarification card's body cap, its
-/// body scrolls; Expand opens it full screen, and Close ends it. Its measured height is the
-/// slot's footprint, so the live tail streams above it.
 struct HermesBtwCard: View {
     let btw: HermesBtw
-    /// Height between the chat's top safe edge and the slot's bottom edge.
     let maximumExpandedHeight: CGFloat
     let onExpand: () -> Void
     let onClose: () -> Void
@@ -44,15 +38,11 @@ struct HermesBtwCard: View {
         .modifier(HermesBtwAnnouncement(state: btw.state))
     }
 
-    /// The clarification card's body cap, and never so tall that no transcript shows above
-    /// the card: it takes layout space, unlike the clarification card, which overlays.
     private var maximumBodyHeight: CGFloat {
         max(44, min(ClarificationRequestHeightPolicy.bodyHeightCap, maximumExpandedHeight - headerHeight - 28 - 44))
     }
 }
 
-/// The `/btw` card collapsed to one line while a host request takes the slot (#1013): the
-/// request card covers it when expanded. Expand opens the answer full screen.
 struct HermesBtwBar: View {
     let btw: HermesBtw
     let onExpand: () -> Void
@@ -90,13 +80,9 @@ struct HermesBtwBar: View {
     }
 }
 
-/// The `/btw` answer full screen (#1013, expand pick 1): Collapse returns to the card, Close
-/// ends the question. The chat is hidden, so a running turn shows as a static pill, which
-/// says when the turn waits on the user. On iPad the answer keeps a readable column.
 struct HermesBtwFullScreen: View {
     let btw: HermesBtw
     let sessionTitle: String
-    /// The hidden chat's run, as its own run-status pill names it; nil when idle.
     let runStatus: ChatActiveRunStatusKind?
     let onCollapse: () -> Void
     let onClose: () -> Void
@@ -125,7 +111,6 @@ struct HermesBtwFullScreen: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        // The command's name, as the card's label reads it.
                         Text(verbatim: "BTW")
                             .font(AppFont.headline())
                             .accessibilityLabel("Side question")
@@ -151,7 +136,6 @@ struct HermesBtwFullScreen: View {
     }
 }
 
-/// The card's header: what it is, Expand, and Close.
 private struct HermesBtwHeader: View {
     let onExpand: () -> Void
     let onClose: () -> Void
@@ -176,7 +160,6 @@ private struct HermesBtwHeader: View {
     }
 }
 
-/// The command's name, which stays as typed in every language.
 private struct HermesBtwLabel: View {
     var body: some View {
         Label { Text(verbatim: "BTW") } icon: { Image(systemName: "text.bubble") }
@@ -204,8 +187,6 @@ private struct HermesBtwCloseButton: View {
     }
 }
 
-/// The answer as the card and the full screen show it: a static waiting line (nothing
-/// repaints), the answer, or why it is unavailable.
 private struct HermesBtwAnswer: View {
     let state: HermesBtw.State
     let isFullScreen: Bool
@@ -254,7 +235,6 @@ private struct HermesBtwAnswer: View {
     }
 }
 
-/// The run going on behind the full-screen answer. Static: no timer, nothing repaints.
 private struct HermesBtwRunPill: View {
     let status: ChatActiveRunStatusKind
 
@@ -277,7 +257,6 @@ private struct HermesBtwRunPill: View {
     }
 }
 
-/// Tells VoiceOver when the answer arrives or is lost; waiting stays silent.
 private struct HermesBtwAnnouncement: ViewModifier {
     let state: HermesBtw.State
 

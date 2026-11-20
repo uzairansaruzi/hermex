@@ -1,15 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// The Hermes server card's update callout (#1075, design B): one card in the push section's
-/// callout style under the Version row, with an icon, a title, the host's message, a command to
-/// copy where the host needs one, and one action. No spinner: a dashed circle carries progress.
-/// It shows nothing until the host's check answers, so the server card drives the model's
-/// `appear()` and `leaveSettings()`; the model belongs to the server, so an update started here
-/// keeps running when Settings closes.
 @MainActor struct HermesUpdateCallout: View {
     let model: HermesUpdateModel
-    /// The release the server card shows, saved at sign-in and after an update.
     let version: String?
     @State private var isConfirmingUpdate = false
 
@@ -19,7 +12,6 @@ import UIKit
         }
         .confirmationDialog(movesBack ? "Move Hermes Back?" : "Update Hermes?", isPresented: $isConfirmingUpdate,
                             titleVisibility: .visible) {
-            // Like push's restart, the run outlives Settings once the host has been asked.
             Button(movesBack ? "Move Back" : "Update", role: .destructive) { model.apply() }
         } message: {
             Text(movesBack
@@ -28,17 +20,13 @@ import UIKit
         }
     }
 
-    /// `check` and `lookAgain` ask the host's check again; `checkAgain` follows an update that
-    /// stopped without an outcome; `update`, `moveBack` and `retry` confirm first.
     private enum Action { case check, lookAgain, update, moveBack, retry, checkAgain }
 
-    /// Whether what the host offers is an older release, so the confirmation says so.
     private var movesBack: Bool {
         guard case .answered(let check, _)? = model.check else { return false }
         return check.offer == .moveBack
     }
 
-    /// What the callout shows: the update this phone started, else the host's check.
     private struct Card {
         var symbol: String
         var tint: Color
@@ -108,7 +96,6 @@ import UIKit
             return Card(symbol: "exclamationmark.triangle.fill", tint: .orange,
                         title: String(localized: "Couldn't check for updates"), message: message, action: .lookAgain)
         case .answered(let check, let checkedAt)?:
-            // The host's own message says which release, and why, for both of these.
             let newer = String(localized: "Newer than the latest release")
             if check.offer == .held {
                 return Card(symbol: "checkmark.circle.fill", tint: Color(.appTextSecondary), title: newer, message: check.message, action: .check)
@@ -135,8 +122,6 @@ import UIKit
                             message: String(localized: "Hermes \(version ?? check.currentVersion ?? "") is current. Checked today at \(time)."),
                             action: .check)
             }
-            // An install the dashboard can't update (Docker, a package manager, a managed
-            // runtime) says how it updates, or a check that couldn't run says why.
             guard check.canApply else {
                 return Card(symbol: "arrow.up.circle", tint: Color(.appTextSecondary), title: String(localized: "Update Hermes on your host"),
                             message: check.message, command: check.hostCommand, action: .check)
@@ -146,13 +131,11 @@ import UIKit
         }
     }
 
-    /// The commit count from the check the update started from, when the host knew it.
     private var behind: Int? {
         guard case .answered(let check, _)? = model.check, let behind = check.behind, behind > 0 else { return nil }
         return behind
     }
 
-    /// The host's own advice when a manually started dashboard was stopped by the update.
     private static let dashboardCommand = "hermes dashboard"
     private static let noSummary = String(localized: "Hermes didn’t say what went wrong. Its update log on the host has the details.")
 
@@ -175,9 +158,6 @@ import UIKit
         }
     }
 
-    /// The card. With an action and nothing to copy, the whole card is the button, so it stays
-    /// a full-width target at every Dynamic Type size; with a command, Copy and the action are
-    /// buttons of their own.
     @ViewBuilder private func callout(_ card: Card) -> some View {
         let disabled = model.isWorking || model.isChecking
         let content = HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -213,7 +193,6 @@ import UIKit
         }
     }
 
-    /// The host command in monospace, selectable, with Copy.
     private func commandRow(_ command: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: command)

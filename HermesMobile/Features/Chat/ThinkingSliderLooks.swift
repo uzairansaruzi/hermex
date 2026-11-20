@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The looks a Thinking slider can wear, chosen in Settings > Appearance. A look draws on a `Canvas`
-/// every frame while on screen, so these are the one exception to the no-repainting rule: the owner
-/// chose it for this control (#1550). Reduce Motion stills them. New cases keep their raw value, which
-/// is stored on the device, and a value this build doesn't know falls back to `defaultLook`.
 enum ThinkingSliderLook: String, CaseIterable, Identifiable {
     case slipstream, dataPackets, forge, eventHorizon, synapse, oscilloscope, equalizer, aurora
     case silk, vectorDrive, pressureWave, induction, foldedLight, relay, liquidCore
@@ -13,7 +9,6 @@ enum ThinkingSliderLook: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
-    /// A proper name, like an app icon's, so it reads the same in every language.
     var name: String {
         switch self {
         case .slipstream: "Slipstream"
@@ -77,12 +72,9 @@ enum ThinkingSliderLook: String, CaseIterable, Identifiable {
 
 enum ThinkingSliderMetrics {
     static let height: CGFloat = 56
-    /// How far the thumb's center stays from each end of the track.
     static let inset: CGFloat = 24
 }
 
-/// One frame's inputs. `level` runs 0 to 1 along the track, eased toward the selection; `thumbX` is
-/// the thumb's center.
 struct ThinkingSliderFrame {
     let width: Double
     let height: Double
@@ -92,8 +84,6 @@ struct ThinkingSliderFrame {
     let thumbX: Double
 }
 
-/// A look's state between frames. A `Canvas` draws from the last frame's state, so this is a plain
-/// class outside SwiftUI's invalidation: updating it never redraws anything by itself.
 final class ThinkingSliderStore {
     struct Particle {
         var x = 0.0, y = 0.0, speed = 0.0, life = 0.0
@@ -111,8 +101,6 @@ final class ThinkingSliderStore {
     var pulses: [Pulse] = []
     var accumulator = 0.0
 
-    /// The frame at `time`, with the level eased toward `target`. Motion advances `phase` itself;
-    /// a still timeline (Reduce Motion) snaps to the target with no time passing.
     func advance(time: Double, target: Double, followsFinger: Bool, size: CGSize, isStill: Bool) -> ThinkingSliderFrame {
         let delta = isStill ? 0 : min(max(time - (lastTime ?? time), 0), 0.05)
         lastTime = time
@@ -128,7 +116,6 @@ final class ThinkingSliderStore {
     }
 }
 
-/// Small, stable random numbers: the same seed draws the same thing every frame.
 func thinkingRandom(_ seed: Double) -> Double {
     let value = sin(seed * 127.1 + 311.7) * 43758.5453
     return value - floor(value)
@@ -138,7 +125,6 @@ func thinkingLerp(_ from: Double, _ to: Double, _ amount: Double) -> Double {
     from + (to - from) * amount
 }
 
-/// Cool blue through violet and pink to hot orange.
 func thinkingHeat(_ level: Double, opacity: Double = 1) -> Color {
     let stops: [(Double, Double, Double)] = [(86, 140, 255), (168, 96, 255), (255, 92, 170), (255, 150, 70)]
     let position = min(max(level, 0), 0.999) * Double(stops.count - 1)
@@ -153,7 +139,6 @@ func thinkingHeat(_ level: Double, opacity: Double = 1) -> Color {
 }
 
 extension Color {
-    /// `0xRRGGBB`, for the looks' fixed palettes.
     init(thinkingHex hex: UInt32, opacity: Double = 1) {
         self.init(
             red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255,
@@ -168,8 +153,6 @@ extension GraphicsContext {
     }
 }
 
-/// Filling every dot or pixel with its own opacity would be hundreds of draws a frame. Grouping them
-/// into a few opacities makes it a handful, with no visible difference at this size.
 struct ThinkingOpacityBuckets {
     private(set) var paths: [Path]
 
@@ -183,10 +166,7 @@ struct ThinkingOpacityBuckets {
     func opacity(at index: Int) -> Double { (Double(index) + 0.5) / Double(paths.count) }
 }
 
-// MARK: - Particles and pixels
-
 extension ThinkingSliderLook {
-    /// Rows of dots flow left to right and stretch into streaks as they speed up.
     fileprivate static func drawSlipstream(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         store.phase += frame.delta * (6 + 300 * frame.level * frame.level)
         context.fillThinkingTrack(frame, 0x101014)
@@ -221,7 +201,6 @@ extension ThinkingSliderLook {
         }
     }
 
-    /// A pixel grid with bright packets racing through it toward the thumb.
     fileprivate static func drawDataPackets(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let step = 7.0, cell = 5.0
         let columns = Int((frame.width / step).rounded(.up)), rows = Int(frame.height / step)
@@ -280,7 +259,6 @@ extension ThinkingSliderLook {
         context.fill(thumb, with: .color(Color(thinkingHex: 0xEFEAFF)))
     }
 
-    /// A bar heats from dark iron to copper to white gold, with embers that rise faster as it heats.
     fileprivate static func drawForge(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let level = frame.level
         context.fillThinkingTrack(frame, 0x17120F)
@@ -333,7 +311,6 @@ extension ThinkingSliderLook {
         }
     }
 
-    /// Stars are pulled across the track and fall into the thumb, curving in as they accelerate.
     fileprivate static func drawEventHorizon(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let level = frame.level
         context.fillThinkingTrack(frame, 0x07080F)
@@ -390,7 +367,6 @@ extension ThinkingSliderLook {
         context.stroke(core, with: .color(.white.opacity(0.92)), lineWidth: 2)
     }
 
-    /// A small neural network: nodes fire and pulses travel between them.
     fileprivate static func drawSynapse(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let level = frame.level, count = 30
         context.fillThinkingTrack(frame, 0x0D0F14)
@@ -455,7 +431,6 @@ extension ThinkingSliderLook {
         }
     }
 
-    /// Layered waves travel left to right: flat at the bottom of the ladder, then taller and busier.
     fileprivate static func drawOscilloscope(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let level = frame.level
         store.phase += frame.delta * (0.6 + 15 * level)
@@ -482,7 +457,6 @@ extension ThinkingSliderLook {
         context.stroke(rest, with: .color(.white.opacity(0.12)), lineWidth: 1)
     }
 
-    /// Bars dance like a music visualizer and rise toward the thumb.
     fileprivate static func drawEqualizer(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let level = frame.level, bars = 42
         store.phase += frame.delta * (0.5 + 11 * level)
@@ -507,7 +481,6 @@ extension ThinkingSliderLook {
         context.fill(Path(roundedRect: rect, cornerRadius: 5), with: .color(.white))
     }
 
-    /// Soft ribbons of colored light drift through the bar.
     fileprivate static func drawAurora(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame, _ store: ThinkingSliderStore) {
         let level = frame.level
         store.phase += frame.delta * (0.15 + 5 * level)
@@ -541,7 +514,6 @@ extension ThinkingSliderLook {
         }
     }
 
-    /// The plain white thumb most looks use.
     fileprivate static func drawRoundThumb(_ context: inout GraphicsContext, _ frame: ThinkingSliderFrame) {
         let center = CGPoint(x: frame.thumbX, y: frame.height / 2)
         let shadow = Path(ellipseIn: CGRect(x: center.x - 24, y: center.y - 23, width: 48, height: 48))

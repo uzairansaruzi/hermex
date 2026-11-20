@@ -1,8 +1,5 @@
 import SwiftUI
 
-// The Hermex pages on the Settings index (#1252). Each applies on this iPhone to every server.
-
-/// How the composer sends, dictates, and which buttons it shows.
 struct SettingsComposerPage: View {
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(SessionChatPreferences.dismissKeyboardKey) private var dismissKeyboardAfterSend = false
@@ -67,7 +64,6 @@ struct SettingsComposerPage: View {
     }
 }
 
-/// How a chat's transcript shows turns and details.
 struct SettingsChatPage: View {
     @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
@@ -139,7 +135,6 @@ struct SettingsChatPage: View {
     }
 }
 
-/// Haptics and the app lock.
 struct SettingsGeneralPage: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
@@ -168,8 +163,6 @@ struct SettingsGeneralPage: View {
     }
 }
 
-/// The app lock toggle (#885), app-wide rather than per server. `AppLock` authenticates
-/// before it changes, so the switch moves only once iOS says yes.
 private struct AppLockSection: View {
     @Environment(\.scenePhase) private var scenePhase
     private let lock = AppLock.shared
@@ -181,11 +174,9 @@ private struct AppLockSection: View {
             Toggle(isOn: Binding(get: { lock.isEnabled }, set: { isOn in Task { await lock.setEnabled(isOn) } })) {
                 SettingsLabel(title: title(for: capability.method), systemImage: capability.method.systemImage)
             }
-            // Without a passcode it can still be turned off: nothing could unlock it anyway.
             .disabled(lock.isAuthenticating || (!capability.hasPasscode && !lock.isEnabled))
             .onAppear { lock.refreshCapability() }
             .onChange(of: scenePhase) { _, phase in
-                // The passcode or Face ID may have changed in iOS Settings.
                 if phase == .active { lock.refreshCapability() }
             }
         } header: {

@@ -1,10 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// `set_theme`'s `theme.apply` values as Hermex applies them (#1727).
 final class HermesThemeRequestTests: XCTestCase {
-    /// Each accent the tool may send lands on Hermex's swatch of that colour, the theme's own
-    /// accent, the hex in uppercase, or a refusal that lists what Hermex has; the answer reports it.
     func testAccentsMapToHermexsSwatches() throws {
         let cases: [(sent: String, stored: HermesThemeRequest.Change.Accent?, reported: BotJSON?)] = [
             ("green", .hex("#4CC96B"), .string("green")),

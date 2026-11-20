@@ -2,15 +2,7 @@ import Foundation
 import Security
 import XCTest
 
-/// Keeps a test run from signing the simulator's Hermex out. The tests run inside the app as
-/// their host, so a test that reaches the real Keychain, cookie jar or standard defaults changes
-/// the app's saved servers, credentials and sessions. As the bundle's principal class
-/// (`INFOPLIST_KEY_NSPrincipalClass`) it snapshots all three when the bundle starts and puts them
-/// back when it finishes, for `scripts/test-sim`, Xcode and CI alike. A run killed before it
-/// finishes leaves whatever the tests wrote. It also starts each test from the same shared
-/// state, whichever test ran before it.
 final class TestHostStateGuard: NSObject, XCTestObservation {
-    /// Nil when the Keychain could not be read, so the restore leaves it alone.
     private var keychainItems: [[String: Any]]?
     private var cookies: [HTTPCookie] = []
     private var defaults: [String: Any]?
@@ -26,8 +18,6 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
         defaults = Bundle.main.bundleIdentifier.flatMap(UserDefaults.standard.persistentDomain(forName:))
     }
 
-    /// Every test starts on an empty scripted host, since requests an earlier test or class
-    /// sent would otherwise count as this test's, and on a warm keyboard.
     func testCaseWillStart(_ testCase: XCTestCase) {
         HermesHostFixture.reset()
         MainActor.assumeIsolated { XCTestCase.warmUpSoftwareKeyboard() }
@@ -56,8 +46,6 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
         }
     }
 
-    /// Every generic password the host app can reach, in all of its access groups; nil when the
-    /// read fails, which must never pass for an empty Keychain.
     private static func genericPasswords(returningData: Bool) -> [[String: Any]]? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -74,7 +62,6 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
         }
     }
 
-    /// The attributes that name one item, for deleting it or adding it back.
     private static func identity(of item: [String: Any]) -> [String: Any] {
         var identity: [String: Any] = [kSecClass as String: kSecClassGenericPassword]
         for key in [kSecAttrService, kSecAttrAccount, kSecAttrAccessGroup, kSecAttrSynchronizable] as [CFString] {
@@ -83,8 +70,6 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
         return identity
     }
 
-    /// What an added item carries beyond its identity. Read-only attributes such as creation
-    /// dates would make `SecItemAdd` fail.
     private static let restoredAttributes = [
         kSecValueData, kSecAttrAccessible, kSecAttrLabel, kSecAttrComment, kSecAttrDescription, kSecAttrGeneric,
     ].map { $0 as String }

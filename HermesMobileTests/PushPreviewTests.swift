@@ -2,9 +2,6 @@ import UserNotifications
 import XCTest
 @testable import HermesMobile
 
-/// The sealed-preview decrypt, the banner rewrite, the tap route (#559) and foreground
-/// presentation (#566). The vector is the plugin's own
-/// `plugin/hermex_push_tests/fixtures/sealed_preview.json`.
 @MainActor final class PushPreviewTests: XCTestCase {
     private let keys = PushPreviewKeys(
         installKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -30,14 +27,11 @@ import XCTest
         blob[20] ^= 1
         XCTAssertNil(PushPreview.open(sealed: blob.base64EncodedString(), keys: keys))
 
-        // Same preview key under another install: the AAD no longer matches.
         let otherInstall = PushPreviewKeys(installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
         XCTAssertNil(PushPreview.open(sealed: sealed, keys: otherInstall))
         XCTAssertNil(PushPreview.open(sealed: "not base64", keys: keys))
     }
 
-    /// Settings' test notification seals on the phone (#874); the extension must open it
-    /// exactly as it opens the plugin's, and only with this install's keys.
     func testAPhoneSealedPreviewOpensOnlyForItsOwnInstall() throws {
         let preview = PushPreview(title: "Hermex test notification", body: "Push reached this iPhone.")
         let sealed = try XCTUnwrap(PushPreview.seal(preview, keys: keys))
@@ -78,9 +72,6 @@ import XCTest
         XCTAssertEqual(unpaired.body, "New activity")
     }
 
-    /// #887: the title names the bot and what it wants in the phone's language, built from
-    /// the cleartext `kind` and the sealed `bot_name`. The sealed English title is only for
-    /// app builds that predate `bot_name`.
     func testRewriteNamesTheBotWithTheKindsLabel() throws {
         let titles = [
             "approval": "Inbox Triage · Approval needed",
@@ -98,8 +89,6 @@ import XCTest
         }
     }
 
-    /// An older plugin seals no `bot_name`, and a kind this build has no label for keeps
-    /// the plugin's title: both banners look exactly as they did before #887.
     func testRewriteKeepsTheSealedTitleWithoutABotName() throws {
         let cases: [(kind: String?, botName: String?)] = [
             ("approval", nil), ("approval", ""), ("input", "Inbox Triage"), (nil, "Inbox Triage")
@@ -125,7 +114,6 @@ import XCTest
 
         XCTAssertEqual(route(active: server, connected: [server, lan]), server)
         XCTAssertEqual(route(active: lan, connected: [server, lan]), lan)
-        // The active alias has no Bot connection: the other one still routes.
         XCTAssertEqual(route(active: lan, connected: [server]), server)
         XCTAssertEqual(route(active: nil, connected: [server, lan]), lan)
     }
@@ -135,26 +123,19 @@ import XCTest
         let opened = banner(sealed: sealed)
         PushPreview.rewrite(opened, candidates: [keys])
 
-        // The preview never opened, so no Profile.
         XCTAssertNil(PushNotificationRouter.botDestination(userInfo: banner(sealed: nil).userInfo, pairings: pairings) { _ in UUID() })
-        // A webui session is not a bot.
         var webui = opened.userInfo
         webui["source"] = "webui"
         XCTAssertNil(PushNotificationRouter.botDestination(userInfo: webui, pairings: pairings) { _ in UUID() })
-        // The pairing was wiped, or the server has no Bot connection.
         XCTAssertNil(PushNotificationRouter.botDestination(userInfo: opened.userInfo, pairings: [:]) { _ in UUID() })
         XCTAssertNil(PushNotificationRouter.botDestination(userInfo: opened.userInfo, pairings: pairings) { _ in nil })
     }
-
-    // MARK: Hermes taps (#1177)
 
     private func account(_ url: URL, _ kind: ServerKind) -> ServerAccount {
         ServerAccount(id: url.absoluteString, urlString: url.absoluteString, displayName: "", initials: "",
                       headerLogoColorHex: "", createdAt: .now, updatedAt: .now, kind: kind)
     }
 
-    /// The link a tap queues, for a banner with `source`, the Profile the extension wrote back
-    /// (nil when the preview never opened) and `is_subagent`, paired with `server` of `kind`.
     private func tap(source: String, kind: ServerKind, profile: String?, isSubagent: Bool = false,
                      botConnection: UUID? = UUID()) -> URL? {
         var info = banner(sealed: nil).userInfo
@@ -166,9 +147,6 @@ import XCTest
             servers: [account(server, kind)], botConnectionID: { _ in botConnection })
     }
 
-    /// Every non-webui push on a Hermes server, Bot Chat or not, opens its session through the
-    /// session link with whatever Profile the preview gave, nil with previews off; a subagent's
-    /// asks for its parent. A webui server keeps its webui route and its Bot connection's bot.
     func testATapRoutesBySourceServerKindProfileAndSubagent() throws {
         for source in ["bot", "other", "future"] {
             for profile in ["inbox-triage", "", nil] as [String?] {
@@ -186,14 +164,11 @@ import XCTest
         let connection = UUID()
         XCTAssertEqual(tap(source: "bot", kind: .webui, profile: "inbox-triage", botConnection: connection),
                        HermesDeepLink.botURL(for: BotDestination(server: server, connectionID: connection, profile: "inbox-triage")))
-        // A webui server's bot needs the Profile and the Bot connection; its other pushes name nothing.
         XCTAssertNil(tap(source: "bot", kind: .webui, profile: nil))
         XCTAssertNil(tap(source: "bot", kind: .webui, profile: "inbox-triage", botConnection: nil))
         XCTAssertNil(tap(source: "other", kind: .webui, profile: "inbox-triage"))
     }
 
-    /// A Hermes server never takes the old bot route, even with a saved connection, and a banner
-    /// with no session, or from an install no configured server holds, opens nothing.
     func testAHermesTapWithoutASessionOrServerOpensNothing() {
         var info = banner(sealed: nil).userInfo
         info[PushPayload.profileKey] = "inbox-triage"
@@ -208,8 +183,6 @@ import XCTest
                                                  botConnectionID: { _ in UUID() }))
     }
 
-    /// One host under two Hermes servers (LAN and a tunnel) opens on the active one, else the
-    /// first by URL; a server the pairing doesn't name is never a candidate.
     func testAHermesTapOnOneHostUnderTwoServersStaysOnTheActiveOne() throws {
         let lan = URL(string: "http://192.168.1.2:9119")!
         let other = URL(string: "https://other.example")!
@@ -229,9 +202,6 @@ import XCTest
         XCTAssertEqual(try route(active: nil), lan)
     }
 
-    /// One host under a webui server with a Bot connection and a Hermes server: the active one
-    /// picks the route, its bot or its session link, then the rest by URL; a webui alias with no
-    /// Bot connection hands the tap to the Hermes alias.
     func testAMixedKindSharedHostRoutesByTheActiveServersKind() throws {
         let webui = URL(string: "https://webui.example")!
         let connection = UUID()
@@ -306,8 +276,6 @@ import XCTest
             userInfo: info, pairings: [server: pairing, other: unrelated], servers: servers, activeServer: other)?.server, server)
     }
 
-    /// One host under a Hermes server and a webui server: a webui push opens on the webui
-    /// server even while the Hermes alias is active, and opens nothing with no webui alias.
     func testAWebuiTapOnAMixedKindSharedHostOpensOnTheWebuiServer() {
         let webui = URL(string: "https://webui.example")!
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
@@ -326,7 +294,6 @@ import XCTest
         XCTAssertNil(route(active: server, servers: [account(server, .hermes)]))
     }
 
-    // #862: a local run alert opens its chat on its own server with no pairing at all.
     func testLocalAlertTapOpensItsChatOnItsConfiguredServer() throws {
         let other = URL(string: "https://other.example")!
         let alert = ResponseCompletionNotificationRequest(sessionID: "s1", server: server, title: "Chat", outcome: .completed)
@@ -334,14 +301,12 @@ import XCTest
 
         XCTAssertEqual(ResponseCompletionNotificationRequest.destination(userInfo: info, servers: [other, server]),
                        HermesDeepLink.webuiSessionURL(server: server, sessionID: "s1"))
-        // Its server was removed, so the tap only opens the app.
         XCTAssertNil(ResponseCompletionNotificationRequest.destination(userInfo: info, servers: [other]))
         var blank = info
         blank["session_id"] = " "
         XCTAssertNil(ResponseCompletionNotificationRequest.destination(userInfo: blank, servers: [server]))
         let noSession = ResponseCompletionNotificationRequest(sessionID: nil, server: server, title: "Chat", outcome: .failed)
         XCTAssertNil(ResponseCompletionNotificationRequest.destination(userInfo: noSession.userInfo, servers: [server]))
-        // It is never mistaken for a relay push, nor a relay push for it.
         XCTAssertNil(PushPayload(userInfo: info).installHash)
         XCTAssertEqual(PushPresence.presentation(userInfo: info, viewer: nil, pairings: [:]), [])
         var relay = banner(sealed: nil).userInfo
@@ -349,8 +314,6 @@ import XCTest
         relay["server_hash"] = info["server_hash"]
         XCTAssertNil(ResponseCompletionNotificationRequest.destination(userInfo: relay, servers: [server]))
     }
-
-    // MARK: Moved webui servers (#1217)
 
     private func moved(to destination: URL, from sources: [URL]) -> ServerAccount {
         var holder = account(destination, .hermes)
@@ -361,8 +324,6 @@ import XCTest
         return holder
     }
 
-    /// A webui push is about a run on its webui server, so it opens there while that server is
-    /// configured and paired, even after it moved to Hermes.
     func testAMovedWebuiServersPushOpensOnItWhileItIsConfigured() {
         let webui = URL(string: "https://webui.example")!
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
@@ -374,10 +335,6 @@ import XCTest
         XCTAssertEqual(link, WebuiPushDestination(server: webui, sessionID: "s1", opensOnSource: true).url)
     }
 
-    /// After a same-host move the Hermes server holds the webui server's install: once that webui
-    /// server is removed, its pushes open on the Hermes server, looked up in every Profile. Only
-    /// the pairing proves it: two such Hermes servers, one without a record, or another install
-    /// open nothing.
     func testAWebuiPushAfterItsServerWasRemovedOpensOnTheOneHermesServerHoldingItsInstall() throws {
         let webui = URL(string: "https://webui.example")!
         let studio = URL(string: "https://studio.example")!
@@ -403,8 +360,6 @@ import XCTest
                      "A cross-host move's old install is paired with nothing")
     }
 
-    /// A webui chat's local alert opens on its server while that is configured, and through the
-    /// record once it moved and was removed; a removed server that never moved opens nothing.
     func testAMovedWebuiServersLocalAlertKeepsAWayIn() throws {
         let webui = URL(string: "https://webui.example")!
         let alert = ResponseCompletionNotificationRequest(sessionID: "s1", server: webui, title: "Chat", outcome: .completed)
@@ -423,8 +378,6 @@ import XCTest
                        HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: "research", key: "tip")))
     }
 
-    /// A Hermes chat's alert names its Profile and stored key, and its tap opens the session link
-    /// (#1177), which looks the session up as a push tap does.
     func testAHermesLocalAlertTapOpensItsSessionLink() throws {
         let alert = ResponseCompletionNotificationRequest(sessionID: "tip-2", server: server, title: "Chat",
                                                           outcome: .completed, hermesProfile: "research")
@@ -448,7 +401,6 @@ import XCTest
         XCTAssertEqual(PushPresence.presentation(userInfo: reply, viewer: nil, pairings: [server: pairing]), shown)
         XCTAssertEqual(PushPresence.presentation(
             userInfo: reply, viewer: .init(server: server, sessionID: "s2"), pairings: [server: pairing]), shown)
-        // The same session ID open on another server's install is a different conversation.
         let other = URL(string: "https://other.example")!
         let unrelated = PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
         XCTAssertEqual(PushPresence.presentation(
@@ -457,18 +409,14 @@ import XCTest
         var loud = pairing
         loud.preferences = PushPreferences(presenceSuppression: false)
         XCTAssertEqual(PushPresence.presentation(userInfo: reply, viewer: open, pairings: [server: loud]), shown)
-        // Local alerts and pushes from an install this phone no longer holds keep the
-        // system default of showing nothing in the foreground.
         XCTAssertEqual(PushPresence.presentation(userInfo: [:], viewer: nil, pairings: [server: pairing]), [])
         XCTAssertEqual(PushPresence.presentation(userInfo: reply, viewer: nil, pairings: [:]), [])
     }
 
     func testPresenceOnlyClearsForTheScreenThatEntered() {
-        // An unlocked app: a locked one reports no chat on screen (AppLockTests).
         let presence = PushPresence(appLock: AppLock(defaults: UserDefaults(suiteName: "PushPreviewTests.presence")!))
         let chat = PushPresence.Viewer(server: server, sessionID: "s1")
         let (old, replacement) = (UUID(), UUID())
-        // A deep link can rebuild the same conversation before the old screen disappears.
         presence.enter(chat, owner: old)
         presence.enter(chat, owner: replacement)
         presence.leave(owner: old)
@@ -477,8 +425,6 @@ import XCTest
         XCTAssertNil(presence.viewer)
     }
 
-    /// A relay banner of `kind` whose preview is sealed from the plugin's JSON, so
-    /// `bot_name` goes through the same decode the extension runs.
     private func namedBanner(kind: String?, botName: String?) throws -> UNMutableNotificationContent {
         var json: [String: Any] = [
             "title": "Sealed title", "subtitle": "Sealed subtitle", "body": "Sealed body",
@@ -491,7 +437,6 @@ import XCTest
         return content
     }
 
-    /// A banner as the relay's `bannerPush` builds it.
     private func banner(sealed: String?) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "Hermex"

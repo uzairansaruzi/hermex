@@ -132,7 +132,6 @@ final class MemoryViewModelTests: XCTestCase {
 
     @MainActor
     func testProjectContextSectionHiddenForBlankDocumentAndDetailOmitsEmptyParts() async throws {
-        // Upstream returns "" (not null) when no readable project-context file exists.
         let client = makeClient { request in
             XCTAssertEqual(request.url?.path, "/api/memory")
 
@@ -158,15 +157,12 @@ final class MemoryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.projectContextDetail, "/Users/test/workspace")
     }
 
-    // MARK: - Hermes (#1073)
-
     @MainActor
     func testOverTheHostsLimitNothingIsSentAndTheCountSaysByHowMuch() async throws {
         let client = StubMemoryClient(limits: [.memory: 10])
         let viewModel = MemoryViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
         await viewModel.load()
 
-        // 👍🏽 is two scalars on the host: "1234567 👍🏽" is 10, and a second entry makes it 14.
         let atLimit = MemoryCharacterCount(draft: "1234567 👍🏽", limit: 10)
         let over = MemoryCharacterCount(draft: "1234567 👍🏽\n\n§\n\nx", limit: 10)
 
@@ -203,8 +199,6 @@ final class MemoryViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.conflictedSection)
     }
 
-    /// A file that turned read-only on the host while its editor was open (seen on Reload) is
-    /// not sent, so the save can't come back as a "Changed on the host" the user can't clear.
     @MainActor
     func testASectionReloadFindsReadOnlyIsNotSent() async throws {
         let client = StubMemoryClient(memory: "Prefers short PRs")
@@ -260,7 +254,6 @@ final class MemoryViewModelTests: XCTestCase {
     }
 }
 
-/// A Hermes memory client with scripted replies, recording each save.
 @MainActor
 private final class StubMemoryClient: MemoryDataClient {
     nonisolated var memoryFeatures: MemoryFeatures { .hermes }

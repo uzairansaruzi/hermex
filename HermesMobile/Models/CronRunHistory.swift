@@ -1,12 +1,5 @@
 import Foundation
 
-/// One page of a task's run history, from `GET /api/crons/history`.
-///
-/// `total` counts every run the server holds, not the rows in this page. The
-/// two differ on purpose: upstream slices `all_files[offset:offset + limit]`
-/// and then drops any entry whose `stat()` throws, so a page can return fewer
-/// rows than it consumed. Callers page by the `limit` they asked for and stop
-/// at `total`; advancing by `runs.count` silently re-reads rows it already has.
 struct CronRunHistoryResponse: Decodable, Equatable {
     let jobId: String?
     let runs: [CronRunHistoryItem]
@@ -37,40 +30,19 @@ struct CronRunHistoryResponse: Decodable, Equatable {
     }
 }
 
-/// One run: enough to render a row, and the `filename` handle the run-detail
-/// endpoint needs. A Hermes host's run (#1042) is its session, mapped onto the
-/// same row in `HermesCronClient`; a script-only run (#1342) is only its row.
 struct CronRunHistoryItem: Decodable, Equatable, Identifiable {
     var id: String { filename }
 
-    /// Unique within a job's output directory, which is what makes it a safe
-    /// list identity as well as the detail request's key. On a Hermes host,
-    /// the run's session id (`cron_<job>_<time>`), or a script-only run's
-    /// `cron_output:` id, which no route opens.
     let filename: String
-    /// Bytes on disk. `nil` when the server sent something unusable rather
-    /// than a number.
     let size: Int?
-    /// The file's mtime, which is when the run finished.
     let modified: Date?
-    /// When a Hermes host's run started; nil on webui.
     var startedAt: Date?
-    /// A Hermes host's run still in progress. A webui run is listed only once it
-    /// has finished.
     var isRunning = false
-    /// A Hermes host's script-only run (#1342), which has no session to read: its row's
-    /// preview, the start of its output or, for a run whose output is gone, its error;
-    /// "" when it has neither. Nil for every other run.
     var scriptOutput: String?
-    /// Parsed out of the run's markdown front matter, and frequently empty.
     let usage: CronRunUsage
 
-    /// When the row says the run happened: a Hermes run's start, else the
-    /// webui file's finish.
     var date: Date? { startedAt ?? modified }
 
-    /// Whether the host cut `scriptOutput` short. It collapses the output's whitespace and
-    /// cuts anything longer than 180 characters to 179, trailing space dropped, plus "…".
     var isScriptOutputCut: Bool {
         guard let scriptOutput, scriptOutput.hasSuffix("…") else { return false }
         return (179...180).contains(scriptOutput.unicodeScalars.count)
@@ -93,8 +65,6 @@ struct CronRunHistoryItem: Decodable, Equatable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
-        // A run with no filename cannot be opened, so it is dropped by
-        // `LossyCronRun` rather than rendered as a dead row.
         guard let filename = container.decodeLossyStringIfPresent(forKey: .filename),
               !filename.isEmpty
         else {
@@ -107,20 +77,12 @@ struct CronRunHistoryItem: Decodable, Equatable, Identifiable {
 
         self.filename = filename
         size = container.decodeLossyIntIfPresent(forKey: .size)
-        // `Date(timeIntervalSince1970:)` accepts NaN and infinity and then traps
-        // deep inside date formatting, so a non-finite mtime becomes no date.
         modified = container.decodeLossyDoubleIfPresent(forKey: .modified)
             .flatMap { $0.isFinite ? Date(timeIntervalSince1970: $0) : nil }
         usage = ((try? container.decodeIfPresent(CronRunUsage.self, forKey: .usage)) ?? nil) ?? CronRunUsage()
     }
 }
 
-/// The optional token, cost and timing metadata upstream scrapes out of a run's
-/// markdown front matter.
-///
-/// Every field is a decoration. The server returns `{}` for most runs, so no
-/// layout may reserve space for these — a row shows what is there and nothing
-/// where there is not.
 struct CronRunUsage: Decodable, Equatable {
     let model: String?
     let provider: String?
@@ -170,8 +132,6 @@ struct CronRunUsage: Decodable, Equatable {
     }
 }
 
-/// One run's full text, from `GET /api/crons/run` — the read that shares its
-/// path with the POST that triggers a run.
 struct CronRunDetailResponse: Decodable, Equatable {
     let jobId: String?
     let filename: String?
@@ -205,8 +165,6 @@ struct CronRunDetailResponse: Decodable, Equatable {
     }
 }
 
-/// Decodes a run without ever throwing, so one malformed entry drops out of the
-/// page instead of failing the whole request.
 private struct LossyCronRun: Decodable {
     let run: CronRunHistoryItem?
 

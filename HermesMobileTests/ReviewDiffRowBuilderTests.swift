@@ -86,9 +86,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         }
     }
 
-    // MARK: - Loader
-
-    /// Counts per-file builds of loaded diffs; placeholder rows are not counted.
     private final class BuildCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var loaded = 0
@@ -117,7 +114,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
             files: files,
             firstFile: files[7],
             maxConcurrent: 4,
-            // An interval longer than the test, so only the batch size and the last answer publish.
             coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 4),
             fetch: { results[$0.id] },
             buildRows: { counter.rows(for: $0) },
@@ -130,7 +126,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         )
 
         XCTAssertEqual(counter.loadedBuilds, files.count, "Each file parses and word-diffs once, not once per later answer.")
-        // Loading placeholders, the first answer, answers 5 and 9 (batches of four), and the last answer.
         XCTAssertEqual(published.count, 5)
         XCTAssertEqual(published.first, ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: .loading) }))
         let expected = ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: results[$0.id]!.state) })
@@ -150,7 +145,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
                 files: files,
                 firstFile: nil,
                 maxConcurrent: 3,
-                // The interval never elapses by itself; the trailing flush is what paints the second answer.
                 coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 4, sleep: { _ in }),
                 fetch: { file in
                     if file.id == "c.swift" { for await _ in gate { break } }
@@ -171,8 +165,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         await load.value
     }
 
-    /// Records flush sleeps. The first waits for the test's gate; later ones sleep for real
-    /// and end when the load cancels them.
     private final class FlushSleeps: @unchecked Sendable {
         private let lock = NSLock()
         private var delays: [Duration] = []
@@ -207,8 +199,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         let sleeps = FlushSleeps(firstGate: firstFlushGate, secondScheduled: expectation(description: "d gets its own flush"))
         var published: [[ReviewDiffRow]] = []
 
-        // One fetch at a time: a paints, b waits on flush 1, c fills the batch and paints,
-        // d must wait a fresh interval instead of riding flush 1, and e is the last answer.
         let load = Task { @MainActor in
             await ReviewDiffLoader.load(
                 files: files,
@@ -230,19 +220,14 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         XCTAssertEqual(delays.count, 2)
         XCTAssertGreaterThan(delays[1], .seconds(3599), "The interval restarts at the batch publish.")
 
-        // The stale flush 1 publishes nothing, whichever order it and e land in.
         openFirstFlush.yield()
         openFirstFlush.finish()
         openLastFile.yield()
         openLastFile.finish()
         await load.value
-        // Loading placeholders, a, the batch at c, and the last answer.
         XCTAssertEqual(published.count, 4)
     }
 
-    /// A dismissed sheet cancels its load (`GitDiffView` cancels its refresh as it leaves), and an
-    /// answer landing after that publishes no rows or patches, so it can't mark or clear the chat's
-    /// review progress.
     @MainActor
     func testACancelledLoadPublishesNothingMore() async throws {
         let files = try ["a.swift", "b.swift"].map { try file($0) }
@@ -258,7 +243,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
                 maxConcurrent: 2,
                 coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 4, sleep: { _ in }),
                 fetch: { file in
-                    // b's answer lands whether or not the load was cancelled.
                     if file.id == "b.swift" { for await _ in gate { break } }
                     return results[file.id]
                 },

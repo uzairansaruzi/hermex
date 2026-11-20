@@ -1,7 +1,6 @@
 import XCTest
 @testable import HermesMobile
 
-/// The Bot widget (#1643): where its digest-keyed tap opens, and the snapshot its picker reads.
 @MainActor final class BotWidgetTests: XCTestCase {
     private let hermes = URL(string: "https://hermes.example")!
     private let studio = URL(string: "https://studio.example")!
@@ -13,7 +12,6 @@ import XCTest
                       updatedAt: Date(timeIntervalSince1970: 0), kind: kind)
     }
 
-    /// The link a widget for `profile` on `server` sends, read back the way `ContentView` reads it.
     private func tap(_ server: URL, _ profile: String = "work") throws -> BotWidgetDestination {
         let url = try XCTUnwrap(BotWidgetDestination(serverKey: BotHistoryCache.Scope.key(server), profile: profile).url)
         XCTAssertNil(HermesDeepLink.botDestination(from: url), "Never read as a bot link")
@@ -51,8 +49,6 @@ import XCTest
         XCTAssertNil(links.botWidget)
     }
 
-    /// A sign-out deleted the server's Bot connection, so the link waits by digest and Profile and
-    /// opens the bot on the connection the next sign-in saves.
     func testASignedOutServerHoldsTheTapUntilSignInSavesANewConnection() throws {
         let servers = [account(hermes, .hermes), account(studio, .hermes)]
         var saved: UUID?
@@ -82,7 +78,6 @@ import XCTest
         XCTAssertNil(links.botWidget, "Switching away drops the held tap, so a later sign-in can't open it")
     }
 
-    /// A photo the editor replaced keeps its look revision, so its widget copy goes until rendered again.
     func testAReplacedPhotoIsRenderedAgainAtTheSameLookRevision() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }

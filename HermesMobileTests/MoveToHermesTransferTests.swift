@@ -1,15 +1,11 @@
 import XCTest
 @testable import HermesMobile
 
-/// Move to Hermes's scan and copy (#1213) against scripted hosts: the webui through
-/// `MoveWebuiFixture`, Hermes through `HermesHostFixture`. The export fixture follows the webui's
-/// redacted `Session.__dict__` at c67fd2dd and is hand-made, not captured.
 @MainActor
 final class MoveToHermesTransferTests: XCTestCase {
     private static let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("Fixtures/MoveToHermes")
     private let webuiURL = URL(string: "https://webui.example")!
-    /// The scripted Hermes host: what each Profile holds, what its listing shows, and its answers.
     private var host = FakeHermes()
 
     override func tearDown() {
@@ -18,11 +14,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: Conversion
-
-    /// The import row keeps the id, content as exported (redaction and image parts included) and
-    /// the webui's counters dated by `created_at`, and drops the title, folder, pin, system and
-    /// webui-only fields.
     func testConversionKeepsTheExportsContentAndWebuiCounters() throws {
         let export = try fixture("webui-export")
         let row = try XCTUnwrap(WebuiSessionTransfer.importRow(fromExport: export, id: "a1b2c3d4e5f6"))
@@ -31,8 +22,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertNil(WebuiSessionTransfer.importRow(fromExport: export, id: "another"), "An export of another chat is unreadable")
     }
 
-    /// A chat past 10,000 messages or 5 MB is reported, never trimmed; batches stay under 500
-    /// sessions, 50,000 messages and 25 MB.
     func testLimits() {
         func export(messages: Int, text: String = "hi") -> Data {
             let rows = Array(repeating: BotJSON.object(["role": .string("user"), "content": .string(text)]), count: messages)
@@ -54,10 +43,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertFalse(WebuiSessionTransfer.fits([big, big], destination: "default"), "26 MB")
     }
 
-    // MARK: Scan
-
-    /// Each Profile is paged until the host's `total`, past 500 rows and despite every page's pinned
-    /// back-fill, and only ids no listing showed are read, each in every Profile, by exact id.
     func testScanPagesPastFiveHundredAndReadsOnlyUnlistedIDs() async throws {
         let many = (0..<650).map { "row\($0)" }
         host.listed = ["default": many + ["pinned"], "research": []]
@@ -90,8 +75,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path.contains("pairing") == true }, "No pairing check")
     }
 
-    /// A failed read leaves an id unknown, never absent; two Profiles holding it is ambiguous. An id
-    /// one listing showed is still read in a Profile whose listing failed.
     func testFailedReadsAreUnknownAndTwoMatchesAreAmbiguous() async throws {
         host.listed = ["default": ["dup", "listed"], "research": ["dup"]]
         host.failedListings = ["triage"]
@@ -112,10 +95,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertFalse(reads.contains { $0 == ("listed", "research") })
     }
 
-    /// With CLI and Claude Code rows shown, the scan keeps only the webui's own chats, cron and
-    /// webhook runs included: external rows aren't counted, read on Hermes or treated as running.
-    /// A webui chat with a stale CLI flag stays.
-    /// Row shapes follow the webui's `get_cli_sessions` and Claude Code rows at c67fd2dd.
     func testScanSkipsCLIAndExternalAgentRows() async throws {
         host.listed = ["default": []]
         host.held = ["default": []]
@@ -138,7 +117,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(Set(HermesHostFixture.requests.compactMap { Self.rowRead($0)?.id }), ["chat", "sidecar", "cron_job_1", "hook"])
     }
 
-    /// At most four reads are in flight; cancelling leaves every unread id unknown and sends no more.
     func testScanSendsAtMostFourRequestsAtOnceAndCancelsToUnknown() async throws {
         host.listed = ["default": []]
         host.held = ["default": []]
@@ -161,9 +139,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(HermesHostFixture.requests.compactMap { Self.rowRead($0) }.count, 4, "No read starts after cancelling")
     }
 
-    // MARK: Copy
-
-    /// The copy switches each source Profile once, right before that Profile's exports.
     func testCopySwitchesEachSourceProfileBeforeItsExports() async throws {
         host.held = ["default": []]
         MoveWebuiFixture.exports = ["a": exportData("a"), "b": exportData("b")]
@@ -180,8 +155,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(steps, ["switch research", "export a", "switch ops", "export b"])
     }
 
-    /// A switch whose reply names an error or another Profile leaves that Profile's chats
-    /// unreadable, unexported, and the next Profile still copies.
     func testRefusedSwitchLeavesThatProfileUnreadable() async throws {
         host.held = ["default": []]
         MoveWebuiFixture.exports = ["a": exportData("a"), "b": exportData("b"), "c": exportData("c")]
@@ -194,8 +167,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(MoveWebuiFixture.requests.compactMap { Self.query($0, "session_id") }, ["b"])
     }
 
-    /// A rate-limited import, or one the write fence refused (#1300), wrote nothing but isn't
-    /// refused for good: it is left for replay.
     func testRateLimitedOrFencedImportIsLeftForReplay() async throws {
         host.held = ["default": []]
         host.importReplies = [.json(429, .object(["detail": .string("Too Many Requests")])),
@@ -210,9 +181,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(host.imports.count, 2)
     }
 
-    /// The copy's client has a jar of its own, seeded with the source's sign-in, so a Profile
-    /// cookie a switch sets never reaches the shared jar the app's screens use, and no screen's
-    /// switch reaches it. (URLProtocol fixtures never see cookies, so the jar is checked directly.)
     func testCopyClientKeepsItsOwnCookieJar() throws {
         let signIn = try XCTUnwrap(HTTPCookie(properties: [.name: "hermes_session", .value: "token.sig",
                                                            .domain: "webui.example", .path: "/"]))
@@ -231,8 +199,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertFalse((HTTPCookieStorage.shared.cookies(for: webuiURL) ?? []).contains { $0.name == "hermes_session" })
     }
 
-    /// A 400 wrote nothing: the chats it named are reported (an over-limit one as oversized) and
-    /// the rest are sent again, each send recorded first. A 400 naming none rejects the batch.
     func testA400DropsTheNamedChatsAndSendsTheRest() async throws {
         host.held = ["default": []]
         host.importReplies = [
@@ -260,7 +226,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(host.imports.count, 1)
     }
 
-    /// A 413 wrote nothing, so the batch is halved until a chat too large alone is oversized.
     func testA413SplitsTheBatch() async throws {
         host.held = ["default": []]
         host.tooLarge = "big"
@@ -274,7 +239,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(host.imports.map { $0.ids }, [["a", "big", "c", "d"], ["a", "big"], ["a"], ["big"], ["c", "d"]])
     }
 
-    /// The recheck finds a chat another Profile already has, and the host's skip settles a repeat.
     func testRepeatedImportSettlesAsAlreadyPresent() async throws {
         host.held = ["default": [], "research": ["elsewhere"]]
         host.skipped = ["again"]
@@ -288,8 +252,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(host.imports.map { $0.ids }, [["again", "new"]])
     }
 
-    /// An import whose reply never came is uncertain and not resent. Running it again, as the
-    /// runner replays it (#1216), settles a chat that landed and sends one that didn't.
     func testDroppedImportIsUncertainAndARerunSettlesIt() async throws {
         host.held = ["default": []]
         host.importReplies = [.fail(URLError(.networkConnectionLost))]
@@ -307,7 +269,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(host.imports.map { $0.ids }, [["landed", "lost"], ["lost"]])
     }
 
-    /// When recording a send fails, nothing is sent; cancelling first sends nothing too.
     func testNothingIsSentWithoutARecordedDispatchOrAfterCancelling() async throws {
         struct JournalFull: Error {}
         host.held = ["default": []]
@@ -327,8 +288,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(outcome, ["a": .notSent])
         XCTAssertTrue(host.imports.isEmpty)
     }
-
-    // MARK: Helpers
 
     private func fixture(_ name: String) throws -> BotJSON {
         let file = Self.fixtures.appendingPathComponent(name + ".json")
@@ -367,7 +326,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         APIClient(baseURL: webuiURL, session: URLSession(configuration: Self.webuiConfiguration()), customHeaderProvider: { [] })
     }
 
-    /// A connected client on the scripted Hermes host `host` answers.
     private func hermesClient() async throws -> BotClient {
         let record = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
                                    username: "user", password: "secret")
@@ -382,7 +340,6 @@ final class MoveToHermesTransferTests: XCTestCase {
         request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems?.first { $0.name == name }?.value
     }
 
-    /// The id and Profile of an exact row read, `GET /api/sessions/{id}?profile=`.
     private static func rowRead(_ request: URLRequest) -> (id: String, profile: String)? {
         guard let path = request.url?.path, path.hasPrefix("/api/sessions/"), path != "/api/sessions/import",
               let profile = query(request, "profile") else { return nil }
@@ -390,26 +347,17 @@ final class MoveToHermesTransferTests: XCTestCase {
     }
 }
 
-/// The scripted Hermes host's state and answers, read under `HermesHostFixture`'s lock.
 private final class FakeHermes: @unchecked Sendable {
-    /// Ids each Profile holds, as exact reads see them.
     var held: [String: Set<String>] = [:]
-    /// Ids each Profile's listing shows, in order; a Profile without one lists nothing.
     var listed: [String: [String]] = [:]
     var failedListings: Set<String> = []
-    /// Exact reads answered this way in every Profile.
     var failures: [String: HermesHostFixture.Reply] = [:]
-    /// An id the host resolves to a longer one it holds, by unique prefix.
     var prefixMatches: [String: String] = [:]
     var parkReads = false
-    /// Replies to the next imports, in order, ahead of the ordinary one.
     var importReplies: [HermesHostFixture.Reply] = []
-    /// A chat whose import 413s while it is in the payload.
     var tooLarge: String?
     var skipped: Set<String> = []
-    /// Ids a dropped import still wrote.
     var landsEvenWhenDropped: Set<String> = []
-    /// Every import the host received: its Profile and ids.
     var imports: [(profile: String, ids: [String])] = []
 
     func answer(_ request: URLRequest) -> HermesHostFixture.Reply? {
@@ -455,17 +403,12 @@ private final class FakeHermes: @unchecked Sendable {
     }
 }
 
-/// A scripted webui: the scan listing, Profile switches and JSON exports. Answers only
-/// `webui.example` and `studio.example`, the second webui server Move Next opens, with the
-/// same script.
 final class MoveWebuiFixture: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) static var rows: [[String: BotJSON]] = []
     nonisolated(unsafe) static var allProfiles = true
-    /// When set, the scan listing answers this status with no body.
     nonisolated(unsafe) static var listingFailure: Int?
     nonisolated(unsafe) static var exports: [String: Data] = [:]
-    /// Switch replies by Profile name, ahead of the ordinary `{"active": <name>}`.
     nonisolated(unsafe) static var switchReplies: [String: String] = [:]
     nonisolated(unsafe) private static var log: [URLRequest] = []
 

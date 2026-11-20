@@ -1,22 +1,10 @@
 import AVFoundation
 import SwiftUI
 
-/// A compact, Telegram-style inline audio player used both in the chat bubble
-/// and in the full-screen attachment preview. Bytes are fetched lazily via the
-/// injected `load` closure — the same authenticated raw-file route the image
-/// loader uses — then played with `AVAudioPlayer`. Starting one player pauses
-/// any other that's currently playing (see `AudioAttachmentPlaybackCenter`).
 struct InlineAudioPlayerView: View {
-    /// Accessibility / labelling name for the clip (typically the file name).
     let title: String
-    /// Lazily fetches the raw audio bytes; returns `nil` on failure.
     let load: () async -> Data?
-    /// When `load` can run: nil waits without loading (a detached Hermes chat), and a new key
-    /// loads again unless the clip is already ready. A key is admitted only once the player
-    /// is on screen (`loadsOnceVisible`).
     var loadKey: Int? = 0
-    /// Opens the clip's file preview from a trailing button, shown whether or not
-    /// playback works; nil hides the button.
     var onOpen: (() -> Void)? = nil
 
     @State private var model = InlineAudioPlayerModel()
@@ -139,8 +127,6 @@ struct InlineAudioPlayerView: View {
     }
 }
 
-/// Coordinates "one clip at a time": when a player starts, it asks the center
-/// to pause whichever player was previously active.
 @MainActor
 final class AudioAttachmentPlaybackCenter {
     static let shared = AudioAttachmentPlaybackCenter()
@@ -157,10 +143,6 @@ final class AudioAttachmentPlaybackCenter {
     }
 }
 
-/// Tracks whether the composer is actively capturing microphone audio for voice
-/// dictation. The inline player consults this before commandeering the shared
-/// `AVAudioSession`: switching it to `.playback` mid-capture would tear down the
-/// live recording engine and silently interrupt dictation.
 @MainActor
 final class ComposerAudioCaptureState {
     static let shared = ComposerAudioCaptureState()
@@ -169,15 +151,12 @@ final class ComposerAudioCaptureState {
 
     private init() {}
 
-    /// Every composer recording and dictation starts here, so it also tallies voice input (#1662).
     func setCapturing(_ capturing: Bool) {
         isCapturing = capturing
         if capturing { UsageReports.shared.record(.voiceInput) }
     }
 }
 
-/// Drives a single `AVAudioPlayer`: lazy load, play/pause, a 0.2s progress
-/// ticker, and scrubbing. Owned by `InlineAudioPlayerView` via `@State`.
 @MainActor
 @Observable
 final class InlineAudioPlayerModel {
@@ -194,19 +173,14 @@ final class InlineAudioPlayerModel {
     private(set) var duration: Double = 0
     private var scrubTime: Double?
 
-    /// The position shown by the scrubber/label: the dragged value while the
-    /// user is scrubbing, otherwise the live playback time.
     var displayTime: Double { scrubTime ?? currentTime }
 
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private let delegateProxy = AudioPlayerDelegateProxy()
     @ObservationIgnored private var ticker: Timer?
-    /// The key of the load that ran or is running; nil until one starts.
     @ObservationIgnored private var loadedKey: Int?
     @ObservationIgnored private var loadAttempt = 0
 
-    /// Loads once per `key`: nil waits in `.idle`, and a new key after a failure (a load
-    /// that went stale on a reattach) tries again. A ready clip never reloads.
     func loadIfNeeded(key: Int? = 0, using load: () async -> Data?) async {
         guard let key, key != loadedKey, phase != .ready else { return }
         loadedKey = key
@@ -215,13 +189,8 @@ final class InlineAudioPlayerModel {
         phase = .loading
 
         let data = await load()
-        // A newer key's load took over while this one ran.
         guard attempt == loadAttempt else { return }
 
-        // A cancelled `.task` (e.g. the row scrolled off-screen mid-load) surfaces
-        // as a `nil` result here. Don't treat that as a real failure: reset so the
-        // player can load again if the view reappears, instead of being stuck on
-        // the error state forever.
         if Task.isCancelled {
             loadedKey = nil
             phase = .idle
@@ -272,14 +241,9 @@ final class InlineAudioPlayerModel {
         player?.pause()
         isPlaying = false
         stopTicker()
-        // Release the shared session on manual pause too, so an audio app we
-        // interrupted (Spotify, Podcasts, …) is told it can resume instead of
-        // staying blocked until the view disappears. If another clip takes over,
-        // its `activateSession()` immediately reclaims the session.
         deactivateSession()
     }
 
-    /// Invoked by the playback center when another clip takes over.
     func pauseForExternalRequest() {
         pause()
     }
@@ -298,7 +262,6 @@ final class InlineAudioPlayerModel {
         }
     }
 
-    /// Stops playback and releases the run-loop ticker. Called on disappear.
     func teardown() {
         pause()
         player?.currentTime = 0
@@ -314,9 +277,6 @@ final class InlineAudioPlayerModel {
         deactivateSession()
     }
 
-    /// A file can pass the `AVAudioPlayer(data:)` initializer but still fail to
-    /// decode once playback actually starts. Surface that as a failure instead of
-    /// leaving a live-looking play button that does nothing when tapped.
     private func handleDecodeError() {
         isPlaying = false
         stopTicker()
@@ -325,10 +285,6 @@ final class InlineAudioPlayerModel {
     }
 
     private func activateSession() {
-        // If composer dictation is currently capturing the mic, leave the shared
-        // session alone: switching it to `.playback` would tear down the live
-        // recording engine. `.playAndRecord` already supports playback, so the
-        // clip still plays through the active session.
         guard !ComposerAudioCaptureState.shared.isCapturing else { return }
 
         let session = AVAudioSession.sharedInstance()
@@ -336,12 +292,6 @@ final class InlineAudioPlayerModel {
         try? session.setActive(true)
     }
 
-    /// Releases the shared session once playback ends or the view disappears, so
-    /// any audio app we interrupted on `activateSession()` is told it can resume
-    /// (`.notifyOthersOnDeactivation`). Skipped while composer dictation owns the
-    /// mic — same guard as activation. If another clip is still playing, iOS
-    /// refuses to deactivate a session with running I/O and `try?` swallows it,
-    /// so this never cuts off an active clip.
     private func deactivateSession() {
         guard !ComposerAudioCaptureState.shared.isCapturing else { return }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -349,7 +299,6 @@ final class InlineAudioPlayerModel {
 
     private func startTicker() {
         stopTicker()
-        // `.common` so the timer keeps firing while the transcript is scrolling.
         let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
@@ -372,8 +321,6 @@ final class InlineAudioPlayerModel {
     }
 }
 
-/// `AVAudioPlayerDelegate` is `@objc` and can't live on an `@Observable`
-/// `@MainActor` class, so a tiny `NSObject` proxy forwards the finish callback.
 private final class AudioPlayerDelegateProxy: NSObject, AVAudioPlayerDelegate {
     var onFinish: (() -> Void)?
     var onDecodeError: (() -> Void)?

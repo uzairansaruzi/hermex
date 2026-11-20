@@ -1,20 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Attaches the message action menu to a transcript bubble through UIKit's
-/// `UIContextMenuInteraction` instead of SwiftUI's `.contextMenu`.
-///
-/// SwiftUI lifts a snapshot of the whole bubble before it can show the menu.
-/// On a multi-screen reply that snapshot is slow and taller than the screen,
-/// so the menu lands over the undimmed transcript and then jumps as UIKit
-/// makes room. Here nothing is lifted: the transcript dims and the menu opens
-/// beside the press in one motion, whatever the reply's length (issue #208).
 extension View {
-    /// Attach to the message content itself, not the full-width row, so the
-    /// menu opens only where there is something to act on. An empty list
-    /// leaves the view untouched. Pass `longPress: false` on selectable text:
-    /// the menu's long-press outranks text selection, so there the actions
-    /// stay reachable through VoiceOver only and selection supplies Copy.
     @ViewBuilder
     func chatMessageContextMenu(_ actions: [ChatMessageActionItem], longPress: Bool = true) -> some View {
         if actions.isEmpty {
@@ -46,13 +33,6 @@ private struct ChatMessageContextMenuHost: UIViewRepresentable {
     }
 }
 
-/// A clear, touch-transparent view behind one bubble. It only marks the
-/// bubble's frame and menu for the coordinator on the transcript's scroll view.
-///
-/// The interaction cannot live here: SwiftUI's text-selection long-press on
-/// the hosting view outranks recognizers on child platform views, so a menu
-/// attached to this view never fires. On the scroll view it wins, as it does
-/// in a collection view.
 final class ChatMessageContextMenuView: UIView {
     var actions: [ChatMessageActionItem] = []
 
@@ -90,8 +70,6 @@ final class ChatMessageContextMenuView: UIView {
     }
 }
 
-/// One context-menu interaction per transcript scroll view. Rows register
-/// while on screen; a long-press resolves to the row under the touch.
 @MainActor
 final class ChatMessageContextMenuCoordinator: NSObject, UIContextMenuInteractionDelegate {
     private static let coordinators = NSMapTable<UIScrollView, ChatMessageContextMenuCoordinator>(
@@ -111,8 +89,6 @@ final class ChatMessageContextMenuCoordinator: NSObject, UIContextMenuInteractio
     private weak var scrollView: UIScrollView?
     private let rows = NSHashTable<ChatMessageContextMenuView>.weakObjects()
 
-    /// The row being presented and the press point inside it, which anchors
-    /// the menu.
     private weak var activeRow: ChatMessageContextMenuView?
     private var pressInRow: CGPoint = .zero
 
@@ -165,9 +141,6 @@ final class ChatMessageContextMenuCoordinator: NSObject, UIContextMenuInteractio
         anchorPreview()
     }
 
-    /// An invisible preview at the press point. It gives UIKit something to
-    /// anchor the menu to without lifting any of the bubble; the bubble stays
-    /// in place under the dim like the rest of the transcript.
     private func anchorPreview() -> UITargetedPreview? {
         guard let activeRow else { return nil }
         let anchor = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))

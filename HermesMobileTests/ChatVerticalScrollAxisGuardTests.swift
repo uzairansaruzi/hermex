@@ -28,8 +28,6 @@ final class ChatVerticalScrollAxisGuardTests: XCTestCase {
 
         guardView.attachToNearestScrollViewIfNeeded()
 
-        // RTL leading edge is the physical right: content trailing edge meets the
-        // viewport → contentSize.width + right inset - viewport width.
         let expected = scrollView.contentSize.width
             + scrollView.adjustedContentInset.right
             - scrollView.bounds.width
@@ -47,8 +45,6 @@ final class ChatVerticalScrollAxisGuardTests: XCTestCase {
         guardView.isRightToLeft = true
         guardView.attachToNearestScrollViewIfNeeded()
 
-        // Growing the content width changes the RTL rest offset; observing
-        // contentSize must re-clamp immediately, without a manual scroll.
         scrollView.contentSize = CGSize(width: 1_400, height: 1_200)
 
         let expected = 1_400 + scrollView.adjustedContentInset.right - scrollView.bounds.width
@@ -103,8 +99,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
     }
 
     func testHoldPutsBackAnAnchorSwiftUIReappliesOnSizeChange() {
-        // Reader parked at the exact top; a disclosure grows a row below them and
-        // SwiftUI re-applies the bottom anchor. The hold restores the top.
         let scrollView = makeScrollView()
         scrollView.contentOffset = CGPoint(x: 0, y: 0)
         let controller = ChatScrollPositionController()
@@ -118,8 +112,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
     }
 
     func testHoldClampsWhenARowBelowCollapses() {
-        // Reader at the bottom collapses a row: the content shrinks under them, so
-        // the held offset can only clamp to the new maximum.
         let scrollView = makeScrollView()
         let bottom = scrollView.contentSize.height - scrollView.bounds.height
         scrollView.contentOffset = CGPoint(x: 0, y: bottom)
@@ -161,8 +153,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
     }
 
     func testDeliberateScrollDuringHoldReleasesItInsteadOfReverting() {
-        // VoiceOver or a hardware keyboard moves the offset with no size change in
-        // the same turn: that is a real scroll, and the hold must let it stand.
         let scrollView = makeScrollView()
         scrollView.contentOffset = CGPoint(x: 0, y: 0)
         let controller = ChatScrollPositionController()
@@ -202,10 +192,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
     }
 
     func testHoldArmedDuringAnInFlightPrependInvalidatesTheCapture() {
-        // Load Older is awaiting the server when the reader toggles a row. The
-        // hold's baseline must not be mistaken for the prepend capture once the
-        // rows land, or the row's growth would be compensated as prepended
-        // content.
         let scrollView = makeScrollView()
         scrollView.contentOffset = CGPoint(x: 0, y: 240)
         let controller = ChatScrollPositionController()
@@ -288,9 +274,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
     }
 
     func testReflowRestoresAgainstTheNewFrameUntilTheReaderScrolls() {
-        // Rows report old-layout frames, the reader sits 40% into "reply", then
-        // the column widens: the first new-layout frame must capture from the old
-        // frames, and the reply's new frame must put the reader back.
         let scrollView = makeScrollView()
         let controller = ChatScrollPositionController()
         controller.attach(to: scrollView)
@@ -304,8 +287,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 300), layout: wide, isFollowing: false)
         XCTAssertEqual(scrollView.contentOffset.y, 328, accuracy: 0.001)
 
-        // VoiceOver or a keyboard scroll ends it, even in the same turn as a size
-        // change: later settling must not snap back.
         scrollView.contentSize.height += 100
         scrollView.contentOffset.y = 100
         controller.rowFrameChanged(id: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 340), layout: wide, isFollowing: false)
@@ -318,7 +299,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         let tall = CGRect(x: 0, y: 0, width: 288, height: 600)
         let taller = CGRect(x: 0, y: 0, width: 288, height: 1_000)
 
-        // Following: the bottom size-change anchor owns the position.
         let following = makeScrollView()
         following.contentOffset.y = 240
         let followController = ChatScrollPositionController()
@@ -327,7 +307,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         followController.rowFrameChanged(id: "reply", frame: taller, layout: larger, isFollowing: true)
         XCTAssertEqual(following.contentOffset.y, 240, accuracy: 0.001)
 
-        // Load Older in flight: its capture must survive the rewrap.
         let prepending = makeScrollView()
         prepending.contentOffset.y = 240
         let prependController = ChatScrollPositionController()
@@ -339,8 +318,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         XCTAssertTrue(prependController.restoreAfterPrepend())
     }
 
-    /// SwiftUI can move a reader at the exact top to the bottom as the content size changes
-    /// (#1528). A rewrap keeps them at the top, wherever the bars' insets now put it.
     func testReflowKeepsAReaderAtTheTopThroughSwiftUIMovingThem() {
         let scrollView = makeScrollView()
         scrollView.contentInset.top = 100
@@ -361,8 +338,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         XCTAssertEqual(scrollView.contentOffset.y, -50, accuracy: 0.001)
     }
 
-    /// A split view can build an extra transcript that never gets a scroll view. The reader's
-    /// place still reaches the one that stays (#1528).
     func testHandoffPassesThroughATranscriptThatNeverAttached() {
         let continuity = ChatContinuity()
         let narrow = ChatScrollPositionController.Layout(contentWidth: 288, dynamicTypeSize: .large)

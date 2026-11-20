@@ -2,15 +2,10 @@ import SwiftUI
 import XCTest
 @testable import HermesMobile
 
-/// Pins the two rules the shared picker gained when Settings > Default Model
-/// started using it: which row spins during a server save, and what the custom
-/// entry commits under each configuration.
 final class ModelPickerSheetTests: XCTestCase {
     private func option(_ id: String, provider: String?) -> ModelCatalogOption {
         ModelCatalogOption(id: id, displayName: id, providerID: provider)
     }
-
-    // MARK: In-flight row
 
     func testInFlightRowMatchesTheSavingModelAndProvider() {
         let key = ModelFavoriteKey(modelID: "gpt-5", providerID: "openai")
@@ -31,8 +26,6 @@ final class ModelPickerSheetTests: XCTestCase {
         )
     }
 
-    // MARK: Search
-
     private var codexGroup: ModelCatalogGroup {
         ModelCatalogGroup(
             id: "openai-codex",
@@ -43,8 +36,6 @@ final class ModelPickerSheetTests: XCTestCase {
     }
 
     func testSearchingAGroupsDisplayNameKeepsAllOfItsModels() {
-        // The header reads "OpenAI Codex" while the id is "openai-codex", so
-        // matching ids alone would answer "no models" to the visible name.
         let filtered = ModelPickerSheet.filteredGroups([codexGroup], query: "OpenAI Codex")
 
         XCTAssertEqual(filtered.count, 1)
@@ -64,8 +55,6 @@ final class ModelPickerSheetTests: XCTestCase {
         XCTAssertEqual(ModelPickerSheet.filteredGroups([group], query: "GLM 5.3").first?.allModels, [model])
         XCTAssertTrue(ModelPickerSheet.matches(model, query: "glm-5.3-flash"))
     }
-
-    // MARK: Custom entry
 
     func testServerDefaultCommitsABareModelIDWithNoProvider() {
         let built = ModelPickerSheet.customOption(
@@ -110,11 +99,6 @@ final class ModelPickerSheetTests: XCTestCase {
         }
     }
 
-    // MARK: Row laziness
-
-    /// An expanded group must hand each model to the List as its own row, so
-    /// the List builds only the rows on screen. One container row per group
-    /// would build all 400 in a single cell (#692).
     @MainActor
     func testExpandedGroupGivesEachModelItsOwnLazyListRow() async throws {
         let models = (1...400).map { option("m\($0)", provider: "openrouter") }
@@ -125,7 +109,6 @@ final class ModelPickerSheetTests: XCTestCase {
                 modelGroups: [group],
                 selectedModelID: "m1",
                 selectedModelProviderID: "openrouter",
-                // The selected model's group opens expanded on appear.
                 isSelected: { $0.id == "m1" },
                 onSelect: { _ in }
             )

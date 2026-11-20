@@ -34,8 +34,6 @@ final class OnboardingFlowTests: XCTestCase {
         )
     }
 
-    /// "I don't have one yet" shows the setup prompt, then the private-network page, and its
-    /// last Continue opens the Add Server sheet (#1540).
     func testSetupEndsOnTheAddServerSheet() {
         let next = OnboardingFlowPolicy.page(after: OnboardingFlowPolicy.agentPromptPageIndex)
         XCTAssertEqual(next, 1)
@@ -43,7 +41,6 @@ final class OnboardingFlowTests: XCTestCase {
     }
 
     func testCopyReminderFollowsThePromptShown() {
-        // Copying one prompt and then swapping to the other still needs a copy.
         XCTAssertTrue(
             OnboardingFlowPolicy.shouldShowCopyReminder(
                 page: OnboardingFlowPolicy.agentPromptPageIndex,
@@ -112,7 +109,6 @@ final class OnboardingFlowTests: XCTestCase {
     }
 
     func testSkippingOnePromptsReminderStillRemindsForTheOther() {
-        // Continue Anyway on Hermes, then back to step 1 and over to Web UI: its reminder still shows.
         XCTAssertTrue(
             OnboardingFlowPolicy.shouldShowCopyReminder(
                 page: OnboardingFlowPolicy.agentPromptPageIndex,
@@ -132,8 +128,6 @@ final class OnboardingFlowTests: XCTestCase {
         )
     }
 
-    /// The prompts an agent runs on the user's machine keep the rules that stop it exposing the
-    /// server, killing someone else's process or losing the user's secrets.
     func testWebUISetupPromptKeepsItsSafetyRules() {
         let prompt = OnboardingFlowPolicy.webUISetupPrompt
 

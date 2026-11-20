@@ -73,17 +73,14 @@ final class BotFaceMotionTests: XCTestCase {
         var beat = BotWorkingBeat()
         let t = { Date(timeIntervalSinceReferenceDate: $0) }
 
-        // Opened onto a pending approval: nothing sways until the answer resumes work.
         beat.observe(.unknown, at: t(1)); beat.observe(.needsAttention, at: t(2))
         XCTAssertEqual(beat.start, .distantPast)
         beat.observe(.unknown, at: t(3)); beat.observe(.running, at: t(4))
         XCTAssertEqual(beat.start, t(4), "an answered approval resumes work")
 
-        // A same-turn reconnect doesn't restart it.
         beat.observe(.unknown, at: t(10)); beat.observe(.running, at: t(11))
         XCTAssertEqual(beat.start, t(4))
 
-        // A new prompt from idle starts one; so does returning to the foreground mid-turn.
         beat.observe(.idle, at: t(20)); beat.observe(.unknown, at: t(21)); beat.observe(.running, at: t(22))
         XCTAssertEqual(beat.start, t(22))
         beat.observe(.unknown, at: t(30)); beat.rearm(); beat.observe(.running, at: t(31))

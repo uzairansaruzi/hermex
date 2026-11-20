@@ -1,10 +1,6 @@
 import Foundation
 import OSLog
 
-/// Rows and syntax colour for one workspace file. Rows build off the main actor;
-/// colour arrives per visible window from `SourceHighlighter`, one contiguous
-/// uncoloured run at a time so a row is never tokenized twice, and a new window is
-/// requested only once the viewport has moved twenty rows past the last request.
 @MainActor
 @Observable
 final class SourceFileViewModel {
@@ -12,13 +8,10 @@ final class SourceFileViewModel {
     private(set) var rowsVersion = 0
     private(set) var tokensByRowID: [String: [SourceHighlightRun]] = [:]
     private(set) var tokensVersion = 0
-    /// True when this file draws without colour: no grammar, or Highlightr gave up.
     private(set) var isPlainText: Bool
-    /// The reader's lines and open Comment… both quote `rows`; new rows or a refresh drop them.
     var selection = ReviewDiffSelection()
     var commentComposer = ReviewCommentComposer()
 
-    /// Rows either side of the viewport tokenized along with it.
     static let highlightOverscan = 40
     static let rerequestThreshold = 20
 
@@ -29,12 +22,8 @@ final class SourceFileViewModel {
     private var visibleRange: ClosedRange<Int>?
     private var requestedRange: ClosedRange<Int>?
     private var isDark = false
-    /// Bumped per `load`; a slower, older build never replaces newer rows.
     private var loadGeneration = 0
-    /// Bumped whenever colour must start over (new rows, new appearance); a
-    /// highlight result from an older generation is dropped.
     private var highlightGeneration = 0
-    /// The request in flight, if any; tests await it.
     private(set) var highlightTask: Task<Void, Never>?
 
     init(path: String, serverLanguage: String?, highlighter: SourceHighlighter = .shared) {
@@ -44,8 +33,6 @@ final class SourceFileViewModel {
         isPlainText = language == nil
     }
 
-    /// Replaces the file text. Rows build off the main actor; an older build that
-    /// lands after a newer one is dropped. New rows drop the selection and open comment.
     func load(content: String) async {
         loadGeneration += 1
         let buildGeneration = loadGeneration
@@ -64,8 +51,6 @@ final class SourceFileViewModel {
         resetHighlighting()
     }
 
-    /// Clears the selection and closes an open comment unadded: on new rows, and from
-    /// the surface when a refresh starts, so nothing quotes lines it may replace.
     func dropSelection() {
         selection.clear()
         commentComposer.discard()
@@ -77,8 +62,6 @@ final class SourceFileViewModel {
         resetHighlighting()
     }
 
-    /// Called by the surface as the viewport moves. Only bookkeeping the view does
-    /// not observe changes synchronously, so a report made mid-layout is safe.
     func visibleRowRangeChanged(_ range: ClosedRange<Int>?) {
         visibleRange = range
         guard let range, language != nil else { return }
@@ -102,11 +85,8 @@ final class SourceFileViewModel {
     private func requestHighlight() {
         guard let language, let visibleRange, !lines.isEmpty else { return }
         requestedRange = visibleRange
-        // One request at a time; the answer re-runs this for whatever is still uncoloured.
         guard highlightTask == nil else { return }
 
-        // The first uncoloured run inside the padded window. Rows already coloured
-        // (an earlier window the reader scrolled past) are never sent again.
         var lower = max(0, visibleRange.lowerBound - Self.highlightOverscan)
         let windowEnd = min(lines.count - 1, visibleRange.upperBound + Self.highlightOverscan)
         while lower <= windowEnd, highlightedLines[lower] { lower += 1 }
@@ -125,7 +105,6 @@ final class SourceFileViewModel {
 
     private func finishHighlight(_ result: [[SourceHighlightRun]]?, range: ClosedRange<Int>, generation: Int) {
         highlightTask = nil
-        // Whatever the viewport shows now (it may have moved mid-request) gets the next pass.
         defer { requestHighlight() }
         guard generation == highlightGeneration else { return }
         guard let result else {

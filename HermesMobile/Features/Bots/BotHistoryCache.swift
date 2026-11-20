@@ -1,9 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// A bounded, disposable index of the room history this phone has loaded, which room
-/// search reads; a bot's chat is the host's to search (#1146). All disk access and text
-/// matching run on the actor, away from SwiftUI rendering.
 actor BotHistoryCache {
     nonisolated let recent = BotRecentTranscripts()
     struct Scope: Codable, Hashable, Sendable {
@@ -25,13 +22,10 @@ actor BotHistoryCache {
         var sender: String? = nil
         var memberID: String? = nil
         var timestamp: Double? = nil
-        /// Optional server display hint (e.g. `"steer"`). Absent on snapshots
-        /// saved before steering hints existed; decodes as nil.
         var displayKind: String? = nil
         var threadID: String? = nil
         var eventID: String? = nil
 
-        /// Rebuild only the message projection, never cached commands or runtime state.
         var roomEvent: BotJSON? {
             guard let seq else { return nil }
             return .object(["seq": .number(Double(seq)), "kind": .string(role),
@@ -45,7 +39,6 @@ actor BotHistoryCache {
     struct Snapshot: Codable, Equatable, Identifiable, Sendable {
         let id: UUID
         let scope: Scope
-        /// The room's name; the key predates rooms being the only snapshots.
         let profileName: String?
         let savedAt: Date
         let messages: [Message]
@@ -53,8 +46,6 @@ actor BotHistoryCache {
         var cursor: Int? = nil
         var earlierBoundary: Int? = nil
 
-        /// Minimal identity for opening a saved room while its live list is unavailable.
-        /// Runtime authority, members and permissions always come from groups.state.
         var cachedRoom: BotGroupRoom? {
             guard let roomID else { return nil }
             return BotGroupRoom(.object(["room_id": .string(roomID),
@@ -80,7 +71,6 @@ actor BotHistoryCache {
     static let maximumBytes = 8 * 1024 * 1024
     static let maximumHits = 100
     static let lifetime: TimeInterval = 30 * 24 * 60 * 60
-    /// Longest a cursor-only room change stays unsaved while other writes are absent.
     static let cursorOnlySaveInterval: TimeInterval = 10 * 60
     private let directory: URL?
     private var loaded = false
@@ -95,10 +85,8 @@ actor BotHistoryCache {
     private var removed: Set<Scope> = []
     private var clearedAt: [String: Date] = [:]
 
-    /// A nil directory is an isolated memory cache, used by fixtures.
     init(directory: URL? = nil) { self.directory = directory }
 
-    /// Matches in `roomIDs`' saved history, newest first; nil searches every room.
     func search(_ query: String, scope: Scope, roomIDs: Set<String>?, now: Date = Date()) throws -> [Hit] {
         try Task.checkCancellation()
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -125,8 +113,6 @@ actor BotHistoryCache {
         return hits
     }
 
-    /// Append overlapping replay pages by sequence. Coverage includes invisible events,
-    /// while the disk projection contains only bounded user/member message text.
     func appendRoom(key: BotRoomKey, room: BotGroupRoom, page: BotJSON, since: Int,
                     receivedAt: Date = Date()) throws {
         try Task.checkCancellation()
@@ -137,7 +123,6 @@ actor BotHistoryCache {
               let cursor = page["cursor"].integer, cursor >= since else { return }
         try load()
         let previous = snapshots.first { $0.scope == scope && $0.roomID == key.roomID }
-        // A gap cannot become a saved cursor: retain only the newly read window.
         let overlaps = previous.map { since <= ($0.cursor ?? 0) && cursor >= ($0.earlierBoundary ?? 0) } ?? false
         var rows = overlaps ? previous?.messages ?? [] : []
         var seen = Set(rows.compactMap(\.seq))
@@ -165,10 +150,6 @@ actor BotHistoryCache {
         if cursorOnly, previous?.cursor == next.cursor { return }
         snapshots.removeAll { $0.scope == scope && $0.roomID == key.roomID }
         snapshots.append(next)
-        // Invisible events move only the cursor: keep it in memory and let the next real
-        // write persist it. After a kill, reopening re-reads from the older saved cursor
-        // and the overlap merge above absorbs the repeated pages. A periodic save keeps a
-        // long-running room's saved `savedAt` fresh so it cannot expire on relaunch.
         guard !cursorOnly || receivedAt.timeIntervalSince(lastRoomWriteAt) >= Self.cursorOnlySaveInterval else { return }
         try persist(prune(now: receivedAt))
         lastRoomWriteAt = receivedAt
@@ -184,7 +165,6 @@ actor BotHistoryCache {
         return snapshots.first { $0.scope == scope && $0.roomID == key.roomID }
     }
 
-    /// Room IDs are permanently retired by expiry/disband. Revoke late page writes too.
     func removeRoom(_ key: BotRoomKey) throws {
         recent.remove { $0 == .init(key) }
         let scope = Scope(server: key.server, connectionID: key.connectionID)
@@ -194,7 +174,6 @@ actor BotHistoryCache {
         try persist()
     }
 
-    /// Call only with a complete authoritative room list, never a partial page.
     func retainRooms(_ ids: Set<String>, scope: Scope) throws {
         recent.remove { $0.scope == scope && !ids.contains($0.roomID) }
         try load()
@@ -208,8 +187,6 @@ actor BotHistoryCache {
         try persist()
     }
 
-    /// Removal revokes queued writes from the old connection. Cache clearing
-    /// allows later snapshots, but rejects writes captured before the clear.
     func remove(server: URL, connectionID: UUID? = nil, now: Date = Date()) throws {
         let key = Scope.key(server)
         recent.remove { $0.scope.serverKey == key && (connectionID == nil || $0.scope.connectionID == connectionID) }
@@ -238,23 +215,17 @@ actor BotHistoryCache {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= Self.maximumBytes * 2 else { return }
         snapshots = try JSONDecoder().decode([Snapshot].self, from: Data(contentsOf: file))
-        // Bot Chat's snapshots (no room) predate #1148; nothing reads them any more.
         let previousCount = snapshots.count
         snapshots.removeAll { $0.roomID == nil }
-        // The newest saved timestamp dates the last write, so a relaunch does not rewrite on its first cursor-only poll.
         lastRoomWriteAt = snapshots.map(\.savedAt).max() ?? .distantPast
         prune(now: Date())
         persistPruning(previousCount: previousCount)
     }
 
-    /// Drops expired snapshots, then the oldest ones until the index fits the count and
-    /// byte budget. Returns the encoded index so `persist` does not encode it again.
     @discardableResult
     private func prune(now: Date) -> Data? {
         snapshots.removeAll { now.timeIntervalSince($0.savedAt) >= Self.lifetime }
         if snapshots.count > 100 { snapshots.removeFirst(snapshots.count - 100) }
-        // Use encoded bytes for the actual disk budget, including JSON escaping.
-        // Under budget this is the only encode; each eviction re-encodes once.
         while !snapshots.isEmpty {
             if let data = try? JSONEncoder().encode(snapshots), data.count <= Self.maximumBytes { return data }
             snapshots.removeFirst()
@@ -262,8 +233,6 @@ actor BotHistoryCache {
         return nil
     }
 
-    /// Expiry cleanup must not prevent reading fresh messages when storage is
-    /// temporarily unwritable. Keep it pending so the next search retries it.
     private func persistPruning(previousCount: Int) {
         needsPrunePersistence = needsPrunePersistence || snapshots.count != previousCount
         guard needsPrunePersistence else { return }
@@ -271,12 +240,9 @@ actor BotHistoryCache {
             try persist()
             needsPrunePersistence = false
         } catch {
-            // Fresh in-memory results remain usable; retry on the next access.
         }
     }
 
-    /// Writes the index atomically. Pass `encoded` only when it is `prune`'s
-    /// result for the current `snapshots`.
     private func persist(_ encoded: Data? = nil) throws {
         guard let directory else { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -285,11 +251,6 @@ actor BotHistoryCache {
     }
 }
 
-/// The last `profiles.list` rows each Bot connection read, so the inbox paints its roster
-/// while it connects (#1403). One file per server digest and connection UUID under Caches,
-/// main app only: rows, never live status, rooms or photos. A missing, oversized or
-/// unreadable file is a miss, never a failure. Removal revokes every write whose roster
-/// was read before it, so a late save cannot bring back a signed-out connection's rows.
 actor BotRosterCache {
     typealias Scope = BotHistoryCache.Scope
 
@@ -298,11 +259,8 @@ actor BotRosterCache {
     static let maximumRows = 200
     static let maximumBytes = 2 * 1024 * 1024
     private let directory: URL
-    /// When each scope's saved roster was read, so a slower, older save never replaces a newer one.
     private var savedReadAt: [Scope: ContinuousClock.Instant] = [:]
-    /// Removals by server digest, and by `<digest>-<connection UUID>` for one connection.
     private var removedAt: [String: ContinuousClock.Instant] = [:]
-    /// Runs as each load starts. Fixtures change the saved connection here, while an open waits on the load.
     private let willLoad: @Sendable () async -> Void
 
     init(directory: URL, willLoad: @escaping @Sendable () async -> Void = {}) {
@@ -319,8 +277,6 @@ actor BotRosterCache {
         return rows
     }
 
-    /// Replaces `scope`'s rows with a complete roster read at `readAt`. An empty roster, or
-    /// one over the bounds, leaves no file, so the next open shows no stale bots.
     func save(_ rows: [BotJSON], scope: Scope, readAt: ContinuousClock.Instant) {
         let revoked = [removedAt[scope.serverKey], removedAt[name(scope)], savedReadAt[scope]].compactMap { $0 }
         guard revoked.allSatisfy({ $0 < readAt }) else { return }
@@ -334,7 +290,6 @@ actor BotRosterCache {
         try? data.write(to: file(scope), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
-    /// Deletes `server`'s rosters, or only `connectionID`'s, and revokes saves of rosters read before now.
     func remove(server: URL, connectionID: UUID? = nil, now: ContinuousClock.Instant = .now) {
         let key = Scope.key(server)
         let prefix = connectionID.map { name(.init(server: server, connectionID: $0)) } ?? key
@@ -349,11 +304,6 @@ actor BotRosterCache {
     private func file(_ scope: Scope) -> URL { directory.appendingPathComponent(name(scope) + ".json") }
 }
 
-/// Each recent room's rendered window, separate from the lossy on-disk search index, so
-/// reopening a room draws its last window before the first poll. The lock covers every
-/// access because screens read synchronously before their first frame, while the history
-/// actor invalidates entries. Logs are value types: no clients, callbacks, approval state,
-/// or credentials cross this boundary.
 final class BotRecentTranscripts: @unchecked Sendable {
     struct Key: Hashable {
         let scope: BotHistoryCache.Scope
@@ -386,8 +336,6 @@ final class BotRecentTranscripts: @unchecked Sendable {
         }
     }
 
-    /// Claim writes when a screen starts recovery, not during SwiftUI construction.
-    /// A later owner or removal makes every older writer inert.
     func begin(_ key: Key) -> UUID {
         lock.withLock {
             let owner = UUID(); access &+= 1

@@ -1,11 +1,8 @@
 import XCTest
 @testable import HermesMobile
 
-/// What the composer's `@` panel lists: one folder per query, ranked against the
-/// query's last segment, with nothing from outside the workspace.
 final class FilePathSearchTests: APIClientTestCase {
 
-    /// Records every `/api/list` path asked for, in call order.
     private final class RequestLog: @unchecked Sendable {
         private let lock = NSLock()
         private var paths: [String] = []
@@ -25,9 +22,6 @@ final class FilePathSearchTests: APIClientTestCase {
         #"{"name": "\#(name)", "path": "\#(path)", "type": "\#(type)", "is_dir": \#(type == "dir")\#(extra)}"#
     }
 
-    /// Root holds `src/`, `README.md`, a `..` entry, and a symlink the server
-    /// resolved to somewhere outside the workspace. `src/` holds `Chat/`,
-    /// `chores.md`, and `Main.swift`.
     private func listingJSON(for path: String) -> String? {
         switch path {
         case ".":
@@ -58,8 +52,6 @@ final class FilePathSearchTests: APIClientTestCase {
             return apiTestJSONResponse(json, for: request)
         }
     }
-
-    // MARK: - Listing
 
     @MainActor
     func testAnEmptyQueryListsTheWorkspaceRootFoldersFirst() async {
@@ -99,8 +91,6 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertEqual(search.matches.map(\.path), ["README.md"])
     }
 
-    // MARK: - Containment
-
     @MainActor
     func testNothingOutsideTheWorkspaceIsEverOffered() async {
         let log = RequestLog()
@@ -112,9 +102,6 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertFalse(search.matches.contains { $0.name == "escape" })
     }
 
-    /// A reference ends at whitespace, so `@src/My File.swift` would insert and
-    /// then never read back as one. The panel does not offer what it cannot
-    /// finish.
     @MainActor
     func testAnEntryWhoseNameHoldsASpaceIsNeverOffered() async {
         let log = RequestLog()
@@ -137,8 +124,6 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertTrue(search.matches.isEmpty)
     }
 
-    // MARK: - Failure
-
     @MainActor
     func testAFailedListingReadsAsNoMatches() async {
         let log = RequestLog()
@@ -154,8 +139,6 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertFalse(search.isLoading)
     }
 
-    // MARK: - Ordering
-
     @MainActor
     func testAStaleListingNeverOverwritesANewerQuery() async {
         let log = RequestLog()
@@ -167,8 +150,6 @@ final class FilePathSearchTests: APIClientTestCase {
             log.record(path)
             if path == "." {
                 rootStarted.fulfill()
-                // Held on the mock's own loading queue, so the `src` request
-                // this test fires next still gets served.
                 releaseRoot.wait()
             }
             return apiTestJSONResponse(listingJSON(for: path) ?? "{}", for: request)
@@ -187,9 +168,6 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertEqual(search.matches.map(\.path), ["src/Chat", "src/chores.md"])
     }
 
-    /// A listing already on the wire when the workspace moves belongs to the old
-    /// root: it must not fill the new root's cache, so the next caller asks
-    /// again rather than being answered from it.
     @MainActor
     func testAListingThatResolvesAfterAResetIsNeverCached() async throws {
         let log = RequestLog()
@@ -201,7 +179,6 @@ final class FilePathSearchTests: APIClientTestCase {
             log.record(path)
             if log.listedPaths.count == 1 {
                 listingStarted.fulfill()
-                // Held on the mock's own loading queue so the reset lands first.
                 releaseListing.wait()
             }
             return apiTestJSONResponse(listingJSON(for: path) ?? "{}", for: request)
@@ -223,8 +200,6 @@ final class FilePathSearchTests: APIClientTestCase {
         XCTAssertEqual(search.matches.map(\.path), ["src", "README.md"])
     }
 
-    /// The confirmation pass reads this as "unanswered", the same as a failed
-    /// request, so the candidates it was about stay open for the next pass.
     @MainActor
     func testEntriesThrowsRatherThanAnsweringForAScopeThatMoved() async throws {
         let listingStarted = expectation(description: "listing started")
@@ -250,8 +225,6 @@ final class FilePathSearchTests: APIClientTestCase {
             XCTAssertTrue(error is CancellationError)
         }
     }
-
-    // MARK: - Session isolation
 
     @MainActor
     func testSwitchingSessionDropsTheCachedListings() async {

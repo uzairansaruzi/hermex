@@ -125,9 +125,6 @@ final class BotMentionTests: XCTestCase {
     }
 }
 
-/// `@`mentions in a bot's Bot Chat opened in the main chat (#1145). The host delivers them only
-/// there (`tools/bot_mode_dm.py`), so a session sends `@` text as typed. Over #901's
-/// socket-level host, whose `profiles.list` is this connection's roster.
 @MainActor final class HermesChatMentionTests: XCTestCase {
     private static let server = URL(string: "https://hermes.example")!
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -136,13 +133,10 @@ final class BotMentionTests: XCTestCase {
         .object(["name": .string("default")]),
         .object(["name": .string("helper"), "ui_meta": .object(["hermes-bots": .object(["title": .string("Inbox Triage")])])])
     ])])
-    /// The same roster, both bots with pictures.
     private static let pictured: BotJSON = .object(["profiles": .array(["default", "helper"].map {
         .object(["name": .string($0), "has_avatar": .bool(true)])
     })])
 
-    /// Every prompt mode sends the typed text with Desktop's identification note after it, while
-    /// the chat shows the typed text: the optimistic row, and the queued prompt's receipt.
     func testEveryPromptModeAnnotatesTheSendAndShowsTheTypedText() async throws {
         let chat = await openChat(target: .canonicalChat(profile: "default"))
         XCTAssertEqual(chat.turn.mentions?.completions(query: "").map(\.profile.id), ["helper"],
@@ -168,9 +162,6 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(chat.turn.queuedPrompts.first?.text.contains("[@mentions"), false, "the receipt shows what was typed")
     }
 
-    /// A restored prompt with an attachment hides its note: the host adds its context footer
-    /// after the note (`agent/context_references.py`), so the footer and reference lines go
-    /// first and the file stays a chip. A note the user typed that only looks like one stays.
     func testARestoredPromptHidesTheNoteBeforeTheHostsContextFooter() throws {
         let helper = try XCTUnwrap(BotProfile(Self.roster["profiles"].list?[1] ?? .null))
         let note = BotMentions(roster: [helper], excluding: "default").annotation(for: "@helper look")
@@ -192,8 +183,6 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(shown.attachments?.map(\.name), ["plan.md"])
     }
 
-    /// A file's reference stays in the prompt, and the note resolves only what was typed: the
-    /// `@file:` reference never mentions a bot named "file".
     func testAttachmentsKeepTheirReferenceAndOnlyTheTypedTextIsResolved() async throws {
         let roster: BotJSON = .object(["profiles": .array(["default", "helper", "file"].map { .object(["name": .string($0)]) })])
         let chat = await openChat(target: .canonicalChat(profile: "default"), roster: roster)
@@ -212,7 +201,6 @@ final class BotMentionTests: XCTestCase {
         XCTAssertFalse(sent.contains("agent profile \"file\""))
     }
 
-    /// A session sends `@` text exactly as typed: only a Bot Chat's host delivers a mention.
     func testASessionSendsMentionsAsTyped() async throws {
         let chat = await openChat(target: .session(profile: "default", key: "tip"))
         XCTAssertNil(chat.turn.mentions)
@@ -221,8 +209,6 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(chat.writes("prompt.submit").last?["text"], .string("@inbox-triage sort today"))
     }
 
-    /// A Bot Chat opened straight from its row, never through the Bots inbox, loads the roster's
-    /// pictures itself, for its pill and its `@` panel. A session loads none.
     func testABotChatLoadsItsRostersPictures() async throws {
         let chat = await openChat(target: .canonicalChat(profile: "default"), roster: Self.pictured)
         await waitUntil("the pictures") { chat.turn.settings.avatars.count == 2 }
@@ -244,7 +230,6 @@ final class BotMentionTests: XCTestCase {
         }
     }
 
-    /// An idle chat on runtime `runtime` at tip `tip`, once its `roster` has been read.
     private func openChat(target: ConversationTarget, roster: BotJSON = HermesChatMentionTests.roster) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()

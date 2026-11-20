@@ -3,15 +3,11 @@ import XCTest
 
 final class AttachmentAudioDetectionTests: XCTestCase {
 
-    // MARK: - MIME detection
-
     func testMimeAudioPrefixIsAudio() {
         XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: nil, mime: "audio/mpeg", name: nil, path: nil))
         XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: nil, mime: "AUDIO/WEBM", name: "voice", path: nil))
         XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: false, mime: "audio/mp4", name: "clip.bin", path: nil))
     }
-
-    // MARK: - Extension detection
 
     func testKnownAudioExtensionsAreAudio() {
         for ext in ["m4a", "mp3", "wav", "aac", "caf", "ogg", "oga", "opus", "flac"] {
@@ -33,25 +29,15 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "noextension", path: nil))
     }
 
-    /// A human display name carries no extension, but the path does — detection
-    /// should fall back to the path instead of giving up on the name alone.
     func testDisplayNameWithoutExtensionFallsBackToPath() {
         XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "Voice note", path: "/ws/clip.m4a"))
         XCTAssertTrue(MessageAttachment(name: "Voice note", path: "/ws/clip.m4a").inferredIsAudio)
-        // But a non-audio path is still not audio.
         XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "Voice note", path: "/ws/clip.pdf"))
     }
 
-    // MARK: - isImage precedence
-
     func testExplicitImageFlagWinsOverAudioSignals() {
-        // Contradictory inputs: the explicit server image flag always wins.
         XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: true, mime: "audio/mpeg", name: "weird.mp3", path: nil))
     }
-
-    // MARK: - MessageAttachment convenience
-
-    // MARK: - Duration formatting
 
     func testDurationFormatting() {
         XCTAssertEqual(AudioDurationFormatter.string(from: 0), "0:00")
@@ -67,11 +53,6 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         XCTAssertEqual(AudioDurationFormatter.string(from: .infinity), "0:00")
     }
 
-    // MARK: - Inline player load state
-
-    /// When the row scrolls off-screen mid-load the `.task` is cancelled and the
-    /// loader returns nil; the player must reset to `.idle` (retryable) rather
-    /// than getting stuck on the `.failed` error state.
     @MainActor
     func testCancelledLoadResetsToIdleForRetry() async {
         let model = InlineAudioPlayerModel()
@@ -86,7 +67,6 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         XCTAssertEqual(model.phase, .idle)
     }
 
-    /// A genuine load failure (not cancellation) still surfaces the error state.
     @MainActor
     func testGenuineLoadFailureShowsFailedState() async {
         let model = InlineAudioPlayerModel()
@@ -94,8 +74,6 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         XCTAssertEqual(model.phase, .failed)
     }
 
-    /// A load that went stale on a reattach fails under its key once, then loads again
-    /// under the next attach's key (#1143).
     @MainActor
     func testAFailedLoadRetriesOnlyUnderANewKey() async {
         let model = InlineAudioPlayerModel()

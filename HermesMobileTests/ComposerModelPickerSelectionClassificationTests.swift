@@ -25,9 +25,6 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         ]
     }
 
-    // PR #293 review: selecting an overflow model through search, then reopening
-    // the picker with an empty query, must still classify it as NOT rendered so
-    // the "Current Custom" row appears and shows the active selection.
     func testOverflowSelectionWithEmptyQueryIsNotRendered() {
         let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: overflowModel,
@@ -65,8 +62,6 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         XCTAssertTrue(rendered)
     }
 
-    // While searching, allModels are rendered — an overflow match found by that
-    // search IS represented and must not duplicate a Current Custom row.
     func testOverflowMatchWhileSearchingIsRendered() {
         let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
             option: overflowModel,
@@ -77,7 +72,6 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         XCTAssertTrue(rendered)
     }
 
-    // Provider-aware: same bare ID under another provider is not the same row.
     func testSameIDUnderDifferentProviderIsNotRendered() {
         let otherProvider = ModelCatalogOption(
             id: overflowModel.id,
@@ -94,7 +88,6 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         XCTAssertFalse(rendered)
     }
 
-    // The one effort a model supports is what the composer sends, whatever was stored.
     func testSingleEffortBecomesStaticAndIsCommitted() {
         let selection = ComposerModelEffortSelection(
             model: ModelCatalogOption(id: "o4-mini", displayName: "o4-mini", providerID: "openai"),

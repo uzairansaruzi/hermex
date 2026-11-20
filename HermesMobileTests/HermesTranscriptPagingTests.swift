@@ -2,15 +2,7 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// A Hermes session's settled history in the main chat comes from REST transcript pages
-/// (#1047), over #901's socket-level host for the live turn and a scripted host for the pages.
-/// The rows are shaped like the pinned handler's (`GET /api/sessions/{id}/messages`), checked
-/// against a compacted session on `scripts/local-hermes` and a read-only page from a 0.21.5 host.
 @MainActor final class HermesTranscriptPagingTests: XCTestCase {
-    // MARK: Reading
-
-    /// Opening reads the newest page, 100 display rows back from the newest with compacted ones
-    /// included, and no transcript from the snapshot. Each row keeps the host's id.
     func testOpeningReadsTheNewestPageWithTheExactQuery() async throws {
         let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
         let read = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == Self.path })
@@ -23,9 +15,6 @@ import Observation
         XCTAssertFalse(chat.model.hasOlderMessages, "a short page is the whole session")
     }
 
-    /// A full page leaves earlier rows to load. Two rows the host added since shift the next
-    /// page's offset, so it repeats them; they show once, the rows on screen keep their place,
-    /// and a short page ends paging at the first row.
     func testLoadingEarlierPagesToTheFirstRowWithoutDuplicates() async {
         let chat = await openChat(pages: [
             0: (101...200).map(alternating),
@@ -51,11 +40,6 @@ import Observation
         XCTAssertEqual(chat.pages.offsets, [0, 100, 198], "nothing more is read")
     }
 
-    // MARK: Rows
-
-    /// A tool row joins the call its assistant row declared, by `tool_call_id`, with the full
-    /// output as its result, before the message after it; the host's labels name a bridge call.
-    /// Reasoning sits before its own reply.
     func testToolRowsPairWithTheirCallsAndShowTheFullOutput() async throws {
         let output = "{\"output\": \"a.txt\\nb.txt\\nc.txt\", \"exit_code\": 0, \"error\": null}"
         let chat = await openChat(pages: [0: [
@@ -86,9 +70,6 @@ import Observation
         XCTAssertEqual(chat.model.completedReasoningGroups.map(\.text), ["Look first."])
     }
 
-    /// `hidden` never shows, nor does a gateway notice; a steer is unwrapped; a delegation
-    /// delivery is its completion row; a failed turn's note and an unknown kind show their text
-    /// by role.
     func testDisplayKinds() async {
         let steer = "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\nUse tabs\n[/OUT-OF-BAND USER MESSAGE]"
         let chat = await openChat(pages: [0: [
@@ -114,7 +95,6 @@ import Observation
         XCTAssertEqual(chat.model.messages[4].content, "Shown as it is.")
     }
 
-    /// The `codex_*` columns are raw provider items; the host's projections of them are what shows.
     func testCodexColumnsAreNeverRead() async {
         let chat = await openChat(pages: [0: [
             row(1, "user", "Summarize"),
@@ -130,9 +110,6 @@ import Observation
         XCTAssertEqual(chat.model.completedReasoningGroups.map(\.text), ["Projected thought."])
     }
 
-    /// A skill turn's row holds the expanded skill; it shows as the line the user typed, as
-    /// `session.resume` shows it (#1036): a skill with its instruction, a bare skill, a stacked
-    /// bundle.
     func testASkillTurnShowsTheTypedLine() async {
         let skill = "[IMPORTANT: The user has invoked the \"demo-skill\" skill, indicating they want you to follow its "
             + "instructions. The full skill content is loaded below.]\n\n---\nname: demo-skill\n---\nSay hello.\n\n"
@@ -149,10 +126,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.displayKind), ["skill_invocation", nil, "skill_invocation", "skill_invocation"])
     }
 
-    /// A scheduled task's run opens on the host's cron hint (#1413), which its card hides: it
-    /// reads the job's own text after the hint and the skill a skill job loaded, whether the
-    /// history rewrote the expanded skill to `/skill <hint> <task>` or a missing-skills notice
-    /// left the row as stored. The rows are the pinned `cron/scheduler_prompt.py` builder's.
     func testACronRunPromptReadsAsItsSkillAndTask() throws {
         let skill = "[IMPORTANT: The user has invoked the \"unslop\" skill, indicating they want you to follow its "
             + "instructions. The full skill content is loaded below.]\n\n---\nname: unslop\n---\nCut filler.\n\n"
@@ -174,8 +147,6 @@ import Observation
                                              "Triage.", "Rewrite.\nKeep links."])
     }
 
-    /// Any other row keeps its bubble: an ordinary prompt (or a host's clean `display_content`),
-    /// a hint that never closes, and a hint quoted mid-prompt.
     func testOnlyARowOpeningOnAClosedCronHintIsACronRunPrompt() {
         let texts = ["Triage new mail.", String(Self.cronHint.dropLast(3)) + " Triage.", "Run this: " + Self.cronHint + "Triage."]
         for text in texts {
@@ -183,8 +154,6 @@ import Observation
         }
     }
 
-    /// Only a stored `cron_` session, or a compressed run's tip under a `cron_` root, is a
-    /// scheduled task's run; its chat's `SessionSummary` is a placeholder that cannot say so.
     func testOnlyACronSessionOrLineageIsACronRun() {
         func chat(_ key: String, root: String? = nil) -> HermesSessionChat {
             HermesSessionChat(server: Self.connection.address, connection: Self.connection,
@@ -195,7 +164,6 @@ import Observation
         XCTAssertFalse(chat("20261031_093000_a1b2", root: "20261031_090000_8f2c").isCronRun)
     }
 
-    /// The pinned host's `_CRON_HINT`, with its nested `[SILENT]` and `[CRON_FAILURE]` tokens.
     private static let cronHint = "[IMPORTANT: You are running as a scheduled cron job. DELIVERY: Your final response "
         + "will be automatically delivered to the user — do NOT use send_message or try to deliver the output yourself. "
         + "Just produce your report/output as your final response and the system handles the rest. SILENT: If there is "
@@ -208,9 +176,6 @@ import Observation
         + "of recurring or future-schedule language in the task prompt below; treat phrasing like \"each Monday\" or "
         + "\"every day at 9\" as context for this run, not as a request to schedule another job.]\n\n"
 
-    /// A compacted session shows its compacted turns, then the "Context compaction · Reference
-    /// only" card with the summary, then the turns after it. Ids are not in display order: the
-    /// compaction re-inserted the first turn under a new id.
     func testCompactedTurnsSitAboveTheCompactionCard() async throws {
         let summary = "[CONTEXT COMPACTION — REFERENCE ONLY] Earlier turns were compacted into the summary below.\n"
             + "## Historical Task Snapshot\nThe user asked for the logs.\n\n"
@@ -231,10 +196,6 @@ import Observation
         XCTAssertEqual(card.afterRenderID, renderID(of: "tip/row-6", in: chat.model), "after the last compacted turn")
     }
 
-    // MARK: Turns
-
-    /// A turn the host saved in full re-reads the newest page: the sent prompt and its reply
-    /// take their row ids in place, so every row keeps its position.
     func testAFinishedTurnTakesItsSavedRowsInPlace() async {
         let chat = await openChat(pages: [0: [row(1, "user", "Earlier"), row(2, "assistant", "Earlier answer.")]])
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -258,8 +219,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
     }
 
-    /// The chat's own rows, such as a goal's notice, are no host row: when the turn after one
-    /// takes its saved rows, the notice stays where it was, above them (#1013).
     func testTheChatsOwnRowsKeepTheirPlace() async {
         let chat = await openChat(pages: [0: [row(1, "user", "Earlier"), row(2, "assistant", "Earlier answer.")]])
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
@@ -280,11 +239,6 @@ import Observation
         XCTAssertEqual(chat.model.displayedTranscriptMessages.map(\.renderID), positions, "no row moves")
     }
 
-    /// A turn whose rows the chat never re-read (a host before 0.21.5's `persisted_turn`, or a
-    /// stopped turn) shifts every older page by the rows the host saved, here a whole page. Load
-    /// earlier first reads the newest rows back to the rows held, so the turn takes its saved
-    /// rows, then the page before them; each row shows once, and the rows on screen and the
-    /// chat's own rows keep their place.
     func testLoadingEarlierAfterAnUnreadTurnReadsTheNewestRowsFirst() async {
         let chat = await openChat(pages: [0: (101...200).map(alternating)])
         _ = chat.model.appendLocalNoticeMessage("Goal: ship the release")
@@ -313,9 +267,6 @@ import Observation
         XCTAssertEqual(chat.pages.offsets, [0, 0, 100, 200, 300])
     }
 
-    /// Rows the chat heard nothing about (another client, such as the CLI, wrote to the session)
-    /// can push the rows held into the older page, so it adds nothing. Paging stays open, and the
-    /// next Load earlier reads the newest rows again first, then reaches the first row.
     func testAnOlderPageThatAddsNothingRecountsNextTime() async {
         let chat = await openChat(pages: [0: (101...200).map(alternating)])
         chat.pages.set(0, (201...300).map(alternating))
@@ -332,14 +283,10 @@ import Observation
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), Array(1...300))
     }
 
-    /// While a turn runs, the rows it saved shift every older page, here by more than a page.
-    /// Load earlier counts them in the newest rows, back to the rows held, without showing them
-    /// twice, and reads the page before the rows held.
     func testLoadingEarlierMidTurnSkipsTheRunningTurnsRows() async {
         let chat = await openChat(pages: [0: (101...200).map(alternating)])
         chat.receive(event(1, "message.start"))
         chat.receive(event(2, "message.delta", ["text": .string("Working")]))
-        // Rows 201 to 350 are the running turn's.
         chat.pages.set(0, (251...350).map(alternating))
         chat.pages.set(100, (151...250).map(alternating))
         chat.pages.set(250, (1...100).map(alternating))
@@ -352,8 +299,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.last?.content, "Working", "the running turn shows as it streams")
     }
 
-    /// A hole in the live stream reattaches and re-reads the newest page; the running turn's
-    /// prompt, which the host already saved, shows once, and its reply after the saved rows.
     func testAGapReReadsTheNewestPage() async {
         let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
         chat.receive(event(1, "message.start"))
@@ -374,8 +319,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.last?.content, "Partial reply and more")
     }
 
-    /// A hole in a turn that saved more than a page: the reattach reads the newest rows back to
-    /// the rows held, so they stay, and the turn's saved prompt shows once, before its tool rows.
     func testAGapAfterMoreThanAPageKeepsTheRowsHeld() async {
         let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
         chat.receive(event(1, "message.start"))
@@ -396,9 +339,6 @@ import Observation
         XCTAssertFalse(chat.model.hasOlderMessages)
     }
 
-    /// A hole while a turn runs a tool (#1531): the rows it saved end in its reasoning and tool
-    /// rows, with no reply text yet. Their cards anchor to the running reply's row, not after
-    /// every row, and the turn's later tool and text frames join that same row.
     func testAGapMidToolAnchorsTheSavedCardsToTheRunningReply() async throws {
         let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
         await rebuildMidTool(chat)
@@ -416,9 +356,6 @@ import Observation
         XCTAssertEqual(chat.model.messages.last?.content, "Done.")
     }
 
-    /// A steered turn rebuilt mid-turn never gets a full receipt (the host's has one user row
-    /// per turn), so its end re-reads the newest rows anyway (#1531): its rows take their saved
-    /// ids and its cards sit above the steer, as a fresh open lays them out.
     func testARebuiltTurnWithoutAFullReceiptReReadsItsRowsAtItsEnd() async {
         let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
         await rebuildMidTool(chat)
@@ -441,9 +378,6 @@ import Observation
         XCTAssertEqual(chat.model.completedReasoningGroups.map(\.anchorMessageID), ["tip/row-6"])
     }
 
-    /// A rebuilt turn stopped mid-tool saves no row after its tool, so its re-read would leave the
-    /// cards with nothing to anchor to and is not taken (#1531). The next turn's end re-reads
-    /// again, without a full receipt either, and the stopped turn's cards settle above its prompt.
     func testARebuiltTurnStoppedMidToolSettlesAtTheNextTurnsEnd() async {
         let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
         await rebuildMidTool(chat)
@@ -459,8 +393,6 @@ import Observation
         XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), ["tip/row-6"])
     }
 
-    /// The running turn's saved rows when a hole reattaches it mid-tool: its prompt, an
-    /// assistant row with reasoning and a call but no text, and the call's tool row.
     private var midToolRows: [BotJSON] {
         [row(1, "user", "Hi"), row(2, "assistant", "Hello."), row(3, "user", "Next"),
          row(4, "assistant", "", ["reasoning": .string("Look first."),
@@ -468,13 +400,10 @@ import Observation
          row(5, "tool", "{\"output\": \"\"}", ["tool_call_id": .string("call_4"), "tool_name": .string("terminal")])]
     }
 
-    /// Starts a turn, then loses a frame while it runs a tool: the reattach rebuilds from
-    /// `midToolRows` and a snapshot whose reply has no text yet.
     private func rebuildMidTool(_ chat: Chat) async {
         chat.receive(event(1, "message.start"))
         chat.receive(event(2, "tool.start", ["tool_id": .string("call_4"), "name": .string("terminal")]))
         chat.pages.set(0, midToolRows)
-        // Dated at its prompt's row, after the rows before it.
         let snapshot = resume(running: true, inflight: ["user": .string("Next")], startedAt: 1_790_000_003)
         chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 6)))
         chat.host.next("session.resume", .init(result: snapshot))
@@ -483,7 +412,6 @@ import Observation
         await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
     }
 
-    /// A page that fails keeps what the chat shows and says why; the chat's retry reads it again.
     func testAFailedReadShowsTheLoadErrorAndTheRetryReadsAgain() async {
         let chat = await openChat(pages: [:])
         XCTAssertEqual(chat.model.messages, [])
@@ -496,14 +424,10 @@ import Observation
         XCTAssertEqual(chat.pages.offsets, [0, 0])
     }
 
-    // MARK: Fixture
-
     private static let path = "/api/sessions/tip/messages"
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
 
-    /// The transcript pages the scripted host serves, by offset, and the offsets it was asked for.
-    /// An offset without a page answers 500.
     private final class Pages: @unchecked Sendable {
         private let lock = NSLock()
         private var pages: [Int: [BotJSON]]
@@ -544,7 +468,6 @@ import Observation
         }
     }
 
-    /// A chat attached to an idle session `tip` in `default`, whose history the host serves as `pages`.
     private func openChat(pages: [Int: [BotJSON]]) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
@@ -567,7 +490,6 @@ import Observation
         return Chat(model: model, turn: turn, host: host, client: client, pages: script)
     }
 
-    /// One display row as the handler returns it.
     private func row(_ id: Int, _ role: String, _ content: String, _ extra: [String: BotJSON] = [:]) -> BotJSON {
         var fields: [String: BotJSON] = [
             "id": .number(Double(id)), "session_id": .string("tip"), "role": .string(role), "content": .string(content),
@@ -578,12 +500,10 @@ import Observation
         return .object(fields)
     }
 
-    /// Row `id` of a plain conversation: odd ids are prompts, even ones replies.
     private func alternating(_ id: Int) -> BotJSON {
         id.isMultiple(of: 2) ? row(id, "assistant", "Answer \(id)") : row(id, "user", "Question \(id)")
     }
 
-    /// One `tool_calls` entry of an assistant row, its arguments a JSON string.
     private func call(_ id: String, _ name: String, _ arguments: String) -> BotJSON {
         .object(["id": .string(id), "type": .string("function"),
                  "function": .object(["name": .string(name), "arguments": .string(arguments)])])
@@ -598,7 +518,6 @@ import Observation
                  "payload": .object(payload)])
     }
 
-    /// The host's snapshot; a running turn began at `startedAt`.
     private func resume(running: Bool, inflight: [String: BotJSON]? = nil, startedAt: Double = 1_790_000_000) -> BotJSON {
         var reply: [String: BotJSON] = [
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(running),

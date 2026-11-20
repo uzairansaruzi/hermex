@@ -1,12 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// Covers the two places run history can quietly go wrong: paging arithmetic,
-/// which upstream makes non-obvious, and a slow run-output request landing
-/// after the user has moved on. A Hermes host's runs (#1042) are its run sessions.
 final class TaskRunHistoryTests: APIClientTestCase {
-
-    // MARK: - Decoding
 
     func testHistoryDecodesTolerantlyAndDropsRunsWithoutAFilename() throws {
         let response = try decodeHistory("""
@@ -38,15 +33,11 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(first.usage.durationSeconds ?? 0, 41.2, accuracy: 0.01)
         XCTAssertEqual(first.usage.totalTokens, 18240)
 
-        // The common case: the server parsed nothing out of the run.
         let second = try XCTUnwrap(response.runs.last)
         XCTAssertEqual(second.usage, CronRunUsage())
         XCTAssertNil(second.usage.model)
     }
 
-    /// `size` and `modified` are numbers the server derives from `stat()`. A
-    /// value outside `Int`'s range, or a non-finite mtime, must decode to
-    /// nothing rather than trap on conversion or in date formatting.
     func testMalformedSizeAndModifiedDecodeWithoutTrapping() throws {
         let response = try decodeHistory("""
         {
@@ -70,18 +61,12 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(response.runs[2].usage, CronRunUsage())
     }
 
-    // MARK: - Paging
-
-    /// Upstream slices `all_files[offset:offset + limit]` and then skips any
-    /// file it cannot `stat()`, so a page can return fewer rows than it
-    /// consumed. Paging by `runs.count` would re-request rows already shown.
     @MainActor
     func testPagingAdvancesByRequestedLimitEvenWhenAPageReturnsFewerRows() async {
         let recorder = RequestRecorder()
         let pageSize = TaskDetailViewModel.historyPageSize
         let viewModel = makeViewModel { request in
             recorder.record(request)
-            // Three rows for a fifty-row window: the rest failed to stat.
             return apiTestJSONResponse(Self.historyJSON(total: 120, offset: recorder.lastOffset ?? 0, count: 3), for: request)
         }
 
@@ -93,12 +78,9 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(recorder.limits, [pageSize, pageSize, pageSize])
         XCTAssertEqual(viewModel.runs.count, 9)
         XCTAssertEqual(viewModel.runTotal, 120)
-        // 150 requested against a total of 120: there is nothing left to ask for.
         XCTAssertFalse(viewModel.canLoadMoreRuns)
     }
 
-    /// A job writing new output between two pages shifts every row down one, so
-    /// the second page can repeat what the first already showed.
     @MainActor
     func testOverlappingPagesDoNotDuplicateRuns() async {
         let recorder = RequestRecorder()
@@ -116,9 +98,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(viewModel.runs.map(\.filename), ["run-1.md", "run-2.md", "run-3.md", "run-4.md"])
     }
 
-    /// A page fetched before a refresh describes a list that no longer exists.
-    /// Splicing it onto the refreshed list would leave the pages between them
-    /// loaded nowhere and unreachable, and push the cursor past both.
     @MainActor
     func testAPageInFlightWhenARefreshLandsIsDiscarded() async {
         let recorder = RequestRecorder()
@@ -131,7 +110,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
             let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
                 .queryItems?.first { $0.name == "offset" }?.value.flatMap(Int.init) ?? 0
 
-            // Hold only the first "Load more", so the refresh can overtake it.
             if recorder.offsets.count == 2 {
                 secondPageStarted.fulfill()
                 releaseSecondPage.wait()
@@ -145,20 +123,15 @@ final class TaskRunHistoryTests: APIClientTestCase {
         let loadMore = Task { await viewModel.loadMoreRuns() }
         await fulfillment(of: [secondPageStarted], timeout: 5)
 
-        // The user pulls to refresh while the page is still in flight.
         await viewModel.loadHistory()
         releaseSecondPage.signal()
         await loadMore.value
 
         XCTAssertEqual(viewModel.runs.map(\.filename), ["page-1.md"])
-        // The cursor still points at the page after the one on screen.
         await viewModel.loadMoreRuns()
         XCTAssertEqual(recorder.offsets.last, pageSize)
     }
 
-    /// While a reload is in flight the cursor still points into the list being
-    /// replaced, so "Load more" must not fetch against it — a page taken from
-    /// the old cursor would land on the new list.
     @MainActor
     func testLoadMoreIsRefusedWhileAReloadIsInFlight() async {
         let recorder = RequestRecorder()
@@ -171,7 +144,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
             let offset = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
                 .queryItems?.first { $0.name == "offset" }?.value.flatMap(Int.init) ?? 0
 
-            // Hold the reload — the third request — open.
             if recorder.offsets.count == 3 {
                 reloadStarted.fulfill()
                 releaseReload.wait()
@@ -188,8 +160,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         let reload = Task { await viewModel.loadHistory() }
         await fulfillment(of: [reloadStarted], timeout: 5)
 
-        // The cursor still reads 100 here, but it belongs to the list being
-        // replaced, so no request may be made against it.
         await viewModel.loadMoreRuns()
         XCTAssertEqual(recorder.offsets, [0, pageSize, 0])
 
@@ -200,8 +170,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         await viewModel.loadMoreRuns()
         XCTAssertEqual(recorder.offsets.last, pageSize)
     }
-
-    // MARK: - Failure containment
 
     @MainActor
     func testHistoryFailureLeavesTheRestOfTheScreenIntact() async {
@@ -222,7 +190,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isHistoryUnavailable)
     }
 
-    /// A refresh that fails keeps the runs the user was already reading.
     @MainActor
     func testFailedRefreshKeepsTheRunsAlreadyLoaded() async {
         let recorder = RequestRecorder()
@@ -241,8 +208,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertNotNil(viewModel.historyErrorMessage)
     }
 
-    /// A server that predates the endpoint answers 404. The section disappears
-    /// instead of parking a permanent error on the screen.
     @MainActor
     func testMissingEndpointRetiresTheHistorySection() async {
         let viewModel = makeViewModel { request in
@@ -257,10 +222,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.canLoadMoreRuns)
     }
 
-    // MARK: - Run output
-
-    /// Tapping a second run while the first is still in flight must leave the
-    /// sheet showing the run that was tapped last.
     @MainActor
     func testLateRunOutputResponseCannotOverwriteANewerSelection() async {
         let slowRequestStarted = expectation(description: "slow run output request started")
@@ -297,8 +258,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isLoadingRunOutput)
     }
 
-    /// Only the newest run can carry the job's last-run verdict; history says
-    /// nothing about the status of older runs.
     @MainActor
     func testOnlyTheNewestRunInheritsTheJobsFailedStatus() async {
         let viewModel = makeViewModel(job: Self.failedJob()) { request in
@@ -309,14 +268,9 @@ final class TaskRunHistoryTests: APIClientTestCase {
 
         XCTAssertEqual(viewModel.latestRun?.filename, "newest.md")
         XCTAssertEqual(viewModel.outcome(of: CronRunHistoryItem(filename: "newest.md")), .failed("exit code 1"))
-        // Each older file is a run that finished.
         XCTAssertEqual(viewModel.outcome(of: CronRunHistoryItem(filename: "older.md")), .completed)
     }
 
-    // MARK: - Hermes host (#1042)
-
-    /// One page of the newest 100 runs, read in the Task's Profile. The host reports no total,
-    /// so there is no "Load more". Every row also carries its session's `system_prompt`.
     @MainActor
     func testHermesHistoryIsTheNewest100RunsInTheTasksProfile() async throws {
         let viewModel = try hermesViewModel { request in
@@ -360,8 +314,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.canLoadMoreRuns)
     }
 
-    /// A page without its `runs` list is a failed read, not a Task that never ran: the runs on
-    /// screen stay beside a retry.
     @MainActor
     func testHermesPageWithoutItsRunsIsAFailedRead() async throws {
         let reads = ReadCounter()
@@ -382,8 +334,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isHistoryUnavailable)
     }
 
-    /// The host keeps one outcome per Task, so only the newest finished run shows it, with the
-    /// Task's reason. A run still going shows as running, and older runs claim nothing.
     @MainActor
     func testHermesOnlyTheNewestFinishedRunCarriesTheTasksOutcome() async throws {
         let script: (URLRequest) -> HermesHostFixture.Reply? = { request in
@@ -406,8 +356,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(succeeded.runs.map(succeeded.outcome), [.running, .completed, nil])
     }
 
-    /// The detail reads the job before its runs, so a run that finished as the detail opened is
-    /// among them when the job's outcome is its outcome, and that run carries it.
     @MainActor
     func testHermesDetailReadsItsRunsOnlyAfterTheJob() async throws {
         let failed: [String: BotJSON] = ["last_run_at": .string("2026-10-06T09:00:42-04:00"),
@@ -436,9 +384,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(viewModel.runs.map(viewModel.outcome), [.failed("exit code 1"), nil])
     }
 
-    /// The host stamps a Task's outcome once its run has ended, so a run that ended after the
-    /// job's `last_run_at` (it finished between the two reads) is newer than the outcome and
-    /// claims none. The run that ended by then carries it, and its reply is the latest output.
     @MainActor
     func testHermesRunThatEndedAfterTheJobsOutcomeClaimsNone() async throws {
         let viewModel = try hermesViewModel([
@@ -464,8 +409,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(viewModel.outputs.map(\.content), ["Exit code 1."])
     }
 
-    /// A run's output is its session's final reply, read in the Task's Profile; the earlier
-    /// reply that came with a tool call is not it. Nothing is read from the host's disk.
     @MainActor
     func testHermesRunOutputIsTheRunsFinalReply() async throws {
         let viewModel = try hermesViewModel { request in
@@ -487,9 +430,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path.hasPrefix("/api/fs") == true })
     }
 
-    /// A script-only run (#1342) has no session, so it opens to the preview its row carries and
-    /// sends nothing; a preview the host cut short says so, and a short one that ends in "…"
-    /// doesn't. One that left no output has none.
     @MainActor
     func testHermesScriptOnlyRunOpensToItsRowsPreviewWithoutARequest() async throws {
         let cut = String(String(repeating: "Backup of /srv finished: 12 files, 0 errors. ", count: 4).prefix(179)) + "…"
@@ -515,8 +455,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.requests.count, sent)
     }
 
-    /// A run that never gave a final reply has no output, and the sheet says so. A run the host
-    /// no longer has (404) is unavailable, not empty.
     @MainActor
     func testHermesRunWithoutAReplyHasNoOutputAndAMissingRunIsUnavailable() async throws {
         let viewModel = try hermesViewModel { request in
@@ -542,7 +480,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(viewModel.runOutputErrorMessage, "This run is no longer on the server.")
     }
 
-    /// A history read sent before a reload, answering after it, never replaces the reload's runs.
     @MainActor
     func testHermesHistoryFromBeforeAReloadNeverReplacesTheReloadsRuns() async throws {
         let reads = ReadCounter()
@@ -567,10 +504,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isLoadingHistory)
     }
 
-    /// Opening the detail reads the job from the list and its runs, each run read in the Task's
-    /// Profile and none from the disk. The latest output is the reply of the newest finished
-    /// run, the one the Task's failure describes, never of a run still going, and it is read
-    /// only when that run failed, the one time the detail shows it.
     @MainActor
     func testHermesLatestOutputIsTheNewestFinishedRunsReplyReadOnlyWhenItFailed() async throws {
         let script: (URLRequest) -> HermesHostFixture.Reply? = { request in
@@ -624,9 +557,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path.hasPrefix("/api/sessions/") == true })
     }
 
-    /// A Hermes host answers Run Now with the Task's outcome once the new run has finished.
-    /// The detail reads its runs again, so the outcome and the latest output are that run's,
-    /// and the run before it claims nothing.
     @MainActor
     func testAHermesRunNowGivesItsOutcomeToTheNewRunNotTheOneBefore() async throws {
         let reads = ReadCounter()
@@ -666,9 +596,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(viewModel.outputs.map(\.content), ["The disk is full."])
     }
 
-    /// Until the runs are read again, an outcome newer than them belongs to no listed run: when
-    /// the read after a Run Now fails, the run before it neither takes the new failure nor
-    /// stands in for its output.
     @MainActor
     func testAnOutcomeNewerThanTheRunsOnScreenIsNoListedRuns() async throws {
         let reads = ReadCounter()
@@ -707,9 +634,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/sessions/") == true }, [])
     }
 
-    // MARK: - Helpers
-
-    /// A Task on a Hermes host, in the `research` Profile, with `job` on top of the pinned shape.
     @MainActor
     private func hermesViewModel(
         _ job: [String: BotJSON] = [:],
@@ -774,8 +698,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
     }
 }
 
-/// Records the history requests a test made, so paging can be asserted on the
-/// offsets the client actually asked for.
 private final class RequestRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [(offset: Int, limit: Int)] = []
@@ -794,21 +716,14 @@ private final class RequestRecorder: @unchecked Sendable {
     var lastOffset: Int? { lock.withLock { recorded.last?.offset } }
 }
 
-/// Counts a scripted host's reads from its own thread: the host's script runs under the
-/// fixture's lock, so it can't ask the fixture.
 private final class ReadCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
 
-    /// This read's number, from 1.
     func next() -> Int { lock.withLock { count += 1; return count } }
 }
 
-/// A Hermes host's runs and run sessions (#1042), in the shapes `scripts/local-hermes` answered
-/// at the pin (0.21.5, ca678285).
 enum HermesRunFixture {
-    /// One row of `GET /api/cron/jobs/{id}/runs`: the run's session, `system_prompt` and all,
-    /// active until it has ended.
     static func run(_ id: String, started: Double, ended: Double?, _ overrides: [String: BotJSON] = [:]) -> BotJSON {
         var fields: [String: BotJSON] = [
             "id": .string(id), "source": .string("cron"), "model": .string("hermex-stub"),
@@ -825,8 +740,6 @@ enum HermesRunFixture {
         return .object(fields)
     }
 
-    /// A script-only run's row (0.21.6+, #1342), which the host makes from the run's output file
-    /// or execution record: no session, no tokens, and `preview` the output's first 180 characters.
     static func scriptRun(_ id: String, preview: String?, at time: Double = 1_791_291_600) -> BotJSON {
         .object([
             "id": .string(id), "title": .string(preview ?? "Script-only run"), "preview": preview.map(BotJSON.string) ?? .null,
@@ -841,7 +754,6 @@ enum HermesRunFixture {
         .object(["runs": .array(rows), "limit": .number(100)])
     }
 
-    /// `GET /api/sessions/{id}/messages`, oldest first.
     static func messages(_ rows: [BotJSON]) -> BotJSON {
         .object(["session_id": .string("cron_a1"), "profile": .string("research"), "messages": .array(rows),
                  "pagination": .object(["limit": .number(500), "offset": .number(0), "order": .string("latest")])])
@@ -855,8 +767,6 @@ enum HermesRunFixture {
     }
 }
 
-/// A field the job does not have does not get a row: a job that leaves the
-/// model, profile or skills to the server has nothing to say about them.
 final class TaskConfigurationFieldTests: XCTestCase {
     func testFieldsTheJobDoesNotHaveAreAbsent() {
         let fields = TaskConfigurationField.fields(for: Self.decodeJob("""
@@ -867,8 +777,6 @@ final class TaskConfigurationFieldTests: XCTestCase {
         """))
 
         XCTAssertEqual(fields.map(\.title), ["Schedule", "Deliver", "Notifications"])
-        // The humanised schedule leads; the raw expression is the second line.
-        // The clock format is the locale's, so only the sentence is asserted.
         XCTAssertTrue(fields.first?.value.hasPrefix("Daily at ") == true, "got \(fields.first?.value ?? "nil")")
         XCTAssertEqual(fields.first?.detail, "0 7 * * *")
         XCTAssertEqual(fields.first { $0.title == "Notifications" }?.value, "On")
@@ -883,7 +791,6 @@ final class TaskConfigurationFieldTests: XCTestCase {
         XCTAssertEqual(fields.map(\.title), ["Schedule", "Deliver", "Model", "Provider", "Profile", "Skills"])
         XCTAssertEqual(fields.first { $0.title == "Model" }?.value, "sonnet-5")
         XCTAssertEqual(fields.first { $0.title == "Skills" }?.value, "summarize, notify")
-        // Nothing said about notifications, so nothing claimed about them.
         XCTAssertNil(fields.first { $0.title == "Notifications" })
     }
 

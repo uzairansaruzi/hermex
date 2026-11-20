@@ -32,22 +32,12 @@ struct WorkspaceRoot: Decodable, Equatable, Sendable {
     }
 }
 
-/// Response shape shared by the four workspace-registry mutation routes
-/// (`/api/workspaces/add|remove|rename|reorder`). Verified against upstream
-/// `_handle_workspace_*` handlers: `{"ok": true, "workspaces": [...]}` on success.
-/// These routes are undocumented (not on the official docs site), so every field
-/// stays optional and callers must tolerate a missing `workspaces` echo.
 struct WorkspaceMutationResponse: Decodable, Equatable {
     let ok: Bool?
     let workspaces: [WorkspaceRoot]?
     let error: String?
 }
 
-/// Surfaced when a mutation route answers with HTTP success but reports
-/// `ok: false` in the body. Upstream signals failure via non-2xx today, but
-/// these routes are undocumented, so an explicit body-level failure must not
-/// be presented as a success. Reuses the phrasing (and localization keys) of
-/// `APIError`'s 400 handling.
 struct WorkspaceMutationRejection: LocalizedError, Equatable {
     let serverMessage: String?
 
@@ -97,9 +87,6 @@ struct WorkspaceEntry: Decodable, Hashable, Identifiable {
     let size: Int?
     let modified: Double?
     let isDirectory: Bool?
-    /// `target_outside_workspace` for a symlink: the server resolved it and the
-    /// target is not under the workspace root. Absent for everything else, and
-    /// on servers that predate the flag, so callers treat `nil` as "no claim".
     let targetOutsideWorkspace: Bool?
 
     init(
@@ -152,12 +139,8 @@ struct FileResponse: Decodable, Equatable {
     let size: Int?
     let lines: Int?
     let error: String?
-    /// A Hermes host's file that is not text (#1112), which has no text preview. webui never sets it.
     var isBinary = false
-    /// A Hermes host's file past its 512 KiB preview, which `content` holds. webui never sets it.
     var isTruncated = false
-    /// A Hermes host's text, which is a preview, not the file's bytes: decoded with replacement
-    /// characters and cut at 512 KiB, so export downloads the file instead (#1112). webui never sets it.
     var isPreviewOnly = false
 
     enum CodingKeys: String, CodingKey {

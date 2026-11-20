@@ -1,15 +1,8 @@
 import Foundation
 
-/// Marker messages the agent emits around context compaction. The server sends
-/// them as plain role-based messages with no structured flag, so — like the web
-/// UI (`_isContextCompactionMessage` / `_isPreservedCompressionTaskListMessage`
-/// in `ui.js`) — we detect them by content prefix.
 enum ChatMarkerMessageKind: Equatable {
     case contextCompaction
     case preservedTaskList
-    /// Synthesized "Context compaction · Reference only" anchor card built from
-    /// session-level `compression_anchor_*` metadata — never produced by
-    /// `classify`, which only sees literal marker messages.
     case compressionReference
 
     var title: String {
@@ -42,17 +35,11 @@ enum ChatMarkerMessageClassifier {
         return nil
     }
 
-    /// Mirrors the web UI's `_isContextCompactionText`: true when the text is
-    /// itself a literal compaction marker (used both for classification and to
-    /// gate the synthesized reference card).
     static func isContextCompactionText(_ text: String?) -> Bool {
         let trimmed = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return contextCompactionPrefixes.contains { hasCaseInsensitivePrefix(trimmed, $0) }
     }
 
-    /// The card body with the preserved-task-list marker line stripped, so the
-    /// preview/expanded text starts at the actual task list (mirrors the web
-    /// UI's `_preservedCompressionTaskListPreview`).
     static func cardBody(for kind: ChatMarkerMessageKind, content: String?) -> String {
         let text = (content ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 

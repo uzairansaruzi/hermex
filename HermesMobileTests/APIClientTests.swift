@@ -43,10 +43,6 @@ class APIClientTestCase: XCTestCase {
 final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
 
-    /// Handlers run here rather than on the caller's thread. URLSession drives
-    /// every protocol instance from a single loading thread, so a handler that
-    /// waits on that thread stalls every other in-flight request — and no test
-    /// could express a race between two of them.
     private static let queue = DispatchQueue(label: "MockURLProtocol", attributes: .concurrent)
 
     private let lock = NSLock()
@@ -90,10 +86,7 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
 final class InMemoryKeychainStore: KeychainStoring {
     private(set) var savedValues: [KeychainStore.Key: String] = [:]
-    /// Per-key write count, so tests can assert no redundant writes occur.
     private(set) var saveCounts: [KeychainStore.Key: Int] = [:]
-    /// Per-server-scoped storage, keyed by the same "raw::scope" string the real
-    /// `KeychainStore` uses, so tests can assert on per-server credential keys (#16).
     private(set) var scopedValues: [String: String] = [:]
 
     func save(_ value: String, forKey key: KeychainStore.Key) throws {
@@ -121,17 +114,12 @@ final class InMemoryKeychainStore: KeychainStoring {
         scopedValues.removeValue(forKey: KeychainStore.scopedKey(key, scope: scope))
     }
 
-    /// Convenience for assertions: the scoped value stored for `key` under `scope`.
     func scopedValue(_ key: KeychainStore.Key, scope: String) -> String? {
         scopedValues[KeychainStore.scopedKey(key, scope: scope)]
     }
 }
 
-// Test double: mutable counters are only ever touched serially (each call is
-// awaited before the next), so unchecked Sendable conformance is safe here.
 final class MockAuthAPIClient: AuthAPIClient, @unchecked Sendable {
-    /// How `logout()` should behave, so tests can exercise sign-out against an
-    /// unreachable (`fail`) or hung (`hang`) server, not just a happy path.
     enum LogoutBehavior {
         case succeed
         case fail(Error)
@@ -175,8 +163,6 @@ final class MockAuthAPIClient: AuthAPIClient, @unchecked Sendable {
         case .fail(let error):
             throw error
         case .hang:
-            // Block until the caller's timeout cancels this task, mimicking a
-            // server that accepts the connection but never responds.
             // test-wait: hangs until the caller's timeout cancels it; no test waits it out.
             try await Task.sleep(for: .seconds(3600))
             return LoginResponse(ok: true, message: nil, error: nil)

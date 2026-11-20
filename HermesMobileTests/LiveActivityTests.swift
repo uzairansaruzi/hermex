@@ -4,7 +4,6 @@ import XCTest
 
 @MainActor
 final class LiveActivityTests: XCTestCase {
-    /// An unpaired server: these runs stay local-only.
     private let server = URL(string: "https://webui.example")!
 
     override func tearDown() {
@@ -67,8 +66,6 @@ final class LiveActivityTests: XCTestCase {
         )
     }
 
-    /// #740: a local alert fires once on entering an approval or a question, and only when
-    /// the relay can't banner it and the user isn't already looking at the app.
     func testAlertPolicyAlertsOnlyOnEnteringWaitingWhenTheRelayCannot() {
         func alerts(_ previous: AgentRunActivityStatus, _ next: AgentRunActivityStatus,
                     paired: Bool = false, active: Bool = false) -> Bool {
@@ -86,7 +83,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertFalse(alerts(.runningCommand, .waiting), "the relay's generic waiting is never a local write")
         XCTAssertFalse(alerts(.responding, .complete))
 
-        // A stale write keeps the waiting status, so a replayed approval after a reconnect stays silent.
         let waiting = AgentRunActivityStateReducer.waitingForApproval(
             state: AgentRunActivityStateReducer.initialState(sessionID: "s", sessionTitle: "Build", startedAt: Date())
         )
@@ -94,8 +90,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertFalse(alerts(stale.status, AgentRunActivityStateReducer.waitingForApproval(state: stale).status))
     }
 
-    /// #740 review: a Bot feed writes its chips in the same tick as the approval, and that
-    /// write supersedes the send that carried the alert. The ask stays owed until a send lands.
     func testPendingAlertSurvivesASameStatusWriteAndDropsWhenTheAskEnds() {
         func pending(_ owed: AgentRunActivityStatus?, _ previous: AgentRunActivityStatus,
                      _ next: AgentRunActivityStatus, paired: Bool = false,
@@ -295,8 +289,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1)
     }
 
-    // #862: every run that ends completed or failed bumps the run-end trigger once,
-    // with its outcome, so ChatView can alert for it. A stopped run never does.
     func testChatViewModelRunEndTriggerCoversFailedAndCompletedRunsButNotStoppedOnes() async throws {
         let baseURL = URL(string: "https://example.test")!
         let configuration = URLSessionConfiguration.ephemeral
@@ -304,7 +296,6 @@ final class LiveActivityTests: XCTestCase {
         let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
         let streamClient = LiveActivitySpySSEClient()
         LiveActivityURLProtocol.handler = { request in
-            // A finished `done` run refreshes the chat title from the session.
             if request.url?.path == "/api/session" {
                 return Self.jsonResponse(#"{"session":{"session_id":"session-abc","title":"Deploy notes"}}"#, for: request)
             }
@@ -347,7 +338,6 @@ final class LiveActivityTests: XCTestCase {
         streamClient.emit(.error("No API key"))
         XCTAssertEqual(viewModel.runEndOutcome, .failed)
 
-        // The Live Activity calls a `stream_end` without `done` complete; so does the alert.
         let bareEndRunStarted = await viewModel.sendMessage("Last one")
         XCTAssertTrue(bareEndRunStarted)
         streamClient.emit(.streamEnd)
@@ -779,9 +769,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(viewModel.activeStreamID, "stream-2")
     }
 
-    // #862 / #855 D18: a dropped connection whose run the server reports over with no
-    // reply and no journal ends the Live Activity as failed, and alerts the same way.
-    // The reconnect's session load clears the stream before the failure is recorded.
     func testDroppedConnectionWithoutReplayRecordsFailedRunEnd() async throws {
         let baseURL = URL(string: "https://example.test")!
         let configuration = URLSessionConfiguration.ephemeral
@@ -866,14 +853,8 @@ final class LiveActivityTests: XCTestCase {
         return (response, Data(json.utf8))
     }
 
-    // MARK: - Orphaned activity reconciliation (#246)
-
-    /// The server the reconciler checks orphans against.
     private static let reconcilerServer = URL(string: "https://a.example.test")!
 
-    /// Builds a stream-status response for driving the reconciler core. `nil`
-    /// `terminalState` omits the `journal` block entirely (the server's shape
-    /// when it has no run summary), which the reconciler maps to `.complete`.
     private func statusResponse(active: Bool, terminalState: String? = nil) -> ChatStreamStatusResponse {
         ChatStreamStatusResponse(
             active: active,
@@ -899,9 +880,9 @@ final class LiveActivityTests: XCTestCase {
             notifiesOnCompletion: false,
             streamStatus: { streamID in
                 switch streamID {
-                case "done": self.statusResponse(active: false)   // server says the run is over → end the orphan
-                case "running": self.statusResponse(active: true)  // still active → leave it for the reconnect path
-                default: nil                                       // status check failed → leave it (no false positives)
+                case "done": self.statusResponse(active: false)
+                case "running": self.statusResponse(active: true)
+                default: nil
                 }
             },
             endOrphan: { orphan, _ in ended.append(orphan.streamID); return true },
@@ -911,7 +892,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(ended, ["done"])
     }
 
-    // #248: a completion older than the recency window is finalized silently.
     @MainActor
     func testReconcilerEndsButDoesNotNotifyStaleCompletion() async {
         let now = Date(timeIntervalSince1970: 10_000)
@@ -940,8 +920,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertTrue(notified.isEmpty)
     }
 
-    // #248 dedup: if another path already finalized the run, `endOrphan` reports it
-    // ended nothing here, so the reconciler must not fire a second notification.
     @MainActor
     func testReconcilerDoesNotNotifyWhenAnotherPathAlreadyFinalized() async {
         let now = Date(timeIntervalSince1970: 10_000)
@@ -955,15 +933,13 @@ final class LiveActivityTests: XCTestCase {
             now: now,
             notifiesOnCompletion: true,
             streamStatus: { _ in self.statusResponse(active: false) },
-            endOrphan: { _, _ in false },   // already final — nothing transitioned here
+            endOrphan: { _, _ in false },
             notify: { orphan, _ in notified.append(orphan.sessionID) }
         )
 
         XCTAssertTrue(notified.isEmpty)
     }
 
-    // #248: the foreground pass ends orphans but never notifies — the in-session
-    // completion paths own notifications while the app is alive.
     @MainActor
     func testReconcilerForegroundPassEndsOrphansButNeverNotifies() async {
         let now = Date(timeIntervalSince1970: 10_000)
@@ -986,7 +962,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertTrue(notified.isEmpty)
     }
 
-    // #248: a future-dated completion (clock skew) is treated as not-recent.
     @MainActor
     func testReconcilerDoesNotNotifyFutureDatedCompletion() async {
         let now = Date(timeIntervalSince1970: 10_000)
@@ -1007,10 +982,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertTrue(notified.isEmpty)
     }
 
-    // #267: the journal `terminal_state` → Live Activity outcome mapping. The
-    // load-bearing rows are `lost-worker-bookkeeping` → `.failed` (a silently
-    // dropped run — the bug this issue fixes) and the unknown/missing fallback →
-    // `.complete` (never mislabel a genuine completion as a failure).
     @MainActor
     func testReconciledOutcomeMapsTerminalStateToStatus() {
         func status(_ terminalState: String?) -> AgentRunActivityStatus {
@@ -1027,8 +998,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(status("a-state-we-have-never-seen"), .complete)
     }
 
-    // #862: the cold-launch pass alerts for a recent run that completed or failed,
-    // and finalizes a run someone stopped without alerting.
     @MainActor
     func testReconcilerNotifiesCompletedAndFailedButNotCancelledRunsOnColdLaunch() async {
         let now = Date(timeIntervalSince1970: 10_000)
@@ -1059,9 +1028,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(notified, ["s-done": .completed, "s-failed": .failed])
     }
 
-    // #862: another server's stream ID means nothing to the checked server, so its
-    // run never alerts from here. Neither does an activity a build before 1.7.0
-    // persisted, which has no recorded server.
     @MainActor
     func testReconcilerNeverNotifiesForAnotherServersOrphan() async {
         let now = Date(timeIntervalSince1970: 10_000)
@@ -1087,38 +1053,23 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(notified, ["s-own"])
     }
 
-    // #246 follow-up (PR #266 #3): the orphan reconciler must defer to a stream
-    // whose SSE is live in this process. The manager tracks that ownership via the
-    // lifecycle calls the coordinator already makes — set on `start`, cleared on
-    // `markStale` (suspend/trouble) and `end` (finalize) — and
-    // `orphanedActivities()` skips the tracked stream. This verifies the
-    // ownership lifecycle directly (the ActivityKit-backed list isn't reachable in
-    // unit tests, but the gate it consults is).
     @MainActor
     func testActiveConnectedStreamIDTracksLiveConnectionLifecycle() {
         let manager = AgentLiveActivityManager()
 
-        // A live SSE connection claims the stream so the reconciler leaves it alone.
         manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
-        // Suspension / transport trouble releases the claim — the suspended stream is
-        // eligible for server-truth reconciliation again.
         manager.markStale()
         XCTAssertNil(manager.activeConnectedStreamID)
 
-        // Reconnecting the same stream re-claims it.
         manager.start(sessionID: "session-1", server: server, sessionTitle: "Title", streamID: "stream-abc")
         XCTAssertEqual(manager.activeConnectedStreamID, "stream-abc")
 
-        // Finalizing the run releases the claim.
         manager.end(status: .complete, activity: "Response complete")
         XCTAssertNil(manager.activeConnectedStreamID)
     }
 
-    // Reusing an activity for the same session and stream keeps the earliest start
-    // it has been told about, so a widget first started from a discovery stamp
-    // adopts the server's earlier turn start once the coordinator learns it.
     @MainActor
     func testReusingAnActivityAdoptsTheEarliestKnownStart() throws {
         let manager = AgentLiveActivityManager()
@@ -1143,7 +1094,6 @@ final class LiveActivityTests: XCTestCase {
         )
         XCTAssertEqual(manager.currentStateForTesting()?.startedAt, serverStart)
 
-        // A later stamp for the same run never pushes the widget timer forward.
         manager.start(
             sessionID: "session-1",
             server: server,
@@ -1154,8 +1104,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(manager.currentStateForTesting()?.startedAt, serverStart)
     }
 
-    // #566: the same session and stream IDs on another configured server are a
-    // different run, so they get their own activity and relay route.
     @MainActor
     func testSameIDsOnAnotherServerStartAFreshActivity() throws {
         let manager = AgentLiveActivityManager()
@@ -1169,8 +1117,6 @@ final class LiveActivityTests: XCTestCase {
                        "Reusing would keep the first server's earlier start")
     }
 
-    // #676: only entering Thinking skips the throttle; a burst of reasoning events
-    // joins the coalesced path, and a reasoning event after a stale mark clears it at once.
     @MainActor
     func testRepeatedReasoningJoinsTheThrottleAndStillClearsStale() throws {
         let manager = AgentLiveActivityManager()
@@ -1188,8 +1134,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(manager.immediateWriteCountForTesting, 3, "stale mark and the one clearing it")
     }
 
-    // #676: the excerpt is a prefix, so once the buffered reply covers it, more
-    // tokens neither re-read the reply nor rewrite the state.
     @MainActor
     func testTokensStopRewritingTheExcerptOnceItsPrefixIsFull() throws {
         let manager = AgentLiveActivityManager()
@@ -1203,7 +1147,6 @@ final class LiveActivityTests: XCTestCase {
         for _ in 0..<1_000 { manager.update(.token("more ")) }
         XCTAssertEqual(manager.currentStateForTesting(), full)
 
-        // A token after a status change still puts "Writing response" back.
         manager.update(.reasoning("step"))
         manager.update(.token("more "))
         var state = try XCTUnwrap(manager.currentStateForTesting())
@@ -1220,14 +1163,11 @@ final class LiveActivityTests: XCTestCase {
         state = try XCTUnwrap(manager.currentStateForTesting())
         XCTAssertFalse(state.isStale)
 
-        // A new reply segment starts filling again.
         manager.update(.clearResponseExcerpt)
         manager.update(.token("next"))
         XCTAssertEqual(manager.currentStateForTesting()?.responseExcerpt, "next")
     }
 
-    // #676: leading whitespace does not fill the bounded buffer, so a reply that
-    // opens with a lot of it still reaches "Writing response".
     @MainActor
     func testLeadingWhitespaceDoesNotFillTheExcerptBuffer() throws {
         let manager = AgentLiveActivityManager()
@@ -1240,11 +1180,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(state.responseExcerpt, "Hello")
     }
 
-    // MARK: Hermes sessions (#1179)
-
-    /// A Hermes session's relay route is its server and stored key, the `session_id` the
-    /// plugin's progress carries. One a build before #1179 started names no such key, so it is
-    /// never registered under its `hermes:` identity. A webui run keeps its own session ID.
     func testAHermesSessionPushesUnderItsStoredKey() {
         let hermes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run", startedAt: .now,
                                                 server: server, pushSessionID: "tip")
@@ -1256,8 +1191,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(webui.pushTarget, AgentRunActivityPushTarget(server: server, sessionID: "webui-session"))
     }
 
-    /// An activity the previous build persisted decodes without a link or a key, and the new
-    /// fields survive the round trip ActivityKit puts attributes through.
     func testAHermesActivityFromThePreviousBuildStillDecodes() throws {
         let data = Data(#"{"sessionID":"hermes:default:tip","sessionTitle":"Run","streamID":"1790000000.5","startedAt":0,"server":"https://webui.example"}"#.utf8)
         let older = try JSONDecoder().decode(AgentRunActivityAttributes.self, from: data)
@@ -1273,9 +1206,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(copy.pushSessionID, "tip-2")
     }
 
-    /// The driven session's pushes follow its stored key: a move changes the key its token
-    /// registers under, and a reattach inside the turn adopts the same activity (its state
-    /// carries on) under the key the chat now knows. A blank key moves nothing.
     func testAHermesSessionsPushesFollowItsStoredKey() throws {
         let manager = AgentLiveActivityManager()
         let startedAt = Date(timeIntervalSince1970: 1_000)
@@ -1296,9 +1226,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-3")
     }
 
-    /// Cold launch adopts a paired Hermes session's running activity, as a bot's, under the key
-    /// it carried, so the relay keeps driving it and the session's chat can take it over. A
-    /// finished one is not adopted.
     func testColdLaunchAdoptsAPairedHermesSessionsActivity() throws {
         let attributes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run",
                                                     streamID: "1000.0", startedAt: Date(timeIntervalSince1970: 1_000),
@@ -1312,8 +1239,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip")
     }
 
-    /// `session.active_list` runs a session while it lists the stored key with any status but
-    /// `idle`, including ones this build does not know.
     func testTheLiveListRunsEveryListedSessionThatIsNotIdle() {
         let items: [BotJSON] = [("a", "working"), ("b", "waiting"), ("c", "starting"), ("d", "streaming"),
                                 ("e", "resuming"), ("f", "idle")].map { key, status in
@@ -1323,12 +1248,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(LeftoverLiveActivitySettlement.runningKeys(items), ["a", "b", "c", "d", "e", "g"])
     }
 
-    /// What cold launch does with each activity a previous launch left (#489, #566, #1179). A
-    /// paired activity is adopted; a finished one releases its route. An unpaired Hermes
-    /// session's on the signed-in Hermes server is checked once against the live list: listed
-    /// and running, it stays; otherwise it ends as complete, since the outcome is unknown.
-    /// Another server's waits for its stale date, as a running webui run waits for its own
-    /// reconciler; an unpaired bot cannot be followed, so it ends.
     func testColdLaunchChecksUnpairedHermesRunsOnceAgainstTheLiveList() async throws {
         let paired = URL(string: "https://paired.example")!
         let other = URL(string: "https://other.example")!
@@ -1369,8 +1288,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(reads, 1, "one live-list read for every unpaired Hermes run")
     }
 
-    /// A live list that can't be read proves nothing, so the unpaired run stays. Without an
-    /// unpaired Hermes run on the signed-in Hermes server, nothing is read at all.
     func testColdLaunchLeavesHermesRunsTheLiveListCannotSettle() async {
         let unpaired = LeftoverLiveActivity(id: "unpaired", attributes: AgentRunActivityAttributes(
             sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now, server: server, pushSessionID: "tip",
@@ -1390,7 +1307,6 @@ final class LiveActivityTests: XCTestCase {
         }
         XCTAssertEqual(reads, 1, "nothing to check, so nothing read")
 
-        // Nor does a list without the leftover's key show its run is over, when it names none.
         let keyless = LeftoverLiveActivity(id: "keyless", attributes: AgentRunActivityAttributes(
             sessionID: "hermes:default", sessionTitle: "Run", startedAt: .now, server: server), isFinished: false)
         let unknown = await LeftoverLiveActivitySettlement.actions(
@@ -1398,9 +1314,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(unknown, [.keep])
     }
 
-    /// A Hermes session's activity started before its server paired asked for no push token, so
-    /// the relay can't drive it after pairing: it is checked against the live list like an
-    /// unpaired one, never adopted (#1179).
     func testColdLaunchChecksAHermesRunStartedBeforePairingAgainstTheLiveList() async {
         func hermes(_ key: String, requestedPush: Bool?) -> LeftoverLiveActivity {
             LeftoverLiveActivity(id: key, attributes: AgentRunActivityAttributes(
@@ -1418,10 +1331,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(reads, 1)
     }
 
-    /// A legacy compression's key move outlives the process (#1179). A fresh manager, as after a
-    /// relaunch, finds the activity under the moved key: the host listing that key running keeps
-    /// it, and adopting it re-registers under that key. The same turn on another server keeps
-    /// the key it carries.
     func testAMovedKeySurvivesARelaunch() async throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "LiveActivityTests-\(UUID())"))
         let before = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))

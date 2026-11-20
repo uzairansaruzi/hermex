@@ -15,7 +15,6 @@ final class SSEClient: SSEStreamingClient {
     private let baseConfiguration: URLSessionConfiguration
     private var eventSource: EventSource?
     private(set) var lastEventID: String?
-    /// Read at stream start so a new stream picks up the latest headers (#255).
     private let customHeaderProvider: @MainActor () -> [CustomHeader]
 
     init(
@@ -38,17 +37,9 @@ final class SSEClient: SSEStreamingClient {
         )
         var config = EventSource.Config(handler: handler, url: url)
         config.connectionErrorHandler = { [handler] error in
-            // Reconnection is owned by the consumers (chat stream resume, approval and
-            // clarify fallback polling), so the library must not retry on its own.
-            // LDSwiftEventSource skips `handler.onError` when this returns `.shutdown`
-            // (see `dispatchError`), which left a dropped socket silent: the consumer kept
-            // treating the stream as attached and never fell back or reopened it.
-            // Deliver the error ourselves so `.transportError` reaches the consumer.
             handler.onError(error: error)
             return .shutdown
         }
-        // Custom headers merged underneath the built-ins so the built-ins win on
-        // collision; an empty list leaves the built-in three unchanged (#255).
         config.headers = customHeaderProvider().merged(under: [
             "Accept": "text/event-stream",
             "Cache-Control": "no-cache, no-transform",
@@ -301,12 +292,6 @@ struct SSEEventDecoder {
         case "cancel":
             return .cancelled
         case "error", "apperror":
-            // "apperror" is one of the four socket-closing frames (stream_end, cancel,
-            // error, apperror). The docs describe its payload as {error, type, session,
-            // terminal_state?} while the pinned upstream emits {message, type, hint,
-            // details, …}; decoding both `error` and `message` covers either shape.
-            // Mapping it onto `.error` reuses the existing terminal error path
-            // (surface the message, finish the stream) unchanged.
             guard let payload = decodePayload(ErrorPayload.self, eventType: eventType, from: eventData, decoder: decoder) else {
                 return .error(String(localized: "The stream returned a malformed error event."))
             }

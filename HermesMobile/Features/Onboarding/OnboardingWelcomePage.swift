@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Onboarding's one page (#1540): "Add your server" opens the Add Server sheet, and "I don't
-/// have one yet" the setup pages.
 struct OnboardingWelcomePage: View {
     let addServer: () -> Void
     let setUp: () -> Void
@@ -25,7 +23,6 @@ struct OnboardingWelcomePage: View {
             .scrollBounceBehavior(.basedOnSize)
         }
         .background(Color.black.ignoresSafeArea())
-        // The buttons stay in reach while large text scrolls the page.
         .safeAreaInset(edge: .bottom, spacing: 0) { actions }
     }
 
@@ -74,8 +71,6 @@ struct OnboardingWelcomePage: View {
                             )
                     )
                     .shadow(color: Color(red: 1.0, green: 0.62, blue: 0.08).opacity(0.35), radius: 24, y: 10)
-                    // A background takes no layout, so a short display (iPhone Duo folded) gives the
-                    // glow's overflow to the copy instead of scrolling it behind the buttons.
                     .background {
                         ZStack {
                             RadialGradient(

@@ -90,11 +90,6 @@ final class APIClientSessionListTests: APIClientTestCase {
         XCTAssertFalse(sessions[2].isDelegatedSubagentSession)
         XCTAssertFalse(sessions[2].isSessionReadOnly)
     }
-    /// One malformed row used to fail the whole array, so a single CLI or
-    /// subagent session with a drifted field emptied the entire list and
-    /// pull-to-refresh could never bring it back. Rows are decoded
-    /// independently and each field is lossy, matching `SessionDetail` and
-    /// `ProjectSummary`, which already worked this way.
     func testSessionListSurvivesOneMalformedRow() async throws {
         let client = makeClient { request in
             apiTestJSONResponse("""
@@ -128,10 +123,6 @@ final class APIClientSessionListTests: APIClientTestCase {
         )
     }
 
-    // MARK: Hermes (#1046)
-
-    /// The Sessions list sends every list parameter: the host's defaults order by creation,
-    /// list empty sessions and keep machine-run sources.
     func testHermesSessionListNamesEveryListParameter() throws {
         let request = try HermesREST.sessionList(profile: "research", offset: 200)
             .request(base: URL(string: "https://hermes.example")!)
@@ -145,7 +136,6 @@ final class APIClientSessionListTests: APIClientTestCase {
         ])
     }
 
-    /// A read mark goes to the session's own id under its Profile, and nothing else is sent.
     func testHermesReadMarkPatchesOnlyUnreadAndTheProfile() throws {
         let request = try HermesREST.updateSession(key: "20261005_101500_a1b2c3", profile: "research", change: .unread(false),
                                                    identity: nil).request(base: URL(string: "https://hermes.example")!)
@@ -158,8 +148,6 @@ final class APIClientSessionListTests: APIClientTestCase {
                                                           identity: nil).request(base: URL(string: "https://hermes.example")!), "an id never names another route")
     }
 
-    /// A page in the 0.21.5 shape: unknown and missing fields are fine, a row without an id is
-    /// skipped but still counts toward the page's length, and `total` is never read.
     func testHermesSessionPageDecodesTolerantlyAndSkipsAnUnreadableRow() throws {
         let page = try JSONDecoder().decode(HermesSessionPage.self, from: Data("""
         {"sessions": [

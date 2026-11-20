@@ -1,20 +1,11 @@
 import Foundation
 
-/// What the Memory screen calls, so one screen runs on either kind of server: a webui
-/// server's `/api/memory` (`APIClient`) or one Hermes Profile's files (`HermesMemoryClient`,
-/// #1073). `memoryFeatures` says what the screen adds for the server.
 protocol MemoryDataClient: Sendable {
     var memoryFeatures: MemoryFeatures { get }
     func memory() async throws -> MemoryResponse
-    /// Saves `content` to `section`. `loaded` is the section's text when its editor opened: a
-    /// server that checks for changes made meanwhile throws `MemoryConflict` instead of writing,
-    /// unless it already holds `content`, as after a save whose reply was lost.
     func saveMemory(section: MemorySection, content: String, loaded: String) async throws -> MemoryWriteResponse
 }
 
-/// What the Memory screen adds for one server. A Hermes host's sections (#1073) reach the
-/// agent at its next session, which the editor says; they come with no modified times and no
-/// project context, so the screen shows neither.
 struct MemoryFeatures: Equatable, Sendable {
     let editsApplyNextSession: Bool
 
@@ -37,7 +28,6 @@ extension APIClient: MemoryDataClient {
         )
     }
 
-    /// webui writes the editor's text as it is, without a change check.
     func saveMemory(section: MemorySection, content: String, loaded _: String) async throws -> MemoryWriteResponse {
         try await writeMemory(section: section, content: content)
     }
@@ -48,25 +38,11 @@ private struct MemoryWriteRequest: Encodable {
     let content: String
 }
 
-/// The Memory screen's client on a Hermes host (#1073), for one Profile: its notes and user
-/// profile are `memories/MEMORY.md` and `USER.md` in the Profile's folder, read and written
-/// through the host's managed file routes, which stay on the dashboard's machine when a Profile's
-/// terminal runs over SSH (#1566), and its soul is `/api/profiles/{name}/soul`. The folder is
-/// read from the Profile's `profiles.list` row on every load and save, and is the only host
-/// path these routes are ever sent; it is never shown, logged or kept. The host's config says
-/// which sections are on and their limits, and only its `memory` section is decoded.
-///
-/// A save re-reads the file first and refuses with `MemoryConflict` when it no longer matches
-/// what the editor opened with, unless it already holds what is being saved: a retry after a
-/// save that landed but whose reply or refresh was lost overwrites nothing. The agent can
-/// still write between that read and the write, which takes no lock: a small window accepted
-/// to use the host's public file routes.
 @MainActor final class HermesMemoryClient: MemoryDataClient {
     nonisolated var memoryFeatures: MemoryFeatures { .hermes }
     let profile: String
     private let http: HermesConnection
 
-    /// `profile`'s memory on `server`'s saved connection, on the sign-in its Bot screens share.
     convenience init(saved connection: BotConnection, server: URL, profile: String) {
         self.init(http: HermesConnections.shared.connection(for: connection, server: server), profile: profile)
     }
@@ -76,8 +52,6 @@ private struct MemoryWriteRequest: Encodable {
         self.profile = profile
     }
 
-    /// The sections the host's config turns on, with their limits, and the soul. A missing
-    /// file is an empty one. A file over 512 KiB or that isn't text is shown read-only.
     func memory() async throws -> MemoryResponse {
         async let folderRead = memoriesFolder()
         async let configRead = memoryConfig()
@@ -96,9 +70,6 @@ private struct MemoryWriteRequest: Encodable {
         return response
     }
 
-    /// Notes and the user profile are written in the agent's own format
-    /// (`MemoryCanonicalizer`), then read back to confirm. The host creates a missing `memories`
-    /// folder. The soul is written as it is, with the same check first.
     func saveMemory(section: MemorySection, content: String, loaded: String) async throws -> MemoryWriteResponse {
         switch section {
         case .soul:
@@ -117,9 +88,6 @@ private struct MemoryWriteRequest: Encodable {
         return MemoryWriteResponse(saved: section)
     }
 
-    // MARK: - Reads
-
-    /// The Profile's `memories` folder: its `profiles.list` row's `path`, the Profile's home.
     private func memoriesFolder() async throws -> String {
         let client = BotClient(http: http)
         defer { client.close() }
@@ -129,8 +97,6 @@ private struct MemoryWriteRequest: Encodable {
         return folder
     }
 
-    /// `profile`'s row's `path` with `/memories` appended; nil when no row names it or its
-    /// path is empty.
     static func memoriesFolder(in rows: [BotJSON], profile: String) -> String? {
         guard let path = rows.first(where: { $0["name"].text == profile })?["path"].text,
               !path.isEmpty, !path.contains("\0") else { return nil }
@@ -150,10 +116,8 @@ private struct MemoryWriteRequest: Encodable {
         return content
     }
 
-    /// The largest file the screen edits or previews, the same 512 KiB as the host's text preview.
     private static let editableBytes = 512 * 1024
 
-    /// One file's text. A file the host doesn't have (404) reads as empty.
     private func read(_ path: String) async throws -> HermesMemoryFile {
         let answer = try await reply(.filesRead(path: path))
         guard answer.status != 404 else { return HermesMemoryFile(text: "", isEditable: true) }
@@ -164,29 +128,19 @@ private struct MemoryWriteRequest: Encodable {
         if data.count <= Self.editableBytes, let text = String(bytes: data, encoding: .utf8) {
             return HermesMemoryFile(text: text, isEditable: true)
         }
-        // The screen renders what it gets, so a read-only file stays a preview.
         return HermesMemoryFile(text: String(decoding: data.prefix(Self.editableBytes), as: UTF8.self), isEditable: false)
     }
 
-    /// A section's file when the host's config turns the section on; nil, unread, when not.
     private func read(_ path: String, if enabled: Bool) async throws -> HermesMemoryFile? {
         enabled ? try await read(path) : nil
     }
 
-    // MARK: - Wire
-
-    /// A dropped request reads as the webui's network failure, so a cancellation is
-    /// recognised as one.
     private func reply(_ rest: HermesREST) async throws -> (body: Data, status: Int) {
         do { return try await http.reply(rest) } catch let error as URLError {
             throw APIError.network(underlying: error)
         }
     }
 
-    /// A 2xx reply's body. A 4xx the host explains in `detail`, a 403 included (a file it
-    /// can't write, or a path outside a locked files root), reads as that reason, unless the
-    /// reason names a path. A 403 or 502-504 with no reason is the proxy or tunnel in front
-    /// of it. Anything else is `APIError.http`, without its body, which can carry a path.
     private func accepted(_ reply: (body: Data, status: Int)) throws -> Data {
         switch reply.status {
         case 200..<300: return reply.body
@@ -212,15 +166,11 @@ private struct MemoryWriteRequest: Encodable {
     }
 }
 
-/// A memory request a Hermes host refused with its reason (`{detail}`), such as a file it
-/// can't write.
 struct HermesMemoryRefusal: LocalizedError, Equatable {
     let detail: String
     var errorDescription: String? { String(localized: "The server rejected the request: \(detail)") }
 }
 
-/// The Profile the Memory screen opened on is no longer in the host's `profiles.list`, so
-/// there is no folder to read or write.
 struct HermesMemoryProfileMissing: LocalizedError, Equatable {
     var errorDescription: String? { String(localized: "This Profile is no longer on the server.") }
 }
@@ -232,8 +182,6 @@ private struct HermesMemoryFile {
     let isEditable: Bool
 }
 
-/// `GET /api/config`, whole and unredacted (credentials included), of which only `memory`
-/// is decoded. A `memory` that isn't an object reads as the defaults, as the agent reads it.
 private struct HermesMemoryConfigBody: Decodable {
     let memory: HermesMemoryConfig?
 
@@ -244,9 +192,6 @@ private struct HermesMemoryConfigBody: Decodable {
     }
 }
 
-/// The host's `memory` config, read as the agent reads it: a flag is on unless set to a false
-/// value (`false`, `0`, or a string outside `1`, `true`, `yes`, `on`), and a limit is a whole
-/// number, else the host's default.
 private struct HermesMemoryConfig: Decodable {
     var memoryEnabled = true
     var userProfileEnabled = true
@@ -268,7 +213,6 @@ private struct HermesMemoryConfig: Decodable {
         userLimit = container.decodeLossyIntIfPresent(forKey: .userLimit) ?? userLimit
     }
 
-    /// `utils.is_truthy_value(value, default=True)`.
     private static func flag(_ container: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> Bool {
         if let value = try? container.decodeIfPresent(Bool.self, forKey: key) { return value }
         if let value = try? container.decodeIfPresent(Double.self, forKey: key) { return value != 0 }

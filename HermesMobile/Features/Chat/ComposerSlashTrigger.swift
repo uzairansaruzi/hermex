@@ -1,31 +1,12 @@
 import Foundation
 
-/// The `/…` run the caret is sitting in, if there is one.
-///
-/// The composer used to treat a draft as a slash query only when the whole draft
-/// started with `/`, so `/` halfway through a sentence did nothing and accepting
-/// a row threw the rest of the draft away. This finds the trigger at the caret
-/// and reports the range it occupies, so accepting a row replaces only that much.
-/// It also reports whether the trigger opens the draft: only then can the send
-/// path run a command, so mid-sentence the panel offers skills only.
 struct ComposerSlashTrigger: Equatable {
-    /// UTF-16 range of the trigger inside the draft: the `/` up to the caret.
     let range: NSRange
-    /// The trigger's text, `/` included. This is what the panel filters on.
     let text: String
-    /// Whether only whitespace precedes the trigger, which is the same gate the
-    /// send path uses: a command row mid-sentence would be inserted text that
-    /// nothing executes.
     let startsDraft: Bool
 
     private static let slash: UInt16 = 0x2F
 
-    /// The trigger `selection` sits in, or `nil` when there is none.
-    ///
-    /// A trigger is a `/` that starts the draft or follows whitespace, running
-    /// forward to the caret and never across a line break. A selection with a
-    /// length is never a trigger: the user is selecting text, not typing a
-    /// command.
     static func detect(in draft: String, selection: NSRange, scope: SlashCommandScope = .webui) -> ComposerSlashTrigger? {
         guard selection.length == 0 else { return nil }
 
@@ -33,10 +14,6 @@ struct ComposerSlashTrigger: Equatable {
         let caret = selection.location
         guard caret >= 0, caret <= draft.length else { return nil }
 
-        // Every `/` on the caret's line that could open a trigger, then the
-        // outermost one that holds up. A path argument such as
-        // `/workspace /Users/me/app` belongs to the command in front of it, so
-        // the inner slash must never win.
         var starts: [Int] = []
         var index = caret - 1
         while index >= 0 {
@@ -62,13 +39,6 @@ struct ComposerSlashTrigger: Equatable {
         return nil
     }
 
-    /// What the slash panel filters on for this trigger, or `nil` when it stays closed.
-    ///
-    /// A command the user has typed past no longer produces a trigger at all, so besides the
-    /// trigger itself, three things close the panel: a settled `/skills` invocation, a settled
-    /// goal action, and a mid-sentence word no loaded skill matches. A Hermes chat's panel opens
-    /// at a host command's argument only while `hostCompletion` has suggestions for it (#1036);
-    /// mid-sentence it offers the host's skills, as on webui (#1679).
     func panelQuery(
         scope: SlashCommandScope,
         skills: [SkillSlashSuggestion],
@@ -92,11 +62,6 @@ struct ComposerSlashTrigger: Equatable {
             return nil
         }
 
-        // Mid-sentence the panel's only content is skills, so once the catalog
-        // question is settled — a request has succeeded, even one that found
-        // no skills — and nothing matches the typed word, close rather than
-        // hold an empty box up. Before that, keep the panel open so its load
-        // task can fetch the list and judge the word against real data.
         if !startsDraft,
            hasLoadedSkills,
            SlashSkillFormatter.matching(parsed.commandName, in: skills).isEmpty {
@@ -106,13 +71,6 @@ struct ComposerSlashTrigger: Equatable {
         return text
     }
 
-    /// What the draft and caret become when the user accepts `replacement`.
-    ///
-    /// Only the trigger's own range changes. When the completion wants a
-    /// trailing space and the draft already has one waiting there, the space is
-    /// dropped and the caret steps over the existing one instead, so accepting a
-    /// command mid-sentence leaves neither a double space nor a caret stranded in
-    /// front of one. A line break is not a separator, so it keeps the space.
     func applying(_ replacement: String, to draft: String) -> (draft: String, selection: NSRange) {
         let draft = draft as NSString
         let location = min(max(0, range.location), draft.length)
@@ -134,9 +92,6 @@ struct ComposerSlashTrigger: Equatable {
         )
     }
 
-    /// Whether only whitespace precedes `start`, matching the send path's gate:
-    /// `SlashCommandExecutor` trims the whole draft with
-    /// `.whitespacesAndNewlines` and requires a leading `/`.
     private static func isAtDraftStart(_ draft: NSString, before start: Int) -> Bool {
         var index = start - 1
         while index >= 0 {
@@ -146,19 +101,6 @@ struct ComposerSlashTrigger: Equatable {
         return true
     }
 
-    /// Whether `text` can still be a command being typed.
-    ///
-    /// One word is always a candidate. Past the first space, the word has to be
-    /// a command that takes a sub-argument, and only at the start of the draft
-    /// where that command could actually run — mid-sentence the panel offers
-    /// skills only, so the trigger ends with its word instead of chasing a
-    /// sub-argument through the rest of the sentence. Where the argument is one
-    /// of a fixed list the trigger ends as soon as the user types past it, so
-    /// prose such as "check the /tmp folder" or "use /reasoning high for this
-    /// task" does not hold an empty panel open for the rest of the sentence.
-    /// Where it is free-form — a workspace path, a personality name, a skill
-    /// query — the spaces are part of the value, so the trigger runs to the
-    /// caret. So does a host command's (#1036): the host says what it takes.
     private static func isTrigger(_ text: String, atDraftStart: Bool, scope: SlashCommandScope) -> Bool {
         let body = text.dropFirst()
         guard let space = body.firstIndex(where: { $0.isWhitespace }) else { return true }

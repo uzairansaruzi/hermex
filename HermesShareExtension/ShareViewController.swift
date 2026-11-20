@@ -4,7 +4,6 @@ import UIKit
 final class ShareViewController: UIViewController {
     private let statusLabel = UILabel()
     private var didStartOpening = false
-    /// An alert made before the view appeared, which can't present it until then.
     private var alertAwaitingAppearance: UIAlertController?
     private var didAppear = false
 
@@ -86,8 +85,6 @@ final class ShareViewController: UIViewController {
         openHermes()
     }
 
-    /// Nothing in the share can be added: says why, and waits for Done so the reason can be read,
-    /// with VoiceOver too (#1401). English only, like the rest of the extension.
     private func showNothingAdded(skipped: [SharedSkippedItem]) {
         let message = [Self.reason(for: skipped), "Hermex accepts text, URLs, images, PDFs, and files up to 20 MB."]
             .compactMap { $0 }
@@ -103,8 +100,6 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    /// Why the share's items were left out: the first item's reason, and how many more there
-    /// were. Nil when it held none.
     private static func reason(for skipped: [SharedSkippedItem]) -> String? {
         guard let first = skipped.first else { return nil }
         let name = first.filename ?? "The item"
@@ -150,14 +145,11 @@ final class ShareViewController: UIViewController {
             return
         }
 
-        // Fallback if everything fails
         showStatus("Shared content saved. Open Hermex manually.")
         completeRequest(after: 1.5)
     }
 
     private func openViaContainingApplication(_ url: URL) -> Bool {
-        // Owner-accepted App Review risk: share extensions have no guaranteed
-        // containing-app launcher, but this preserves the current fast return UX.
         let sharedApplicationSelector = NSSelectorFromString("sharedApplication")
         let openURLModernSelector = NSSelectorFromString("openURL:options:completionHandler:")
 
@@ -212,8 +204,6 @@ final class ShareViewController: UIViewController {
     }
 
     private func open(_ url: URL, using responder: UIResponder) -> Bool {
-        // Owner-accepted App Review risk; this is a fallback for hosts where
-        // NSExtensionContext.open does not route to the containing app.
         if let application = responder as? UIApplication {
             application.open(url, options: [:], completionHandler: nil)
             return true

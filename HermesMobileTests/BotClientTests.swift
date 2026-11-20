@@ -60,8 +60,6 @@ import XCTest
         XCTAssertEqual(sockets.map { $0.sentTextFrames }, [1, 1])
     }
 
-    /// A reconnect mints a fresh ticket on the cookie the first sign-in stored. A ticket
-    /// the host refuses as unauthenticated signs in once more and is minted again.
     func testReconnectsReuseTheSignInAndRecoverAnExpiredSessionOnce() async throws {
         var logins = 0
         var tickets = 0
@@ -91,9 +89,6 @@ import XCTest
         XCTAssertEqual(tickets, 3)
     }
 
-    /// Without `client.capabilities` the host withdraws every approval, answers
-    /// every clarify empty and skips sudo/secret, so it goes first on every
-    /// socket — reconnects included — with exactly the contract's one key.
     func testClientCapabilitiesIsTheFirstFrameAfterReadyOnEverySocket() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
@@ -115,13 +110,8 @@ import XCTest
             XCTAssertEqual(socket.outbound.first?["params"], .object(["server_requests": .bool(true)]))
             XCTAssertNotNil(socket.outbound.first?["id"].integer)
         }
-        // The handshake is the client's own and `HermesCall.clientCapabilities` has no
-        // parameter to widen. The pre-0.21.2 answer methods (`clarify.respond`,
-        // `sudo.respond`, `secret.respond`, `mcp.setup.respond`) have no case at all.
     }
 
-    /// A host older than the capability answers -32601. It has nothing to
-    /// withhold, so the socket connects and works as before.
     func testAHostWithoutClientCapabilitiesStillConnects() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
@@ -137,9 +127,6 @@ import XCTest
         XCTAssertEqual(socket.outbound.map { $0["method"].text }, ["client.capabilities", "profiles.list"])
     }
 
-    /// The host sends no JSON heartbeat, so an idle socket would hit the 45 s
-    /// silence deadline. The client pings on its own cadence, only after the
-    /// handshake, and the pong's string id never settles an RPC.
     func testGatewayPingKeepsAnIdleSocketAliveOnTheInjectedCadence() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
@@ -164,7 +151,6 @@ import XCTest
         XCTAssertEqual(disconnects, 0)
     }
 
-    /// A password host's four sign-in replies. Any other HTTP request fails the test.
     private static let signIn: (URLRequest) -> (Int, BotJSON) = { request in
         switch request.url!.path {
         case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
@@ -214,8 +200,6 @@ import XCTest
         _ = try await client.call(.profilesSetAsset(name: "inbox-triage", avatar: .clear))
         XCTAssertEqual(socket.sentTextFrames, 4)
 
-        // Extra keys, a look without its revision, another asset and data with clear
-        // have no typed shape. The value rules remain.
         let model = HermesCall.Model(id: "gpt-6", provider: "openai")
         let rejected: [HermesCall] = [
             .profilesDescribe(name: ""),
@@ -254,7 +238,6 @@ import XCTest
         _ = try await client.call(.subagentInterrupt(sessionID: "runtime", subagentID: "worker"))
         XCTAssertEqual(socket.sentTextFrames, 3)
 
-        // `subagent.steer`, a Profile scope and an `all` flag have no typed shape.
         let rejected: [HermesCall] = [
             .subagentList(sessionID: ""),
             .subagentTail(sessionID: "runtime", subagentID: ""),
@@ -272,8 +255,6 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 3)
     }
 
-    /// The connection card answers one row or Continue, by `op_id`, and nothing
-    /// else: no claimed outcome, no other settle reason, no connector RPC.
     func testConnectionAllowlistAdmitsOnlyOneRowOrContinue() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
@@ -302,8 +283,6 @@ import XCTest
                          "env": .object(["GITHUB_TOKEN": .string("ghp_1")])]))
         ])
 
-        // Another settle reason or outcome, a second row, env on a skip, a `detail`, a
-        // Profile scope and the other connector RPCs have no typed shape.
         let rejected: [HermesCall] = [
             .connectionRespond(sessionID: "runtime", opID: "op-1", answer: .skip(target: "")),
             .connectionRespond(sessionID: "runtime", opID: "op-1", answer: .connect(target: "github", env: ["GITHUB_TOKEN": ""])),
@@ -322,10 +301,6 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, admitted.count)
     }
 
-    /// 0.21.5 names the answered session as an `owner`, 0.21.4 as a bare `session_id`, and
-    /// each refuses the other's key, so the answer takes the shape of the release the host
-    /// reported at sign-in. A canary reads as its base release; a missing, partial or
-    /// unreadable version as the pin.
     func testConnectionRespondNamesTheSessionTheWayTheHostsReleaseTakesIt() async throws {
         let owner: BotJSON = .object(["type": .string("session"), "session_id": .string("runtime")])
         let releases: [(version: String?, key: String, session: BotJSON)] = [
@@ -404,7 +379,6 @@ import XCTest
         try await client.connect()
         defer { client.close() }
 
-        // The inbox's live-status read is optional the same way: a stall fails only it.
         for call in [HermesCall.subagentList(sessionID: "runtime"), .sessionActiveList, .subagentRoster(profile: "default")] {
             do {
                 _ = try await client.call(call)
@@ -442,7 +416,6 @@ import XCTest
         _ = try await client.call(.sessionTitle(sessionID: "runtime"))
         XCTAssertEqual(socket.sentTextFrames, 4)
 
-        // A clone-all flag, another chat title and extra session fields have no typed shape.
         let rejected: [HermesCall] = [
             .profilesCreate(.init(name: "default", sharesCredentials: true)),
             .profilesCreate(.init(name: "Home Hunter", sharesCredentials: true)),
@@ -492,14 +465,10 @@ import XCTest
             XCTAssertEqual(request["params"]["text"], .string("one operation"))
             XCTAssertEqual(request["params"]["queued"], mode == .send || mode == .queue ? .bool(true) : .null)
         }
-        // `prompt.btw`, `prompt.background` and `slash.exec` have no typed shape.
         XCTAssertEqual(socket.sentTextFrames, 4)
         client.close()
     }
 
-    /// The slash panel's two reads stay a narrow shape. `command.dispatch` in
-    /// particular must never widen: the gateway resolves quick commands ahead of
-    /// skills, and one of those can run a shell command on the host.
     func testSlashAllowlistAdmitsOnlyTheCatalogReadAndABareDispatchName() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
@@ -513,7 +482,6 @@ import XCTest
         _ = try await client.call(.commandDispatch(name: "work", argument: "fix the leak", sessionID: "runtime"))
         XCTAssertEqual(socket.sentTextFrames, 2)
 
-        // `slash.exec`, a Profile scope, a missing `arg` and a `shell` flag have no typed shape.
         let rejected: [HermesCall] = [
             .commandsCatalog(sessionID: ""),
             .commandDispatch(name: "/work", argument: "", sessionID: "runtime"),
@@ -533,9 +501,6 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 2)
     }
 
-    /// A rewind cuts one durable row and resends a prompt; an empty prompt or a
-    /// row id the host never issued is refused before the socket, as is an undo
-    /// without its runtime (#1049).
     func testRewindAdmitsOnlyARowAndThePromptItResends() {
         let rejected: [HermesCall] = [
             .promptRewind(sessionID: "", text: "hi", beforeRowID: 41, deep: false),
@@ -548,8 +513,6 @@ import XCTest
         }
     }
 
-    /// A side question or background task needs its session and some text (#1013); the host
-    /// refuses empty text.
     func testSideTaskCallsAdmitOnlyASessionAndText() {
         let rejected: [HermesCall] = [
             .promptBtw(sessionID: "", text: "why?"),
@@ -562,8 +525,6 @@ import XCTest
         }
     }
 
-    /// The inbox's live-status read is `session.active_list` with no parameters,
-    /// exactly as Desktop's background sync sends it; anything else stays local.
     func testActiveListAllowlistAdmitsOnlyTheEmptyRead() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
@@ -573,7 +534,6 @@ import XCTest
         try await client.connect()
         defer { client.close() }
 
-        // `current_session_id` and a Profile scope have no typed shape.
         _ = try await client.call(.sessionActiveList)
         XCTAssertEqual(socket.sentTextFrames, 1)
         XCTAssertEqual(socket.sentRequests.last?["method"], .string("session.active_list"))
@@ -592,7 +552,6 @@ import XCTest
         _ = try await client.call(.completePath(word: "src/Ch", sessionID: "runtime", profile: "default"))
         XCTAssertEqual(socket.sentTextFrames, 1)
 
-        // A caller-chosen `cwd` has no typed shape.
         let rejected: [HermesCall] = [
             .completePath(word: "", sessionID: "runtime", profile: "default"),
             .completePath(word: "src Ch", sessionID: "runtime", profile: "default"),
@@ -621,7 +580,6 @@ import XCTest
         let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
         try await client.connect()
         defer { client.close() }
-        // A global scope, another key and a free-form fast value have no typed shape.
         func set(_ setting: HermesCall.SessionSetting, session: String = "runtime") -> HermesCall {
             .configSet(sessionID: session, profile: "default", setting: setting)
         }
@@ -692,7 +650,6 @@ import XCTest
 
     func testAMatchingOrMissingInstallIDConnectsAndReportsTheLiveOne() async throws {
         let known = String(repeating: "a", count: 32), fresh = String(repeating: "c", count: 32)
-        // (stored, live): the same host, a host omitting it after a read error, and a legacy record.
         for (stored, live) in [(known, known), (known, nil), (nil, fresh)] as [(String?, String?)] {
             var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
             if let live { status["install_id"] = .string(live) }
@@ -726,8 +683,6 @@ import XCTest
         }
     }
 
-    /// An access proxy such as Cloudflare Access redirects the public status read to its own
-    /// sign-in page on another host. That page is not "not a dashboard", and no password goes out.
     func testAnAccessProxyRedirectIsBlockedBeforeThePasswordGoesOut() async {
         BotHTTPFixture.redirect = URL(string: "https://team.cloudflareaccess.com/cdn-cgi/access/login")!
         BotHTTPFixture.raw = { _ in (200, Data("<html>Sign in</html>".utf8)) }
@@ -744,8 +699,6 @@ import XCTest
         client.close()
     }
 
-    /// Cloudflare Access can refuse the status read with its own 401 page instead of
-    /// redirecting. Only a JSON 401, the webui's auth gate, reads as "not a dashboard".
     func testAStatusRefusedWithoutAJSONBodyIsBlocked() async {
         var paths: [String] = []
         BotHTTPFixture.raw = { request in
@@ -761,8 +714,6 @@ import XCTest
         client.close()
     }
 
-    /// A host that only offers an OIDC provider supports Bot chat; Hermex just can't sign in
-    /// there yet (#708), so it says that, and the password never goes out.
     func testAHostWithOnlyBrowserSignInSaysSoBeforeThePasswordGoesOut() async {
         var paths: [String] = []
         BotHTTPFixture.handler = { request in
@@ -778,8 +729,6 @@ import XCTest
         client.close()
     }
 
-    /// A refused upgrade fails the socket's first read with a bare `URLError`; its HTTP status
-    /// says what refused it. Proxy, rate-limit and timeout statuses keep today's retry.
     func testAGatewayUpgradeStatusNamesItsFailure() {
         XCTAssertNil(BotFailure(upgradeStatus: 101), "An accepted upgrade keeps the socket's own error")
         for status in [401, 403, 404] { XCTAssertEqual(BotFailure(upgradeStatus: status), .upgradeRefused(status)) }
@@ -800,8 +749,6 @@ import XCTest
         client.close()
     }
 
-    /// A gateway's own listener (#1341) connects: its handshake runs as on the dashboard, and
-    /// the client speaks the canonical session protocol on it.
     func testAGatewayListenerConnectsSpeakingTheCanonicalProtocol() async throws {
         BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
@@ -813,9 +760,6 @@ import XCTest
         client.close()
     }
 
-    /// A real handshake over loopback: URLSession keeps a refused upgrade's status on the
-    /// task, and a socket that opened (101) and then dropped keeps its own error, so the
-    /// inbox and chat still retry it quietly.
     func testANativeSocketNamesARefusedUpgradeButNotALaterDrop() async throws {
         let session = URLSession(configuration: .ephemeral)
         defer { session.invalidateAndCancel() }
@@ -938,8 +882,6 @@ import XCTest
             .groupsCreate(.init(roomID: "room", name: "Created", members: members)),
             .groupsLog(roomID: "room:1", sinceSeq: 0, limit: 200)]
         for call in valid { _ = try await client.call(call) }
-        // Peer administration (`promote`, `demote`, `replicate`, `replica_state`, `peer.*`),
-        // a Profile scope and `include_disbanded` have no typed shape.
         let invalid: [HermesCall] = [
             .groupsList(offset: -1),
             .groupsState(roomID: ""), .groupsState(roomID: "../room"), .groupsState(roomID: "room\n"),
@@ -962,7 +904,6 @@ import XCTest
         catch { XCTAssertTrue((error as? BotRoomFailure)?.expired == true) }
     }
 
-    /// Attachments, a partial approval tuple and an unknown choice have no typed shape.
     func testRoomParticipantValidationRejectsOversizedTextAndIncompleteApprovalTuples() throws {
         func send(_ text: String) -> HermesCall { .groupsSend(roomID: "room", eventID: "event", text: text, threadID: "thread") }
         let largest = String(repeating: "é", count: 32768)
@@ -989,11 +930,8 @@ import XCTest
 
 private final class BotHTTPFixture: URLProtocol {
     static var handler: ((URLRequest) -> (Int, BotJSON))?
-    /// Answers instead of `handler` with a body that need not be JSON, such as a proxy's page.
     static var raw: ((URLRequest) -> (Int, Data))?
-    /// When set, a request to any other host is answered with a 302 to this URL.
     static var redirect: URL?
-    /// Every URL loaded, redirect targets included.
     static var requested: [URL] = []
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -1019,11 +957,9 @@ private final class BotHTTPFixture: URLProtocol {
     override func stopLoading() {}
 }
 
-/// Lock ownership protects the queued scripted frames and exactly one waiting reader.
 final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private let lock = NSLock()
     private var frames: [URLSessionWebSocketTask.Message]
-    /// `ready` is the `gateway.ready` payload the socket opens with; nil never sends one.
     init(ready: String? = #"{"replay_epoch":"epoch"}"#) {
         frames = ready.map { [.string(#"{"method":"event","params":{"type":"gateway.ready","payload":\#($0)}}"#)] } ?? []
     }
@@ -1031,21 +967,14 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private var closed = false
     var reply: ((BotJSON) -> BotJSON)?
     var withholdReply: ((BotJSON) -> Bool)?
-    /// Answers `client.capabilities`; nil answers as a current host does.
     var capabilitiesReply: ((BotJSON) -> BotJSON)?
     var onPing: (() -> Void)?
-    /// Thrown by every send, handshake and keepalive included, as a dropped connection would.
     var sendFailure: Error?
-    /// Sends it matches never return until the socket is cancelled, as on a dead route.
     var holdsSend: ((BotJSON) -> Bool)?
     private var heldSends: [CheckedContinuation<Void, Error>] = []
-    /// Thrown by the next receive instead of its frame, as a refused upgrade fails the first read.
     var receiveFailure: Error?
-    /// Replies to caller RPCs; the handshake and keepalive are not counted.
     private(set) var sentTextFrames = 0
-    /// Caller RPCs only, so allowlist assertions ignore the handshake.
     private(set) var sentRequests: [BotJSON] = []
-    /// Every frame the client sent, handshake and keepalive included, in order.
     private(set) var outbound: [BotJSON] = []
     func receive() async throws -> URLSessionWebSocketTask.Message {
         try await withCheckedThrowingContinuation { continuation in
@@ -1101,7 +1030,6 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
         lock.unlock()
         waiting?.resume(returning: frame)
     }
-    /// True once cancelled, by the client or by the test.
     var isClosed: Bool { lock.lock(); defer { lock.unlock() }; return closed }
     func cancel() {
         lock.lock(); closed = true
@@ -1113,8 +1041,6 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     }
 }
 
-/// A loopback listener that answers each gateway upgrade with a canned HTTP reply and
-/// hangs up. `reply` gets the request's `Sec-WebSocket-Key`.
 final class BotHandshakeListener: @unchecked Sendable {
     private let listener: NWListener
     private let port: UInt16
@@ -1149,7 +1075,6 @@ final class BotHandshakeListener: @unchecked Sendable {
         }
     }
 
-    /// A started gateway upgrade to this listener.
     func socketTask(on session: URLSession) -> URLSessionWebSocketTask {
         let task = session.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)/api/ws")!)
         task.resume()
@@ -1158,7 +1083,6 @@ final class BotHandshakeListener: @unchecked Sendable {
 
     func cancel() { listener.cancel() }
 
-    /// Reads until the blank line that ends the request's headers.
     private static func readRequest(on connection: NWConnection, received: Data, then answer: @escaping @Sendable (String) -> Void) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { data, _, isComplete, error in
             let request = received + (data ?? Data())

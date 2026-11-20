@@ -1,7 +1,5 @@
 import Foundation
 
-/// One drawn row of the review surface. The surface is a flat list, so layout is a
-/// prefix sum over row heights and hit testing is a binary search over offsets.
 struct ReviewDiffRow: Equatable, Identifiable {
     enum Kind: Equatable {
         case file(ReviewDiffFileHeader)
@@ -26,7 +24,6 @@ struct ReviewDiffRow: Equatable, Identifiable {
 
     var isFileHeader: Bool { fileHeader != nil }
 
-    /// The text a row contributes to its file's horizontal content width.
     var columnCount: Int {
         switch kind {
         case .hunk(let text): return text.count
@@ -38,7 +35,6 @@ struct ReviewDiffRow: Equatable, Identifiable {
 
 struct ReviewDiffFileHeader: Equatable {
     let path: String
-    /// Set for renames when the old path differs from `path`.
     let previousPath: String?
     let changeKind: GitFile.ChangeKind
     let additions: Int
@@ -51,18 +47,12 @@ struct ReviewDiffFileHeader: Equatable {
 }
 
 struct ReviewDiffLine: Equatable {
-    /// Display text without the unified-diff prefix character, tabs expanded so the
-    /// monospaced character grid the word highlights sit on stays honest.
     let content: String
     let change: DiffLine.Kind
     let oldLineNumber: Int?
     let newLineNumber: Int?
-    /// Character offsets into `content` to highlight as the changed words.
     var wordDiffRanges: [Range<Int>] = []
-    /// A "\ No newline at end of file" marker: not code on either side.
     let isNoNewlineMarker: Bool
-    /// `content.count`, counted once: layout and drawing ask for it on every frame, and
-    /// a minified line can run to hundreds of thousands of characters.
     let columnCount: Int
 
     init(
@@ -84,8 +74,6 @@ struct ReviewDiffLine: Equatable {
 
     var displayLineNumber: Int? { newLineNumber ?? oldLineNumber }
 
-    /// The `characters` of `content` split into visual lines of `wrapColumns` characters,
-    /// or one line when `wrapColumns` is nil. Slices by `Character`, so graphemes stay whole.
     func visualLines(in characters: Range<Int>, wrapColumns: Int?) -> [Substring] {
         let lower = min(max(0, characters.lowerBound), columnCount)
         let upper = min(max(lower, characters.upperBound), columnCount)
@@ -105,7 +93,6 @@ struct ReviewDiffLine: Equatable {
     }
 }
 
-/// What the host knows about one file's diff while the surface is on screen.
 enum ReviewDiffFileState: Equatable {
     case loading
     case loaded(GitDiff)
@@ -117,9 +104,6 @@ struct ReviewDiffFileInput: Equatable {
     let state: ReviewDiffFileState
 }
 
-/// Turns the per-file `git/diff` results into the flat row list the surface draws.
-/// Row ids are stable across reloads (file id, hunk index, line index) so collapse,
-/// viewed, and selection state survive a rows rebuild.
 enum ReviewDiffRowBuilder {
     static func rows(for inputs: [ReviewDiffFileInput]) -> [ReviewDiffRow] {
         inputs.flatMap(rows(for:))
@@ -187,8 +171,6 @@ enum ReviewDiffRowBuilder {
     }
 
     private static func reviewLine(for line: DiffLine) -> ReviewDiffLine {
-        // "\ No newline at end of file" markers keep their text; real lines drop the
-        // +/-/space prefix.
         let isMarker = line.text.hasPrefix("\\")
         let raw = isMarker ? line.text : String(line.text.dropFirst())
         return ReviewDiffLine(

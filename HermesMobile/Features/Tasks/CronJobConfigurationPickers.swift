@@ -1,13 +1,6 @@
 import SwiftUI
 
-/// Resolves what the Task editor's Model row shows for a draft.
 enum CronJobModelSelection {
-    /// The option the row renders, or `nil` for "Server default".
-    ///
-    /// A model the catalog no longer offers resolves to itself rather than to
-    /// nothing, so a task configured last month against a since-removed model
-    /// keeps showing which model that was instead of quietly reading as
-    /// unconfigured. Same rule as the picker's `Current Custom` group.
     static func resolve(
         modelID: String,
         providerID: String,
@@ -28,14 +21,6 @@ enum CronJobModelSelection {
     }
 }
 
-/// The Task editor's Model row: the current model and provider, or "Server
-/// default" when the draft leaves both blank.
-///
-/// No provider glyph here, unlike the picker's own rows. A Form row gives the
-/// value whatever width the label leaves it, and a glyph in front of a long
-/// model name is the difference between "Muse Spark 1.3 Contributor Free"
-/// fitting and clipping. The glyphs stay inside the picker, where the rows are
-/// full-width.
 struct CronJobModelRow: View {
     let selection: ModelCatalogOption?
     let action: () -> Void
@@ -82,11 +67,6 @@ struct CronJobModelRow: View {
     }
 }
 
-/// The Task editor's Profile row, plus the inline load failure and retry that
-/// replace it when `/api/profiles` will not load. Free text is not an option
-/// here: upstream 400s an unknown profile name, so typing one has exactly one
-/// failure mode the user cannot predict. A locked row only names the Profile: a
-/// Hermes host can't move an existing Task to another (#1040).
 struct CronJobProfileRow: View {
     let profileName: String
     let profiles: [ProfileSummary]
@@ -130,7 +110,6 @@ struct CronJobProfileRow: View {
         .accessibilityValue(Text(verbatim: title))
         .accessibilityHint("Opens the task profile picker.")
 
-        // The saved value keeps showing above; only the list is missing.
         if let errorMessage, !isLoading {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(verbatim: errorMessage)
@@ -147,8 +126,6 @@ struct CronJobProfileRow: View {
         }
     }
 
-    /// The saved name still renders when the list will not load, so an existing
-    /// job never looks unconfigured because a request failed.
     private var title: String {
         guard let name = CronJobModelSelection.nonEmpty(profileName) else {
             return String(localized: "Server default")
@@ -158,8 +135,6 @@ struct CronJobProfileRow: View {
     }
 }
 
-/// Trailing affordance on a Form row that opens a sheet rather than pushing.
-/// Shared by the Model, Profile, and Skills rows.
 struct CronJobPickerChevron: View {
     var body: some View {
         Image(systemName: "chevron.up.chevron.down")
@@ -169,17 +144,12 @@ struct CronJobPickerChevron: View {
     }
 }
 
-/// The Task editor's profile picker. Presentation follows Settings > Default
-/// Profile (48pt body rows, leading provider glyph, filled selection pill), but
-/// this one only writes to the editor's draft — it never switches the server's
-/// active profile.
 struct CronJobProfilePickerSheet: View {
     let profiles: [ProfileSummary]
     let selectedProfileName: String
     let isLoading: Bool
     let errorMessage: String?
     let onRetry: () -> Void
-    /// `nil` clears the draft's profile back to the server's own choice.
     let onSelect: (String?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -231,9 +201,6 @@ struct CronJobProfilePickerSheet: View {
         }
     }
 
-    /// Loading, load-failure with a retry, no-match, and empty. Each only
-    /// stands in for an empty list, so a loaded list keeps rendering across a
-    /// refresh.
     @ViewBuilder
     private var statusPlaceholder: some View {
         if profiles.isEmpty, isLoading {
@@ -289,9 +256,6 @@ struct CronJobProfilePickerSheet: View {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The server's list, plus a row for a saved profile the server no longer
-    /// lists, so an existing job's selection is always visible and always
-    /// checked.
     private var listedProfiles: [ProfileSummary] {
         DefaultProfilePickerView.filteredProfiles(
             Self.profilesIncludingSelection(profiles, selectedProfileName: selectedProfileName),
@@ -329,8 +293,6 @@ struct CronJobProfilePickerSheet: View {
             dismiss()
         } label: {
             HStack(spacing: 12) {
-                // Same rule as the model picker: an unknown provider renders
-                // nothing at all rather than reserving an empty glyph slot.
                 if ProviderGlyphKind.resolve(providerID: profile.provider) != nil {
                     ProviderGlyph(providerID: profile.provider)
                         .frame(width: 17, height: 17)
@@ -341,9 +303,6 @@ struct CronJobProfilePickerSheet: View {
                         .font(AppFont.body())
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
-                    // The profile's own model and provider, so the inheritance
-                    // the section footer describes is visible rather than
-                    // implied.
                     if let details = Self.details(for: profile) {
                         Text(details)
                             .font(AppFont.caption())

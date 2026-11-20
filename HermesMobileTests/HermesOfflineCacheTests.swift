@@ -3,9 +3,6 @@ import SwiftData
 import XCTest
 @testable import HermesMobile
 
-/// A Hermes server's offline cache (#1054) from its screens: the Sessions list and a session's
-/// chat write what they read, and show it, read-only, while they connect and while the host can't
-/// be reached, until a read succeeds. The list runs on `HermesSessionListWire`, the chat on the scripted host below.
 @MainActor final class HermesOfflineCacheTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -24,11 +21,6 @@ import XCTest
         super.tearDown()
     }
 
-    // MARK: Sessions list
-
-    /// With the host unreachable, the list shows the Profile's cached rows, pinned first and with
-    /// their read marks, under the cached-data state, and refuses changes. A legacy chain keeps
-    /// its identity and opens by its tip. Reconnecting shows the host's rows in their place.
     func testAnUnreachableHostShowsTheCachedListUntilAReadSucceeds() async throws {
         let context = try makeContext()
         let rows = [
@@ -68,8 +60,6 @@ import XCTest
                        ["Pinned", "Later", "Newest", "Chain"])
     }
 
-    /// A lost socket's reconnect that can't reach the host keeps the live rows and their last
-    /// known states under "Reconnecting…" instead of swapping in the cached copy (#1374).
     func testAnUnreachableReconnectKeepsTheLiveRowsReconnecting() async throws {
         let context = try makeContext()
         let wire = HermesSessionListWire()
@@ -89,8 +79,6 @@ import XCTest
         XCTAssertEqual(HomeConnectionStatus(list.hermesConnection, isOnline: true), .reconnecting)
     }
 
-    /// A search typed while the list shows cached rows filters them at once, and asks the host
-    /// once a read replaces them, so a match the cache lacks shows too.
     func testASearchWhileCachedReachesTheHostOnceItAnswers() async throws {
         let context = try makeContext()
         let rows = [HermesSessionRow(id: "plan", title: "Nimbus plan", lastActive: 20)]
@@ -116,9 +104,6 @@ import XCTest
         XCTAssertEqual(wire.searches.map(\.query), ["nimbus"])
     }
 
-    /// A refresh that falls back to cached rows while a search is active drops the host's
-    /// matches, since search reads only cached rows then, and searches the host again once a read
-    /// succeeds.
     func testARefreshThatFallsBackToTheCacheDropsTheHostsMatchesUntilItSearchesAgain() async throws {
         let context = try makeContext()
         let rows = [HermesSessionRow(id: "plan", title: "Nimbus plan", lastActive: 20)]
@@ -142,8 +127,6 @@ import XCTest
         XCTAssertEqual(list.visibleSessions(searchText: "nimbus", selectedProjectID: nil).compactMap(\.sessionId), ["plan", "newer"])
     }
 
-    /// An empty list shows its cached rows while it connects, read-only but without the offline
-    /// banner or Cached labels and with no loading skeleton; the host's first read replaces them.
     func testAListShowsItsCachedRowsWhileItConnects() async throws {
         let context = try makeContext()
         let rows = [HermesSessionRow(id: "a", title: "A", lastActive: 20), HermesSessionRow(id: "b", title: "B", lastActive: 10)]
@@ -176,8 +159,6 @@ import XCTest
         XCTAssertEqual(list.sessions.map(\.title), ["C", "A", "B"])
     }
 
-    /// A pull to refresh while the list is still connecting leaves that connect to read the rows:
-    /// the cached rows stay, no error shows, and the socket it opens is the one the list keeps.
     func testARefreshWhileConnectingKeepsTheCachedRowsAndTheConnect() async throws {
         let context = try makeContext()
         let rows = [HermesSessionRow(id: "a", title: "A", lastActive: 20)]
@@ -208,8 +189,6 @@ import XCTest
         XCTAssertEqual(list.sessions.map(\.title), ["C", "A"])
     }
 
-    /// A host that answers and refuses drops the rows shown while connecting: the list says why,
-    /// as it does with nothing cached.
     func testARefusedConnectDropsTheRowsShownWhileConnecting() async throws {
         let context = try makeContext()
         let online = HermesSessionListWire()
@@ -226,8 +205,6 @@ import XCTest
         XCTAssertEqual(list.errorMessage, "Hermes didn't accept the username or password.")
     }
 
-    /// The home's list, with no pick, shows the cached rows of the Profile it last read while it
-    /// connects, without taking that Profile: the host still settles the one it lists.
     func testAListWithoutAPickShowsTheProfileItLastReadWhileItConnects() async throws {
         let context = try makeContext()
         let online = HermesSessionListWire()
@@ -254,8 +231,6 @@ import XCTest
         XCTAssertEqual(HermesProfilePreference.lastListed(for: server, in: defaults), "default")
     }
 
-    /// Rows shown while the list connects take no read mark, though the socket is up: Mark as
-    /// Read is off and opening a row writes nothing, until the host's rows are in.
     func testRowsShownWhileConnectingWriteNoReadMark() async throws {
         let context = try makeContext()
         let rows = [HermesSessionRow(id: "a", title: "A", lastActive: 1, unread: true)]
@@ -284,8 +259,6 @@ import XCTest
         XCTAssertTrue(list.canToggleUnread(try XCTUnwrap(list.sessions.first)))
     }
 
-    /// A row archived or deleted on the phone leaves the cache once the host confirms, though
-    /// the list's later reads, a full page that doesn't reach its end, never sweep.
     func testArchivingOrDeletingARowDropsItsCachedCopy() async throws {
         let context = try makeContext()
         let others = (0..<100).map { HermesSessionRow(id: "s\($0)", title: "S\($0)", lastActive: Double(1_000 - $0)) }
@@ -309,8 +282,6 @@ import XCTest
         XCTAssertEqual(cached.compactMap(\.sessionId), others.map(\.id))
     }
 
-    /// Scheduled rows a "Load more" read are cached with the rest, so the list shows them
-    /// offline too.
     func testScheduledRowsALoadMoreReadAreCached() async throws {
         let context = try makeContext()
         let first = (0..<100).map { HermesSessionRow(id: "job-\($0)", lastActive: Double(1_000 - $0), source: "cron") }
@@ -335,11 +306,6 @@ import XCTest
         XCTAssertEqual(shown.sessions.count, 102)
     }
 
-    // MARK: A session's chat
-
-    /// A session opened while its host can't be reached shows the transcript a visit cached,
-    /// read-only: nothing is sent. The engine's reconnect puts the host's rows in its place,
-    /// none of them twice.
     func testAnUnreachableSessionShowsItsCachedTranscriptUntilItReconnects() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
@@ -368,9 +334,6 @@ import XCTest
         XCTAssertFalse(wire.methods.contains("prompt.submit"))
     }
 
-    /// A session shows its cached transcript while it connects, read-only but without the
-    /// offline banner or reconnect line, and holds Send without a word; the attach's first
-    /// newest read puts the host's rows in its place.
     func testASessionShowsItsCachedTranscriptWhileItConnects() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
@@ -403,8 +366,6 @@ import XCTest
         XCTAssertFalse(wire.methods.contains("prompt.submit"))
     }
 
-    /// `ChatView` asks for the cached transcript before its appearance completes, ahead of the
-    /// attach, which its first load then starts.
     func testASessionShowsItsCachedTranscriptBeforeItsAppearanceCompletes() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
@@ -424,8 +385,6 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
     }
 
-    /// A running turn whose first history read fails (a 500) while its reply streams keeps that
-    /// reply: the copy shown while connecting goes, and the deltas still land in the reply's row.
     func testAFailedFirstHistoryReadKeepsTheRunningReply() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
@@ -434,7 +393,6 @@ import XCTest
         let wire = HermesOfflineWire(rows: [])
         wire.running = true
         wire.messagesFailure = BotFailure.rejected(500)
-        // The reply's first delta lands while the attach reads the history, so the engine holds it.
         wire.onRead = { [weak wire] in
             wire?.onRead = nil
             wire?.onEvent?(Self.delta(1, "Working"))
@@ -451,9 +409,6 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Working on it"])
     }
 
-    /// An attach that fails after the host named the session's runtime, here as its replay is
-    /// read, shows the cached transcript. The next attach, on the same runtime, still reads the
-    /// host's rows in its place.
     func testAnAttachThatFailsMidwayStillReadsTheHostsRowsOnReconnect() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
@@ -473,8 +428,6 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
     }
 
-    /// A reattach whose history read fails keeps the cached transcript, read-only, and says why;
-    /// the chat's retry puts the host's rows in its place.
     func testAFailedHistoryReadKeepsTheCachedTranscriptUntilARetry() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
@@ -501,8 +454,6 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
     }
 
-    /// The exchange an undo removed, here on another client, leaves the cached transcript at the
-    /// next visit's newest read, though that read's row ids all sit below it.
     func testAVisitAfterAnUndoDropsTheUndoneRows() async throws {
         let context = try makeContext()
         let rows = [row(1, "user", "Hi"), row(2, "assistant", "Hello."), row(3, "user", "Undo me"), row(4, "assistant", "Undone.")]
@@ -515,7 +466,6 @@ import XCTest
                                                            in: context, limit: 10).map(\.content), ["Hi", "Hello."])
     }
 
-    /// A host that answered and refused leaves the cache alone: the chat says why instead.
     func testARefusalShowsNoCachedTranscript() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]))
@@ -531,8 +481,6 @@ import XCTest
         XCTAssertEqual(chat.model.errorMessage, "Hermes didn't accept the username or password.")
     }
 
-    /// A legacy compression chain's transcript is cached under the lineage root its list row
-    /// names, though the chat opens by the tip.
     func testAChainsTranscriptIsCachedUnderItsLineageRoot() async throws {
         let context = try makeContext()
         try CacheStore.cacheHermesSessions([HermesSessionRow(id: "tip", lineageRootID: "root").summary(in: "default")],
@@ -546,8 +494,6 @@ import XCTest
                                                            in: context, limit: 10), [])
     }
 
-    /// A chat a session link opened (#1176) caches under the lineage root the link's lookup
-    /// found, though no cached row names it yet, so its list row later reads the same copy.
     func testALinkedChainsTranscriptIsCachedUnderTheRootItsLookupFound() async throws {
         let context = try makeContext()
         let chat = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), lineageRoot: "root")
@@ -559,8 +505,6 @@ import XCTest
                                                            in: context, limit: 10), [])
     }
 
-    /// All Profiles (#709) caches each Profile's rows under its own Profile and, with the host
-    /// unreachable, shows every Profile's.
     func testAllProfilesShowsEveryProfilesCachedRowsOffline() async throws {
         let context = try makeContext()
         HermesProfilePreference.saveShowsAllProfiles(true, for: server, in: defaults)
@@ -570,7 +514,6 @@ import XCTest
         await makeList(online).openHermes(modelContext: context)
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: server, profile: "research", in: context).map(\.sessionId), ["r"])
 
-        // The home's list starts without a Profile, which only the host settles.
         let wire = HermesSessionListWire()
         wire.connectFailure = URLError(.cannotConnectToHost)
         let list = makeList(wire, profile: nil)
@@ -581,7 +524,6 @@ import XCTest
                        ["r@research", "d@default"])
     }
 
-    /// The home's list, opened offline without a Profile, shows the server's pick's cached rows.
     func testAListWithoutAProfileShowsThePicksCachedRowsOffline() async throws {
         let context = try makeContext()
         let online = HermesSessionListWire()
@@ -599,12 +541,6 @@ import XCTest
         XCTAssertEqual(list.hermesProfile, "research", "its rows open, and New Session starts, in the pick")
     }
 
-    // MARK: A bot's Bot Chat
-
-    /// A Bot Chat's transcript is cached under its canonical root, which a compaction that moved
-    /// its stored key leaves in place, and never joins the Sessions list's cache. The next open
-    /// shows it, read-only, before the attach, and the first newest read puts the host's rows in
-    /// its place.
     func testABotChatShowsItsCachedTranscriptBeforeTheAttach() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
@@ -634,8 +570,6 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
     }
 
-    /// `ChatView` reconnects as it appears, before its first load: the attach that reconnect
-    /// starts still caches what it reads, so the next visit offline shows it.
     func testAnAttachBeforeTheFirstLoadStillCachesWhatItReads() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
@@ -647,9 +581,6 @@ import XCTest
         XCTAssertEqual(try botChatMessages(in: context), ["Hi", "Hello."])
     }
 
-    /// An attach `ChatView` started as it appeared that the host refused (401) before the cached
-    /// transcript showed has had its answer: the copy shows as the offline state, with the
-    /// reconnect line, not as one held while the chat connects.
     func testABotChatRefusedBeforeItsCacheShowsShowsItOffline() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
@@ -667,10 +598,6 @@ import XCTest
         XCTAssertFalse(chat.model.isCachedCopyProvisional)
     }
 
-    /// A chat on a Profile the Webapp doesn't serve says so, with no Try Again, since retrying
-    /// can't help (#1606), and offers its fix and the host's own words for why (#1611); a refused
-    /// upgrade elsewhere keeps its retry. A chat already showing messages offers the fix on its
-    /// composer's error instead.
     func testAProfileTheWebappDoesntServeOffersNoTryAgain() async throws {
         let context = try makeContext()
         let reason = HermesStandaloneReason(hostText: "profile(s) 'dev' (pid 42) still run their own gateway")
@@ -694,8 +621,6 @@ import XCTest
         XCTAssertEqual(shown.model.errorUnserved, unserved)
     }
 
-    /// A Bot Chat whose attach connected before the cache could show, but whose history read
-    /// failed, keeps its cached copy as the offline state rather than an empty screen (#1144).
     func testABotChatAttachedBeforeItsCacheShowsKeepsItWhenHistoryFails() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
@@ -713,8 +638,6 @@ import XCTest
         XCTAssertFalse(chat.model.isCachedCopyProvisional)
     }
 
-    /// Two servers never share a Bot Chat's cache, even for the same connection and Profile: an
-    /// unreachable host shows only its own server's copy.
     func testABotChatsCacheStaysWithItsServer() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
@@ -735,10 +658,6 @@ import XCTest
         XCTAssertEqual(same.model.messages.map(\.content), ["Hi"])
     }
 
-    /// Every bot route opens the chat the inbox's selection names (#1146), and it shows the bot's
-    /// cached transcript while the host is unreachable (#628): an inbox row naming no root, and a
-    /// link naming the cached one. A link naming a root the bot has since replaced shows none of
-    /// the new chat's transcript.
     func testEveryBotRouteShowsItsBotChatsCachedTranscriptOffline() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
@@ -771,11 +690,6 @@ import XCTest
         XCTAssertEqual(chat.model.messages, [])
     }
 
-    /// An attach that finds another canonical root, a Bot Chat the host replaced while the app was
-    /// away, discards the cached copy it showed, though its history read then fails. The notice
-    /// saying where the old chat went comes with the new chat's rows, and until it shows nothing
-    /// is sent there, from this chat or one reopened meanwhile, even one that attaches before it
-    /// shows its cached copy (#1339).
     func testANewCanonicalRootDiscardsTheCachedTranscript() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
@@ -817,8 +731,6 @@ import XCTest
         XCTAssertEqual(wire.methods.filter { $0 == "prompt.submit" }.count, 1)
     }
 
-    /// An archived Bot Chat opens by its key, and offline shows the transcript its bot's Bot Chat
-    /// cached, with nothing cached under that key.
     func testAnArchivedBotChatShowsItsBotsCachedTranscriptOffline() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
@@ -837,9 +749,6 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
     }
 
-    /// A legacy compressed Bot Chat lists under its tip's "Bot Chat (continued)" title, keeping
-    /// its root's hidden flag and naming the root as `_lineage_root_id`; it shares the bot's
-    /// cache too. A hidden chain under any other title stays on its own scope.
     func testAnArchivedContinuedBotChatShowsItsBotsCachedTranscriptOffline() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
@@ -862,8 +771,6 @@ import XCTest
         XCTAssertNil(other.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default")?.botChatRoot)
     }
 
-    /// An older archived Bot Chat visited online keeps its own copy: the bot's Bot Chat still
-    /// previews its canonical root offline, and its next attach leaves the archive's copy.
     func testAnOlderArchivedBotChatNeitherPreviewsForNorGoesWithItsBot() async throws {
         let context = try makeContext()
         await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
@@ -889,8 +796,6 @@ import XCTest
         XCTAssertEqual(archived.model.messages.map(\.content), ["Old question", "Old answer."])
     }
 
-    /// An archived Bot Chat whose newest read finds its exchange undone shows nothing offline,
-    /// not the bot's older copy of the same root.
     func testAnArchivedBotChatsEmptyReadDropsItsBotsCopyOfTheUndoneRows() async throws {
         let context = try makeContext()
         await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
@@ -907,8 +812,6 @@ import XCTest
         XCTAssertEqual(archived.model.messages, [])
     }
 
-    /// A clear while a Bot Chat's read is out leaves the cache empty when the read lands; the
-    /// next attach caches again.
     func testAReadUnderWayDuringAClearLeavesTheCacheEmpty() async throws {
         let context = try makeContext()
         let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
@@ -932,9 +835,6 @@ import XCTest
         XCTAssertEqual(try botChatMessages(in: context), ["Hi"])
     }
 
-    // MARK: Fixture
-
-    /// The cached transcript of `default`'s Bot Chat at root `root`.
     private func botChatMessages(in context: ModelContext) throws -> [String?] {
         try CacheStore.cachedHermesMessages(serverURL: server, scope: CacheStore.hermesBotChatScope(connectionID: connection.id,
                                             profile: "default", root: "root"), in: context, limit: 100).map(\.content)
@@ -954,13 +854,9 @@ import XCTest
 
     private struct Chat {
         let model: ChatViewModel
-        /// Holds the engine's reconnect until opened.
         let reconnect: Gate
     }
 
-    /// A chat on `target`, session `tip` in `default` unless given, over `wire`; an archived Bot
-    /// Chat's with `botChatRoot`, a bot link's with `linkedRoot`, a session link's with the
-    /// `lineageRoot` its lookup found.
     private func makeChat(_ wire: HermesOfflineWire, target: ConversationTarget = .session(profile: "default", key: "tip"),
                           server: URL? = nil, botChatRoot: String? = nil, linkedRoot: String? = nil,
                           lineageRoot: String? = nil) -> Chat {
@@ -978,35 +874,26 @@ import XCTest
         return Chat(model: model, reconnect: gate)
     }
 
-    /// One display row as `GET /api/sessions/{id}/messages` returns it.
     private func row(_ id: Int, _ role: String, _ content: String) -> BotJSON {
         .object(["id": .number(Double(id)), "session_id": .string("tip"), "role": .string(role), "content": .string(content),
                  "timestamp": .number(1_790_000_000 + Double(id)), "active": .number(1), "compacted": .number(0),
                  "tool_call_id": .null, "tool_calls": .null, "display_kind": .null, "display_metadata": .null])
     }
 
-    /// A `message.delta` on the session's runtime.
     private static func delta(_ seq: Int, _ text: String) -> BotJSON {
         .object(["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string("message.delta"),
                  "payload": .object(["text": .string(text)])])
     }
 }
 
-/// A Hermes chat's plain-text Send that waits for the reconnect (#1407), on the scripted host
-/// above: offline it waits as a pending bubble kept on disk, and goes out once, on the next attach,
-/// with nothing resent after a lost answer. Cancel, expiry and leaving put its text back ahead of
-/// what was typed since, and send nothing; backgrounding only pauses it.
 @MainActor final class HermesWaitingSendTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
                                            username: "user", password: "secret")
     private var now = Date(timeIntervalSince1970: 1_790_000_000)
-    /// Holds the deadline's sleep until opened, standing for ten minutes passing.
     private var deadline = Gate()
     private var returned: [(text: String, reason: HermesWaitingSend.Return)] = []
 
-    /// Offline, Send waits: the bubble shows it, the draft holds it on disk and not as typed text,
-    /// and nothing goes out. The reconnect sends it once, even with more connects while it goes out.
     func testAnOfflineSendWaitsThenGoesOutOnceOnReconnect() async throws {
         let (chat, wire, drafts) = try await offlineChat()
         let key = try XCTUnwrap(chat.model.hermesDraftKey)
@@ -1037,8 +924,6 @@ import XCTest
         XCTAssertEqual(returned.count, 0)
     }
 
-    /// A Send in a live chat whose socket dropped finds no connection before it goes out: it waits
-    /// instead of failing, and the reconnect sends it.
     func testASendThatFindsNoConnectionWaitsForTheReconnect() async throws {
         let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
         let chat = makeChat(wire)
@@ -1055,8 +940,6 @@ import XCTest
         XCTAssertEqual(wire.prompts, ["Ship it"])
     }
 
-    /// A waiting send whose answer is lost is never sent again: its text goes back to the draft with
-    /// the submission marked unresolved, and Send holds (#508).
     func testALostAnswerKeepsTheTextAndNeverResends() async throws {
         let (chat, wire, drafts) = try await offlineChat()
         let key = try XCTUnwrap(chat.model.hermesDraftKey)
@@ -1068,7 +951,6 @@ import XCTest
         wire.submitGate = reply
         chat.reconnect.open()
         await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
-        // The reattach after the lost answer would clear the mark; it stays out of reach here.
         wire.connectGate = Gate()
         reply.open()
         await waitUntil("it came back") { chat.model.waitingSend == nil }
@@ -1083,8 +965,6 @@ import XCTest
         XCTAssertEqual(wire.prompts, ["Ship it"])
     }
 
-    /// Cancel and the ten-minute deadline put the text back ahead of what was typed since, and a
-    /// reconnect after the deadline passed unseen (the app was suspended) sends nothing.
     func testCancelAndExpiryReturnTheTextWithoutSending() async throws {
         let (chat, wire, drafts) = try await offlineChat()
         let key = try XCTUnwrap(chat.model.hermesDraftKey)
@@ -1115,8 +995,6 @@ import XCTest
         XCTAssertNil(draft?.waitingSend)
     }
 
-    /// A send whose chat left the screen, as a server switch or sign-out does, never goes out from
-    /// it: its text stays in the draft, and the reconnect sends only one held after the chat came back.
     func testALeftChatsSendNeverGoesOut() async throws {
         let (chat, wire, drafts) = try await offlineChat()
         let key = try XCTUnwrap(chat.model.hermesDraftKey)
@@ -1134,16 +1012,12 @@ import XCTest
         XCTAssertEqual(draft?.text, "Ship it")
     }
 
-    /// The app going to the background after a delivery is claimed but before it starts stops it
-    /// before it reattaches or writes: nothing goes out from the background, and the foreground's
-    /// reattach sends it once.
     func testBackgroundingAClaimedDeliveryWaitsForTheForeground() async throws {
         let disk = HookedDrafts()
         let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
         let chat = makeChat(wire, persistence: disk)
         await chat.model.loadMessages(modelContext: try makeContext())
         wire.onDisconnect?(BotFailure.transport)
-        // The socket comes back while the held send is written, so holding it claims its delivery.
         await disk.setBeforeNextWrite { [unowned self] in
             chat.reconnect.open()
             await waitUntil("reattached") { chat.engine.connectionState == .connected }
@@ -1162,8 +1036,6 @@ import XCTest
         XCTAssertEqual(wire.prompts, ["Ship it"])
     }
 
-    /// Leaving while a Send still waits on the attach it needs never makes it a waiting send, so
-    /// nothing sends it on its own: it goes back to the composer ahead of what was typed since.
     func testLeavingBeforeASendFindsNoConnectionKeepsItInTheComposer() async throws {
         let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
         let chat = makeChat(wire)
@@ -1194,9 +1066,6 @@ import XCTest
         XCTAssertEqual(wire.prompts, [])
     }
 
-    /// A second Send while the first is still being written stays the composer's, even once the
-    /// chat reconnected meanwhile onto another client's reply and it is a Queue: only the first
-    /// goes out, and the second stays in the draft.
     func testASecondSendWhileTheFirstIsWrittenLeavesTheFirstWaiting() async throws {
         let disk = HookedDrafts()
         let (chat, wire, drafts) = try await offlineChat(persistence: disk)
@@ -1208,7 +1077,6 @@ import XCTest
             chat.reconnect.open()
             await waitUntil("reconnected onto the reply") { chat.model.activeStreamID != nil }
             drafts.setDraft("And this", for: key)
-            // Not awaited: a second write would wait on this one.
             Task { _ = await chat.model.submitStreamingMessage("And this", behavior: .queue) }
             await waitUntil("the second Send is refused") { chat.model.sendErrorMessage != nil }
         }
@@ -1222,13 +1090,10 @@ import XCTest
         XCTAssertEqual(draft?.text, "And this")
     }
 
-    /// A delivery whose ten minutes run out before its socket write never goes out: it comes back
-    /// to the composer as expired.
     func testADeliveryThatExpiresBeforeItsWriteComesBack() async throws {
         let disk = HookedDrafts()
         let (chat, wire, _) = try await offlineChat(persistence: disk)
         _ = await chat.model.send("Ship it", isPlainText: true)
-        // The #508 write just before the prompt goes out outlasts the rest of its ten minutes.
         await disk.setBeforeNextWrite { [unowned self] in now += HermesWaitingSend.lifetime }
 
         wire.connectFailure = nil
@@ -1239,8 +1104,6 @@ import XCTest
         XCTAssertEqual(wire.prompts, [])
     }
 
-    /// A send whose hold can't be written to disk stays in the composer instead of waiting, so a
-    /// relaunch can't lose it.
     func testASendThatCannotBeSavedStaysInTheComposer() async throws {
         let (chat, _, drafts) = try await offlineChat(persistence: HookedDrafts(failsWrites: true))
         let key = try XCTUnwrap(chat.model.hermesDraftKey)
@@ -1255,9 +1118,6 @@ import XCTest
         XCTAssertNil(draft?.waitingSend)
     }
 
-    // MARK: Helpers
-
-    /// A session chat showing its cached transcript because its host can't be reached.
     private func offlineChat(persistence: any ChatDraftPersisting = BotMemoryDrafts()) async throws
         -> (Chat, HermesOfflineWire, ChatDraftStore) {
         let context = try makeContext()
@@ -1275,7 +1135,6 @@ import XCTest
         let model: ChatViewModel
         let engine: HermesConversation
         let drafts: ChatDraftStore
-        /// Holds the engine's reconnect until opened.
         let reconnect: Gate
     }
 
@@ -1307,7 +1166,6 @@ import XCTest
     }
 }
 
-/// Draft storage whose writes fail (`failsWrites`), or run a hook first, once, standing for a slow disk.
 private actor HookedDrafts: ChatDraftPersisting {
     private let failsWrites: Bool
     private var values: [ChatDraftKey: ChatDraft] = [:]
@@ -1329,7 +1187,6 @@ private actor HookedDrafts: ChatDraftPersisting {
     }
 }
 
-/// Holds a wait until `open()`, then lets every wait through.
 @MainActor private final class Gate {
     private var isOpen = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
@@ -1346,13 +1203,6 @@ private actor HookedDrafts: ChatDraftPersisting {
     }
 }
 
-/// A Hermes host for one session, `tip` in `default`, idle unless `running`: its attach calls and its newest
-/// transcript page. As the Profile's Bot Chat, its lookup finds `canonicalRoot` at `tip`.
-/// `connectFailure` stands for a host it can't reach, or one that refuses; `connectGate` holds
-/// the connect until opened; `replayFailure` stands for a socket lost once the host named the
-/// runtime, `messagesFailure` for a transcript read that fails. `onRead` reports each transcript
-/// read, which `messagesGate` holds until opened. `running` makes its snapshot report a turn. It
-/// accepts every prompt unless `submitFailure` loses its reply.
 @MainActor private final class HermesOfflineWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
@@ -1368,8 +1218,6 @@ private actor HookedDrafts: ChatDraftPersisting {
     var running = false
     var rows: [BotJSON]
     private(set) var methods: [String] = []
-    /// Each `prompt.submit`'s text; `submitGate` holds its reply until opened, and `submitFailure`
-    /// is a reply lost after it went out.
     private(set) var prompts: [String] = []
     var submitGate: Gate?
     var submitFailure: Error?

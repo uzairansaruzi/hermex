@@ -4,34 +4,20 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// An agent-generated `.html` report in a Hermes reply (#1623): rendered in place in the
-/// transcript, and in a full-height sheet from its expand button. webui replies keep their
-/// download card.
 enum HTMLReport {
-    /// The largest file a reply renders in place. A larger one stays a file card whose tap
-    /// opens the sheet, which takes up to `BotArtifactBuffer.maximumBytes`.
     static let inlineByteLimit = 5 * 1024 * 1024
 
-    /// Whether a reply's file renders in place: an HTML file in a settled reply, on a chat that
-    /// publishes a loader, which only a Hermes chat does. Everything else keeps its file card.
     static func rendersInline(_ reference: TranscriptMediaReference, loader: TranscriptHTMLReportLoader?,
                               isStreaming: Bool) -> Bool {
         reference.isHTMLReportCandidate && loader != nil && !isStreaming
     }
 }
 
-/// A code fence that shows as a picture or page (#1649, #1748): `svg`, `mermaid` through the
-/// bundled Pele engine (`MermaidDiagram`), or `html` (`htm` too). A settled one gains a View
-/// button in its header that opens the drawing or page in the report sheet, in the report's
-/// sandbox. Nothing renders in the transcript, and the code block stays, so the source is never
-/// lost.
 enum DrawableFence {
     case svg
     case mermaid
     case html
 
-    /// The fence's kind when it offers View; nil for any other language, and for a streaming
-    /// fence, whose source is still incomplete.
     init?(language: String?, isStreaming: Bool) {
         guard !isStreaming else { return nil }
         switch MarkdownHighlightPolicy.normalizedLanguage(from: language) {
@@ -42,10 +28,6 @@ enum DrawableFence {
         }
     }
 
-    /// The sheet's page for the fence's source, or nil when it can't draw, so the sheet shows its
-    /// failure state rather than a blank page. A diagram lays out to fit `width`, the sheet's. An
-    /// `html` fence's source is the page as it is, with no card: the page brings its own layout.
-    /// It runs the diagram engine, so call it off the main actor.
     func page(for source: String, width: CGFloat) -> String? {
         let source = source.trimmingCharacters(in: .whitespacesAndNewlines)
         switch self {
@@ -59,13 +41,8 @@ enum DrawableFence {
         }
     }
 
-    /// The body's and card's padding on both sides.
     private static let cardInsets: CGFloat = 56
 
-    /// A drawing on a white card, since agent SVGs usually have no background and draw in black.
-    /// An agent SVG with a `viewBox` fits the sheet's width; one without keeps its own size and
-    /// scrolls inside the card instead of being cropped. A Pele diagram keeps its own size, which
-    /// already fits, rather than stretching its 16-point labels; pinch to zoom in.
     private static func card(_ svg: String) -> String {
         """
         <!doctype html><html><head><style>
@@ -78,13 +55,7 @@ enum DrawableFence {
     }
 }
 
-/// Draws Mermaid source as SVG with Pele 1.13.0 (MIT, `Resources/pele.global.js`), the engine
-/// Hermes Desktop draws with. Each call loads the engine from the app bundle into its own
-/// JavaScriptCore context, which has no network, DOM, or app access, and releases it after; a
-/// load takes tens of milliseconds, so call it off the main actor, on tap. Links and images are
-/// off, as upstream's are: the diagram is display-only.
 enum MermaidDiagram {
-    /// The diagram's SVG, or nil when Pele can't parse it or the engine fails to load.
     static func svg(for source: String, maxWidth: CGFloat) -> String? {
         guard let url = Bundle.main.url(forResource: "pele.global", withExtension: "js"),
               let engine = try? String(contentsOf: url, encoding: .utf8),
@@ -100,8 +71,6 @@ enum MermaidDiagram {
     }
 }
 
-/// Parses a whole XML document and reports its root element's name, or nil when it isn't
-/// well-formed.
 private final class XMLRootElementReader: NSObject, XMLParserDelegate {
     private var rootName: String?
 
@@ -118,9 +87,6 @@ private final class XMLRootElementReader: NSObject, XMLParserDelegate {
     }
 }
 
-/// The user's theme as low-priority CSS defaults, so a page with no styles of its own looks
-/// like the rest of the app. Everything sits under `:where()`, which has no specificity, so any
-/// rule of the page's own wins. The variables use the common web names (`docs/agents/theming.md` § HTML reports).
 struct HTMLReportTheme: Equatable {
     let css: String
 
@@ -150,7 +116,6 @@ struct HTMLReportTheme: Equatable {
         """
     }
 
-    /// The theme the app shows right now. Reading the font setting makes the calling body follow it.
     init(appearance: AppAppearance, colorScheme: ColorScheme, dynamicTypeSize: DynamicTypeSize) {
         let isDark = colorScheme == .dark
         self.init(palette: appearance.palette(isDark: isDark), isDark: isDark,
@@ -165,8 +130,6 @@ struct HTMLReportTheme: Equatable {
 }
 
 private extension AppFontFamily {
-    /// The family as a CSS stack. The page's web process can't see the fonts bundled with the
-    /// app, so DM Sans falls back to the system sans and Lora to Georgia.
     var cssStack: String {
         switch self {
         case .sanFrancisco, .dmSans: "-apple-system,system-ui,sans-serif"
@@ -179,7 +142,6 @@ private extension AppFontFamily {
 }
 
 private extension UIColor {
-    /// `rgb(r g b / a)`, from a color already resolved for its traits.
     var cssValue: String {
         var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
         getRed(&red, green: &green, blue: &blue, alpha: &alpha)
@@ -188,26 +150,18 @@ private extension UIColor {
     }
 }
 
-/// What a report page may do with its own top frame: nothing but load itself. A tapped web link
-/// leaves through the transcript's link routing (the matching app, else the in-app browser), and
-/// a tapped in-page anchor is the app's to scroll to; any other top-frame navigation, scripted or
-/// not, is refused. Frames inside the page load freely.
 enum HTMLReportNavigation {
     enum Decision: Equatable {
         case allow
         case cancel
         case open(URL)
-        /// A tapped link to the element with this id or name.
         case anchor(String)
     }
 
-    /// `isMainFrame` is true for a new window too, which a report never gets.
     static func decision(for url: URL?, isMainFrame: Bool, isLinkTap: Bool, hasLoaded: Bool) -> Decision {
         guard isMainFrame else { return .allow }
         guard let url, let scheme = url.scheme?.lowercased() else { return .cancel }
         if scheme == "about" {
-            // The page loads from `about:blank`. WebKit resolves `#notes` against it as a new page,
-            // `about:blank%23notes`, so an anchor can't navigate; the app scrolls to it instead.
             guard hasLoaded else { return .allow }
             guard isLinkTap, let anchor = anchor(in: url), !anchor.isEmpty else { return .cancel }
             return .anchor(anchor)
@@ -225,17 +179,11 @@ enum HTMLReportNavigation {
     }
 }
 
-/// A report row's measured height, locked after its first load.
 struct HTMLReportMeasurement: Equatable {
-    /// The row's height: the page's, up to the cap.
     let height: CGFloat
-    /// The page is taller than the cap, so the row fades out at its bottom edge.
     let isClipped: Bool
 }
 
-/// Measured heights that outlive a chat, so reopening one keeps its reports' heights instead of
-/// jumping. Keys hold the server namespace, the file, and what lays the page out (the row width,
-/// the font and the text size), so nothing crosses servers and a new font or size measures again.
 @MainActor enum HTMLReportCache {
     private static var measurements: [String: HTMLReportMeasurement] = [:]
 
@@ -249,9 +197,6 @@ struct HTMLReportMeasurement: Equatable {
 
 }
 
-/// The still images of off-screen reports, keyed like `HTMLReportCache`. The transcript keeps every
-/// row mounted, so rows don't hold these themselves: they read them here, and dropping the oldest
-/// past `byteLimit` redraws its row without the image, which frees it.
 @MainActor @Observable final class HTMLReportSnapshots {
     static let shared = HTMLReportSnapshots()
 
@@ -264,7 +209,6 @@ struct HTMLReportMeasurement: Equatable {
 
     func image(for key: String) -> UIImage? { images[key] }
 
-    /// An image larger than the whole limit, such as a tall report on an iPad, isn't kept.
     func store(_ image: UIImage, for key: String) {
         remove(key)
         guard Self.cost(of: image) <= byteLimit else { return }
@@ -285,16 +229,10 @@ struct HTMLReportMeasurement: Equatable {
     }
 }
 
-/// Downloads a Hermes reply's report for its inline render, at most `HTMLReport.inlineByteLimit`
-/// bytes; a larger file throws `BotArtifactFailure.tooLarge`. Only a Hermes chat publishes one
-/// (`transcriptHTMLReports(loadKey:load:)`), so a webui reply keeps its download card. A reference
-/// that compares by identity, so the settled reply's forwarded environment stays equal.
 @Observable final class TranscriptHTMLReportLoader: Equatable {
     @ObservationIgnored var load: (TranscriptMediaReference) async throws -> Data = { _ in
         throw BotArtifactFailure.unavailable
     }
-    /// The chat's current attach (`ChatViewModel.attachmentLoadKey`), nil while it is detached, as
-    /// when the chat has just opened. A load that throws `BotFailure.stale` waits for this to change.
     var loadKey: Int?
 
     static func == (lhs: TranscriptHTMLReportLoader, rhs: TranscriptHTMLReportLoader) -> Bool { lhs === rhs }
@@ -312,15 +250,11 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Renders the transcript's HTML reports in place, downloading each through `load` once
-    /// `loadKey` names an attach. Nil leaves them as file cards.
     func transcriptHTMLReports(loadKey: Int?, load: ((TranscriptMediaReference) async throws -> Data)?) -> some View {
         modifier(TranscriptHTMLReportsModifier(loadKey: loadKey, load: load))
     }
 }
 
-/// Keeps one loader for the screen and refreshes its handler on every pass, as
-/// `ChatDisclosureToggledModifier` does.
 private struct TranscriptHTMLReportsModifier: ViewModifier {
     let loadKey: Int?
     let load: ((TranscriptMediaReference) async throws -> Data)?
@@ -334,29 +268,19 @@ private struct TranscriptHTMLReportsModifier: ViewModifier {
     }
 }
 
-/// One inline report's download. A failed or cancelled load leaves no state behind for a view
-/// that is gone: it returns without writing.
 @MainActor @Observable final class TranscriptHTMLReportModel {
     enum Phase: Equatable {
-        /// Not on screen yet, so nothing has downloaded.
         case waiting
         case loading
-        /// Downloaded: `data` and `html` hold the file.
         case ready
-        /// Over `HTMLReport.inlineByteLimit`: the row shows a file card instead.
         case oversized
         case failed
     }
 
     private(set) var phase = Phase.waiting
-    /// The whole file, for download, once `ready`.
     private(set) var data: Data?
-    /// The page, decoded once, once `ready`.
     private(set) var html: String?
-    /// A digest of `data`, which keys the locked height: an agent that rewrites a report at the
-    /// same path gets the new page measured, not the old one's height.
     private(set) var contentTag: String?
-    /// Bumped by `retry`, which keys the row's load task.
     private(set) var attempt = 0
 
     func load(_ reference: TranscriptMediaReference, using loader: TranscriptHTMLReportLoader) async {
@@ -373,8 +297,6 @@ private struct TranscriptHTMLReportsModifier: ViewModifier {
             guard !Task.isCancelled else { return }
             phase = .oversized
         } catch BotFailure.stale {
-            // The chat isn't attached yet, or reattached mid-download: the row loads again when
-            // `TranscriptHTMLReportLoader.loadKey` changes.
             guard !Task.isCancelled else { return }
             phase = .waiting
         } catch {
@@ -383,8 +305,6 @@ private struct TranscriptHTMLReportsModifier: ViewModifier {
         }
     }
 
-    /// The page's web process died twice (`HTMLReportWebView`'s one reload), or the page
-    /// never loaded.
     func renderFailed() { phase = .failed }
 
     func retry() {

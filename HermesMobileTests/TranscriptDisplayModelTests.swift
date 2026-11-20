@@ -318,8 +318,6 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         ))
     }
 
-    /// Every combination of the three toggles the picker replaced (#1254) lands on one mode,
-    /// and the old keys are gone afterwards.
     func testThinkingAndToolCardsMigrationMapsEveryLegacyCombination() throws {
         let cases: [(shows: Bool, thinking: Bool, tools: Bool, expected: ThinkingAndToolCards)] = [
             (false, false, false, .hidden), (false, true, false, .hidden),
@@ -342,7 +340,6 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         }
     }
 
-    /// Only an expand toggle was ever touched: cards were on by default, so it is Expanded.
     func testThinkingAndToolCardsMigrationTreatsUnsetShowToggleAsOn() throws {
         let defaults = try makeDefaults()
         defaults.set(true, forKey: "chatTranscript.toolCardsStartExpanded")
@@ -415,7 +412,6 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
     }
 
     func testContentWithoutAttachedFilesMarkerStripsTrailingMarker() {
-        // Mirrors the exact format PendingAttachment.chatMessageText appends.
         let sent = "Analyze these files\n\n[Attached files: /tmp/workspace/sample.html, /tmp/workspace/image.jpg]"
         XCTAssertEqual(
             MessageAttachment.contentWithoutAttachedFilesMarker(in: sent),
@@ -424,14 +420,11 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
     }
 
     func testContentWithoutAttachedFilesMarkerReturnsEmptyForAttachmentOnlyMessage() {
-        // No typed draft: the whole content is just the appended marker.
         let sent = "\n\n[Attached files: /tmp/workspace/image.jpg]"
         XCTAssertEqual(MessageAttachment.contentWithoutAttachedFilesMarker(in: sent), "")
     }
 
     func testContentWithoutAttachedFilesMarkerIgnoresMarkerWithTrailingText() {
-        // The parser only treats the marker as a suffix; trailing prose means it
-        // is not a real attachment marker, so the content is left untouched.
         let content = "hello\n\n[Attached files: /tmp/a.png] and then more text"
         XCTAssertEqual(MessageAttachment.contentWithoutAttachedFilesMarker(in: content), content)
     }
@@ -532,8 +525,6 @@ final class ChatActiveRunStatusPolicyTests: XCTestCase {
         )
     }
 
-    /// While the host compacts, the pill carries the compacting line instead of "Hermes is
-    /// working", for its text and its spoken form (#1734).
     func testActivePresentationCarriesTheCompactingLineWhileCompacting() {
         let now = Date(timeIntervalSince1970: 1_700_000_133)
         func presentation(isCompacting: Bool) -> ChatActiveRunStatusPresentation? {
@@ -600,7 +591,6 @@ final class ChatActiveRunStatusPolicyTests: XCTestCase {
 }
 
 final class ChatMessageTimestampFormatterTests: XCTestCase {
-    // 2021-01-01 14:14:00 UTC
     private let fixedTimestamp: Double = 1_609_510_440
     private let utc = TimeZone(identifier: "UTC")!
 
