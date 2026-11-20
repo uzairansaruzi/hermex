@@ -93,9 +93,7 @@ struct FilePreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if let preview = viewModel.preview {
-                    fileActionsMenu(for: preview)
-                }
+                fileActionsMenu
 
                 if viewModel.canSaveImageToPhotos {
                     Button {
@@ -178,8 +176,8 @@ struct FilePreviewView: View {
     /// workspace-relative path, and Copy Contents and Select Text for text. The drawn
     /// source surface owns long press for line selection, so these live in the toolbar.
     @ViewBuilder
-    private func fileActionsMenu(for preview: FilePreviewContent) -> some View {
-        let content: String? = if case let .text(file) = preview { file.content ?? "" } else { nil }
+    private var fileActionsMenu: some View {
+        let content: String? = if case let .text(file)? = viewModel.preview { file.content ?? "" } else { nil }
         let copyablePath = viewModel.copyablePath
         if content != nil || copyablePath != nil {
             Menu {
@@ -404,8 +402,7 @@ struct FilePreviewView: View {
     }
 
     private var displayName: String {
-        let name = entry.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let name, !name.isEmpty else {
+        guard let name = entry.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return String(localized: "File")
         }
         return name
@@ -419,11 +416,10 @@ struct FilePreviewView: View {
             path = entry.path
         }
 
-        let trimmedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let trimmedPath, !trimmedPath.isEmpty else {
+        guard let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return displayName
         }
-        return trimmedPath
+        return path
     }
 
     private var metadataText: String? {
