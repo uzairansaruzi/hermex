@@ -680,7 +680,7 @@ struct HermesHeaders: Sendable {
 
     func redirectGuard(for origin: URL) -> CrossOriginHeaderStripper {
         let admitted = values + [CustomHeader(name: Self.sessionTokenName)]
-        return CrossOriginHeaderStripper(baseURL: origin, customHeaderProvider: { admitted })
+        return CrossOriginHeaderStripper(baseURL: origin, sentHeaders: admitted)
     }
 
     static func isSameOrigin(_ url: URL, as address: URL) -> Bool {
