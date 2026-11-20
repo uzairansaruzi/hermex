@@ -571,6 +571,7 @@ final class AuthManager {
         } else {
             try? keychain.delete(.customHeaders, scope: scope)
         }
+        try? keychain.delete(.customHeaders)
     }
 
     private func hydrateCustomHeaders(for server: URL) {
@@ -579,8 +580,9 @@ final class AuthManager {
         if let scoped = try? keychain.load(.customHeaders, scope: scope) {
             stored = scoped
         } else if let legacy = try? keychain.load(.customHeaders) {
-            try? keychain.save(legacy, forKey: .customHeaders, scope: scope)
-            try? keychain.delete(.customHeaders)
+            if (try? keychain.save(legacy, forKey: .customHeaders, scope: scope)) != nil {
+                try? keychain.delete(.customHeaders)
+            }
             stored = legacy
         } else {
             stored = nil

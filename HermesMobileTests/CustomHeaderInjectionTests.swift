@@ -201,7 +201,7 @@ final class CustomHeaderSSEInjectionTests: XCTestCase {
 @MainActor
 final class CustomHeaderAuthManagerTests: XCTestCase {
     private func makeManager(
-        keychain: InMemoryKeychainStore,
+        keychain: KeychainStoring,
         store: CustomHeaderStore,
         client: MockAuthAPIClient
     ) -> AuthManager {
@@ -372,6 +372,41 @@ final class CustomHeaderAuthManagerTests: XCTestCase {
         XCTAssertEqual(store.snapshot().map(\.value), ["Bearer saved"])
         XCTAssertNotNil(keychain.scopedValue(.customHeaders, scope: "https://legacy.test"))
         XCTAssertNil(keychain.savedValues[.customHeaders])
+    }
+
+    func testLaunchKeepsLegacyGlobalHeadersWhenTheirMigrationFails() throws {
+        let keychain = FailingKeychain()
+        let encoded = try XCTUnwrap([CustomHeader(name: "Authorization", value: "Bearer saved")].encodedForStorage())
+        try keychain.save(encoded, forKey: .customHeaders)
+        try keychain.save("https://legacy.test", forKey: .serverURL)
+        keychain.failingKeys = [.customHeaders]
+        let store = CustomHeaderStore()
+
+        _ = makeManager(
+            keychain: keychain,
+            store: store,
+            client: MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
+        )
+
+        XCTAssertEqual(store.snapshot().map(\.value), ["Bearer saved"])
+        XCTAssertEqual(try keychain.load(.customHeaders), encoded)
+    }
+
+    func testAHeaderWriteRetiresLegacyHeadersAFailedMigrationLeft() throws {
+        let keychain = FailingKeychain()
+        let encoded = try XCTUnwrap([CustomHeader(name: "Authorization", value: "Bearer saved")].encodedForStorage())
+        try keychain.save(encoded, forKey: .customHeaders)
+        try keychain.save("https://legacy.test", forKey: .serverURL)
+        keychain.failingKeys = [.customHeaders]
+        let manager = makeManager(
+            keychain: keychain,
+            store: CustomHeaderStore(),
+            client: MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
+        )
+
+        manager.updateCustomHeaders([])
+
+        XCTAssertNil(try keychain.load(.customHeaders))
     }
 }
 
