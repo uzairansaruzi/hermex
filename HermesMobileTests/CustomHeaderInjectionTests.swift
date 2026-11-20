@@ -382,10 +382,12 @@ final class RedirectingMockURLProtocol: URLProtocol {
     }
 
     static var redirect: Redirect?
+    static var beforeRedirect: (() -> Void)?
     static var secondHopRequest: URLRequest?
 
     static func reset() {
         redirect = nil
+        beforeRedirect = nil
         secondHopRequest = nil
     }
 
@@ -394,6 +396,7 @@ final class RedirectingMockURLProtocol: URLProtocol {
 
     override func startLoading() {
         if let redirect = Self.redirect, request.url?.path == redirect.fromPath {
+            Self.beforeRedirect?()
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: 302,
@@ -436,7 +439,7 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         requestHeaders: [String: String],
         method: String = "GET"
     ) throws -> URLRequest? {
-        let stripper = CrossOriginHeaderStripper(baseURL: baseURL, customHeaderProvider: { guardHeaders })
+        let stripper = CrossOriginHeaderStripper(baseURL: baseURL, sentHeaders: guardHeaders)
         var newRequest = URLRequest(url: try XCTUnwrap(URL(string: destination)))
         newRequest.httpMethod = method
         for (name, value) in requestHeaders {
@@ -517,16 +520,16 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertNil(secondHop.value(forHTTPHeaderField: "X-Api-Key"))
     }
 
-    func testStripsCustomHeaderEndToEndOnAPIRequestRedirect() async throws {
+    func testStripsSentHeaderOnRedirectAfterTheStoreIsReplaced() async throws {
+        let store = CustomHeaderStore(headers: [CustomHeader(name: "X-Api-Key", value: "k1")])
         RedirectingMockURLProtocol.redirect = .init(
             fromPath: "/health",
             to: try XCTUnwrap(URL(string: "https://third-party.example/leak"))
         )
+        RedirectingMockURLProtocol.beforeRedirect = { store.replace(with: []) }
         let session = delegateLessRedirectingSession()
         defer { session.invalidateAndCancel() }
-        let client = APIClient(baseURL: baseURL, session: session, customHeaderProvider: {
-            [CustomHeader(name: "X-Api-Key", value: "k1")]
-        })
+        let client = APIClient(baseURL: baseURL, session: session, customHeaderProvider: { store.snapshot() })
 
         _ = try? await client.sendData(endpoint: .health, method: "GET")
 

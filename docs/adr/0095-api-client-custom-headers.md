@@ -16,9 +16,11 @@ Lives in: `HermesMobile/Networking/APIClient.swift`, `HermesMobileTests/CustomHe
 
 ## Strip custom headers on cross-origin redirects
 
-`APIClient` only attaches custom headers to same-origin requests, but when the server answers one with a 3xx to another host, `URLSession` forwards those headers by default. `URLSession` already strips `Authorization` and a few sensitive headers, so the residual leak is a non-`Authorization` custom header such as `X-Api-Key`, which may be a secret. `CrossOriginHeaderStripper` closes that gap (#277): same-origin redirects keep the headers, because a proxy path rewrite still needs them, and a request with no custom headers is left byte-identical. It implements only `willPerformHTTPRedirection`, so TLS trust and auth challenges keep `URLSession`'s default handling; it is `nonisolated` so tests drive the exact delegate the client installs.
+`APIClient` only attaches custom headers to same-origin requests, but when the server answers one with a 3xx to another host, `URLSession` forwards those headers by default. `URLSession` already strips `Authorization` and a few sensitive headers, so the residual leak is a non-`Authorization` custom header such as `X-Api-Key`, which may be a secret. `CrossOriginHeaderStripper` closes that gap (#277): same-origin redirects keep the headers, because a proxy path rewrite still needs them, and a request with no custom headers is left byte-identical. It implements only `willPerformHTTPRedirection`, so TLS trust and auth challenges keep `URLSession`'s default handling.
 
-Lives in: `HermesMobile/Networking/APIClient.swift`
+It strips the header names the request was sent with, captured when `APIClient` applied them, not the names configured when the redirect arrives. `AuthManager` replaces the header store on sign-out and on a server switch, and the user can rename or remove a header, while a request is still in flight; a strip set read at redirect time would miss the headers that request actually carries (#1781). `HermesConnection` builds its guard the same way, from the headers it admitted for that connection.
+
+Lives in: `HermesMobile/Networking/APIClient.swift`, `HermesMobileTests/CustomHeaderInjectionTests.swift`
 
 ## Refuse a cross-origin redirect of anything but GET or HEAD
 
@@ -34,7 +36,7 @@ Lives in: `HermesMobile/Networking/APIClient.swift`
 
 ## Share the process-wide sessions and guard redirects per task
 
-`APIClient` instances share the process-wide URL sessions, one connection pool per host even across servers, instead of each opening a cold one (#688). Those sessions have no delegate, so each client builds one `CrossOriginHeaderStripper` from its origin and header provider and attaches it as the per-task delegate on every request (#277).
+`APIClient` instances share the process-wide URL sessions, one connection pool per host even across servers, instead of each opening a cold one (#688). Those sessions have no delegate, so each request builds a `CrossOriginHeaderStripper` from the client's origin and the headers it was sent with, and attaches it as that task's delegate (#277, #1781).
 
 Lives in: `HermesMobile/Networking/APIClient.swift`, `HermesMobileTests/CustomHeaderInjectionTests.swift`
 

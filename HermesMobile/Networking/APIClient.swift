@@ -4,7 +4,6 @@ actor APIClient {
     let baseURL: URL
     let session: URLSession
     let publicMediaSession: URLSession
-    nonisolated let redirectHeaderStripper: CrossOriginHeaderStripper
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private let customHeaderProvider: @Sendable () -> [CustomHeader]
@@ -17,11 +16,6 @@ actor APIClient {
     ) {
         self.baseURL = baseURL
         self.customHeaderProvider = customHeaderProvider
-
-        self.redirectHeaderStripper = CrossOriginHeaderStripper(
-            baseURL: baseURL,
-            customHeaderProvider: customHeaderProvider
-        )
 
         self.session = session ?? Self.sharedSession
         self.publicMediaSession = publicMediaSession ?? Self.sharedPublicMediaSession
@@ -124,7 +118,7 @@ actor APIClient {
         request.httpMethod = method
         request.cachePolicy = .reloadIgnoringLocalCacheData
         if let timeout { request.timeoutInterval = timeout }
-        customHeaderProvider().apply(to: &request)
+        let redirectGuard = applyCustomHeaders(to: &request)
         request.setValue(accept, forHTTPHeaderField: "Accept")
 
         if let encodedBody {
@@ -132,20 +126,20 @@ actor APIClient {
             request.httpBody = encodedBody
         }
 
-        return try await sendPreparedRequest(request)
+        return try await sendPreparedRequest(request, redirectGuard: redirectGuard)
     }
 
     func sendBoundedData(endpoint: Endpoint, limit: Int) async throws -> Data {
         var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
         request.httpMethod = "GET"
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        customHeaderProvider().apply(to: &request)
+        let redirectGuard = applyCustomHeaders(to: &request)
         request.setValue("*/*", forHTTPHeaderField: "Accept")
 
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
         do {
-            (bytes, response) = try await session.bytes(for: request, delegate: redirectHeaderStripper)
+            (bytes, response) = try await session.bytes(for: request, delegate: redirectGuard)
         } catch {
             throw APIError.network(underlying: error)
         }
@@ -186,20 +180,27 @@ actor APIClient {
         var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
         request.httpMethod = "POST"
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        customHeaderProvider().apply(to: &request)
+        let redirectGuard = applyCustomHeaders(to: &request)
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        return try await sendPreparedRequest(request, requireSuccess: requireSuccess)
+        return try await sendPreparedRequest(request, redirectGuard: redirectGuard, requireSuccess: requireSuccess)
+    }
+
+    private func applyCustomHeaders(to request: inout URLRequest) -> CrossOriginHeaderStripper {
+        let headers = customHeaderProvider()
+        headers.apply(to: &request)
+        return CrossOriginHeaderStripper(baseURL: baseURL, sentHeaders: headers)
     }
 
     private func sendPreparedRequest(
         _ request: URLRequest,
+        redirectGuard: CrossOriginHeaderStripper,
         requireSuccess: Bool = true
     ) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request, delegate: redirectHeaderStripper)
+            (data, response) = try await session.data(for: request, delegate: redirectGuard)
         } catch {
             throw APIError.network(underlying: error)
         }
@@ -244,15 +245,15 @@ actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        if Self.isSameOrigin(url, as: baseURL) {
-            customHeaderProvider().apply(to: &request)
-        }
+        let redirectGuard = Self.isSameOrigin(url, as: baseURL)
+            ? applyCustomHeaders(to: &request)
+            : CrossOriginHeaderStripper(baseURL: baseURL, sentHeaders: [])
         request.setValue("*/*", forHTTPHeaderField: "Accept")
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request, delegate: redirectHeaderStripper)
+            (data, response) = try await session.data(for: request, delegate: redirectGuard)
         } catch {
             throw APIError.network(underlying: error)
         }
@@ -331,11 +332,11 @@ private struct EmptyBody: Encodable {}
 
 final class CrossOriginHeaderStripper: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let baseURL: URL
-    private let customHeaderProvider: @Sendable () -> [CustomHeader]
+    private let sentHeaderNames: Set<String>
 
-    init(baseURL: URL, customHeaderProvider: @escaping @Sendable () -> [CustomHeader]) {
+    init(baseURL: URL, sentHeaders: [CustomHeader]) {
         self.baseURL = baseURL
-        self.customHeaderProvider = customHeaderProvider
+        sentHeaderNames = Set(sentHeaders.filter(\.isApplicable).map { $0.sanitizedName.lowercased() })
     }
 
     func urlSession(
@@ -356,18 +357,13 @@ final class CrossOriginHeaderStripper: NSObject, URLSessionTaskDelegate, @unchec
             return
         }
 
-        let namesToStrip = Set(
-            customHeaderProvider()
-                .filter { $0.isApplicable }
-                .map { $0.sanitizedName.lowercased() }
-        )
-        guard !namesToStrip.isEmpty, let fields = request.allHTTPHeaderFields else {
+        guard !sentHeaderNames.isEmpty, let fields = request.allHTTPHeaderFields else {
             completionHandler(request)
             return
         }
 
         var sanitized = request
-        for name in fields.keys where namesToStrip.contains(name.lowercased()) {
+        for name in fields.keys where sentHeaderNames.contains(name.lowercased()) {
             sanitized.setValue(nil, forHTTPHeaderField: name)
         }
         completionHandler(sanitized)
