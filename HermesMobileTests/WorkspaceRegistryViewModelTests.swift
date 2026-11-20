@@ -287,7 +287,7 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
                 reorderCallCount += 1
                 if reorderCallCount == 1 {
                     firstReorderStarted.fulfill()
-                    _ = releaseFirstReorder.wait(timeout: .now() + 2)
+                    releaseFirstReorder.wait()
                     return apiTestJSONResponse("""
                     {
                       "ok": true,
@@ -353,7 +353,7 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
                 return apiTestJSONResponse(Self.twoWorkspacesJSON, for: request)
             case "/api/workspaces/rename":
                 renameStarted.fulfill()
-                _ = releaseRename.wait(timeout: .now() + 2)
+                releaseRename.wait()
                 return apiTestJSONResponse("""
                 {
                   "ok": true,
@@ -379,6 +379,7 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         }
         let model = WorkspaceRegistryViewModel(client: client)
         await model.load()
+        let beta = try XCTUnwrap(model.rows.first { $0.path == "/Users/test/beta" })
 
         let renameTask = Task { @MainActor in
             await model.renameWorkspace(path: "/Users/test/alpha", to: "Renamed Alpha")
@@ -386,7 +387,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
         await fulfillment(of: [renameStarted], timeout: 2)
         XCTAssertTrue(model.isMutating)
 
-        let beta = try XCTUnwrap(model.rows.first { $0.path == "/Users/test/beta" })
         let removalSucceeded = await model.confirmRemoval(of: beta)
         XCTAssertTrue(removalSucceeded)
         XCTAssertEqual(model.rows.map(\.path), ["/Users/test/alpha"])
