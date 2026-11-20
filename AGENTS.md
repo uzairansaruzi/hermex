@@ -77,7 +77,7 @@ The most common defect in this repo is a change that works on the path you teste
 - **Reverse states.** If you added a way in, add the way out and the way to see it. Archive needs restore. Pin needs unpin. Start needs stop. Optimistic mutation needs rollback. A one-way door is a bug.
 - **Connection modes.** `localhost`, Tailscale, and tunnel behave differently; Cloudflare closes quiet streams. Backgrounding, reconnecting, and reattaching to a live stream instead of resending the message are real cases.
 - **Native quality.** Dynamic Type, VoiceOver labels, Reduce Motion, light and dark appearance, keyboard focus, and localization. Read `docs/agents/i18n.md` before touching the String Catalog, plurals, casing, or RTL.
-- **Docs.** Agent conventions live in `docs/agents/`; new vocabulary in `CONTEXT.md`; build and simulator mechanics in `DEVELOPMENT.md`; Hermes connection, reconnect, and feature detection in `docs/agents/hermes-server.md`; webui parity in `docs/agents/feature-gap-index.md`, and what a Hermes host still lacks against webui in #1668; Kanban contract and behavior rules in `docs/agents/kanban.md`. Push components, keys, and relay data in `docs/agents/push.md`; usage report contract, consent, and collector in `docs/agents/usage-reports.md`. Performance rules and their guards in `docs/agents/performance.md`. `CHANGELOG.md` is written at release time, not per PR.
+- **Docs.** Agent conventions live in `docs/agents/`; decisions the code cannot show in `docs/adr/`; new vocabulary in `CONTEXT.md`; build and simulator mechanics in `DEVELOPMENT.md`; Hermes connection, reconnect, and feature detection in `docs/agents/hermes-server.md`; webui parity in `docs/agents/feature-gap-index.md`, and what a Hermes host still lacks against webui in #1668; Kanban contract and behavior rules in `docs/agents/kanban.md`. Push components, keys, and relay data in `docs/agents/push.md`; usage report contract, consent, and collector in `docs/agents/usage-reports.md`. Performance rules and their guards in `docs/agents/performance.md`. `CHANGELOG.md` is written at release time, not per PR.
 
 ## Working with the server
 
@@ -125,7 +125,7 @@ A live server is not a test fixture. Unit tests run against `URLProtocol` mocks,
 
 - Do not commit implementation plans, research notes, or agent scratch files. Keep temporary working material outside the worktree.
 - Track active maintainer work in the GitHub issue that owns it. Issue, label, and staged-versus-express conventions live in `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`. External proposals follow `CONTRIBUTING.md`.
-- Put durable architecture, constraints, and decisions in the checked-in docs (`docs/agents/`, `CONTEXT.md`, `DEVELOPMENT.md`). Update those docs when the product changes so agents find current facts instead of abandoned intentions.
+- Put durable architecture, constraints, and decisions in the checked-in docs (`docs/agents/`, `docs/adr/`, `CONTEXT.md`, `DEVELOPMENT.md`). Update those docs when the product changes so agents find current facts instead of abandoned intentions.
 - A merged PR is the implementation record. Close or update its issue when the work lands; do not preserve a second checklist in the repository.
 
 ## How it works
@@ -156,7 +156,7 @@ Canonical vocabulary: `CONTEXT.md`.
 - Make async ownership explicit. Cancellation, stale results, reconnects, and duplicate events are normal mobile conditions; never mutate state after the owning view or task is gone.
 - Optimistic UI only when failure has a clear rollback. Never show success before the server says the operation succeeded.
 - Destructive and privacy-sensitive actions stay deliberate: file writes, Git operations, server administration, and credential changes get copy that states the real consequence.
-- Comments describe how a thing is used, and move when the code moves. To be used mostly to describe functions, not to annotate every line of behavior.
+- Swift source carries no comments; `ci/check_comments.py` fails a file that gains one. Names and types say what the code does. A decision the code cannot show (a server quirk, an iOS behavior, a past bug) goes in `docs/adr/`, and changes in the same PR as the code it covers.
 - Our users drive agents from a phone all day and notice a dropped frame, a lying spinner, and a stale label. The intended feel is dense, calm, and operator-grade. No continuously repainting animations; every animation respects Reduce Motion.
 - The look is compact and glass-forward: a Liquid-Glass composer with the runtime controls in its bottom row, dense native pickers rather than marketing pages, and no third-party UI packages to get there.
 - The target builds in Swift 5 language mode with targeted concurrency. Fix what the build flags, not what strict Swift 6 would.

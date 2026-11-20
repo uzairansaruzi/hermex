@@ -1,0 +1,2 @@
+3	HermesMobile/Features/Bots/BotProfileAppearance.swift
+23	HermesMobile/Features/Workspace/ReviewDiff/ReviewDiffCanvasView.swift

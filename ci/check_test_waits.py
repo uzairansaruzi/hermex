@@ -51,8 +51,16 @@ def line_finder(text):
 def mask(source):
     """Return `source` with comments and string literals blanked out (newlines kept),
     and each line's comment text by line number."""
+    code, comments, _ = scan(source)
+    return code, comments
+
+
+def scan(source):
+    """`mask`, plus the (start, end) index range of every comment. ci/check_comments.py
+    counts and strips comments from those ranges."""
     out = list(source)
     comments = {}
+    spans = []
     length = len(source)
     line_of = line_finder(source)
 
@@ -99,6 +107,7 @@ def mask(source):
                 end = source.find("\n", index)
                 end = length if end == -1 else end
                 comments.setdefault(line_of(index), []).append(source[index + 2:end])
+                spans.append((index, end))
                 blank(index, end)
                 index = end
             elif text == "/*":
@@ -114,6 +123,7 @@ def mask(source):
                             break
                     else:
                         index += 1
+                spans.append((start, index))
                 blank(start, index)
             elif text.endswith('"'):
                 start = index
@@ -131,7 +141,7 @@ def mask(source):
                 depth -= 1
 
     skip_code(0, None)
-    return "".join(out), comments
+    return "".join(out), comments, spans
 
 
 def body_range(code, start):

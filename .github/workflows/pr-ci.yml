@@ -226,6 +226,7 @@ jobs:
           python3 -m unittest discover -s scripts/tests
           python3 -m unittest discover -s ci -p 'test_*.py'
           python3 ci/check_test_waits.py
+          python3 ci/check_comments.py
           ruby ci/select_testflight_build_number_test.rb
 
   gate:
