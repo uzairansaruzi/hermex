@@ -44,6 +44,12 @@ Lives in: `HermesMobile/Features/Settings/ArchivedSessionsViewModel.swift`
 
 Lives in: `HermesMobile/Features/Settings/ArchivedSessionsViewModel.swift`
 
+## Show no error for a stale archived page read, but do for a stale first read
+
+`BotClient` throws `BotFailure.stale`, not `CancellationError`, when the task reading a page is cancelled, so `loadMore` drops `stale` silently, or a "load more" whose task ends shows "This action is no longer current" (#1782). Nothing is lost: `hasMore` still holds and the next "load more" reads the page. `loadHermes` drops a cancelled task by `Task.isCancelled` instead and still shows `stale` with the task live, because then the screen's client has gone dead: it closes that client, so the next load connects a new one, and the error stops an empty list looking like no archived sessions.
+
+Lives in: `HermesMobile/Features/Settings/ArchivedSessionsViewModel.swift`
+
 ## Match session-link lookups by exact id
 
 `HermesSessionLookup` finds the stored session a Hermes session link names (#1176) on the server's saved connection, and never guesses. A named Profile is one `GET /api/sessions/{id}` read; `""` is the Profile `profiles.list` marks `is_default`; with none, every Profile is read at once and only a key exactly one of them has opens. The host answers an unknown key with the one session it prefixes, so a row whose `id` isn't the link's key is no match, and `HermesSessionLookupTests` holds that. Any failed read fails the lookup: a Profile that couldn't be read leaves the link unproven.

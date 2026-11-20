@@ -259,28 +259,12 @@ struct DefaultProfilePickerView: View {
             activeProfileName = response.effectiveDefaultProfileName ?? currentDefaultProfileName
             isSingleProfileMode = response.singleProfileMode ?? false
         } catch {
-            if !Self.isCancellationError(error) {
+            if !error.isCancellation {
                 errorMessage = error.localizedDescription
             }
         }
 
         isLoading = false
-    }
-
-    static func isCancellationError(_ error: Error) -> Bool {
-        if error is CancellationError {
-            return true
-        }
-
-        let underlying: Error
-        if case APIError.network(let wrapped) = error {
-            underlying = wrapped
-        } else {
-            underlying = error
-        }
-
-        guard let urlError = underlying as? URLError else { return false }
-        return urlError.code == .cancelled
     }
 
     private func save(_ profile: ProfileSummary) async {

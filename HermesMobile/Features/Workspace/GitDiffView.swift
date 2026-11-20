@@ -241,20 +241,9 @@ struct GitDiffView: View {
             }
             return ReviewDiffLoader.FileResult(fileID: file.id, state: .loaded(diff), error: nil)
         } catch {
-            if isCancellation(error) { return nil }
+            if error.isCancellation { return nil }
             return ReviewDiffLoader.FileResult(fileID: file.id, state: .failed(error.localizedDescription), error: error)
         }
-    }
-
-    private static func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError { return true }
-        let underlying: Error
-        if case APIError.network(let wrapped) = error {
-            underlying = wrapped
-        } else {
-            underlying = error
-        }
-        return (underlying as? URLError)?.code == .cancelled
     }
 }
 

@@ -64,7 +64,7 @@ struct TranscriptLinkPreviewView: View {
             apply(loadedSnapshot)
             await TranscriptLinkPreviewCache.shared.store(loadedSnapshot, for: url)
         } catch {
-            if !isCancellation(error) {
+            if !Task.isCancelled, !error.isCancellation {
                 didFail = true
             }
         }
@@ -199,19 +199,6 @@ private enum TranscriptLinkPreviewThumbnailRenderer {
 }
 
 private extension TranscriptLinkPreviewView {
-    private func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError || Task.isCancelled {
-            return true
-        }
-
-        if let urlError = error as? URLError {
-            return urlError.code == .cancelled
-        }
-
-        let nsError = error as NSError
-        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
-    }
-
     private var accessibilityLabel: String {
         if let host = url.host, !host.isEmpty {
             return String(localized: "Link preview for \(host)")
