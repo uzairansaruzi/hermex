@@ -8,7 +8,8 @@ only go down. A file not listed there allows none. On a pull request the baselin
 also held to the target branch's, so a PR cannot raise an allowance or add one.
 
 A `// test-wait: <reason>` line in HermesMobileTests/ is read by
-ci/check_test_waits.py, so it is not counted and `--strip` keeps it.
+ci/check_test_waits.py, so it is not counted and `--strip` keeps it. One with no
+reason is a comment like any other.
 
 PR CI runs the check in Tooling Tests; locally:
 
@@ -27,11 +28,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from check_test_waits import line_finder, scan
+from check_test_waits import ANNOTATION, line_finder, scan
 
 REPO = Path(__file__).resolve().parent.parent
 BASELINE = REPO / "ci" / "comment_baseline.txt"
-KEPT = "test-wait:"
 TESTS = "HermesMobileTests/"
 
 
@@ -40,11 +40,17 @@ def keeps_waits(path):
     return str(path).startswith(TESTS)
 
 
+def is_wait_annotation(comment):
+    """Whether `comment` is a `// test-wait:` line that gives a reason."""
+    reason = ANNOTATION.search(comment)
+    return comment.startswith("//") and bool(reason and reason.group(1).strip())
+
+
 def comment_spans(source, waits=False):
     """The (start, end) index range of every comment `--strip` would delete. With
-    `waits`, a `// test-wait:` line is an annotation and is left out."""
+    `waits`, a `// test-wait: <reason>` line is an annotation and is left out."""
     return [(start, end) for start, end in scan(source)[2]
-            if not (waits and source.startswith("//", start) and KEPT in source[start:end])]
+            if not (waits and is_wait_annotation(source[start:end]))]
 
 
 def comment_lines(source, waits=False):
@@ -191,13 +197,14 @@ def check():
 def main(argv):
     if argv[1:2] == ["--update"]:
         return update()
+    paths = [str((REPO / path).resolve().relative_to(REPO)) for path in argv[2:]]
     if argv[1:2] == ["--list"]:
-        for path in argv[2:] or swift_files():
+        for path in paths or swift_files():
             for first, last, text in blocks((REPO / path).read_text(encoding="utf-8"), keeps_waits(path)):
                 print(json.dumps({"file": path, "first": first, "last": last, "text": text}))
         return 0
     if argv[1:2] == ["--strip"]:
-        for path in argv[2:]:
+        for path in paths:
             source = (REPO / path).read_text(encoding="utf-8")
             (REPO / path).write_text(strip(source, keeps_waits(path)), encoding="utf-8")
         return 0

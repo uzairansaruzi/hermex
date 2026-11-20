@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -19,16 +20,20 @@ class CheckCommentsTests(unittest.TestCase):
             "\"\"\"\n"
             "let quote = #\"\"\"#\n"
             "// after a one-line raw string\n"
-            "let link = #/https?://example\\.com/#\n"
+            "let link = #/https?://example\\.com\\/#x//y/#\n"
             "let path = /a\"b\\/\\/c/ // after a regex\n"
             "let half = total / 2 // after a division\n"
         )
         self.assertEqual(check_comments.comment_lines(source), [1, 2, 3, 4, 9, 11, 12])
 
     def test_a_wait_annotation_is_kept_only_in_tests(self):
-        source = "// test-wait: hangs until cancelled\ntry await Task.sleep(for: .seconds(60))\n"
-        self.assertEqual(check_comments.comment_lines(source, waits=True), [])
-        self.assertEqual(check_comments.comment_lines(source), [1])
+        source = (
+            "// test-wait: hangs until cancelled\n"
+            "try await Task.sleep(for: .seconds(60))\n"
+            "// test-wait:\n"
+        )
+        self.assertEqual(check_comments.comment_lines(source, waits=True), [3])
+        self.assertEqual(check_comments.comment_lines(source), [1, 3])
 
     def test_strip_deletes_comments_and_the_gaps_they_leave(self):
         source = (
@@ -59,9 +64,13 @@ class CheckCommentsTests(unittest.TestCase):
         over, _ = check_comments.drift({"Old.swift": 3, "New.swift": 1}, {"Old.swift": 2})
         self.assertEqual(over, [("New.swift", 1, 0), ("Old.swift", 3, 2)])
 
-    def test_a_baseline_may_not_be_raised_past_the_target_branch(self):
-        raised, _ = check_comments.drift({"Old.swift": 3, "New.swift": 1}, {"Old.swift": 3})
-        self.assertEqual(raised, [("New.swift", 1, 0)])
+    def test_a_pull_request_may_not_raise_the_baseline(self):
+        allowance = {"New.swift": 1}
+        with mock.patch.multiple(check_comments, counts=lambda: allowance, read_baseline=lambda: allowance):
+            with mock.patch.object(check_comments, "target_baseline", return_value={}):
+                self.assertEqual(check_comments.check(), 1)
+            with mock.patch.object(check_comments, "target_baseline", return_value=allowance):
+                self.assertEqual(check_comments.check(), 0)
 
     def test_removed_comments_have_to_be_locked_in(self):
         _, under = check_comments.drift({"Old.swift": 1}, {"Old.swift": 2, "Gone.swift": 4})

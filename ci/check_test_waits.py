@@ -109,6 +109,8 @@ def scan(source):
         body = index + hashes + 1
         if hashes:
             close = source.find("/" + "#" * hashes, body)
+            while close != -1 and source[close - 1] == "\\" and source[close - 2] != "\\":
+                close = source.find("/" + "#" * hashes, close + 1)
             return None if close == -1 else close + 1 + hashes
         if body >= length or source[body] in " \t\n=":
             return None
